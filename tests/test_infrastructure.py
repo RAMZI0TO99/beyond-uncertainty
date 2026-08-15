@@ -18,8 +18,10 @@ from bu.config import (
     Arm,
     Config,
     TrainConfig,
+    STAGES,
     UnitSpec,
     classification_of,
+    seeds_for,
 )
 from bu.metrics import RunLogger, load_runs
 from bu.runrecord import read_run_record
@@ -51,6 +53,52 @@ def test_seed_is_part_of_run_identity_but_not_unit_identity():
     assert a.config_id == b.config_id
 
 
+def test_one_unit_can_carry_several_stage_obligations(tmp_path):
+    """A unit is one statistical unit but may owe runs to several stages.
+
+    Sol's material finding: a canonical condition enters an H1/H2 claim at five
+    seeds AND canonical repair validation at twenty, which overlap on seeds 0-4.
+    Without the stage in the run identity those are the same run, and the five
+    seeds behind an H1/H2 claim could not be separated from the twenty behind a
+    repair label.
+    """
+    unit = UnitSpec(family="missing_feature", withheld_features=("shape",))
+    h2 = Config(unit=unit, stage="exp2a", seed=3)
+    repair = Config(unit=unit, stage="repair_validation", seed=3)
+
+    assert h2.unit_id == repair.unit_id, "still one statistical unit"
+    assert h2.config_id == repair.config_id, "same unit, same arm"
+    assert h2.run_id != repair.run_id, "but distinct runs, separately recorded"
+
+    # ...and both can be written without colliding on disk.
+    RunLogger.start(h2, root=tmp_path).close()
+    RunLogger.start(repair, root=tmp_path).close()
+    df = load_runs(tmp_path)
+    assert df.empty or df["unit_id"].nunique() == 1
+
+
+def test_stage_seed_policy_matches_the_preregistration():
+    """Plan §14.2's three seed counts, bound to the stages that require them."""
+    assert seeds_for("exp1") == seeds_for("exp2a") == seeds_for("exp2b") == 5
+    assert seeds_for("repair_validation") == 20
+    assert seeds_for("config_sweep") == seeds_for("exp3_repairs") == 3
+    assert seeds_for("ablation") == 5
+    assert seeds_for("pilot") is None, "exploratory work carries no claim"
+
+
+def test_unknown_stage_is_refused():
+    with pytest.raises(ValueError, match="unknown stage"):
+        Config(stage="whatever")
+    with pytest.raises(ValueError, match="unknown stage"):
+        seeds_for("whatever")
+
+
+def test_stage_is_not_part_of_unit_identity():
+    unit = UnitSpec()
+    ids = {Config(unit=unit, stage=s).unit_id for s in STAGES}
+    assert len(ids) == 1, "stage is an execution obligation, not a design axis"
+
+
 def test_unit_id_ignores_training_hyperparameters():
     """Optimiser settings are not an experimental condition."""
     unit = UnitSpec()
@@ -64,7 +112,7 @@ def test_unit_id_ignores_training_hyperparameters():
 
 def test_every_config_field_is_classified():
     """Adding a field without classifying it must fail loudly."""
-    for cls in (UnitSpec, Arm):
+    for cls in (UnitSpec, Arm, Config):
         identity, excluded = classification_of(cls)
         actual = {f.name for f in dataclasses.fields(cls)}
         assert set(identity) | set(excluded) == actual

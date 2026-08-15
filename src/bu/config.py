@@ -70,6 +70,33 @@ SCHEMA_VERSION = 1
 IDENTITY_VERSION = 1
 
 ARMS = ("baseline", "data_repair", "feature_repair", "capacity_repair")
+
+#: Execution stages, and the seed count each requires (Plan §14.2).
+#:
+#: A unit is one statistical unit but may carry SEVERAL execution obligations:
+#: a canonical condition can enter an H1/H2 claim at five seeds *and* canonical
+#: repair validation at twenty. Those overlap on seeds 0-4, so without the stage
+#: in the run identity the two would collide -- and the five seeds supporting an
+#: H1/H2 claim could no longer be told apart from the twenty behind a repair
+#: label. Deduplicate units by ``unit_id``; never deduplicate stage obligations.
+STAGE_SEEDS: dict[str, int | None] = {
+    "exp1": K.SEEDS_HYPOTHESIS,
+    "exp2a": K.SEEDS_HYPOTHESIS,
+    "exp2b": K.SEEDS_HYPOTHESIS,
+    "config_sweep": K.SEEDS_SWEEP,
+    "repair_validation": K.SEEDS_REPAIR_VALIDATION,
+    "exp3_repairs": K.SEEDS_SWEEP,
+    "ablation": K.SEEDS_ABLATION,
+    "pilot": None,  # exploratory; no seed policy, never enters a claim
+}
+STAGES = tuple(STAGE_SEEDS)
+
+
+def seeds_for(stage: str) -> int | None:
+    """The preregistered seed count for a stage (Plan §14.2)."""
+    if stage not in STAGE_SEEDS:
+        raise ValueError(f"unknown stage {stage!r}; expected one of {STAGES}")
+    return STAGE_SEEDS[stage]
 FAMILIES = ("estimation", "missing_feature", "capacity")
 FEATURES = ("shape", "colour", "position")
 
@@ -137,6 +164,13 @@ UNIT_NON_IDENTITY_FIELDS: tuple[str, ...] = ()
 ARM_IDENTITY_FIELDS: tuple[str, ...] = ("kind",)
 ARM_NON_IDENTITY_FIELDS: tuple[str, ...] = ()
 
+#: Config-level fields that feed a unit's identity, and those that deliberately
+#: do not. Registered for the same reason as the UnitSpec lists: a field added
+#: to Config must not become identity-bearing by accident, and one that should
+#: be identity-bearing must not be silently dropped.
+CONFIG_IDENTITY_FIELDS: tuple[str, ...] = ("unit", "arm")
+CONFIG_NON_IDENTITY_FIELDS: tuple[str, ...] = ("train", "seed", "stage", "tags")
+
 
 @dataclass(frozen=True)
 class Arm:
@@ -201,7 +235,14 @@ class Config:
     arm: Arm = field(default_factory=Arm)
     train: TrainConfig = field(default_factory=TrainConfig)
     seed: int = 0
+    #: Which experimental obligation this run discharges. Part of run identity,
+    #: never of unit identity -- see STAGE_SEEDS.
+    stage: str = "pilot"
     tags: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.stage not in STAGE_SEEDS:
+            raise ValueError(f"unknown stage {self.stage!r}; expected one of {STAGES}")
 
     # --- identities ---
 
@@ -227,7 +268,14 @@ class Config:
 
     @property
     def run_id(self) -> str:
-        return f"{self.config_id}-s{self.seed:03d}"
+        """config_id + stage + seed. One run, one record, one metrics file.
+
+        The stage is in here because one unit can owe runs to more than one
+        experimental obligation at overlapping seeds; without it, the five seeds
+        behind an H1/H2 claim and the first five of twenty behind a repair label
+        would be the same run.
+        """
+        return f"{self.config_id}-{self.stage}-s{self.seed:03d}"
 
     @property
     def effective_unit(self) -> UnitSpec:
@@ -304,6 +352,7 @@ def classification_of(cls: type) -> tuple[tuple[str, ...], tuple[str, ...]]:
     registries = {
         UnitSpec: (UNIT_IDENTITY_FIELDS, UNIT_NON_IDENTITY_FIELDS),
         Arm: (ARM_IDENTITY_FIELDS, ARM_NON_IDENTITY_FIELDS),
+        Config: (CONFIG_IDENTITY_FIELDS, CONFIG_NON_IDENTITY_FIELDS),
     }
     return registries[cls]
 
@@ -316,7 +365,7 @@ def _assert_classification_exhaustive() -> None:
     invalidate the power calculation and every confidence interval taken over
     units -- so it fails loudly, immediately, at the point of editing.
     """
-    for cls in (UnitSpec, Arm):
+    for cls in (UnitSpec, Arm, Config):
         identity, excluded = classification_of(cls)
         declared = set(identity) | set(excluded)
         actual = {f.name for f in dataclasses.fields(cls)}
