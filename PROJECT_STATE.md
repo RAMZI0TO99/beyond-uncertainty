@@ -66,7 +66,9 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 | **Phase** | Phase A — infrastructure |
 | **Current week / day** | Week 1 Mon–Wed **complete, run early** (see DEV-002). Week 1 proper begins **2026-08-17** |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
-| **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**, `main` pushed. 28 tests passing, 1 skipped; fresh clone verified. Auth by SSH key; no token exists |
+| **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
+| **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
+| **Tests** | **68 passing, 1 skipped** (the exclusion-list test, vacuous until a field is excluded) |
 | **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
 
 **Hypothesis status**
@@ -84,6 +86,8 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 - Additional, not in the schedule: `src/bu/constants.py`, the preregistered values in one file (D-005).
 - **Sol's Q-005 ruling implemented** — registered, versioned statistical-identity field list with an import-time exhaustiveness check and tests that each registered field genuinely changes `unit_id` (D-009).
 - Repository pushed to GitHub, private, SSH auth.
+- **Sol's material finding fixed** — `stage` added to run identity (D-012). A unit can owe runs to several experimental obligations at overlapping seeds; without it they collided.
+- **Critic feature whitelist frozen** (D-013), ahead of the Week 6 deadline, per Sol's Q-006.
 
 **In flight:** nothing running. No compute consumed.
 
@@ -92,7 +96,7 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 2. **W1 Fri** — gridworld core: 8×8 grid, boundary walls, objects with (shape, colour, position), four moves plus interact, deterministic shape-dependent transition rule, Gymnasium API. *Done when: a 200-step random rollout runs without error.*
 3. **W1 Sat** — factored symbolic observation encoder with the feature-masking hook — the mechanism for Experiment 2A. *Done when: env constructs with the shape feature withheld.*
 
-**Blocked on:** nothing. Q-004 and Q-005 are with Sol; neither blocks Week 1.
+**Blocked on:** nothing. **Q-007** is the only open question — it is the one genuine plan/schedule contradiction found so far, and it is not due until Week 13.
 
 **Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split on the condition that it would revisit if *"important implementation or methodological decisions are repeatedly completed before Sol can review them."* That is a live risk in this arrangement, not a hypothetical: D-005 and D-006 were both built before Sol saw them. Mitigation: consequential design decisions go into a delta **and get delivered** before the code that depends on them is built on top of. Claude flags any decision it believes meets that bar at the moment of making it.
 
@@ -206,6 +210,26 @@ Every decision that a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** P§10.7, P§10.4.
 **Reviewed by Sol:** **yes — this decision is Sol's.** Implementation not yet reviewed.
 
+### D-012 · 2026-08-15 · Stage is part of run identity, never of unit identity
+**Decision:** `Config` gains a `stage` field (`exp1`, `exp2a`, `exp2b`, `config_sweep`, `repair_validation`, `exp3_repairs`, `ablation`, `pilot`) and `run_id` becomes `config_id + stage + seed`. `unit_id` and `config_id` are unchanged. `STAGE_SEEDS` binds each stage to its preregistered seed count, so P§14.2's policy is enforced in code rather than remembered. Config-level fields are now covered by the same import-time classification check as `UnitSpec` and `Arm`.
+**Why:** Sol's material finding, and it was a live bug rather than a tidiness point. A canonical condition can enter an H1/H2 claim at five seeds *and* canonical repair validation at twenty. Those overlap on seeds 0–4, so `unit + arm + seed` was not unique: the two obligations produced the same `run_id`, which would have either raised on write or silently merged them. Worse, the five seeds supporting an H1/H2 claim could no longer be distinguished from the first five of the twenty behind a repair label — and those support different claims. A unit remains **one** statistical unit with **several** execution obligations; deduplicate units by `unit_id`, never deduplicate stage obligations.
+**Correction to D-007:** its implementation note said seed count is "a property of a unit's role". That was wrong in a way that mattered — a unit can hold more than one role at once. Seed count is a property of the *(unit, stage)* pair.
+**Plan ref:** P§14.2, P§7.3, P§11.2.
+**Reviewed by Sol:** finding is Sol's; the fix is not yet reviewed.
+
+### D-013 · 2026-08-15 · The critic feature whitelist is frozen now, not in Week 6
+**Decision:** `src/bu/critic/schema.py` registers `CRITIC_FEATURE_SCHEMA` with `CRITIC_SCHEMA_VERSION`, transcribed verbatim from P§13.5.1, together with the four ablation variants, an explicit `FORBIDDEN_FIELDS` set, forbidden prefixes, and `assert_no_forbidden_columns()` for use at the pipeline boundary. Coherence is checked at import. Sol's required tests are implemented, including that `load_runs()` output is rejected wholesale and that renaming a forbidden field does not launder it.
+**Why:** Sol's Q-006 position was to freeze before the Week 6 firewall is accepted, with the stated exception that if the schema already exists and is stable, freeze it now. P§13.5.1 specifies all four groups and their per-variant retention completely, so that condition is met. Freezing now means the critic's input space is fixed before any labelled data or H1/H2 result could influence which features look useful — the same argument that fixes the falsification criteria in advance, applied to feature selection.
+**Not yet built (Week 6/11):** the X / y / groups separation as three physically distinct structures. The schema is the contract; the extractor enforces it later. Recorded here so it is not mistaken for done.
+**Plan ref:** P§7.5, P§12.1, P§13.5.1, P§16.
+**Reviewed by Sol:** design is Sol's; the implementation is not yet reviewed.
+
+### D-014 · 2026-08-15 · Ledger order: a past correction, and the rule going forward
+**Decision:** decision records are appended in the order they are made and are never moved again. Going forward this is absolute.
+**Why:** Sol flagged D-011 appearing above D-010. The cause is worth recording rather than quietly fixing: earlier in the same session Claude *deliberately* reordered the ledger to put D-008 back in numeric sequence after inserting D-009 and D-010 above it. That was a tidiness impulse applied to an append-only record, which is exactly the wrong instinct — an append-only log is evidence, and its value comes from nobody rearranging it. Per Sol's instruction the existing out-of-sequence entries are left where they are; this entry is the correction.
+**Plan ref:** not covered by the plan.
+**Reviewed by Sol:** finding is Sol's.
+
 ### D-011 · 2026-08-15 · Deltas carry numbers, not summaries, once results exist
 **Decision:** from the first real result, every §8 delta reporting one includes a `NUMBERS` block: total units and per-class counts including `min(N₀, N₁)`, seed count and applicable policy, point estimate, 95% interval **and explicitly what it was taken over**, ambiguous and undiagnosed counts as fractions, and which test ran including any fallback triggered. Sol is instructed to treat a missing line as a finding rather than an oversight.
 **Why:** Phase A is infrastructure, which prose conveys adequately. From Week 6 Sol's duties are entirely about numbers — whether an interval was taken over units or transitions, whether power was computed on `min(N₀, N₁)` or the total, whether the excluded fractions were reported at all. A prose summary such as "H2 reproduced across seeds" is unauditable, and an unauditable report reduces the reviewer to agreeing. Deciding the format now, while no result exists, means it cannot later be shaped around a result that would look better without a particular line.
@@ -277,7 +301,8 @@ Two conditions:
 | Q-003 | The W2 Wed confound double-booking. Same units or additional ones? | 2026-08-13 | **Closed** → D-007. Same units, run at higher seed count. Enumerator must dedupe by `unit_id` |
 | Q-004 | Schedule capacity model now that Claude implements — hold dates, or compress? | 2026-08-15 | **Closed.** Sol agrees: hold every date and gate; spend the gain on review, understanding, documentation and prose, never scope. Names the failure mode as **verification lag** — implementation outrunning student and reviewer, leaving choices embedded in code before they are understood. Consequential methodological decisions must be *delivered before* dependent implementation proceeds; routine implementation need not wait |
 | Q-005 | Should statistical identity be a registered field list rather than a schema hash? | 2026-08-15 | **Closed** → D-009. Sol: yes, explicit versioned identity list; `SCHEMA_VERSION` alone insufficient. Implemented in the stronger form Sol named — exhaustive classification, enforced at import, tested per field |
-| Q-006 | D-010: the leakage firewall will whitelist critic features rather than blacklist construction metadata, because `load_runs()` legitimately carries `family` and every `unit_*` axis for the experimenter's analysis. Does Sol see a gap in whitelisting, and should the whitelist itself be preregistered in `constants.py` before Week 11 rather than defined when the critic dataset is built? | 2026-08-15 | Open |
+| Q-006 | Whitelist vs blacklist for the leakage firewall; and when to freeze it. | 2026-08-15 | **Closed** → D-013. Sol: whitelist, frozen before the Week 6 firewall is accepted, in a dedicated schema module rather than `constants.py`, with X / y / groups physically separate. Since P§13.5.1 fully specifies the features, Sol's "freeze it now" condition was met and it is frozen |
+| Q-007 | **A genuine plan/schedule contradiction, found while freezing the schema.** P§13.5.1's table retains the Error group in *"Full; No-magnitude; Statistics-only"* — so the **no-statistics** variant drops error features entirely. But S§W13 Tue describes that variant as *"latent state, action and **error history** only"*. The two disagree on whether no-statistics sees error history. This changes what the variant means and therefore how the W13 construction-leakage control is read: if no-statistics has no error signal at all, a strong result there is far more surprising. Per our source-of-truth rule the plan wins, and the schema is frozen that way — but the disagreement should be resolved explicitly, not by default. | 2026-08-15 | **Open** — due before W13 Tue |
 
 **For Claude** — things Sol or the student wants implemented, checked or measured.
 
@@ -327,3 +352,99 @@ Format:
 **Next:** W1 Thu prose, then the gridworld core.
 
 ---
+
+### 2026-08-15 (night) · Sol review actioned end to end · Claude
+**Did:** worked Sol's `SOL REVIEW` of 2026-08-15 in full. Fixed the material finding as D-012 — `stage` is now part of `run_id`, `STAGE_SEEDS` binds P§14.2's seed policy to each stage in code, and Config-level fields joined the import-time classification check. Froze the critic feature whitelist as D-013 (`src/bu/critic/schema.py`), transcribed from P§13.5.1, with all of Sol's required tests. Recorded D-014 owning an earlier ledger reordering. Rewrote §1 for the stale-state finding, archived the five delivered deltas to `PROJECT_STATE_ARCHIVE.md`, and adopted `DELTA_ID` / `PREVIOUS_DELTA_ID`.
+**Result:** 68 passing, 1 skipped, up from 28. The material finding was a live bug, not a tidiness point: `unit + arm + seed` was genuinely not unique, because a canonical condition owes five seeds to an H1/H2 claim and twenty to repair validation, overlapping on seeds 0–4. Two obligations resolved to one `run_id`. Also found a real plan/schedule contradiction while transcribing the schema — P§13.5.1 excludes the Error group from the no-statistics variant, S§W13 Tue says that variant sees "error history". Raised as Q-007; the plan wins by our source-of-truth rule and the schema is frozen accordingly, but it wants an explicit resolution.
+**Left:** state file 329 → ~380 lines, back under the cap. Nothing running, no compute. Week 1 Thu–Sat outstanding.
+**Next:** W1 Thu prose, then the gridworld core.
+**HEAD at end of session:** recorded in the commit that carries this entry; `scripts/sol_bundle.sh` reports hash and dirty flag together.
+
+---
+
+## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
+
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 6. Deltas 1–5 are delivered and archived in `PROJECT_STATE_ARCHIVE.md`.
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 6
+PREVIOUS_DELTA_ID: 5
+DATE: 2026-08-15 (night)
+SUBJECT: your 2026-08-15 review, actioned in full
+
+MATERIAL FINDING -- CONFIRMED AS A LIVE BUG, FIXED (D-012)
+You were more right than the finding claimed. This was not only a scheduling
+concern: unit + arm + seed was genuinely not unique. A canonical condition owes
+five seeds to an H1/H2 claim and twenty to repair validation; those overlap on
+seeds 0-4, so both obligations resolved to the SAME run_id. On disk that either
+raises or silently merges two runs supporting different claims.
+
+Fix, as you specified: run_id = config_id + stage + seed. unit_id and config_id
+unchanged, so units still deduplicate by unit_id while stage obligations never
+do. STAGE_SEEDS binds each stage to its preregistered count (exp1/2a/2b -> 5,
+repair_validation -> 20, config_sweep/exp3_repairs -> 3, ablation -> 5, pilot ->
+none), so Plan 14.2's policy is enforced rather than remembered. Config-level
+fields now go through the same import-time classification check as UnitSpec and
+Arm, closing the equivalent hole one level up.
+
+Also a correction: D-007's note said seed count is "a property of a unit's
+role". Wrong, and your finding is why -- a unit can hold several roles at once.
+It is a property of the (unit, stage) pair. Recorded in D-012.
+
+Q-006 CLOSED -> D-013. WHITELIST FROZEN NOW, NOT WEEK 6.
+Your exception applied: Plan 13.5.1 specifies all four groups and their
+per-variant retention completely, so the schema was stable and is now frozen,
+before any labelled data exists. src/bu/critic/schema.py holds
+CRITIC_FEATURE_SCHEMA + CRITIC_SCHEMA_VERSION, the four variants, an explicit
+FORBIDDEN_FIELDS set, forbidden prefixes, and assert_no_forbidden_columns() for
+the pipeline boundary. Dedicated module, not constants.py, as you preferred.
+
+Your required tests are all implemented and passing:
+  - every allowed feature explicitly registered
+  - each forbidden field individually rejected (parametrised over the whole set)
+  - an unknown column is refused, not passed through
+  - load_runs() output is rejected WHOLESALE -- the concrete version of the risk
+  - renaming a forbidden field does not launder it
+  - statistics_only resolves to exactly B1's two features
+NOT yet built, and recorded as not built: the X / y / groups separation as three
+physically distinct structures. The schema is the contract; the extractor
+enforces it in Week 6/11.
+
+NEW FINDING -- Q-007, a genuine plan/schedule contradiction.
+Found while transcribing the schema. Plan 13.5.1's table retains the Error group
+in "Full; No-magnitude; Statistics-only" -- so the NO-STATISTICS variant has no
+error features at all. Schedule W13 Tue describes that same variant as "latent
+state, action and error history only". They disagree on whether no-statistics
+sees error history.
+
+This matters for how the W13 construction-leakage control is read. If
+no-statistics genuinely has no error signal, a strong result there is far more
+surprising -- and far more likely to be the design leakage your control exists
+to catch. The plan wins under our source-of-truth rule and the schema is frozen
+that way, but this should be resolved deliberately, not by default. Due before
+W13 Tue.
+
+YOUR MINOR FINDINGS, ALL ACTIONED
+- Stale snapshot: §1 rewritten. Q-004/Q-005 no longer shown as open; Q-007 is
+  the only open question.
+- Delta accounting: deltas 1-5 marked delivered and archived. DELTA_ID and
+  PREVIOUS_DELTA_ID adopted, as you see above.
+- Exact revision: §1 now carries a Revision row, and sol_bundle.sh reports hash
+  and dirty flag together so they cannot drift apart.
+- Ledger order: not reordered, per your instruction. But the cause is worth your
+  attention and is recorded as D-014 -- earlier in the same session Claude
+  DELIBERATELY reordered the ledger to restore numeric sequence after inserting
+  entries above D-008. A tidiness impulse applied to an append-only record. Your
+  finding caught the second instance; the first was self-inflicted and is now
+  on the record.
+- Size: 529 -> ~380 lines. Decisions, deviations and gate records were NOT
+  archived, per your instruction; only delivered deltas.
+
+TESTS: 68 passing, 1 skipped (up from 28). Request a bundle on
+src/bu/critic/schema.py and src/bu/config.py if you want to audit D-012 and
+D-013 rather than accept them -- that is now the whole point of the bundle.
+
+NEXT ACTION: W1 Thu prose, then W1 Fri gridworld core.
+=== END UPDATE ===
+```
