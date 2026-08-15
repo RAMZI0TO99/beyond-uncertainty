@@ -64,11 +64,11 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 | **Last updated** | 2026-08-15 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Week 1 complete** (Mon–Sat). Week 2 Mon also complete. Week 1 ran early — see DEV-002 |
+| **Current week / day** | **Week 1 complete.** Week 2: Mon, Tue, Wed and Thu complete; **Fri and Sat outstanding**. Running ahead — see DEV-002 |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **131 passing, 1 skipped**. Includes golden `unit_id` values, so a silent change to what a statistical unit means fails the suite |
+| **Tests** | **156 passing, 1 skipped**. Includes golden `unit_id` values, so a silent change to what a statistical unit means fails the suite |
 | **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
 
 **Hypothesis status**
@@ -92,13 +92,16 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 - **W1 Fri** — gridworld core (`src/bu/env/gridworld.py`). *Done when: a 200-step random rollout runs without error* — **verified**, and across all three layouts × all three causal attributes.
 - **W1 Sat** — factored observation encoder with the feature-masking hook (`src/bu/env/encoder.py`). *Done when: env constructs with the shape feature withheld* — **verified**, plus the property that matters: two states differing only in a withheld attribute encode identically while still transitioning differently.
 - **W2 Mon** — confound-rate parameter. *Done when: sampling test shows empirical correlation matches the setting* — **verified** at 0.0 / 0.25 / 0.5 / 0.75 / 0.9 and for all three causal attributes.
+- **W2 Tue** — configuration-condition enumerator (`src/bu/experiments/enumerate_units.py`). *Done when: returns ≥300 configuration-conditions and prints the count by axis* — **verified**: full matrix 531, design selection exactly 300, balanced 150/150 on intended class.
+- **W2 Wed** — stable configuration ids in every run record (done since D-006); confound double-booking resolved and recorded (D-007).
+- **W2 Thu** — prose drafted: both outstanding cells, in `docs/method_draft.md`. **Awaiting the student's rewrite** — drafted for reaction, not for submission.
 
 **In flight:** nothing running. No compute consumed.
 
 **Next three actions:**
-1. **W2 Tue** — three procedural layouts exist and are tested; still to do is the **configuration-condition enumerator**. *Done when: it returns ≥300 configuration-conditions and prints the count by axis.* D-007 requires it to deduplicate by `unit_id`.
-2. **W2 Fri** — scripted exploratory policy replacing PPO (DEV-001): coverage-biased random walk with forced object interactions, transition dataset collector, coverage metric over (shape, action) pairs. *Done when: a 5,000-transition dataset is saved with a coverage report.*
-3. **Outstanding prose** — W1 Thu (~400 words, environment design rationale) and W2 Thu (~400 words, configuration axes). Not yet written; the student has not said whether these are theirs or drafted.
+1. **W2 Fri** — scripted exploratory policy replacing PPO (DEV-001): coverage-biased random walk with forced object interactions, transition dataset collector, coverage metric over (shape, action) pairs. *Done when: a 5,000-transition dataset is saved with a coverage report.*
+2. **W2 Sat** — write the PPO substitution into the methodology with the coverage evidence behind it. P§13.2 requires the substitution recorded rather than hidden; this is the record.
+3. **W3 Mon** — world-model MLP: configurable input feature subset and hidden size, MSE head for continuous features and cross-entropy for categorical.
 
 **Blocked on:** nothing. Open questions: **Q-007** (plan/schedule contradiction, due before W13) and **Q-008** (seed independence across units, new).
 
@@ -270,6 +273,23 @@ Every decision that a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** P§2.2, P§13.1.2, P§13.1.3, P§19.
 **Reviewed by Sol:** pending.
 
+### D-018 · 2026-08-15 · The configuration sweep is a balanced sample, not the full crossing
+**Decision:** the enumerator exposes the **full matrix** (531 units) as a pool, and `design_units()` selects the 300 the design runs: the 75 canonical conditions plus 225 sweep units chosen by deterministic round-robin over (family × causal attribute × layout × confound) strata, rotated within strata so manipulation levels spread too, and balanced so the two intended classes come out 150/150.
+**Why:** the full crossing costs ~25,000 model fits against P§14.2's ~8,700 — roughly 3× the budget. P§14.2's "~225 further configuration-conditions" already implies a sample rather than an exhaustive product; this makes that explicit and reproducible. Selection is deterministic with no RNG, so the chosen set is a function of the design: reproducible from the code alone, and diffable when Week 5's MDE simulation changes the count.
+**Two things the first implementation got wrong, both caught by inspecting the printed report rather than by a test:**
+- Stratifying without the confound axis gave 99 units at confound 0.0 and **9** at 0.9. The enumeration loops confound outermost, so truncation simply took the low levels — leaving the strongest shortcut condition, where the decoy is most tempting and most wrong, almost absent from the sweep.
+- Costing every repair arm as a full ensemble inflated the compute estimate five-fold. A baseline trains an ensemble because H1 and H2 need member disagreement; a **repair trains a single model**, because the P§7.3 acceptance test compares per-transition error and needs no spread. With the accounting corrected the design lands at **8,181 fits against ~8,700** — which also independently reproduces P§14.2's own arithmetic, and is the check that this enumeration is the design the plan budgeted for rather than a different one of similar size.
+**Interpretation recorded:** P§14.2 budgets "15 canonical conditions at full seed count" without naming them. Implemented as one representative per (canonical configuration × family) = 15, which spreads the twenty-seed budget across all three failure families rather than concentrating it in one.
+**Provisional:** 300 is P§10.7's floor, not a final answer. Week 5 Thursday's MDE simulation sets the real count, inflated by the observed exclusion rate.
+**Plan ref:** P§10.7, P§14.2, P§14.3, P§8.2.1.
+**Reviewed by Sol:** pending.
+
+### D-019 · 2026-08-15 · Thesis prose is drafted by Claude and rewritten by the student
+**Decision:** Claude drafts each week's prose cell into `docs/method_draft.md`; the student rewrites it into their own voice. Drafts are explicitly marked as scaffolding.
+**Why:** the student's instruction. Reacting to prose is faster than producing it cold, which matters at ~14 h/week. The rewrite is not optional: the student defends these sentences, and Sol's verification-lag warning applies to prose as much as to code — text absorbed by editing is understood, text accepted unread is not.
+**Plan ref:** S§W1 Thu, S§W2 Thu, and the schedule's warning that leaving writing to Month 5 does not fit the available hours.
+**Reviewed by Sol:** pending.
+
 ### D-011 · 2026-08-15 · Deltas carry numbers, not summaries, once results exist
 **Decision:** from the first real result, every §8 delta reporting one includes a `NUMBERS` block: total units and per-class counts including `min(N₀, N₁)`, seed count and applicable policy, point estimate, 95% interval **and explicitly what it was taken over**, ambiguous and undiagnosed counts as fractions, and which test ran including any fallback triggered. Sol is instructed to treat a missing line as a finding rather than an oversight.
 **Why:** Phase A is infrastructure, which prose conveys adequately. From Week 6 Sol's duties are entirely about numbers — whether an interval was taken over units or transitions, whether power was computed on `min(N₀, N₁)` or the total, whether the excluded fractions were reported at all. A prose summary such as "H2 reproduced across seeds" is unauditable, and an unauditable report reduces the reviewer to agreeing. Deciding the format now, while no result exists, means it cannot later be shaped around a result that would look better without a particular line.
@@ -420,75 +440,84 @@ Format:
 **Left:** nothing running, no compute. W2 Tue's enumerator is the next real piece. Two prose cells outstanding (W1 Thu, W2 Thu).
 **Next:** configuration-condition enumerator — ≥300 units, deduplicated by `unit_id` per D-007.
 
+### 2026-08-15 (night, W2) · Enumerator and prose drafts · Claude
+**Did:** built the configuration-condition enumerator (`src/bu/experiments/enumerate_units.py`, D-018) and drafted both outstanding prose cells (`docs/method_draft.md`, D-019).
+**Result:** 131 → 156 tests. Full matrix 531 units; the design selects exactly **300**, balanced **150/150** on intended class, every axis spread, **8,181 model fits against P§14.2's ~8,700**. Canonical counts reproduce the plan exactly — 30 / 20 / 25 / 15. Two errors caught by reading the printed report rather than by a test: stratifying without the confound axis starved confound 0.9 down to 9 units, and costing repairs as ensembles inflated compute five-fold. Prose: 454 and 436 words against the ~400 target.
+**Left:** nothing running, no compute. W2 Fri (scripted policy, dataset collector, coverage metric) and W2 Sat (PPO substitution record) outstanding. Prose awaits the student's rewrite.
+**Next:** W2 Fri — the scripted exploratory policy replacing PPO.
+
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 8.
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 9. Delta 8 was not delivered either; both are below.
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 8
-PREVIOUS_DELTA_ID: 7
+DELTA_ID: 9
+PREVIOUS_DELTA_ID: 8 (undelivered -- delta 8 is in this same block, above/below)
 DATE: 2026-08-15 (night)
-SUBJECT: Week 1 complete, Week 2 Monday done -- the environment exists
+SUBJECT: W2 Tue enumerator + prose drafts. Two things need your judgement.
 
-BUILT: src/bu/env/gridworld.py and src/bu/env/encoder.py. Covers W1 Fri, W1 Sat
-and W2 Mon, plus the three layouts W2 Tue needs. 90 -> 131 tests.
+Delta 8 covered the environment (W1 Fri/Sat, W2 Mon). This adds W2 Tue and Thu.
+131 -> 156 tests.
 
-ACCEPTANCE CRITERIA, all verified rather than asserted:
-- W1 Fri "200-step random rollout runs without error" -- and across all three
-  layouts x all three causal attributes, not just the defaults.
-- W1 Sat "env constructs with the shape feature withheld" -- plus the property
-  that actually matters for Experiment 2A: two states differing ONLY in a
-  withheld attribute encode IDENTICALLY, while the environment still transitions
-  differently between them. That is f* not in H by construction rather than by
-  hoping the model ignores a column.
-- W2 Mon "empirical correlation matches the setting" -- at 0.0/0.25/0.5/0.75/0.9
-  and for all three causal attributes.
+ENUMERATOR (D-018). Acceptance criterion met: >=300 configuration-conditions,
+count printed by axis. Numbers:
+  full matrix (the pool):     531 units
+  design selection:           300 units  (75 canonical + 225 sweep)
+  intended class balance:     150 / 150  -> min(N0, N1) = 150
+  canonical counts:           exp1 30, exp2a 20, exp2b 25, repair_val 15
+                              -- reproduces Plan 14.2 exactly
+  compute:                    8,181 model fits vs Plan 14.2's ~8,700
 
-D-017: the env takes a UnitSpec directly, so configuration axes and unit identity
-are the same object and a condition cannot be described one way in the config and
-generated another. Three interpretations in it that are mine, not the plan's, and
-which you should check:
-  1. `interact` toggles an `activated` bit on an adjacent object. It needs SOME
-     observable effect or a world model learns it is the identity and the action
-     carries no information -- but it is deliberately orthogonal to passability,
-     since any influence on the transition rule would confound the manipulation.
-  2. Confound construction: the decoy equals the causal class with probability c,
-     else independent. Then P(agree) = c + (1-c)/2 and phi is exactly c, so the
-     configured number IS the correlation, not merely monotone in it.
-  3. Position-as-causal-attribute means (x+y) parity, with placement constrained
-     to match; the decoy for position is colour.
+TWO ERRORS I MADE AND CAUGHT, both by reading the printed report rather than by
+any test passing or failing:
 
-INVESTIGATED, NOT A BUG -- reporting it because the first look was wrong.
-Measured confound came in 0.03-0.04 BELOW target at every level, consistently
-negative, which reads as systematic bias. Checked across 20 independent seed
-blocks: mean deviation -0.07 SE, sd 1.20. It is noise; seed block 0 simply sits
-2.5 SE low. The generator is correct. The real finding was that the TEST was
-weak -- 500 episodes gave only ~2 SE of headroom, so an unlucky block would have
-flaked it. Now 1500 episodes, ~4 SE.
+1. Stratifying the sweep without the confound axis gave 99 units at confound 0.0
+   and NINE at 0.9. The enumeration loops confound outermost, so truncation just
+   took the low levels -- leaving the strongest shortcut condition, where the
+   decoy is most tempting and most wrong, nearly absent from the sweep. Fixed by
+   putting confound in the stratification key.
 
-NEW QUESTION -- Q-008, seed independence across units. A judgement, not a defect.
-GridWorld.reset(seed=s) derives its stream from s alone, so two DIFFERENT
-configuration-conditions at seed 0 get correlated object placements. Within
-Experiment 1 that seems right: the data-size sweep should hold the generating
-process fixed and vary only the amount of data. Across the ~300-unit
-configuration sweep it is less clearly right, because confidence intervals are
-taken over units and correlated environments could understate between-unit
-variance. Option: derive each run's stream by hashing (unit_id, arm, stage, seed,
-purpose), which would also separate the env stream from the bootstrap and
-weight-init streams. Plan 5.4 and 11.2 make seed behaviour load-bearing, so this
-is your call rather than mine.
+2. I costed every repair arm as a full ensemble, giving ~25,000 fits and a
+   design that looked 3x over budget. Wrong: a baseline trains an ensemble
+   because H1/H2 need member disagreement, but a REPAIR trains a single model --
+   the 7.3 acceptance test compares per-transition error and needs no spread.
+   Corrected, the total is 8,181 and it independently reproduces Plan 14.2's own
+   split. That agreement is the real check that this enumeration is the design
+   the plan budgeted for rather than a different one of similar size.
 
-STILL OPEN: Q-007 (Plan 13.5.1 vs Schedule W13 Tue on whether the no-statistics
-variant sees error history).
+NEEDS YOUR JUDGEMENT -- two interpretations, both mine, both load-bearing:
 
-NEXT ACTION: W2 Tue's configuration-condition enumerator -- >=300 units,
-deduplicated by unit_id per D-007, seed count following the (unit, stage) pair.
-Then W2 Fri, the scripted policy and dataset collector.
+(a) The 15 repair-validation conditions. Plan 14.2 budgets "15 canonical
+    conditions at full seed count" without naming which. I implemented one
+    representative per (canonical configuration x family) = 5 x 3 = 15, which
+    spreads the twenty-seed budget across all three failure families rather than
+    concentrating it. Alternative readings exist -- e.g. the 15 hardest, or 15
+    spanning the confound range. This choice determines which labels rest on
+    twenty seeds and which on three, so it is not cosmetic.
 
-Two prose cells are outstanding (W1 Thu, W2 Thu). The student has not yet said
-whether those are theirs to write or mine to draft.
+(b) Class balancing at the DESIGN stage. I balanced the 300 to 150/150 on
+    INTENDED class, because Plan 10.7 makes power depend on min(N0, N1). But the
+    real labels come from the repair test (7.1), and the ambiguous/undiagnosed
+    exclusions (7.4) will shrink both classes by an unknown amount. So balancing
+    the intention may not deliver a balanced labelled set. Options: leave it and
+    correct at Week 10 when exclusion rates are known; or deliberately
+    over-sample the class we expect to lose more of. I have left it, and flagged
+    it. Week 5 Thu's MDE simulation already has to inflate the target by a pilot
+    exclusion rate, so this may be the same decision seen from another angle.
+
+PROSE (D-019). Both outstanding cells drafted in docs/method_draft.md, 454 and
+436 words. Explicitly marked as scaffolding for the student to rewrite -- your
+verification-lag warning applies to prose too: text absorbed by editing is
+understood, text accepted unread is not.
+
+STILL OPEN: Q-007 (13.5.1 vs W13 Tue on no-statistics), Q-008 (seed independence
+across units). Neither blocks W2 Fri.
+
+NEXT: W2 Fri -- scripted exploratory policy replacing PPO, transition dataset
+collector, coverage metric over (shape, action) pairs. Then W2 Sat, the
+substitution record that makes DEV-001 defensible.
 === END UPDATE ===
 ```
