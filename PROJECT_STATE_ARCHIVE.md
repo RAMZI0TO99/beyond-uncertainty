@@ -211,3 +211,64 @@ Fixing the format before any result exists is deliberate: afterwards, the choice
 of which lines to include could not be made innocently.
 === END UPDATE ===
 ```
+
+---
+
+## Session log — Weeks 1–2 (archived 2026-08-15)
+
+Moved out of the live file to keep it pasteable. Decisions,
+deviations and gate records were **not** archived, per Sol.
+
+### 2026-08-13 · Pre-start · setup · Claude
+**Did:** read both plan documents in full; established the working protocol with Sol (D-001); anchored the schedule to 2026-08-17 (D-002); recorded the memory asymmetry and the §8 delta channel (D-003); created this file and `SOL_BRIEF.md`.
+**Result:** no project work yet. Three open questions raised in §6, one of them (Q-002, the Christmas/New Year collision at Weeks 18–20) worth settling before Week 1 rather than in December.
+**Left:** repository not created. Folder currently holds the two plan documents and these two files.
+**Next:** W1 Mon (2026-08-17) — repository init, folder structure, pinned dependencies, first commit.
+
+### 2026-08-15 · Week 1 Mon–Wed (run early, DEV-002) · Claude
+**Did:** built the project infrastructure. Repo initialised at `main`, venv, deps pinned in `pyproject.toml`. `src/bu/constants.py` (preregistration in code, D-005), `config.py` (three identities, D-006), `runrecord.py` (provenance incl. git dirty flag + stored diff), `metrics.py` (per-line-flushed JSONL + `load_runs()`). 16 acceptance tests in `tests/test_infrastructure.py`, one per schedule "Done when" criterion plus the identity and frozen-constant invariants. README written.
+**Result:** all three Week 1 done-when criteria verified rather than assumed — fresh clone into a temp dir installs, imports and passes 16/16. Commit `233634f`. One real bug caught by the tests: tuple-valued config fields (`withheld_features`) were being broadcast by pandas as a column of values instead of a scalar; sequence fields now serialise to a canonical string so they survive groupby and CSV round-trips.
+**Left:** nothing running, no compute consumed. `env/`, `models/`, `critic/`, `stats/`, `experiments/` exist as empty packages.
+**Next:** W1 Thu — thesis prose, ~400 words on environment design rationale.
+
+### 2026-08-15 (later) · Sol's first answers filed · Claude
+**Did:** filed `SOL ANSWER` blocks for Q-001, Q-002 and Q-003. Q-003's ruling recorded as D-007 and independently checked against P§14.2's run-count arithmetic (30 + 20 + 25 canonical + ~225 sweep = ~300 = P§10.7's target), which agrees with it. Closed Q-001/Q-002/Q-003. Recorded Sol's D-001 tripwire as a standing watch item in §1.
+**Result:** the Week 2 enumerator now has its rule — deduplicate by `unit_id`, and let seed count follow a unit's role rather than a separate run list. D-006's content hashing makes that automatic. Also found and closed a protocol hole: Sol had answered from delta #1 while delta #2 sat undelivered in §8, which a plain overwrite would have destroyed (D-008 — §8 now accumulates until marked delivered).
+**Left:** Q-004 and Q-005 still unanswered — Sol has not yet seen delta #2. No code changed this session.
+**Next:** deliver the merged §8 to Sol; W1 Thu prose.
+
+### 2026-08-15 (evening) · Q-004/Q-005 filed, identity registry built, repo on GitHub · Claude
+**Did:** pushed to GitHub (private, SSH). Implemented Sol's Q-005 ruling as D-009: `UNIT_IDENTITY_FIELDS` / `UNIT_NON_IDENTITY_FIELDS` registries, `IDENTITY_VERSION` separate from `SCHEMA_VERSION`, import-time exhaustiveness check, both versions plus the registered field list written into every run record. Added the tests Sol named as its condition — one per registered field, asserting that varying it genuinely changes `unit_id`, plus a test that the exhaustiveness check actually fires. Filed Q-004's answer and its verification-lag warning.
+**Result:** 28 passing, 1 skipped (the exclusion-list test, vacuous until a field is excluded). All nine `UnitSpec` fields are identity-bearing today; the machinery exists so the first exclusion is a reviewed decision. Separately found a leakage vector while working: `load_runs()` attaches `family` and every `unit_*` axis to each row, and those are exactly what P§7.5 forbids the critic from seeing — recorded as D-010, whitelist not blacklist, raised as Q-006.
+**Snag, resolved:** the GitHub repo had an initial commit with a `LICENSE`, and the machine had no git identity configured, which stalled a rebase mid-flight. Rebased rather than force-pushed so the MIT licence and its authorship line survive; no commit was lost. `.claude/settings.local.json` is now untracked — machine-local permission state does not belong in a shared repo. Repo git identity set to *Ramzi Alashmali / ai.research@sofa.ye*; change with `git config user.email` if a different address should own the commits.
+**Left:** nothing running, no compute. Week 1 Thu–Sat outstanding.
+**Next:** W1 Thu prose, then the gridworld core.
+
+---
+
+### 2026-08-15 (night) · Sol review actioned end to end · Claude
+**Did:** worked Sol's `SOL REVIEW` of 2026-08-15 in full. Fixed the material finding as D-012 — `stage` is now part of `run_id`, `STAGE_SEEDS` binds P§14.2's seed policy to each stage in code, and Config-level fields joined the import-time classification check. Froze the critic feature whitelist as D-013 (`src/bu/critic/schema.py`), transcribed from P§13.5.1, with all of Sol's required tests. Recorded D-014 owning an earlier ledger reordering. Rewrote §1 for the stale-state finding, archived the five delivered deltas to `PROJECT_STATE_ARCHIVE.md`, and adopted `DELTA_ID` / `PREVIOUS_DELTA_ID`.
+**Result:** 68 passing, 1 skipped, up from 28. The material finding was a live bug, not a tidiness point: `unit + arm + seed` was genuinely not unique, because a canonical condition owes five seeds to an H1/H2 claim and twenty to repair validation, overlapping on seeds 0–4. Two obligations resolved to one `run_id`. Also found a real plan/schedule contradiction while transcribing the schema — P§13.5.1 excludes the Error group from the no-statistics variant, S§W13 Tue says that variant sees "error history". Raised as Q-007; the plan wins by our source-of-truth rule and the schema is frozen accordingly, but it wants an explicit resolution.
+**Left:** state file 329 → ~380 lines, back under the cap. Nothing running, no compute. Week 1 Thu–Sat outstanding.
+**Next:** W1 Thu prose, then the gridworld core.
+**HEAD at end of session:** recorded in the commit that carries this entry; `scripts/sol_bundle.sh` reports hash and dirty flag together.
+
+### 2026-08-15 (late) · Week 1 audit before Week 2 · Claude
+**Did:** audited every Week 1 file line by line, probing behaviour empirically rather than reading for correctness. Seven defects found and fixed (D-015), each with a named regression test. Bumped `IDENTITY_VERSION` and `SCHEMA_VERSION` to 2 under a Change Record (D-016).
+**Result:** 68 → 90 tests. Three defects were serious. A1 meant D-012's fix for Sol's material finding existed only in the directory name — `stage` never reached the run record or the analysis frame. A2 meant `unit_id` embedded a **memory address** whenever a value lacked a JSON form; the first probe showed two distinct objects hashing *equal*, because the freed address had been reused, which is precisely how it would have survived casual testing. A3 meant `0` and `0.0`, and two orderings of `withheld_features`, produced different units — inflating the labelled unit count that the MDE and every confidence interval rest on. Fresh-clone install re-verified; the golden `unit_id` reproduces in a clean checkout.
+**Left:** nothing running, no compute. Week 1 Thu–Sat outstanding. Q-007 still open.
+**Next:** W1 Thu prose, then the gridworld core.
+
+### 2026-08-15 (night, later) · Week 1 finished; Week 2 Monday done · Claude
+**Did:** built the gridworld (`src/bu/env/gridworld.py`) and the masking observation encoder (`src/bu/env/encoder.py`), against `UnitSpec` directly (D-017). That covers W1 Fri, W1 Sat and W2 Mon, plus the three layouts W2 Tue needs. 41 environment tests.
+**Result:** 90 → 131 tests. All three "Done when" criteria verified: a 200-step rollout runs clean across every layout × causal attribute; the env constructs with shape withheld; measured confound matches the configured rate at all five levels and for all three causal attributes. The test that matters most for Experiment 2A is the one asserting that two states differing only in a withheld attribute **encode identically while still transitioning differently** — that is `f* ∉ H` holding by construction rather than by hope.
+**Investigated, not a bug:** measured confound came in ~0.03–0.04 below target, consistently negative, which looked systematic. Checked across 20 independent seed blocks: mean deviation −0.07 SE, sd 1.20. It is noise, and seed block 0 happens to sit 2.5 SE low. The generator is exactly right. But the test tolerance was only ~2 SE at 500 episodes, so an unlucky block would have flaked it — raised to 1500 episodes, now ~4 SE.
+**Raised:** Q-008, on whether runs in different units should share an environment stream at the same seed. Desirable within Experiment 1, questionable across the configuration sweep. A judgement, not a defect.
+**Left:** nothing running, no compute. W2 Tue's enumerator is the next real piece. Two prose cells outstanding (W1 Thu, W2 Thu).
+**Next:** configuration-condition enumerator — ≥300 units, deduplicated by `unit_id` per D-007.
+
+### 2026-08-15 (night, W2) · Enumerator and prose drafts · Claude
+**Did:** built the configuration-condition enumerator (`src/bu/experiments/enumerate_units.py`, D-018) and drafted both outstanding prose cells (`docs/method_draft.md`, D-019).
+**Result:** 131 → 156 tests. Full matrix 531 units; the design selects exactly **300**, balanced **150/150** on intended class, every axis spread, **8,181 model fits against P§14.2's ~8,700**. Canonical counts reproduce the plan exactly — 30 / 20 / 25 / 15. Two errors caught by reading the printed report rather than by a test: stratifying without the confound axis starved confound 0.9 down to 9 units, and costing repairs as ensembles inflated compute five-fold. Prose: 454 and 436 words against the ~400 target.
+**Left:** nothing running, no compute. W2 Fri (scripted policy, dataset collector, coverage metric) and W2 Sat (PPO substitution record) outstanding. Prose awaits the student's rewrite.
+**Next:** W2 Fri — the scripted exploratory policy replacing PPO.

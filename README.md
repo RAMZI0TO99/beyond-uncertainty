@@ -13,8 +13,11 @@ which repair is required.
 
 | File | What it is |
 |---|---|
-| `PROJECT_STATE.md` | **Start here.** Current state, decisions, deviations, gate records |
+| `CLAUDE.md` | **Claude starts here.** Operational handoff: checklist, commands, hard rules, traps |
+| `PROJECT_STATE.md` | Project state: snapshot, decisions, deviations, gate records |
+| `DELTA_TO_SOL.md` | The only thing the student pastes to Sol |
 | `SOL_BRIEF.md` | Operating brief for the reviewing agent |
+| `PROJECT_STATE_ARCHIVE.md` | Delivered deltas and closed session history |
 | `docs/thesis_project_plan_v1_2.docx` | The research design. Authoritative for design |
 | `docs/thesis_day_by_day_schedule_v1_2.docx` | The 20-week execution schedule |
 | `src/bu/constants.py` | **The preregistration, in code.** Changing anything here needs a Change Record |
@@ -25,6 +28,12 @@ which repair is required.
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install -e ".[dev]"
 .venv/bin/python -m pytest -q
+```
+
+Then see the design matrix the experiments draw on:
+
+```bash
+.venv/bin/python -m bu.experiments.enumerate_units
 ```
 
 `--system-site-packages` reuses an existing CUDA-enabled torch rather than

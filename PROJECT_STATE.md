@@ -7,7 +7,7 @@ This is the single shared working file for the project. It is written by Claude,
 **The memory asymmetry — read this before anything else.** Sol runs in one continuous session and never forgets. Claude is closed and reopened repeatedly and starts each session blank. This file exists primarily so **Claude can reconstruct** what Sol simply remembers. Two consequences:
 
 - Claude reads this file **first, in full**, at the start of every session — before touching code, before answering anything.
-- Sol is **not** re-fed the whole file each time. Sol gets the delta in §8. Re-pasting everything to Sol wastes the student's effort and buries the new information in text Sol already has.
+- Sol is **not** re-fed the whole file each time. Sol gets `DELTA_TO_SOL.md`. Re-pasting everything wastes the student's effort and buries new information in text Sol already has.
 
 **Corollary — Sol is the continuity check on Claude.** If Claude returns after a reset and contradicts something settled weeks ago, Sol is the one who will notice. That is a real duty, not a courtesy.
 
@@ -15,8 +15,9 @@ This is the single shared working file for the project. It is written by Claude,
 
 **Source of truth.** The two plan documents are authoritative for *design*; this file is authoritative for *state*. Where they conflict on design, the plan wins and the conflict goes in §4 as a deviation. This file never silently overrides the plan.
 
-- Plan: `thesis_project_plan_v1_2.docx` (v1.2, design frozen) — cited below as **P§n**
-- Schedule: `thesis_day_by_day_schedule_v1_2.docx` (v1.2, 20 weeks) — cited below as **S§Wn**
+- Claude's operational handoff, read first at session start: `CLAUDE.md`
+- Plan: `docs/thesis_project_plan_v1_2.docx` (v1.2, design frozen) — cited below as **P§n**
+- Schedule: `docs/thesis_day_by_day_schedule_v1_2.docx` (v1.2, 20 weeks) — cited below as **S§Wn**
 
 ---
 
@@ -36,7 +37,8 @@ Do this before anything else, in this order. No exceptions, including for a ques
 1. Rewrite §1 completely so it is true as of now.
 2. Append a §7 session-log entry.
 3. Append any new §3 decisions, §4 deviations, §5 gate records.
-4. **Rewrite §8** — the delta the student hands to Sol. This is not optional; it is the only channel through which Sol learns what happened. **From the first real result onward, any delta reporting one carries a `NUMBERS` block** (D-011): unit counts including `min(N₀, N₁)`, seeds and which policy applies, point estimate, interval *and what it was taken over*, ambiguous and undiagnosed counts, and which test ran. Prose alone leaves Sol unable to audit anything, which is the same as having no reviewer.
+4. **Update `DELTA_TO_SOL.md`** — append if its flag says undelivered, replace only once delivered (D-008, D-023). Name the session under `COVERS SESSIONS`. This is the only channel through which Sol learns anything.
+5. **Run the suite.** `tests/test_project_state.py` enforces steps 1–4 mechanically (D-022); if it fails, fix the file, not the test. **From the first real result onward, any delta reporting one carries a `NUMBERS` block** (D-011): unit counts including `min(N₀, N₁)`, seeds and which policy applies, point estimate, interval *and what it was taken over*, ambiguous and undiagnosed counts, and which test ran. Prose alone leaves Sol unable to audit anything, which is the same as having no reviewer.
 
 Never edit a past entry in §3, §4, §5 or §7. Corrections are new entries that reference the old one. §1 and §8 are the only sections that get overwritten.
 
@@ -50,7 +52,7 @@ If Sol's session is ever lost, re-onboard with `SOL_BRIEF.md` + this file in ful
 
 Carry two things, in two directions:
 
-- **To Sol:** §8 only. (First time, or after a Sol session loss: `SOL_BRIEF.md` + the whole file.)
+- **To Sol:** `DELTA_TO_SOL.md` only. (First time, or after a Sol session loss: `SOL_BRIEF.md` + this whole file.)
 - **To Claude:** the whole file, at the start of every session. Then Sol's verdict blocks as they arrive.
 
 Keep the file in version control from Week 1 Tuesday, so its own history is recoverable and any drift is diffable.
@@ -68,7 +70,7 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **194 passing, 1 skipped**. Includes golden `unit_id` values, so a silent change to what a statistical unit means fails the suite |
+| **Tests** | **204 passing, 1 skipped**. Includes golden `unit_id` values, so a silent change to what a statistical unit means fails the suite |
 | **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
 
 **Hypothesis status**
@@ -320,6 +322,26 @@ Every decision that a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** P§3.2.1, P§8.2.1, P§13.1.2, P§14.2.
 **Reviewed by Sol:** pending.
 
+### D-022 · 2026-08-15 · The collaboration protocol is machine-checked
+**Decision:** `tests/test_project_state.py` enforces the protocol as part of the suite. It fails if the newest session-log entry is not named in an undelivered delta; if delta ids skip, repeat or go backwards; if `PROJECT_STATE.md` exceeds its 500-line paste cap; if decision ids have gaps or duplicates; if a deviation id repeats; if §2's frozen-constant table disagrees with `src/bu/constants.py`; or if an open question has no status.
+**Why — this is a correction, not an improvement.** I broke the protocol twice. Writing delta 9 I *replaced* the block containing undelivered delta 8 rather than appending, which is precisely the failure D-008 was written to prevent, and D-008 was itself written after catching that same mistake once already. Then for the two sessions after it I updated §1 and §7 and wrote no delta at all. Three sessions — the environment, the policy and collector, and the whole Week 2 audit — never reached Sol. Neither party could detect it, because a missing delta is indistinguishable from a quiet week.
+**The lesson generalises:** a rule that lives only in prose depends on being remembered at the end of a long session, which is exactly when it will not be. Both real failures were caught by these tests on their first run.
+**Against Sol's tripwire:** Sol endorsed the role split conditionally, on implementation not outrunning review. This is a hit against that condition — implementation outran the record-keeping — and it is flagged to Sol as such rather than quietly repaired.
+**Plan ref:** not covered by the plan.
+**Reviewed by Sol:** pending.
+
+### D-023 · 2026-08-15 · Sol's delta gets its own file
+**Decision:** the delta moved from §8 into `DELTA_TO_SOL.md`. §8 is now a pointer.
+**Why:** consolidating four sessions pushed `PROJECT_STATE.md` past its paste cap, and the cap is load-bearing rather than cosmetic — past it the file stops being read. The two files also have genuinely different audiences: this one is Claude's reconstruction of state, that one is Sol's feed. It removes an instruction that was easy to get wrong as well: "paste §8" required finding a section boundary in a 500-line file, "paste `DELTA_TO_SOL.md`" does not.
+**Plan ref:** not covered by the plan.
+**Reviewed by Sol:** pending.
+
+### D-024 · 2026-08-15 · `CLAUDE.md` is Claude's session handoff
+**Decision:** operational knowledge — the first-five-minutes checklist, environment commands, hard rules, the traps already hit — lives in `CLAUDE.md`, which the harness loads automatically at session start. `PROJECT_STATE.md` keeps project state; `CLAUDE.md` keeps working knowledge.
+**Why:** the memory asymmetry cuts both ways. Sol needs deltas because it already has the history; Claude needs the opposite — the operational context that never belonged in a shared record. Things like "a rebase stalled because git had no identity", "green tests proved nothing about the two worst defects", and "never accept a token" are not project state, but a reset Claude that does not know them will lose time rediscovering them or, worse, repeat them.
+**Plan ref:** not covered by the plan.
+**Reviewed by Sol:** pending.
+
 ### D-011 · 2026-08-15 · Deltas carry numbers, not summaries, once results exist
 **Decision:** from the first real result, every §8 delta reporting one includes a `NUMBERS` block: total units and per-class counts including `min(N₀, N₁)`, seed count and applicable policy, point estimate, 95% interval **and explicitly what it was taken over**, ambiguous and undiagnosed counts as fractions, and which test ran including any fallback triggered. Sol is instructed to treat a missing line as a finding rather than an oversight.
 **Why:** Phase A is infrastructure, which prose conveys adequately. From Week 6 Sol's duties are entirely about numbers — whether an interval was taken over units or transitions, whether power was computed on `min(N₀, N₁)` or the total, whether the excluded fractions were reported at all. A prose summary such as "H2 reproduced across seeds" is unauditable, and an unauditable report reduces the reviewer to agreeing. Deciding the format now, while no result exists, means it cannot later be shaped around a result that would look better without a particular line.
@@ -352,6 +374,11 @@ Format: `Week n Day | what was skipped or substituted | why | goes in methodolog
 **Deviation:** the Week 1 Monday, Tuesday and Wednesday cells were completed on Saturday 2026-08-15, before the 2026-08-17 start.
 **Why:** all three are pure infrastructure — no compute consumed, no preregistered quantity touched, nothing that could bias a result. Doing them early converts Week 1's short days from typing into review, which is the scarcer resource now that implementation sits with Claude (see Q-004).
 **Goes in methodology:** **no** — no bearing on any result.
+
+### DEV-005 · 2026-08-15 · Three sessions reached Sol late
+**Deviation:** the deltas for the environment build, the policy/collector build, and the Week 2 audit were not delivered to Sol at the time. Delta 8 was overwritten; the two following sessions produced no delta at all. All three are consolidated into delta 10.
+**Why it is recorded rather than quietly fixed:** the schedule's deviation log exists so that decisions are not reconstructed from memory in Week 18, and a three-session gap in the review record is exactly the kind of thing that would otherwise vanish. Sol reviewed none of that work at the time it was done, so its review of delta 10 arrives after the code was built on — which is the verification lag Sol itself warned about.
+**Goes in methodology:** **no** — process, not design. But it belongs in any honest account of how the review protocol actually ran.
 
 ### DEV-004 · 2026-08-15 · W2 Mon's confound parameter built during Week 1
 **Deviation:** the confound-rate parameter (Schedule W2 Mon) and the three procedural layouts (W2 Tue) were implemented alongside the Week 1 Friday environment rather than in their scheduled cells.
@@ -410,71 +437,7 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-One entry per working session. Terse. The test of a good entry: someone reading only this section can tell what exists, what it does, and what state it was left in.
-
-Format:
-
-```
-### YYYY-MM-DD · Week n Day · <hours> · <agent>
-**Did:** what was actually built or run.
-**Result:** what came out, including numbers.
-**Left:** state at the end — what is running, what is half-finished.
-**Next:** the single next action.
-```
-
-### 2026-08-13 · Pre-start · setup · Claude
-**Did:** read both plan documents in full; established the working protocol with Sol (D-001); anchored the schedule to 2026-08-17 (D-002); recorded the memory asymmetry and the §8 delta channel (D-003); created this file and `SOL_BRIEF.md`.
-**Result:** no project work yet. Three open questions raised in §6, one of them (Q-002, the Christmas/New Year collision at Weeks 18–20) worth settling before Week 1 rather than in December.
-**Left:** repository not created. Folder currently holds the two plan documents and these two files.
-**Next:** W1 Mon (2026-08-17) — repository init, folder structure, pinned dependencies, first commit.
-
-### 2026-08-15 · Week 1 Mon–Wed (run early, DEV-002) · Claude
-**Did:** built the project infrastructure. Repo initialised at `main`, venv, deps pinned in `pyproject.toml`. `src/bu/constants.py` (preregistration in code, D-005), `config.py` (three identities, D-006), `runrecord.py` (provenance incl. git dirty flag + stored diff), `metrics.py` (per-line-flushed JSONL + `load_runs()`). 16 acceptance tests in `tests/test_infrastructure.py`, one per schedule "Done when" criterion plus the identity and frozen-constant invariants. README written.
-**Result:** all three Week 1 done-when criteria verified rather than assumed — fresh clone into a temp dir installs, imports and passes 16/16. Commit `233634f`. One real bug caught by the tests: tuple-valued config fields (`withheld_features`) were being broadcast by pandas as a column of values instead of a scalar; sequence fields now serialise to a canonical string so they survive groupby and CSV round-trips.
-**Left:** nothing running, no compute consumed. `env/`, `models/`, `critic/`, `stats/`, `experiments/` exist as empty packages.
-**Next:** W1 Thu — thesis prose, ~400 words on environment design rationale.
-
-### 2026-08-15 (later) · Sol's first answers filed · Claude
-**Did:** filed `SOL ANSWER` blocks for Q-001, Q-002 and Q-003. Q-003's ruling recorded as D-007 and independently checked against P§14.2's run-count arithmetic (30 + 20 + 25 canonical + ~225 sweep = ~300 = P§10.7's target), which agrees with it. Closed Q-001/Q-002/Q-003. Recorded Sol's D-001 tripwire as a standing watch item in §1.
-**Result:** the Week 2 enumerator now has its rule — deduplicate by `unit_id`, and let seed count follow a unit's role rather than a separate run list. D-006's content hashing makes that automatic. Also found and closed a protocol hole: Sol had answered from delta #1 while delta #2 sat undelivered in §8, which a plain overwrite would have destroyed (D-008 — §8 now accumulates until marked delivered).
-**Left:** Q-004 and Q-005 still unanswered — Sol has not yet seen delta #2. No code changed this session.
-**Next:** deliver the merged §8 to Sol; W1 Thu prose.
-
-### 2026-08-15 (evening) · Q-004/Q-005 filed, identity registry built, repo on GitHub · Claude
-**Did:** pushed to GitHub (private, SSH). Implemented Sol's Q-005 ruling as D-009: `UNIT_IDENTITY_FIELDS` / `UNIT_NON_IDENTITY_FIELDS` registries, `IDENTITY_VERSION` separate from `SCHEMA_VERSION`, import-time exhaustiveness check, both versions plus the registered field list written into every run record. Added the tests Sol named as its condition — one per registered field, asserting that varying it genuinely changes `unit_id`, plus a test that the exhaustiveness check actually fires. Filed Q-004's answer and its verification-lag warning.
-**Result:** 28 passing, 1 skipped (the exclusion-list test, vacuous until a field is excluded). All nine `UnitSpec` fields are identity-bearing today; the machinery exists so the first exclusion is a reviewed decision. Separately found a leakage vector while working: `load_runs()` attaches `family` and every `unit_*` axis to each row, and those are exactly what P§7.5 forbids the critic from seeing — recorded as D-010, whitelist not blacklist, raised as Q-006.
-**Snag, resolved:** the GitHub repo had an initial commit with a `LICENSE`, and the machine had no git identity configured, which stalled a rebase mid-flight. Rebased rather than force-pushed so the MIT licence and its authorship line survive; no commit was lost. `.claude/settings.local.json` is now untracked — machine-local permission state does not belong in a shared repo. Repo git identity set to *Ramzi Alashmali / ai.research@sofa.ye*; change with `git config user.email` if a different address should own the commits.
-**Left:** nothing running, no compute. Week 1 Thu–Sat outstanding.
-**Next:** W1 Thu prose, then the gridworld core.
-
----
-
-### 2026-08-15 (night) · Sol review actioned end to end · Claude
-**Did:** worked Sol's `SOL REVIEW` of 2026-08-15 in full. Fixed the material finding as D-012 — `stage` is now part of `run_id`, `STAGE_SEEDS` binds P§14.2's seed policy to each stage in code, and Config-level fields joined the import-time classification check. Froze the critic feature whitelist as D-013 (`src/bu/critic/schema.py`), transcribed from P§13.5.1, with all of Sol's required tests. Recorded D-014 owning an earlier ledger reordering. Rewrote §1 for the stale-state finding, archived the five delivered deltas to `PROJECT_STATE_ARCHIVE.md`, and adopted `DELTA_ID` / `PREVIOUS_DELTA_ID`.
-**Result:** 68 passing, 1 skipped, up from 28. The material finding was a live bug, not a tidiness point: `unit + arm + seed` was genuinely not unique, because a canonical condition owes five seeds to an H1/H2 claim and twenty to repair validation, overlapping on seeds 0–4. Two obligations resolved to one `run_id`. Also found a real plan/schedule contradiction while transcribing the schema — P§13.5.1 excludes the Error group from the no-statistics variant, S§W13 Tue says that variant sees "error history". Raised as Q-007; the plan wins by our source-of-truth rule and the schema is frozen accordingly, but it wants an explicit resolution.
-**Left:** state file 329 → ~380 lines, back under the cap. Nothing running, no compute. Week 1 Thu–Sat outstanding.
-**Next:** W1 Thu prose, then the gridworld core.
-**HEAD at end of session:** recorded in the commit that carries this entry; `scripts/sol_bundle.sh` reports hash and dirty flag together.
-
-### 2026-08-15 (late) · Week 1 audit before Week 2 · Claude
-**Did:** audited every Week 1 file line by line, probing behaviour empirically rather than reading for correctness. Seven defects found and fixed (D-015), each with a named regression test. Bumped `IDENTITY_VERSION` and `SCHEMA_VERSION` to 2 under a Change Record (D-016).
-**Result:** 68 → 90 tests. Three defects were serious. A1 meant D-012's fix for Sol's material finding existed only in the directory name — `stage` never reached the run record or the analysis frame. A2 meant `unit_id` embedded a **memory address** whenever a value lacked a JSON form; the first probe showed two distinct objects hashing *equal*, because the freed address had been reused, which is precisely how it would have survived casual testing. A3 meant `0` and `0.0`, and two orderings of `withheld_features`, produced different units — inflating the labelled unit count that the MDE and every confidence interval rest on. Fresh-clone install re-verified; the golden `unit_id` reproduces in a clean checkout.
-**Left:** nothing running, no compute. Week 1 Thu–Sat outstanding. Q-007 still open.
-**Next:** W1 Thu prose, then the gridworld core.
-
-### 2026-08-15 (night, later) · Week 1 finished; Week 2 Monday done · Claude
-**Did:** built the gridworld (`src/bu/env/gridworld.py`) and the masking observation encoder (`src/bu/env/encoder.py`), against `UnitSpec` directly (D-017). That covers W1 Fri, W1 Sat and W2 Mon, plus the three layouts W2 Tue needs. 41 environment tests.
-**Result:** 90 → 131 tests. All three "Done when" criteria verified: a 200-step rollout runs clean across every layout × causal attribute; the env constructs with shape withheld; measured confound matches the configured rate at all five levels and for all three causal attributes. The test that matters most for Experiment 2A is the one asserting that two states differing only in a withheld attribute **encode identically while still transitioning differently** — that is `f* ∉ H` holding by construction rather than by hope.
-**Investigated, not a bug:** measured confound came in ~0.03–0.04 below target, consistently negative, which looked systematic. Checked across 20 independent seed blocks: mean deviation −0.07 SE, sd 1.20. It is noise, and seed block 0 happens to sit 2.5 SE low. The generator is exactly right. But the test tolerance was only ~2 SE at 500 episodes, so an unlucky block would have flaked it — raised to 1500 episodes, now ~4 SE.
-**Raised:** Q-008, on whether runs in different units should share an environment stream at the same seed. Desirable within Experiment 1, questionable across the configuration sweep. A judgement, not a defect.
-**Left:** nothing running, no compute. W2 Tue's enumerator is the next real piece. Two prose cells outstanding (W1 Thu, W2 Thu).
-**Next:** configuration-condition enumerator — ≥300 units, deduplicated by `unit_id` per D-007.
-
-### 2026-08-15 (night, W2) · Enumerator and prose drafts · Claude
-**Did:** built the configuration-condition enumerator (`src/bu/experiments/enumerate_units.py`, D-018) and drafted both outstanding prose cells (`docs/method_draft.md`, D-019).
-**Result:** 131 → 156 tests. Full matrix 531 units; the design selects exactly **300**, balanced **150/150** on intended class, every axis spread, **8,181 model fits against P§14.2's ~8,700**. Canonical counts reproduce the plan exactly — 30 / 20 / 25 / 15. Two errors caught by reading the printed report rather than by a test: stratifying without the confound axis starved confound 0.9 down to 9 units, and costing repairs as ensembles inflated compute five-fold. Prose: 454 and 436 words against the ~400 target.
-**Left:** nothing running, no compute. W2 Fri (scripted policy, dataset collector, coverage metric) and W2 Sat (PPO substitution record) outstanding. Prose awaits the student's rewrite.
-**Next:** W2 Fri — the scripted exploratory policy replacing PPO.
+Entries before 2026-08-15 (night, W2 Fri/Sat) are in `PROJECT_STATE_ARCHIVE.md`; 8 archived, 2 kept here.
 
 ### 2026-08-15 (night, W2 Fri/Sat) · Policy, collector, coverage evidence · Claude
 **Did:** scripted exploratory policy (`policy.py`), transition dataset collector with episode structure (`collect.py`), coverage report, and the W2 Sat methodology section evidencing the PPO substitution (D-020).
@@ -489,78 +452,22 @@ Format:
 **Left:** nothing running, still zero compute. Weeks 1 and 2 complete and audited.
 **Next:** W3 Mon — the world-model MLP. This is where compute starts being consumed.
 
+### 2026-08-15 (night, handoff) · Protocol failure found and mechanised · Claude
+**Did:** audited the collaboration protocol itself while updating the shared files. Found that three sessions never reached Sol (DEV-005), consolidated them into delta 10, moved the delta into `DELTA_TO_SOL.md` (D-023), wrote `CLAUDE.md` as the session handoff (D-024), archived eight session-log entries, and made the protocol machine-checked (D-022).
+**Result:** 194 → 204 tests. The two protocol failures were caught by the new tests on first run, which is the point: I had written D-008 specifically to prevent overwriting an undelivered delta, and then did it anyway. Prose rules fail at the end of long sessions. `PROJECT_STATE.md` is back under its cap at ~460 lines.
+**Left:** nothing running, zero compute. Weeks 1 and 2 complete and audited.
+**Next:** W3 Mon — the world-model MLP. First week that consumes compute.
+
 ---
 
-## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
+## 8. → TO SOL — *moved to its own file*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 9. Delta 8 was not delivered either; both are below.
+The delta Sol receives lives in **`DELTA_TO_SOL.md`** (D-023). It was moved out
+because consolidating four sessions pushed this file past its 500-line paste
+cap, and the two files have different audiences anyway: this one is Claude's
+reconstruction of state, that one is Sol's feed.
 
-```
-=== UPDATE FOR SOL ===
-DELTA_ID: 9
-PREVIOUS_DELTA_ID: 8 (undelivered -- delta 8 is in this same block, above/below)
-DATE: 2026-08-15 (night)
-SUBJECT: W2 Tue enumerator + prose drafts. Two things need your judgement.
+It also removes an instruction that was easy to get wrong. "Paste §8" meant
+scrolling to find a section boundary; "paste `DELTA_TO_SOL.md`" does not.
 
-Delta 8 covered the environment (W1 Fri/Sat, W2 Mon). This adds W2 Tue and Thu.
-131 -> 156 tests.
-
-ENUMERATOR (D-018). Acceptance criterion met: >=300 configuration-conditions,
-count printed by axis. Numbers:
-  full matrix (the pool):     531 units
-  design selection:           300 units  (75 canonical + 225 sweep)
-  intended class balance:     150 / 150  -> min(N0, N1) = 150
-  canonical counts:           exp1 30, exp2a 20, exp2b 25, repair_val 15
-                              -- reproduces Plan 14.2 exactly
-  compute:                    8,181 model fits vs Plan 14.2's ~8,700
-
-TWO ERRORS I MADE AND CAUGHT, both by reading the printed report rather than by
-any test passing or failing:
-
-1. Stratifying the sweep without the confound axis gave 99 units at confound 0.0
-   and NINE at 0.9. The enumeration loops confound outermost, so truncation just
-   took the low levels -- leaving the strongest shortcut condition, where the
-   decoy is most tempting and most wrong, nearly absent from the sweep. Fixed by
-   putting confound in the stratification key.
-
-2. I costed every repair arm as a full ensemble, giving ~25,000 fits and a
-   design that looked 3x over budget. Wrong: a baseline trains an ensemble
-   because H1/H2 need member disagreement, but a REPAIR trains a single model --
-   the 7.3 acceptance test compares per-transition error and needs no spread.
-   Corrected, the total is 8,181 and it independently reproduces Plan 14.2's own
-   split. That agreement is the real check that this enumeration is the design
-   the plan budgeted for rather than a different one of similar size.
-
-NEEDS YOUR JUDGEMENT -- two interpretations, both mine, both load-bearing:
-
-(a) The 15 repair-validation conditions. Plan 14.2 budgets "15 canonical
-    conditions at full seed count" without naming which. I implemented one
-    representative per (canonical configuration x family) = 5 x 3 = 15, which
-    spreads the twenty-seed budget across all three failure families rather than
-    concentrating it. Alternative readings exist -- e.g. the 15 hardest, or 15
-    spanning the confound range. This choice determines which labels rest on
-    twenty seeds and which on three, so it is not cosmetic.
-
-(b) Class balancing at the DESIGN stage. I balanced the 300 to 150/150 on
-    INTENDED class, because Plan 10.7 makes power depend on min(N0, N1). But the
-    real labels come from the repair test (7.1), and the ambiguous/undiagnosed
-    exclusions (7.4) will shrink both classes by an unknown amount. So balancing
-    the intention may not deliver a balanced labelled set. Options: leave it and
-    correct at Week 10 when exclusion rates are known; or deliberately
-    over-sample the class we expect to lose more of. I have left it, and flagged
-    it. Week 5 Thu's MDE simulation already has to inflate the target by a pilot
-    exclusion rate, so this may be the same decision seen from another angle.
-
-PROSE (D-019). Both outstanding cells drafted in docs/method_draft.md, 454 and
-436 words. Explicitly marked as scaffolding for the student to rewrite -- your
-verification-lag warning applies to prose too: text absorbed by editing is
-understood, text accepted unread is not.
-
-STILL OPEN: Q-007 (13.5.1 vs W13 Tue on no-statistics), Q-008 (seed independence
-across units). Neither blocks W2 Fri.
-
-NEXT: W2 Fri -- scripted exploratory policy replacing PPO, transition dataset
-collector, coverage metric over (shape, action) pairs. Then W2 Sat, the
-substitution record that makes DEV-001 defensible.
-=== END UPDATE ===
-```
+**Current status:** see the delivery flag at the top of `DELTA_TO_SOL.md`.
