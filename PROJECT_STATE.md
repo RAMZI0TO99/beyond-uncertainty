@@ -68,7 +68,7 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **68 passing, 1 skipped** (the exclusion-list test, vacuous until a field is excluded) |
+| **Tests** | **90 passing, 1 skipped**. Includes golden `unit_id` values, so a silent change to what a statistical unit means fails the suite |
 | **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
 
 **Hypothesis status**
@@ -88,6 +88,7 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 - Repository pushed to GitHub, private, SSH auth.
 - **Sol's material finding fixed** — `stage` added to run identity (D-012). A unit can owe runs to several experimental obligations at overlapping seeds; without it they collided.
 - **Critic feature whitelist frozen** (D-013), ahead of the Week 6 deadline, per Sol's Q-006.
+- **Week 1 audit** (D-015): seven defects found and fixed before Week 2, three of them serious. `IDENTITY_VERSION` and `SCHEMA_VERSION` both bumped to 2 under a Change Record (D-016), while no data exists to invalidate.
 
 **In flight:** nothing running. No compute consumed.
 
@@ -230,6 +231,32 @@ Every decision that a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** not covered by the plan.
 **Reviewed by Sol:** finding is Sol's.
 
+### D-015 · 2026-08-15 · Week 1 audit — seven defects found and fixed
+**Decision:** a line-by-line audit of all Week 1 code before Week 2 begins. Seven defects found, all fixed, each with a named regression test in `tests/test_audit_regressions.py`.
+
+| # | Defect | Severity | Why it mattered |
+|---|---|---|---|
+| A1 | `to_dict()` omitted `stage` | **Serious** | Defeated D-012 for anything persisted. A round-trip silently reset the stage to `pilot`; the run record never stated it; `load_runs()` had no `stage` column. The fix for Sol's material finding worked only for the directory name |
+| A2 | `_hash` used `default=repr` | **Serious** | For any non-JSON value, `repr` embeds a **memory address**, so `unit_id` would differ per process. It hides well — a freed address is usually reused, so two hashes taken in sequence often agree and the bug looks absent |
+| A3 | No value canonicalisation | **Serious** | `0` and `0.0` hashed differently, as did `("shape","colour")` and `("colour","shape")`, and a repeated feature made a third. One condition could occupy several units, **inflating the very unit count the power calculation rests on** |
+| A4 | `layout` unvalidated, sizes unchecked | Material | `layout="unifrom"` was accepted and became a real configuration-condition. A typo silently enlarging the design |
+| A5 | Arrays stringified in the log | Material | `np.array([.1,.2,.3])` logged as the string `"[0.1 0.2 0.3]"`. Writes fine, reloads as text, fails only when a figure does arithmetic. Per-dimension error (P§10.3) is exactly this shape |
+| A6 | `glob("*/run.json")` one level deep | Minor | A batch runner grouping runs into subdirectories would make them invisible to analysis — silently, as fewer rows |
+| A7 | Cross-process test was a tautology | Minor | It compared a value with itself. Replaced with a real subprocess check plus **golden `unit_id` values**, so identity cannot drift without a test failing |
+
+**Also hardened:** impossible repairs (feature repair with nothing withheld, capacity repair already at maximum) now fail when the config is built rather than hours later mid-batch on Kaggle; `require_clean_git` tolerates an older record; `matplotlib` and `PyYAML` joined the tracked package versions.
+**Result:** 68 → 90 tests. Fresh-clone install re-verified, and the golden `unit_id` reproduces in a clean checkout.
+**Plan ref:** P§10.7 (A1, A3), P§13.7 (A2, A5), P§10.3 (A5).
+**Reviewed by Sol:** pending — A1, A2 and A3 are each worth its scepticism.
+
+### D-016 · 2026-08-15 · Change Record — IDENTITY_VERSION 1 → 2, SCHEMA_VERSION 1 → 2
+**Constants changed:** `IDENTITY_VERSION` 1 → 2, `SCHEMA_VERSION` 1 → 2. Required by D-005 and D-009, which say a version bump is a reviewed decision rather than an edit.
+**Has any data been seen?** **No.** No experiment has run, no compute has been consumed, no label exists. Only test fixtures in temporary directories were ever written. This is the one window in which such a change is free.
+**Why `IDENTITY_VERSION`:** the identity *field set* is unchanged, but A3 changed how values are canonicalised before hashing, so ids computed before and after are not comparable. That is precisely what the version exists to signal. Leaving it at 1 while ids changed would be worse than the original bug.
+**Why `SCHEMA_VERSION`:** `stage` was added to `Config` in D-012 without bumping — an oversight, now corrected together with A1.
+**Effect:** every `unit_id` changed. Nothing depends on the old values; golden ids are pinned under version 2 so the next change cannot pass unnoticed.
+**Reviewed by Sol:** pending.
+
 ### D-011 · 2026-08-15 · Deltas carry numbers, not summaries, once results exist
 **Decision:** from the first real result, every §8 delta reporting one includes a `NUMBERS` block: total units and per-class counts including `min(N₀, N₁)`, seed count and applicable policy, point estimate, 95% interval **and explicitly what it was taken over**, ambiguous and undiagnosed counts as fractions, and which test ran including any fallback triggered. Sol is instructed to treat a missing line as a finding rather than an oversight.
 **Why:** Phase A is infrastructure, which prose conveys adequately. From Week 6 Sol's duties are entirely about numbers — whether an interval was taken over units or transitions, whether power was computed on `min(N₀, N₁)` or the total, whether the excluded fractions were reported at all. A prose summary such as "H2 reproduced across seeds" is unauditable, and an unauditable report reduces the reviewer to agreeing. Deciding the format now, while no result exists, means it cannot later be shaped around a result that would look better without a particular line.
@@ -360,90 +387,94 @@ Format:
 **Next:** W1 Thu prose, then the gridworld core.
 **HEAD at end of session:** recorded in the commit that carries this entry; `scripts/sol_bundle.sh` reports hash and dirty flag together.
 
+### 2026-08-15 (late) · Week 1 audit before Week 2 · Claude
+**Did:** audited every Week 1 file line by line, probing behaviour empirically rather than reading for correctness. Seven defects found and fixed (D-015), each with a named regression test. Bumped `IDENTITY_VERSION` and `SCHEMA_VERSION` to 2 under a Change Record (D-016).
+**Result:** 68 → 90 tests. Three defects were serious. A1 meant D-012's fix for Sol's material finding existed only in the directory name — `stage` never reached the run record or the analysis frame. A2 meant `unit_id` embedded a **memory address** whenever a value lacked a JSON form; the first probe showed two distinct objects hashing *equal*, because the freed address had been reused, which is precisely how it would have survived casual testing. A3 meant `0` and `0.0`, and two orderings of `withheld_features`, produced different units — inflating the labelled unit count that the MDE and every confidence interval rest on. Fresh-clone install re-verified; the golden `unit_id` reproduces in a clean checkout.
+**Left:** nothing running, no compute. Week 1 Thu–Sat outstanding. Q-007 still open.
+**Next:** W1 Thu prose, then the gridworld core.
+
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 6. Deltas 1–5 are delivered and archived in `PROJECT_STATE_ARCHIVE.md`.
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 7. Delta 6 was delivered; deltas 1–5 are archived.
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 6
-PREVIOUS_DELTA_ID: 5
-DATE: 2026-08-15 (night)
-SUBJECT: your 2026-08-15 review, actioned in full
+DELTA_ID: 7
+PREVIOUS_DELTA_ID: 6
+DATE: 2026-08-15 (late)
+SUBJECT: Week 1 audit before Week 2 -- seven defects, three serious
 
-MATERIAL FINDING -- CONFIRMED AS A LIVE BUG, FIXED (D-012)
-You were more right than the finding claimed. This was not only a scheduling
-concern: unit + arm + seed was genuinely not unique. A canonical condition owes
-five seeds to an H1/H2 claim and twenty to repair validation; those overlap on
-seeds 0-4, so both obligations resolved to the SAME run_id. On disk that either
-raises or silently merges two runs supporting different claims.
+The student asked for an audit of all Week 1 work before Week 2 starts. Every
+file was re-read line by line and probed empirically rather than by inspection.
+Seven defects. Each now has a named regression test. 68 -> 90 tests.
 
-Fix, as you specified: run_id = config_id + stage + seed. unit_id and config_id
-unchanged, so units still deduplicate by unit_id while stage obligations never
-do. STAGE_SEEDS binds each stage to its preregistered count (exp1/2a/2b -> 5,
-repair_validation -> 20, config_sweep/exp3_repairs -> 3, ablation -> 5, pilot ->
-none), so Plan 14.2's policy is enforced rather than remembered. Config-level
-fields now go through the same import-time classification check as UnitSpec and
-Arm, closing the equivalent hole one level up.
+SERIOUS -- A1. to_dict() omitted `stage`, defeating D-012 for anything persisted.
+Your material finding was fixed only in the directory name. A round-trip reset
+the stage to "pilot", the run record never stated it, and load_runs() had no
+stage column -- so an analysis could not separate a unit's five H1/H2 seeds from
+the twenty behind its repair label, which is the exact thing your finding was
+about. Fixed in to_dict/from_dict, promoted to a top-level run-record key, and
+added as a load_runs column. There is now an end-to-end test that builds both
+obligations on one unit and asserts the analysis can tell them apart.
 
-Also a correction: D-007's note said seed count is "a property of a unit's
-role". Wrong, and your finding is why -- a unit can hold several roles at once.
-It is a property of the (unit, stage) pair. Recorded in D-012.
+SERIOUS -- A2. _hash used `default=repr`, embedding memory addresses.
+Any value without a JSON form hashed via repr, which for a plain object contains
+its address -- so unit_id would differ between processes. Worth noting how it
+hid: the first probe returned EQUAL hashes for two distinct objects, because the
+first had been freed and its address reused. Only holding both references alive
+exposed it. The fallback is removed; _hash now raises with an explanatory
+message. A real subprocess test replaces the previous cross-process test, which
+compared a value with itself.
 
-Q-006 CLOSED -> D-013. WHITELIST FROZEN NOW, NOT WEEK 6.
-Your exception applied: Plan 13.5.1 specifies all four groups and their
-per-variant retention completely, so the schema was stable and is now frozen,
-before any labelled data exists. src/bu/critic/schema.py holds
-CRITIC_FEATURE_SCHEMA + CRITIC_SCHEMA_VERSION, the four variants, an explicit
-FORBIDDEN_FIELDS set, forbidden prefixes, and assert_no_forbidden_columns() for
-the pipeline boundary. Dedicated module, not constants.py, as you preferred.
+SERIOUS -- A3. No value canonicalisation, so one condition could occupy several
+units. confound_rate 0 vs 0.0 hashed differently. ("shape","colour") and
+("colour","shape") hashed differently. ("shape","shape") made a third. Every one
+of those inflates the labelled unit count -- the quantity the MDE and every
+confidence interval rest on. Fixed by canonicalising at construction: numerics
+coerced to their declared type, withheld_features sorted and deduplicated.
 
-Your required tests are all implemented and passing:
-  - every allowed feature explicitly registered
-  - each forbidden field individually rejected (parametrised over the whole set)
-  - an unknown column is refused, not passed through
-  - load_runs() output is rejected WHOLESALE -- the concrete version of the risk
-  - renaming a forbidden field does not launder it
-  - statistics_only resolves to exactly B1's two features
-NOT yet built, and recorded as not built: the X / y / groups separation as three
-physically distinct structures. The schema is the contract; the extractor
-enforces it in Week 6/11.
+MATERIAL -- A4. layout was unvalidated. layout="unifrom" was accepted and became
+a genuine configuration-condition. Now a registered set, like family and
+causal_attribute. Sizes must also be positive.
 
-NEW FINDING -- Q-007, a genuine plan/schedule contradiction.
-Found while transcribing the schema. Plan 13.5.1's table retains the Error group
-in "Full; No-magnitude; Statistics-only" -- so the NO-STATISTICS variant has no
-error features at all. Schedule W13 Tue describes that same variant as "latent
-state, action and error history only". They disagree on whether no-statistics
-sees error history.
+MATERIAL -- A5. numpy arrays were stringified into the metrics log --
+np.array([.1,.2,.3]) written as the STRING "[0.1 0.2 0.3]". It writes without
+complaint and reloads as text, failing only when a figure does arithmetic on it
+much later. Per-dimension normalised error (Plan 10.3) is exactly this shape.
 
-This matters for how the W13 construction-leakage control is read. If
-no-statistics genuinely has no error signal, a strong result there is far more
-surprising -- and far more likely to be the design leakage your control exists
-to catch. The plan wins under our source-of-truth rule and the schema is frozen
-that way, but this should be resolved deliberately, not by default. Due before
-W13 Tue.
+MINOR -- A6. run discovery was one directory deep, so a batch runner grouping
+runs by stage would make them invisible -- silently, as fewer rows.
+MINOR -- A7. golden unit_id values are now pinned, so identity cannot drift
+without a test failing.
 
-YOUR MINOR FINDINGS, ALL ACTIONED
-- Stale snapshot: §1 rewritten. Q-004/Q-005 no longer shown as open; Q-007 is
-  the only open question.
-- Delta accounting: deltas 1-5 marked delivered and archived. DELTA_ID and
-  PREVIOUS_DELTA_ID adopted, as you see above.
-- Exact revision: §1 now carries a Revision row, and sol_bundle.sh reports hash
-  and dirty flag together so they cannot drift apart.
-- Ledger order: not reordered, per your instruction. But the cause is worth your
-  attention and is recorded as D-014 -- earlier in the same session Claude
-  DELIBERATELY reordered the ledger to restore numeric sequence after inserting
-  entries above D-008. A tidiness impulse applied to an append-only record. Your
-  finding caught the second instance; the first was self-inflicted and is now
-  on the record.
-- Size: 529 -> ~380 lines. Decisions, deviations and gate records were NOT
-  archived, per your instruction; only delivered deltas.
+ALSO: impossible repairs now fail when the config is BUILT rather than hours
+later mid-batch on Kaggle -- a spec error found mid-batch costs a session.
 
-TESTS: 68 passing, 1 skipped (up from 28). Request a bundle on
-src/bu/critic/schema.py and src/bu/config.py if you want to audit D-012 and
-D-013 rather than accept them -- that is now the whole point of the bundle.
+CHANGE RECORD -- D-016, and it needs your eye because it is exactly the kind of
+change the preregistration discipline exists to police.
+  IDENTITY_VERSION 1 -> 2, SCHEMA_VERSION 1 -> 2.
+  Has any data been seen? NO. No run, no compute, no label. Only test fixtures.
+  Why identity: the field SET is unchanged, but A3 changed canonicalisation, so
+  ids before and after are not comparable. Leaving the version at 1 while ids
+  changed would be worse than the original defect.
+  Why schema: `stage` was added in D-012 without a bump -- an oversight, fixed.
+  Every unit_id changed. Nothing depends on the old values.
+
+This is the last moment such a change is free. From Week 6 it would not be.
+
+NOT CHANGED, but worth your judgement: capacity_repair raises hidden_size to
+max(HIDDEN_SIZES) = 256. Plan 8.2.2 says "increase capacity" without saying to
+what. Going to the maximum is deterministic and makes the repair unambiguous,
+but it is an interpretation, not a quotation. Say if you read it differently.
+
+STILL OPEN: Q-007 (the Plan 13.5.1 vs Schedule W13 Tue contradiction about
+whether the no-statistics variant sees error history).
+
+Fresh-clone install re-verified; the golden unit_id reproduces in a clean
+checkout. Request a bundle on src/bu/config.py and src/bu/metrics.py to audit
+any of this rather than accept it.
 
 NEXT ACTION: W1 Thu prose, then W1 Fri gridworld core.
 === END UPDATE ===
