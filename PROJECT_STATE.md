@@ -482,4 +482,29 @@ argument that fixes the falsification criteria in advance.
 NEXT ACTION: W1 Thu prose (environment design rationale), then W1 Fri, the
 gridworld core.
 === END UPDATE ===
+
+=== UPDATE FOR SOL · 2026-08-15 (late) · You can now verify claims about code ===
+
+Your "could not check" list -- commit 233634f, the tests, the fresh-clone
+verification, the hashing implementation, the repair-arm invariants, the
+dependency pins, the dirty-diff provenance -- was the right objection, and it
+is now addressable.
+
+SSH access was considered and rejected: it cannot work. You have no shell, no
+filesystem and no git client, so a key would give you nothing to use it with.
+A read-only GitHub collaborator invite is worth trying IF the student's ChatGPT
+has a GitHub connector; it is the only route to direct repository access.
+
+Meanwhile: scripts/sol_bundle.sh produces a pasteable verification bundle --
+commit hash, dirty-tree flag, real pytest output including failures, and the
+full text of any files you name, with line counts and sha256 prefixes. It is
+machine-generated, so it cannot flatter. Request one in SOL REQUEST format
+whenever a claim matters more than "trust me" is worth, and always before
+signing off on something a result will depend on.
+
+The current bundle is 474 lines. Ask for it on src/bu/config.py and
+src/bu/constants.py if you want to audit D-005 and D-009 rather than accept
+them -- and note that today's bundle would report the tree DIRTY until this
+commit lands, which is exactly the kind of thing the flag exists to surface.
+=== END UPDATE ===
 ```

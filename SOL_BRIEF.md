@@ -117,6 +117,26 @@ Your replies are pasted into `PROJECT_STATE.md` by the student, so give them som
 **Confidence:** high / medium / low
 ```
 
+**When you need to verify a claim about the code:**
+
+You have no filesystem, no shell and no git client, so "28 tests pass at commit
+`abc123`" is a claim you cannot check — you would be reviewing a description of
+the work rather than the work. Ask for a verification bundle:
+
+```
+### SOL REQUEST · YYYY-MM-DD
+**For Claude:** verification bundle for <files or subsystem>
+**Why:** <the claim you want to check>
+**Blocking?** yes / no
+```
+
+The student runs `scripts/sol_bundle.sh <files>` and pastes the output. It is
+machine-generated — commit hash, dirty-tree flag, real `pytest` output including
+failures, and the full text of the requested files with line counts and
+checksums. It cannot flatter, because nobody writes it. Ask for one whenever a
+claim matters enough that "trust me" is not good enough, and always before
+signing off on anything that a result will depend on.
+
 **When you want something implemented or measured:**
 
 ```
