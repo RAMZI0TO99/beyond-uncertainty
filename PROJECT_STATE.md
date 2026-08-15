@@ -68,7 +68,7 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **180 passing, 1 skipped**. Includes golden `unit_id` values, so a silent change to what a statistical unit means fails the suite |
+| **Tests** | **194 passing, 1 skipped**. Includes golden `unit_id` values, so a silent change to what a statistical unit means fails the suite |
 | **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
 
 **Hypothesis status**
@@ -96,6 +96,7 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 - **W2 Wed** — stable configuration ids in every run record (done since D-006); confound double-booking resolved and recorded (D-007).
 - **W2 Thu** — prose drafted: both outstanding cells, in `docs/method_draft.md`. **Awaiting the student's rewrite** — drafted for reaction, not for submission.
 - **W2 Fri** — scripted exploratory policy, transition dataset collector, coverage metric (`src/bu/env/policy.py`, `src/bu/env/collect.py`). *Done when: a 5,000-transition dataset is saved with a coverage report* — **verified**.
+- **Week 2 audit** (D-021): six defects found and fixed before Week 3, one methodologically serious.
 - **W2 Sat** — PPO substitution written into the methodology with the coverage evidence behind it (D-020). This is what P§13.2 requires and what makes DEV-001 a defensible design decision rather than an unexplained deviation.
 
 **In flight:** nothing running. No compute consumed.
@@ -301,6 +302,24 @@ Every decision that a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** P§13.2, P§3.2.1, P§7.3.
 **Reviewed by Sol:** pending.
 
+### D-021 · 2026-08-15 · Week 2 audit — six defects found and fixed
+**Decision:** line-by-line audit of everything built since the Week 1 audit, which predates the environment: `gridworld.py`, `encoder.py`, `policy.py`, `collect.py`, `enumerate_units.py`. Six defects, all fixed, each with a named regression test in `tests/test_audit_w2_regressions.py`.
+
+| # | Defect | Severity | Why it mattered |
+|---|---|---|---|
+| B1 | **Object order leaked into the observation** | **Serious** | The encoder writes one block per object *slot*, and placement order decided which object got which slot. The same physical arrangement therefore encoded differently across episodes, so a model had to learn the passability rule separately per slot **and** learn permutation invariance on top — both costing data for reasons unrelated to the manipulation. Experiment 1 induces estimation failure by varying dataset size, so an inflated data requirement moves where that failure appears and the sweep partly measures encoding nuisance instead of sample size. Fixed by canonicalising object order in `GridState` |
+| B2 | Bump balancer read a counter nobody wrote | Material | `visits` is keyed by the *aggregate* context, which is `"both"` when two adjacent objects disagree; the balancer looked up per-class keys that were never incremented in that case — blind exactly where the choice between a passable and a blocking object matters. Fixed with a dedicated `bump_visits`. Class balance at n=5000 improved from 0.62 to 0.78 |
+| B3 | `blocked_fraction` conflated walls with objects | Material | Only an object block is the passability rule firing; a wall block is not the manipulation. Reported as one number, the rule's prevalence was unreadable. Now separate, and the four transition outcomes sum to exactly 1 |
+| B4 | Literal `4` for the interact action | Minor | A magic number that silently breaks if action ids change |
+| B5 | `design_units()` could drop a repair-validation obligation | Minor | A missing unit would lose a 20-seed obligation with no trace, and every label resting on it would fall back to three seeds. Now raises |
+| B6 | Serialisation used `__dict__`; dead import | Minor | Works today, breaks the moment `UnitSpec` gains `__slots__` |
+
+**Checked and found correct:** the three layouts really are three distributions (mean pairwise distance 2.28 / 4.05 / 6.01); parity-constrained placement raises clearly on grids too small; dataset round-trip preserves the unit exactly including tuple fields; agent-on-passable-object is consistent.
+**Result:** 180 → 194 tests. Fresh-clone install re-verified; golden `unit_id` and the 300-unit / 8,181-fit design both reproduce in a clean checkout.
+**Note on B1:** no `IDENTITY_VERSION` bump is needed — object ordering affects observations, not unit identity. No data exists to invalidate either way.
+**Plan ref:** P§3.2.1, P§8.2.1, P§13.1.2, P§14.2.
+**Reviewed by Sol:** pending.
+
 ### D-011 · 2026-08-15 · Deltas carry numbers, not summaries, once results exist
 **Decision:** from the first real result, every §8 delta reporting one includes a `NUMBERS` block: total units and per-class counts including `min(N₀, N₁)`, seed count and applicable policy, point estimate, 95% interval **and explicitly what it was taken over**, ambiguous and undiagnosed counts as fractions, and which test ran including any fallback triggered. Sol is instructed to treat a missing line as a finding rather than an oversight.
 **Why:** Phase A is infrastructure, which prose conveys adequately. From Week 6 Sol's duties are entirely about numbers — whether an interval was taken over units or transitions, whether power was computed on `min(N₀, N₁)` or the total, whether the excluded fractions were reported at all. A prose summary such as "H2 reproduced across seeds" is unauditable, and an unauditable report reduces the reviewer to agreeing. Deciding the format now, while no result exists, means it cannot later be shaped around a result that would look better without a particular line.
@@ -462,6 +481,13 @@ Format:
 **Result:** 156 → 180 tests. **Weeks 1 and 2 are complete.** Measured: 3–6× more rule-carrying transitions than a uniform random baseline at every dataset size (39.8% vs 7.6% of steps at n=5000), both passability classes well represented, (shape, action) coverage complete at full size. Checked the one thing that could have invalidated Experiment 1 — whether coverage rather than sample size is the binding constraint — and it is not: bump counts rise monotonically and saturate before the largest condition, which is exactly what P§3.2.1 requires for thin coverage to count as estimation failure.
 **Left:** nothing running; still zero compute consumed, because nothing has trained yet. Week 3 is the world model, which is where that changes.
 **Next:** W3 Mon — the world-model MLP.
+
+### 2026-08-15 (night, W2 audit) · Week 2 audited before Week 3 · Claude
+**Did:** audited the five modules built since the Week 1 audit — the environment, encoder, policy, collector and enumerator, none of which existed when the last audit ran. Six defects found and fixed (D-021).
+**Result:** 180 → 194 tests. The serious one is B1: object order leaked into the observation, so the same physical arrangement encoded differently depending on placement order. That would have made a model learn the rule per slot and learn permutation invariance besides — inflating the data requirement for reasons unrelated to the design and shifting where Experiment 1's estimation failure appears. Every test passed before the fix; it was found by asking whether the encoder was permutation-invariant, not by anything failing. B2 similarly: the bump balancer read counter keys that were never written in the mixed-adjacency case, and class balance improved 0.62 → 0.78 once fixed.
+**Also checked and correct:** the three layouts are genuinely three distributions (mean pairwise distance 2.28 / 4.05 / 6.01), parity-constrained placement fails loudly on small grids, dataset round-trip is exact.
+**Left:** nothing running, still zero compute. Weeks 1 and 2 complete and audited.
+**Next:** W3 Mon — the world-model MLP. This is where compute starts being consumed.
 
 ---
 
