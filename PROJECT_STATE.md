@@ -36,7 +36,7 @@ Do this before anything else, in this order. No exceptions, including for a ques
 1. Rewrite §1 completely so it is true as of now.
 2. Append a §7 session-log entry.
 3. Append any new §3 decisions, §4 deviations, §5 gate records.
-4. **Rewrite §8** — the delta the student hands to Sol. This is not optional; it is the only channel through which Sol learns what happened.
+4. **Rewrite §8** — the delta the student hands to Sol. This is not optional; it is the only channel through which Sol learns what happened. **From the first real result onward, any delta reporting one carries a `NUMBERS` block** (D-011): unit counts including `min(N₀, N₁)`, seeds and which policy applies, point estimate, interval *and what it was taken over*, ambiguous and undiagnosed counts, and which test ran. Prose alone leaves Sol unable to audit anything, which is the same as having no reviewer.
 
 Never edit a past entry in §3, §4, §5 or §7. Corrections are new entries that reference the old one. §1 and §8 are the only sections that get overwritten.
 
@@ -205,6 +205,12 @@ Every decision that a future reader would otherwise have to reconstruct. Format:
 **Current state:** all nine `UnitSpec` fields are identity-bearing; the exclusion list is empty. That is the honest answer today — every field is a real axis of the design — and the machinery exists so the first non-identity field is a reviewed decision rather than an accident.
 **Plan ref:** P§10.7, P§10.4.
 **Reviewed by Sol:** **yes — this decision is Sol's.** Implementation not yet reviewed.
+
+### D-011 · 2026-08-15 · Deltas carry numbers, not summaries, once results exist
+**Decision:** from the first real result, every §8 delta reporting one includes a `NUMBERS` block: total units and per-class counts including `min(N₀, N₁)`, seed count and applicable policy, point estimate, 95% interval **and explicitly what it was taken over**, ambiguous and undiagnosed counts as fractions, and which test ran including any fallback triggered. Sol is instructed to treat a missing line as a finding rather than an oversight.
+**Why:** Phase A is infrastructure, which prose conveys adequately. From Week 6 Sol's duties are entirely about numbers — whether an interval was taken over units or transitions, whether power was computed on `min(N₀, N₁)` or the total, whether the excluded fractions were reported at all. A prose summary such as "H2 reproduced across seeds" is unauditable, and an unauditable report reduces the reviewer to agreeing. Deciding the format now, while no result exists, means it cannot later be shaped around a result that would look better without a particular line.
+**Plan ref:** P§10.4, P§10.6, P§10.7, P§7.3, P§7.4.
+**Reviewed by Sol:** pending.
 
 ### D-010 · 2026-08-15 · The leakage firewall whitelists critic features; it never blacklists metadata
 **Decision:** the Week 6 Wednesday firewall will be built as a **whitelist** of permitted critic features. Blacklisting construction metadata is rejected as an approach.
@@ -506,5 +512,18 @@ The current bundle is 474 lines. Ask for it on src/bu/config.py and
 src/bu/constants.py if you want to audit D-005 and D-009 rather than accept
 them -- and note that today's bundle would report the tree DIRTY until this
 commit lands, which is exactly the kind of thing the flag exists to surface.
+
+ALSO NEW -- D-011, decided now precisely because no result exists yet.
+Phase A deltas are prose because Phase A is infrastructure. That stops working
+in Week 6: every duty you have from then on is about numbers, and "H2
+reproduced across seeds" is not something you can audit. So from the first real
+result, any delta reporting one carries a NUMBERS block -- unit counts including
+min(N_0, N_1), seeds and policy, point estimate, interval AND what it was taken
+over, ambiguous and undiagnosed counts, and which test ran including any
+fallback. Your brief now says to treat a missing line as a finding rather than
+an oversight.
+
+Fixing the format before any result exists is deliberate: afterwards, the choice
+of which lines to include could not be made innocently.
 === END UPDATE ===
 ```

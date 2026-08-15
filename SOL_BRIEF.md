@@ -182,6 +182,47 @@ Do not summarise the files back. Instead:
 
 ---
 
+## What a delta must contain once results exist
+
+Through Phase A the deltas describe infrastructure, which prose handles fine.
+From Week 6 onward that stops being enough: your duties are about *numbers*, and
+"H2 reproduced across seeds" is not something you can audit. A summary you cannot
+check reduces you to nodding.
+
+So from the first real result, every delta reporting one carries a `NUMBERS`
+block, and it must include all of the following. **Treat a missing line as a
+finding, not an oversight** — each one is a place where a result can look
+stronger than it is:
+
+```
+NUMBERS · <what was run>
+  n units:        N total, N_0 / N_1 per class, and min(N_0, N_1)
+  n seeds:        per condition, and which seed policy applies
+  point estimate: the effect, in its stated units
+  interval:       95% CI, and EXPLICITLY what it was taken over
+  excluded:       ambiguous count, undiagnosed count, as fractions of the total
+  test:           which test, and any fallback that was triggered
+```
+
+Specific things to check every time, because each has a documented way of going
+wrong in this design:
+
+- **Interval width.** If a CI looks tight, suspect the unit before believing it.
+  Taken over transitions rather than configuration units, it will be far too
+  narrow — transitions within an episode are correlated.
+- **`min(N₀, N₁)`, not the total.** Power depends on the smaller class, because
+  balancing is at the unit level.
+- **The excluded fractions.** They are a primary finding about regime
+  separability, not bookkeeping. Their absence from a report is itself the
+  problem.
+- **Balanced accuracy without its confusion matrix** is incomplete.
+- **A repair reported as pass/fail** rather than as a point estimate with an
+  interval violates the plan's own rule that no condition is reported as a bare
+  pass or fail.
+
+If a number matters and you cannot see how it was computed, request a
+verification bundle for the code that produced it.
+
 ## Every time a delta arrives
 
 A §8 `UPDATE FOR SOL` block means one Claude working session has closed. Each time:
