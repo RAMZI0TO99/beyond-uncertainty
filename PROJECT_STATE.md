@@ -64,11 +64,11 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 | **Last updated** | 2026-08-15 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | Week 1 Mon–Wed **complete, run early** (see DEV-002). Week 1 proper begins **2026-08-17** |
+| **Current week / day** | **Week 1 complete** (Mon–Sat). Week 2 Mon also complete. Week 1 ran early — see DEV-002 |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **90 passing, 1 skipped**. Includes golden `unit_id` values, so a silent change to what a statistical unit means fails the suite |
+| **Tests** | **131 passing, 1 skipped**. Includes golden `unit_id` values, so a silent change to what a statistical unit means fails the suite |
 | **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
 
 **Hypothesis status**
@@ -89,15 +89,18 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 - **Sol's material finding fixed** — `stage` added to run identity (D-012). A unit can owe runs to several experimental obligations at overlapping seeds; without it they collided.
 - **Critic feature whitelist frozen** (D-013), ahead of the Week 6 deadline, per Sol's Q-006.
 - **Week 1 audit** (D-015): seven defects found and fixed before Week 2, three of them serious. `IDENTITY_VERSION` and `SCHEMA_VERSION` both bumped to 2 under a Change Record (D-016), while no data exists to invalidate.
+- **W1 Fri** — gridworld core (`src/bu/env/gridworld.py`). *Done when: a 200-step random rollout runs without error* — **verified**, and across all three layouts × all three causal attributes.
+- **W1 Sat** — factored observation encoder with the feature-masking hook (`src/bu/env/encoder.py`). *Done when: env constructs with the shape feature withheld* — **verified**, plus the property that matters: two states differing only in a withheld attribute encode identically while still transitioning differently.
+- **W2 Mon** — confound-rate parameter. *Done when: sampling test shows empirical correlation matches the setting* — **verified** at 0.0 / 0.25 / 0.5 / 0.75 / 0.9 and for all three causal attributes.
 
 **In flight:** nothing running. No compute consumed.
 
 **Next three actions:**
-1. **W1 Thu** — thesis prose, ~400 words: method section on environment design rationale (why custom gridworld, why symbolic state).
-2. **W1 Fri** — gridworld core: 8×8 grid, boundary walls, objects with (shape, colour, position), four moves plus interact, deterministic shape-dependent transition rule, Gymnasium API. *Done when: a 200-step random rollout runs without error.*
-3. **W1 Sat** — factored symbolic observation encoder with the feature-masking hook — the mechanism for Experiment 2A. *Done when: env constructs with the shape feature withheld.*
+1. **W2 Tue** — three procedural layouts exist and are tested; still to do is the **configuration-condition enumerator**. *Done when: it returns ≥300 configuration-conditions and prints the count by axis.* D-007 requires it to deduplicate by `unit_id`.
+2. **W2 Fri** — scripted exploratory policy replacing PPO (DEV-001): coverage-biased random walk with forced object interactions, transition dataset collector, coverage metric over (shape, action) pairs. *Done when: a 5,000-transition dataset is saved with a coverage report.*
+3. **Outstanding prose** — W1 Thu (~400 words, environment design rationale) and W2 Thu (~400 words, configuration axes). Not yet written; the student has not said whether these are theirs or drafted.
 
-**Blocked on:** nothing. **Q-007** is the only open question — it is the one genuine plan/schedule contradiction found so far, and it is not due until Week 13.
+**Blocked on:** nothing. Open questions: **Q-007** (plan/schedule contradiction, due before W13) and **Q-008** (seed independence across units, new).
 
 **Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split on the condition that it would revisit if *"important implementation or methodological decisions are repeatedly completed before Sol can review them."* That is a live risk in this arrangement, not a hypothetical: D-005 and D-006 were both built before Sol saw them. Mitigation: consequential design decisions go into a delta **and get delivered** before the code that depends on them is built on top of. Claude flags any decision it believes meets that bar at the moment of making it.
 
@@ -257,6 +260,16 @@ Every decision that a future reader would otherwise have to reconstruct. Format:
 **Effect:** every `unit_id` changed. Nothing depends on the old values; golden ids are pinned under version 2 so the next change cannot pass unnoticed.
 **Reviewed by Sol:** pending.
 
+### D-017 · 2026-08-15 · Gridworld is built against `UnitSpec` directly
+**Decision:** `GridWorld` takes a `UnitSpec` as its constructor argument rather than loose keyword parameters, so the environment's configuration axes and the statistical unit's identity are literally the same object. The confound-rate parameter (W2 Mon) and the three layouts (W2 Tue) were built now, with the Week 1 environment, rather than bolted on across Week 2.
+**Why:** two reasons. A condition cannot then be described one way in the config and generated another — the class of bug where a run record says `confound_rate=0.75` and the generator quietly used something else. And `UnitSpec` already carried `causal_attribute`, `confound_rate` and `layout` from D-006, so building the environment without them would have meant retrofitting the generator two days later, which is how the two drift apart.
+**Design choices worth recording, because they are interpretations rather than quotations:**
+- **`interact` toggles an `activated` bit on an adjacent object.** The action needs *some* observable effect or a world model learns it is the identity and the action carries no information. It is deliberately orthogonal to passability, because giving it any influence on the transition rule would confound the manipulation under study.
+- **Confound construction.** The decoy attribute equals the causal class with probability *c*, otherwise it is independent. Then P(agree) = c + (1−c)/2 and the phi coefficient is exactly *c*, so the configured number **is** the correlation rather than merely monotone in it.
+- **Position as a causal attribute** means (x+y) parity, and placement is constrained to match. The decoy for position is colour.
+**Plan ref:** P§2.2, P§13.1.2, P§13.1.3, P§19.
+**Reviewed by Sol:** pending.
+
 ### D-011 · 2026-08-15 · Deltas carry numbers, not summaries, once results exist
 **Decision:** from the first real result, every §8 delta reporting one includes a `NUMBERS` block: total units and per-class counts including `min(N₀, N₁)`, seed count and applicable policy, point estimate, 95% interval **and explicitly what it was taken over**, ambiguous and undiagnosed counts as fractions, and which test ran including any fallback triggered. Sol is instructed to treat a missing line as a finding rather than an oversight.
 **Why:** Phase A is infrastructure, which prose conveys adequately. From Week 6 Sol's duties are entirely about numbers — whether an interval was taken over units or transitions, whether power was computed on `min(N₀, N₁)` or the total, whether the excluded fractions were reported at all. A prose summary such as "H2 reproduced across seeds" is unauditable, and an unauditable report reduces the reviewer to agreeing. Deciding the format now, while no result exists, means it cannot later be shaped around a result that would look better without a particular line.
@@ -289,6 +302,11 @@ Format: `Week n Day | what was skipped or substituted | why | goes in methodolog
 **Deviation:** the Week 1 Monday, Tuesday and Wednesday cells were completed on Saturday 2026-08-15, before the 2026-08-17 start.
 **Why:** all three are pure infrastructure — no compute consumed, no preregistered quantity touched, nothing that could bias a result. Doing them early converts Week 1's short days from typing into review, which is the scarcer resource now that implementation sits with Claude (see Q-004).
 **Goes in methodology:** **no** — no bearing on any result.
+
+### DEV-004 · 2026-08-15 · W2 Mon's confound parameter built during Week 1
+**Deviation:** the confound-rate parameter (Schedule W2 Mon) and the three procedural layouts (W2 Tue) were implemented alongside the Week 1 Friday environment rather than in their scheduled cells.
+**Why:** they are parameters *of* the generator. Building the generator without them and adding them two days later means writing it twice and risking drift between the config contract and what is actually generated. The W2 Mon acceptance criterion was run as specified and passes.
+**Goes in methodology:** **no** — ordering only; no design change.
 
 ### DEV-003 · 2026-08-15 · venv created with `--system-site-packages`
 **Deviation:** the virtual environment reuses the system torch/numpy/scipy/pandas rather than installing isolated copies.
@@ -329,6 +347,7 @@ Two conditions:
 | Q-004 | Schedule capacity model now that Claude implements — hold dates, or compress? | 2026-08-15 | **Closed.** Sol agrees: hold every date and gate; spend the gain on review, understanding, documentation and prose, never scope. Names the failure mode as **verification lag** — implementation outrunning student and reviewer, leaving choices embedded in code before they are understood. Consequential methodological decisions must be *delivered before* dependent implementation proceeds; routine implementation need not wait |
 | Q-005 | Should statistical identity be a registered field list rather than a schema hash? | 2026-08-15 | **Closed** → D-009. Sol: yes, explicit versioned identity list; `SCHEMA_VERSION` alone insufficient. Implemented in the stronger form Sol named — exhaustive classification, enforced at import, tested per field |
 | Q-006 | Whitelist vs blacklist for the leakage firewall; and when to freeze it. | 2026-08-15 | **Closed** → D-013. Sol: whitelist, frozen before the Week 6 firewall is accepted, in a dedicated schema module rather than `constants.py`, with X / y / groups physically separate. Since P§13.5.1 fully specifies the features, Sol's "freeze it now" condition was met and it is frozen |
+| Q-008 | **Seed independence across units.** `GridWorld.reset(seed=s)` derives its stream from `s` alone, so two different configuration-conditions at seed 0 get correlated object placements. Within Experiment 1 that is arguably *desirable* — the data-size sweep should hold the generating process fixed and vary only the amount of data. Across the ~300-unit configuration sweep it is less obviously right, because confidence intervals are taken over units and correlated environments could understate between-unit variance. Options: leave as is; or derive each run's stream by hashing `(unit_id, arm, stage, seed, purpose)`, which also separates the env stream from the bootstrap and weight-init streams. Not a bug, a methodological judgement — and P§5.4/§11.2 make seed behaviour load-bearing. | 2026-08-15 | Open |
 | Q-007 | **A genuine plan/schedule contradiction, found while freezing the schema.** P§13.5.1's table retains the Error group in *"Full; No-magnitude; Statistics-only"* — so the **no-statistics** variant drops error features entirely. But S§W13 Tue describes that variant as *"latent state, action and **error history** only"*. The two disagree on whether no-statistics sees error history. This changes what the variant means and therefore how the W13 construction-leakage control is read: if no-statistics has no error signal at all, a strong result there is far more surprising. Per our source-of-truth rule the plan wins, and the schema is frozen that way — but the disagreement should be resolved explicitly, not by default. | 2026-08-15 | **Open** — due before W13 Tue |
 
 **For Claude** — things Sol or the student wants implemented, checked or measured.
@@ -393,89 +412,83 @@ Format:
 **Left:** nothing running, no compute. Week 1 Thu–Sat outstanding. Q-007 still open.
 **Next:** W1 Thu prose, then the gridworld core.
 
+### 2026-08-15 (night, later) · Week 1 finished; Week 2 Monday done · Claude
+**Did:** built the gridworld (`src/bu/env/gridworld.py`) and the masking observation encoder (`src/bu/env/encoder.py`), against `UnitSpec` directly (D-017). That covers W1 Fri, W1 Sat and W2 Mon, plus the three layouts W2 Tue needs. 41 environment tests.
+**Result:** 90 → 131 tests. All three "Done when" criteria verified: a 200-step rollout runs clean across every layout × causal attribute; the env constructs with shape withheld; measured confound matches the configured rate at all five levels and for all three causal attributes. The test that matters most for Experiment 2A is the one asserting that two states differing only in a withheld attribute **encode identically while still transitioning differently** — that is `f* ∉ H` holding by construction rather than by hope.
+**Investigated, not a bug:** measured confound came in ~0.03–0.04 below target, consistently negative, which looked systematic. Checked across 20 independent seed blocks: mean deviation −0.07 SE, sd 1.20. It is noise, and seed block 0 happens to sit 2.5 SE low. The generator is exactly right. But the test tolerance was only ~2 SE at 500 episodes, so an unlucky block would have flaked it — raised to 1500 episodes, now ~4 SE.
+**Raised:** Q-008, on whether runs in different units should share an environment stream at the same seed. Desirable within Experiment 1, questionable across the configuration sweep. A judgement, not a defect.
+**Left:** nothing running, no compute. W2 Tue's enumerator is the next real piece. Two prose cells outstanding (W1 Thu, W2 Thu).
+**Next:** configuration-condition enumerator — ≥300 units, deduplicated by `unit_id` per D-007.
+
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 7. Delta 6 was delivered; deltas 1–5 are archived.
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 8.
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 7
-PREVIOUS_DELTA_ID: 6
-DATE: 2026-08-15 (late)
-SUBJECT: Week 1 audit before Week 2 -- seven defects, three serious
+DELTA_ID: 8
+PREVIOUS_DELTA_ID: 7
+DATE: 2026-08-15 (night)
+SUBJECT: Week 1 complete, Week 2 Monday done -- the environment exists
 
-The student asked for an audit of all Week 1 work before Week 2 starts. Every
-file was re-read line by line and probed empirically rather than by inspection.
-Seven defects. Each now has a named regression test. 68 -> 90 tests.
+BUILT: src/bu/env/gridworld.py and src/bu/env/encoder.py. Covers W1 Fri, W1 Sat
+and W2 Mon, plus the three layouts W2 Tue needs. 90 -> 131 tests.
 
-SERIOUS -- A1. to_dict() omitted `stage`, defeating D-012 for anything persisted.
-Your material finding was fixed only in the directory name. A round-trip reset
-the stage to "pilot", the run record never stated it, and load_runs() had no
-stage column -- so an analysis could not separate a unit's five H1/H2 seeds from
-the twenty behind its repair label, which is the exact thing your finding was
-about. Fixed in to_dict/from_dict, promoted to a top-level run-record key, and
-added as a load_runs column. There is now an end-to-end test that builds both
-obligations on one unit and asserts the analysis can tell them apart.
+ACCEPTANCE CRITERIA, all verified rather than asserted:
+- W1 Fri "200-step random rollout runs without error" -- and across all three
+  layouts x all three causal attributes, not just the defaults.
+- W1 Sat "env constructs with the shape feature withheld" -- plus the property
+  that actually matters for Experiment 2A: two states differing ONLY in a
+  withheld attribute encode IDENTICALLY, while the environment still transitions
+  differently between them. That is f* not in H by construction rather than by
+  hoping the model ignores a column.
+- W2 Mon "empirical correlation matches the setting" -- at 0.0/0.25/0.5/0.75/0.9
+  and for all three causal attributes.
 
-SERIOUS -- A2. _hash used `default=repr`, embedding memory addresses.
-Any value without a JSON form hashed via repr, which for a plain object contains
-its address -- so unit_id would differ between processes. Worth noting how it
-hid: the first probe returned EQUAL hashes for two distinct objects, because the
-first had been freed and its address reused. Only holding both references alive
-exposed it. The fallback is removed; _hash now raises with an explanatory
-message. A real subprocess test replaces the previous cross-process test, which
-compared a value with itself.
+D-017: the env takes a UnitSpec directly, so configuration axes and unit identity
+are the same object and a condition cannot be described one way in the config and
+generated another. Three interpretations in it that are mine, not the plan's, and
+which you should check:
+  1. `interact` toggles an `activated` bit on an adjacent object. It needs SOME
+     observable effect or a world model learns it is the identity and the action
+     carries no information -- but it is deliberately orthogonal to passability,
+     since any influence on the transition rule would confound the manipulation.
+  2. Confound construction: the decoy equals the causal class with probability c,
+     else independent. Then P(agree) = c + (1-c)/2 and phi is exactly c, so the
+     configured number IS the correlation, not merely monotone in it.
+  3. Position-as-causal-attribute means (x+y) parity, with placement constrained
+     to match; the decoy for position is colour.
 
-SERIOUS -- A3. No value canonicalisation, so one condition could occupy several
-units. confound_rate 0 vs 0.0 hashed differently. ("shape","colour") and
-("colour","shape") hashed differently. ("shape","shape") made a third. Every one
-of those inflates the labelled unit count -- the quantity the MDE and every
-confidence interval rest on. Fixed by canonicalising at construction: numerics
-coerced to their declared type, withheld_features sorted and deduplicated.
+INVESTIGATED, NOT A BUG -- reporting it because the first look was wrong.
+Measured confound came in 0.03-0.04 BELOW target at every level, consistently
+negative, which reads as systematic bias. Checked across 20 independent seed
+blocks: mean deviation -0.07 SE, sd 1.20. It is noise; seed block 0 simply sits
+2.5 SE low. The generator is correct. The real finding was that the TEST was
+weak -- 500 episodes gave only ~2 SE of headroom, so an unlucky block would have
+flaked it. Now 1500 episodes, ~4 SE.
 
-MATERIAL -- A4. layout was unvalidated. layout="unifrom" was accepted and became
-a genuine configuration-condition. Now a registered set, like family and
-causal_attribute. Sizes must also be positive.
+NEW QUESTION -- Q-008, seed independence across units. A judgement, not a defect.
+GridWorld.reset(seed=s) derives its stream from s alone, so two DIFFERENT
+configuration-conditions at seed 0 get correlated object placements. Within
+Experiment 1 that seems right: the data-size sweep should hold the generating
+process fixed and vary only the amount of data. Across the ~300-unit
+configuration sweep it is less clearly right, because confidence intervals are
+taken over units and correlated environments could understate between-unit
+variance. Option: derive each run's stream by hashing (unit_id, arm, stage, seed,
+purpose), which would also separate the env stream from the bootstrap and
+weight-init streams. Plan 5.4 and 11.2 make seed behaviour load-bearing, so this
+is your call rather than mine.
 
-MATERIAL -- A5. numpy arrays were stringified into the metrics log --
-np.array([.1,.2,.3]) written as the STRING "[0.1 0.2 0.3]". It writes without
-complaint and reloads as text, failing only when a figure does arithmetic on it
-much later. Per-dimension normalised error (Plan 10.3) is exactly this shape.
+STILL OPEN: Q-007 (Plan 13.5.1 vs Schedule W13 Tue on whether the no-statistics
+variant sees error history).
 
-MINOR -- A6. run discovery was one directory deep, so a batch runner grouping
-runs by stage would make them invisible -- silently, as fewer rows.
-MINOR -- A7. golden unit_id values are now pinned, so identity cannot drift
-without a test failing.
+NEXT ACTION: W2 Tue's configuration-condition enumerator -- >=300 units,
+deduplicated by unit_id per D-007, seed count following the (unit, stage) pair.
+Then W2 Fri, the scripted policy and dataset collector.
 
-ALSO: impossible repairs now fail when the config is BUILT rather than hours
-later mid-batch on Kaggle -- a spec error found mid-batch costs a session.
-
-CHANGE RECORD -- D-016, and it needs your eye because it is exactly the kind of
-change the preregistration discipline exists to police.
-  IDENTITY_VERSION 1 -> 2, SCHEMA_VERSION 1 -> 2.
-  Has any data been seen? NO. No run, no compute, no label. Only test fixtures.
-  Why identity: the field SET is unchanged, but A3 changed canonicalisation, so
-  ids before and after are not comparable. Leaving the version at 1 while ids
-  changed would be worse than the original defect.
-  Why schema: `stage` was added in D-012 without a bump -- an oversight, fixed.
-  Every unit_id changed. Nothing depends on the old values.
-
-This is the last moment such a change is free. From Week 6 it would not be.
-
-NOT CHANGED, but worth your judgement: capacity_repair raises hidden_size to
-max(HIDDEN_SIZES) = 256. Plan 8.2.2 says "increase capacity" without saying to
-what. Going to the maximum is deterministic and makes the repair unambiguous,
-but it is an interpretation, not a quotation. Say if you read it differently.
-
-STILL OPEN: Q-007 (the Plan 13.5.1 vs Schedule W13 Tue contradiction about
-whether the no-statistics variant sees error history).
-
-Fresh-clone install re-verified; the golden unit_id reproduces in a clean
-checkout. Request a bundle on src/bu/config.py and src/bu/metrics.py to audit
-any of this rather than accept it.
-
-NEXT ACTION: W1 Thu prose, then W1 Fri gridworld core.
+Two prose cells are outstanding (W1 Thu, W2 Thu). The student has not yet said
+whether those are theirs to write or mine to draft.
 === END UPDATE ===
 ```
