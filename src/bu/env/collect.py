@@ -21,6 +21,7 @@ that evidence to accompany the PPO substitution rather than be taken on trust.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 from collections import Counter
 from dataclasses import dataclass
@@ -30,7 +31,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from ..config import UnitSpec
-from .gridworld import N_ACTIONS, SHAPES, GridState, GridWorld, is_passable
+from .gridworld import INTERACT, N_ACTIONS, SHAPES, GridState, GridWorld, is_passable
 from .policy import ExploratoryPolicy
 
 #: Steps per episode before the environment is reset with a fresh layout.
@@ -57,8 +58,12 @@ class CoverageReport:
     #: Attempted moves into an occupied cell, by causal class. These are the
     #: transitions that carry the rule.
     bumps: dict[str, int]
-    #: Fraction of transitions in which the agent's move was blocked.
-    blocked_fraction: float
+    #: Fraction of transitions in which a move was refused by an object --
+    #: the passability rule firing. Kept apart from wall blocks: they are
+    #: different mechanisms, and only this one carries the rule under study.
+    blocked_by_object_fraction: float
+    #: Fraction refused by a boundary wall. Learnable, but not the manipulation.
+    blocked_by_wall_fraction: float
     #: Fraction of transitions that changed the agent's position.
     moved_fraction: float
 
@@ -97,7 +102,8 @@ class CoverageReport:
             "shape_action": self.shape_action,
             "causal_action": self.causal_action,
             "bumps": self.bumps,
-            "blocked_fraction": self.blocked_fraction,
+            "blocked_by_object_fraction": self.blocked_by_object_fraction,
+            "blocked_by_wall_fraction": self.blocked_by_wall_fraction,
             "moved_fraction": self.moved_fraction,
             "shape_action_coverage": self.shape_action_coverage(),
             "adequate": self.is_adequate(),
@@ -106,7 +112,9 @@ class CoverageReport:
     def summary(self) -> str:
         lines = [
             f"transitions {self.n_transitions}  episodes {self.n_episodes}",
-            f"moved {self.moved_fraction:.1%}   blocked {self.blocked_fraction:.1%}",
+            f"moved {self.moved_fraction:.1%}   "
+            f"blocked by object {self.blocked_by_object_fraction:.1%}   "
+            f"by wall {self.blocked_by_wall_fraction:.1%}",
             f"bumps by causal class: pass={self.bumps.get('pass', 0)} "
             f"block={self.bumps.get('block', 0)}",
             f"(shape, action) cells with >=10 observations: "
@@ -148,9 +156,12 @@ class TransitionDataset:
             step=self.step,
             meta=json.dumps(
                 {
+                    # dataclasses.asdict rather than __dict__: the latter
+                    # happens to work today but breaks the moment UnitSpec gains
+                    # __slots__ or a non-field attribute.
                     "unit": {
                         k: list(v) if isinstance(v, tuple) else v
-                        for k, v in self.unit.__dict__.items()
+                        for k, v in dataclasses.asdict(self.unit).items()
                     },
                     "seed": self.seed,
                     "coverage": self.coverage.to_dict(),
@@ -180,7 +191,8 @@ class TransitionDataset:
                 shape_action=cov["shape_action"],
                 causal_action=cov["causal_action"],
                 bumps=cov["bumps"],
-                blocked_fraction=cov["blocked_fraction"],
+                blocked_by_object_fraction=cov["blocked_by_object_fraction"],
+                blocked_by_wall_fraction=cov["blocked_by_wall_fraction"],
                 moved_fraction=cov["moved_fraction"],
             ),
         )
@@ -219,7 +231,7 @@ def collect(
     shape_action: Counter[str] = Counter()
     causal_action: Counter[str] = Counter()
     bumps: Counter[str] = Counter()
-    blocked = moved = 0
+    blocked_object = blocked_wall = moved = 0
 
     episode = 0
     while len(actions) < n:
@@ -244,8 +256,15 @@ def collect(
             )
             if nxt.agent != state.agent:
                 moved += 1
-            elif action != 4:  # a move that did not move: blocked
-                blocked += 1
+            elif action != INTERACT:
+                # A move that did not move. Which mechanism refused it matters:
+                # only an object block is the passability rule firing.
+                dx, dy = _DELTAS[action]
+                target = (state.agent[0] + dx, state.agent[1] + dy)
+                if state.object_at(target) is not None:
+                    blocked_object += 1
+                else:
+                    blocked_wall += 1
 
             state = nxt
         episode += 1
@@ -257,7 +276,8 @@ def collect(
         shape_action=dict(shape_action),
         causal_action=dict(causal_action),
         bumps=dict(bumps),
-        blocked_fraction=blocked / total,
+        blocked_by_object_fraction=blocked_object / total,
+        blocked_by_wall_fraction=blocked_wall / total,
         moved_fraction=moved / total,
     )
     return TransitionDataset(

@@ -82,10 +82,30 @@ class GridObject:
 
 @dataclass(frozen=True)
 class GridState:
-    """Complete symbolic state. Deterministic successor given an action."""
+    """Complete symbolic state. Deterministic successor given an action.
+
+    Objects are held in a canonical order -- raster order by position -- and
+    sorted on construction. That is not tidiness; it removes a nuisance factor
+    that would otherwise distort the central experiment.
+
+    The observation encoder writes one fixed-width block per object slot, so
+    without a canonical order the *same physical arrangement* encodes
+    differently depending on the order the generator happened to place objects
+    in. A model would then have to learn the passability rule separately per
+    slot, and learn permutation invariance on top of it -- both of which cost
+    data for reasons that have nothing to do with the manipulation under study.
+    Experiment 1 varies dataset size to induce estimation failure, so anything
+    that inflates the data requirement shifts where that failure appears and
+    makes the sweep measure encoding nuisance rather than sample size.
+    """
 
     agent: tuple[int, int]
     objects: tuple[GridObject, ...]
+
+    def __post_init__(self) -> None:
+        canonical = tuple(sorted(self.objects, key=lambda o: (o.y, o.x)))
+        if canonical != self.objects:
+            object.__setattr__(self, "objects", canonical)
 
     def object_at(self, pos: tuple[int, int]) -> GridObject | None:
         return next((o for o in self.objects if o.pos == pos), None)

@@ -87,8 +87,15 @@ class ExploratoryPolicy:
         self.p_approach = p_approach
         self.epsilon = epsilon
         #: (context, action) -> count, where context is the adjacent object's
-        #: causal class. Drives the coverage bias.
+        #: causal class. Drives the coverage bias over actions.
         self.visits: Counter[tuple[str, int]] = Counter()
+        #: causal class -> count of bumps taken into it. Kept separately from
+        #: `visits` because the two are keyed differently: `visits` records the
+        #: *aggregate* context, which is "both" when adjacent objects disagree,
+        #: while the bump balancer needs per-class counts. Reading per-class
+        #: keys out of `visits` left mixed-adjacency bumps uncounted, so the
+        #: balancer was partly blind exactly where the choice mattered most.
+        self.bump_visits: Counter[str] = Counter()
 
     # --- action selection -------------------------------------------------
 
@@ -127,11 +134,9 @@ class ExploratoryPolicy:
         """
         best = min(
             adjacent,
-            key=lambda pair: (
-                self.visits[(self._class_of(pair[0]), pair[1])],
-                pair[1],
-            ),
+            key=lambda pair: (self.bump_visits[self._class_of(pair[0])], pair[1]),
         )
+        self.bump_visits[self._class_of(best[0])] += 1
         return best[1]
 
     def _coverage_biased(self, context: str) -> int:

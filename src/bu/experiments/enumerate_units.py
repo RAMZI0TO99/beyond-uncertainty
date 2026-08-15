@@ -35,7 +35,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from .. import constants as K
-from ..config import LAYOUTS, STAGE_SEEDS, Arm, Config, UnitSpec, seeds_for
+from ..config import LAYOUTS, STAGE_SEEDS, Config, UnitSpec, seeds_for
 
 #: Environment axes. Their product is the configuration space (Plan §13.1.2).
 CAUSAL_ATTRIBUTES = ("shape", "colour", "position")
@@ -332,7 +332,19 @@ def design_units(n_sweep: int = 225) -> tuple[UnitSpec, ...]:
     """
     canonical = canonical_units()
     sweep = select_sweep(n_sweep, balance_against=canonical)
-    return deduplicate(list(canonical) + list(sweep))
+    units = deduplicate(list(canonical) + list(sweep))
+
+    # A repair-validation unit missing from the design would drop a 20-seed
+    # obligation silently, and every label resting on it would quietly fall
+    # back to three seeds. Checked here rather than trusted.
+    have = {Config(unit=u).unit_id for u in units}
+    missing = [u for u in repair_validation_units() if Config(unit=u).unit_id not in have]
+    if missing:
+        raise RuntimeError(
+            f"{len(missing)} repair-validation conditions are absent from the "
+            "design; their 20-seed obligation would be lost without a trace"
+        )
+    return units
 
 
 # --- stage obligations (D-007, D-012) -------------------------------------
