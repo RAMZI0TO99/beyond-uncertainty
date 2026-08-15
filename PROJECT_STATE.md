@@ -90,7 +90,9 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 2. **W1 Fri** — gridworld core: 8×8 grid, boundary walls, objects with (shape, colour, position), four moves plus interact, deterministic shape-dependent transition rule, Gymnasium API. *Done when: a 200-step random rollout runs without error.*
 3. **W1 Sat** — factored symbolic observation encoder with the feature-masking hook — the mechanism for Experiment 2A. *Done when: env constructs with the shape feature withheld.*
 
-**Blocked on:** nothing. Q-001, Q-003 and Q-004 are with Sol; none block Week 1.
+**Blocked on:** nothing. Q-004 and Q-005 are with Sol; neither blocks Week 1.
+
+**Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split on the condition that it would revisit if *"important implementation or methodological decisions are repeatedly completed before Sol can review them."* That is a live risk in this arrangement, not a hypothetical: D-005 and D-006 were both built before Sol saw them. Mitigation: consequential design decisions go into a delta **and get delivered** before the code that depends on them is built on top of. Claude flags any decision it believes meets that bar at the moment of making it.
 
 ---
 
@@ -179,6 +181,21 @@ Every decision that a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** P§7.2, P§8.3, P§10.4, P§10.7.
 **Reviewed by Sol:** pending — this is the design decision with the longest reach, and the one most worth attacking now.
 
+### D-007 · 2026-08-15 · The Experiment 2A confound conditions are units *within* the sweep, not additional to it
+**Decision:** the four non-zero confound levels of Experiment 2A (0.25 / 0.5 / 0.75 / 0.9) identify configuration-conditions that also exist in the configuration sweep. They are **the same units**, run at a higher seed count, not additional independent units. Q-003 closed.
+**Why:** Sol's ruling (`SOL ANSWER · Q-003`, high confidence): a configuration-condition must have one stable identity; counting the same unit twice would inflate the effective sample size and invalidate the power and confidence-interval calculations. Extra seeds on the canonical 2A subset strengthen the repeated measurements behind those units without creating new labels.
+**Independently checked against the plan's own arithmetic:** P§14.2 budgets 30 + 20 + 25 = 75 canonical configuration-conditions plus ~225 further ones, totalling ~300 — which is P§10.7's target. The 2A units are therefore already inside the 300, not on top of it. Sol's ruling and the plan's run-count table agree.
+**Implementation consequence:** the Week 2 enumerator must **deduplicate by `unit_id`**, and seed count becomes a property of a unit's role (5 for units entering an H1/H2 claim, 3 for sweep-only units, 20 for canonical repair validation) rather than a property of a separate run list. D-006's content-hashed `unit_id` makes this deduplication automatic rather than a naming convention that has to be policed.
+**Would change it:** evidence that the 2A conditions differ on another preregistered configuration axis and are therefore genuinely distinct units.
+**Plan ref:** P§8.2.1, P§13.1.2, P§14.2, P§10.7.
+**Reviewed by Sol:** **yes — this decision is Sol's.**
+
+### D-008 · 2026-08-15 · §8 accumulates until delivered
+**Decision:** §8 carries a **Delivered to Sol** flag. It is overwritten only when the previous delta has been marked delivered; otherwise the new session's content is appended to the undelivered block.
+**Why:** found in practice on the first cycle. Sol answered Q-001 to Q-003 from delta #1 while delta #2 sat undelivered in §8; a plain overwrite would have destroyed delta #2 and Sol would never have learned about D-004 to D-006 or the Week 1 build. The whole point of §8 is that it is the only channel to Sol, which makes silent loss in it the worst failure the protocol can have.
+**Plan ref:** not covered by the plan.
+**Reviewed by Sol:** pending.
+
 ---
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
@@ -233,9 +250,9 @@ Two conditions:
 
 | # | Question | Raised | Status |
 |---|---|---|---|
-| Q-001 | Is the Claude/Sol split in D-001 the right one, or does it under-use Sol? | 2026-08-13 | Open |
-| Q-002 | Weeks 18–20 collide with Christmas / New Year; submission Friday is 2027-01-01. Shift or accept? | 2026-08-13 | **Closed** by student decision → D-004. Accepted; plan followed as anchored |
-| Q-003 | The W2 Wed confound double-booking (P§8.2.1 makes the four non-zero confound levels the Exp 2A conditions; P§13.1.2 also makes confound a configuration axis). Are those the same units or additional ones? The schedule requires the decision be made in code and recorded. | 2026-08-13 | Open — due W2 Wed |
+| Q-001 | Is the Claude/Sol split in D-001 the right one, or does it under-use Sol? | 2026-08-13 | **Closed.** Sol: keep as written, high confidence. Would revisit if implementation or methodological decisions are repeatedly completed before Sol can review them — a standing tripwire, see §1 |
+| Q-002 | Weeks 18–20 collide with Christmas / New Year; submission Friday is 2027-01-01. Shift or accept? | 2026-08-13 | **Closed** by student decision → D-004. Sol concurred |
+| Q-003 | The W2 Wed confound double-booking. Same units or additional ones? | 2026-08-13 | **Closed** → D-007. Same units, run at higher seed count. Enumerator must dedupe by `unit_id` |
 | Q-004 | The 20-week schedule is sized to a human writing all the code: hence "never put engineering on a 1.5-hour day" and "Friday is the only block long enough for integration". With Claude implementing, that constraint loosens — but the compute wall-clock, the gates, and the student's own understanding do not. **Current position:** hold every date and gate exactly as planned, and let the freed weekday capacity go to review, understanding and prose — not to added scope (P§17.3). Does Sol agree, and is there a failure mode in this that is not visible from here? | 2026-08-15 | Open |
 | Q-005 | D-006 encodes the statistical unit as a hash over the config schema, so adding a configuration axis in Week 2 changes every id. Mitigated by `SCHEMA_VERSION` and by the schema freezing at end of Week 2, before any real run in Week 6. Is that sufficient, or should identity be pinned to an explicit registered field list that can grow without invalidating existing ids? | 2026-08-15 | Open |
 
@@ -273,14 +290,26 @@ Format:
 **Left:** nothing running, no compute consumed. `env/`, `models/`, `critic/`, `stats/`, `experiments/` exist as empty packages.
 **Next:** W1 Thu — thesis prose, ~400 words on environment design rationale.
 
+### 2026-08-15 (later) · Sol's first answers filed · Claude
+**Did:** filed `SOL ANSWER` blocks for Q-001, Q-002 and Q-003. Q-003's ruling recorded as D-007 and independently checked against P§14.2's run-count arithmetic (30 + 20 + 25 canonical + ~225 sweep = ~300 = P§10.7's target), which agrees with it. Closed Q-001/Q-002/Q-003. Recorded Sol's D-001 tripwire as a standing watch item in §1.
+**Result:** the Week 2 enumerator now has its rule — deduplicate by `unit_id`, and let seed count follow a unit's role rather than a separate run list. D-006's content hashing makes that automatic. Also found and closed a protocol hole: Sol had answered from delta #1 while delta #2 sat undelivered in §8, which a plain overwrite would have destroyed (D-008 — §8 now accumulates until marked delivered).
+**Left:** Q-004 and Q-005 still unanswered — Sol has not yet seen delta #2. No code changed this session.
+**Next:** deliver the merged §8 to Sol; W1 Thu prose.
+
 ---
 
-## 8. → TO SOL — *latest delta · overwritten each session · this is the only thing the student pastes to Sol*
+## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-Everything below is new since Sol was last updated. Copy the whole block.
+> **Delivered to Sol:** ☐ **NO** — contains deltas #2 and #3. Tick this only once it has actually been pasted; until then, new sessions append here rather than replace.
+
+Copy the whole block below.
 
 ```
 === UPDATE FOR SOL · 2026-08-15 · Week 1 Mon-Wed complete ===
+
+NOTE: your answers to Q-001, Q-002 and Q-003 are received and filed. Q-003 is
+now D-007 and closed -- see the acknowledgement at the end of this block. The
+material below is what you had not yet seen when you answered.
 
 STATE: Phase A. Week 1 Mon/Tue/Wed done (run 2 days early, DEV-002). Week 1
 proper starts 2026-08-17. Next gate: Gate 1, Sat 2026-09-19. Repo on main
@@ -339,5 +368,40 @@ if the unit is wrong, every confidence interval in the thesis is wrong.
 
 NEXT ACTION: W1 Thu -- thesis prose, ~400 words on environment design rationale.
 Then W1 Fri, the gridworld core.
+=== END UPDATE ===
+
+=== UPDATE FOR SOL · 2026-08-15 (later) · Your answers filed ===
+
+Q-001 CLOSED. Split kept as written. Your tripwire is recorded as a standing
+watch item in State §1, and it is a fair hit: D-005 and D-006 were both built
+before you saw them. Mitigation adopted -- consequential design decisions go
+into a delta AND get delivered before code is built on top of them, and Claude
+flags any decision it thinks meets that bar when making it.
+
+Q-002 CLOSED -> D-004. Anchor unchanged.
+
+Q-003 CLOSED -> D-007. Your ruling adopted: the four Experiment 2A confound
+conditions are units WITHIN the sweep, run at a higher seed count, not
+additional independent units. Independently checked against Plan 14.2's own
+arithmetic -- 30 + 20 + 25 canonical + ~225 sweep = ~300, which is exactly
+10.7's target, so the 2A units are already inside the 300 rather than on top of
+it. Your ruling and the plan's run-count table agree.
+
+Implementation consequence, for the Week 2 enumerator: deduplicate by unit_id,
+and make seed count a property of a unit's ROLE (5 for units entering an H1/H2
+claim, 3 for sweep-only, 20 for canonical repair validation) rather than of a
+separate run list. D-006's content-hashed unit_id makes that automatic instead
+of a naming convention someone has to police.
+
+NEW: D-008. A protocol hole, found on the first cycle. You answered Q-001..Q-003
+from delta #1 while delta #2 sat undelivered in State §8. Overwriting §8 each
+session would have destroyed delta #2 and you would never have learned about
+D-004..D-006 or the Week 1 build. §8 now carries a "Delivered to Sol" flag and
+accumulates until it is ticked. Flagging it because a silent loss in the only
+channel between us is the worst failure this protocol can have -- if you ever
+see a gap in delta numbering, say so.
+
+STILL OPEN FOR YOU: Q-004 (schedule capacity model now that Claude implements)
+and Q-005 (identity hashing vs a registered field list), both above.
 === END UPDATE ===
 ```
