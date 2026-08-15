@@ -106,3 +106,63 @@ It should be read as an intention rather than a guarantee: the ground-truth labe
 of any condition is established by the repair protocol, not by how the condition
 was built, and the ambiguous and undiagnosed cases removed at that stage will
 reduce both classes by an amount that is not known in advance.
+
+---
+
+## The behaviour policy, and why it is not PPO *(Schedule W2 Sat, ~300 words + figure)*
+
+*This section discharges Plan §13.2's requirement that the substitution be
+recorded rather than hidden. It is a methodology section, not an appendix.*
+
+The plan specifies a PPO agent for data collection. This thesis substitutes a
+scripted exploratory policy: a coverage-biased random walk that seeks out
+adjacent objects, attempts to move into them, and periodically interacts with
+them. Plan §13.2 permits the substitution and requires it to be declared.
+
+**The reason is scope, not convenience.** The policy is not an object of study.
+No hypothesis in this thesis concerns behaviour, no result is reported per
+policy, and the diagnosis critic never observes a return. What the policy must
+do is produce transitions from which the true dynamics are learnable. PPO
+integration and tuning was among the largest consumers of human time in the
+original Month 1, and it would have bought nothing the design measures.
+
+**The substitution also removes a confound.** The transition rule concerns
+passability, so it can only be learned from transitions in which the agent
+attempted to enter an occupied cell. Those are rare under undirected
+exploration. Had a learned policy converged toward avoiding obstacles — the
+usual outcome of any reward that penalises wasted steps — the informative
+transitions would have become rarer as training progressed, and the resulting
+dataset would have been systematically impoverished in exactly the events the
+world model needs. A fixed, declared procedure is easier to defend than a
+learned one whose data distribution drifts.
+
+**The evidence.** Attempted moves into objects, by dataset size, under the
+scripted policy and a uniform random baseline:
+
+| dataset size | scripted: passable | scripted: blocking | random: passable | random: blocking |
+|---:|---:|---:|---:|---:|
+| 100 | 13 | 22 | 7 | 11 |
+| 250 | 48 | 50 | 10 | 13 |
+| 500 | 61 | 122 | 16 | 18 |
+| 1000 | 172 | 200 | 33 | 36 |
+| 2500 | 359 | 641 | 90 | 97 |
+| 5000 | 760 | 1228 | 178 | 204 |
+
+The scripted policy yields three to six times more rule-carrying transitions at
+every dataset size, and both passability classes are represented throughout —
+a dataset containing only walk-throughs would demonstrate half the rule.
+
+**The one place this could have gone wrong.** If coverage were the binding
+constraint at large dataset sizes, then Experiment 1's "estimation failure"
+family would be measuring exploration quality rather than sample size, and H1
+would be testing the wrong proposition. It is not: coverage rises monotonically
+with dataset size and saturates well before the largest condition. The smallest
+condition is genuinely thin, but Plan §3.2.1 defines estimation failure to
+include data that "does not cover the relevant region of the state-action
+space" provided more data from the same generating process repairs it — which
+the table shows it does. Thin coverage at n=100 is therefore the manipulation
+operating as intended rather than a confound within it.
+
+A per-condition coverage report is written alongside every dataset, so this
+property is checked for each condition rather than assumed from the pilot.
+

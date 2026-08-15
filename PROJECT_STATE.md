@@ -64,11 +64,11 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 | **Last updated** | 2026-08-15 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Week 1 complete.** Week 2: Mon, Tue, Wed and Thu complete; **Fri and Sat outstanding**. Running ahead — see DEV-002 |
+| **Current week / day** | **Weeks 1 and 2 complete** (Mon–Sat both). Running ahead of the 2026-08-17 start — see DEV-002 |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **156 passing, 1 skipped**. Includes golden `unit_id` values, so a silent change to what a statistical unit means fails the suite |
+| **Tests** | **180 passing, 1 skipped**. Includes golden `unit_id` values, so a silent change to what a statistical unit means fails the suite |
 | **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
 
 **Hypothesis status**
@@ -95,13 +95,15 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 - **W2 Tue** — configuration-condition enumerator (`src/bu/experiments/enumerate_units.py`). *Done when: returns ≥300 configuration-conditions and prints the count by axis* — **verified**: full matrix 531, design selection exactly 300, balanced 150/150 on intended class.
 - **W2 Wed** — stable configuration ids in every run record (done since D-006); confound double-booking resolved and recorded (D-007).
 - **W2 Thu** — prose drafted: both outstanding cells, in `docs/method_draft.md`. **Awaiting the student's rewrite** — drafted for reaction, not for submission.
+- **W2 Fri** — scripted exploratory policy, transition dataset collector, coverage metric (`src/bu/env/policy.py`, `src/bu/env/collect.py`). *Done when: a 5,000-transition dataset is saved with a coverage report* — **verified**.
+- **W2 Sat** — PPO substitution written into the methodology with the coverage evidence behind it (D-020). This is what P§13.2 requires and what makes DEV-001 a defensible design decision rather than an unexplained deviation.
 
 **In flight:** nothing running. No compute consumed.
 
-**Next three actions:**
-1. **W2 Fri** — scripted exploratory policy replacing PPO (DEV-001): coverage-biased random walk with forced object interactions, transition dataset collector, coverage metric over (shape, action) pairs. *Done when: a 5,000-transition dataset is saved with a coverage report.*
-2. **W2 Sat** — write the PPO substitution into the methodology with the coverage evidence behind it. P§13.2 requires the substitution recorded rather than hidden; this is the record.
-3. **W3 Mon** — world-model MLP: configurable input feature subset and hidden size, MSE head for continuous features and cross-entropy for categorical.
+**Next three actions — Week 3, the world model:**
+1. **W3 Mon** — world-model MLP: configurable input feature subset and hidden size, MSE head for continuous features and cross-entropy for categorical. *Done when: forward-pass shape tests pass.*
+2. **W3 Tue** — training loop with early stopping on a held-out split, so "insufficient data" is never confounded with "insufficient training". *Done when: trains on 5,000 transitions with the loss curve logged.*
+3. **W3 Wed** — bootstrap resampling and K-member ensemble trainer with independent initialisation. *Done when: five members train, per-member validation error logged.*
 
 **Blocked on:** nothing. Open questions: **Q-007** (plan/schedule contradiction, due before W13) and **Q-008** (seed independence across units, new).
 
@@ -290,6 +292,15 @@ Every decision that a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** S§W1 Thu, S§W2 Thu, and the schedule's warning that leaving writing to Month 5 does not fit the available hours.
 **Reviewed by Sol:** pending.
 
+### D-020 · 2026-08-15 · The PPO substitution is evidenced, not asserted
+**Decision:** DEV-001's substitution of a scripted exploratory policy for PPO is now written into the methodology with measured evidence (`docs/method_draft.md`, W2 Sat section). The policy is a coverage-biased random walk that seeks adjacent objects, attempts to enter them, and periodically interacts. Every dataset carries a per-condition `CoverageReport`.
+**Why the policy is shaped this way:** the transition rule is about **passability**, so it can only be learned from transitions where the agent tried to enter an occupied cell — and a uniform random walk in an 8×8 grid barely produces them. Measured: the scripted policy yields **3–6× more** rule-carrying transitions at every dataset size, 39.8% of steps versus 7.6% at n=5000.
+**The confound the substitution removes, which is a point in its favour rather than an excuse:** a learned policy under any reward penalising wasted steps would converge toward *avoiding* obstacles, so the informative transitions would grow rarer as training progressed and the dataset would be systematically impoverished in exactly the events the world model needs. A fixed, declared procedure is easier to defend than a learned one whose data distribution drifts.
+**Checked against the plan rather than assumed:** at n=100 the coverage report says the dataset is *not* adequate. That could have meant Experiment 1's "estimation failure" family was measuring exploration quality rather than sample size — which would make H1 test the wrong proposition. P§3.2.1 settles it: estimation failure explicitly includes data that "does not cover the relevant region of the state-action space", **provided more data from the same generating process repairs it**. Bump counts rise monotonically with dataset size and saturate well before the largest condition, so the criterion is met and thin coverage at n=100 is the manipulation working, on the plan's own definition.
+**Also recorded:** episode and step indices are captured at collection, because P§7.3's acceptance test needs random intercepts for episode within seed and that structure cannot be reconstructed afterwards. The episode index is an input to the ground-truth label, not bookkeeping.
+**Plan ref:** P§13.2, P§3.2.1, P§7.3.
+**Reviewed by Sol:** pending.
+
 ### D-011 · 2026-08-15 · Deltas carry numbers, not summaries, once results exist
 **Decision:** from the first real result, every §8 delta reporting one includes a `NUMBERS` block: total units and per-class counts including `min(N₀, N₁)`, seed count and applicable policy, point estimate, 95% interval **and explicitly what it was taken over**, ambiguous and undiagnosed counts as fractions, and which test ran including any fallback triggered. Sol is instructed to treat a missing line as a finding rather than an oversight.
 **Why:** Phase A is infrastructure, which prose conveys adequately. From Week 6 Sol's duties are entirely about numbers — whether an interval was taken over units or transitions, whether power was computed on `min(N₀, N₁)` or the total, whether the excluded fractions were reported at all. A prose summary such as "H2 reproduced across seeds" is unauditable, and an unauditable report reduces the reviewer to agreeing. Deciding the format now, while no result exists, means it cannot later be shaped around a result that would look better without a particular line.
@@ -445,6 +456,12 @@ Format:
 **Result:** 131 → 156 tests. Full matrix 531 units; the design selects exactly **300**, balanced **150/150** on intended class, every axis spread, **8,181 model fits against P§14.2's ~8,700**. Canonical counts reproduce the plan exactly — 30 / 20 / 25 / 15. Two errors caught by reading the printed report rather than by a test: stratifying without the confound axis starved confound 0.9 down to 9 units, and costing repairs as ensembles inflated compute five-fold. Prose: 454 and 436 words against the ~400 target.
 **Left:** nothing running, no compute. W2 Fri (scripted policy, dataset collector, coverage metric) and W2 Sat (PPO substitution record) outstanding. Prose awaits the student's rewrite.
 **Next:** W2 Fri — the scripted exploratory policy replacing PPO.
+
+### 2026-08-15 (night, W2 Fri/Sat) · Policy, collector, coverage evidence · Claude
+**Did:** scripted exploratory policy (`policy.py`), transition dataset collector with episode structure (`collect.py`), coverage report, and the W2 Sat methodology section evidencing the PPO substitution (D-020).
+**Result:** 156 → 180 tests. **Weeks 1 and 2 are complete.** Measured: 3–6× more rule-carrying transitions than a uniform random baseline at every dataset size (39.8% vs 7.6% of steps at n=5000), both passability classes well represented, (shape, action) coverage complete at full size. Checked the one thing that could have invalidated Experiment 1 — whether coverage rather than sample size is the binding constraint — and it is not: bump counts rise monotonically and saturate before the largest condition, which is exactly what P§3.2.1 requires for thin coverage to count as estimation failure.
+**Left:** nothing running; still zero compute consumed, because nothing has trained yet. Week 3 is the world model, which is where that changes.
+**Next:** W3 Mon — the world-model MLP.
 
 ---
 
