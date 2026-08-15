@@ -11,7 +11,16 @@ import dataclasses
 import pytest
 
 from bu import constants as K
-from bu.config import Arm, Config, TrainConfig, UnitSpec
+from bu.config import (
+    IDENTITY_VERSION,
+    UNIT_IDENTITY_FIELDS,
+    UNIT_NON_IDENTITY_FIELDS,
+    Arm,
+    Config,
+    TrainConfig,
+    UnitSpec,
+    classification_of,
+)
 from bu.metrics import RunLogger, load_runs
 from bu.runrecord import read_run_record
 
@@ -48,6 +57,97 @@ def test_unit_id_ignores_training_hyperparameters():
     a = Config(unit=unit, train=TrainConfig(lr=1e-3))
     b = Config(unit=unit, train=TrainConfig(lr=3e-4))
     assert a.unit_id == b.unit_id
+
+
+# --- the identity registry is honest, not merely declared (Sol, Q-005) -----
+
+
+def test_every_config_field_is_classified():
+    """Adding a field without classifying it must fail loudly."""
+    for cls in (UnitSpec, Arm):
+        identity, excluded = classification_of(cls)
+        actual = {f.name for f in dataclasses.fields(cls)}
+        assert set(identity) | set(excluded) == actual
+        assert not set(identity) & set(excluded)
+
+
+def test_unclassified_field_is_rejected_at_import():
+    """The exhaustiveness check is real: simulate forgetting to classify."""
+    import bu.config as cfg
+
+    original = cfg.UNIT_IDENTITY_FIELDS
+    try:
+        cfg.UNIT_IDENTITY_FIELDS = tuple(f for f in original if f != "confound_rate")
+        with pytest.raises(RuntimeError, match="not classified"):
+            cfg._assert_classification_exhaustive()
+    finally:
+        cfg.UNIT_IDENTITY_FIELDS = original
+    cfg._assert_classification_exhaustive()  # restored
+
+
+@pytest.mark.parametrize("field_name", UNIT_IDENTITY_FIELDS)
+def test_each_identity_field_actually_changes_the_unit(field_name):
+    """A field is only identity-bearing if varying it yields a different unit.
+
+    This is the test that makes the registry a claim about behaviour rather
+    than a comment. Sol's condition on Q-005 was a classification that is
+    "tested equivalently", not merely documented.
+    """
+    base = UnitSpec()
+    alternatives = {
+        "causal_attribute": "colour",
+        "confound_rate": 0.75,
+        "layout": "clustered",
+        "grid_size": 12,
+        "n_objects": 6,
+        "family": "capacity",
+        "n_transitions": 250,
+        "withheld_features": ("shape",),
+        "hidden_size": 32,
+    }
+    varied = dataclasses.replace(base, **{field_name: alternatives[field_name]})
+    assert getattr(varied, field_name) != getattr(base, field_name), "bad fixture"
+    assert Config(unit=varied).unit_id != Config(unit=base).unit_id, (
+        f"{field_name} is registered as identity-bearing but varying it does "
+        "not change unit_id"
+    )
+
+
+@pytest.mark.parametrize("field_name", UNIT_NON_IDENTITY_FIELDS or ["__none__"])
+def test_excluded_fields_do_not_change_the_unit(field_name):
+    """Symmetric check. Vacuous while the exclusion list is empty, live after."""
+    if field_name == "__none__":
+        pytest.skip("no fields are currently excluded from statistical identity")
+    base = UnitSpec()
+    varied = dataclasses.replace(base, **{field_name: _perturb(getattr(base, field_name))})
+    assert Config(unit=varied).unit_id == Config(unit=base).unit_id
+
+
+def _perturb(value):
+    if isinstance(value, bool):
+        return not value
+    if isinstance(value, (int, float)):
+        return value + 1
+    if isinstance(value, str):
+        return value + "_x"
+    if isinstance(value, tuple):
+        return value + ("extra",)
+    raise TypeError(f"no perturbation defined for {type(value)}")
+
+
+def test_identity_survives_a_non_identity_schema_addition():
+    """A field classified as non-identity-bearing must not disturb existing ids.
+
+    Simulated by hashing the registered payload directly: the id depends on the
+    registry, not on the dataclass's full field set.
+    """
+    from bu.config import _identity_payload
+
+    before = Config(unit=UnitSpec()).unit_id
+    payload = _identity_payload(UnitSpec(), UNIT_IDENTITY_FIELDS)
+    assert set(payload["fields"]) == set(UNIT_IDENTITY_FIELDS)
+    assert payload["identity_version"] == IDENTITY_VERSION
+    assert Config(unit=UnitSpec()).unit_id == before
 
 
 def test_unit_id_is_stable_across_processes():

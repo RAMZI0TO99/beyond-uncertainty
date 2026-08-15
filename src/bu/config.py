@@ -19,12 +19,31 @@ Encoding the unit in the data model rather than in a later analysis script is
 deliberate. "Which runs form one labelled unit" is then a property of the
 config, not something reconstructed in Week 15 from directory names.
 
-Schema stability
-----------------
-An identity is a hash over the config's fields, so adding a field changes every
-id. SCHEMA_VERSION records which schema an id was computed under, and is written
-to every run record. The schema freezes at the end of Week 2, when the
-configuration axes are final (Schedule W2). No real run exists before Week 6.
+Statistical identity is registered, not inferred
+------------------------------------------------
+Statistical identity and configuration schema are different concepts, and this
+module keeps them apart (Sol, Q-005). Only fields that define an *independent
+configuration-condition* may affect ``unit_id``. Those fields are named
+explicitly in ``UNIT_IDENTITY_FIELDS``; everything deliberately excluded is
+named in ``UNIT_NON_IDENTITY_FIELDS``.
+
+Two mechanisms keep that boundary honest rather than aspirational:
+
+* Import-time exhaustiveness. Every field of ``UnitSpec`` must appear in exactly
+  one of the two lists. Adding a field without classifying it raises on import,
+  so the question "does this change the statistical unit?" cannot be skipped.
+* Tests that the classification is *true*, not merely declared: varying any
+  registered identity field must change ``unit_id``, and varying any excluded
+  field must not.
+
+``IDENTITY_VERSION`` versions the registry and is recorded in every run record.
+``SCHEMA_VERSION`` separately versions the serialisation format; a field may be
+added to the config without disturbing any existing id, provided it is
+classified as non-identity-bearing.
+
+Adding an identity-bearing axis does still change every id -- it genuinely
+enlarges the space of units. The axes freeze at the end of Week 2 and no real
+run exists before Week 6, so no label is ever at risk.
 """
 
 from __future__ import annotations
@@ -40,9 +59,15 @@ import yaml
 
 from . import constants as K
 
-#: Bump when a field is added to, removed from, or renamed in any identity
-#: dataclass below. Ids are comparable only within one schema version.
+#: Versions the *serialisation format*. Bump when a field is added, removed or
+#: renamed anywhere in the config, identity-bearing or not.
 SCHEMA_VERSION = 1
+
+#: Versions the *statistical identity registry* below. Bump only when the set of
+#: identity-bearing fields changes -- that is, when the space of configuration-
+#: conditions itself changes. Ids are comparable only within one identity
+#: version, and it is recorded in every run record.
+IDENTITY_VERSION = 1
 
 ARMS = ("baseline", "data_repair", "feature_repair", "capacity_repair")
 FAMILIES = ("estimation", "missing_feature", "capacity")
@@ -80,6 +105,37 @@ class UnitSpec:
                 raise ValueError(f"unknown withheld feature {f!r}")
         if not 0.0 <= self.confound_rate <= 1.0:
             raise ValueError("confound_rate must lie in [0, 1]")
+
+
+#: The registered statistical identity of a configuration-condition. A change to
+#: any of these is a different unit; a change to anything else is not.
+#:
+#: Order is fixed and is part of the hash input, so reordering this tuple is a
+#: change to IDENTITY_VERSION, not a cosmetic edit.
+UNIT_IDENTITY_FIELDS: tuple[str, ...] = (
+    # environment configuration axes (Plan §13.1.2)
+    "causal_attribute",
+    "confound_rate",
+    "layout",
+    "grid_size",
+    "n_objects",
+    # the failure condition -- the manipulation that defines the cell
+    "family",
+    "n_transitions",
+    "withheld_features",
+    "hidden_size",
+)
+
+#: Fields of UnitSpec deliberately excluded from statistical identity. Empty
+#: today: every field above is a genuine axis of the design. Anything added here
+#: needs a reason recorded in PROJECT_STATE.md §3, because excluding a field
+#: means two configs differing in it collapse to one unit.
+UNIT_NON_IDENTITY_FIELDS: tuple[str, ...] = ()
+
+#: Which arm distinguishes runs within a unit. The arm is not part of unit_id --
+#: that is the whole point: a failure condition and its repairs are one unit.
+ARM_IDENTITY_FIELDS: tuple[str, ...] = ("kind",)
+ARM_NON_IDENTITY_FIELDS: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -151,11 +207,23 @@ class Config:
 
     @property
     def unit_id(self) -> str:
-        return _hash(_to_plain(self.unit))
+        """Identity of the configuration-condition -- the statistical unit.
+
+        Hashes only the fields registered in UNIT_IDENTITY_FIELDS, in that
+        order, together with IDENTITY_VERSION. Nothing else in the config can
+        influence it.
+        """
+        return _hash(_identity_payload(self.unit, UNIT_IDENTITY_FIELDS))
 
     @property
     def config_id(self) -> str:
-        return _hash({"unit": _to_plain(self.unit), "arm": _to_plain(self.arm)})
+        """unit_id plus which arm of the repair protocol."""
+        return _hash(
+            {
+                "unit": _identity_payload(self.unit, UNIT_IDENTITY_FIELDS),
+                "arm": _identity_payload(self.arm, ARM_IDENTITY_FIELDS),
+            }
+        )
 
     @property
     def run_id(self) -> str:
@@ -221,3 +289,57 @@ def _hash(obj: Any) -> str:
     """Stable 12-hex-char content hash. Key order and float repr are canonical."""
     blob = json.dumps(obj, sort_keys=True, separators=(",", ":"), default=repr)
     return hashlib.sha256(blob.encode()).hexdigest()[:12]
+
+
+def _identity_payload(obj: Any, fields: tuple[str, ...]) -> dict[str, Any]:
+    """The registered identity-bearing fields of ``obj``, and nothing else."""
+    return {
+        "identity_version": IDENTITY_VERSION,
+        "fields": {name: _to_plain(getattr(obj, name)) for name in fields},
+    }
+
+
+def classification_of(cls: type) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return (identity, non_identity) field registries for a config dataclass."""
+    registries = {
+        UnitSpec: (UNIT_IDENTITY_FIELDS, UNIT_NON_IDENTITY_FIELDS),
+        Arm: (ARM_IDENTITY_FIELDS, ARM_NON_IDENTITY_FIELDS),
+    }
+    return registries[cls]
+
+
+def _assert_classification_exhaustive() -> None:
+    """Every config field is classified as identity-bearing or not.
+
+    Runs at import. A field added without being classified is a silent change
+    to what counts as an independent configuration-condition, which would
+    invalidate the power calculation and every confidence interval taken over
+    units -- so it fails loudly, immediately, at the point of editing.
+    """
+    for cls in (UnitSpec, Arm):
+        identity, excluded = classification_of(cls)
+        declared = set(identity) | set(excluded)
+        actual = {f.name for f in dataclasses.fields(cls)}
+
+        overlap = set(identity) & set(excluded)
+        if overlap:
+            raise RuntimeError(
+                f"{cls.__name__}: {sorted(overlap)} classified as both "
+                "identity-bearing and non-identity-bearing"
+            )
+        if unclassified := actual - declared:
+            raise RuntimeError(
+                f"{cls.__name__}: field(s) {sorted(unclassified)} are not "
+                "classified. Add each to the identity registry or to the "
+                "explicit exclusion list, and record the reason in "
+                "PROJECT_STATE.md §3. Does this field define an independent "
+                "configuration-condition?"
+            )
+        if phantom := declared - actual:
+            raise RuntimeError(
+                f"{cls.__name__}: registry names {sorted(phantom)}, which are "
+                "not fields of the dataclass"
+            )
+
+
+_assert_classification_exhaustive()

@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .config import SCHEMA_VERSION, Config
+from .config import IDENTITY_VERSION, SCHEMA_VERSION, UNIT_IDENTITY_FIELDS, Config
 
 #: Recorded for every run so an environment difference is visible in the record
 #: rather than inferred from a failure months later.
@@ -104,6 +104,10 @@ def write_run_record(
         "unit_id": config.unit_id,
         "seed": config.seed,
         "schema_version": SCHEMA_VERSION,
+        # Which identity registry produced unit_id. Ids are comparable only
+        # within one identity version (see config.UNIT_IDENTITY_FIELDS).
+        "identity_version": IDENTITY_VERSION,
+        "unit_identity_fields": list(UNIT_IDENTITY_FIELDS),
         "started_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "config": config.to_dict(),
         # What the arm actually trained, and which fields it changed. Stored

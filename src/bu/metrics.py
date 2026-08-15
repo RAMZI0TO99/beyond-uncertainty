@@ -102,6 +102,20 @@ def load_runs(
     thesis is taken over ``unit_id`` rather than over rows (Plan §10.7), and
     that is only convenient if the unit travels with the data.
 
+    .. warning::
+
+       **The ``family`` and ``unit_*`` columns are construction metadata.**
+       Plan §7.5 forbids the critic from seeing the condition label used to
+       construct a scenario, the dataset size, or the capacity setting -- and
+       all three are here. This frame is the experimenter's view, not the
+       critic's.
+
+       The Week 6 leakage firewall must therefore **whitelist** critic features
+       rather than blacklist metadata: a blacklist silently fails open every
+       time a column is added, and Plan §16 rates this leakage as "silent
+       invalidation of all critic results". Nothing in this module may be fed
+       to the critic dataset builder unfiltered.
+
     Returns an empty DataFrame with the identity columns if nothing is found,
     so callers can filter without a length check.
 
