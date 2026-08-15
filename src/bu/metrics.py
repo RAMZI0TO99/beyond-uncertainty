@@ -82,7 +82,10 @@ class RunLogger:
 
 def iter_run_dirs(root: str | Path = "runs") -> Iterator[Path]:
     """Yield every directory under ``root`` holding a run record."""
-    for p in sorted(Path(root).glob("*/run.json")):
+    # rglob rather than glob: batch runners may group runs into subdirectories
+    # by stage or sweep, and a run that is not found is a run silently missing
+    # from an analysis.
+    for p in sorted(Path(root).rglob("run.json")):
         yield p.parent
 
 
@@ -132,7 +135,7 @@ def load_runs(
         rec = read_run_record(run_dir)
         if wanted is not None and rec["run_id"] not in wanted:
             continue
-        if require_clean_git and not rec["git"]["trustworthy"]:
+        if require_clean_git and not rec.get("git", {}).get("trustworthy", False):
             raise RuntimeError(
                 f"run {rec['run_id']} was recorded from a dirty working tree; "
                 "its commit hash does not identify the code that ran"
@@ -164,6 +167,7 @@ _IDENTITY_COLS = (
     "unit_id",
     "config_id",
     "seed",
+    "stage",
     "arm",
     "family",
 )
@@ -176,6 +180,9 @@ def _identity_columns(rec: dict[str, Any]) -> dict[str, Any]:
         "unit_id": rec["unit_id"],
         "config_id": rec["config_id"],
         "seed": rec["seed"],
+        # Without this, a unit's five H1/H2 seeds cannot be separated from the
+        # twenty behind its repair label -- they differ only by stage (D-012).
+        "stage": rec.get("stage", rec["config"].get("stage", "unknown")),
         "arm": rec["config"]["arm"]["kind"],
         "family": unit["family"],
     }
@@ -190,7 +197,16 @@ def _identity_columns(rec: dict[str, Any]) -> dict[str, Any]:
 
 
 def _jsonable(obj: Any) -> Any:
-    """Last-resort encoder: numpy scalars and anything with .item()."""
+    """Encoder for values json does not handle natively.
+
+    Arrays are converted element-wise, never stringified. A numpy array logged
+    as "[0.1 0.2 0.3]" is silently unusable -- it survives the write, loads back
+    as a string, and only fails much later when a figure or a test tries to do
+    arithmetic on it. Per-dimension error (Plan §10.3) is exactly this shape.
+    """
+    tolist = getattr(obj, "tolist", None)
+    if callable(tolist):  # numpy arrays and numpy scalars both have this
+        return tolist()
     item = getattr(obj, "item", None)
     if callable(item):
         try:

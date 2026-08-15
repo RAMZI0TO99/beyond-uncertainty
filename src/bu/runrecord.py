@@ -33,6 +33,8 @@ TRACKED_PACKAGES = (
     "scipy",
     "statsmodels",
     "pandas",
+    "matplotlib",
+    "PyYAML",
 )
 
 
@@ -103,6 +105,10 @@ def write_run_record(
         "config_id": config.config_id,
         "unit_id": config.unit_id,
         "seed": config.seed,
+        # Promoted to the top level alongside the other identity parts: the
+        # stage says which experimental obligation this run discharges, and a
+        # unit can owe runs to several (D-012).
+        "stage": config.stage,
         "schema_version": SCHEMA_VERSION,
         # Which identity registry produced unit_id. Ids are comparable only
         # within one identity version (see config.UNIT_IDENTITY_FIELDS).

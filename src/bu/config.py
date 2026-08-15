@@ -61,13 +61,23 @@ from . import constants as K
 
 #: Versions the *serialisation format*. Bump when a field is added, removed or
 #: renamed anywhere in the config, identity-bearing or not.
-SCHEMA_VERSION = 1
+#:
+#: v2 (2026-08-15): ``stage`` added to Config and to the serialised form. v1
+#: omitted it from to_dict(), so a round-trip silently reset the stage to
+#: "pilot" and the run record could not say which obligation a run discharged.
+SCHEMA_VERSION = 2
 
-#: Versions the *statistical identity registry* below. Bump only when the set of
-#: identity-bearing fields changes -- that is, when the space of configuration-
-#: conditions itself changes. Ids are comparable only within one identity
+#: Versions the *statistical identity registry* below, and the canonicalisation
+#: used to compute ids from it. Ids are comparable only within one identity
 #: version, and it is recorded in every run record.
-IDENTITY_VERSION = 1
+#:
+#: v2 (2026-08-15): the field set is unchanged, but value canonicalisation was
+#: added -- numeric fields are coerced to their declared type and
+#: ``withheld_features`` is sorted and deduplicated. Before that, ``0`` and
+#: ``0.0`` hashed differently, as did ("shape","colour") and ("colour","shape"),
+#: so semantically identical conditions could occupy two units. Ids from v1 are
+#: not comparable with v2.
+IDENTITY_VERSION = 2
 
 ARMS = ("baseline", "data_repair", "feature_repair", "capacity_repair")
 
@@ -97,8 +107,16 @@ def seeds_for(stage: str) -> int | None:
     if stage not in STAGE_SEEDS:
         raise ValueError(f"unknown stage {stage!r}; expected one of {STAGES}")
     return STAGE_SEEDS[stage]
+
+
 FAMILIES = ("estimation", "missing_feature", "capacity")
 FEATURES = ("shape", "colour", "position")
+
+#: Procedural layout distributions (Plan §13.1.2 requires three; Schedule W2 Tue
+#: builds them). Registered so that a typo -- "unifrom" -- raises instead of
+#: silently creating an extra configuration-condition that no one ordered.
+#: Week 2 may rename these; it may not leave the set open.
+LAYOUTS = ("uniform", "clustered", "sparse")
 
 
 @dataclass(frozen=True)
@@ -127,11 +145,29 @@ class UnitSpec:
             raise ValueError(f"family must be one of {FAMILIES}, got {self.family!r}")
         if self.causal_attribute not in FEATURES:
             raise ValueError(f"causal_attribute must be one of {FEATURES}")
+        if self.layout not in LAYOUTS:
+            raise ValueError(f"layout must be one of {LAYOUTS}, got {self.layout!r}")
         for f in self.withheld_features:
             if f not in FEATURES:
                 raise ValueError(f"unknown withheld feature {f!r}")
         if not 0.0 <= self.confound_rate <= 1.0:
             raise ValueError("confound_rate must lie in [0, 1]")
+        for name in ("grid_size", "n_objects", "n_transitions", "hidden_size"):
+            if getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be positive, got {getattr(self, name)!r}")
+
+        # --- canonicalisation: two spellings of one condition must be one unit
+        #
+        # These fields feed unit_id, so a value that differs only in type or
+        # order would split one configuration-condition into two -- inflating
+        # the unit count that the power calculation rests on. Normalising here,
+        # at construction, means nothing downstream has to remember to do it.
+        object.__setattr__(self, "confound_rate", float(self.confound_rate))
+        for name in ("grid_size", "n_objects", "n_transitions", "hidden_size"):
+            object.__setattr__(self, name, int(getattr(self, name)))
+        object.__setattr__(
+            self, "withheld_features", tuple(sorted(set(self.withheld_features)))
+        )
 
 
 #: The registered statistical identity of a configuration-condition. A change to
@@ -243,6 +279,11 @@ class Config:
     def __post_init__(self) -> None:
         if self.stage not in STAGE_SEEDS:
             raise ValueError(f"unknown stage {self.stage!r}; expected one of {STAGES}")
+        # Fail while the batch is being enumerated, not hours later when the
+        # runner reaches this config on Kaggle. An impossible repair -- feature
+        # repair with nothing withheld, capacity repair already at maximum -- is
+        # a spec error, and a spec error found mid-batch costs a session.
+        self.arm.resolve(self.unit)
 
     # --- identities ---
 
@@ -291,6 +332,7 @@ class Config:
             "arm": _to_plain(self.arm),
             "train": _to_plain(self.train),
             "seed": self.seed,
+            "stage": self.stage,
             "tags": list(self.tags),
         }
 
@@ -307,6 +349,7 @@ class Config:
             arm=Arm(**d["arm"]),
             train=TrainConfig(**d["train"]),
             seed=int(d["seed"]),
+            stage=d["stage"],
             tags=tuple(d.get("tags", ())),
         )
 
@@ -334,8 +377,23 @@ def _to_plain(obj: Any) -> Any:
 
 
 def _hash(obj: Any) -> str:
-    """Stable 12-hex-char content hash. Key order and float repr are canonical."""
-    blob = json.dumps(obj, sort_keys=True, separators=(",", ":"), default=repr)
+    """Stable 12-hex-char content hash over JSON-representable values only.
+
+    Deliberately has **no** fallback encoder. A ``default=repr`` here would make
+    the hash non-deterministic for any object without a JSON form, because
+    ``repr`` of a plain object embeds its memory address -- so the same
+    condition would get a different unit_id on every process. That failure is
+    invisible in testing, since a freed address is often reused immediately and
+    two hashes then happen to agree.
+    """
+    try:
+        blob = json.dumps(obj, sort_keys=True, separators=(",", ":"))
+    except TypeError as exc:
+        raise TypeError(
+            f"{exc}. Identity values must be JSON-representable so the hash is "
+            "reproducible across processes. Convert the value to a scalar, "
+            "string or tuple before it reaches a config field."
+        ) from exc
     return hashlib.sha256(blob.encode()).hexdigest()[:12]
 
 
