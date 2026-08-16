@@ -1719,3 +1719,11 @@ workload.
 ```
 
 ```
+
+### 2026-08-16 (deltas 17–19 review) · A confound I built and then mis-diagnosed · Claude
+**Did:** actioned Sol's sixth review, which was the most serious yet. Verified all three material findings first; all three held and the first was worse than stated. Made the behaviour policy stationary (D-051), replaced the derived split with three disjoint fixed pools and shortened the episode (D-052), and closed Q-011 on Sol's ruling (D-053).
+**What I got wrong, and it was mine:** in D-049 I treated the policy's cross-episode drift as a *splitting* problem and said striding handled it. Sol showed it is a **data-generation** problem that striding does not touch. `ExploratoryPolicy` carried its coverage counters across episodes, and because Experiment 1's datasets are nested prefixes, **dataset size was confounded with behaviour distribution** — measured by prefix, moved fraction 0.340 → 0.527, rule-carrying transitions per step **0.520 → 0.280**, and the N=100 action distribution `[0.46, .15, .10, .15, .14]` against near-uniform at N=5000. The smallest condition was not "less data"; it was a different policy.
+**Result:** 344 → 346 tests. After resetting the counters per episode, moved fraction by *episode index* over 40 seeds shows no pattern — episode 0 at 0.5895 against 0.5614 for episodes 5+, **+1.1 SE**. Episodes are IID. Three pools verified: train is **exactly N** at every size (a 100-transition condition previously trained on 50), validation 400 and evaluation 1,000 transitions **byte-identical across N**. Episode length 50 → 10, so N=100 now holds ten training episodes rather than one, and its members draw 4–9 unique episodes where the bootstrap had exactly one possible sample. Coverage cost of the shorter episode: 748/1177 → 712/1123 rule-carrying transitions at N=5000, coverage 100% either way.
+**Superseded, deliberately flagged:** D-020's coverage numbers and yesterday's Q-011 disagreement measurements were both taken under the non-stationary policy and must not be reused.
+**Compute:** CPU only. GPU untouched all week under the student's other workload. **Zero GPU-hours consumed.**
+**Next:** W3 Fri — disagreement metrics and the first curves, on the fixed evaluation pool. First cell that spends compute; ask the student first.

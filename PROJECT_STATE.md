@@ -46,7 +46,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **346 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
+| **Tests** | **360 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
 | **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). Week 3 ran entirely on CPU in seconds; the student's GPU was under another workload all week |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -107,6 +107,8 @@ These are the preregistered quantities. They are fixed **before** data collectio
 | Episode length | **10** steps | D-052 |
 | Validation / evaluation pools | **40 / 100** complete episodes, fixed and shared | D-052 |
 | Bootstrap | **episode-level block bootstrap**, primary for H1/H2 | D-053 |
+| Bootstrap sensitivities | transition-level and init-only: **W3 Fri pilot only**, never a verdict, not in the 8,197 | D-054 |
+| Policy | adaptive counters **reset every episode**; overrides rejected on confirmatory seeds | D-051, D-054 |
 | Reduction order when behind | catch-up day → ablations → full Exp 5 → configuration count (only to measured MDE) | S "When you fall behind" |
 | **Seeds are not a reduction lever** | Withdrawn as an option in P v1.2 | P§14.3 |
 
@@ -189,6 +191,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-051** | 2026-08-16 | The behaviour policy is stationary across episodes | finding Sol's |
 | **D-052** | 2026-08-16 | Three disjoint pools, and a shorter episode | finding Sol's |
 | **D-053** | 2026-08-16 | Q-011 closed — episode bootstrap primary, alternatives are sensitivities | Sol's |
+| **D-054** | 2026-08-16 | Frozen data-generation procedure, bounded sensitivity scope, a claim withdrawn | finding Sol's |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -292,13 +295,13 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept here.
 
-### 2026-08-16 (deltas 17–19 review) · A confound I built and then mis-diagnosed · Claude
-**Did:** actioned Sol's sixth review, which was the most serious yet. Verified all three material findings first; all three held and the first was worse than stated. Made the behaviour policy stationary (D-051), replaced the derived split with three disjoint fixed pools and shortened the episode (D-052), and closed Q-011 on Sol's ruling (D-053).
-**What I got wrong, and it was mine:** in D-049 I treated the policy's cross-episode drift as a *splitting* problem and said striding handled it. Sol showed it is a **data-generation** problem that striding does not touch. `ExploratoryPolicy` carried its coverage counters across episodes, and because Experiment 1's datasets are nested prefixes, **dataset size was confounded with behaviour distribution** — measured by prefix, moved fraction 0.340 → 0.527, rule-carrying transitions per step **0.520 → 0.280**, and the N=100 action distribution `[0.46, .15, .10, .15, .14]` against near-uniform at N=5000. The smallest condition was not "less data"; it was a different policy.
-**Result:** 344 → 346 tests. After resetting the counters per episode, moved fraction by *episode index* over 40 seeds shows no pattern — episode 0 at 0.5895 against 0.5614 for episodes 5+, **+1.1 SE**. Episodes are IID. Three pools verified: train is **exactly N** at every size (a 100-transition condition previously trained on 50), validation 400 and evaluation 1,000 transitions **byte-identical across N**. Episode length 50 → 10, so N=100 now holds ten training episodes rather than one, and its members draw 4–9 unique episodes where the bootstrap had exactly one possible sample. Coverage cost of the shorter episode: 748/1177 → 712/1123 rule-carrying transitions at N=5000, coverage 100% either way.
-**Superseded, deliberately flagged:** D-020's coverage numbers and yesterday's Q-011 disagreement measurements were both taken under the non-stationary policy and must not be reused.
-**Compute:** CPU only. GPU untouched all week under the student's other workload. **Zero GPU-hours consumed.**
-**Next:** W3 Fri — disagreement metrics and the first curves, on the fixed evaluation pool. First cell that spends compute; ask the student first.
+### 2026-08-16 (delta 20 review) · Freezing the procedure, and withdrawing a claim · Claude
+**Did:** actioned Sol's seventh review (D-054). Withdrew the stationarity overclaim; froze the data-generation procedure against silent override; bounded the bootstrap sensitivities to the W3 Friday pilot; added the non-overlap and evaluation-isolation tests Sol asked for as *properties* rather than mechanisms; corrected D-020's methodology evidence.
+**The claim I withdrew:** D-051 reported "+1.1 SE by episode index" as though it established IID episodes. A null diagnostic never proves the null. Stationarity is a **structural** property — no mutable state but independent RNG progression crosses an episode boundary — and two structural tests now assert that instead.
+**Better evidence found while verifying episode length**, over eight seeds: the rule-carrying transition rate is **flat in N** (0.227 / 0.252 / 0.250 at N = 100 / 1,000 / 5,000) where it ran 0.520 / 0.355 / 0.280 before. Unique episodes per bootstrap member is 0.655 / 0.639 / 0.634 — the classic ~63% at *every* size including 100, which is the fix working. Disagreement at N=100 has CV 0.12 across five seeds.
+**Result:** 346 → 360 tests. `episode_length` now raises on a confirmatory seed, is recorded on the dataset and survives a round trip; the sensitivities are declared **W3 Friday pilot only**, not in the 8,197-fit plan, because a capability in `granularity=` is not a decision to use it.
+**Left:** nothing running, still **zero GPU-hours**. `docs/method_draft.md` carries the stationary figures and says plainly that the earlier measurement was superseded.
+**Next:** W3 Fri, once the bundle reaches Sol. **The recurring process failure is delivery, not the work:** Sol has now twice reported receiving only `DELTA_TO_SOL.md`, so D-047 … D-054 are still uncertified and `165892b` is still the last certified commit.
 ---
 
 ## 8. → TO SOL — *moved to its own file*

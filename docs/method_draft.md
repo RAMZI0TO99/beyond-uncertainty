@@ -166,3 +166,55 @@ operating as intended rather than a confound within it.
 A per-condition coverage report is written alongside every dataset, so this
 property is checked for each condition rather than assumed from the pilot.
 
+---
+
+## Correction to the behaviour-policy evidence *(2026-08-16, D-051 / D-054)*
+
+**The coverage figures reported in the W2 Sat section above were measured under
+a policy that is no longer the one this thesis uses, and are superseded.**
+
+The scripted policy carried its coverage counters *across* episodes. Because
+Experiment 1's datasets are nested prefixes of one collection, that made dataset
+size confounded with behaviour distribution: rule-carrying transitions per step
+ran at 0.520 in the first hundred transitions and 0.280 by the five-thousandth,
+and the action distribution at the smallest condition was far from uniform. The
+smallest condition was therefore not a smaller sample of the same process — it
+was a sample of a different one. A data-size sweep built on it would have varied
+two things and attributed both to sample size.
+
+The counters are now cleared at the start of every episode. Fixed action
+probabilities and the within-episode coverage logic are unchanged, so the
+substitution argument itself is unaffected: the policy still seeks the
+rule-carrying transitions a uniform random walk starves.
+
+**Evidence from the stationary generator**, over eight independent development
+seeds, reported as mean ± sd:
+
+| N | rule-carrying transitions per step | pass/block balance | (shape, action) coverage |
+|---|---|---|---|
+| 100 | 0.227 ± 0.082 | 0.608 ± 0.223 | 0.225 ± 0.083 |
+| 1,000 | 0.252 ± 0.025 | 0.694 ± 0.129 | 1.000 ± 0.000 |
+| 5,000 | 0.250 ± 0.006 | 0.686 ± 0.044 | 1.000 ± 0.000 |
+
+The rate of rule-carrying transitions is now **flat in N** rather than falling
+with it, which is the direct evidence that the confound is gone. Thin coverage
+at N = 100 remains, and remains the manipulation working on Plan §3.2.1's own
+definition — estimation failure includes data that does not cover the relevant
+region, provided more data from the same generating process repairs it, which it
+does.
+
+Episode length was shortened from 50 steps to 10 at the same time, so that the
+smallest condition contains ten independent episodes rather than two. That
+matters for the ensemble rather than for coverage: a block bootstrap over one
+training episode has exactly one possible sample. The measured cost is small —
+at N = 5,000, rule-carrying transitions fell from 748/1,177 to 712/1,123 with
+(shape, action) coverage complete either way.
+
+**A note on how this was established.** The generator is *designed* to produce
+episodes that are independent conditional on configuration and seed: environment
+state resets independently, every adaptive counter resets, the action
+probabilities and within-episode rules are fixed, and no mutable state other
+than independent random-number progression crosses an episode boundary. An
+episode-index diagnostic found no material residual drift. That diagnostic is
+consistent with the design; it does not by itself prove independence, and is not
+reported as though it did.

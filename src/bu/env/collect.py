@@ -32,7 +32,7 @@ import numpy as np
 
 from .. import constants as K
 from ..config import UnitSpec
-from ..streams import POOL_PURPOSES, stream
+from ..streams import POOL_PURPOSES, is_confirmatory, stream
 from .gridworld import INTERACT, N_ACTIONS, SHAPES, GridState, GridWorld, is_passable
 from .policy import ExploratoryPolicy
 
@@ -139,6 +139,11 @@ class TransitionDataset:
     unit: UnitSpec
     coverage: CoverageReport
     seed: int
+    #: Frozen experimental procedure, recorded so a dataset states the
+    #: generator that produced it rather than relying on whichever constant is
+    #: checked out (D-054).
+    episode_length: int = K.EPISODE_LENGTH
+    pool: str = "train"
 
     def __len__(self) -> int:
         return len(self.action)
@@ -167,6 +172,8 @@ class TransitionDataset:
                         for k, v in dataclasses.asdict(self.unit).items()
                     },
                     "seed": self.seed,
+                    "episode_length": self.episode_length,
+                    "pool": self.pool,
                     "coverage": self.coverage.to_dict(),
                 }
             ),
@@ -188,6 +195,8 @@ class TransitionDataset:
             step=z["step"],
             unit=UnitSpec(**unit_fields),
             seed=int(meta["seed"]),
+            episode_length=int(meta.get("episode_length", K.EPISODE_LENGTH)),
+            pool=str(meta.get("pool", "train")),
             coverage=CoverageReport(
                 n_transitions=cov["n_transitions"],
                 n_episodes=cov["n_episodes"],
@@ -243,6 +252,17 @@ def collect(
         raise ValueError(f"n_transitions must be positive, got {n}")
     if pool not in POOL_PURPOSES:
         raise ValueError(f"unknown pool {pool!r}; expected {sorted(POOL_PURPOSES)}")
+    # Episode length is frozen experimental procedure (D-052, D-054): it sets
+    # how many independent clusters a condition contains and therefore what a
+    # block bootstrap can resample. A development override is allowed and is
+    # recorded on the dataset; a confirmatory seed may not use one.
+    if episode_length != K.EPISODE_LENGTH and is_confirmatory(seed):
+        raise ValueError(
+            f"episode_length={episode_length} on confirmatory seed {seed}; the "
+            f"frozen value is {K.EPISODE_LENGTH} (D-052). Development overrides "
+            "are permitted below CONFIRMATORY_SEED_BASE and are recorded on the "
+            "dataset, but a confirmatory run may not change the procedure."
+        )
 
     env_purpose, policy_purpose = POOL_PURPOSES[pool]
     env = GridWorld(unit)
@@ -326,6 +346,8 @@ def collect(
         unit=unit,
         coverage=coverage,
         seed=seed,
+        episode_length=episode_length,
+        pool=pool,
     )
 
 

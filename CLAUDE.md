@@ -16,7 +16,10 @@ agent called Sol. **You have no memory of previous sessions.** This file and
 3. Check §6 for anything Sol asked for that has not been actioned.
 4. Check whether `DELTA_TO_SOL.md` is still undelivered — if so, **append**, do
    not overwrite (see *The mistake I already made*, below).
-5. Tell the student in two lines where things stand and what you think is next.
+5. **Check the bundle actually reached Sol.** Sol has twice reported receiving
+   the delta alone. Generating a bundle is not delivering one — if Sol's last
+   review says "uncertified", say so to the student before doing anything else.
+6. Tell the student in two lines where things stand and what you think is next.
    Wait for confirmation before starting.
 
 ```bash
@@ -106,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 346 passing, 1 skipped
+.venv/bin/python -m pytest -q                      # 360 passing, 1 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -182,6 +185,9 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
   I read a 97.7% loss share as "98% of the gradient" — measured, the trunk
   gradient was 16–36% activation, the opposite way round. Measure the quantity
   you are about to make a claim about (D-047).
+- **A null result never proves the null.** I reported "+1.1 SE by episode index"
+  as though it established IID episodes. It is *consistent* with them. Where a
+  property is structural, assert the structure (D-054).
 - **A number without its estimand is not a number.** Two consecutive Sol
   findings, both on the same paragraph and neither a coding error: I reported
   `min(N₀,N₁) = 115` as *the* effective sample size when it was a bound
@@ -198,8 +204,10 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 running roughly two weeks ahead of its own calendar (DEV-002).*
 
 **Weeks 1 and 2 complete and audited. Week 3 Mon, Tue and Wed done** — then
-substantially corrected by Sol's sixth review. Seven Sol reviews actioned on
-2026-08-16 (D-025 … D-053). Gate 1 is 2026-09-19. **Zero GPU-hours consumed** —
+substantially corrected by Sol's sixth and seventh reviews. Seven Sol reviews
+actioned on 2026-08-16 (D-025 … D-054). **D-047 … D-054 are UNCERTIFIED**: the
+bundles were generated but never reached Sol, so `165892b` is still the last
+certified commit and Sol blocks W3 Friday on it. Gate 1 is 2026-09-19. **Zero GPU-hours consumed** —
 everything so far runs on CPU in seconds.
 
 **The correction is the thing to understand before touching Week 3 code.** The

@@ -457,3 +457,19 @@ Every decision a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** P§9.1, P§10.3, S§W4 Mon.
 **Reviewed by Sol:** **yes — the ruling is Sol's.**
 
+### D-054 · 2026-08-16 · Frozen data-generation procedure, a bounded sensitivity scope, and a claim withdrawn
+**Three of Sol's clarifications, all accepted.**
+
+**(a) Stationarity is structural, and I overstated it.** D-051 reported "+1.1 SE by episode index" as though it established IID episodes. A null diagnostic never proves the null. The correct justification is *structural*: environment state resets independently, every adaptive counter resets, action probabilities and within-episode rules are fixed, and no mutable state other than independent RNG progression crosses an episode boundary. The statement of record: *"the revised generator is designed to produce IID episodes conditional on configuration and seed; the episode-index diagnostic found no material residual drift."* Two structural tests replace the appeal to the diagnostic — that no mutable policy state survives `reset()`, and that an episode's actions do not depend on how many episodes preceded it from identical state and RNG state.
+**Stronger evidence than either, found while verifying episode length:** the rule-carrying transition rate is now **flat in N** — 0.227 / 0.252 / 0.250 at N = 100 / 1,000 / 5,000 over eight seeds, against 0.520 / 0.355 / 0.280 before. A confound that ran with dataset size no longer does.
+
+**(b) The data-generation procedure is frozen and recorded.** `EPISODE_LENGTH = 10`, `VALIDATION_EPISODES = 40`, `EVALUATION_EPISODES = 100`, the six pool stream purposes, and the per-episode policy reset are all preregistered in `constants.py` and mirrored into §2. `episode_length` may still be overridden **below** `CONFIRMATORY_SEED_BASE`, is recorded on the dataset and survives a save/load round trip, and **raises** on a confirmatory seed. A procedure that a caller can change silently is not frozen.
+**Episode length verified before freezing**, as Sol required, over eight development seeds: rule-carrying rate, pass/block balance, action coverage, unique episodes per bootstrap member (0.655 / 0.639 / 0.634 — the classic ~63% at *every* N, including 100), and disagreement variance at N = 100 (CV 0.12 over five seeds).
+
+**(c) The bootstrap sensitivities have a declared scope, and it is the narrow one.** Episode block bootstrap is primary **across the registered design**. Transition-level and initialisation-only ensembles are **development diagnostics in the W3 Friday pilot only**: they do not enter a confirmatory verdict and they are not in the 8,197-fit execution plan. Sol's warning is the reason — applied to every H1/H2 condition they would add thousands of fits and invalidate the compute estimate, and a capability existing in `granularity=` is not a decision to use it. Running them on a preregistered canonical subset as formal ablations remains available, but requires charging the fits to the ablation allowance and updating the compute schedule **first**.
+**Transition bootstrap is never described as an equally valid alternative.** It is a diagnostic showing how disagreement changes when temporal dependence is ignored.
+
+**D-020's methodology evidence is superseded**, not silently replaced: `docs/method_draft.md` now carries the stationary-generator figures and states explicitly that the earlier development measurement was taken under a different generator. The qualitative substitution argument is unaffected and still supported.
+**Plan ref:** P§13.2, P§3.2.1, P§14.2, P§14.3. Corrects D-051's stationarity claim; bounds D-053's sensitivities.
+**Reviewed by Sol:** clarifications are Sol's; this implementation is not yet reviewed.
+

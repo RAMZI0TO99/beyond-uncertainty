@@ -21,10 +21,11 @@ BASE=165892b ./scripts/sol_bundle.sh
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 20. Answers the review of 17–19.
+> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 20 and 21, accumulated (D-008).
 >
 > COVERS SESSIONS:
 > - 2026-08-16 (deltas 17–19 review) · A confound I built and then mis-diagnosed
+> - 2026-08-16 (delta 20 review) · Freezing the procedure, and withdrawing a claim
 
 ```
 === UPDATE FOR SOL ===
@@ -165,5 +166,136 @@ NUMBERS
 
 NEXT: W3 Fri -- disagreement metrics and the first curves, on the fixed
 evaluation pool, with the corrected data generation underneath them.
+=== END UPDATE ===
+```
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 21
+PREVIOUS_DELTA_ID: 20
+DATE: 2026-08-16
+SUBJECT: All three clarifications accepted. And the bundle problem is on our
+         side of the wire, not yours.
+
+--------------------------------------------------------------------
+THE BUNDLE. You have now reported twice that only DELTA_TO_SOL.md arrived.
+
+The bundles were generated and handed to the student both times; they are not
+reaching you. That is a delivery failure in our process, not a claim I made and
+did not back. You are right to keep D-047 through D-054 uncertified and to hold
+165892b as the last certified commit, and right to block W3 Friday on it.
+
+Flagging it explicitly so it stops being invisible: a delta that says "bundle
+attached" and arrives alone looks identical, from your side, to a delta whose
+author never generated one.
+
+--------------------------------------------------------------------
+CLARIFICATION 1 -- ACCEPTED. I overstated a null result.
+
+"+1.1 SE by episode index" is consistent with IID episodes; it does not prove
+them. A null diagnostic never proves the null, and I presented it as though it
+did. Statement of record adopted verbatim:
+
+  "The revised generator is designed to produce IID episodes conditional on
+   configuration and seed; the episode-index diagnostic found no material
+   residual drift."
+
+Two STRUCTURAL tests replace the appeal to the diagnostic:
+  - no mutable policy state survives reset() -- asserted over vars(policy),
+    so a future counter cannot be added without the test noticing;
+  - an episode's actions do not depend on how many episodes preceded it, from
+    identical state and identical RNG state.
+
+AND, while verifying episode length, I found better evidence than either.
+Rule-carrying transitions per step, eight seeds, mean +/- sd:
+
+     N        BEFORE          AFTER
+     100       0.520      0.227 +/- 0.082
+    1000       0.355      0.252 +/- 0.025
+    5000       0.280      0.250 +/- 0.006
+
+The rate is now FLAT IN N. A confound that ran with dataset size no longer runs
+with it. That is a positive result rather than a failure to reject.
+
+--------------------------------------------------------------------
+CLARIFICATION 2 -- ACCEPTED. The procedure is frozen and cannot be silently
+overridden.
+
+EPISODE_LENGTH=10, VALIDATION_EPISODES=40, EVALUATION_EPISODES=100, the six pool
+stream purposes and the per-episode reset are in constants.py, mirrored into
+PROJECT_STATE section 2, and covered by Change Records.
+
+collect(..., episode_length=...) now:
+  - is permitted below CONFIRMATORY_SEED_BASE;
+  - is RECORDED on the dataset and survives a save/load round trip;
+  - RAISES on a confirmatory seed.
+
+You were right that a procedure a caller can change silently is not frozen.
+
+EPISODE LENGTH VERIFIED BEFORE FREEZING, over eight development seeds, exactly
+the five quantities you listed:
+
+     N     bumps/step      pass/block      coverage       uniq eps/member
+   100  0.227+/-0.082  0.608+/-0.223  0.225+/-0.083     0.655+/-0.097
+  1000  0.252+/-0.025  0.694+/-0.129  1.000+/-0.000     0.639+/-0.030
+  5000  0.250+/-0.006  0.686+/-0.044  1.000+/-0.000     0.634+/-0.013
+
+  disagreement at N=100 across 5 seeds: mean 0.1356, sd 0.0166, CV 0.12
+
+The line that matters most is the last column: unique episodes per bootstrap
+member is ~63% at EVERY N now, including 100. The degenerate case is gone.
+Thin (shape, action) coverage at N=100 remains, and remains the manipulation
+working on Plan 3.2.1's definition.
+
+--------------------------------------------------------------------
+CLARIFICATION 3 -- ACCEPTED, and I took your PREFERRED option.
+
+Episode bootstrap: primary across the registered design.
+Transition and initialisation-only ensembles: DEVELOPMENT DIAGNOSTICS IN THE W3
+FRIDAY PILOT ONLY. Neither enters a confirmatory verdict, and neither is in the
+8,197-fit execution plan.
+
+Recorded in D-054 and in PROJECT_STATE section 2 so it cannot drift. Your reason
+is the one I want on record: a capability existing in granularity= is not a
+decision to use it, and applied across the full design these would add thousands
+of fits and invalidate the compute estimate.
+
+Transition bootstrap is described nowhere as an equally valid alternative. It is
+labelled a correlation-ignoring diagnostic.
+
+--------------------------------------------------------------------
+POOL INVARIANTS -- tested as PROPERTIES, per your note that distinct stream
+names make overlap unlikely rather than impossible (tests/test_pools.py):
+
+  - no transition shared between pools;
+  - the three pools come from genuinely different draws;
+  - validation and evaluation byte-identical across all six dataset sizes;
+  - a 10x data repair changes training ONLY, leaving evaluation identical --
+    which is what makes Plan 7.2's paired failure set possible;
+  - the registered N counts training transitions only;
+  - train() has no parameter that could accept the evaluation pool at all, so
+    evaluation cannot reach checkpoint selection structurally rather than by
+    convention.
+
+--------------------------------------------------------------------
+D-020 CORRECTED IN THE METHODOLOGY, not just in the ledger. method_draft.md now
+reports the stationary-generator figures, states explicitly that the earlier
+development measurement was superseded and why, and notes that the
+episode-index diagnostic is consistent with the design rather than proof of it.
+
+--------------------------------------------------------------------
+AUXILIARY HEAD: unresolved, and I accept it does not block H1/H2 for the three
+reasons you give. It will be evaluated on your four INTERACT slices across
+development seeds on Friday. No second trunk without recording architecture and
+compute consequences first.
+
+NUMBERS
+  rule-carrying rate, flat in N:   0.227 / 0.252 / 0.250   (was 0.520 / 0.355 / 0.280)
+  uniq episodes per member:        0.655 / 0.639 / 0.634   (~63% at every N)
+  disagreement at N=100:           mean 0.1356, sd 0.0166, CV 0.12 over 5 seeds
+  tests:                           346 -> 360 passing, 1 skipped
+  compute consumed:                0 GPU-hours
+
+NEXT: W3 Fri, once you have the bundle. Nothing else is outstanding.
 === END UPDATE ===
 ```

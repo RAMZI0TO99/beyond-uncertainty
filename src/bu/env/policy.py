@@ -94,7 +94,16 @@ class ExploratoryPolicy:
         #: (context, action) -> count, where context is the adjacent object's
         #: causal class. Drives the coverage bias over actions.
         #:
-        #: **Reset at every episode** (D-051). These counters used to persist
+        #: **Reset at every episode** (D-051). The generator is *designed* to
+        #: produce episodes that are IID conditional on configuration and seed:
+        #: environment state resets independently, every adaptive counter
+        #: resets, action probabilities and within-episode rules are fixed, and
+        #: no mutable state except independent RNG progression crosses an
+        #: episode boundary. The episode-index diagnostic found no material
+        #: residual drift (+1.1 SE) -- which is consistent with that design,
+        #: **not a proof of it**. A null result never proves the null (D-054).
+        #:
+        #: These counters used to persist
         #: across episodes, which made the policy non-stationary: later episodes
         #: were drawn from a different behaviour distribution than earlier ones.
         #: Because Experiment 1's datasets are nested prefixes, dataset *size*
