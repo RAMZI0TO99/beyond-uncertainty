@@ -75,13 +75,18 @@ class ExploratoryPolicy:
         unit: UnitSpec,
         seed: int = 0,
         *,
+        rng: np.random.Generator | None = None,
         p_bump: float = 0.55,
         p_interact: float = 0.15,
         p_approach: float = 0.6,
         epsilon: float = 0.1,
     ) -> None:
         self.unit = unit
-        self.rng = np.random.default_rng(seed)
+        #: Adopted when supplied, so the policy draws from the named "policy"
+        #: stream rather than from a seed of its own (D-030). Keeping it
+        #: separate from the environment stream means a change to the policy's
+        #: consumption cannot shift the layouts a model trains on.
+        self.rng = np.random.default_rng(seed) if rng is None else rng
         self.p_bump = p_bump
         self.p_interact = p_interact
         self.p_approach = p_approach

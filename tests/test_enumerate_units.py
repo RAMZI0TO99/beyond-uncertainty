@@ -18,6 +18,7 @@ from bu.experiments.enumerate_units import (
     REFERENCE_CONFIG,
     _intended_class,
     arms_for,
+    execution_plan,
     repair_obligations,
     repair_stage_of,
     canonical_units,
@@ -85,7 +86,9 @@ def test_compute_stays_within_the_planned_budget():
     """
     fits = total_model_fits(design_units())
     assert fits["total"] <= 8700, fits
-    assert fits["baseline_ensembles"] == 6750
+    # 6,375 rather than 6,750: a repair-validation unit's twenty baseline seeds
+    # contain the five its canonical stage needs, and are not run again (D-033).
+    assert fits["baseline_ensembles"] == 6375
 
 
 # --- Sol's Q-003 ruling, enforced (D-007) ---------------------------------
@@ -329,3 +332,57 @@ def test_the_reference_configuration_is_preregistered_and_canonical():
 def test_every_ladder_rung_is_in_the_design():
     """A rung outside the design would lose its twenty-seed obligation silently."""
     assert ids(repair_validation_units()) <= ids(design_units())
+
+
+# --- one fit, many roles (Sol review 2026-08-16 · D-033) -------------------
+#
+# The defect these pin: summing stage obligations counted a repair-validation
+# unit's baseline at 25 seeds -- 5 for its canonical stage plus 20 for
+# validation -- when the 20 contain the 5. Stage is an analysis role and does
+# not reach the computation (D-030 keeps it out of every stream), so the extra
+# five would have been bit-identical duplicates. 375 fits of phantom compute.
+
+
+def test_no_fit_is_planned_twice():
+    plan = execution_plan(design_units())
+    assert len({f.fit_id for f in plan}) == len(plan)
+
+
+def test_twenty_supersedes_five_rather_than_adding_to_it():
+    ladder = repair_validation_units()
+    plan = execution_plan(design_units())
+    for unit in ladder:
+        uid = Config(unit=unit).unit_id
+        baselines = [
+            f for f in plan
+            if f.arm == "baseline" and Config(unit=f.unit).unit_id == uid
+        ]
+        assert len(baselines) == K.SEEDS_REPAIR_VALIDATION, (
+            f"{len(baselines)} baseline fits for a repair-validation unit; "
+            f"expected {K.SEEDS_REPAIR_VALIDATION}, not that plus its canonical stage"
+        )
+        # ... and the overlap is expressed as roles, not as extra runs.
+        shared = [f for f in baselines if len(f.roles) > 1]
+        assert len(shared) == K.SEEDS_HYPOTHESIS
+        for f in shared:
+            assert f.seed < K.SEEDS_HYPOTHESIS
+            assert "repair_validation" in f.roles
+
+
+def test_every_fit_discharges_at_least_one_role():
+    assert all(f.roles for f in execution_plan(design_units()))
+
+
+def test_the_estimate_is_taken_over_the_plan_that_would_run():
+    """The accounting and the schedule must be the same object.
+
+    They were not: the accountant summed obligations while the schedule would
+    have executed fits, and the two differed by exactly the double-counted
+    baselines.
+    """
+    units = design_units()
+    plan = execution_plan(units)
+    fits = total_model_fits(units)
+    assert fits["baseline_ensembles"] == sum(f.members for f in plan if f.arm == "baseline")
+    assert fits["repairs"] == sum(f.members for f in plan if f.arm != "baseline")
+    assert fits["total"] == 8197, fits

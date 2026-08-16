@@ -60,6 +60,20 @@ SEEDS_SWEEP = 3
 #: Ablations.
 SEEDS_ABLATION = 5
 
+#: Confirmatory runs start here; every seed below it is development/pilot data
+#: and is permanently excluded from confirmatory runs, failure-threshold
+#: calibration, repair acceptance, and critic training or evaluation (D-034).
+#:
+#: The exclusion is not hypothetical. Two design decisions were taken *after*
+#: inspecting collected data: the Week 2 coverage evidence behind the PPO
+#: substitution, and the identity-predictor probe that produced the
+#: dynamic-target decision. Data that shaped a design choice cannot also test
+#: it. A base offset rather than an inventory of tainted datasets, because an
+#: inventory has to be maintained correctly forever and an offset does not --
+#: everything ever looked at during development lies below the line by
+#: construction.
+CONFIRMATORY_SEED_BASE = 1000
+
 # --- Design scale (Plan §10.7) --------------------------------------------
 
 #: Minimum labelled configuration-conditions, and minimum held out. Power

@@ -35,7 +35,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from .. import constants as K
-from ..config import LAYOUTS, STAGE_SEEDS, Config, UnitSpec, seeds_for
+from ..config import LAYOUTS, STAGE_SEEDS, Arm, Config, UnitSpec, seeds_for
 
 #: Environment axes. Their product is the configuration space (Plan §13.1.2).
 CAUSAL_ATTRIBUTES = ("shape", "colour", "position")
@@ -515,6 +515,71 @@ def repair_obligations(
     return tuple(out)
 
 
+@dataclass(frozen=True)
+class Fit:
+    """One model fit, with every experimental role it discharges (D-033).
+
+    The unit of *compute*. Its identity is ``(unit, arm, seed)`` -- deliberately
+    not stage, because stage does not reach the computation (see
+    ``Config.fit_id``). A fit may carry several roles; it is still one fit.
+    """
+
+    unit: UnitSpec
+    arm: str
+    seed: int
+    roles: tuple[str, ...]
+
+    @property
+    def fit_id(self) -> str:
+        return Config(unit=self.unit, arm=Arm(self.arm), seed=self.seed).fit_id
+
+    @property
+    def members(self) -> int:
+        """A baseline trains an ensemble; a repair trains a single model.
+
+        H1 and H2 need disagreement across members, so a baseline owes K fits.
+        The Plan §7.3 acceptance test compares per-transition error before and
+        after and needs no spread, so a repair owes one.
+        """
+        return K.DEFAULT_ENSEMBLE_SIZE if self.arm == "baseline" else 1
+
+
+def execution_plan(units: tuple[UnitSpec, ...] | None = None) -> tuple[Fit, ...]:
+    """Every distinct model fit the design requires, deduplicated by fit identity.
+
+    This is the artefact that should be handed to a runner, and the one the
+    compute estimate must be taken over. Enumerating obligations and multiplying
+    by seeds double-counts, because obligations overlap: a repair-validation
+    unit's twenty baseline seeds *contain* the five its canonical stage needs.
+    Twenty supersedes five -- so seeds 0-4 carry both roles rather than running
+    twice.
+    """
+    units = full_matrix() if units is None else units
+
+    by_unit: dict[str, list[Obligation]] = {}
+    for ob in obligations(units):
+        by_unit.setdefault(ob.unit_id, []).append(ob)
+
+    plan: list[Fit] = []
+    for unit in units:
+        uid = Config(unit=unit).unit_id
+        demands = by_unit[uid]
+
+        # Baselines: one fit per seed in the union of what the stages demand.
+        for seed in range(max(ob.seeds for ob in demands)):
+            roles = tuple(sorted(ob.stage for ob in demands if seed < ob.seeds))
+            plan.append(Fit(unit=unit, arm="baseline", seed=seed, roles=roles))
+
+        # Repairs: their own stage policy, which is not the baseline's.
+        stage = repair_stage_of(unit)
+        for arm in arms_for(unit):
+            if arm == "baseline":
+                continue
+            for seed in range(seeds_for(stage)):  # type: ignore[arg-type]
+                plan.append(Fit(unit=unit, arm=arm, seed=seed, roles=(stage,)))
+    return tuple(plan)
+
+
 def total_model_fits(units: tuple[UnitSpec, ...] | None = None) -> dict[str, int]:
     """Model fits implied by the enumeration, split the way Plan §14.2 splits it.
 
@@ -534,12 +599,15 @@ def total_model_fits(units: tuple[UnitSpec, ...] | None = None) -> dict[str, int
     units by 17 seeds per arm, and -- worse than the arithmetic -- it described a
     schedule in which a twenty-seed baseline was paired against a three-seed
     repair, which cannot support the Plan §7.3 test that creates every label.
+
+    The baseline side is **deduplicated by fit identity** (D-033). Summing
+    obligations counted a repair-validation unit's baseline at twenty-five
+    seeds -- five for its canonical stage plus twenty for validation -- when the
+    twenty contain the five. Stage labels must not create scientific fits.
     """
-    units = full_matrix() if units is None else units
-    baseline_fits = sum(
-        ob.seeds * K.DEFAULT_ENSEMBLE_SIZE for ob in obligations(units)
-    )
-    repair_fits = sum(ob.seeds for ob in repair_obligations(units))
+    plan = execution_plan(units)
+    baseline_fits = sum(f.members for f in plan if f.arm == "baseline")
+    repair_fits = sum(f.members for f in plan if f.arm != "baseline")
     return {
         "baseline_ensembles": baseline_fits,
         "repairs": repair_fits,

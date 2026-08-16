@@ -319,6 +319,25 @@ class Config:
         return f"{self.config_id}-{self.stage}-s{self.seed:03d}"
 
     @property
+    def fit_id(self) -> str:
+        """Identity of the *computation*: config_id + seed, and no stage (D-033).
+
+        ``run_id`` answers "which obligation does this record discharge"; this
+        answers "is this the same model fit". They are different questions and
+        conflating them cost 375 fits of phantom compute: a canonical condition
+        owing five seeds to an H1/H2 claim and twenty to repair validation was
+        counted as twenty-five, when seeds 0-4 are one set of runs wearing two
+        labels.
+
+        They are the same fit because nothing that varies between the two
+        obligations reaches the computation. D-030 derives every stream from
+        ``(unit_id, seed, purpose)`` -- stage is deliberately not in it -- so
+        the two would be bit-identical. Stage is an analysis role, not a
+        property of the model.
+        """
+        return f"{self.config_id}-s{self.seed:03d}"
+
+    @property
     def effective_unit(self) -> UnitSpec:
         """The unit as this arm trains it, after the repair is applied."""
         return self.arm.resolve(self.unit)

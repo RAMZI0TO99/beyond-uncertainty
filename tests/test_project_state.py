@@ -21,6 +21,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 STATE = ROOT / "PROJECT_STATE.md"
 DELTA = ROOT / "DELTA_TO_SOL.md"
+DECISIONS = ROOT / "DECISIONS.md"
 MAX_LINES = 500
 
 
@@ -138,8 +139,14 @@ def test_delivery_flag_is_present_and_unambiguous(delta_block: str):
     assert len(flags) == 1, f"expected exactly one delivery flag, found {flags}"
 
 
-def test_decision_ids_are_unique_and_contiguous(text: str):
-    ids = [int(m) for m in re.findall(r"^### D-(\d{3}) ·", text, re.M)]
+@pytest.fixture(scope="module")
+def decisions() -> str:
+    assert DECISIONS.exists(), "DECISIONS.md is missing -- the ledger has no home"
+    return DECISIONS.read_text(encoding="utf-8")
+
+
+def test_decision_ids_are_unique_and_contiguous(decisions: str):
+    ids = [int(m) for m in re.findall(r"^### D-(\d{3}) ·", decisions, re.M)]
     assert ids, "no decisions found"
     assert len(set(ids)) == len(ids), (
         f"duplicate decision ids: {sorted(i for i in ids if ids.count(i) > 1)}"
@@ -169,6 +176,7 @@ def test_frozen_constants_match_the_code(text: str):
         f"**±{K.EQUIVALENCE_MARGIN_PP:.0f} percentage points**": "equivalence margin",
         f"**{K.SEEDS_REPAIR_VALIDATION}**": "repair-validation seeds",
         f"**{K.MIN_LABELLED_UNITS}**": "minimum labelled units",
+        f"**{K.CONFIRMATORY_SEED_BASE}**": "confirmatory seed base",
     }
     for needle, what in checks.items():
         assert needle in text, f"§2 does not state the code's {what} ({needle})"
@@ -190,3 +198,23 @@ def test_state_points_at_the_delta_file(text: str):
 def test_delta_file_is_pasteable(delta_block: str):
     n = len(delta_block.splitlines())
     assert n <= 400, f"{n} lines; split or deliver before it stops being read"
+
+
+def test_every_decision_is_indexed_in_the_state_file(text: str, decisions: str):
+    """The ledger split (D-037) must not let a decision fall out of view.
+
+    §3 keeps a one-line index precisely so relocating the records is not
+    archiving them. A record filed into DECISIONS.md but absent from the index
+    would be invisible to anyone reading the pasted state file -- which is the
+    failure the split was supposed to avoid, arriving by another route.
+    """
+    filed = set(re.findall(r"^### (D-\d{3}) ·", decisions, re.M))
+    indexed = set(re.findall(r"\*\*(D-\d{3})\*\*", text))
+    assert filed == indexed, {
+        "filed but not indexed": sorted(filed - indexed),
+        "indexed but not filed": sorted(indexed - filed),
+    }
+
+
+def test_the_state_file_points_at_the_ledger(text: str):
+    assert "DECISIONS.md" in text

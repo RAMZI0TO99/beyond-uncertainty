@@ -8,8 +8,9 @@ agent called Sol. **You have no memory of previous sessions.** This file and
 
 ## First five minutes, in order
 
-1. **Read `PROJECT_STATE.md` top to bottom.** §1 is where the project stands, §2
-   is what you may not change, §3–§5 are what past-you already decided.
+1. **Read `PROJECT_STATE.md` top to bottom**, then `DECISIONS.md`. §1 is where
+   the project stands, §2 is what you may not change, §3's index points into the
+   ledger, §4–§5 are deviations and gates.
 2. Check §1's *Last updated* date against today. Stale by more than a week? Say
    so before acting.
 3. Check §6 for anything Sol asked for that has not been actioned.
@@ -104,7 +105,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 204 passing, 1 skipped
+.venv/bin/python -m pytest -q                      # 247 passing, 1 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 ./scripts/sol_bundle.sh src/bu/config.py           # verification bundle for Sol
 ```
@@ -133,15 +134,19 @@ src/bu/
   env/policy.py     scripted exploratory policy replacing PPO
   env/collect.py    dataset + coverage report; records episode structure
   experiments/enumerate_units.py  the 300-unit design matrix
+  streams.py     named RNG streams: independent across units, paired within a comparison
   models/ stats/    empty — Week 3 and Weeks 4–5
 ```
 
-**The three identities, which most analysis discipline follows from:**
+**The four identities, which most analysis discipline follows from:**
 `unit_id` is the configuration-condition — the statistical unit for every
 confidence interval, **shared by a failure condition and all its repair arms**,
 which is what makes a label assignable. `config_id` adds the arm. `run_id` adds
-stage *and* seed — stage matters because one unit can owe five seeds to an H1/H2
-claim and twenty to repair validation, overlapping on seeds 0–4.
+stage *and* seed, so a record says which obligation it discharges. `fit_id` is
+`config_id + seed` with **no stage** — the identity of the *computation*.
+Keep the last two apart: one unit owes 5 seeds to an H1/H2 claim and 20 to
+repair validation, and the twenty **contain** the five. They are one set of fits
+wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ---
 
@@ -159,30 +164,38 @@ claim and twenty to repair validation, overlapping on seeds 0–4.
   estimation failure if more data repairs it. Reading the source settled it.
 - **Read printed reports, not just assertions.** Confound-0.9 starvation (9 units
   vs 99) and a five-fold compute overestimate were both invisible to the suite.
+- **Verify Sol's findings before acting on them.** Every one so far has held, and
+  two were *worse* than stated — but the checking is what makes actioning them
+  honest, and twice it sharpened the finding. Reproduce the arithmetic yourself.
+- **Give Sol the bundle, never a folder.** Sol once reviewed a stale copy and
+  correctly refused to certify it. `sol_bundle.sh` states commit and dirty flag
+  in its first three lines; a folder states nothing (D-036).
 
 ---
 
 ## Where the project stands
 
-Weeks 1 and 2 complete and audited, and Sol's 2026-08-16 review actioned in
-full (D-025 … D-031). **Zero compute consumed** — nothing has trained. Gate 1
-is 2026-09-19. Design: 300 units, 150/150, **8,572 fits** against ~8,700.
+Weeks 1 and 2 complete and audited, and **both** of Sol's 2026-08-16 reviews
+actioned in full (D-025 … D-037). **Zero compute consumed** — nothing has
+trained. Gate 1 is 2026-09-19. Design: 300 units, 150/150, **8,197 fits**
+against ~8,700. No open questions.
 
-**Next: Week 3, the world model — but two things come first.**
+**Next: Week 3, the world model. Nothing blocks it.**
 
-1. **Build the D-030 named-stream module.** Sol answered Q-008: named streams
-   for environment / policy / bootstrap / weight-init, `(unit_id, seed, purpose)`
-   for sweep-only units, a preregistered `comparison_group_id` for paired
-   canonical comparisons, and `arm` **never** in the failure-set stream. It is
-   decided and *unbuilt*, and W3 Wed's ensemble is the first consumer.
-2. **Settle Q-009 before the MLP.** 26 of 30 output dims never change within an
-   episode; an identity predictor scores MSE 0.0047 and 92.6% of its residual is
-   the two agent-position dims. So the rule lives in 2 of 30 dims, and obs dim
-   differs by family (30 vs 22), so the error *scale* differs between families
-   for encoding reasons. P§10.1's failure threshold freezes permanently W4 Fri.
+W3 Mon the MLP — **D-032 fixes what it predicts**: next agent position and
+activation bits only; static object attributes are deterministic passthrough and
+never enter the loss or the error score. The primary error is on agent position,
+over movement transitions, grid-normalised; activation is a secondary metric.
+This is not a stylistic choice — 26 of 30 output dims never change within an
+episode, so full-state MSE dilutes the passability rule ~15-fold and rescales it
+between families as withholding changes the observation width (30 dims vs 22).
 
-Then W3 Mon the MLP, W3 Tue the training loop — **split by episode, not by
-transition**, or early stopping leaks — W3 Wed the bootstrap ensemble, W3 Fri
-disagreement metrics and the first curves.
+W3 Tue the training loop — **split by episode, not by transition**, or early
+stopping leaks. W3 Wed the bootstrap ensemble, drawing from the `bootstrap` and
+`init` streams. W3 Fri disagreement metrics and the first curves.
+
+**Confirmatory runs use seeds ≥ `CONFIRMATORY_SEED_BASE` (1000).** Everything
+below is pilot data and may never enter a confirmatory result, the threshold
+calibration, repair acceptance, or the critic (D-034).
 
 Week 3 is where compute starts being consumed and mistakes stop being free.

@@ -31,6 +31,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from ..config import UnitSpec
+from ..streams import stream
 from .gridworld import INTERACT, N_ACTIONS, SHAPES, GridState, GridWorld, is_passable
 from .policy import ExploratoryPolicy
 
@@ -203,6 +204,7 @@ def collect(
     n_transitions: int | None = None,
     *,
     seed: int = 0,
+    stage: str = "pilot",
     episode_length: int = DEFAULT_EPISODE_LENGTH,
     policy: Policy | None = None,
 ) -> TransitionDataset:
@@ -214,13 +216,30 @@ def collect(
 
     Episodes are fixed-length and each begins with a fresh environment layout,
     so the dataset spans many object arrangements rather than one.
+
+    Randomness comes from the named ``env`` and ``policy`` streams (D-030), keyed
+    on ``stage``'s comparison group. Two consequences worth stating, because
+    both are design requirements rather than side effects:
+
+    * within Experiment 1, the six dataset sizes are **nested prefixes** -- the
+      generator flows across episodes instead of being reseeded per episode, so
+      collecting 250 transitions reproduces the first 100 exactly;
+    * across the configuration sweep, two different units at the same seed draw
+      **independent** layouts, because the key includes the unit rather than the
+      seed alone. That coupling is what Q-008 was raised about, and confidence
+      intervals taken over units depend on its absence.
     """
     n = unit.n_transitions if n_transitions is None else n_transitions
     if n <= 0:
         raise ValueError(f"n_transitions must be positive, got {n}")
 
     env = GridWorld(unit)
-    pol = ExploratoryPolicy(unit, seed=seed) if policy is None else policy
+    env_rng = stream(unit, stage, "env", seed)
+    pol = (
+        ExploratoryPolicy(unit, rng=stream(unit, stage, "policy", seed))
+        if policy is None
+        else policy
+    )
 
     obs_list: list[np.ndarray] = []
     next_list: list[np.ndarray] = []
@@ -235,7 +254,7 @@ def collect(
 
     episode = 0
     while len(actions) < n:
-        _, info = env.reset(seed=seed * 100_000 + episode)
+        _, info = env.reset(rng=env_rng)
         state: GridState = info["state"]
 
         for step in range(episode_length):

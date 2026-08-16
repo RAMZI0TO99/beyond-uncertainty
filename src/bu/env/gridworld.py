@@ -156,9 +156,30 @@ class GridWorld(_BASE):
     # --- Gymnasium API ----------------------------------------------------
 
     def reset(
-        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+        self,
+        *,
+        seed: int | None = None,
+        rng: np.random.Generator | None = None,
+        options: dict[str, Any] | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
-        if seed is not None:
+        """Generate a fresh layout.
+
+        ``rng`` **adopts** a generator rather than seeding one, and that is the
+        difference that matters (D-030). A generator handed in keeps flowing
+        across episodes, so a collection of 250 transitions begins with exactly
+        the 100 a collection of 100 would produce -- Experiment 1's datasets are
+        nested prefixes rather than independent draws, which is what makes the
+        data-size sweep vary the amount of data and nothing else.
+
+        ``seed`` remains for tests and one-off probes. It reseeds, so successive
+        resets repeat, and two different units at the same seed get correlated
+        layouts -- which is precisely the coupling Q-008 was raised about.
+        """
+        if rng is not None and seed is not None:
+            raise ValueError("pass rng or seed, not both: they specify different streams")
+        if rng is not None:
+            self._rng = rng
+        elif seed is not None:
             self._rng = np.random.default_rng(seed)
         self._state = self._generate()
         return self.encoder.encode(self._state), {"state": self._state}
