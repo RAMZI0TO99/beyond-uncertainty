@@ -109,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 394 passing, 1 skipped
+.venv/bin/python -m pytest -q                      # 418 passing, 1 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -142,6 +142,8 @@ src/bu/
   models/world_model.py  the MLP; dynamic-only target, detached auxiliary head
   models/train.py        early stopping on the movement-position loss only
   models/ensemble.py     K members; episode block bootstrap of the training pool
+  models/uncertainty.py  P§10.3's disagreement, predictive variance, H2 ratio
+  experiments/w3_pilot.py  the W3 Fri sweep; per-transition export
   stats/            empty — Weeks 4–5
 ```
 
