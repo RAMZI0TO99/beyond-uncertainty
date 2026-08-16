@@ -106,3 +106,38 @@ def test_the_check_fires_even_without_require_confirmatory(tmp_path):
 
     with pytest.raises(RuntimeError):
         load_runs(tmp_path, require_confirmatory=False)
+
+
+def test_a_non_boolean_confirmatory_flag_is_rejected(tmp_path):
+    """`bool("false")` is True, so a truthiness check waves through the exact
+    corruption this validation exists to catch (D-045)."""
+    cfg = _run(tmp_path, 0)
+    record = tmp_path / cfg.run_id / "run.json"
+    data = json.loads(record.read_text(encoding="utf-8"))
+    data["confirmatory"] = "false"  # truthy string meaning the opposite
+    record.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="must be a JSON boolean"):
+        load_runs(tmp_path)
+
+
+def test_an_unrecognised_seed_partition_is_rejected(tmp_path):
+    cfg = _run(tmp_path, 0)
+    record = tmp_path / cfg.run_id / "run.json"
+    data = json.loads(record.read_text(encoding="utf-8"))
+    data["seed_partition"] = "Development"  # not one of the permitted strings
+    record.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="not one of"):
+        load_runs(tmp_path)
+
+
+def test_a_truthy_non_boolean_would_have_passed_the_old_check(tmp_path):
+    """Pins why the type check is separate from the value check.
+
+    Without it, "false" on a development run compares equal to
+    is_confirmatory(seed) == False only after coercion -- and bool("false") is
+    True, so it did not even do that. It passed as confirmatory.
+    """
+    assert bool("false") is True
+    assert type("false") is not bool

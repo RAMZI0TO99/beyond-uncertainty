@@ -520,9 +520,13 @@ def repair_obligations(
 class Fit:
     """One model fit, with every experimental role it discharges (D-033).
 
-    The unit of *compute*. Its identity is ``(unit, arm, seed)`` -- deliberately
-    not stage, because stage does not reach the computation (see
-    ``Config.fit_id``). A fit may carry several roles; it is still one fit.
+    The unit of *compute*. Its identity is ``(unit, arm, seed)``.
+
+    Stage **can** affect data-stream derivation, through ``comparison_stage``.
+    A fit omits stage from its identity only because ``execution_plan``
+    verifies that every role merged into that fit resolves to identical
+    streams (D-038) -- not because stage cannot reach the computation. A fit
+    may carry several roles; it is still one fit.
     """
 
     unit: UnitSpec

@@ -42,11 +42,11 @@ This is the single shared working file for the project. It is written by Claude,
 | **Last updated** | 2026-08-16 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1 and 2 complete and audited**, plus all four of Sol's 2026-08-16 reviews actioned. Running ahead of the 2026-08-17 start — see DEV-002 |
+| **Current week / day** | **Weeks 1 and 2 complete and audited**, plus all five of Sol's 2026-08-16 reviews actioned. Running ahead of the 2026-08-17 start — see DEV-002 |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **265 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, and the stream-pairing properties of D-030 |
+| **Tests** | **268 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, and the stream-pairing properties of D-030 |
 | **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -63,8 +63,8 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 - **Week 1** — repo, `constants.py` (D-005), config and three identities (D-006), run records, JSONL logging, gridworld, masking encoder. Audited: seven defects (D-015), version bump under a Change Record (D-016).
 - **Week 2** — confound parameter, enumerator (D-018), scripted policy and collector with coverage evidence (D-020), both prose cells drafted (D-019, awaiting the student's rewrite). Audited: six defects (D-021).
 - **Sol's earlier rulings implemented** — identity registry (D-009), `stage` in run identity (D-012), critic whitelist frozen (D-013).
-- **All four of Sol's 2026-08-16 reviews actioned in full** (D-025 … D-043). All four verdicts were CHALLENGED; every finding was independently verified before anything changed, and every one stood. The second found 375 fits of phantom compute; the fourth caught **me** overstating a worst-case bound as a measured result (D-042) — the only finding so far that was about my reasoning rather than the code.
-- **D-030's named streams are built** (`src/bu/streams.py`), verified on the pairing properties rather than merely present: Experiment 1's datasets are nested prefixes, 2A/2B levels share a group, units in **different comparison groups** are independent at equal seeds — units inside one group are correlated by design (D-039, D-042). `arm` never affects stream identity; raw `stage` is absent from a key but can reach data-stream *derivation* via `comparison_stage`, which is why `execution_plan` verifies that every role merged into one fit resolves to identical streams (D-038).
+- **All five of Sol's 2026-08-16 reviews actioned in full** (D-025 … D-045). All five verdicts were CHALLENGED; every finding was independently verified before anything changed, and every one stood. The second found 375 fits of phantom compute. The fourth and fifth were both about **my reasoning rather than the code**, on the same paragraph: a worst-case bound reported as a measurement (D-042), then two different estimands compared as if one approximated the other (D-044).
+- **D-030's named streams are built** (`src/bu/streams.py`), verified on the pairing properties rather than merely present: Experiment 1's datasets are nested prefixes, 2A/2B levels share a group, units in **different comparison groups** are independent at equal seeds — units inside one group are correlated by design (D-039, corrected by D-042 and D-044). `arm` never affects stream identity; raw `stage` is absent from a key but can reach data-stream *derivation* via `comparison_stage`, which is why `execution_plan` verifies that every role merged into one fit resolves to identical streams (D-038).
 
 **In flight:** nothing running. **No compute consumed.**
 
@@ -97,6 +97,7 @@ These are the preregistered quantities. They are fixed **before** data collectio
 | Statistical unit | The **configuration-condition** — throughout | P§10.7 |
 | Failure threshold | Calibrated W4 Fri on a reference model, then **frozen permanently** | S§W4, P§10.1 |
 | Compute escalation trigger | ≈ **120 GPU-hours** | P§14.3 |
+| Balanced-accuracy weighting | **unit** — equal weight per configuration-condition; group-bootstrap intervals | D-044 |
 | Confirmatory seed base | **1000** — every seed below it is pilot data, permanently excluded | D-034 |
 | Reduction order when behind | catch-up day → ablations → full Exp 5 → configuration count (only to measured MDE) | S "When you fall behind" |
 | **Seeds are not a reduction lever** | Withdrawn as an option in P v1.2 | P§14.3 |
@@ -170,6 +171,8 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-041** | 2026-08-16 | The bundle selects its own contents | finding Sol's |
 | **D-042** | 2026-08-16 | Correction to D-039 — 115 is a worst-case bound, not the effective sample size | Sol's |
 | **D-043** | 2026-08-16 | A bundle base must be Sol-*certified*, not merely reviewed | finding Sol's |
+| **D-044** | 2026-08-16 | Correction to D-042 — the ICC = 1 boundary is a property of the estimator | Sol's |
+| **D-045** | 2026-08-16 | Recorded metadata is validated by type, then by value | finding Sol's |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -261,7 +264,7 @@ Two conditions:
 | C-002 | Build the D-030 named-stream module | Sol, 2026-08-16 | **Done** → `src/bu/streams.py`, `tests/test_streams.py` |
 | C-004 | File the dynamic-target decision; correct the baseline accounting; mark inspected data as pilot; implement named streams; regenerate the Sol bundle | Sol, 2026-08-16 (delta 11) | **Done** → D-032 … D-036 |
 | C-005 | Grouped dataset partitioning for the critic splitter — a comparison group never spans a split | Sol, 2026-08-16 (delta 12) | **Open** — key and report built (D-039); splitter is W6/W11 |
-| C-006 | Week 5 MDE simulation: simulate unit outcomes **nested within** the 240 comparison groups, over an ICC grid (0, .25, .5, .75, 1); after the pilot use its ICC estimate and retain the sensitivity results | Sol, 2026-08-16 (delta 12, revised delta 13) | **Open** — procedure specified in D-042; due W5 Thu |
+| C-006 | Week 5 MDE simulation: reproduce the **actual paired balanced-accuracy estimator** — real group sizes and class membership, group-preserving partitions, unit weights, paired critic-vs-baseline predictions, ICC grid — and validate against the analytic result at ICC = 0 **and** ICC = 1 | Sol, 2026-08-16 (deltas 12–14) | **Open** — fully specified in D-044; due W5 Thu |
 | C-007 | Pass `require_confirmatory=True` in threshold calibration, repair acceptance and every critic loader as each is built | Sol, 2026-08-16 (delta 12) | **Open** — guard built (D-040); call sites are W4–W11 |
 | C-003 | Predeclare the D-031 reserve draw order | Sol, 2026-08-16 | **Open** — due W5 Thu with the MDE simulation |
 
@@ -271,11 +274,11 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept here.
 
-### 2026-08-16 (delta 13 review) · A bound I reported as a result · Claude
-**Did:** actioned Sol's fourth review. Its principal finding was about my reasoning rather than the code, and it was right: I reported `min(N₀, N₁) = 115` as the effective sample size and "a 23% reduction in power", when 115 is the value under *perfect* within-group correlation — a conservative lower bound. Corrected as D-042, which supersedes D-039's effective-sample-size claim and specifies the ICC-sensitive grouped MDE procedure. Also added the `load_runs()` boundary integration tests Sol asked for, made recorded seed metadata fail loudly when it disagrees with the seed, removed the two remaining false "stage never reaches streams" statements, and fixed the bundle's base semantics (D-043).
-**Result:** 257 → 265 tests. The statistical unit is unchanged and remains the configuration-condition; unit-level balance is unchanged at 150/150; 125/115 are cluster counts. The arithmetic that shows why a closed form will not do: the standard unequal-cluster design effect gives 72.6 effective units per class at ICC = 1, while the exact answer at ICC = 1 is the cluster count, 115 — the approximation is conservative at the boundary because the groups are unequal, so W5 simulates rather than solves.
-**Worth recording, because it is the failure mode this project is otherwise defended against:** the wrong number propagated into `PROJECT_STATE.md`, `CLAUDE.md`, the enumerator's printed report, a test docstring and a delivered delta before anyone caught it. Not one of those was a coding error. A bound with its qualifier dropped travels exactly as fast as a result.
-**Left:** nothing running, still **zero compute**. Confirmatory collection, critic splitting and W5 MDE approval remain blocked, correctly. Week 3 development is not.
+### 2026-08-16 (delta 14 review) · Two estimands compared as one · Claude
+**Did:** actioned Sol's fifth review. Its material finding was again about my reasoning: D-042 claimed the ICC = 1 boundary "exactly" equals the cluster count and called the unequal-cluster design effect a conservative approximation. Both wrong — the boundary is a property of the **estimator's weighting**. Corrected as D-044, which preregisters `BALANCED_ACCURACY_WEIGHTING = "unit"` in `constants.py` under a Change Record and fully specifies the W5 simulation. Also hardened recorded-metadata validation to check type before value (D-045) and fixed the last `Fit` docstring overclaim.
+**Result:** 265 → 268 tests. Verified numerically: for a unit-weighted mean, `(Σm)²/Σm²` gives 75.0 and 72.58, and the Kish design effect at ICC = 1 gives **identical** values — not an approximation. The cluster counts 125/115 are the boundary for an equal-cluster-weighted estimand, which is a different estimand and not the one the thesis uses. `bool("false")` is `True`, so the old `confirmatory` check would have read a corrupted record as confirmatory — the exact failure the validation existed to catch, waved through by the validation.
+**Worth recording:** this is the second consecutive Sol finding on the same paragraph, and neither was a coding error. A number quoted without its estimand is not a number. Recorded in D-044 and CLAUDE.md's traps rather than only fixed.
+**Left:** nothing running, still **zero compute**. Sol closed the supplemental certification gap. Confirmatory collection, critic splitting and W5 MDE approval remain blocked, correctly.
 **Next:** W3 Mon — the world-model MLP, development seeds, dynamic-only target.
 ---
 

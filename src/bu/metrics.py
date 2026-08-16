@@ -25,6 +25,9 @@ from .streams import assert_confirmatory, is_confirmatory, seed_partition
 
 METRICS_FILE = "metrics.jsonl"
 
+#: The only permitted values of a run record's seed_partition field.
+SEED_PARTITIONS = frozenset({"development", "confirmatory"})
+
 
 class RunLogger:
     """Append-only JSONL metric log for a single run.
@@ -153,18 +156,36 @@ def load_runs(
         # analysis must not proceed on either value (D-042).
         seed = int(rec["seed"])
         recorded = rec.get("seed_partition")
-        if recorded is not None and recorded != seed_partition(seed):
-            raise RuntimeError(
-                f"run {rec['run_id']} records seed_partition={recorded!r} but "
-                f"seed {seed} is {seed_partition(seed)!r}. The seed is "
-                "authoritative; the record has been altered."
-            )
+        if recorded is not None:
+            # Type first, then value. `bool("false")` is True and `"false"` is a
+            # perfectly ordinary thing for a hand-edited or round-tripped JSON
+            # record to contain, so a truthiness check would wave through the
+            # exact corruption this exists to catch (D-045).
+            if recorded not in SEED_PARTITIONS:
+                raise RuntimeError(
+                    f"run {rec['run_id']} records seed_partition={recorded!r}, "
+                    f"which is not one of {sorted(SEED_PARTITIONS)}"
+                )
+            if recorded != seed_partition(seed):
+                raise RuntimeError(
+                    f"run {rec['run_id']} records seed_partition={recorded!r} but "
+                    f"seed {seed} is {seed_partition(seed)!r}. The seed is "
+                    "authoritative; the record has been altered."
+                )
         recorded_flag = rec.get("confirmatory")
-        if recorded_flag is not None and bool(recorded_flag) != is_confirmatory(seed):
-            raise RuntimeError(
-                f"run {rec['run_id']} records confirmatory={recorded_flag!r} but "
-                f"seed {seed} is {seed_partition(seed)!r}."
-            )
+        if recorded_flag is not None:
+            if type(recorded_flag) is not bool:
+                raise RuntimeError(
+                    f"run {rec['run_id']} records confirmatory="
+                    f"{recorded_flag!r} of type {type(recorded_flag).__name__}; "
+                    "it must be a JSON boolean. A truthy string would pass a "
+                    "value check while meaning the opposite."
+                )
+            if recorded_flag != is_confirmatory(seed):
+                raise RuntimeError(
+                    f"run {rec['run_id']} records confirmatory={recorded_flag!r} "
+                    f"but seed {seed} is {seed_partition(seed)!r}."
+                )
         if require_confirmatory:
             assert_confirmatory(seed, what=f"load_runs({root!r})")
 

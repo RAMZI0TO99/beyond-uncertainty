@@ -175,10 +175,13 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 - **A correctness property standing on an accident is not a property.** The
   multi-role stream invariant held across all 75 shared fits — only because no
   canonical unit happened to also carry a sweep obligation (D-038).
-- **Do not promote a worst-case bound into a measured result.** I reported
-  `min(N₀,N₁) = 115` as *the* effective sample size; it is the value under
-  perfect within-group correlation, and Sol caught it. State the bound as a
-  bound and let the simulation estimate the rest (D-042).
+- **A number without its estimand is not a number.** Two consecutive Sol
+  findings, both on the same paragraph and neither a coding error: I reported
+  `min(N₀,N₁) = 115` as *the* effective sample size when it was a bound
+  (D-042), then compared a unit-weighted and a cluster-weighted result and
+  called the gap approximation error (D-044). The suite was green throughout
+  and the wrong numbers reached five files and a delivered delta. Say what is
+  being weighted, or say nothing.
 
 ---
 
@@ -192,11 +195,14 @@ trained. Gate 1 is 2026-09-19. Design: 300 units, **240 comparison groups**,
 **The statistical unit is still the configuration-condition** — 150/150 on
 intended class, and that is the registered quantity (P§10.7, §2). Units sharing
 a comparison group are **correlated, not collapsed**: 300 units sit in 240
-groups, group counts are 125/115, and those are *cluster* counts. Effective
-information lies between the two extremes and is estimated by W5's MDE
-simulation over an ICC grid (D-039 corrected by **D-042**). A comparison group
-must never span a critic split or a CV fold. Do not quote 115 as a sample size —
-that overreach is exactly what D-042 exists to correct.
+groups, and 125/115 are *cluster* counts.
+
+**Do not quote any effective sample size without naming the estimand.** The
+weighting is preregistered as `BALANCED_ACCURACY_WEIGHTING = "unit"` (D-044),
+under which the ICC = 1 boundary is 75/72.6; the cluster counts 125/115 are the
+boundary for an equal-cluster-weighted estimand, which the thesis does not use.
+Power is **simulated directly** at W5 — there is deliberately no `n_eff()`
+helper. A comparison group must never span a critic split or a CV fold.
 
 **Next: Week 3, the world model. Nothing blocks it.**
 

@@ -74,6 +74,17 @@ SEEDS_ABLATION = 5
 #: construction.
 CONFIRMATORY_SEED_BASE = 1000
 
+#: How balanced accuracy weights the registered statistical unit (D-044).
+#: "unit" gives every configuration-condition equal weight, which is what Plan
+#: §10.4's unit-level balancing implies; "cluster" would give every comparison
+#: group equal weight, making a six-unit canonical group count the same as one
+#: sweep unit. These are different estimands with different effective sample
+#: sizes at the same data -- 75/72.6 against 125/115 at ICC = 1 -- so the choice
+#: is preregistered rather than settled by whichever number is convenient later.
+#: Dependence is handled by group-bootstrap intervals, which does not change the
+#: point estimate's estimand.
+BALANCED_ACCURACY_WEIGHTING = "unit"
+
 # --- Design scale (Plan §10.7) --------------------------------------------
 
 #: Minimum labelled configuration-conditions, and minimum held out. Power
