@@ -2348,3 +2348,10 @@ that certification before the pilot than after, but I do not think the pilot
 depends on it, since it runs on development seeds and produces no label.
 === END UPDATE ===
 ```
+
+### 2026-08-16 (certification) · First certified commit · Claude
+**Did:** Sol reviewed bundle `2875e60` and **certified the Week 3 Mon–Wed infrastructure**. This is the project's first fully certified commit. Recorded C-008 (the confirmatory runner Sol requires before confirmatory execution or repair validation) and C-009 (two non-blocking hardenings for it).
+**What is certified, by Sol's own list:** dynamic-only prediction objective, auxiliary gradient isolation, reproducible training and ensemble streams, stationary per-episode collection, fixed train/validation/evaluation pools, registered N meaning training transitions, non-degenerate episode bootstrap, episode bootstrap as the primary H1/H2 method, evaluation excluded from model selection, paired repair pools, correct effective repair models, complete repaired-dataset provenance, confirmatory collection-size guards, pool/run consistency enforcement. That is D-047 … D-057 in full.
+**Scope boundary, recorded so it is not misread later:** certification authorises the **W3 Friday development pilot on development seeds**. It does *not* authorise confirmatory execution or repair validation — `bootstrap_episodes()` plus `train(train_index=…)` still bypasses the `train_ensemble` granularity guard, and the future runner must own that rule along with registered configuration, matching pools, seed policy and complete run records.
+**Result:** 394 passing, 1 skipped. **Zero GPU-hours consumed** through the entire infrastructure phase.
+**Next:** W3 Fri — disagreement metrics and the first development curves, on the fixed evaluation pool. 90 fits. **Ask the student before spending compute.**

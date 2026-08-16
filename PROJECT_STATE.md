@@ -42,12 +42,12 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-16 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–2 audited; W3 Mon–Wed built, corrected and CERTIFIED at `2875e60`.** Nine Sol reviews actioned on 2026-08-16. Running ahead of the 2026-08-17 start — see DEV-002 |
+| **Current week / day** | **Weeks 1–2 audited; W3 Mon–Wed CERTIFIED at `2875e60`; W3 Fri and Sat done.** Nine Sol reviews actioned on 2026-08-16. Running ahead of the 2026-08-17 start — see DEV-002 |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `2875e60`** — Sol certified the Week 3 Mon–Wed infrastructure on 2026-08-16, covering D-047 … D-057. Set `BASE` to this for the next bundle |
-| **Tests** | **394 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
-| **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). Week 3 ran entirely on CPU in seconds; the student's GPU was under another workload all week |
+| **Tests** | **410 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
+| **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). W3 Friday's 90-fit pilot ran on **CPU** at the student's request; their GPU was at 14.2/16.4 GB under another workload all week |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
 **Hypothesis status**
@@ -73,7 +73,8 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 0. **W3 Mon — DONE and Sol-ruled** (D-046, D-047, D-048). Criterion met across all five capacity levels and all four withholding configurations. Beyond it: blocked movement transitions carry **1.67×** the position error of free moves; `interact` is deterministic and predictable in every canonical condition (0 aliased successors) but aliased when position is withheld — a second mechanism behind D-026.
 1. **W3 Tue — DONE** (D-049). Trains 5,000 transitions, early-stops at epoch 10 of 31 in 1.5s CPU, curve reaching `load_runs()`. Split by episode and **strided**, all of D-047's constraints implemented. Measured: a transition-level split is **4.5–8.7× optimistic**, worst at small n.
 2. **W3 Wed — DONE** (D-050). Five members on 5,000 transitions in 8.0s CPU; per-member validation errors 0.0034–0.0061, sd 0.0010, each drawing ~50 of 80 training episodes. **Raised Q-011.**
-3. **W3 Fri — NEXT, and now unblocked on Sol's conditions** — mean pairwise disagreement and predictive variance per transition, computed on the **fixed evaluation pool**; exploratory data-size sweep, six sizes × three seeds. *First cell that consumes real compute:* 6 × 3 × 5 = 90 fits, ~30s on a free GPU or ~10 min CPU. **Ask the student before starting it.** Also answer D-047's open item there: does the detached auxiliary head beat its copy baseline on `interact` transitions, sliced as Sol specified, across several development seeds?
+3. **W3 Fri and Sat — DONE** (D-058). 90 fits on CPU; both curves exist and are regenerated from logged rows. **Error falls monotonically in N; disagreement does not** — it peaks at N=250. Measured mechanism: at N=100 the ensemble predicts with 29% of the target's variation, so members agree because they have all collapsed to the same near-constant. That is the **H2 signature produced by an estimation failure**, and the ratio is lowest at N=100 (0.462). Exploratory, three development seeds, no H1/H2 claim.
+4. **W4 Mon — NEXT** — the rank-correlation trend test, used for both the W4 gate and the W10 H1 verdict. **Read it knowing the disagreement curve is non-monotone at the small end.**
 
 **No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **One open item carried into W3 Tue:** the detached head sits at 0.2575 against a copy baseline of 0.1652 after 3,000 epochs, and Sol's conditional for a second trunk turns on whether the real training loop can close that — it must not be decided from a hand-rolled loop.
 
@@ -195,6 +196,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-055** | 2026-08-16 | Three blockers: repair pairing, evaluation exclusion, confirmatory overrides | finding Sol's |
 | **D-056** | 2026-08-16 | The repair split reaches training, and the size guard reaches `collect()` | finding Sol's |
 | **D-057** | 2026-08-16 | Pools must belong to the run that trains on them; a third tautological test | finding Sol's |
+| **D-058** | 2026-08-16 | W3 Friday's pilot, and the first thing it found | pending |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -300,12 +302,15 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept here.
 
-### 2026-08-16 (certification) · First certified commit · Claude
-**Did:** Sol reviewed bundle `2875e60` and **certified the Week 3 Mon–Wed infrastructure**. This is the project's first fully certified commit. Recorded C-008 (the confirmatory runner Sol requires before confirmatory execution or repair validation) and C-009 (two non-blocking hardenings for it).
-**What is certified, by Sol's own list:** dynamic-only prediction objective, auxiliary gradient isolation, reproducible training and ensemble streams, stationary per-episode collection, fixed train/validation/evaluation pools, registered N meaning training transitions, non-degenerate episode bootstrap, episode bootstrap as the primary H1/H2 method, evaluation excluded from model selection, paired repair pools, correct effective repair models, complete repaired-dataset provenance, confirmatory collection-size guards, pool/run consistency enforcement. That is D-047 … D-057 in full.
-**Scope boundary, recorded so it is not misread later:** certification authorises the **W3 Friday development pilot on development seeds**. It does *not* authorise confirmatory execution or repair validation — `bootstrap_episodes()` plus `train(train_index=…)` still bypasses the `train_ensemble` granularity guard, and the future runner must own that rule along with registered configuration, matching pools, seed policy and complete run records.
-**Result:** 394 passing, 1 skipped. **Zero GPU-hours consumed** through the entire infrastructure phase.
-**Next:** W3 Fri — disagreement metrics and the first development curves, on the fixed evaluation pool. 90 fits. **Ask the student before spending compute.**
+### 2026-08-16 (W3 Fri/Sat) · The first curves, and an estimation failure wearing H2's signature · Claude
+**Did:** built `models/uncertainty.py` (P§10.3's definitions) and `experiments/w3_pilot.py`, ran the sweep — **90 fits, 6 sizes × 3 development seeds × 5 members, on CPU at the student's request**. Their GPU was at 14.2/16.4 GB and 91% under another workload and was not touched. Wrote W3 Saturday's paragraph from the curves before any formal test, as the schedule requires.
+**Result:** 394 → 410 tests. **Zero GPU-hours.** Both curves exist and regenerate from logged rows.
+**Error falls monotonically with N** (1.302 → 0.263). **Disagreement does not** — it peaks at N=250 (0.815) and is *lower* at N=100 (0.601), reproducibly across seeds and in an independent earlier probe at a different hidden size.
+**The mechanism, measured:** at N=100 the ensemble's mean prediction has sd 0.065 against the targets' 0.220 — **29% of the variation in what it is predicting**, rising to 96% by N=5,000. The members have not learned different wrong answers; they have collapsed toward the same near-constant, so they agree because there is nothing yet to disagree about.
+**Why this is the finding rather than the curve shape:** high error with low disagreement is **the H2 signature**, and here an *estimation* failure produced it — in a condition where the model class is adequate and more data demonstrably repairs the problem. The ratio is lowest at N=100 (0.462), below every other size. If it replicates at five seeds on confirmatory data it does not falsify H2; it bounds it. A critic trained across such conditions would be learning a signature that points both ways.
+**Status: exploratory.** Three development seeds, one configuration, permanently excluded from confirmatory results. The printed report carries the caveat in its own text so a later reader cannot quote the number without it.
+**Left:** nothing running. Confirmatory execution and repair validation still blocked pending C-008's runner.
+**Next:** W4 Mon — the trend test, read knowing the small-N curve is non-monotone.
 ---
 
 ## 8. → TO SOL — *moved to its own file*

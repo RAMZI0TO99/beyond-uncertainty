@@ -218,3 +218,61 @@ than independent random-number progression crosses an episode boundary. An
 episode-index diagnostic found no material residual drift. That diagnostic is
 consistent with the design; it does not by itself prove independence, and is not
 reported as though it did.
+
+---
+
+## What the first curves look like *(Schedule W3 Sat — written before any formal test)*
+
+Six dataset sizes, three development seeds, one configuration (shape-causal,
+uniform layout, no confound). Metrics on the fixed evaluation pool, movement
+transitions only, per-dimension normalised. **Three seeds cannot support H1**;
+the schedule calls this cell a look, and the trend test is Week 4 Monday.
+
+| N | held-out error | mean pairwise disagreement | ratio |
+|---|---|---|---|
+| 100 | 1.302 ± 0.026 | 0.601 ± 0.110 | 0.462 ± 0.082 |
+| 250 | 0.816 ± 0.195 | **0.815 ± 0.064** | 1.025 ± 0.178 |
+| 500 | 0.571 ± 0.023 | 0.550 ± 0.044 | 0.963 ± 0.039 |
+| 1,000 | 0.421 ± 0.020 | 0.416 ± 0.015 | 0.990 ± 0.072 |
+| 2,500 | 0.302 ± 0.009 | 0.269 ± 0.016 | 0.889 ± 0.034 |
+| 5,000 | 0.263 ± 0.007 | 0.213 ± 0.013 | 0.810 ± 0.041 |
+
+**Error falls monotonically with dataset size.** That is the least interesting
+line here and the one most expected.
+
+**Disagreement does not.** It rises from N = 100 to N = 250 and falls thereafter.
+The peak is not a seed artefact: the N = 250 standard deviation is smaller than
+the gap, and the same non-monotonicity appeared in an independent earlier probe
+at a different hidden size.
+
+**The mechanism, measured rather than guessed.** At N = 100 the ensemble's mean
+prediction has a standard deviation of 0.065 against the targets' 0.220 — 29% of
+the variation in the thing it is predicting. By N = 5,000 that ratio is 96%. At
+the smallest condition the members have not learned different wrong answers;
+they have all collapsed toward the *same* near-constant. They agree because
+there is nothing yet to disagree about.
+
+**Why this matters more than the shape of one curve.** High error with low
+disagreement is the H2 signature — the pattern the thesis proposes as evidence
+of hypothesis-class failure. Here it is produced by an *estimation* failure, in
+a condition where the model class is entirely adequate and more data demonstrably
+fixes the problem. The disagreement-to-error ratio is **lowest at N = 100
+(0.462)**, lower than at any other dataset size and lower than the large-data
+conditions where the model is nearly correct.
+
+If that survives replication at five seeds and confirmatory data, it does not
+falsify H2, but it bounds it: the ratio would not discriminate failure types at
+the extreme of estimation failure, and any critic trained on such conditions
+would be learning a signature that points both ways. The honest reading is that
+severe under-training and structural misspecification are not distinguishable by
+ensemble disagreement alone — which is, if anything, a sharper statement of the
+problem this thesis exists to address than the one in the introduction.
+
+Two things follow for the schedule rather than for the thesis. The Week 4 Monday
+trend test must be read knowing the curve is non-monotone at the small end; and
+Week 5's minimum-detectable-effect simulation should be told which conditions
+sit in the collapsed regime, because they carry a different disagreement
+mechanism from the rest of the sweep.
+
+*Figures:* `figures/w3_error_vs_data.png`, `figures/w3_disagreement_vs_data.png`.
+

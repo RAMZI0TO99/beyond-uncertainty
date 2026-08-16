@@ -519,3 +519,14 @@ Capacity repair accepted mismatched pools silently, because capacity does not ch
 **Plan ref:** P§7.2, P§8.3. Completes D-055 and D-056.
 **Reviewed by Sol:** findings are Sol's; these fixes are not yet reviewed.
 
+### D-058 · 2026-08-16 · W3 Friday's pilot, and the first thing it found
+**Decision:** `models/uncertainty.py` implements P§10.3's definitions — mean pairwise disagreement, ensemble predictive variance, per-dimension normalised error, and the H2 ratio as a **ratio of means** computed per seed with a `1e-6` denominator floor and aggregated across seeds only after dividing. `experiments/w3_pilot.py` runs the sweep and regenerates both curves from logged rows.
+**Executed:** 6 sizes × 3 development seeds × 5 members = **90 fits**, on CPU at 4 threads. The student's GPU was at 14.2/16.4 GB under another workload; it was not touched. **Still zero GPU-hours.**
+**The finding, and it is not about the shape of a curve.** Error falls monotonically with N. **Disagreement does not** — it peaks at N = 250 and is *lower* at N = 100 than at N = 250, reproducibly across seeds and in an independent earlier probe at a different hidden size.
+**Measured mechanism:** at N = 100 the ensemble's mean prediction has sd 0.065 against the targets' 0.220 — 29% of the variation in what it is predicting, rising to 96% by N = 5,000. The members have not learned different wrong answers; they have collapsed toward the *same* near-constant, so they agree because there is nothing yet to disagree about.
+**Why it matters:** high error with low disagreement is **the H2 signature**, and here an *estimation* failure produced it — in a condition where the model class is adequate and more data demonstrably repairs the problem. The ratio is lowest at N = 100 (0.462), below every other size. If it replicates at five seeds on confirmatory data it does not falsify H2, but it bounds it: the ratio would not discriminate failure types at the extreme of estimation failure, and a critic trained across such conditions would be learning a signature that points both ways.
+**Status of the number: exploratory.** Three development seeds, one configuration, permanently excluded from every confirmatory result (D-034). No H1 or H2 claim is made, and the printed report says so in its own text. W4 Mon's rank-correlation trend test is the instrument.
+**Consequences recorded rather than acted on:** the W4 Mon trend test must be read knowing the curve is non-monotone at the small end, and W5's MDE simulation should know which conditions sit in the collapsed regime, because their disagreement has a different mechanism from the rest of the sweep.
+**Plan ref:** S§W3 Fri, S§W3 Sat, P§10.3, P§4.2.
+**Reviewed by Sol:** pending — the collapse finding is the part worth attacking.
+
