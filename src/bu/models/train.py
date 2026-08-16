@@ -123,6 +123,7 @@ def train(
     config: TrainConfig | None = None,
     *,
     rng: np.random.Generator,
+    split: EpisodeSplit | None = None,
     logger: Any | None = None,
 ) -> TrainResult:
     """Fit ``model`` with early stopping on the movement-position validation loss.
@@ -137,11 +138,16 @@ def train(
             logged", and the only form in which a figure can be regenerated
             without rerunning the fit.
 
+        split: an explicit split, for callers that must control it. The
+            ensemble trainer supplies one per member: a **bootstrap-resampled
+            training set against the shared, unresampled validation set**, so
+            per-member validation errors are comparable to each other.
+
     Restores the best checkpoint before returning, so the model a caller holds
     afterwards is the one the validation loss selected, not the last one trained.
     """
     config = config or TrainConfig()
-    split = split_by_episode(dataset, config.val_fraction)
+    split = split if split is not None else split_by_episode(dataset, config.val_fraction)
 
     obs = torch.as_tensor(dataset.obs)
     action = torch.as_tensor(dataset.action)

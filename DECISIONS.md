@@ -422,3 +422,14 @@ Every decision a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** S§W3 Tue, P§7.3, P§3.2.1. Implements D-047's training-loop constraints.
 **Reviewed by Sol:** pending — the episode-split measurement and the `STREAM_VERSION` bump are both worth its attention.
 
+### D-050 · 2026-08-16 · The bootstrap ensemble, and what members are allowed to differ in
+**Decision:** `src/bu/models/ensemble.py`. `config.ensemble_size` members, each drawing from three separate named streams at `member=k` — `bootstrap` (which training data), `init` (starting weights), `batch` (minibatch order). Bootstrapping touches the **training split only**; the held-out episodes are identical for every member. Per-member validation error is logged **per member**, never aggregated. Default resampling granularity is **episode-level** — a block bootstrap.
+**Why the validation set is shared:** per-member errors computed on different data would not be comparable to one another, and Week 3 Friday compares them. This is asserted rather than assumed.
+**Why three streams rather than one:** the ensemble is the measurement instrument — H1 and H2 are both claims about mean pairwise disagreement, so anything changing how members differ changes the dependent variable. Separate streams mean diversity can later be attributed to its source, and that changing the resampling scheme cannot silently shift the weights members start from.
+**Why episode-level by default:** the same reason the split is episode-level (D-049). Transitions inside an episode are near-duplicates, so resampling rows individually leaves every member holding essentially every episode — measured, a transition bootstrap retains >90% of training episodes while an episode bootstrap retains ~63%, the classic bootstrap share.
+**Members are order-independent.** A member refitted alone reproduces the ensemble's member exactly, because nothing about member *k* depends on members 0…k−1. Without that, re-running one failed member of a batch would silently produce a model the run record does not describe.
+**Verified:** five members on 5,000 transitions in 8.0s on CPU; per-member validation errors 0.0034–0.0061, sd 0.0010; each member drew ~50 of 80 training episodes.
+**Raised Q-011** — resampling granularity is not a free choice for H1; see the open question.
+**Plan ref:** S§W3 Wed, P§9.1, P§10.3, P§14.2.
+**Reviewed by Sol:** pending.
+

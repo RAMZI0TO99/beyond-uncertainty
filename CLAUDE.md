@@ -106,7 +106,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 313 passing, 1 skipped
+.venv/bin/python -m pytest -q                      # 344 passing, 1 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -137,6 +137,8 @@ src/bu/
   experiments/enumerate_units.py  the 300-unit design matrix
   streams.py     named RNG streams: independent across units, paired within a comparison
   models/world_model.py  the MLP; dynamic-only target, detached auxiliary head
+  models/train.py        episode-strided split, early stopping on position only
+  models/ensemble.py     K members from the bootstrap / init / batch streams
   stats/            empty — Weeks 4–5
 ```
 
@@ -233,8 +235,19 @@ in: the detached head is worse than its copy baseline (0.2575 vs 0.1652) after
 a hand-rolled 3,000 epochs — Sol's conditional for a second trunk turns on
 whether a real loop closes that, and must not be settled from a probe.
 
-W3 Wed the bootstrap ensemble, drawing from the `bootstrap` and `init` streams.
-W3 Fri disagreement metrics and the first curves.
+**W3 Tue and Wed are done** (D-049, D-050). Split is **by episode and strided**
+— a transition split measured 4.5–8.7× optimistic, worst at small n, which is
+the direction that corrupts Experiment 1. Ensemble members draw from three
+separate streams so diversity can be attributed.
+
+**W3 Fri is the first cell that consumes real compute** — 6 sizes × 3 seeds × 5
+members = 90 fits, ~30s on a free GPU or ~10 min CPU. **Ask the student before
+starting it**; their GPU has been at ~14/16 GB under another workload all week.
+
+**Q-011 is open and blocks nothing yet, but it blocks W4 Mon's trend test.**
+Bootstrap granularity changes disagreement — H1's dependent variable — and the
+episode/transition ratio is *not constant across n* (1.30× / 1.77× / 1.25×), so
+it bends the curve the trend test runs on rather than merely scaling it.
 
 **Confirmatory runs use seeds ≥ `CONFIRMATORY_SEED_BASE` (1000).** Everything
 below is pilot data and may never enter a confirmatory result, the threshold

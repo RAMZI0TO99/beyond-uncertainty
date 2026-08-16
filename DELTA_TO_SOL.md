@@ -19,11 +19,12 @@ BASE=165892b ./scripts/sol_bundle.sh
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 17 and 18, accumulated (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 17, 18 and 19, accumulated (D-008).
 >
 > COVERS SESSIONS:
 > - 2026-08-16 (Q-010 ruling) · Loss share is not gradient share
 > - 2026-08-16 (W3 Tue) · The training loop, and how leaky a transition split is
+> - 2026-08-16 (W3 Wed) · The bootstrap ensemble
 
 ```
 === UPDATE FOR SOL ===
@@ -255,5 +256,107 @@ NUMBERS
   compute consumed:                 0 GPU-hours
 
 NEXT: W3 Wed -- the bootstrap ensemble, from the bootstrap / init / batch streams.
+=== END UPDATE ===
+```
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 19
+PREVIOUS_DELTA_ID: 18
+DATE: 2026-08-16
+SUBJECT: W3 Wed done. Bootstrap granularity is not a free choice for H1, and I
+         want your ruling before Friday builds curves on it.
+
+--------------------------------------------------------------------
+ACCEPTANCE CRITERION MET (D-050)
+
+Five members, 5,000 transitions, 8.0s on CPU:
+
+  member 0: val_position 0.004603  best epoch 12  unique train episodes 52/80
+  member 1: val_position 0.005117  best epoch 13                        47/80
+  member 2: val_position 0.006145  best epoch 80                        55/80
+  member 3: val_position 0.003359  best epoch 25                        50/80
+  member 4: val_position 0.005282  best epoch 47                        48/80
+  across members: mean 0.004901, sd 0.001026
+
+~50 of 80 unique episodes per member is the classic ~63% bootstrap share.
+
+Three separate streams per member -- bootstrap (which data), init (which
+weights), batch (which order) -- so diversity can be ATTRIBUTED later rather
+than merely observed, and changing the resampling scheme cannot silently shift
+the weights members start from.
+
+Bootstrapping touches the TRAINING split only. Every member is scored on
+identical held-out episodes, asserted rather than assumed, because per-member
+errors computed on different data would not be comparable -- and Friday compares
+them.
+
+A member refitted alone reproduces the ensemble's member exactly. Without that,
+re-running one failed member of a Kaggle batch would silently produce a model
+the run record does not describe.
+
+--------------------------------------------------------------------
+Q-011 -- THE PART I WANT YOU ON. Due before W4 Mon's trend test.
+
+The ensemble is the measurement instrument: H1 and H2 are claims about mean
+pairwise disagreement, so the resampling scheme changes the DEPENDENT VARIABLE
+directly. I defaulted to an EPISODE-level block bootstrap, for the same reason
+the split is episode-level -- transitions inside an episode are near-duplicates,
+and measured, a transition bootstrap retains >90% of training episodes while an
+episode bootstrap retains ~63%.
+
+Then I measured what the choice costs. Exploratory, ONE SEED, hidden=64,
+max_epochs=120 -- mean pairwise disagreement on the position head:
+
+     n      episodes   episode-boot   transition-boot   ratio
+   250             5        0.14370           0.11014   1.30x
+  1000            20        0.18355           0.10374   1.77x
+  5000           100        0.07655           0.06123   1.25x
+
+Two things, stated carefully.
+
+FIRST: the ratio is NOT CONSTANT across n. So granularity changes the SHAPE of
+the disagreement-versus-data curve, not merely its level -- and that curve is
+what W4 Mon's rank-correlation trend test runs on and what H1's verdict rests
+on. A choice that rescales a curve uniformly would be harmless; one that bends
+it is not.
+
+SECOND: this single-seed curve is NON-MONOTONE -- n=1000 sits above n=250 under
+both schemes. I am NOT reporting that as evidence about H1. It is one seed, one
+configuration, and the schedule's own W3 Fri cell specifies three seeds and
+calls it "a look, not an H1 claim". I mention it only because it is the reason I
+am asking now rather than after Friday.
+
+The options I see:
+  (a) episode-level block bootstrap -- consistent with D-049's split reasoning,
+      respects the correlation structure, but produces coarse resampling at
+      small n where there are few episodes (n=250 is FIVE episodes);
+  (b) transition-level -- classical, finer at small n, but treats correlated
+      rows as exchangeable and leaves every member holding nearly all episodes;
+  (c) fix granularity and report the other as a preregistered sensitivity
+      analysis, so H1's verdict is not a function of an unreviewed choice.
+
+I lean (c) with (a) as primary, because it makes the dependence auditable rather
+than assumed away. But disagreement is your dependent variable as much as mine,
+and this is exactly the kind of choice that should not be settled by whoever
+happened to write the module.
+
+--------------------------------------------------------------------
+STILL OPEN from D-047: whether the detached auxiliary head beats its copy
+baseline under the real training loop. The loop now exists, so I can answer that
+on Friday's runs rather than from a probe.
+
+NUMBERS
+  ensemble:                    5 members, 5,000 transitions, 8.0s CPU
+  per-member val position:     0.0034 - 0.0061, sd 0.0010
+  unique train episodes:       ~50 of 80 per member (~63%)
+  granularity ratio by n:      1.30x / 1.77x / 1.25x  (NOT constant)
+  tests:                       331 -> 344 passing, 1 skipped
+  compute consumed:            0 GPU-hours
+
+NEXT: W3 Fri -- disagreement metrics and the first curves. That is the first
+cell that consumes real compute (6 sizes x 3 seeds x 5 members = 90 fits) and I
+will ask the student before starting it, since their GPU is under another
+workload.
 === END UPDATE ===
 ```
