@@ -377,3 +377,15 @@ Every decision a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** not covered by the plan. Hardens D-040, D-042.
 **Reviewed by Sol:** finding is Sol's.
 
+### D-046 · 2026-08-16 · The world model, and what in it is an interpretation
+**Decision:** `src/bu/models/world_model.py`. An MLP over `[observation ‖ one-hot action]` with two heads — position (MSE) and activation logits (binary cross-entropy) — built from a `UnitSpec`, initialised from the `init` stream, with the dynamic/static split derived from `encoder.blocks` rather than hardcoded.
+**Choices that are mine rather than the plan's, recorded because a future reader would otherwise have to guess:**
+- **Two hidden layers, ReLU.** The schedule says "MLP" and fixes only the hidden *size*, which is the swept axis. Depth is held constant so Experiment 2B varies one thing.
+- **Action enters as a one-hot concatenation**, not an embedding. Five actions; an embedding would add a learned table with nothing to generalise over.
+- **Heads derived from the encoder.** Observation width is 30 with everything visible and 22 with shape withheld, so a hardcoded width would be silently wrong for exactly the Experiment 2A conditions the thesis is about.
+- **Logits, not probabilities**, so the loss can use `binary_cross_entropy_with_logits`.
+- **`predict_next_obs` copies statics outside the loss.** This is what makes "the model predicts the next state" true in P§10.2's sense while D-032's exclusion still holds.
+**Verified rather than assumed:** the primary error does track the manipulated mechanism — after a short fit, blocked movement transitions carry **1.67×** the position error of free moves (0.0798 against 0.0478 over 565 blocked and 1,040 free transitions). If that ratio were ~1, the headline metric would not be measuring passability at all, and no shape test would have told us.
+**Plan ref:** S§W3 Mon, P§10.2. Implements D-032 and DEV-007.
+**Reviewed by Sol:** pending.
+

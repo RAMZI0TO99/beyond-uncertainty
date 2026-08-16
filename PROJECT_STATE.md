@@ -42,11 +42,11 @@ This is the single shared working file for the project. It is written by Claude,
 | **Last updated** | 2026-08-16 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1 and 2 complete and audited**, plus all five of Sol's 2026-08-16 reviews actioned. Running ahead of the 2026-08-17 start — see DEV-002 |
+| **Current week / day** | **Weeks 1–2 complete and audited; W3 Mon done.** All five of Sol's 2026-08-16 reviews actioned. Running ahead of the 2026-08-17 start — see DEV-002 |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **268 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, and the stream-pairing properties of D-030 |
+| **Tests** | **299 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, and the stream-pairing properties of D-030 |
 | **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -68,10 +68,12 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 
 **In flight:** nothing running. **No compute consumed.**
 
-**Next actions — Week 3, the world model. Nothing blocks it.**
-1. **W3 Mon** — world-model MLP. **D-032 fixes what it predicts**: next agent position and activation bits only, with static components as deterministic passthrough that never enter the loss. *Done when: forward-pass shape tests pass.*
-2. **W3 Tue** — training loop with early stopping on a held-out split, so "insufficient data" is never confounded with "insufficient training". The split must be **by episode, not by transition**: transitions within an episode are temporally correlated (the same reason P§7.3 needs episode-level random intercepts), so a transition-level split leaks and makes early stopping optimistic. *Done when: trains on 5,000 transitions with the loss curve logged.*
-3. **W3 Wed** — bootstrap resampling and K-member ensemble trainer with independent initialisation. *Done when: five members train, per-member validation error logged.*
+**Next actions — Week 3, the world model.**
+0. **W3 Mon — DONE.** World-model MLP (D-046). Acceptance criterion met across all five capacity levels **and** all four withholding configurations. Verified beyond the criterion: blocked movement transitions carry **1.67×** the position error of free moves, so the primary metric really does track passability. **Raised Q-010** — see below.
+1. **W3 Tue** — training loop with early stopping on a held-out split, so "insufficient data" is never confounded with "insufficient training". The split must be **by episode, not by transition**: transitions within an episode are temporally correlated (the same reason P§7.3 needs episode-level random intercepts), so a transition-level split leaks and makes early stopping optimistic. *Done when: trains on 5,000 transitions with the loss curve logged.*
+2. **W3 Wed** — bootstrap resampling and K-member ensemble trainer with independent initialisation. *Done when: five members train, per-member validation error logged.*
+
+**Open question: Q-010 — the auxiliary loss dominates optimisation.** Measured after 400 epochs at hidden=64, n=2000: activation BCE is **97.7%** of the optimised total (0.0936 against position MSE 0.0022), because BCE and normalised-position MSE have different natural scales and the activation task is 96.7% solvable by copying the current bit. So the optimiser spends ~2% of its gradient on the passability rule, which carries the entire scientific claim. This is D-032's dilution problem reappearing in the **loss** rather than the metric, and under Experiment 1's small-data conditions it would shift where estimation failure appears — the same class of confound as B1. An `activation_weight` knob exists and is **left at 1.0**, deliberately un-tuned: picking a weight decides what the world model is optimised for, no model has trained for a result, and nothing is lost by asking. **Due before W3 Wed**, because the ensemble bakes it in.
 
 **Blocked on:** nothing for Week 3. Sol permits MLP implementation and development training. Still blocked, by Sol and correctly: **confirmatory collection** and **critic splitting / Week 5 MDE approval** — see C-003, C-005, C-006. No open questions.
 
@@ -173,6 +175,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-043** | 2026-08-16 | A bundle base must be Sol-*certified*, not merely reviewed | finding Sol's |
 | **D-044** | 2026-08-16 | Correction to D-042 — the ICC = 1 boundary is a property of the estimator | Sol's |
 | **D-045** | 2026-08-16 | Recorded metadata is validated by type, then by value | finding Sol's |
+| **D-046** | 2026-08-16 | The world model, and what in it is an interpretation | pending |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -252,6 +255,7 @@ Two conditions:
 | Q-004 | Schedule capacity model now that Claude implements — hold dates, or compress? | 2026-08-15 | **Closed.** Sol agrees: hold every date and gate; spend the gain on review, understanding, documentation and prose, never scope. Names the failure mode as **verification lag** — implementation outrunning student and reviewer, leaving choices embedded in code before they are understood. Consequential methodological decisions must be *delivered before* dependent implementation proceeds; routine implementation need not wait |
 | Q-005 | Should statistical identity be a registered field list rather than a schema hash? | 2026-08-15 | **Closed** → D-009. Sol: yes, explicit versioned identity list; `SCHEMA_VERSION` alone insufficient. Implemented in the stronger form Sol named — exhaustive classification, enforced at import, tested per field |
 | Q-006 | Whitelist vs blacklist for the leakage firewall; and when to freeze it. | 2026-08-15 | **Closed** → D-013. Sol: whitelist, frozen before the Week 6 firewall is accepted, in a dedicated schema module rather than `constants.py`, with X / y / groups physically separate. Since P§13.5.1 fully specifies the features, Sol's "freeze it now" condition was met and it is frozen |
+| Q-010 | **The auxiliary loss dominates optimisation.** Activation BCE is **97.7%** of the optimised total (0.0936 vs position MSE 0.0022) after 400 epochs at hidden=64, n=2000. BCE and grid-normalised-position MSE have different natural scales, and activation is 96.7% solvable by copying the current bit, so its floor is high while position's is low. The optimiser therefore spends ~2% of its gradient on the mechanism the thesis is about. D-032 fixed this dilution in the *metric*; this is the same problem in the *loss*, and under Experiment 1's small-data conditions it shifts where estimation failure appears. `activation_weight` exists and is left at **1.0** rather than tuned by me — the choice decides what the world model is optimised for. Options: leave; weight so the terms contribute comparably; or detach the auxiliary head from the shared trunk. | 2026-08-16 | **Open** — due before W3 Wed |
 | Q-009 | What does the world model predict, and is the failure threshold comparable across families? | 2026-08-16 | **Closed** → D-032 (dynamic components; primary error on agent position over movement transitions) and D-035 (one global threshold on a balanced reference pool) |
 | Q-008 | Seed independence across units: shared environment streams at the same seed. | 2026-08-15 | **Closed** → D-030. Sol: named streams, independent across sweep units, but common random numbers preserved inside explicitly paired canonical comparisons via a preregistered `comparison_group_id`. `arm` never in the failure-set stream. **Decided, not yet built** — first Week 3 task |
 | Q-007 | Plan/schedule contradiction on whether the no-statistics critic variant sees error history. | 2026-08-15 | **Closed** → D-029. Sol: P§12.1 and P§13.5.1 are internally inconsistent; keep the schema, rename the variant **"no explicit statistics"**, and tighten the W13 negative control to exclude `predicted_vs_actual_state` as well |
@@ -274,12 +278,12 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept here.
 
-### 2026-08-16 (delta 14 review) · Two estimands compared as one · Claude
-**Did:** actioned Sol's fifth review. Its material finding was again about my reasoning: D-042 claimed the ICC = 1 boundary "exactly" equals the cluster count and called the unequal-cluster design effect a conservative approximation. Both wrong — the boundary is a property of the **estimator's weighting**. Corrected as D-044, which preregisters `BALANCED_ACCURACY_WEIGHTING = "unit"` in `constants.py` under a Change Record and fully specifies the W5 simulation. Also hardened recorded-metadata validation to check type before value (D-045) and fixed the last `Fit` docstring overclaim.
-**Result:** 265 → 268 tests. Verified numerically: for a unit-weighted mean, `(Σm)²/Σm²` gives 75.0 and 72.58, and the Kish design effect at ICC = 1 gives **identical** values — not an approximation. The cluster counts 125/115 are the boundary for an equal-cluster-weighted estimand, which is a different estimand and not the one the thesis uses. `bool("false")` is `True`, so the old `confirmatory` check would have read a corrupted record as confirmatory — the exact failure the validation existed to catch, waved through by the validation.
-**Worth recording:** this is the second consecutive Sol finding on the same paragraph, and neither was a coding error. A number quoted without its estimand is not a number. Recorded in D-044 and CLAUDE.md's traps rather than only fixed.
-**Left:** nothing running, still **zero compute**. Sol closed the supplemental certification gap. Confirmatory collection, critic splitting and W5 MDE approval remain blocked, correctly.
-**Next:** W3 Mon — the world-model MLP, development seeds, dynamic-only target.
+### 2026-08-16 (W3 Mon) · The world model · Claude
+**Did:** built `src/bu/models/world_model.py` (D-046) — MLP over `[obs ‖ one-hot action]`, position head under MSE and activation logits under binary cross-entropy, dynamic/static split derived from `encoder.blocks`, weights initialised from the `init` stream. Implements D-032 and DEV-007.
+**Result:** 268 → 299 tests. The schedule's criterion — forward-pass shape tests — passes at all five capacity levels **and** all four withholding configurations, which matters more: observation width is 30 visible and 22 with shape withheld, so a hardcoded width would have been silently wrong for exactly the Experiment 2A conditions. Checked beyond the criterion: static dimensions are byte-identical across every collected transition (so the passthrough is a passthrough, not a modelling error), and blocked movement transitions carry **1.67×** the position error of free moves — the primary metric really does track passability. No shape test would have shown either.
+**Raised Q-010, found by probing rather than by a failure.** Activation BCE is 97.7% of the optimised total, so the optimiser spends ~2% of its gradient on the mechanism the thesis is about. This is D-032's dilution problem reappearing in the loss instead of the metric. An `activation_weight` knob exists and is left at 1.0 rather than tuned, because picking a weight decides what the world model is optimised for and nothing is lost by asking first.
+**Compute:** GPU untouched — it was at 14.2/16.4 GB and 92% under the student's ollama server. Everything ran on CPU in seconds. **Still zero GPU-hours against the budget.**
+**Next:** W3 Tue — the training loop, split **by episode, not by transition**.
 ---
 
 ## 8. → TO SOL — *moved to its own file*

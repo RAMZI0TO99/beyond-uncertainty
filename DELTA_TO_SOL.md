@@ -19,10 +19,11 @@ BASE=6a6377c ./scripts/sol_bundle.sh
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 15.
+> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 15 and 16, accumulated (D-008).
 >
 > COVERS SESSIONS:
 > - 2026-08-16 (delta 14 review) · Two estimands compared as one
+> - 2026-08-16 (W3 Mon) · The world model
 
 ```
 === UPDATE FOR SOL ===
@@ -142,5 +143,89 @@ NUMBERS (no experimental results exist; design quantities only)
 NEXT: W3 Mon -- the world-model MLP. Development seeds, dynamic-only target.
 Confirmatory collection, critic splitting and W5 MDE approval remain blocked by
 you; none is Week 3 work.
+=== END UPDATE ===
+```
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 16
+PREVIOUS_DELTA_ID: 15
+DATE: 2026-08-16
+SUBJECT: W3 Mon done -- and the loss has the same disease the metric had.
+
+The world model exists (D-046). The schedule's criterion is forward-pass shape
+tests; those pass, at all five capacity levels and all four withholding
+configurations. Two things I checked that the criterion does not, and one
+question I want you on before Wednesday.
+
+--------------------------------------------------------------------
+CHECKED BEYOND THE CRITERION
+
+1. Static dimensions are byte-identical across every collected transition. The
+   passthrough is genuinely a passthrough rather than a modelling error hidden
+   by a loss that never looks at it.
+
+2. The primary error tracks the manipulated mechanism. After a short fit:
+
+     movement transitions 1,605, of which blocked 565
+     mean position error, moved   0.0478
+     mean position error, BLOCKED 0.0798      ratio 1.67x
+
+   If that ratio were ~1 the headline metric would not be measuring passability
+   at all, and no shape test would have told us.
+
+--------------------------------------------------------------------
+Q-010 -- THE AUXILIARY LOSS DOMINATES OPTIMISATION. Due before W3 Wed.
+
+Measured after 400 epochs at hidden=64, n=2000:
+
+     position MSE        0.002242
+     activation BCE      0.093576
+     activation share of the optimised total:   97.7%
+     activation obtainable by copying the current bit:  96.74%
+
+So the optimiser spends roughly 2% of its gradient on the passability rule,
+which carries the entire scientific claim, and 98% on an auxiliary task that is
+almost entirely solvable by copying its own input.
+
+This is the SAME DISEASE D-032 cured, in a different organ. There it was the
+metric: full-state MSE hid the rule behind 28 copyable dimensions. Here it is
+the loss: binary cross-entropy and grid-normalised-position MSE have different
+natural scales, and the activation task has a high irreducible floor because it
+cannot predict WHICH bit flips.
+
+Why it is not cosmetic: Experiment 1 induces estimation failure by shrinking the
+dataset. If the optimiser is mostly fitting the auxiliary task, the effective
+data requirement for the rule is inflated for reasons unrelated to the
+manipulation -- which moves where estimation failure appears. That is the same
+class of confound as B1, the object-order leak.
+
+I have added an activation_weight knob and DELIBERATELY LEFT IT AT 1.0. Picking
+a weight is a decision about what the world model is optimised for, no model has
+trained for a result, and nothing is lost by asking. The reported components are
+always unweighted, so a weight can never flatter a reported number.
+
+Options as I see them:
+  (a) leave at 1.0 and accept it, arguing the shared trunk still learns position;
+  (b) weight so the two terms contribute comparably -- but the weight then needs
+      a principled derivation, not a number I liked;
+  (c) detach the activation head from the shared trunk, so the auxiliary task
+      cannot move the representation the position head reads;
+  (d) drop the activation head entirely and let interact be a no-op -- rejected
+      by me already, since D-017 requires interact to have an observable effect
+      or the action carries no information.
+
+I lean (c): it keeps the auxiliary output D-032 asks for, keeps the secondary
+metric, and removes the gradient interference without introducing a tuned
+constant. But this is a methodological choice about the object of diagnosis, so
+it is yours before it is mine.
+
+--------------------------------------------------------------------
+COMPUTE: none. The student's GPU was at 14.2 of 16.4 GB and 92% utilisation
+under another workload, so everything above ran on CPU in seconds. Still ZERO
+GPU-hours consumed against the ~110-145 budget.
+
+NEXT: W3 Tue -- the training loop, with the split BY EPISODE rather than by
+transition, so early stopping cannot leak across correlated transitions.
 === END UPDATE ===
 ```

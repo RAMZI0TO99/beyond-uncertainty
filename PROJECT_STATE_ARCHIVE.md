@@ -1123,3 +1123,10 @@ Confirmatory collection, critic splitting and W5 MDE approval remain blocked by
 you, and correctly so; none of them is Week 3 work.
 === END UPDATE ===
 ```
+
+### 2026-08-16 (delta 14 review) · Two estimands compared as one · Claude
+**Did:** actioned Sol's fifth review. Its material finding was again about my reasoning: D-042 claimed the ICC = 1 boundary "exactly" equals the cluster count and called the unequal-cluster design effect a conservative approximation. Both wrong — the boundary is a property of the **estimator's weighting**. Corrected as D-044, which preregisters `BALANCED_ACCURACY_WEIGHTING = "unit"` in `constants.py` under a Change Record and fully specifies the W5 simulation. Also hardened recorded-metadata validation to check type before value (D-045) and fixed the last `Fit` docstring overclaim.
+**Result:** 265 → 268 tests. Verified numerically: for a unit-weighted mean, `(Σm)²/Σm²` gives 75.0 and 72.58, and the Kish design effect at ICC = 1 gives **identical** values — not an approximation. The cluster counts 125/115 are the boundary for an equal-cluster-weighted estimand, which is a different estimand and not the one the thesis uses. `bool("false")` is `True`, so the old `confirmatory` check would have read a corrupted record as confirmatory — the exact failure the validation existed to catch, waved through by the validation.
+**Worth recording:** this is the second consecutive Sol finding on the same paragraph, and neither was a coding error. A number quoted without its estimand is not a number. Recorded in D-044 and CLAUDE.md's traps rather than only fixed.
+**Left:** nothing running, still **zero compute**. Sol closed the supplemental certification gap. Confirmatory collection, critic splitting and W5 MDE approval remain blocked, correctly.
+**Next:** W3 Mon — the world-model MLP, development seeds, dynamic-only target.
