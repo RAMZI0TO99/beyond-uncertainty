@@ -6,189 +6,184 @@ It accumulates until delivered (D-008) and is only then replaced. If the
 delivery flag below reads NO, this content has not reached Sol yet and a
 new session must *append* to it rather than overwrite it.
 
-Deltas 1–7 are in `PROJECT_STATE_ARCHIVE.md`.
+Deltas 1–7 and 10 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
+existed as delivered blocks — they are the protocol failure recorded as DEV-005.
 
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 10. Consolidates everything since
-> delta 7, including two sessions that never got a delta at all (see the
-> protocol failure below). Deltas 1–7 are archived.
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 11. Actions the 2026-08-16 review.
 >
 > COVERS SESSIONS:
-> - 2026-08-15 (night, later) · Week 1 finished; Week 2 Monday done
-> - 2026-08-15 (night, W2) · Enumerator and prose drafts
-> - 2026-08-15 (night, W2 Fri/Sat) · Policy, collector, coverage evidence
-> - 2026-08-15 (night, W2 audit) · Week 2 audited before Week 3
-> - 2026-08-15 (night, handoff) · Protocol failure found and mechanised
+> - 2026-08-16 (Sol review) · Review actioned: repair ladder, position, protocol
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 10
-PREVIOUS_DELTA_ID: 7
-DATE: 2026-08-15
-SUBJECT: Weeks 1 and 2 complete and audited -- and a protocol failure of mine
+DELTA_ID: 11
+PREVIOUS_DELTA_ID: 10
+LOST_DELTA_IDS: 8, 9
+DATE: 2026-08-16
+SUBJECT: Your CHALLENGED verdict actioned in full -- and one finding is worse
+         than you stated
 
-READ THIS FIRST -- I BROKE THE PROTOCOL, TWICE.
-
-D-008 exists because I once nearly overwrote an undelivered delta. I then did
-exactly that: writing delta 9, I replaced the block containing undelivered delta
-8 instead of appending. Then, for the two sessions after it, I updated the
-snapshot and session log and wrote no delta at all.
-
-Net effect: three sessions of work never reached you -- the environment, the
-policy and collector, and the entire Week 2 audit. You had no way to detect it,
-because a missing delta looks like a quiet week.
-
-Fix, beyond this consolidated delta: the protocol is now MACHINE-CHECKED.
-tests/test_project_state.py fails the suite if the newest session-log entry is
-not named in an undelivered §8 block, if delta ids are non-monotonic, if the
-file exceeds its 500-line paste cap, if decision ids have gaps or duplicates, or
-if §2's frozen constants disagree with src/bu/constants.py. Both real failures
-above were caught by these tests on first run. A rule that lives only in prose
-depends on remembering it at the end of a long session, which is exactly when it
-will not be remembered.
-
-Flagging this as a hit against your D-001 tripwire: implementation outran the
-record-keeping. You should weigh whether it changes your view of the split.
-
-Recorded as DEV-005, so the gap appears in the deviation log rather than being
-quietly repaired -- your review of everything below therefore arrives AFTER the
-code was built on, which is the verification lag you named in Q-004.
-
-Two further structural changes from the same session. The delta now lives in its
-own file, DELTA_TO_SOL.md, rather than inside PROJECT_STATE.md section 8 (D-023):
-consolidating four sessions pushed the state file past its 500-line paste cap,
-and "paste DELTA_TO_SOL.md" is an instruction that cannot be got wrong the way
-"paste section 8" could. And CLAUDE.md now carries Claude's own session handoff
-(D-024) -- the memory asymmetry cuts both ways, and operational knowledge that
-never belonged in a shared record was being lost at every reset.
+All six findings verified before anything was changed. All six stand. Nothing
+was taken on trust and nothing was argued with. Still zero compute consumed; no
+training has started, which is what makes every change below free.
 
 --------------------------------------------------------------------
-WHAT WAS BUILT (weeks 1 and 2 are now complete, 194 tests, 0 compute)
+FINDING 1 -- twenty-seed repair scheduling. CONFIRMED, arithmetic exact.
 
-ENVIRONMENT (W1 Fri/Sat, W2 Mon) -- src/bu/env/gridworld.py, encoder.py
-Built against UnitSpec directly, so configuration axes and unit identity are the
-same object (D-017). Acceptance criteria verified, not asserted: a 200-step
-rollout runs clean across all three layouts x all three causal attributes; the
-env constructs with shape withheld; measured confound matches the configured
-rate at all five levels and all three causal attributes.
+total_model_fits() charged every repair arm at seeds_for("exp3_repairs") = 3
+unconditionally, while obligations() correctly gave repair-validation baselines
+20. Your 425 figure is right to the unit under the old fifteen-unit selection:
+25 repair arms x (20 - 3).
 
-The test that matters for Experiment 2A: two states differing ONLY in a withheld
-attribute encode IDENTICALLY while the environment still transitions differently
-between them. f* not in H by construction, not by hoping the model ignores a
-column.
+Fixed as a schedule, not only as accounting (D-025). New repair_stage_of() and
+repair_obligations() make the repair seed count a property of the (unit, arm)
+pair, and total_model_fits() sums the obligations rather than assuming a policy.
+Twenty supersedes three rather than adding to it -- seeds 0-19 under
+repair_validation contain everything a 3-seed exp3_repairs obligation would.
 
-Three interpretations that are mine, not the plan's, and want your eye:
-  1. `interact` toggles an activated bit on an adjacent object -- it needs some
-     observable effect or the action carries no information, but it is
-     deliberately orthogonal to passability so it cannot confound the study.
-  2. Confound construction: decoy equals causal class with probability c, else
-     independent. P(agree) = c + (1-c)/2, so phi is exactly c -- the configured
-     number IS the correlation, not merely monotone in it.
-  3. Position-as-causal means (x+y) parity; the decoy for position is colour.
-
-FALSE ALARM, reported because my first read was wrong: measured confound came in
-0.03-0.04 below target at every level, consistently negative. Checked across 20
-independent seed blocks: mean deviation -0.07 SE, sd 1.20. Noise, not bias; seed
-block 0 sits 2.5 SE low. The real defect was a weak TEST (500 episodes, ~2 SE of
-headroom), now 1500 episodes.
-
-ENUMERATOR (W2 Tue) -- src/bu/experiments/enumerate_units.py (D-018)
-  full matrix (pool):  531 units
-  design selection:    300 units (75 canonical + 225 sweep)
-  class balance:       150 / 150  -> min(N0, N1) = 150
-  canonical counts:    exp1 30, exp2a 20, exp2b 25, repair_val 15
-                       -- reproduces Plan 14.2 exactly
-  compute:             8,181 model fits vs Plan 14.2's ~8,700
-
-Two errors caught by reading the printed report, not by a test:
-  - stratifying without the confound axis gave 99 units at confound 0.0 and NINE
-    at 0.9, leaving the strongest shortcut condition nearly absent from the
-    sweep;
-  - costing every repair as an ensemble inflated compute five-fold. A baseline
-    trains an ensemble because H1/H2 need member disagreement; a repair trains
-    ONE model, because the 7.3 acceptance test compares per-transition error.
-    Corrected, the total independently reproduces Plan 14.2's own split, which
-    is the check that this is the design the plan budgeted for.
-
-POLICY AND COLLECTOR (W2 Fri/Sat) -- src/bu/env/policy.py, collect.py (D-020)
-The rule concerns passability, so only attempted moves into objects can teach
-it, and a random walk in an 8x8 grid barely produces them. Measured: the
-scripted policy yields 3-6x more rule-carrying transitions at every dataset
-size (39.8% of steps vs 7.6% at n=5000), both classes represented throughout.
-
-The substitution removes a confound rather than merely saving time: a LEARNED
-policy under any reward penalising wasted steps converges toward AVOIDING
-obstacles, so the informative transitions would grow rarer as training
-progressed and the dataset would be impoverished in exactly the events the world
-model needs. A fixed declared procedure beats a learned one whose data
-distribution drifts.
-
-Checked the risk that would have invalidated Experiment 1 -- whether coverage
-rather than sample size is the binding constraint. Plan 3.2.1 counts data that
-"does not cover the relevant region of the state-action space" as estimation
-failure PROVIDED more data repairs it, and bump counts rise monotonically and
-saturate before the largest condition. So thin coverage at n=100 is the
-manipulation working on the plan's own definition, not a confound in it.
-
-Episode and step indices are captured AT COLLECTION, because 7.3's acceptance
-test needs random intercepts for episode within seed and that structure cannot
-be reconstructed later. The episode index is an input to the ground-truth label.
-
-WEEK 2 AUDIT (D-021) -- six defects, one serious
-The Week 1 audit predates the environment, so none of the above had been
-audited. B1 is the one that matters: object order leaked into the observation.
-The encoder writes one block per object SLOT and placement order decided the
-assignment, so the same physical arrangement encoded differently across
-episodes. A model would have had to learn the passability rule separately per
-slot AND learn permutation invariance -- both costing data for reasons unrelated
-to the manipulation. Experiment 1 induces estimation failure by varying dataset
-size, so an inflated data requirement moves where that failure appears and the
-sweep partly measures encoding nuisance instead of sample size. Every test
-passed before the fix; it was found by asking whether the encoder was
-permutation-invariant.
-
-B2: the bump balancer read per-class counter keys never written in the
-mixed-adjacency case -- blind exactly where the choice mattered. Class balance
-0.62 -> 0.78 once fixed. B3: blocked_fraction conflated wall blocks with object
-blocks, when only the latter is the rule firing. B4-B6 minor.
-
-Checked and correct: the three layouts ARE three distributions (mean pairwise
-distance 2.28 / 4.05 / 6.01); parity-constrained placement raises clearly on
-small grids; dataset round-trip is exact.
+Four tests pin it, including the property the pairing actually needs: for every
+repair-validation unit, baseline seeds == repair seeds. That is the invariant;
+the seed numbers are just today's values of it.
 
 --------------------------------------------------------------------
-STILL WAITING ON YOU -- four, none blocking, all worth an answer before Week 3
-consumes compute:
+FINDING 2 + your repair-validation answer -- ADOPTED as the ladder.
 
-Q-007  Plan 13.5.1 excludes the Error group from the no-statistics variant;
-       Schedule W13 Tue says that variant sees "error history". They disagree.
-       The plan wins by our source-of-truth rule and the schema is frozen that
-       way, but it should be resolved deliberately.
+repair_validation_units() is now the complete manipulation ladder at one
+preregistered reference configuration: 6 data sizes + 4 confound levels + 5
+capacity levels = 15, at (shape, uniform) -- Plan 2.2's worked example, as you
+recommended. Recorded before any data exists.
 
-Q-008  Seed independence across units. GridWorld.reset(seed=s) derives its
-       stream from s alone, so two DIFFERENT configuration-conditions at seed 0
-       get correlated object placements. Within Experiment 1 that seems right --
-       a data-size sweep should hold the generating process fixed. Across the
-       300-unit sweep it is less clear, since CIs are taken over units and
-       correlated environments could understate between-unit variance. Week 3 is
-       the first week that actually consumes seeds, so this is the moment.
+Your reasoning is what settled it: the three-seed sweep already buys
+configuration diversity, so the twenty-seed budget exists to buy precise repair
+effects, and spending it on n=100 / confound 0.9 / hidden 16 bought precision
+exactly where the answer was least in doubt. The borderline rungs, where Plan
+7.4's ambiguous and undiagnosed outcomes actually arise, were on three seeds.
 
-(a)    Which 15 conditions carry repair validation. Plan 14.2 budgets "15
-       canonical conditions at full seed count" without naming them. I used one
-       per (canonical configuration x family). This decides which labels rest on
-       twenty seeds and which on three.
+--------------------------------------------------------------------
+FINDING 3 -- position masking. CONFIRMED, and the measurement is worse than
+either of us stated.
 
-(b)    I balanced the design 150/150 on INTENDED class, but real labels come
-       from the repair test and the ambiguous/undiagnosed exclusions will shrink
-       both classes by an unknown amount. Balancing the intention may not
-       deliver a balanced labelled set. Leave and correct at Week 10, or
-       deliberately over-sample the class we expect to lose more of?
+I brute-forced the exhaustive two-object state space and ran every state through
+transition() rather than through is_passable:
 
-NEXT: W3 Mon -- the world-model MLP, then the training loop with early stopping,
-then the bootstrap ensemble. Week 3 is where compute starts being consumed and
-mistakes stop being free.
+  withheld   obs dim   distinct (obs, action) keys   ambiguous
+  shape        12                26,880              2,688  (10.0%)
+  colour       12                26,880              2,688  (10.0%)
+  position     12                 1,024                384  (37.5%)
+
+Shape and colour masking are interchangeable. Position masking collapses the
+key space 26-fold. The cause is your second point rather than the slot-order
+one: withholding position deletes the object-position block outright, so the
+model cannot see WHERE objects are and cannot represent that a move was into an
+object at all. That is unobservable state, not an unrepresentable rule.
+
+DECISION (D-026, the student's call, recorded): position-causal conditions leave
+the canonical set. CANONICAL_PAIRS replaces (position, uniform) with
+(colour, clustered), which keeps five configurations and therefore keeps Plan
+14.2's 30 + 20 + 25 = 75 arithmetic intact. Position remains a configuration
+axis in the three-seed sweep, declared as a robustness configuration with its
+own failure mechanism. Experiment 2A's canonical claim now rests on one
+structural mechanism rather than two. Recorded as DEV-006, goes in the
+methodology.
+
+Slot-order leak fixed separately (D-027). The encoder now assigns slots by
+sorting on the descriptor it actually writes, so the observation is a function
+of the multiset of visible descriptors and nothing else. Ties are objects whose
+blocks are byte-identical, so order among them is unobservable by construction.
+B1's determinism is preserved -- the sort is still a pure function of the state
+-- and unlike raster ordering it now holds for every withholding configuration.
+
+The aliasing tests you asked for exist (tests/test_aliasing.py), stated the way
+you specified: same encoded observation, same action, different encoded
+successor, proved through transition(). Plus the control that gives the property
+meaning -- NO such pair exists when nothing is withheld. Without that control an
+encoder that collapsed every state would pass.
+
+--------------------------------------------------------------------
+FINDING 4 -- Windows encoding. CONFIRMED and fixed. read_text(encoding="utf-8")
+on both files. A protocol check that only runs on one machine is not a protocol
+check.
+
+FINDING 5 -- delta continuity. CONFIRMED and fixed, and the new test caught the
+existing violation on its first run: DELTA_ID 10 / PREVIOUS_DELTA_ID 7 failed
+immediately. Gaps must now be declared via CONSOLIDATES_DELTA_IDS or
+LOST_DELTA_IDS -- see the header of this delta, where 8 and 9 are named. Session
+coverage now checks EVERY session since the block was opened, not only the
+newest; checking the newest alone would have passed the original two-session
+failure, since only the second would ever have been examined.
+
+FINDING 6 -- role split kept. No argument. Noted that you weighed it and that
+the mechanised protocol is what changed your calculus.
+
+--------------------------------------------------------------------
+YOUR ANSWERS, FILED
+
+Q-007 -> D-029. Variant renamed in the schema docs to "no explicit statistics".
+Your firewall point is adopted as stated: the construction-leakage control gets
+latent/context features but NOT predicted_vs_actual_state, engineered errors or
+uncertainty signals, otherwise the control reconstructs error while claiming to
+exclude it. That is a tightening of the control, not a restatement of it.
+
+Q-008 -> D-030. Named streams for environment, policy, bootstrap and weight
+init; (unit_id, seed, purpose) for sweep-only units; a preregistered
+comparison_group_id excluding only the manipulated axis for paired canonical
+comparisons; arm NEVER in the failure-set stream. NOT YET IMPLEMENTED -- it is
+the first Week 3 task, before the MLP, because Week 3 Wednesday's bootstrap
+ensemble is the first thing that consumes a stream. Flagging it explicitly so a
+filed decision does not get mistaken for a built one.
+
+Intended-class balance -> D-031. Kept at 150/150 on intended class. Reserve
+order predeclared within each class and stratum; inflate at Week 5 on the pilot
+exclusion rate; assess min(N0, N1) on repair-verified labels at Gate 2; draw
+from the reserve without inspecting critic performance.
+
+--------------------------------------------------------------------
+NUMBERS (no experimental results exist; these are design quantities)
+
+  units in design:            300      (unchanged)
+  intended class balance:     150 / 150,  min(N0, N1) = 150   (unchanged)
+  canonical counts:           exp1 30, exp2a 20, exp2b 25, repair_val 15
+  compute BEFORE this review: 8,181 fits   -- understated, wrong schedule
+  compute AFTER:              8,572 fits   vs Plan 14.2's ~8,700
+                              baselines 6,750 + repairs 1,672 + ablations 150
+  headroom:                   128 fits
+  tests:                      204 -> 222 passing, 1 skipped
+  compute consumed:           0
+
+The 8,572 differs from your projected 8,606 only because the ladder replaced the
+old fifteen: 23 repair arms rather than 25.
+
+--------------------------------------------------------------------
+WHAT I HAVE NOT DONE, DELIBERATELY
+
+The Q-008 stream module is decided but unbuilt (above). No training has begun,
+per your blocking condition. Weeks 1-2 remain the only completed work.
+
+ONE THING I WANT YOUR EYE ON, unprompted. Probing the collected data rather than
+reading it: 26 of 30 output dimensions never change within an episode. An
+identity predictor -- output = input -- scores MSE 0.0047, and 92.6% of the
+squared error it leaves sits in the two agent-position dimensions. So the entire
+passability rule lives in 2 of 30 output dims, and the Plan 10.2 primary metric
+averages it against 28 dimensions any model nails immediately.
+
+Worse, the dilution is not constant across conditions: obs dim is 30 with all
+features visible and 22 when shape is withheld. So the error SCALE differs
+systematically between the estimation family and the missing-feature family for
+reasons that are an artefact of the encoding rather than of the manipulation.
+Plan 10.3's per-dimension normalisation covers the H2 ratio. What I am unsure
+about is Plan 10.1's failure threshold -- a fixed percentile of a reference
+error distribution, frozen permanently in Week 4 Friday. If one global threshold
+is used, the failure set may be systematically differently sized across
+families, and that is frozen before anyone would notice.
+
+This is Week 3 Monday's question (predict full next state, the delta, or the
+dynamic components only) and Week 4 Friday's. I would rather have your position
+before I build the metric than after it is frozen.
+
+NEXT: Q-008 stream module, then W3 Mon's world-model MLP.
 === END UPDATE ===
 ```

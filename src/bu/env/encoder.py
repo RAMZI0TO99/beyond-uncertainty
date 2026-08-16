@@ -121,19 +121,46 @@ class ObservationEncoder:
         )
 
     def encode(self, state: GridState) -> np.ndarray:
+        """Encode a state as a function of its *visible* object descriptors only.
+
+        Slots are assigned by sorting objects on the descriptor that is actually
+        written, never on the underlying state. That distinction is the whole
+        point, and it is a correction (D-027).
+
+        ``GridState`` holds objects in raster order by position, which fixed B1
+        -- placement order no longer decides slot assignment. But raster order
+        is a function of position, so when ``position`` is withheld the slot
+        assignment still carried positional information into an observation that
+        is supposed to contain none: two arrangements differing only in where
+        the objects sat could encode differently through slot order alone.
+        Withholding must remove an attribute from the model's input space
+        *entirely* (Plan §8.2.1), and a partial leak weakens exactly the
+        manipulation Experiment 2A depends on.
+
+        Sorting on the written descriptor makes the observation a function of
+        the multiset of visible descriptors and nothing else. Ties are objects
+        whose blocks are byte-identical, so the order among them is
+        unobservable by construction rather than by convention -- and the
+        determinism B1 required is preserved, since the sort is still a pure
+        function of the state.
+        """
         out = np.zeros(self.size, dtype=np.float32)
         scale = max(self.grid_size - 1, 1)
 
         out[0:AGENT_WIDTH] = (state.agent[0] / scale, state.agent[1] / scale)
 
-        cursor = AGENT_WIDTH
+        rows: list[tuple[float, ...]] = []
         for obj in state.objects[: self.n_objects]:
+            values: list[float] = []
             for attribute in self.visible:
-                width = BLOCK_WIDTHS[attribute]
-                out[cursor : cursor + width] = self._encode_attribute(obj, attribute, scale)
-                cursor += width
-            out[cursor] = float(obj.activated)
-            cursor += ACTIVATED_WIDTH
+                values.extend(self._encode_attribute(obj, attribute, scale))
+            values.append(float(obj.activated))
+            rows.append(tuple(values))
+
+        cursor = AGENT_WIDTH
+        for row in sorted(rows):
+            out[cursor : cursor + len(row)] = row
+            cursor += len(row)
         return out
 
     @staticmethod

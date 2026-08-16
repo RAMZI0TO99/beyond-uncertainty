@@ -42,17 +42,33 @@ CAUSAL_ATTRIBUTES = ("shape", "colour", "position")
 CONFOUND_LEVELS = K.CONFOUND_LEVELS_SWEEP  # 0.0 / 0.25 / 0.5 / 0.75 / 0.9
 
 #: The five canonical (causal attribute, layout) pairs carrying Experiments 1,
-#: 2A and 2B, chosen to cover every layout and every causal attribute while
-#: giving shape -- the Plan §2.2 worked example -- all three layouts.
-#: Plan §14.2 budgets "5 configs" for each canonical experiment; this is that
-#: choice made explicit rather than left to whatever the code happened to pick.
+#: 2A and 2B. Plan §14.2 budgets "5 configs" for each canonical experiment; this
+#: is that choice made explicit rather than left to whatever the code picked.
+#:
+#: Position-causal conditions are deliberately absent (D-026). Experiment 2A
+#: withholds whichever attribute is causal, and withholding *position* does not
+#: do what withholding shape or colour does: it removes the object-position
+#: block entirely, so the model cannot see where objects are and therefore
+#: cannot tell that a move was into an object at all. Measured on the exhaustive
+#: two-object state space, shape and colour masking each leave 10.0% of
+#: (observation, action) keys ambiguous; position masking collapses the key
+#: space 26-fold and leaves 37.5% ambiguous. That is unobservable state, not an
+#: unrepresentable rule -- a different structural failure, and mixing the two
+#: inside one canonical claim makes any Experiment 2A result read per-attribute.
+#: Position remains a configuration axis in the three-seed sweep, declared as a
+#: robustness configuration.
 CANONICAL_PAIRS: tuple[tuple[str, str], ...] = (
     ("shape", "uniform"),
     ("shape", "clustered"),
     ("shape", "sparse"),
     ("colour", "uniform"),
-    ("position", "uniform"),
+    ("colour", "clustered"),
 )
+
+#: The single preregistered environment configuration carrying the twenty-seed
+#: repair-validation ladder (D-025). Plan §2.2's worked example: shape decides
+#: passability, objects placed uniformly.
+REFERENCE_CONFIG: tuple[str, str] = ("shape", "uniform")
 
 #: Confound used for the canonical Experiment 1 and 2B conditions. Zero, so the
 #: estimation and capacity families are not entangled with a shortcut the model
@@ -351,37 +367,51 @@ def design_units(n_sweep: int = 225) -> tuple[UnitSpec, ...]:
 
 
 def repair_validation_units() -> tuple[UnitSpec, ...]:
-    """The 15 canonical conditions carrying repair validation at 20 seeds.
+    """The 15 conditions carrying repair validation at 20 seeds (D-025).
 
     Plan §14.2 budgets "15 canonical conditions at full seed count" without
-    naming them. One representative per (canonical configuration x family)
-    gives exactly 15, and spreads the twenty-seed budget across all three
-    failure families rather than concentrating it in one. Recorded as an
-    interpretation, not a quotation.
+    naming them. Read as the **complete manipulation ladder at one reference
+    configuration**: six dataset sizes, four Experiment 2A confound levels, five
+    capacity levels. Six plus four plus five is fifteen, which is the only
+    natural source of the number in Plan §14.2.
+
+    This is a correction of the earlier reading (Sol, 2026-08-16). That version
+    took one representative per (canonical configuration x family), which landed
+    on ``n=100``, confound ``0.9`` and ``hidden_size=16`` -- the extreme of every
+    manipulation. Those are the conditions where a repair either obviously works
+    or obviously does not, so twenty seeds bought precision exactly where it was
+    least needed, and the borderline levels, where ambiguous and undiagnosed
+    outcomes actually arise (Plan §7.4), were validated at three seeds only.
+    Since the twenty-seed budget exists to buy precise repair effects rather
+    than configuration diversity -- the three-seed sweep already supplies that --
+    spending it on the ladder is what the budget is for.
     """
-    out: list[UnitSpec] = []
-    for causal, layout in CANONICAL_PAIRS:
-        out.append(
-            UnitSpec(
-                causal_attribute=causal, layout=layout, confound_rate=CANONICAL_CONFOUND,
-                family="estimation", n_transitions=min(K.DATA_SIZES),
-            )
+    causal, layout = REFERENCE_CONFIG
+    base = dict(causal_attribute=causal, layout=layout)
+
+    ladder: list[UnitSpec] = []
+    # Experiment 1's rung: every dataset size.
+    ladder += [
+        UnitSpec(**base, confound_rate=CANONICAL_CONFOUND, family="estimation", n_transitions=n)
+        for n in K.DATA_SIZES
+    ]
+    # Experiment 2A's rung: every non-zero confound level.
+    ladder += [
+        UnitSpec(
+            **base, confound_rate=c, family="missing_feature",
+            withheld_features=(causal,), n_transitions=max(K.DATA_SIZES),
         )
-        out.append(
-            UnitSpec(
-                causal_attribute=causal, layout=layout, confound_rate=0.9,
-                family="missing_feature", withheld_features=(causal,),
-                n_transitions=max(K.DATA_SIZES),
-            )
+        for c in K.CONFOUND_LEVELS_2A
+    ]
+    # Experiment 2B's rung: every capacity level.
+    ladder += [
+        UnitSpec(
+            **base, confound_rate=CANONICAL_CONFOUND, family="capacity",
+            hidden_size=h, n_transitions=max(K.DATA_SIZES),
         )
-        out.append(
-            UnitSpec(
-                causal_attribute=causal, layout=layout, confound_rate=CANONICAL_CONFOUND,
-                family="capacity", hidden_size=min(K.HIDDEN_SIZES),
-                n_transitions=max(K.DATA_SIZES),
-            )
-        )
-    return tuple(out)
+        for h in K.HIDDEN_SIZES
+    ]
+    return tuple(ladder)
 
 
 _CANONICAL_STAGE = {
@@ -429,6 +459,62 @@ def arms_for(unit: UnitSpec) -> tuple[str, ...]:
     return tuple(arms)
 
 
+@dataclass(frozen=True)
+class RepairObligation:
+    """One (unit, repair arm) pair and the seed count it requires.
+
+    Repairs carry a seed policy of their own, and it is not the unit's (D-025).
+    """
+
+    unit: UnitSpec
+    arm: str
+    stage: str
+
+    @property
+    def seeds(self) -> int:
+        n = seeds_for(self.stage)
+        assert n is not None  # neither repair stage is seed-policy-free
+        return n
+
+
+def repair_stage_of(unit: UnitSpec) -> str:
+    """Which repair stage a unit's repair arms run under.
+
+    Plan §7.2 repeats the unrepaired condition *and its repairs* across the full
+    seed count. The acceptance test in Plan §7.3 is a mixed model over paired
+    per-transition error, so a twenty-seed baseline paired against a three-seed
+    repair is not the test the preregistration describes -- the pairing it rests
+    on does not exist for seventeen of the twenty.
+    """
+    repair_ids = {Config(unit=u).unit_id for u in repair_validation_units()}
+    return (
+        "repair_validation"
+        if Config(unit=unit).unit_id in repair_ids
+        else "exp3_repairs"
+    )
+
+
+def repair_obligations(
+    units: tuple[UnitSpec, ...] | None = None,
+) -> tuple[RepairObligation, ...]:
+    """Every repair arm the design owes, with the seed count it runs at.
+
+    Repair-validation units run every applicable arm at twenty seeds; ordinary
+    sweep units run theirs at three. The twenty supersedes rather than adds --
+    seeds 0-19 under ``repair_validation`` include everything a three-seed
+    ``exp3_repairs`` obligation would have produced.
+    """
+    units = full_matrix() if units is None else units
+    out: list[RepairObligation] = []
+    for u in units:
+        stage = repair_stage_of(u)
+        for arm in arms_for(u):
+            if arm == "baseline":
+                continue
+            out.append(RepairObligation(u, arm, stage))
+    return tuple(out)
+
+
 def total_model_fits(units: tuple[UnitSpec, ...] | None = None) -> dict[str, int]:
     """Model fits implied by the enumeration, split the way Plan §14.2 splits it.
 
@@ -442,14 +528,18 @@ def total_model_fits(units: tuple[UnitSpec, ...] | None = None) -> dict[str, int
     Reproducing Plan §14.2's own split is also the check that this enumeration
     is the design the plan budgeted for, rather than a different one of the
     same rough size.
+
+    The repair side is **stage-aware** (D-025). Charging every repair at the
+    three-seed sweep policy understated the cost of the fifteen repair-validation
+    units by 17 seeds per arm, and -- worse than the arithmetic -- it described a
+    schedule in which a twenty-seed baseline was paired against a three-seed
+    repair, which cannot support the Plan §7.3 test that creates every label.
     """
     units = full_matrix() if units is None else units
     baseline_fits = sum(
         ob.seeds * K.DEFAULT_ENSEMBLE_SIZE for ob in obligations(units)
     )
-    repair_fits = sum(
-        (len(arms_for(u)) - 1) * seeds_for("exp3_repairs") for u in units
-    )
+    repair_fits = sum(ob.seeds for ob in repair_obligations(units))
     return {
         "baseline_ensembles": baseline_fits,
         "repairs": repair_fits,

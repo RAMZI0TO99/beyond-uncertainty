@@ -15,8 +15,11 @@ from bu import constants as K
 from bu.config import Config, UnitSpec
 from bu.experiments.enumerate_units import (
     CANONICAL_PAIRS,
+    REFERENCE_CONFIG,
     _intended_class,
     arms_for,
+    repair_obligations,
+    repair_stage_of,
     canonical_units,
     count_by_axis,
     deduplicate,
@@ -235,3 +238,94 @@ def test_every_enumerated_unit_builds_a_valid_config():
     for u in design_units():
         for arm in arms_for(u):
             Config(unit=u, arm=Arm(arm), stage="config_sweep")
+
+
+# --- repair-arm seed policy (Sol review 2026-08-16 · D-025) ----------------
+#
+# The defect these pin: repairs were charged and scheduled at the three-seed
+# sweep policy for every unit, including the fifteen carrying repair validation
+# at twenty. A twenty-seed baseline paired against a three-seed repair cannot
+# support the Plan §7.3 mixed-effects test, and that test creates every label in
+# the thesis. The compute accountant hid it too, understating the design.
+
+
+def test_repair_validation_units_repair_at_the_full_seed_count():
+    for unit in repair_validation_units():
+        assert repair_stage_of(unit) == "repair_validation"
+    for ob in repair_obligations(repair_validation_units()):
+        assert ob.seeds == K.SEEDS_REPAIR_VALIDATION, (
+            f"{ob.arm} on a repair-validation unit runs at {ob.seeds} seeds; "
+            "its baseline runs at 20 and the acceptance test is paired"
+        )
+
+
+def test_ordinary_sweep_repairs_stay_at_three_seeds():
+    repair_ids = ids(repair_validation_units())
+    sweep = tuple(u for u in design_units() if Config(unit=u).unit_id not in repair_ids)
+    assert sweep, "expected units outside the repair-validation set"
+    for ob in repair_obligations(sweep):
+        assert ob.seeds == K.SEEDS_SWEEP
+
+
+def test_the_accountant_is_stage_aware():
+    """The arithmetic, not just the schedule: charging every repair at three
+    seeds understated the design by 17 seeds on each repair-validation arm."""
+    ladder = repair_validation_units()
+    n_arms = sum(len(arms_for(u)) - 1 for u in ladder)
+    flat = n_arms * K.SEEDS_SWEEP
+    staged = sum(ob.seeds for ob in repair_obligations(ladder))
+    assert staged == n_arms * K.SEEDS_REPAIR_VALIDATION
+    assert staged - flat == n_arms * (K.SEEDS_REPAIR_VALIDATION - K.SEEDS_SWEEP)
+
+
+def test_baseline_and_repairs_share_a_seed_count_per_unit():
+    """The property the pairing actually needs, stated directly.
+
+    Plan §7.2 repeats the unrepaired condition *and its repairs* across the
+    same seeds. Whatever the stage policy is, the two sides of the comparison
+    must agree, or the paired test is comparing different numbers of runs.
+    """
+    ladder_ids = ids(repair_validation_units())
+    for ob in obligations(design_units()):
+        if ob.stage != "repair_validation":
+            continue
+        assert Config(unit=ob.unit).unit_id in ladder_ids
+        for repair in repair_obligations((ob.unit,)):
+            assert repair.seeds == ob.seeds
+
+
+# --- which fifteen conditions (Sol answer 2026-08-16 · D-025) --------------
+
+
+def test_repair_validation_is_the_manipulation_ladder():
+    """Six data sizes + four confound levels + five capacities, at one config.
+
+    The previous reading took one representative per (configuration × family)
+    and landed on the extreme of every manipulation -- n=100, confound 0.9,
+    hidden 16 -- validating labels where the answer is least in doubt and
+    leaving the borderline levels on three seeds.
+    """
+    ladder = repair_validation_units()
+    assert len(ladder) == 15
+
+    causal, layout = REFERENCE_CONFIG
+    for unit in ladder:
+        assert (unit.causal_attribute, unit.layout) == (causal, layout)
+
+    estimation = [u for u in ladder if u.family == "estimation"]
+    missing = [u for u in ladder if u.family == "missing_feature"]
+    capacity = [u for u in ladder if u.family == "capacity"]
+
+    assert sorted(u.n_transitions for u in estimation) == sorted(K.DATA_SIZES)
+    assert sorted(u.confound_rate for u in missing) == sorted(K.CONFOUND_LEVELS_2A)
+    assert sorted(u.hidden_size for u in capacity) == sorted(K.HIDDEN_SIZES)
+
+
+def test_the_reference_configuration_is_preregistered_and_canonical():
+    assert REFERENCE_CONFIG == ("shape", "uniform")
+    assert REFERENCE_CONFIG in CANONICAL_PAIRS
+
+
+def test_every_ladder_rung_is_in_the_design():
+    """A rung outside the design would lose its twenty-seed obligation silently."""
+    assert ids(repair_validation_units()) <= ids(design_units())

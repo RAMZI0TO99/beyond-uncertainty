@@ -164,18 +164,25 @@ claim and twenty to repair validation, overlapping on seeds 0–4.
 
 ## Where the project stands
 
-Weeks 1 and 2 complete and audited. **Zero compute consumed** — nothing has
-trained. Gate 1 is 2026-09-19.
+Weeks 1 and 2 complete and audited, and Sol's 2026-08-16 review actioned in
+full (D-025 … D-031). **Zero compute consumed** — nothing has trained. Gate 1
+is 2026-09-19. Design: 300 units, 150/150, **8,572 fits** against ~8,700.
 
-**Next: Week 3, the world model.** W3 Mon the MLP (configurable input subset and
-hidden size, MSE for continuous and cross-entropy for categorical; done when
-forward-pass shape tests pass), W3 Tue the training loop with early stopping on a
-held-out split — *so "insufficient data" is never confounded with "insufficient
-training"* — W3 Wed the bootstrap K-member ensemble, W3 Fri disagreement metrics
-and the first error/disagreement curves.
+**Next: Week 3, the world model — but two things come first.**
+
+1. **Build the D-030 named-stream module.** Sol answered Q-008: named streams
+   for environment / policy / bootstrap / weight-init, `(unit_id, seed, purpose)`
+   for sweep-only units, a preregistered `comparison_group_id` for paired
+   canonical comparisons, and `arm` **never** in the failure-set stream. It is
+   decided and *unbuilt*, and W3 Wed's ensemble is the first consumer.
+2. **Settle Q-009 before the MLP.** 26 of 30 output dims never change within an
+   episode; an identity predictor scores MSE 0.0047 and 92.6% of its residual is
+   the two agent-position dims. So the rule lives in 2 of 30 dims, and obs dim
+   differs by family (30 vs 22), so the error *scale* differs between families
+   for encoding reasons. P§10.1's failure threshold freezes permanently W4 Fri.
+
+Then W3 Mon the MLP, W3 Tue the training loop — **split by episode, not by
+transition**, or early stopping leaks — W3 Wed the bootstrap ensemble, W3 Fri
+disagreement metrics and the first curves.
 
 Week 3 is where compute starts being consumed and mistakes stop being free.
-
-Four questions are with Sol (Q-007, Q-008, and two in the delta). **Q-008 is
-about seed independence and Week 3 is the first week that consumes seeds** — it
-is worth pressing for before the ensemble is built.

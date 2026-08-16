@@ -23,39 +23,15 @@ This is the single shared working file for the project. It is written by Claude,
 
 ## 0. How to use this file
 
-### Claude — at the **start** of every session
+**Claude — session start.** Before anything else, including for a question that looks trivial: read this file in full (§1 where you are, §2 what you may not change, §3–§5 what past-you decided); check §1's *Last updated* against today and say so if it is over a week stale — a stale snapshot is how a reset agent confidently redoes finished work; check §6 for anything Sol asked for that is unactioned; then tell the student in two lines where things stand and what you think is next, and wait.
 
-Do this before anything else, in this order. No exceptions, including for a question that looks trivial.
+**Claude — session end.** (1) Rewrite §1 so it is true now. (2) Append a §7 session-log entry. (3) Append any new §3 decisions, §4 deviations, §5 gate records. (4) Update `DELTA_TO_SOL.md` — append if undelivered, replace only once delivered (D-008, D-023), naming the session under `COVERS SESSIONS`; it is the only channel through which Sol learns anything. (5) Run the suite: `tests/test_project_state.py` enforces (1)–(4) mechanically (D-022), and if it fails, **fix the file, not the test**. From the first real result onward every delta reporting one carries a `NUMBERS` block (D-011): unit counts including `min(N₀, N₁)`, seeds and policy, point estimate, interval *and what it was taken over*, ambiguous and undiagnosed counts, and which test ran — prose alone leaves Sol unable to audit anything, which is the same as having no reviewer.
 
-1. Read this file top to bottom. §1 is where you are; §2 is what you are not allowed to change; §3–§5 are what past-you already decided.
-2. Check §1's *Last updated* against today. If it is more than a week stale, say so to the student before acting — a stale snapshot is how a reset agent confidently redoes finished work.
-3. Check §6 for anything Sol asked for that has not been actioned.
-4. State back to the student, in two lines, where the project stands and what you believe the next action is. Wait for confirmation before starting work.
+**Never edit a past entry in §3, §4, §5 or §7.** Corrections are new entries referencing the old one. §1 and §8 are the only sections that get overwritten.
 
-### Claude — at the **end** of every session
+**Sol.** Onboarded once with `SOL_BRIEF.md` and this file in full, then continuous; thereafter receives only `DELTA_TO_SOL.md`. Returns verdict blocks in the brief's format and does not rewrite this file — the student pastes them back and Claude files them into §6 or §3. If Sol's session is ever lost, re-onboard with `SOL_BRIEF.md` + this whole file, saying explicitly that it follows a session loss.
 
-1. Rewrite §1 completely so it is true as of now.
-2. Append a §7 session-log entry.
-3. Append any new §3 decisions, §4 deviations, §5 gate records.
-4. **Update `DELTA_TO_SOL.md`** — append if its flag says undelivered, replace only once delivered (D-008, D-023). Name the session under `COVERS SESSIONS`. This is the only channel through which Sol learns anything.
-5. **Run the suite.** `tests/test_project_state.py` enforces steps 1–4 mechanically (D-022); if it fails, fix the file, not the test. **From the first real result onward, any delta reporting one carries a `NUMBERS` block** (D-011): unit counts including `min(N₀, N₁)`, seeds and which policy applies, point estimate, interval *and what it was taken over*, ambiguous and undiagnosed counts, and which test ran. Prose alone leaves Sol unable to audit anything, which is the same as having no reviewer.
-
-Never edit a past entry in §3, §4, §5 or §7. Corrections are new entries that reference the old one. §1 and §8 are the only sections that get overwritten.
-
-### Sol
-
-Sol was onboarded once with `SOL_BRIEF.md` and this file in full, and runs continuously thereafter. From then on Sol receives only §8 deltas. Sol returns verdict blocks in the format given in the brief; Sol does not rewrite this file. The student pastes Sol's blocks back and Claude files them into §6 or §3.
-
-If Sol's session is ever lost, re-onboard with `SOL_BRIEF.md` + this file in full, and say explicitly that it is a re-onboarding after a session loss.
-
-### Student
-
-Carry two things, in two directions:
-
-- **To Sol:** `DELTA_TO_SOL.md` only. (First time, or after a Sol session loss: `SOL_BRIEF.md` + this whole file.)
-- **To Claude:** the whole file, at the start of every session. Then Sol's verdict blocks as they arrive.
-
-Keep the file in version control from Week 1 Tuesday, so its own history is recoverable and any drift is diffable.
+**Student.** To Sol: `DELTA_TO_SOL.md` only (first time or after a Sol session loss: `SOL_BRIEF.md` + this whole file). To Claude: the whole file at every session start, then Sol's verdict blocks as they arrive. Keep this file in version control so its own history is diffable.
 
 ---
 
@@ -63,15 +39,16 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-15 |
+| **Last updated** | 2026-08-16 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1 and 2 complete** (Mon–Sat both). Running ahead of the 2026-08-17 start — see DEV-002 |
+| **Current week / day** | **Weeks 1 and 2 complete and audited**, plus Sol's 2026-08-16 review actioned. Running ahead of the 2026-08-17 start — see DEV-002 |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **204 passing, 1 skipped**. Includes golden `unit_id` values, so a silent change to what a statistical unit means fails the suite |
+| **Tests** | **222 passing, 1 skipped**. Includes golden `unit_id` values and the observational-aliasing property Experiment 2A rests on |
 | **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
+| **Design scale** | 300 units · 150/150 intended class · **8,572 model fits** vs P§14.2's ~8,700 |
 
 **Hypothesis status**
 
@@ -81,36 +58,24 @@ Keep the file in version control from Week 1 Tuesday, so its own history is reco
 | H2 | Disagreement-to-error ratio is low under hypothesis-class failure | Not tested | W10 Tue → **Gate 2** |
 | H3 | Learned critic beats fitted (error, disagreement) rule by > 5 pts | Not tested | W15 Fri |
 
-**Done:**
-- **W1 Mon** — repo initialised, folder structure, deps pinned in `pyproject.toml`, first commit. *Done when: fresh clone installs and imports* — **verified** by cloning to a temp dir, building a venv, installing, importing, and running the suite.
-- **W1 Tue** — config system (`src/bu/config.py`) and run-record writer (`src/bu/runrecord.py`). *Done when: a dummy run writes a complete, reloadable record* — **verified**.
-- **W1 Wed** — JSONL metric logging and `load_runs()` (`src/bu/metrics.py`). *Done when: three dummy runs load into one dataframe* — **verified**.
-- Additional, not in the schedule: `src/bu/constants.py`, the preregistered values in one file (D-005).
-- **Sol's Q-005 ruling implemented** — registered, versioned statistical-identity field list with an import-time exhaustiveness check and tests that each registered field genuinely changes `unit_id` (D-009).
-- Repository pushed to GitHub, private, SSH auth.
-- **Sol's material finding fixed** — `stage` added to run identity (D-012). A unit can owe runs to several experimental obligations at overlapping seeds; without it they collided.
-- **Critic feature whitelist frozen** (D-013), ahead of the Week 6 deadline, per Sol's Q-006.
-- **Week 1 audit** (D-015): seven defects found and fixed before Week 2, three of them serious. `IDENTITY_VERSION` and `SCHEMA_VERSION` both bumped to 2 under a Change Record (D-016), while no data exists to invalidate.
-- **W1 Fri** — gridworld core (`src/bu/env/gridworld.py`). *Done when: a 200-step random rollout runs without error* — **verified**, and across all three layouts × all three causal attributes.
-- **W1 Sat** — factored observation encoder with the feature-masking hook (`src/bu/env/encoder.py`). *Done when: env constructs with the shape feature withheld* — **verified**, plus the property that matters: two states differing only in a withheld attribute encode identically while still transitioning differently.
-- **W2 Mon** — confound-rate parameter. *Done when: sampling test shows empirical correlation matches the setting* — **verified** at 0.0 / 0.25 / 0.5 / 0.75 / 0.9 and for all three causal attributes.
-- **W2 Tue** — configuration-condition enumerator (`src/bu/experiments/enumerate_units.py`). *Done when: returns ≥300 configuration-conditions and prints the count by axis* — **verified**: full matrix 531, design selection exactly 300, balanced 150/150 on intended class.
-- **W2 Wed** — stable configuration ids in every run record (done since D-006); confound double-booking resolved and recorded (D-007).
-- **W2 Thu** — prose drafted: both outstanding cells, in `docs/method_draft.md`. **Awaiting the student's rewrite** — drafted for reaction, not for submission.
-- **W2 Fri** — scripted exploratory policy, transition dataset collector, coverage metric (`src/bu/env/policy.py`, `src/bu/env/collect.py`). *Done when: a 5,000-transition dataset is saved with a coverage report* — **verified**.
-- **Week 2 audit** (D-021): six defects found and fixed before Week 3, one methodologically serious.
-- **W2 Sat** — PPO substitution written into the methodology with the coverage evidence behind it (D-020). This is what P§13.2 requires and what makes DEV-001 a defensible design decision rather than an unexplained deviation.
+**Done — Weeks 1 and 2, every "Done when" criterion verified rather than asserted.**
+Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
+- **Week 1** — repo, `constants.py` (D-005), config and three identities (D-006), run records, JSONL logging, gridworld, masking encoder. Audited: seven defects (D-015), version bump under a Change Record (D-016).
+- **Week 2** — confound parameter, enumerator (D-018), scripted policy and collector with coverage evidence (D-020), both prose cells drafted (D-019, awaiting the student's rewrite). Audited: six defects (D-021).
+- **Sol's earlier rulings implemented** — identity registry (D-009), `stage` in run identity (D-012), critic whitelist frozen (D-013).
+- **Sol's 2026-08-16 review actioned in full** (D-025 … D-031). Verdict was CHALLENGED; all six findings independently verified before anything was changed, and all six stood.
 
-**In flight:** nothing running. No compute consumed.
+**In flight:** nothing running. **No compute consumed.**
 
-**Next three actions — Week 3, the world model:**
-1. **W3 Mon** — world-model MLP: configurable input feature subset and hidden size, MSE head for continuous features and cross-entropy for categorical. *Done when: forward-pass shape tests pass.*
-2. **W3 Tue** — training loop with early stopping on a held-out split, so "insufficient data" is never confounded with "insufficient training". *Done when: trains on 5,000 transitions with the loss curve logged.*
+**Next actions — Week 3, the world model:**
+0. **First, before the MLP** — the named-stream module D-030 decides but does not build. W3 Wed's bootstrap ensemble is the first thing that consumes a stream, so building it after the ensemble means retrofitting the thing the ensemble is made of.
+1. **W3 Mon** — world-model MLP: configurable input feature subset and hidden size, MSE head for continuous features and cross-entropy for categorical. *Done when: forward-pass shape tests pass.* **Settle Q-009 first** — it decides what the model predicts.
+2. **W3 Tue** — training loop with early stopping on a held-out split, so "insufficient data" is never confounded with "insufficient training". The split must be **by episode, not by transition**: transitions within an episode are temporally correlated (the same reason P§7.3 needs episode-level random intercepts), so a transition-level split leaks and makes early stopping optimistic. *Done when: trains on 5,000 transitions with the loss curve logged.*
 3. **W3 Wed** — bootstrap resampling and K-member ensemble trainer with independent initialisation. *Done when: five members train, per-member validation error logged.*
 
-**Blocked on:** nothing. Open questions: **Q-007** (plan/schedule contradiction, due before W13) and **Q-008** (seed independence across units, new).
+**Blocked on:** nothing for implementation. **Blocked for experimental training** until Sol's review is filed — it now is. Open: **Q-009** (prediction target and failure-threshold comparability, new, due before W4 Fri freezes the threshold).
 
-**Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split on the condition that it would revisit if *"important implementation or methodological decisions are repeatedly completed before Sol can review them."* That is a live risk in this arrangement, not a hypothetical: D-005 and D-006 were both built before Sol saw them. Mitigation: consequential design decisions go into a delta **and get delivered** before the code that depends on them is built on top of. Claude flags any decision it believes meets that bar at the moment of making it.
+**Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split conditionally, and DEV-005 was a hit against that condition. Sol weighed it on 2026-08-16 and **kept the split**, on the grounds that the mechanised protocol tests improve the arrangement more than reassigning implementation would. The watch stays live: consequential design decisions go into a delta **and get delivered** before dependent code is built on them, and Claude flags any decision it believes meets that bar at the moment of making it. D-030 is the current test of that — decided, filed, and deliberately left unbuilt.
 
 ---
 
@@ -354,6 +319,60 @@ Every decision that a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** P§7.5, P§12.1, P§16.
 **Reviewed by Sol:** pending — flagged proactively, before the firewall is built.
 
+### D-025 · 2026-08-16 · Repair validation is the manipulation ladder, and repairs share their baseline's seeds
+**Decision:** two changes, from one Sol finding and one Sol answer. (a) `repair_validation_units()` is the **complete manipulation ladder at one preregistered reference configuration** — 6 dataset sizes + 4 confound levels + 5 capacity levels = 15, at `REFERENCE_CONFIG = ("shape", "uniform")`, P§2.2's worked example. (b) Repair arms of a repair-validation unit run at **20 seeds**, not 3. `repair_stage_of()` and `repair_obligations()` make the seed count a property of the (unit, arm) pair, and `total_model_fits()` sums those obligations instead of assuming a policy.
+**Why (a):** the previous reading took one representative per (canonical configuration × family) and landed on `n=100`, confound `0.9`, `hidden_size=16` — the extreme of every manipulation, where a repair either obviously works or obviously does not. Twenty seeds bought precision exactly where the answer was least in doubt, while the borderline rungs, where P§7.4's ambiguous and undiagnosed outcomes actually arise, stayed on three. The three-seed sweep already supplies configuration diversity; the twenty-seed budget exists to buy precise repair effects. 6+4+5 is also the only natural source of P§14.2's number 15.
+**Why (b):** P§7.2 repeats the unrepaired condition *and its repairs* across the full seed count, and P§7.3's acceptance test is **paired** per transition within seed. A 20-seed baseline against a 3-seed repair does not have the pairing the test rests on for 17 of the 20 — and that test creates every label in the thesis. The accountant hid it: charging all repairs at 3 seeds understated the design.
+**Effect:** 8,181 → **8,572** fits against P§14.2's ~8,700 (128 headroom). Unit count, class balance and canonical counts unchanged. Sol's projected 8,606 differs only because the ladder carries 23 repair arms where the old fifteen carried 25.
+**Tested:** four tests, including the invariant rather than the numbers — for every repair-validation unit, baseline seeds == repair seeds.
+**Plan ref:** P§7.2, P§7.3, P§14.2.
+**Reviewed by Sol:** finding and answer are Sol's; the implementation is not yet reviewed.
+
+### D-026 · 2026-08-16 · Position-causal conditions leave the canonical set
+**Decision:** `CANONICAL_PAIRS` replaces `("position", "uniform")` with `("colour", "clustered")`. Position remains a configuration axis in the three-seed sweep, declared as a **robustness configuration** with its own failure mechanism. Five configurations are retained, so P§14.2's 30 + 20 + 25 = 75 arithmetic is untouched.
+**Why:** Experiment 2A withholds whichever attribute is causal, and withholding *position* is not the same manipulation. Measured on the exhaustive two-object state space, running every state through `transition()`: shape and colour masking each leave **10.0%** of (observation, action) keys ambiguous; position masking collapses the key space **26-fold** and leaves **37.5%** ambiguous. The cause is that withholding position deletes the object-position block outright — the model cannot see *where* objects are, so it cannot represent that a move was into an object at all. That is unobservable state, not an unrepresentable rule. Mixing the two inside one canonical claim would mean every 2A result has to be read per-attribute.
+**Rejected:** keeping it with a documented caveat (Sol permitted this) — the caveat does not make H2's canonical conditions one mechanism. Dropping position entirely — a larger deviation than the finding requires, and it loses an axis P§13.1.2 lists.
+**Decided by:** the student, on the measurement above.
+**Plan ref:** P§8.2.1, P§13.1.2, P§14.2. Recorded as **DEV-006**.
+**Reviewed by Sol:** finding is Sol's; this resolution is not yet reviewed.
+
+### D-027 · 2026-08-16 · The encoder assigns slots by the descriptor it writes
+**Decision:** `ObservationEncoder.encode` sorts objects by the block values it is about to write, rather than relying on `GridState`'s raster order.
+**Why:** raster order is a function of position, so with `position` withheld the slot assignment still carried positional information into an observation claiming to carry none — two arrangements differing only in where objects sat could encode differently through slot order alone. Withholding must remove an attribute from the input space *entirely* (P§8.2.1); a partial leak weakens the manipulation. Sorting on the written descriptor makes the observation a function of the multiset of visible descriptors and nothing else, and ties are objects whose blocks are byte-identical, so order among them is unobservable **by construction** rather than by convention.
+**Relation to B1:** this strengthens B1's fix rather than replacing it. B1 required slot assignment to be a deterministic function of the state; it still is. Raster order satisfied that but only hid order-nuisance when position was visible.
+**No `IDENTITY_VERSION` bump:** slot assignment affects observations, not unit identity. No data exists either way.
+**Plan ref:** P§8.2.1.
+**Reviewed by Sol:** finding is Sol's; the fix is not yet reviewed.
+
+### D-028 · 2026-08-16 · The protocol tests are hardened where they were decorative
+**Decision:** three fixes to `tests/test_project_state.py`. `read_text(encoding="utf-8")` on both files; session coverage checks **every** session since the undelivered block was opened, not only the newest; a delta id gap must be declared via `CONSOLIDATES_DELTA_IDS` or `LOST_DELTA_IDS`.
+**Why:** each corresponds to a claim D-022 made that was not true. On Windows the default encoding is CP-1252, so all ten protocol tests **errored** while the suite still reported the project's own numbers as passing — a protocol check that runs on one machine is not a protocol check. Checking only the newest session would have passed the original failure, where two consecutive sessions wrote no delta and only the second would ever have been examined. And D-022 claimed skipped ids fail the suite; `DELTA_ID: 10` after `PREVIOUS_DELTA_ID: 7` passed, because the test checked ordering and uniqueness only. The new test failed on that gap on its first run.
+**The general lesson, again:** a test that has never seen the failure it claims to catch is a claim, not a check. All three of these were written *after* a real failure and still did not cover it.
+**Plan ref:** not covered by the plan.
+**Reviewed by Sol:** findings are Sol's.
+
+### D-029 · 2026-08-16 · Q-007 closed — "no explicit statistics", and a tightened negative control
+**Decision:** Sol's ruling adopted. The critic ablation variant keeps the frozen P§13.5.1 schema but is **named and described as "no explicit statistics"**, not "no error information": it drops engineered error magnitude, persistence and trend, and the ensemble uncertainty statistics, while retaining latent state, actions, state/action history and the raw predicted-vs-actual state. Separately, the W13 construction-leakage negative control receives latent and context features but **not** `predicted_vs_actual_state`, engineered errors or uncertainty signals.
+**Why:** P§12.1 and P§13.5.1 are internally inconsistent, so the disagreement was never merely plan-versus-schedule. The retained raw residual trace lets a model learn an error representation, so a strong result there cannot be reported as succeeding "without error" — only without *explicitly supplied* error and uncertainty statistics. The control tightening is the sharper half: without it the control can reconstruct prediction error while claiming to exclude it, which would make the leakage control fail silently in the direction that looks like success.
+**Would change it:** a statement in the authoritative plan that "error history" means the engineered Error group specifically.
+**Plan ref:** P§12.1, P§13.5.1, S§W13 Tue.
+**Reviewed by Sol:** **yes — this decision is Sol's** (high confidence).
+
+### D-030 · 2026-08-16 · Q-008 closed — named streams, with pairing preserved inside canonical comparisons
+**Decision:** Sol's ruling adopted. Four **named streams** — environment generation, policy decisions, bootstrap sampling, weight initialisation. Sweep-only units derive each from `(unit_id, seed, purpose)`. Explicitly paired canonical comparisons derive from a preregistered `comparison_group_id` that excludes only the manipulated axis, so common random numbers survive where they are wanted: Experiment 1's data sizes share a generating stream as nested prefixes, Experiment 2B's capacity levels train on the same datasets, Experiment 2A's confound levels share underlying draws. `arm` is **never** in the failure-set stream — baseline and repairs must be evaluated on the same recorded failure set (P§7.2 step 4).
+**Why:** hashing everything by `(unit_id, arm, stage, seed, purpose)` removes unwanted cross-unit correlation but also destroys the pairing the design depends on. Independence is wanted *across* units, because confidence intervals are taken over units and correlated environments would understate between-unit variance; it is not wanted *within* a comparison, where holding the generating process fixed is the point of the manipulation.
+**NOT YET IMPLEMENTED.** `GridWorld.reset` still derives its stream from the seed alone and `collect()` from `seed * 100_000 + episode`. This is filed as decided and unbuilt, deliberately visible: W3 Wed's bootstrap ensemble is the first consumer of a stream, so the module is the **first** Week 3 task, before the MLP.
+**Would change it:** an analysis plan modelling all cross-unit dependence from shared streams and showing unit-level intervals stay calibrated.
+**Plan ref:** P§5.4, P§7.2, P§11.2.
+**Reviewed by Sol:** **yes — this decision is Sol's** (high confidence).
+
+### D-031 · 2026-08-16 · Intended-class balance is kept, with a predeclared reserve
+**Decision:** Sol's ruling adopted. The design stays balanced **150/150 on intended class**; no class is over-sampled in anticipation of differential exclusion. Instead: a deterministic reserve order is predeclared within each intended class and configuration stratum; Week 5 inflates the raw count using the pilot exclusion rate the schedule requires; Gate 2 assesses `min(N₀, N₁)` on repair-verified labels; and any shortfall is filled from the predeclared reserve **without inspecting critic performance**.
+**Why:** expected differential exclusion is currently a guess, and over-sampling from a guess introduces exactly the kind of unreported researcher degree of freedom P§10.6 exists to prevent. Drawing from a reserve fixed in advance is a preregistered contingency; drawing after seeing which class survived is not. Note also that excess units in the larger surviving class cannot repair a shortage in the smaller one — balanced accuracy uses equal numbers of observed labelled units.
+**Not yet built:** the reserve order itself. Due W5 Thu with the MDE simulation, which is when the real count is set.
+**Plan ref:** P§10.4, P§10.6, P§10.7, P§7.4.
+**Reviewed by Sol:** **yes — this decision is Sol's** (high confidence).
+
 ---
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
@@ -384,6 +403,11 @@ Format: `Week n Day | what was skipped or substituted | why | goes in methodolog
 **Deviation:** the confound-rate parameter (Schedule W2 Mon) and the three procedural layouts (W2 Tue) were implemented alongside the Week 1 Friday environment rather than in their scheduled cells.
 **Why:** they are parameters *of* the generator. Building the generator without them and adding them two days later means writing it twice and risking drift between the config contract and what is actually generated. The W2 Mon acceptance criterion was run as specified and passes.
 **Goes in methodology:** **no** — ordering only; no design change.
+
+### DEV-006 · 2026-08-16 · Position-causal conditions are not canonical Experiment 2A
+**Deviation:** the five canonical (causal attribute, layout) configurations cover shape and colour only. Position-causal conditions run in the three-seed configuration sweep as a declared robustness configuration, not as canonical Experiment 2A conditions.
+**Why:** withholding position removes object *occupancy* rather than an attribute of a visible object — measured 37.5% aliased (observation, action) keys against 10.0% for shape and colour, with the key space 26× smaller. It is a different structural failure, and P§8.2.1's manipulation is about an unrepresentable rule. See D-026.
+**Goes in methodology:** **yes** — it bounds what Experiment 2A's result is a result about, and the measurement behind it belongs with the claim.
 
 ### DEV-003 · 2026-08-15 · venv created with `--system-site-packages`
 **Deviation:** the virtual environment reuses the system torch/numpy/scipy/pandas rather than installing isolated copies.
@@ -424,40 +448,30 @@ Two conditions:
 | Q-004 | Schedule capacity model now that Claude implements — hold dates, or compress? | 2026-08-15 | **Closed.** Sol agrees: hold every date and gate; spend the gain on review, understanding, documentation and prose, never scope. Names the failure mode as **verification lag** — implementation outrunning student and reviewer, leaving choices embedded in code before they are understood. Consequential methodological decisions must be *delivered before* dependent implementation proceeds; routine implementation need not wait |
 | Q-005 | Should statistical identity be a registered field list rather than a schema hash? | 2026-08-15 | **Closed** → D-009. Sol: yes, explicit versioned identity list; `SCHEMA_VERSION` alone insufficient. Implemented in the stronger form Sol named — exhaustive classification, enforced at import, tested per field |
 | Q-006 | Whitelist vs blacklist for the leakage firewall; and when to freeze it. | 2026-08-15 | **Closed** → D-013. Sol: whitelist, frozen before the Week 6 firewall is accepted, in a dedicated schema module rather than `constants.py`, with X / y / groups physically separate. Since P§13.5.1 fully specifies the features, Sol's "freeze it now" condition was met and it is frozen |
-| Q-008 | **Seed independence across units.** `GridWorld.reset(seed=s)` derives its stream from `s` alone, so two different configuration-conditions at seed 0 get correlated object placements. Within Experiment 1 that is arguably *desirable* — the data-size sweep should hold the generating process fixed and vary only the amount of data. Across the ~300-unit configuration sweep it is less obviously right, because confidence intervals are taken over units and correlated environments could understate between-unit variance. Options: leave as is; or derive each run's stream by hashing `(unit_id, arm, stage, seed, purpose)`, which also separates the env stream from the bootstrap and weight-init streams. Not a bug, a methodological judgement — and P§5.4/§11.2 make seed behaviour load-bearing. | 2026-08-15 | Open |
-| Q-007 | **A genuine plan/schedule contradiction, found while freezing the schema.** P§13.5.1's table retains the Error group in *"Full; No-magnitude; Statistics-only"* — so the **no-statistics** variant drops error features entirely. But S§W13 Tue describes that variant as *"latent state, action and **error history** only"*. The two disagree on whether no-statistics sees error history. This changes what the variant means and therefore how the W13 construction-leakage control is read: if no-statistics has no error signal at all, a strong result there is far more surprising. Per our source-of-truth rule the plan wins, and the schema is frozen that way — but the disagreement should be resolved explicitly, not by default. | 2026-08-15 | **Open** — due before W13 Tue |
+| Q-009 | **What does the world model predict, and is the failure threshold comparable across families?** Probing the collected data: **26 of 30 output dimensions never change within an episode**. An identity predictor — output = input — scores MSE 0.0047, and 92.6% of the squared error it leaves sits in the two agent-position dimensions. So the passability rule lives in 2 of 30 output dims while P§10.2's primary metric averages it against 28 that any model nails immediately. Worse, the dilution is **not constant across conditions**: obs dim is 30 with all features visible and 22 when shape is withheld, so the error scale differs systematically between the estimation and missing-feature families for reasons that are an artefact of the encoding. P§10.3's per-dimension normalisation covers the H2 ratio. P§10.1's failure threshold — a fixed percentile of a reference error distribution, **frozen permanently at W4 Fri** — may not be comparable across families under one global value. Decides W3 Mon (predict full next state, the delta, or the dynamic components) and W4 Fri. | 2026-08-16 | **Open** — due before W4 Fri freezes the threshold |
+| Q-008 | Seed independence across units: shared environment streams at the same seed. | 2026-08-15 | **Closed** → D-030. Sol: named streams, independent across sweep units, but common random numbers preserved inside explicitly paired canonical comparisons via a preregistered `comparison_group_id`. `arm` never in the failure-set stream. **Decided, not yet built** — first Week 3 task |
+| Q-007 | Plan/schedule contradiction on whether the no-statistics critic variant sees error history. | 2026-08-15 | **Closed** → D-029. Sol: P§12.1 and P§13.5.1 are internally inconsistent; keep the schema, rename the variant **"no explicit statistics"**, and tighten the W13 negative control to exclude `predicted_vs_actual_state` as well |
 
 **For Claude** — things Sol or the student wants implemented, checked or measured.
 
 | # | Item | Raised by | Status |
 |---|---|---|---|
-| — | *(none yet)* | | |
+| C-001 | File decisions for Q-007, Q-008, the fifteen-condition repair subset and class replenishment; correct the twenty-seed repair schedule and compute estimate; add cross-attribute transition-aliasing tests. Blocking for training, not for implementation | Sol, 2026-08-16 | **Done** → D-025 … D-031, `tests/test_aliasing.py` |
+| C-002 | Build the D-030 named-stream module | Sol, 2026-08-16 | **Open** — first Week 3 task, before the MLP |
+| C-003 | Predeclare the D-031 reserve draw order | Sol, 2026-08-16 | **Open** — due W5 Thu with the MDE simulation |
 
 ---
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before 2026-08-15 (night, W2 Fri/Sat) are in `PROJECT_STATE_ARCHIVE.md`; 8 archived, 2 kept here.
+Entries before 2026-08-16 are in `PROJECT_STATE_ARCHIVE.md`; 13 archived, 1 kept here.
 
-### 2026-08-15 (night, W2 Fri/Sat) · Policy, collector, coverage evidence · Claude
-**Did:** scripted exploratory policy (`policy.py`), transition dataset collector with episode structure (`collect.py`), coverage report, and the W2 Sat methodology section evidencing the PPO substitution (D-020).
-**Result:** 156 → 180 tests. **Weeks 1 and 2 are complete.** Measured: 3–6× more rule-carrying transitions than a uniform random baseline at every dataset size (39.8% vs 7.6% of steps at n=5000), both passability classes well represented, (shape, action) coverage complete at full size. Checked the one thing that could have invalidated Experiment 1 — whether coverage rather than sample size is the binding constraint — and it is not: bump counts rise monotonically and saturate before the largest condition, which is exactly what P§3.2.1 requires for thin coverage to count as estimation failure.
-**Left:** nothing running; still zero compute consumed, because nothing has trained yet. Week 3 is the world model, which is where that changes.
-**Next:** W3 Mon — the world-model MLP.
-
-### 2026-08-15 (night, W2 audit) · Week 2 audited before Week 3 · Claude
-**Did:** audited the five modules built since the Week 1 audit — the environment, encoder, policy, collector and enumerator, none of which existed when the last audit ran. Six defects found and fixed (D-021).
-**Result:** 180 → 194 tests. The serious one is B1: object order leaked into the observation, so the same physical arrangement encoded differently depending on placement order. That would have made a model learn the rule per slot and learn permutation invariance besides — inflating the data requirement for reasons unrelated to the design and shifting where Experiment 1's estimation failure appears. Every test passed before the fix; it was found by asking whether the encoder was permutation-invariant, not by anything failing. B2 similarly: the bump balancer read counter keys that were never written in the mixed-adjacency case, and class balance improved 0.62 → 0.78 once fixed.
-**Also checked and correct:** the three layouts are genuinely three distributions (mean pairwise distance 2.28 / 4.05 / 6.01), parity-constrained placement fails loudly on small grids, dataset round-trip is exact.
-**Left:** nothing running, still zero compute. Weeks 1 and 2 complete and audited.
-**Next:** W3 Mon — the world-model MLP. This is where compute starts being consumed.
-
-### 2026-08-15 (night, handoff) · Protocol failure found and mechanised · Claude
-**Did:** audited the collaboration protocol itself while updating the shared files. Found that three sessions never reached Sol (DEV-005), consolidated them into delta 10, moved the delta into `DELTA_TO_SOL.md` (D-023), wrote `CLAUDE.md` as the session handoff (D-024), archived eight session-log entries, and made the protocol machine-checked (D-022).
-**Result:** 194 → 204 tests. The two protocol failures were caught by the new tests on first run, which is the point: I had written D-008 specifically to prevent overwriting an undelivered delta, and then did it anyway. Prose rules fail at the end of long sessions. `PROJECT_STATE.md` is back under its cap at ~460 lines.
-**Left:** nothing running, zero compute. Weeks 1 and 2 complete and audited.
-**Next:** W3 Mon — the world-model MLP. First week that consumes compute.
-
+### 2026-08-16 (Sol review) · Review actioned: repair ladder, position, protocol · Claude
+**Did:** worked Sol's CHALLENGED verdict of 2026-08-16 end to end. Verified all six findings independently before changing anything — all six stood. Fixed the repair-arm seed schedule and made the compute accountant stage-aware (D-025); adopted Sol's manipulation-ladder reading of the fifteen repair-validation conditions (D-025); moved position-causal conditions out of canonical Experiment 2A on the student's decision (D-026, DEV-006); closed the encoder's slot-order leak (D-027); hardened three protocol tests that were decorative (D-028). Filed Sol's four answers as D-029 (Q-007), D-030 (Q-008), D-031 (class balance).
+**Result:** 204 → 222 tests. Compute estimate 8,181 → **8,572** against P§14.2's ~8,700; 300 units and 150/150 balance unchanged. The measurement that decided D-026: on the exhaustive two-object state space, shape and colour masking each leave 10.0% of (observation, action) keys ambiguous, while position masking collapses the key space 26-fold and leaves 37.5% — it hides object occupancy, not an attribute, so it is a different structural failure. The new delta-continuity test failed on the existing `DELTA_ID: 10 / PREVIOUS_DELTA_ID: 7` gap on its first run, which is the third time a protocol test has caught a real violation immediately after being written.
+**Raised:** Q-009. Probing the data rather than reading it: 26 of 30 output dimensions never change within an episode, an identity predictor scores MSE 0.0047, and 92.6% of its residual error is the two agent-position dims. The passability rule therefore lives in 2 of 30 output dims, and obs dim differs by family (30 vs 22), so the error *scale* differs between families for encoding reasons. P§10.1's failure threshold freezes permanently at W4 Fri.
+**Left:** nothing running, still **zero compute**. D-030's stream module is decided but unbuilt — deliberately visible, and it is the first Week 3 task.
+**Next:** the named-stream module, then W3 Mon's world-model MLP.
 ---
 
 ## 8. → TO SOL — *moved to its own file*
