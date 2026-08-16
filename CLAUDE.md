@@ -67,8 +67,9 @@ delta looks like a quiet week.
 
 `tests/test_project_state.py` now enforces this mechanically. It fails if the
 newest session-log entry is not named in an undelivered delta, if delta ids skip
-or repeat, if `PROJECT_STATE.md` exceeds 500 lines, if decision ids have gaps,
-or if §2's frozen constants disagree with `src/bu/constants.py`.
+or repeat, if `PROJECT_STATE.md` exceeds 500 lines, if decision ids gap, if a delta id gap
+is undeclared, if `DECISIONS.md` and §3's index disagree, or if §2's frozen
+constants disagree with `src/bu/constants.py`.
 
 **If those tests fail, that is the protocol catching you. Fix the file, not the
 test.**
@@ -90,8 +91,8 @@ test.**
 ## Hard rules
 
 - **Never change anything in `src/bu/constants.py`** without a Change Record in
-  §3 naming the constant, the new value, the reason, and *whether data has been
-  seen*. If data has been seen, the answer is almost certainly no.
+  `DECISIONS.md` naming the constant, the new value, the reason, and *whether
+  data has been seen*. If data has been seen, the answer is almost certainly no.
 - `IDENTITY_VERSION` bumps when identity fields **or their canonicalisation**
   change. Golden `unit_id`s in `tests/test_audit_regressions.py` pin this.
 - The plan wins on design. Conflicts go in §4 as deviations, never silent
