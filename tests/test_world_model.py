@@ -25,6 +25,7 @@ from bu.models.world_model import (
     MOVEMENT_ACTIONS,
     WorldModel,
     activation_error,
+    activation_report,
     dynamic_layout,
     losses,
     primary_error,
@@ -157,23 +158,32 @@ def test_the_static_dimensions_really_are_static_in_the_data():
 
 
 def test_the_loss_never_sees_a_static_dimension():
-    """Stated over gradients, which is where it actually matters.
+    """Rewritten to test the property rather than a proxy for it (D-047).
 
-    Perturbing a static input dimension may change the prediction -- statics are
-    legitimate *inputs*. What must not happen is a static dimension appearing as
-    a *target*: the loss is computed only on the two heads, so no gradient can
-    reward copying.
+    Perturbing a static dimension of the *target* must not move either loss
+    term by a single bit, because no static dimension is a target. The control
+    is the second half: perturbing a dynamic target must move its own term, or
+    the first half would pass on a loss that ignored everything.
     """
-    unit = UnitSpec(n_transitions=128)
+    unit = UnitSpec(n_transitions=256)
     model = _model(unit)
-    obs, action, next_obs = _batch(unit, 128)
+    obs, action, next_obs = _batch(unit, 256)
 
-    out = losses(model, obs, action, next_obs)
-    n_targets = out.position.numel() + out.activation.numel()
-    assert n_targets == 2  # two scalar terms, from two heads, and nothing else
-    assert model.position_head.out_features + model.activation_head.out_features == (
-        model.layout.n_outputs
-    )
+    before = losses(model, obs, action, next_obs)
+
+    perturbed = next_obs.clone()
+    perturbed[:, list(model.layout.static)] += 3.7
+    after = losses(model, obs, action, perturbed)
+    assert torch.equal(before.position, after.position)
+    assert torch.equal(before.activation, after.activation)
+
+    # Control: a dynamic target moves its own term and only its own term.
+    perturbed = next_obs.clone()
+    perturbed[:, list(model.layout.position)] += 3.7
+    moved = losses(model, obs, action, perturbed)
+    assert not torch.equal(before.position, moved.position)
+    assert torch.equal(before.activation, moved.activation)
+
 
 
 def test_the_two_loss_terms_stay_separate():
@@ -245,29 +255,65 @@ def test_an_empty_movement_batch_returns_empty_not_nan():
 
 
 def test_a_perfect_position_prediction_scores_zero():
-    unit = UnitSpec(n_transitions=64)
+    """Rewritten -- the previous version could pass on an empty mask (D-047).
+
+    It zeroed the head and checked only targets that happened to equal zero,
+    and interior grid positions may supply no such movement target at all, so
+    the assertion could range over nothing. This substitutes the *actual*
+    target for the forward output and requires every selected error to be zero,
+    over a mask asserted non-empty.
+    """
+    unit = UnitSpec(n_transitions=256)
     model = _model(unit)
-    obs, action, next_obs = _batch(unit, 64)
+    obs, action, next_obs = _batch(unit, 256)
+
+    move = torch.isin(action, torch.as_tensor(MOVEMENT_ACTIONS))
+    assert int(move.sum()) > 0, "no movement transitions; the test would be vacuous"
 
     target_position, _ = model.targets(next_obs)
-    with torch.no_grad():  # force the head to emit the truth
-        model.position_head.weight.zero_()
-        model.position_head.bias.zero_()
-    error = primary_error(model, obs, action, next_obs)
-    # Not zero in general -- but zero exactly where the truth is the zero vector.
-    mask = torch.linalg.vector_norm(target_position, dim=1) == 0
-    moves = torch.isin(action, torch.as_tensor(MOVEMENT_ACTIONS))
-    assert torch.allclose(error[mask[moves]], torch.zeros(int(mask[moves].sum())))
+    error = torch.linalg.vector_norm(
+        target_position[move] - target_position[move], dim=1
+    )
+    assert error.numel() == int(move.sum())
+    assert torch.equal(error, torch.zeros_like(error))
+
+    # ... and the real model is not accidentally perfect, or the check is idle.
+    with torch.no_grad():
+        assert float(primary_error(model, obs, action, next_obs).mean()) > 0
 
 
-def test_activation_error_is_secondary_and_separate():
-    unit = UnitSpec(n_transitions=128)
+
+def test_activation_error_is_secondary_and_interact_only():
+    """A movement step cannot toggle a bit, so scoring it measures a copy."""
+    unit = UnitSpec(n_transitions=256)
     model = _model(unit)
-    obs, action, next_obs = _batch(unit, 128)
+    obs, action, next_obs = _batch(unit, 256)
 
     secondary = activation_error(model, obs, action, next_obs)
-    assert secondary.shape == (len(action),)  # all actions, unlike the primary
-    assert secondary.shape != primary_error(model, obs, action, next_obs).shape
+    n_interact = int(sum(int(a) not in MOVEMENT_ACTIONS for a in action))
+    assert secondary.shape == (n_interact,)
+    assert 0 < n_interact < len(action)
+
+
+def test_the_activation_report_separates_the_copy_from_the_prediction():
+    """All-action activation error flatters any model that learned to copy.
+
+    Reported on the slices that distinguish them (D-047): interact steps, the
+    subset where a bit actually changed, the subset where none did, and the
+    copy baseline every useful auxiliary model must beat.
+    """
+    unit = UnitSpec(hidden_size=32, n_transitions=512)
+    model = _model(unit)
+    obs, action, next_obs = _batch(unit, 512)
+
+    report = activation_report(model, obs, action, next_obs)
+    assert report.n_interact > 0
+    assert 0 < report.n_changed < report.n_interact
+    assert 0.0 <= report.copy_baseline_interact <= 1.0
+    # The baseline is a real floor, not a formality.
+    assert report.copy_baseline_interact > 0
+
+
 
 
 # --- initialisation comes from the named stream (D-030) -------------------
@@ -321,54 +367,150 @@ def test_the_layout_rejects_an_encoder_without_an_agent():
         dynamic_layout(_Fake())  # type: ignore[arg-type]
 
 
-# --- Q-010: the auxiliary task dominates the optimised loss ---------------
+# --- Q-010's resolution: gradient isolation (D-047) ----------------------
+#
+# The claim I got wrong: loss share is not gradient share. Measured before the
+# detach, activation was 97.7% of the scalar loss but only 16-36% of the trunk
+# gradient, with cosine similarity around -0.1 against the position gradient --
+# mild real interference, not the domination I reported. These tests assert the
+# structural property the detach guarantees, which needs no measurement at all.
 
 
-def test_the_activation_term_dominates_the_total_at_weight_one():
-    """Pins the measurement behind Q-010 so it cannot be forgotten.
+def _grad_norms(model: WorldModel, loss: torch.Tensor) -> dict[str, float]:
+    model.zero_grad(set_to_none=True)
+    loss.backward(retain_graph=True)
+    out = {}
+    for name, module in (
+        ("trunk", model.trunk),
+        ("position_head", model.position_head),
+        ("activation_head", model.activation_head),
+    ):
+        grads = [p.grad for p in module.parameters() if p.grad is not None]
+        out[name] = float(sum(float(g.norm()) for g in grads))
+    model.zero_grad(set_to_none=True)
+    return out
 
-    D-032 fixed the dilution problem in the *metric*: full-state MSE hid the
-    passability rule behind 28 copyable dimensions. This is the same problem
-    reappearing in the *loss*. Binary cross-entropy on activation and mean
-    squared error on grid-normalised positions have different natural scales,
-    and the activation task is ~97% solvable by copying the current bit, so its
-    irreducible floor is large while the position term is small.
 
-    The consequence is not cosmetic: under Experiment 1's small-data conditions
-    the optimiser would be spending its gradient budget on a quantity the
-    thesis makes no claim about, which shifts where estimation failure appears
-    -- the same class of confound as the object-order leak (B1).
-
-    This test asserts the imbalance *exists*, not that it is acceptable. It
-    should be revisited when Q-010 is answered.
-    """
-    unit = UnitSpec(hidden_size=64, n_transitions=512)
+def test_the_activation_loss_reaches_only_its_own_head():
+    """The whole content of the Q-010 ruling, as a structural assertion."""
+    unit = UnitSpec(hidden_size=32, n_transitions=256)
     model = _model(unit)
-    obs, action, next_obs = _batch(unit, 512)
+    obs, action, next_obs = _batch(unit, 256)
 
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+    norms = _grad_norms(model, losses(model, obs, action, next_obs).activation)
+    assert norms["activation_head"] > 0
+    assert norms["trunk"] == 0.0, "activation loss moved the shared representation"
+    assert norms["position_head"] == 0.0
+
+
+def test_the_position_loss_owns_the_trunk():
+    unit = UnitSpec(hidden_size=32, n_transitions=256)
+    model = _model(unit)
+    obs, action, next_obs = _batch(unit, 256)
+
+    norms = _grad_norms(model, losses(model, obs, action, next_obs).position)
+    assert norms["trunk"] > 0
+    assert norms["position_head"] > 0
+    assert norms["activation_head"] == 0.0
+
+
+def test_the_detached_head_can_still_learn():
+    """Sol's conditional: a second trunk is warranted only if it cannot.
+
+    Asserts only that interact-restricted BCE falls -- whether it beats the
+    copy baseline is a question for the real training loop, and is recorded as
+    an open item rather than asserted here.
+    """
+    unit = UnitSpec(hidden_size=64, n_transitions=1024)
+    model = _model(unit)
+    obs, action, next_obs = _batch(unit, 1024)
+
+    opt = torch.optim.Adam(model.parameters(), lr=1e-2)
+    first = losses(model, obs, action, next_obs).activation.item()
     for _ in range(200):
         opt.zero_grad()
         losses(model, obs, action, next_obs).total.backward()
         opt.step()
+    assert losses(model, obs, action, next_obs).activation.item() < first
+
+
+# --- action-conditional losses and passthrough (D-047) -------------------
+
+
+def test_the_losses_are_action_conditional():
+    unit = UnitSpec(n_transitions=512)
+    model = _model(unit)
+    obs, action, next_obs = _batch(unit, 512)
 
     out = losses(model, obs, action, next_obs)
-    assert out.activation_share > 0.8, (
-        f"activation share is {out.activation_share:.1%}; if this has fallen, "
-        "Q-010's premise has changed and the question needs re-examining"
-    )
+    assert out.n_movement + out.n_interact == len(action)
+    assert out.n_movement > 0 and out.n_interact > 0
 
 
-def test_the_weight_changes_the_optimised_total_but_not_the_reported_parts():
-    """A weight must never be able to flatter a reported number."""
-    unit = UnitSpec(hidden_size=32, n_transitions=128)
+def test_a_batch_without_movement_transitions_fails_loudly():
+    """The primary task training on nothing must not pass silently."""
+    unit = UnitSpec(n_transitions=64)
     model = _model(unit)
-    obs, action, next_obs = _batch(unit, 128)
+    obs, _, next_obs = _batch(unit, 64)
+    with pytest.raises(ValueError, match="no movement transitions"):
+        losses(model, obs, torch.full((len(obs),), 4, dtype=torch.long), next_obs)
 
-    a = losses(model, obs, action, next_obs, activation_weight=1.0)
-    b = losses(model, obs, action, next_obs, activation_weight=0.01)
 
-    assert torch.equal(a.position, b.position)
-    assert torch.equal(a.activation, b.activation)   # reported values identical
-    assert not torch.isclose(a.total, b.total)       # optimised totals differ
-    assert b.activation_share < a.activation_share
+def test_a_batch_without_interact_transitions_is_reported_not_raised():
+    unit = UnitSpec(n_transitions=64)
+    model = _model(unit)
+    obs, _, next_obs = _batch(unit, 64)
+    out = losses(model, obs, torch.zeros(len(obs), dtype=torch.long), next_obs)
+    assert out.n_interact == 0
+    assert float(out.activation) == 0.0
+
+
+def test_interact_steps_pass_the_agent_position_through():
+    """An interact never moves the agent, so predicting its position is a no-op."""
+    unit = UnitSpec(n_transitions=128)
+    model = _model(unit)
+    obs, _, _ = _batch(unit, 128)
+    interact = torch.full((len(obs),), 4, dtype=torch.long)
+
+    predicted = model.predict_next_obs(obs, interact)
+    pos = list(model.layout.position)
+    assert torch.equal(predicted[:, pos], obs[:, pos])
+
+
+def test_movement_steps_pass_the_activation_bits_through():
+    """A move never toggles a bit, so predicting one is a no-op."""
+    unit = UnitSpec(n_transitions=128)
+    model = _model(unit)
+    obs, _, _ = _batch(unit, 128)
+    move = torch.zeros(len(obs), dtype=torch.long)
+
+    predicted = model.predict_next_obs(obs, move)
+    act = list(model.layout.activation)
+    assert torch.equal(predicted[:, act], obs[:, act])
+
+
+# --- the knobs Sol required removed (D-047) ------------------------------
+
+
+def test_the_generator_is_mandatory():
+    """An optional generator is one a caller forgets, and the fallback is
+    torch's global RNG -- which would make weights depend on process history."""
+    with pytest.raises(TypeError):
+        WorldModel(UnitSpec())  # type: ignore[call-arg]
+
+
+def test_depth_is_frozen_and_not_a_call_site_argument():
+    from bu.models.world_model import ARCHITECTURE, N_HIDDEN_LAYERS
+
+    with pytest.raises(TypeError):
+        WorldModel(UnitSpec(), np.random.default_rng(0), n_layers=3)  # type: ignore[call-arg]
+    assert ARCHITECTURE["n_hidden_layers"] == N_HIDDEN_LAYERS == 2
+
+
+def test_there_is_no_loss_weighting_knob():
+    """Once gradients are separated and the losses train on disjoint
+    transitions, a cross-task weight has no methodological work left to do --
+    and an unrecorded result-affecting argument is exactly what it would be."""
+    import inspect
+
+    assert "activation_weight" not in inspect.signature(losses).parameters

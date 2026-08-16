@@ -64,11 +64,28 @@ import torch.nn as nn
 
 from ..config import UnitSpec
 from ..env.encoder import ObservationEncoder
-from ..env.gridworld import N_ACTIONS
+from ..env.gridworld import INTERACT, N_ACTIONS
 
 #: Actions that can be refused by the passability rule. ``interact`` cannot, so
 #: it carries no evidence about the mechanism under study (DEV-007).
 MOVEMENT_ACTIONS: tuple[int, ...] = (0, 1, 2, 3)
+
+#: Hidden layers in the trunk. **Frozen, not a caller argument** (D-047). The
+#: schedule fixes hidden *size* as Experiment 2B's swept axis; depth is held
+#: constant so that experiment varies one thing. It was briefly a public
+#: constructor parameter, which made a result-affecting quantity selectable at a
+#: call site and absent from every run record -- the class of defect D-017 and
+#: D-006 exist to prevent.
+N_HIDDEN_LAYERS = 2
+
+#: Architecture facts a run record should carry, so the model that trained is
+#: recoverable from the record rather than from whichever code is checked out.
+ARCHITECTURE: dict[str, object] = {
+    "n_hidden_layers": N_HIDDEN_LAYERS,
+    "activation": "relu",
+    "action_encoding": "one_hot",
+    "auxiliary_head": "detached",
+}
 
 
 @dataclass(frozen=True)
@@ -127,17 +144,23 @@ class WorldModel(nn.Module):
     or a run record could state one capacity while another was trained.
     """
 
-    def __init__(
-        self,
-        unit: UnitSpec,
-        *,
-        rng: np.random.Generator | None = None,
-        n_layers: int = 2,
-    ) -> None:
+    def __init__(self, unit: UnitSpec, rng: np.random.Generator) -> None:
+        """
+        Args:
+            unit: the configuration-condition. Supplies ``hidden_size``.
+            rng: **required** -- a generator from the named ``init`` stream
+                (D-030). Not optional, because an optional generator is one a
+                caller forgets, and the fallback would be torch's global RNG:
+                weights would then depend on process history rather than on
+                ``(unit_id, seed, member)``, and ensemble members could
+                silently coincide (D-047).
+        """
         super().__init__()
-        if n_layers < 1:
-            raise ValueError(f"n_layers must be >= 1, got {n_layers}")
-
+        if rng is None:
+            raise TypeError(
+                "WorldModel requires a generator from the init stream; pass "
+                "streams.stream(unit, stage, 'init', seed, member=k)"
+            )
         self.unit = unit
         self.encoder = ObservationEncoder(
             n_objects=unit.n_objects,
@@ -151,18 +174,18 @@ class WorldModel(nn.Module):
 
         trunk: list[nn.Module] = []
         width = self.in_dim
-        for _ in range(n_layers):
+        for _ in range(N_HIDDEN_LAYERS):
             trunk += [nn.Linear(width, hidden), nn.ReLU()]
             width = hidden
         self.trunk = nn.Sequential(*trunk)
 
-        #: Continuous, grid-normalised. MSE.
+        #: Continuous, grid-normalised. MSE. Owns the trunk.
         self.position_head = nn.Linear(hidden, len(self.layout.position))
-        #: Bernoulli logits, one per object. Cross-entropy (binary).
+        #: Bernoulli logits, one per object. Binary cross-entropy, and it reads
+        #: a **detached** trunk representation -- see :meth:`forward`.
         self.activation_head = nn.Linear(hidden, len(self.layout.activation))
 
-        if rng is not None:
-            self.reset_parameters(rng)
+        self.reset_parameters(rng)
 
     # --- initialisation ---------------------------------------------------
 
@@ -211,19 +234,42 @@ class WorldModel(nn.Module):
                 "condition withholds -- check the unit, not the caller."
             )
         h = self.trunk(torch.cat([obs, _one_hot(action, obs)], dim=1))
-        return self.position_head(h), self.activation_head(h)
+        # The position task owns the trunk (D-047). Detaching here lets the
+        # auxiliary head learn while preventing activation loss from moving the
+        # representation the position head reads. Measured before the change:
+        # the two trunk gradients had cosine similarity around -0.1, so the
+        # interference was mild but real, and removing it costs nothing.
+        return self.position_head(h), self.activation_head(h.detach())
 
     def predict_next_obs(self, obs: torch.Tensor, action: torch.Tensor) -> torch.Tensor:
-        """A complete next observation: predicted dynamics, copied statics.
+        """A complete next observation, with **action-conditional** passthrough.
 
-        The model predicts the next *state* in the sense Plan §10.2 asks for,
-        without ever being rewarded for reproducing dimensions that cannot
-        change. The copy happens here and only here, outside the loss.
+        Three copies rather than one (D-047), all outside the loss:
+
+        * static object attributes -- they cannot change under any action;
+        * the agent's position on an ``interact`` step -- ``interact`` never
+          moves the agent;
+        * every activation bit on a movement step -- a move never toggles one.
+
+        The action-conditional copies are the same argument as the static one,
+        applied to no-ops the *action* makes known rather than ones the
+        encoding does. A head is used only where its component can actually
+        change, so the model is never rewarded for reproducing a no-op it could
+        have looked up.
         """
         position, logits = self(obs, action)
         out = obs.clone()
-        out[:, list(self.layout.position)] = position
-        out[:, list(self.layout.activation)] = torch.sigmoid(logits)
+
+        move = _movement_mask(action)
+        pos_idx = torch.as_tensor(self.layout.position, device=obs.device)
+        act_idx = torch.as_tensor(self.layout.activation, device=obs.device)
+
+        rows = torch.nonzero(move).reshape(-1)
+        if rows.numel():
+            out[rows[:, None], pos_idx[None, :]] = position[rows]
+        rows = torch.nonzero(~move).reshape(-1)
+        if rows.numel():
+            out[rows[:, None], act_idx[None, :]] = torch.sigmoid(logits[rows])
         return out
 
     # --- targets ----------------------------------------------------------
@@ -240,42 +286,23 @@ class WorldModel(nn.Module):
 class Losses:
     """The two loss terms, kept apart because D-032 reports them apart.
 
-    ``position`` and ``activation`` are always the **unweighted** values, so
-    what is reported cannot be changed by how the optimiser was told to trade
-    them off. Only :attr:`total` applies the weight.
+    Both are unweighted and trained on disjoint transition sets, so neither can
+    be traded off against the other by a constant nobody recorded.
     """
 
     position: torch.Tensor
     activation: torch.Tensor
-    activation_weight: float = 1.0
+    n_movement: int = 0
+    n_interact: int = 0
 
     @property
     def total(self) -> torch.Tensor:
-        """What the optimiser minimises."""
-        return self.position + self.activation_weight * self.activation
+        """What the optimiser minimises.
 
-    @property
-    def activation_share(self) -> float:
-        """Fraction of the optimised total coming from the auxiliary task.
-
-        Q-010 exists because this is 97.7% at weight 1.0.
+        A plain sum. The gradients do not mix: the position term reaches the
+        trunk, the activation term stops at its own head.
         """
-        with torch.no_grad():
-            return float(self.activation_weight * self.activation / self.total)
-
-
-#: Weight on the activation term in the optimised total. **Provisional at 1.0,
-#: and the subject of Q-010** -- measured after 400 epochs at hidden=64,
-#: n=2000, the activation term is **97.7%** of the total loss (BCE 0.0936
-#: against position MSE 0.0022), so the optimiser spends almost all of its
-#: gradient on the auxiliary task while the passability rule -- the entire
-#: scientific claim -- gets 2.3%.
-#:
-#: Left at 1.0 deliberately rather than tuned to a number of my choosing: no
-#: model has trained for a result, so nothing is lost by waiting, and picking a
-#: weight is a methodological decision about what the world model is optimised
-#: for. See Q-010.
-DEFAULT_ACTIVATION_WEIGHT = 1.0
+        return self.position + self.activation
 
 
 def losses(
@@ -283,30 +310,54 @@ def losses(
     obs: torch.Tensor,
     action: torch.Tensor,
     next_obs: torch.Tensor,
-    *,
-    activation_weight: float = DEFAULT_ACTIVATION_WEIGHT,
 ) -> Losses:
-    """MSE on position, binary cross-entropy on activation.
+    """Position MSE on movement steps; activation BCE on ``interact`` steps.
 
-    Summed for optimisation, returned separately for reporting. They are never
-    averaged into one number in a result: the activation bit is orthogonal to
-    passability by construction (D-017), so folding it into the headline error
-    would put a quantity the thesis makes no claim about inside the quantity it
-    does.
+    **Action-conditional** (D-047). A movement action never toggles an
+    activation bit and an ``interact`` never moves the agent, so training either
+    head on the other's transitions teaches it to reproduce a known no-op --
+    the same objection as full-state MSE, applied per action rather than per
+    dimension.
 
-    ``activation_weight`` scales the auxiliary term in the **optimised** total
-    only; the reported components are always unweighted, so a weight can never
-    flatter a reported number. See :data:`DEFAULT_ACTIVATION_WEIGHT` and Q-010
-    for why it is not yet set to anything else.
+    There is deliberately **no weighting argument**. Once the auxiliary head
+    reads a detached representation and the two losses train on disjoint
+    transitions, a cross-task weight has no methodological work left to do, and
+    leaving one would be an unrecorded result-affecting knob.
+
+    Raises when the batch has no movement transitions: the primary task would
+    then train on nothing, and a training loop must fail loudly rather than
+    quietly optimise the auxiliary task alone. An absence of ``interact``
+    transitions is reported through ``Losses.n_interact`` rather than raised,
+    so the caller can assert on its own batching.
     """
+    move = _movement_mask(action)
+    n_movement = int(move.sum())
+    if n_movement == 0:
+        raise ValueError(
+            "no movement transitions in this batch; the primary position loss "
+            "would train on nothing. Build batches that contain movement steps."
+        )
+
     position, logits = model(obs, action)
     target_position, target_activation = model.targets(next_obs)
+
+    position_loss = nn.functional.mse_loss(
+        position[move], target_position[move]
+    )
+
+    n_interact = int((~move).sum())
+    if n_interact:
+        activation_loss = nn.functional.binary_cross_entropy_with_logits(
+            logits[~move], target_activation[~move]
+        )
+    else:
+        activation_loss = torch.zeros((), dtype=position_loss.dtype)
+
     return Losses(
-        position=nn.functional.mse_loss(position, target_position),
-        activation=nn.functional.binary_cross_entropy_with_logits(
-            logits, target_activation
-        ),
-        activation_weight=float(activation_weight),
+        position=position_loss,
+        activation=activation_loss,
+        n_movement=n_movement,
+        n_interact=n_interact,
     )
 
 
@@ -349,13 +400,83 @@ def activation_error(
     action: torch.Tensor,
     next_obs: torch.Tensor,
 ) -> torch.Tensor:
-    """Secondary metric: per-transition activation error, over all actions.
+    """Per-transition activation error on ``interact`` steps only.
 
-    Reported beside the primary error, never inside it (D-032).
+    Secondary metric, reported beside the primary error and never inside it
+    (D-032). Restricted to ``interact`` because a movement step cannot change
+    an activation bit, so including those measures a copy (D-047).
     """
-    _, logits = model(obs, action)
-    _, target = model.targets(next_obs)
+    interact = ~_movement_mask(action)
+    if not bool(interact.any()):
+        return torch.empty(0, dtype=torch.float32, device=obs.device)
+    _, logits = model(obs[interact], action[interact])
+    _, target = model.targets(next_obs[interact])
     return (torch.sigmoid(logits) - target).abs().mean(dim=1)
+
+
+@dataclass(frozen=True)
+class ActivationReport:
+    """The auxiliary task, sliced so its number means something (D-047).
+
+    All-action activation error is dominated by transitions where nothing can
+    change, so it flatters any model that has learned to copy. These slices
+    separate the copy from the prediction.
+
+    ``copy_baseline`` is the score of emitting the *current* bit unchanged --
+    the floor any useful auxiliary model must beat. Note that the remaining
+    error must **not** be called irreducible without the INTERACT aliasing
+    check: where object positions are visible the interact rule is
+    deterministic, so which bit flips may well be predictable.
+    """
+
+    n_interact: int
+    n_changed: int
+    error_interact: float
+    error_changed: float
+    error_interact_unchanged: float
+    copy_baseline_interact: float
+
+    def summary(self) -> str:
+        return (
+            f"interact {self.n_interact} (changed {self.n_changed})  "
+            f"err {self.error_interact:.4f}  on-change {self.error_changed:.4f}  "
+            f"no-change {self.error_interact_unchanged:.4f}  "
+            f"copy baseline {self.copy_baseline_interact:.4f}"
+        )
+
+
+def activation_report(
+    model: WorldModel,
+    obs: torch.Tensor,
+    action: torch.Tensor,
+    next_obs: torch.Tensor,
+) -> ActivationReport:
+    """Slice the auxiliary task the way Sol's ruling requires (D-047)."""
+    interact = ~_movement_mask(action)
+    idx = list(model.layout.activation)
+    current = obs[interact][:, idx]
+    target = next_obs[interact][:, idx]
+    changed = (current != target).any(dim=1)
+
+    if int(interact.sum()) == 0:
+        return ActivationReport(0, 0, float("nan"), float("nan"), float("nan"), float("nan"))
+
+    with torch.no_grad():
+        _, logits = model(obs[interact], action[interact])
+        error = (torch.sigmoid(logits) - target).abs().mean(dim=1)
+    copy = (current - target).abs().mean(dim=1)
+
+    def _mean(x: torch.Tensor) -> float:
+        return float(x.mean()) if x.numel() else float("nan")
+
+    return ActivationReport(
+        n_interact=int(interact.sum()),
+        n_changed=int(changed.sum()),
+        error_interact=_mean(error),
+        error_changed=_mean(error[changed]),
+        error_interact_unchanged=_mean(error[~changed]),
+        copy_baseline_interact=_mean(copy),
+    )
 
 
 # --- helpers --------------------------------------------------------------

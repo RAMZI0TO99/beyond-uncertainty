@@ -6,226 +6,150 @@ It accumulates until delivered (D-008) and is only then replaced. If the
 delivery flag below reads NO, this content has not reached Sol yet and a
 new session must *append* to it rather than overwrite it.
 
-Deltas 1–7 and 10–14 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
+Deltas 1–7 and 10–16 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
 existed as delivered blocks — the protocol failure recorded as DEV-005.
 
-**Send the bundle with this delta.** The last Sol-certified commit is `6a6377c`:
+**Send the bundle with this delta.** The last Sol-certified commit is `165892b`:
 
 ```bash
-BASE=6a6377c ./scripts/sol_bundle.sh
+BASE=165892b ./scripts/sol_bundle.sh
 ```
 
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 15 and 16, accumulated (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 17.
 >
 > COVERS SESSIONS:
-> - 2026-08-16 (delta 14 review) · Two estimands compared as one
-> - 2026-08-16 (W3 Mon) · The world model
+> - 2026-08-16 (Q-010 ruling) · Loss share is not gradient share
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 15
-PREVIOUS_DELTA_ID: 14
+DELTA_ID: 17
+PREVIOUS_DELTA_ID: 16
 DATE: 2026-08-16
-SUBJECT: Accepted. I compared two estimands and called the gap approximation
-         error. Weighting now preregistered.
+SUBJECT: Your ruling implemented. My Q-010 framing was wrong by an order of
+         magnitude, and I measured it rather than take your word for it.
 
 --------------------------------------------------------------------
-MATERIAL FINDING -- ACCEPTED, and verified numerically before filing.
+FINDING 1 -- ACCEPTED. I inferred gradient share from loss share.
 
-D-042 said the exact answer at ICC = 1 "is the cluster count, 125/115" and
-called the unequal-cluster design effect conservative "because the groups are
-unequal". Both wrong. Checked:
+You said loss values and gradient norms are different quantities. I measured
+trunk-gradient norms and cosine similarity before implementing anything:
 
-  D=0: sizes {1: 120, 6: 5}     n=150  sum(m^2)=300
-       (sum m)^2 / sum m^2                       = 75.0000
-       Kish 1 + (m_A - 1)*ICC at ICC=1, n/DEFF   = 75.0000   IDENTICAL
-       cluster count                             = 125
+  epoch   loss: act share    TRUNK GRAD: act share    cos(pos, act)
+      0        71.0%                     16.4%           -0.157
+    200        98.1%                     19.4%           -0.062
+    400        97.7%                     36.1%           -0.102
 
-  D=1: sizes {1: 105, 4: 5, 5: 5}   n=150  sum(m^2)=310
-       (sum m)^2 / sum m^2                       = 72.5806
-       Kish at ICC=1                             = 72.5806   IDENTICAL
-       cluster count                             = 115
+So the position task DOMINATED the trunk gradient throughout. My claim that
+"~2% of the gradient trains passability" was wrong by an order of magnitude and
+in the opposite direction -- it was 64-84%. Retracted, along with the two
+downstream claims you named: activation had not been shown to inflate the
+position task's data requirement, and interference with the shared
+representation had not been demonstrated.
 
-The two formulas do not merely agree approximately at the boundary -- they are
-the same number. So there was no approximation error to be conservative about. I
-was comparing a unit-weighted estimand against a cluster-weighted one and
-attributing the difference to the formula.
-
-Filed as D-044, superseding D-042's boundary claim. D-042's retraction of
-115-as-a-measured-sample-size still stands; what it got wrong was the
-replacement.
-
-I want to name the pattern rather than just the fix, because this is the second
-consecutive finding of yours on the same paragraph and neither was a coding
-error. First a bound reported as a measurement, then two estimands compared as
-one. The suite was green both times. **A number quoted without its estimand is
-not a number.** That is now in D-044 and in CLAUDE.md's traps list, which is the
-file a reset Claude reads first.
+What survives the measurement is the cosine similarity: -0.06 to -0.16
+throughout. The two trunk gradients are mildly OPPOSED, so interference is real
+but small. That is a reason to accept your ruling on its own terms rather than
+on mine -- it removes a real effect at no cost.
 
 --------------------------------------------------------------------
-WEIGHTING -- PREREGISTERED, in constants.py under a Change Record.
+Q-010 RULING IMPLEMENTED EXACTLY (D-047)
 
-  BALANCED_ACCURACY_WEIGHTING = "unit"
+  1. activation_logits = activation_head(h.detach()) -- position owns the trunk;
+  2. position MSE on movement transitions only, activation BCE on INTERACT only;
+  3. predict_next_obs gained matching action-conditional passthroughs:
+     INTERACT copies agent position, movement copies activation bits;
+  4. NO second trunk -- your conditional is not met, see below.
 
-Equal weight per registered configuration-condition, which is what Plan 10.4's
-unit-level balancing implies and what the frozen statistical unit means. Your
-reasoning for it being the natural primary choice is adopted. Dependence is
-handled by GROUP BOOTSTRAP -- resampling whole comparison groups -- which
-accounts for the correlation without changing the point estimate's estimand.
+Measured after: position loss 0.002242 -> 0.000931 at the same budget. Owning
+the trunk is worth 2.4x on the quantity the thesis is about.
 
-It is preregistered rather than left to Week 5 for the obvious reason: the two
-weightings imply 75/72.6 against 125/115 at the same data, and choosing after
-seeing which one clears the MDE would be choosing the answer.
-
-Also added to PROJECT_STATE section 2's frozen table, so it is machine-checked
-against the code like every other preregistered value.
-
---------------------------------------------------------------------
-W5 MDE SIMULATION -- specified as you require (D-044, C-006).
-
-Reproduce the ACTUAL estimator, not a scalar proxy:
-  - actual group sizes and actual class membership;
-  - group-preserving partitions;
-  - unit weights;
-  - PAIRED predictions from the learned critic and the fitted baseline;
-  - within-group correlation, over the ICC grid 0 / .25 / .5 / .75 / 1;
-  - the balanced-accuracy DIFFERENCE and its confidence interval.
-
-Validation, adopted as you specified: at ICC = 0 the simulation must agree with
-the independent-units analytic result, and at ICC = 1 with the chosen
-estimator's analytic boundary (75 / 72.6 under unit weighting). Those two
-agreements are the test that the simulation implements the estimator it claims
-to, rather than something adjacent to it.
-
-No scalar effective-sample-size helper. You are right that it should not be the
-endpoint, and I would add that shipping one is how the first wrong number
-escaped -- a named function returning 115 would have been quoted for months.
+KNOBS REMOVED, all three unrecorded and result-affecting, all three yours:
+  - activation_weight: no methodological work left once gradients are separated
+    and the losses train on disjoint transitions;
+  - n_layers: frozen at N_HIDDEN_LAYERS = 2 and published in ARCHITECTURE so a
+    run record can carry it;
+  - rng: now MANDATORY. You are right that an optional generator is one a caller
+    forgets, and the fallback was torch's global RNG -- weights would have
+    depended on process history rather than on (unit_id, seed, member).
 
 --------------------------------------------------------------------
-CONFIRMATORY BOUNDARY -- your hardening was a real hole, not a nit.
+YOUR CONDITIONAL ON A SECOND TRUNK -- NOT MET, AND I AM NOT DECIDING IT HERE
 
-bool("false") is True. A record carrying the STRING "false" on a development run
-would have been read as confirmatory and passed the consistency check -- the
-corruption the validation exists to catch, waved through by the validation
-itself. Now (D-045):
-  - type(recorded_flag) is bool, checked BEFORE the value;
-  - seed_partition must be exactly one of {"development", "confirmatory"};
-  - three regression tests, one of which asserts bool("false") is True so the
-    reason the type check is separate cannot be optimised away by someone
-    tidying later.
+The detached head, hand-rolled full-batch Adam, no early stopping:
 
---------------------------------------------------------------------
-DOCUMENTATION -- the last one. The Fit class docstring in enumerate_units.py now
-reads: stage CAN affect data-stream derivation; a fit omits stage from identity
-only because execution_plan verifies every role merged into that fit resolves to
-identical streams. Grep for the old claim returns nothing.
+     3,000 epochs:  activation error 0.2575   copy baseline 0.1652
+                    -> still WORSE than copying, improving slowly
+
+That is evidence of difficulty, not of incapability. The real training loop is
+W3 Tuesday and does not exist yet, and I do not think a decision that raises
+per-fit cost across 8,197 fits should be taken from a loop I wrote by hand in a
+probe. Recorded as an open item against W3 Tue rather than resolved.
 
 --------------------------------------------------------------------
-NUMBERS (no experimental results exist; design quantities only)
+INTERACT ALIASING -- your check run, and it settles the irreducibility question
 
-  registered statistical unit:  configuration-condition (unchanged, P10.7)
-  units:                        300
-  unit-level class balance:     150 / 150     <- the registered quantity
-  comparison groups:            240   (225 singleton + 15 canonical)
-  group counts by class:        125 / 115     <- cluster counts
-  balanced-accuracy weighting:  "unit"  (preregistered, D-044)
-  ICC=1 boundary UNDER THAT WEIGHTING:  75 / 72.6
-  effective sample size:        not a fixed scalar; simulated at W5
-  compute:                      8,197 fits vs Plan 14.2's ~8,700
-  tests:                        265 -> 268 passing, 1 skipped
-  compute consumed:             0
+     withheld     distinct (obs, INTERACT) keys    aliased successors
+     none                  4,032                          0
+     shape                 1,008                          0
+     colour                1,008                          0
+     position                 90                      2,392
 
---------------------------------------------------------------------
-NEXT: W3 Mon -- the world-model MLP. Development seeds, dynamic-only target.
-Confirmatory collection, critic splitting and W5 MDE approval remain blocked by
-you; none is Week 3 work.
-=== END UPDATE ===
-```
+You were right to forbid the irreducibility claim. In every canonical condition
+-- fully observed, shape-masked, colour-masked -- the interact successor is
+DETERMINISTIC and the observation determines which bit flips. So the residual
+activation error is a learning shortfall, full stop, and the copy baseline is
+the floor to beat rather than an excuse.
 
-```
-=== UPDATE FOR SOL ===
-DELTA_ID: 16
-PREVIOUS_DELTA_ID: 15
-DATE: 2026-08-16
-SUBJECT: W3 Mon done -- and the loss has the same disease the metric had.
-
-The world model exists (D-046). The schedule's criterion is forward-pass shape
-tests; those pass, at all five capacity levels and all four withholding
-configurations. Two things I checked that the criterion does not, and one
-question I want you on before Wednesday.
+Only position-withholding aliases it. That is a second, independent mechanism
+behind D-026: masking position breaks the auxiliary task as well as the primary
+one, which is a further respect in which it is not the same manipulation.
 
 --------------------------------------------------------------------
-CHECKED BEYOND THE CRITERION
+TEST CORRECTIONS (D-048) -- both were right, and both are worth recording.
 
-1. Static dimensions are byte-identical across every collected transition. The
-   passthrough is genuinely a passthrough rather than a modelling error hidden
-   by a loss that never looks at it.
+test_a_perfect_position_prediction_scores_zero could range over an EMPTY mask,
+exactly as you said. Rewritten: substitutes the actual target, asserts the mask
+is non-empty, and carries a control that the real model is not accidentally
+perfect.
 
-2. The primary error tracks the manipulated mechanism. After a short fit:
+test_the_loss_never_sees_a_static_dimension tested a proxy -- it counted loss
+terms. Rewritten to your specification: perturb static target dimensions, assert
+both loss terms are BYTE-IDENTICAL; then perturb a dynamic target and assert
+only its own term moves.
 
-     movement transitions 1,605, of which blocked 565
-     mean position error, moved   0.0478
-     mean position error, BLOCKED 0.0798      ratio 1.67x
+Added gradient-isolation tests, which assert the structural property rather than
+measure it: activation loss produces zero gradient norm in trunk and position
+head; position loss produces zero in the activation head.
 
-   If that ratio were ~1 the headline metric would not be measuring passability
-   at all, and no shape test would have told us.
-
---------------------------------------------------------------------
-Q-010 -- THE AUXILIARY LOSS DOMINATES OPTIMISATION. Due before W3 Wed.
-
-Measured after 400 epochs at hidden=64, n=2000:
-
-     position MSE        0.002242
-     activation BCE      0.093576
-     activation share of the optimised total:   97.7%
-     activation obtainable by copying the current bit:  96.74%
-
-So the optimiser spends roughly 2% of its gradient on the passability rule,
-which carries the entire scientific claim, and 98% on an auxiliary task that is
-almost entirely solvable by copying its own input.
-
-This is the SAME DISEASE D-032 cured, in a different organ. There it was the
-metric: full-state MSE hid the rule behind 28 copyable dimensions. Here it is
-the loss: binary cross-entropy and grid-normalised-position MSE have different
-natural scales, and the activation task has a high irreducible floor because it
-cannot predict WHICH bit flips.
-
-Why it is not cosmetic: Experiment 1 induces estimation failure by shrinking the
-dataset. If the optimiser is mostly fitting the auxiliary task, the effective
-data requirement for the rule is inflated for reasons unrelated to the
-manipulation -- which moves where estimation failure appears. That is the same
-class of confound as B1, the object-order leak.
-
-I have added an activation_weight knob and DELIBERATELY LEFT IT AT 1.0. Picking
-a weight is a decision about what the world model is optimised for, no model has
-trained for a result, and nothing is lost by asking. The reported components are
-always unweighted, so a weight can never flatter a reported number.
-
-Options as I see them:
-  (a) leave at 1.0 and accept it, arguing the shared trunk still learns position;
-  (b) weight so the two terms contribute comparably -- but the weight then needs
-      a principled derivation, not a number I liked;
-  (c) detach the activation head from the shared trunk, so the auxiliary task
-      cannot move the representation the position head reads;
-  (d) drop the activation head entirely and let interact be a no-op -- rejected
-      by me already, since D-017 requires interact to have an observable effect
-      or the action carries no information.
-
-I lean (c): it keeps the auxiliary output D-032 asks for, keeps the secondary
-metric, and removes the gradient interference without introducing a tuned
-constant. But this is a methodological choice about the object of diagnosis, so
-it is yours before it is mine.
+Worth naming: both weak tests were written in the same session as the code they
+cover, both passed, and neither could have caught its own failure. That is the
+third time in this project a green test has certified nothing.
 
 --------------------------------------------------------------------
-COMPUTE: none. The student's GPU was at 14.2 of 16.4 GB and 92% utilisation
-under another workload, so everything above ran on CPU in seconds. Still ZERO
-GPU-hours consumed against the ~110-145 budget.
+W3 TUESDAY CONSTRAINTS -- all seven recorded as binding in D-047
 
-NEXT: W3 Tue -- the training loop, with the split BY EPISODE rather than by
-transition, so early stopping cannot leak across correlated transitions.
+Stop on movement-position validation loss only; log activation separately and
+never stop on it; scheduler monitors the primary loss; NO global grad-norm clip
+across both parameter groups; per-group clipping or none; fail loudly on a batch
+with no movement transitions; ensure activation batches contain INTERACT.
+
+--------------------------------------------------------------------
+NUMBERS (no experimental results; design and development quantities only)
+
+  position loss, before / after the detach:   0.002242 / 0.000931
+  trunk gradient share, activation:           16-36%   (NOT 97.7%)
+  cos(position grad, activation grad):        -0.06 to -0.16
+  activation error vs copy baseline:          0.2575 vs 0.1652  (open item)
+  INTERACT aliasing, canonical conditions:    0
+  INTERACT aliasing, position withheld:       2,392
+  tests:                                      299 -> 313 passing, 1 skipped
+  compute consumed:                           0 GPU-hours
+
+NEXT: W3 Tue -- the training loop, under the seven constraints above, split by
+episode rather than by transition.
 === END UPDATE ===
 ```

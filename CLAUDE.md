@@ -106,7 +106,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 257 passing, 1 skipped
+.venv/bin/python -m pytest -q                      # 313 passing, 1 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -136,7 +136,8 @@ src/bu/
   env/collect.py    dataset + coverage report; records episode structure
   experiments/enumerate_units.py  the 300-unit design matrix
   streams.py     named RNG streams: independent across units, paired within a comparison
-  models/ stats/    empty — Week 3 and Weeks 4–5
+  models/world_model.py  the MLP; dynamic-only target, detached auxiliary head
+  stats/            empty — Weeks 4–5
 ```
 
 **The four identities, which most analysis discipline follows from:**
@@ -175,6 +176,10 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 - **A correctness property standing on an accident is not a property.** The
   multi-role stream invariant held across all 75 shared fits — only because no
   canonical unit happened to also carry a sweep obligation (D-038).
+- **Loss share is not gradient share, and neither is proof of interference.**
+  I read a 97.7% loss share as "98% of the gradient" — measured, the trunk
+  gradient was 16–36% activation, the opposite way round. Measure the quantity
+  you are about to make a claim about (D-047).
 - **A number without its estimand is not a number.** Two consecutive Sol
   findings, both on the same paragraph and neither a coding error: I reported
   `min(N₀,N₁) = 115` as *the* effective sample size when it was a bound
@@ -214,9 +219,22 @@ This is not a stylistic choice — 26 of 30 output dims never change within an
 episode, so full-state MSE dilutes the passability rule ~15-fold and rescales it
 between families as withholding changes the observation width (30 dims vs 22).
 
-W3 Tue the training loop — **split by episode, not by transition**, or early
-stopping leaks. W3 Wed the bootstrap ensemble, drawing from the `bootstrap` and
-`init` streams. W3 Fri disagreement metrics and the first curves.
+**W3 Mon is done** (D-046, D-047). The model predicts agent position and
+activation bits; the auxiliary head reads a **detached** trunk and both losses
+are **action-conditional** — position on movement steps, activation on
+`interact` steps. `WorldModel(unit, rng)` requires a generator from the `init`
+stream; depth is frozen at 2 and there is no loss-weighting knob.
+
+W3 Tue the training loop, and **D-047 binds it**: stop on movement-position
+validation loss only, never on activation; no global grad-norm clip across both
+parameter groups; fail loudly on a batch with no movement transitions; split
+**by episode, not by transition**, or early stopping leaks. Open item carried
+in: the detached head is worse than its copy baseline (0.2575 vs 0.1652) after
+a hand-rolled 3,000 epochs — Sol's conditional for a second trunk turns on
+whether a real loop closes that, and must not be settled from a probe.
+
+W3 Wed the bootstrap ensemble, drawing from the `bootstrap` and `init` streams.
+W3 Fri disagreement metrics and the first curves.
 
 **Confirmatory runs use seeds ≥ `CONFIRMATORY_SEED_BASE` (1000).** Everything
 below is pilot data and may never enter a confirmatory result, the threshold

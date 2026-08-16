@@ -237,3 +237,63 @@ def test_no_canonical_configuration_is_position_causal():
     """D-026: position-causal conditions run in the sweep, never as canonical 2A."""
     assert all(causal != "position" for causal, _ in CANONICAL_PAIRS)
     assert len(CANONICAL_PAIRS) == 5, "Plan §14.2 budgets five canonical configurations"
+
+
+# --- INTERACT observability (Sol's ruling on Q-010 · D-047) --------------
+
+
+def _interact_aliasing(withheld: tuple[str, ...]) -> tuple[int, int]:
+    """(distinct (obs, INTERACT) keys, collisions with differing successors)."""
+    from bu.env.gridworld import INTERACT
+
+    unit = UnitSpec(
+        causal_attribute="shape",
+        family="missing_feature" if withheld else "estimation",
+        withheld_features=withheld,
+        confound_rate=0.5 if withheld else 0.0,
+        n_objects=N_OBJECTS,
+        grid_size=GRID,
+    )
+    env = GridWorld(unit)
+    enc = env.encoder
+    seen: dict[bytes, bytes] = {}
+    aliased = 0
+    for state in _states():
+        key = enc.encode(state).tobytes()
+        successor = enc.encode(env.transition(state, INTERACT)).tobytes()
+        if key in seen:
+            aliased += int(seen[key] != successor)
+        else:
+            seen[key] = successor
+    return len(seen), aliased
+
+
+@pytest.mark.parametrize("withheld", [(), ("shape",), ("colour",)])
+def test_interact_is_predictable_in_the_canonical_conditions(withheld):
+    """The check that forbids calling the auxiliary error irreducible (D-047).
+
+    ``interact`` toggles the first adjacent object in a fixed order, so where
+    object *positions* are visible the rule is deterministic **and** the
+    observation determines which bit flips. Any residual activation error in a
+    canonical Experiment 2A condition is therefore a learning shortfall, not an
+    information-theoretic floor -- which is precisely the claim Sol refused to
+    let stand without this measurement.
+    """
+    _, aliased = _interact_aliasing(withheld)
+    assert aliased == 0, (
+        f"withholding {withheld} aliased the interact successor; the auxiliary "
+        "task is not fully predictable there after all"
+    )
+
+
+def test_withholding_position_does_alias_interact():
+    """The control, and a second mechanism behind D-026.
+
+    With object positions hidden the agent cannot see which object is adjacent,
+    so it cannot know which bit will flip. Position masking breaks the
+    auxiliary task as well as the primary one -- another respect in which it is
+    not the same manipulation as masking shape or colour.
+    """
+    keys, aliased = _interact_aliasing(("position",))
+    assert aliased > 0
+    assert keys < 200, "the key space should collapse when positions are hidden"
