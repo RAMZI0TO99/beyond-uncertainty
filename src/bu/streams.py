@@ -67,11 +67,23 @@ from .config import UNIT_IDENTITY_FIELDS, Config, UnitSpec, _to_plain
 #: version, and it is recorded in every run record. Bump whenever the key
 #: construction, the purpose list or the hashing changes -- the numbers a run
 #: draws are not reproducible across versions.
-STREAM_VERSION = 1
+#:
+#: v2 (2026-08-16): ``batch`` added to PURPOSES (D-049). The derivation is
+#: unchanged and the purpose is part of every key, so no existing key would
+#: have collided -- but the rule above says a change to the purpose list is a
+#: bump, and honouring a rule only when it is convenient is how the rule stops
+#: being one. No confirmatory data exists, so the bump costs nothing.
+STREAM_VERSION = 2
 
-#: The four named streams. Separated so that, for example, drawing a different
+#: The five named streams. Separated so that, for example, drawing a different
 #: number of bootstrap samples cannot shift the environment a model trains on.
-PURPOSES: tuple[str, ...] = ("env", "policy", "bootstrap", "init")
+#:
+#: ``batch`` is minibatch ordering. It is a stream rather than a detail because
+#: batch order changes the fitted model, and leaving it to torch's global RNG
+#: would make a fit depend on process history rather than on
+#: ``(unit_id, seed, member)`` -- the exact defect D-047 removed from weight
+#: initialisation.
+PURPOSES: tuple[str, ...] = ("env", "policy", "bootstrap", "init", "batch")
 
 #: Streams that generate *data*. These key on the comparison group, so that
 #: common random numbers survive inside a paired comparison.

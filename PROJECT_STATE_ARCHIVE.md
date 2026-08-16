@@ -1349,3 +1349,11 @@ NEXT: W3 Tue -- the training loop, with the split BY EPISODE rather than by
 transition, so early stopping cannot leak across correlated transitions.
 === END UPDATE ===
 ```
+
+### 2026-08-16 (Q-010 ruling) · Loss share is not gradient share · Claude
+**Did:** implemented Sol's Q-010 ruling in full (D-047) — auxiliary head reads a detached representation, both losses are action-conditional, `predict_next_obs` gained matching action-conditional passthroughs, and three unrecorded result-affecting knobs were removed (`activation_weight`, `n_layers` frozen at 2 and published in `ARCHITECTURE`, `rng` made mandatory). Replaced the two tests Sol showed were asserting less than they claimed and added gradient-isolation tests (D-048).
+**The correction I had coming:** I inferred gradient share from loss share. Measured properly — activation is 97.7% of the scalar loss but only **16–36% of the trunk-gradient norm**, so the position task dominated the trunk all along. My "~2% of the gradient trains passability" was wrong by an order of magnitude and in the opposite direction. What survives is the cosine similarity, **−0.06 to −0.16**: mild genuine interference, removable at no cost, which is what the detach does.
+**Result:** 299 → 313 tests. Position loss improved **0.002242 → 0.000931** at the same budget once the position task owned the trunk. The INTERACT aliasing check Sol required: fully-observed, shape-withheld and colour-withheld all show **zero** aliased successors, so the auxiliary task is fully predictable in every canonical condition and its residual error may **not** be called irreducible. Position-withheld aliases it — a second mechanism behind D-026.
+**Carried into W3 Tue, unresolved deliberately:** the detached head is at 0.2575 against a copy baseline of 0.1652 after 3,000 epochs. That is difficulty, not proven incapability, and Sol's conditional for a second trunk must not be settled from a hand-rolled loop.
+**Compute:** CPU only, seconds. GPU left alone under the student's other workload. **Zero GPU-hours consumed.**
+**Next:** W3 Tue — the training loop, under D-047's constraints.

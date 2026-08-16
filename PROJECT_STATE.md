@@ -46,7 +46,7 @@ This is the single shared working file for the project. It is written by Claude,
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **313 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, and the stream-pairing properties of D-030 |
+| **Tests** | **331 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, and the stream-pairing properties of D-030 |
 | **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -70,8 +70,8 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 
 **Next actions — Week 3, the world model.**
 0. **W3 Mon — DONE and Sol-ruled** (D-046, D-047, D-048). Criterion met across all five capacity levels and all four withholding configurations. Beyond it: blocked movement transitions carry **1.67×** the position error of free moves; `interact` is deterministic and predictable in every canonical condition (0 aliased successors) but aliased when position is withheld — a second mechanism behind D-026.
-1. **W3 Tue** — training loop. Split **by episode, not by transition** (transitions within an episode are correlated — the reason P§7.3 needs episode-level intercepts — so a transition split leaks and makes early stopping optimistic). **D-047 binds the rest:** stop on **movement-position validation loss only**; log activation separately and never stop on it; scheduler monitors the primary loss; **no global grad-norm clip** across both parameter groups; fail loudly on a batch with no movement transitions. *Done when: trains on 5,000 transitions with the loss curve logged.*
-2. **W3 Wed** — bootstrap resampling and K-member ensemble trainer with independent initialisation. *Done when: five members train, per-member validation error logged.*
+1. **W3 Tue — DONE** (D-049). Trains 5,000 transitions, early-stops at epoch 10 of 31 in 1.5s CPU, curve reaching `load_runs()`. Split by episode and **strided**, all of D-047's constraints implemented. Measured: a transition-level split is **4.5–8.7× optimistic**, worst at small n.
+2. **W3 Wed — NEXT** — bootstrap resampling and K-member ensemble trainer, drawing from the `bootstrap`, `init` and `batch` streams. *Done when: five members train, per-member validation error logged.* Carries the open item below.
 
 **No open questions.** Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **One open item carried into W3 Tue:** the detached head sits at 0.2575 against a copy baseline of 0.1652 after 3,000 epochs, and Sol's conditional for a second trunk turns on whether the real training loop can close that — it must not be decided from a hand-rolled loop.
 
@@ -101,6 +101,7 @@ These are the preregistered quantities. They are fixed **before** data collectio
 | Compute escalation trigger | ≈ **120 GPU-hours** | P§14.3 |
 | Balanced-accuracy weighting | **unit** — equal weight per configuration-condition; group-bootstrap intervals | D-044 |
 | Confirmatory seed base | **1000** — every seed below it is pilot data, permanently excluded | D-034 |
+| Stream version | **2** — `batch` added to the named purposes | D-049 |
 | Reduction order when behind | catch-up day → ablations → full Exp 5 → configuration count (only to measured MDE) | S "When you fall behind" |
 | **Seeds are not a reduction lever** | Withdrawn as an option in P v1.2 | P§14.3 |
 
@@ -178,6 +179,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-046** | 2026-08-16 | The world model, and what in it is an interpretation | pending |
 | **D-047** | 2026-08-16 | Q-010 closed — detached auxiliary head, action-conditional losses | Sol's |
 | **D-048** | 2026-08-16 | Two tests replaced for asserting less than they claimed | finding Sol's |
+| **D-049** | 2026-08-16 | The training loop, and the split that makes early stopping honest | pending |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -280,13 +282,13 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept here.
 
-### 2026-08-16 (Q-010 ruling) · Loss share is not gradient share · Claude
-**Did:** implemented Sol's Q-010 ruling in full (D-047) — auxiliary head reads a detached representation, both losses are action-conditional, `predict_next_obs` gained matching action-conditional passthroughs, and three unrecorded result-affecting knobs were removed (`activation_weight`, `n_layers` frozen at 2 and published in `ARCHITECTURE`, `rng` made mandatory). Replaced the two tests Sol showed were asserting less than they claimed and added gradient-isolation tests (D-048).
-**The correction I had coming:** I inferred gradient share from loss share. Measured properly — activation is 97.7% of the scalar loss but only **16–36% of the trunk-gradient norm**, so the position task dominated the trunk all along. My "~2% of the gradient trains passability" was wrong by an order of magnitude and in the opposite direction. What survives is the cosine similarity, **−0.06 to −0.16**: mild genuine interference, removable at no cost, which is what the detach does.
-**Result:** 299 → 313 tests. Position loss improved **0.002242 → 0.000931** at the same budget once the position task owned the trunk. The INTERACT aliasing check Sol required: fully-observed, shape-withheld and colour-withheld all show **zero** aliased successors, so the auxiliary task is fully predictable in every canonical condition and its residual error may **not** be called irreducible. Position-withheld aliases it — a second mechanism behind D-026.
-**Carried into W3 Tue, unresolved deliberately:** the detached head is at 0.2575 against a copy baseline of 0.1652 after 3,000 epochs. That is difficulty, not proven incapability, and Sol's conditional for a second trunk must not be settled from a hand-rolled loop.
-**Compute:** CPU only, seconds. GPU left alone under the student's other workload. **Zero GPU-hours consumed.**
-**Next:** W3 Tue — the training loop, under D-047's constraints.
+### 2026-08-16 (W3 Tue) · The training loop, and how leaky a transition split is · Claude
+**Did:** built `src/bu/models/train.py` (D-049) — episode-level strided split, early stopping on the movement-position validation loss alone, best checkpoint restored, both loss terms logged per epoch, no gradient clipping, minibatch order from a new named `batch` stream. All seven of D-047's training-loop constraints implemented. Change Record: `STREAM_VERSION` 1 → 2.
+**Result:** 313 → 331 tests. Criterion met: 5,000 transitions, early stop at epoch 10 of 31, 1.5s on CPU, curve reaching `load_runs()` as one record per epoch.
+**The measurement that justifies the split, run rather than argued:** a transition-level split reports validation loss **4.5–8.7× lower on the same data** (0.00144 vs 0.01250 at n=250; 0.00075 vs 0.00338 at n=5000), and **the optimism is worst at small n**. That is the direction that corrupts Experiment 1 specifically — the error-versus-data curve would flatten at the small-data end and estimation failure would appear in the wrong place. The leaky split also ran 237 epochs against 27, because it kept improving on data it had already seen.
+**Second measurement, which decided strided over contiguous:** the scripted policy carries coverage counters across episodes, so it drifts — over 100 episodes the moved-transition fraction falls 0.543 → 0.476 and the action distribution shifts. A tail split would hold out a distribution the model never trained on. Striding also keeps held-out episodes identical across nested-prefix datasets, so a data-size sweep is not also a held-out-set sweep.
+**Compute:** CPU only, seconds. GPU untouched at the student's request — it was at 14.1/16.4 GB under another workload. **Zero GPU-hours consumed.**
+**Next:** W3 Wed — the bootstrap ensemble. Carries D-047's open item: whether the detached auxiliary head can beat its copy baseline under a real training loop.
 ---
 
 ## 8. → TO SOL — *moved to its own file*
