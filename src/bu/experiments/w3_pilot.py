@@ -32,7 +32,9 @@ from .. import constants as K
 from ..config import TrainConfig, UnitSpec
 from ..env.collect import collect_pools
 from ..models.ensemble import train_ensemble
-from ..models.uncertainty import UncertaintySummary, across_seeds, summarise
+from ..models.uncertainty import (
+    UncertaintySummary, across_seeds, per_transition_table, spread_diagnostic, summarise,
+)
 from ..models.world_model import activation_report, primary_error
 
 #: One configuration, as the schedule specifies. The reference configuration
@@ -50,6 +52,7 @@ class PilotRow:
     uncertainty: dict
     val_position_errors: list[float]
     activation: dict
+    spread: dict
     epochs: list[int]
 
 
@@ -70,7 +73,13 @@ def run(
     rows: list[PilotRow] = []
     for n in sizes:
         for seed in seeds:
-            assert seed < K.CONFIRMATORY_SEED_BASE, "the pilot is development-only"
+            if seed >= K.CONFIRMATORY_SEED_BASE:
+                # A ValueError, not an assert: assertions vanish under -O, so
+                # they are not a safety boundary (D-059).
+                raise ValueError(
+                    f"seed {seed} is confirmatory; this pilot is development-only "
+                    f"(< {K.CONFIRMATORY_SEED_BASE}, D-034)"
+                )
             unit = UnitSpec(
                 causal_attribute=PILOT_CAUSAL,
                 layout=PILOT_LAYOUT,
@@ -96,7 +105,17 @@ def run(
             targets = ensemble.members[0].targets(next_obs[move])[0]
 
             summary = summarise(members, targets, n_transitions=n, seed=seed)
+            spread = spread_diagnostic(members, targets)
             report = activation_report(ensemble.members[0], obs, action, next_obs)
+
+            # The schedule requires PER-TRANSITION export; summaries are derived
+            # from it, never the other way round (D-059).
+            table = per_transition_table(
+                members, targets,
+                episode=pools.evaluation.episode[move.numpy()],
+                step=pools.evaluation.step[move.numpy()],
+            )
+            np.savez_compressed(out / f"transitions_n{n}_seed{seed}.npz", **table)
 
             rows.append(
                 PilotRow(
@@ -105,6 +124,7 @@ def run(
                     uncertainty=summary.as_row(),
                     val_position_errors=list(ensemble.val_position_errors),
                     activation=asdict(report),
+                    spread=spread.as_row(),
                     epochs=[r.epochs_run for r in ensemble.results],
                 )
             )
@@ -144,8 +164,12 @@ def report(rows: list[PilotRow]) -> str:
         "metrics on the fixed evaluation pool; movement transitions only",
         "",
         "*** THIS IS A LOOK, NOT AN H1 CLAIM. Three seeds cannot support one. ***",
+        "*** ratio* is an EXPLORATORY WHOLE-POOL disagreement/error ratio over all",
+        "    movement transitions. It is NOT the registered H2 endpoint, which is",
+        "    defined over the FAILURE SET (P10.1/10.3) and needs the W4 Fri",
+        "    threshold that does not exist yet (D-059). ***",
         "",
-        f"{'N':>6} {'error':>18} {'disagreement':>18} {'pred. variance':>18} {'ratio':>16}",
+        f"{'N':>6} {'error':>18} {'disagreement':>18} {'pred. variance':>18} {'ratio*':>16}",
         "-" * 68,
     ]
     for n, agg in aggregated.items():
@@ -156,6 +180,28 @@ def report(rows: list[PilotRow]) -> str:
             f"{agg['mean_predictive_variance_mean']:>9.4f}±{agg['mean_predictive_variance_sd']:<8.4f}"
             f"{agg['ratio_mean']:>8.4f}±{agg['ratio_sd']:<7.4f}"
         )
+
+    # Paired per-seed differences, because three seeds cannot carry an
+    # inferential claim and "the sd is smaller than the gap" is not one (D-059).
+    lines += ["", "Disagreement, paired within seed (N=250 minus N=100):"]
+    for seed in sorted({r.seed for r in rows}):
+        small = next((r for r in rows if r.n_transitions == 100 and r.seed == seed), None)
+        larger = next((r for r in rows if r.n_transitions == 250 and r.seed == seed), None)
+        if small and larger:
+            delta = (larger.uncertainty["mean_disagreement"]
+                     - small.uncertainty["mean_disagreement"])
+            lines.append(f"  seed {seed}: {delta:+.4f}")
+    lines.append("  Direction reproduced across all three development seeds if all "
+                 "three are positive. That is the whole claim.")
+
+    lines += ["", "Member-level spread as a fraction of the targets' (D-059):",
+              f"{'N':>6} {'ensemble mean':>14} {'min member':>12} {'max member':>12}"]
+    for n in sorted({r.n_transitions for r in rows}):
+        rs = [r for r in rows if r.n_transitions == n]
+        em = np.mean([r.spread["ensemble_mean_sd"] / max(r.spread["target_sd"], 1e-6) for r in rs])
+        ratios = [x for r in rs for x in r.spread["member_sd_ratios"]]
+        lines.append(f"{n:>6} {em:>14.3f} {min(ratios):>12.3f} {max(ratios):>12.3f}")
+    lines.append("  A collapse claim needs EVERY member small, not just their mean.")
 
     errors = [aggregated[n]["mean_error_mean"] for n in aggregated]
     dis = [aggregated[n]["mean_disagreement_mean"] for n in aggregated]

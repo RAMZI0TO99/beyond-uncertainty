@@ -50,17 +50,27 @@ def test_disagreement_is_one_number_per_transition():
     assert pairwise_disagreement(_members(n=37)).shape == (37,)
 
 
-def test_disagreement_uses_the_ordered_pair_convention():
-    """Two members, distance d: the mean over ordered pairs is d, not d/2.
+def test_disagreement_matches_an_explicit_pair_enumeration():
+    """Rewritten: the previous version could not distinguish the conventions.
 
-    Stated because the two conventions differ by a factor of two, and a
-    disagreement number without its convention is not comparable to anything.
+    It used two members, where the ordered and unordered means coincide
+    trivially. They in fact coincide for *every* k when each is normalised by
+    its own pair count — an earlier docstring claimed a factor of two and was
+    wrong (D-059). This checks the implementation against an explicit
+    enumeration at k=5, where an off-by-a-factor would show.
     """
-    a = torch.zeros(1, 1, 3)
-    b = torch.full((1, 1, 3), 1.0)
-    members = torch.cat([a, b])
-    expected = float(torch.linalg.vector_norm(b - a))
-    assert float(pairwise_disagreement(members)[0]) == pytest.approx(expected)
+    import itertools
+
+    members = _members(k=5, n=3, d=3, spread=1.0)
+    got = pairwise_disagreement(members)
+
+    k = members.shape[0]
+    for i in range(members.shape[1]):
+        pairs = [
+            float(torch.linalg.vector_norm(members[a, i] - members[b, i]))
+            for a, b in itertools.combinations(range(k), 2)
+        ]
+        assert float(got[i]) == pytest.approx(sum(pairs) / len(pairs))
 
 
 def test_a_single_member_cannot_disagree():
@@ -120,11 +130,27 @@ def test_the_ratio_is_of_means_not_a_mean_of_ratios():
     assert summary.ratio != pytest.approx(float(per_transition.mean()), rel=0.05)
 
 
-def test_the_denominator_floor_prevents_an_exploding_ratio():
-    members = _members(spread=0.0)          # no disagreement
-    targets = members[0].clone()            # and no error either
-    summary = summarise(members, targets, n_transitions=10, seed=0)
+def test_the_denominator_floor_controls_a_nonzero_numerator():
+    """Rewritten: the previous version had zero error *and* zero disagreement,
+    so it never exercised the floor at all (D-059).
+
+    Members placed symmetrically around the targets give a perfectly predicted
+    ensemble mean — error exactly zero — while disagreement stays large. The
+    ratio must then be numerator / RATIO_FLOOR rather than infinite.
+    """
+    targets = torch.randn(64, 2)
+    offset = torch.randn(64, 2)
+    members = torch.stack([targets + offset, targets - offset])  # mean == targets
+
+    summary = summarise(members, targets, n_transitions=100, seed=0)
+    assert summary.mean_error == pytest.approx(0.0, abs=1e-6)
+    assert summary.mean_disagreement > 0.1
+    assert summary.ratio == pytest.approx(
+        summary.mean_disagreement / RATIO_FLOOR, rel=1e-3
+    )
     assert np.isfinite(summary.ratio)
+
+
 
 
 # --- aggregation across seeds ----------------------------------------------
@@ -177,3 +203,51 @@ def test_predictive_variance_tracks_spread():
         predictive_variance(_members(spread=2.0)).mean()
         > predictive_variance(_members(spread=0.2)).mean()
     )
+
+
+# --- member-level spread (D-059) ------------------------------------------
+
+
+def test_a_low_ensemble_mean_spread_does_not_imply_member_collapse():
+    """The inference D-058 made and D-059 withdrew.
+
+    Members that vary a great deal can cancel in their average, so the spread
+    of the ensemble mean says nothing on its own about whether any individual
+    member contracted.
+    """
+    from bu.models.uncertainty import spread_diagnostic
+
+    g = torch.Generator().manual_seed(0)
+    n = 400
+    wide = 3.0 * torch.randn(4, n, 2, generator=g)
+    members = wide - wide.mean(dim=0, keepdim=True)   # mean is ~0 everywhere
+    targets = torch.randn(n, 2, generator=g)
+
+    diagnostic = spread_diagnostic(members, targets)
+    assert diagnostic.ensemble_mean_sd < 0.1 * diagnostic.target_sd
+    assert diagnostic.min_member_ratio > 1.0, "members are wide, not collapsed"
+
+
+def test_the_diagnostic_reports_every_member_not_just_the_mean():
+    from bu.models.uncertainty import spread_diagnostic
+
+    members = _members(k=5, n=64)
+    diagnostic = spread_diagnostic(members, torch.randn(64, 2))
+    assert len(diagnostic.member_sds) == 5
+    assert len(diagnostic.member_sd_ratios) == 5
+    assert diagnostic.min_member_ratio <= diagnostic.max_member_ratio
+
+
+def test_the_per_transition_table_keeps_episode_and_step():
+    """The schedule requires per-transition export; a summary cannot be
+    filtered to a failure set after the fact (D-059)."""
+    from bu.models.uncertainty import per_transition_table
+
+    members = _members(k=5, n=32)
+    table = per_transition_table(
+        members, torch.randn(32, 2),
+        episode=np.arange(32) // 8, step=np.arange(32) % 8,
+    )
+    assert set(table) == {"episode", "step", "error", "disagreement", "predictive_variance"}
+    for value in table.values():
+        assert len(value) == 32

@@ -46,7 +46,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `2875e60`** — Sol certified the Week 3 Mon–Wed infrastructure on 2026-08-16, covering D-047 … D-057. Set `BASE` to this for the next bundle |
-| **Tests** | **410 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
+| **Tests** | **413 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
 | **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). W3 Friday's 90-fit pilot ran on **CPU** at the student's request; their GPU was at 14.2/16.4 GB under another workload all week |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -73,7 +73,7 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 0. **W3 Mon — DONE and Sol-ruled** (D-046, D-047, D-048). Criterion met across all five capacity levels and all four withholding configurations. Beyond it: blocked movement transitions carry **1.67×** the position error of free moves; `interact` is deterministic and predictable in every canonical condition (0 aliased successors) but aliased when position is withheld — a second mechanism behind D-026.
 1. **W3 Tue — DONE** (D-049). Trains 5,000 transitions, early-stops at epoch 10 of 31 in 1.5s CPU, curve reaching `load_runs()`. Split by episode and **strided**, all of D-047's constraints implemented. Measured: a transition-level split is **4.5–8.7× optimistic**, worst at small n.
 2. **W3 Wed — DONE** (D-050). Five members on 5,000 transitions in 8.0s CPU; per-member validation errors 0.0034–0.0061, sd 0.0010, each drawing ~50 of 80 training episodes. **Raised Q-011.**
-3. **W3 Fri and Sat — DONE** (D-058). 90 fits on CPU; both curves exist and are regenerated from logged rows. **Error falls monotonically in N; disagreement does not** — it peaks at N=250. Measured mechanism: at N=100 the ensemble predicts with 29% of the target's variation, so members agree because they have all collapsed to the same near-constant. That is the **H2 signature produced by an estimation failure**, and the ratio is lowest at N=100 (0.462). Exploratory, three development seeds, no H1/H2 claim.
+3. **W3 Fri and Sat — DONE** (D-058, corrected by **D-059**). 90 fits on CPU, rerun with per-transition export. **Error falls monotonically in N; disagreement does not** — it peaks at N=250, direction reproduced in all three seeds paired (+0.179, +0.360, +0.102). Measured **per member**: at N=100 members range 0.219–0.639 of the target's variation, at N=250 0.220–0.836, at N=5,000 0.939–0.974. The mechanism is **heterogeneous contraction, not collapse** — disagreement peaks where the spread across members is widest. The lowest whole-pool ratio is at N=100 (0.462), but that is **not** the registered H2 ratio, which is defined over the failure set and needs the W4 Fri threshold.
 4. **W4 Mon — NEXT** — the rank-correlation trend test, used for both the W4 gate and the W10 H1 verdict. **Read it knowing the disagreement curve is non-monotone at the small end.**
 
 **No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **One open item carried into W3 Tue:** the detached head sits at 0.2575 against a copy baseline of 0.1652 after 3,000 epochs, and Sol's conditional for a second trunk turns on whether the real training loop can close that — it must not be decided from a hand-rolled loop.
@@ -197,6 +197,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-056** | 2026-08-16 | The repair split reaches training, and the size guard reaches `collect()` | finding Sol's |
 | **D-057** | 2026-08-16 | Pools must belong to the run that trains on them; a third tautological test | finding Sol's |
 | **D-058** | 2026-08-16 | W3 Friday's pilot, and the first thing it found | pending |
+| **D-059** | 2026-08-16 | Correction to D-058 — what the pilot measured, and what it did not | finding Sol's |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -302,15 +303,14 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept here.
 
-### 2026-08-16 (W3 Fri/Sat) · The first curves, and an estimation failure wearing H2's signature · Claude
-**Did:** built `models/uncertainty.py` (P§10.3's definitions) and `experiments/w3_pilot.py`, ran the sweep — **90 fits, 6 sizes × 3 development seeds × 5 members, on CPU at the student's request**. Their GPU was at 14.2/16.4 GB and 91% under another workload and was not touched. Wrote W3 Saturday's paragraph from the curves before any formal test, as the schedule requires.
-**Result:** 394 → 410 tests. **Zero GPU-hours.** Both curves exist and regenerate from logged rows.
-**Error falls monotonically with N** (1.302 → 0.263). **Disagreement does not** — it peaks at N=250 (0.815) and is *lower* at N=100 (0.601), reproducibly across seeds and in an independent earlier probe at a different hidden size.
-**The mechanism, measured:** at N=100 the ensemble's mean prediction has sd 0.065 against the targets' 0.220 — **29% of the variation in what it is predicting**, rising to 96% by N=5,000. The members have not learned different wrong answers; they have collapsed toward the same near-constant, so they agree because there is nothing yet to disagree about.
-**Why this is the finding rather than the curve shape:** high error with low disagreement is **the H2 signature**, and here an *estimation* failure produced it — in a condition where the model class is adequate and more data demonstrably repairs the problem. The ratio is lowest at N=100 (0.462), below every other size. If it replicates at five seeds on confirmatory data it does not falsify H2; it bounds it. A critic trained across such conditions would be learning a signature that points both ways.
-**Status: exploratory.** Three development seeds, one configuration, permanently excluded from confirmatory results. The printed report carries the caveat in its own text so a later reader cannot quote the number without it.
-**Left:** nothing running. Confirmatory execution and repair validation still blocked pending C-008's runner.
-**Next:** W4 Mon — the trend test, read knowing the small-N curve is non-monotone.
+### 2026-08-16 (delta 26 review) · Two claims withdrawn, and a better mechanism found · Claude
+**Did:** actioned Sol's review of the pilot (D-059). Four findings, all verified, all confirmed — **two of them withdraw claims I made in D-058**. Reran the 90 fits, because the per-transition predictions had not been retained.
+**Withdrawn (1):** 0.462 is **not the registered H2 ratio**. P§10.3 defines that endpoint over a condition's *failure set*; the pilot took every movement transition, and the W4 Friday threshold does not exist yet. It is an exploratory whole-pool ratio, now labelled so in the report, the methodology and the figure footnote.
+**Withdrawn (2):** "an estimation failure produced it" asserted a **verified label** the repair protocol has not yet produced. P§7.1 labels a condition by what repairs it. Now "small-data condition" / "estimation-**design** condition" throughout.
+**The invalid inference, and the better answer.** I compared the sd of the *ensemble mean* to the targets' and concluded members had "all collapsed toward the same near-constant". Members that vary can cancel in their average — verified with a counterexample at ensemble-mean sd 0.051 against member sd 2.556. Measured **per member**, the truth is more interesting: at N=100 members range **0.219–0.639** of the target's variation, at N=250 **0.220–0.836**, at N=5,000 **0.939–0.974**. It is **heterogeneous contraction, not collapse** — and disagreement peaks at N=250 exactly where the spread across members is widest. Some members have learned the rule and others have not.
+**Also:** the schedule's per-transition export was missing entirely and is now written per (N, seed) with episode and step; "the sd is smaller than the gap" replaced by paired within-seed differences (+0.179, +0.360, +0.102); `assert` → `ValueError` (assertions vanish under `-O`); the pairwise-convention docstring claimed a factor of two that does not exist, verified against an explicit enumeration; and the denominator-floor test had zero error *and* zero disagreement, so it never exercised the floor.
+**Result:** 410 → 413 tests. **Zero GPU-hours.** Certified base remains `2875e60`.
+**Next:** W4 Mon — the trend test, read knowing the curve is non-monotone at the small end.
 ---
 
 ## 8. → TO SOL — *moved to its own file*

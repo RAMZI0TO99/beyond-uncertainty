@@ -221,14 +221,14 @@ reported as though it did.
 
 ---
 
-## What the first curves look like *(Schedule W3 Sat — written before any formal test)*
+## What the first curves look like *(Schedule W3 Sat — written before any formal test, corrected after review)*
 
 Six dataset sizes, three development seeds, one configuration (shape-causal,
 uniform layout, no confound). Metrics on the fixed evaluation pool, movement
 transitions only, per-dimension normalised. **Three seeds cannot support H1**;
 the schedule calls this cell a look, and the trend test is Week 4 Monday.
 
-| N | held-out error | mean pairwise disagreement | ratio |
+| N | held-out error | mean pairwise disagreement | ratio\* |
 |---|---|---|---|
 | 100 | 1.302 ± 0.026 | 0.601 ± 0.110 | 0.462 ± 0.082 |
 | 250 | 0.816 ± 0.195 | **0.815 ± 0.064** | 1.025 ± 0.178 |
@@ -237,42 +237,64 @@ the schedule calls this cell a look, and the trend test is Week 4 Monday.
 | 2,500 | 0.302 ± 0.009 | 0.269 ± 0.016 | 0.889 ± 0.034 |
 | 5,000 | 0.263 ± 0.007 | 0.213 ± 0.013 | 0.810 ± 0.041 |
 
-**Error falls monotonically with dataset size.** That is the least interesting
-line here and the one most expected.
+\* **This is not the registered H2 ratio.** Plan §10.3 defines that endpoint
+over a condition's *failure set* — the transitions whose error exceeds the
+Week 4 Friday threshold, which does not exist yet. The column above is an
+exploratory whole-pool ratio over all movement transitions. It is
+hypothesis-generating, not evidence that an H2 signature occurred.
+
+**Error falls monotonically with dataset size.** The least interesting line here
+and the most expected.
 
 **Disagreement does not.** It rises from N = 100 to N = 250 and falls thereafter.
-The peak is not a seed artefact: the N = 250 standard deviation is smaller than
-the gap, and the same non-monotonicity appeared in an independent earlier probe
-at a different hidden size.
+Paired within seed, the N = 250 minus N = 100 difference is +0.179, +0.360 and
++0.102 — the direction reproduced in all three development seeds. That is the
+whole claim; three seeds carry no inferential weight beyond it.
 
-**The mechanism, measured rather than guessed.** At N = 100 the ensemble's mean
-prediction has a standard deviation of 0.065 against the targets' 0.220 — 29% of
-the variation in the thing it is predicting. By N = 5,000 that ratio is 96%. At
-the smallest condition the members have not learned different wrong answers;
-they have all collapsed toward the *same* near-constant. They agree because
-there is nothing yet to disagree about.
+**What the members are doing, measured per member rather than inferred from
+their average.** Standard deviation of each member's predictions as a fraction
+of the targets':
 
-**Why this matters more than the shape of one curve.** High error with low
-disagreement is the H2 signature — the pattern the thesis proposes as evidence
-of hypothesis-class failure. Here it is produced by an *estimation* failure, in
-a condition where the model class is entirely adequate and more data demonstrably
-fixes the problem. The disagreement-to-error ratio is **lowest at N = 100
-(0.462)**, lower than at any other dataset size and lower than the large-data
-conditions where the model is nearly correct.
+| N | ensemble mean | least-contracted member | most-contracted member |
+|---|---|---|---|
+| 100 | 0.231 | 0.639 | 0.219 |
+| 250 | 0.538 | 0.836 | 0.220 |
+| 500 | 0.737 | 0.832 | 0.738 |
+| 5,000 | 0.950 | 0.974 | 0.939 |
 
-If that survives replication at five seeds and confirmatory data, it does not
-falsify H2, but it bounds it: the ratio would not discriminate failure types at
-the extreme of estimation failure, and any critic trained on such conditions
-would be learning a signature that points both ways. The honest reading is that
-severe under-training and structural misspecification are not distinguishable by
-ensemble disagreement alone — which is, if anything, a sharper statement of the
-problem this thesis exists to address than the one in the introduction.
+The story is **heterogeneity, not collapse**. At N = 100 most members contract
+sharply, but at least one retains 64% of the target's variation; the ensemble
+mean is more contracted than any individual member, so part of its flatness is
+members cancelling rather than each member flattening. At N = 250 the spread
+across members is widest — 0.220 to 0.836 — and that is exactly where
+disagreement peaks: members disagree most when some have learned the rule and
+others have not. By N = 5,000 they have converged on the same answer and
+disagreement is low because they are all right rather than because they are all
+flat.
 
-Two things follow for the schedule rather than for the thesis. The Week 4 Monday
-trend test must be read knowing the curve is non-monotone at the small end; and
-Week 5's minimum-detectable-effect simulation should be told which conditions
-sit in the collapsed regime, because they carry a different disagreement
-mechanism from the rest of the sweep.
+**What this does and does not say about H2.** High error with low disagreement
+is the pattern the thesis proposes as evidence of hypothesis-class failure, and
+the smallest condition here shows a version of it — the lowest whole-pool ratio
+in the sweep (0.462) in a condition designed to induce estimation failure. But
+two things have to happen before that sentence can be made properly. The failure
+set must exist, so the registered ratio can be computed on the transitions it is
+defined over. And the condition's label must come from the counterfactual repair
+protocol rather than from how it was constructed — Plan §7.1 is explicit that a
+condition is labelled by what repairs it, and data repair has not run.
+
+So the honest statement is narrower than it first appeared, and worth stating
+carefully: **in a small-data condition the disagreement-to-error ratio was lower
+than in the well-fitted conditions, and the mechanism appears to be that
+members contract heterogeneously rather than that the model class is
+inadequate.** If that survives the failure-set definition, five seeds and
+confirmatory data, it would bound where the H2 ratio can discriminate. It is not
+yet evidence that it does not.
+
+Two consequences for the schedule rather than for the thesis. Week 4 Monday's
+trend test must be read knowing the curve is non-monotone at the small end. And
+Week 5's minimum-detectable-effect simulation should know which conditions sit
+in the heterogeneous-contraction regime, because their disagreement has a
+different mechanism from the rest of the sweep.
 
 *Figures:* `figures/w3_error_vs_data.png`, `figures/w3_disagreement_vs_data.png`.
-
+*Per-transition exports:* `runs/w3_pilot/transitions_n*_seed*.npz`.

@@ -530,3 +530,24 @@ Capacity repair accepted mismatched pools silently, because capacity does not ch
 **Plan ref:** S§W3 Fri, S§W3 Sat, P§10.3, P§4.2.
 **Reviewed by Sol:** pending — the collapse finding is the part worth attacking.
 
+### D-059 · 2026-08-16 · Correction to D-058 — what the pilot actually measured, and what it did not
+**Four findings from Sol, all verified, all confirmed. Two of them withdraw claims I made.**
+
+**(1) That number is not the registered H2 ratio.** P§10.3 defines the endpoint over a condition's **failure set** — transitions above the W4 Friday threshold, which does not exist yet. The pilot took *every movement transition*. So 0.462 is an **exploratory whole-pool disagreement/error ratio**, and calling it "the H2 signature" was wrong. The printed report, the methodology and the figures now label it as such in their own text, and the ratio column carries an explicit footnote.
+
+**(2) "Estimation failure" was a construction label, not a verified one.** P§7.1 is explicit that a condition is labelled by what repairs it, established by the counterfactual protocol — and repair validation has not run. The sentence "an estimation failure produced the H2 signature" asserted both halves without either. Replaced with "small-data condition" and "estimation-**design** condition" throughout.
+
+**(3) The per-transition export the schedule required was missing.** S§W3 Fri says disagreement and predictive variance are *"exported per transition"*; `rows.json` held one summary per (N, seed). Without the transition level, failure-set filtering, the local error/disagreement correlation and independent regeneration of the registered endpoint are all impossible after the fact. `per_transition_table()` now exports error, disagreement, predictive variance, episode and step per transition, and **the 90 fits were rerun** because the predictions had not been retained.
+
+**(4) The collapse mechanism was not evidenced — and the inference was invalid.** I compared the sd of the **ensemble mean** with the targets' and concluded that members had "all collapsed toward the same near-constant". Sol pointed out that members which vary can cancel in their average. Verified with a constructed counterexample: ensemble-mean sd **0.051** while individual members have sd **2.556**. The inference does not go through.
+**Measured properly, per member, the story is different and better.** Member prediction sd as a fraction of the targets': at N=100 the ensemble mean sits at 0.231 but members range **0.219 to 0.639**; at N=250 they range **0.220 to 0.836**; by N=5,000 they have converged at 0.939–0.974. So it is **heterogeneity, not collapse** — at the smallest sizes some members learn the rule and others do not, the ensemble mean is flatter than any individual member because they partly cancel, and disagreement peaks at N=250 precisely where the spread across members is widest. That is a cleaner mechanism than the one I claimed, and it is the one the data supports.
+
+**Statistical wording.** "The N=250 sd is smaller than the gap" does not establish that a result is not a seed artefact. The report now gives the **paired within-seed differences** — +0.179, +0.360, +0.102 — and says only that the direction reproduced in all three development seeds.
+
+**Three code corrections.** The development-seed `assert` became a `ValueError`, because assertions vanish under `-O` and are not a safety boundary. The pairwise-convention docstring claimed ordered and unordered means differ by a factor of two; they are **identical** when each is normalised by its own pair count, verified against an explicit enumeration, and the two-member test could not have distinguished them — it now checks against an enumeration at k=5. The denominator-floor test used zero error *and* zero disagreement, so it never exercised the floor; it now places members symmetrically around the targets, giving exactly zero error with large disagreement.
+**Scope narrowed:** `uncertainty.py` does not implement P§10.3's per-condition error/disagreement correlation, and no longer claims to.
+
+**What survives from D-058:** the curves, the non-monotone disagreement, the paired direction across three seeds, and the observation that a small-data condition showed the lowest whole-pool ratio in the sweep. What does not: that it was the H2 signature, that the condition is a verified estimation failure, and that the members collapsed.
+**Plan ref:** P§7.1, P§10.1, P§10.3, S§W3 Fri. Supersedes D-058's interpretation.
+**Reviewed by Sol:** findings are Sol's; these corrections are not yet reviewed.
+

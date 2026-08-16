@@ -1,5 +1,10 @@
 """Ensemble uncertainty metrics (Schedule W3 Fri, Plan §10.3).
 
+**Scope:** this module implements P§10.3's *mean pairwise disagreement*,
+*predictive variance*, *per-dimension normalised error* and the *ratio*. It does
+**not** implement the per-condition error/disagreement correlation, which
+P§10.3 also names as a secondary diagnostic (D-059).
+
 These are the dependent variables. H1 is a claim about how **mean pairwise
 disagreement** moves with dataset size; H2 is a claim about the **ratio** of
 disagreement to error. Everything here is therefore a preregistered definition
@@ -68,10 +73,11 @@ def pairwise_disagreement(
 
     Plan §10.3's definition. ``members`` is ``(n_members, batch, dims)``.
 
-    The mean is over **ordered** pairs excluding the diagonal, which is the same
-    number as the mean over unordered pairs — stated because the two conventions
-    differ by a factor of two and a disagreement number without its convention
-    is not comparable to anything.
+    The sum runs over ordered off-diagonal pairs and divides by ``k(k-1)``,
+    which is **numerically identical** to summing unordered pairs and dividing
+    by ``k(k-1)/2``. An earlier version of this docstring claimed the two
+    conventions differ by a factor of two; they do not, when each is normalised
+    by its own pair count (D-059). Verified against an explicit enumeration.
     """
     k = members.shape[0]
     if k < 2:
@@ -151,6 +157,81 @@ def summarise(
         mean_predictive_variance=float(variance.mean()),
         ratio=float(disagreement.mean()) / max(mean_error, RATIO_FLOOR),
     )
+
+
+@dataclass(frozen=True)
+class SpreadDiagnostic:
+    """Member-level spread, which is what a collapse claim actually needs (D-059).
+
+    A low standard deviation of the **ensemble mean** does not establish that
+    each member has collapsed toward a constant: members that vary a great deal
+    can cancel in their average. Constructed counterexample — ensemble-mean sd
+    0.051 while individual members have sd 2.556. So the mean is reported
+    alongside the per-member values rather than standing in for them.
+    """
+
+    target_sd: float
+    ensemble_mean_sd: float
+    member_sds: tuple[float, ...]
+    #: Each member's spread as a fraction of the targets'. A collapse claim
+    #: needs *every* entry small, not just the ensemble mean.
+    member_sd_ratios: tuple[float, ...]
+
+    @property
+    def min_member_ratio(self) -> float:
+        return min(self.member_sd_ratios)
+
+    @property
+    def max_member_ratio(self) -> float:
+        return max(self.member_sd_ratios)
+
+    def as_row(self) -> dict:
+        return {
+            "target_sd": self.target_sd,
+            "ensemble_mean_sd": self.ensemble_mean_sd,
+            "member_sds": list(self.member_sds),
+            "member_sd_ratios": list(self.member_sd_ratios),
+        }
+
+
+def spread_diagnostic(members: torch.Tensor, targets: torch.Tensor) -> SpreadDiagnostic:
+    """Per-member and ensemble-mean spread against the targets' (D-059)."""
+    target_sd = float(targets.std(dim=0, unbiased=False).mean())
+    member_sds = tuple(
+        float(members[i].std(dim=0, unbiased=False).mean()) for i in range(members.shape[0])
+    )
+    denominator = max(target_sd, RATIO_FLOOR)
+    return SpreadDiagnostic(
+        target_sd=target_sd,
+        ensemble_mean_sd=float(members.mean(dim=0).std(dim=0, unbiased=False).mean()),
+        member_sds=member_sds,
+        member_sd_ratios=tuple(sd / denominator for sd in member_sds),
+    )
+
+
+def per_transition_table(
+    members: torch.Tensor,
+    targets: torch.Tensor,
+    *,
+    episode: np.ndarray,
+    step: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """The per-transition export the schedule requires (D-059).
+
+    *"Mean pairwise disagreement and predictive variance, exported **per
+    transition**."* Summaries are a derived artefact; without the transition
+    level, failure-set filtering, the local error/disagreement correlation and
+    independent regeneration of the registered H2 endpoint are all impossible
+    after the fact.
+    """
+    scale = per_dimension_scale(targets)
+    return {
+        "episode": np.asarray(episode),
+        "step": np.asarray(step),
+        "error": normalised_error(members.mean(dim=0), targets, scale).numpy(),
+        "disagreement": pairwise_disagreement(members, scale).numpy(),
+        "predictive_variance": predictive_variance(members, scale).numpy(),
+    }
 
 
 def across_seeds(summaries: list[UncertaintySummary]) -> dict[str, float]:
