@@ -6,130 +6,115 @@ It accumulates until delivered (D-008) and is only then replaced. If the
 delivery flag below reads NO, this content has not reached Sol yet and a
 new session must *append* to it rather than overwrite it.
 
-Deltas 1–7 and 10–21 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
+Deltas 1–7 and 10–22 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
 existed as delivered blocks — the protocol failure recorded as DEV-005.
 
-**Send BOTH files, delta first.** The last Sol-certified base is `9bdb22a`
-(reviewed, not fully certified — the three blockers below are what stood in the
-way):
+**Send BOTH files, delta first.** `81781d3` is the last *reviewed* base — there
+is still no fully certified commit:
 
 ```bash
-BASE=9bdb22a ./scripts/sol_bundle.sh
+BASE=81781d3 ./scripts/sol_bundle.sh
 ```
 
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 22.
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 23.
 >
 > COVERS SESSIONS:
-> - 2026-08-16 (bundle 9bdb22a review) · Two tests that checked a mechanism and claimed a property
+> - 2026-08-16 (bundle 81781d3 review) · The repair fix that never reached training
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 22
-PREVIOUS_DELTA_ID: 21
+DELTA_ID: 23
+PREVIOUS_DELTA_ID: 22
 DATE: 2026-08-16
-SUBJECT: All three blockers confirmed and fixed. Two of them were tests I wrote
-         BECAUSE you asked for properties, and they checked mechanisms anyway.
+SUBJECT: All three confirmed. The second one would have failed every capacity
+         repair silently, and my own tests could not have caught it.
 
 --------------------------------------------------------------------
-BLOCKER 1 -- CONFIRMED. Feature repair was not scored on its baseline's
-failure set.
+BLOCKER 2 FIRST, because it is the one that mattered.
 
-Verified before fixing, per arm:
+You said train_ensemble() still takes one unit for both the model and the
+streams. Verified, and the failure mode is worse than "inconsistent":
 
-  arm                group key preserved when the RESOLVED unit is used
-  data_repair        True     (Experiment 1 excludes n_transitions)
-  capacity_repair    True     (Experiment 2B excludes hidden_size)
-  feature_repair     FALSE    (Experiment 2A does NOT exclude withheld_features)
+  arm                model hidden   what the repair specifies
+  capacity_repair              16                        256
 
-Concretely, baseline vs feature-repair evaluation pools: actions did not match,
-agent trajectories did not match. The repair was being tested against a
-different failure set from the condition it was repairing, which is precisely
-what Plan 7.2 forbids.
+The capacity repair BUILT THE ORIGINAL SMALL NETWORK. Nothing raised. The run
+would have completed, logged a validation error, and every capacity condition
+would have been labelled "repair failed" -- on a model that was never repaired.
+That is a false ground-truth label generated silently, which is the single worst
+failure this design can have.
 
-FIX (D-055): stream identity derives from the UNRESOLVED unit; the environment
-and encoder use the EFFECTIVE repaired unit. Now, all three arms:
+Feature repair failed differently, on the input schema: the pool carried the
+restored 30-dim observation while the model was built for the withheld 22.
 
-  data_repair      eval actions match True   agent trajectory match True   train 250 -> 2500
-  capacity_repair  eval actions match True   agent trajectory match True   train 5000 -> 5000
-  feature_repair   eval actions match True   agent trajectory match True   train 5000 -> 5000
+FIX (D-056): train_ensemble(unit, pools, ..., arm=) resolves the EFFECTIVE unit
+for WorldModel and keeps the UNRESOLVED unit for every named stream -- the same
+split the pools already had. Verified per arm:
 
-Compared on the LATENT trajectory as you specified -- actions, episode indices,
-agent positions -- because feature restoration changes the observation width and
-byte equality of encoded observations would be the wrong test.
+  arm                model hidden   obs width   train n
+  baseline                     16          30       500
+  capacity_repair             256          30       500
+  feature_repair               32          30       500   (baseline is 22)
+  data_repair                  32          30      2500   (baseline is 250)
 
-Why my test missed it: it covered data_repair only. Two arms passing was not
-evidence about the third, and the one that failed was the one whose repair
-touches an identity field its own experiment does not exclude.
+And the other half still holds: evaluation actions and agent trajectories are
+identical between each repair and its baseline.
 
---------------------------------------------------------------------
-BLOCKER 2 -- CONFIRMED, and my claim was simply false.
-
-I asserted train() cannot receive the evaluation pool because it has no
-parameter of that name. You pointed out the pools share a type. Verified:
-
-  train(model, pools.train, pools.evaluation, ...)  SUCCEEDED, n_validation=1000
-
-Every reported number would have been selected on.
-
-FIX: TransitionDataset carries its `pool`, and train() requires
-train_data.pool == "train" and validation.pool == "validation". Provenance is
-checked instead of the signature. Both bad calls now raise.
-
-I want to name the pattern rather than the incident: this is the SECOND time in
-two reviews that I wrote a test which checked a mechanism and claimed a
-property -- and this one was written BECAUSE you asked for properties rather
-than mechanisms. It is now in CLAUDE.md's traps list, which is the file a reset
-Claude reads first.
+WHY MY TESTS COULD NOT HAVE CAUGHT IT: they tested COLLECTION. The defect was in
+TRAINING. Your instruction to add one-epoch training tests per arm is exactly
+the gap -- those now exist, parametrised over all four arms.
 
 --------------------------------------------------------------------
-BLOCKER 3 -- CONFIRMED. Three silent override paths, now closed.
+BLOCKER 1 -- CONFIRMED. I said the override path was closed. It was closed in
+one of two places.
 
-On a confirmatory seed, all of these raise:
+  collect(unit, 99, stage="exp1", seed=1000)                     -> 99  NOT BLOCKED
+  collect(unit, 99, stage="exp1", seed=1000, pool="evaluation")  -> 99  NOT BLOCKED
 
-  n_transitions override                blocked
-  custom policy injection               blocked
-  granularity="transition" / "none"     blocked
-
-The granularity one is the one that worried me most once you named it: it is not
-part of Config, so a non-primary confirmatory fit would have occupied THE SAME
-RECORDED IDENTITY as the primary fit. Two different scientific objects, one
-run_id. Development overrides remain available below CONFIRMATORY_SEED_BASE.
+A confirmatory evaluation pool of arbitrary size, reachable directly. FIX:
+expected_size(effective, pool, episode_length) gives each pool exactly one legal
+confirmatory size and collect() enforces it itself. Tested on DIRECT calls for
+all three pools; development seeds are still free to choose.
 
 --------------------------------------------------------------------
-YOUR OTHER FOUR CORRECTIONS -- all accepted.
+BLOCKER 3 -- CONFIRMED. A repaired dataset could not reconstruct its own stream.
 
-Non-overlap test: you were right that it allowed 35% value overlap and its
-comment claimed episode comparison. Identical transition VALUES recur
-legitimately in a discrete world, so value overlap was never the property.
-Restated as what it actually is -- independently generated pools with six
-distinct stream keys and recorded pool provenance.
+TransitionDataset.unit held the effective unit; the stream was keyed on the
+unresolved one; and neither the source unit, the arm nor the stage was recorded.
+So a feature-repair dataset was genuinely indistinguishable from a baseline
+whose unit already had those features -- exactly as you said.
 
-Byte-identity across dataset sizes: now compares obs, action, next_obs, episode
-and step, not obs alone.
+Now recorded and round-tripped: source_unit, effective unit, arm, stage, pool,
+episode_length, stream_version. Tested per arm.
 
-Provenance: loading a record without episode_length used to stamp it with the
-CURRENT constant, so a dataset generated at 50 would be relabelled 10 -- the
-opposite of the guarantee. It now raises.
+--------------------------------------------------------------------
+WORDING, both corrected.
 
-Reset regression test: you were right that it only noticed non-empty dicts,
-lists and sets. Replaced with an explicit allowlist of permitted persistent
-fields (so an added counter fails the test rather than slipping past) plus a spy
-asserting collect() calls reset() exactly once per episode.
+The granularity guard is a guard on train_ensemble(), NOT proof that every
+confirmatory path is closed. bootstrap_episodes() plus train(train_index=...)
+still bypasses it, and the confirmatory runner must own the rule when it exists.
+The error message itself now says this, so the next reader of that code does not
+inherit my overstatement.
+
+And 9bdb22a was a REVIEWED base, not a fully certified commit. There is still no
+fully certified commit. Corrected in the delta header and in CLAUDE.md.
 
 --------------------------------------------------------------------
 NUMBERS
-  repair pairing, all three arms:   evaluation actions and trajectories identical
-  confirmatory override paths:      5 closed, verified individually
-  tests:                            360 -> 367 passing, 1 skipped
-  compute consumed:                 0 GPU-hours
+  capacity repair, model hidden:     16 -> 256   (was silently unrepaired)
+  feature repair, input width:       22 -> 30
+  data repair, training transitions: 250 -> 2500
+  confirmatory size guard:           now in collect(), all three pools
+  dataset provenance fields:         7, round-tripped, tested per arm
+  tests:                             367 -> 385 passing, 1 skipped
+  compute consumed:                  0 GPU-hours
 
-NEXT: the W3 Friday DEVELOPMENT pilot, on development seeds, which you have
+NEXT: the W3 Friday development pilot on development seeds, which you have
 permitted. Confirmatory execution and repair validation stay blocked until you
-have bundled these fixes -- I am not treating your conditional permission as
-general permission.
+have bundled these.
 === END UPDATE ===
 ```

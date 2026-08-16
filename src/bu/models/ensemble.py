@@ -42,7 +42,7 @@ import numpy as np
 import torch
 
 from .. import constants as K
-from ..config import TrainConfig, UnitSpec
+from ..config import Arm, TrainConfig, UnitSpec
 from ..env.collect import Pools, TransitionDataset
 from ..streams import is_confirmatory, stream
 from .train import TrainResult, episode_indices, train
@@ -97,7 +97,11 @@ def bootstrap_episodes(
 class Ensemble:
     """K models fitted to the same condition, differing only by their streams."""
 
+    #: The unresolved unit -- what keyed the streams.
     unit: UnitSpec
+    #: What was actually built and trained.
+    effective_unit: UnitSpec
+    arm: str
     members: tuple[WorldModel, ...]
     results: tuple[TrainResult, ...]
     granularity: Granularity
@@ -135,21 +139,32 @@ def train_ensemble(
     *,
     stage: str,
     seed: int,
+    arm: str = "baseline",
     granularity: Granularity = "episode",
     logger: Any | None = None,
 ) -> Ensemble:
     """Fit ``config.ensemble_size`` members and log each one's validation error.
 
-    Member ``k`` draws from ``(unit, stage, purpose, seed, member=k)`` for each
-    of ``bootstrap``, ``init`` and ``batch``. Nothing about a member depends on
-    the order members happen to be trained in, so a member can be refitted alone
-    and reproduce exactly.
+    ``unit`` is the **unresolved** unit and ``arm`` the repair applied to it —
+    the same split the pools use, and for the same reason (D-056):
+
+    * the **effective** unit builds the model, so a capacity repair actually
+      gets the larger network and a feature repair gets the wider input;
+    * the **unresolved** unit keys every named stream, so a repair's members
+      initialise, resample and batch exactly as its baseline's did.
+
+    Passing one unit for both was silently wrong in opposite directions. With
+    the unresolved unit a capacity repair trained the *original small model* —
+    the repair was never applied, no error was raised, and every capacity
+    condition would have been labelled "repair failed". With the effective unit
+    the model was right but the streams moved.
 
     Only the **training** pool is resampled. Validation and evaluation are fixed
     and shared, so per-member errors are comparable and the evaluation set is
     identical across members, dataset sizes and conditions (D-052).
     """
     config = config or TrainConfig()
+    effective = Arm(arm).resolve(unit)
     if granularity != "episode" and is_confirmatory(seed):
         raise ValueError(
             f"granularity={granularity!r} on confirmatory seed {seed}. Episode "
@@ -157,7 +172,11 @@ def train_ensemble(
             "schemes are development diagnostics for the Week 3 Friday pilot "
             "and are not in the 8,197-fit plan (D-054). They are also not part "
             "of Config or run identity, so a non-primary confirmatory fit would "
-            "occupy the same recorded identity as the primary one."
+            "occupy the same recorded identity as the primary one.\n\n"
+            "Note this is a guard on THIS entry point, not proof that every "
+            "confirmatory path is closed: bootstrap_episodes() plus "
+            "train(train_index=...) still bypasses it. The confirmatory runner "
+            "must own the rule when it exists (D-056)."
         )
 
     members: list[WorldModel] = []
@@ -170,7 +189,7 @@ def train_ensemble(
             granularity=granularity,
             ratio=config.bootstrap_ratio,
         )
-        model = WorldModel(unit, stream(unit, stage, "init", seed, member=k))
+        model = WorldModel(effective, stream(unit, stage, "init", seed, member=k))
         result = train(
             model,
             pools.train,
@@ -197,10 +216,13 @@ def train_ensemble(
                 n_train=len(index),
                 n_unique_train_episodes=n_unique,
                 granularity=granularity,
+                arm=arm,
             )
 
     return Ensemble(
         unit=unit,
+        effective_unit=effective,
+        arm=arm,
         members=tuple(members),
         results=tuple(results),
         granularity=granularity,

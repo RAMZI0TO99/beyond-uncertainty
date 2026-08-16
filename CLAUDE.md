@@ -109,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 367 passing, 1 skipped
+.venv/bin/python -m pytest -q                      # 385 passing, 1 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -185,6 +185,11 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
   I read a 97.7% loss share as "98% of the gradient" — measured, the trunk
   gradient was 16–36% activation, the opposite way round. Measure the quantity
   you are about to make a claim about (D-047).
+- **A fix in one layer is not a fix.** The unresolved/effective unit split was
+  implemented in collection and never carried into training, so a capacity
+  repair silently built the *unrepaired* model — nothing raised, and every
+  capacity condition would have been labelled "repair failed" (D-056). When a
+  distinction matters, grep for every place it should appear.
 - **Test the property, not the mechanism that currently delivers it.** Twice in
   two reviews I wrote a test that checked a mechanism and claimed a property —
   "evaluation can't reach selection" asserted a *parameter name* did not exist,
@@ -214,9 +219,10 @@ running roughly two weeks ahead of its own calendar (DEV-002).*
 
 **Weeks 1 and 2 complete and audited. Week 3 Mon, Tue and Wed done** — then
 substantially corrected by Sol's sixth and seventh reviews. Seven Sol reviews
-actioned on 2026-08-16 (D-025 … D-054). Bundle `9bdb22a` reached Sol and
-was reviewed: methodology accepted, three implementation blockers found and
-fixed in D-055. **Sol permits the W3 Friday pilot on development seeds only**;
+actioned on 2026-08-16 (D-025 … D-054). Bundles `9bdb22a` and `81781d3` were
+reviewed: methodology accepted, six implementation blockers found and fixed
+(D-055, D-056). **There is no fully certified commit yet** — "reviewed" is not
+"certified". **Sol permits the W3 Friday pilot on development seeds only**;
 confirmatory execution and repair validation stay blocked until D-055 is
 bundled from `BASE=9bdb22a`. Gate 1 is 2026-09-19. **Zero GPU-hours consumed** —
 everything so far runs on CPU in seconds.

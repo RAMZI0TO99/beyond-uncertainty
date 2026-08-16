@@ -46,7 +46,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **367 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
+| **Tests** | **385 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
 | **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). Week 3 ran entirely on CPU in seconds; the student's GPU was under another workload all week |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -193,6 +193,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-053** | 2026-08-16 | Q-011 closed — episode bootstrap primary, alternatives are sensitivities | Sol's |
 | **D-054** | 2026-08-16 | Frozen data-generation procedure, bounded sensitivity scope, a claim withdrawn | finding Sol's |
 | **D-055** | 2026-08-16 | Three blockers: repair pairing, evaluation exclusion, confirmatory overrides | finding Sol's |
+| **D-056** | 2026-08-16 | The repair split reaches training, and the size guard reaches `collect()` | finding Sol's |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -296,14 +297,13 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept here.
 
-### 2026-08-16 (bundle 9bdb22a review) · Two tests that checked a mechanism and claimed a property · Claude
-**Did:** the delivery gap closed — Sol received the bundle and reviewed it. Three blockers, all verified before fixing, all confirmed (D-055).
-**(1) Feature repair broke P§7.2's paired failure set.** `collect_pools` used one unit for both stream identity and environment construction. `data_repair` and `capacity_repair` survived by accident — their experiments exclude the field the repair changes — but `feature_repair` changes `withheld_features`, which 2A does not exclude, so the repair was scored against a **different evaluation pool from its own baseline**. Fixed: identity from the unresolved unit, environment from the effective one. Tested for all three arms on the latent trajectory, since restoring a feature changes the observation width.
-**(2) "Evaluation cannot reach model selection" was simply false.** My test asserted a parameter *name* did not exist; the pools share a type, so passing evaluation as validation ran fine — verified, `n_validation=1000`. Every reported number would have been selected on. Now `TransitionDataset` carries its `pool` and `train()` checks provenance.
-**(3) Confirmatory override paths closed** — `n_transitions`, custom policy, and `granularity`. The last mattered most: granularity is not in `Config`, so a non-primary fit would have occupied the *same recorded identity* as the primary one.
-**The pattern worth recording:** two of the three were tests I wrote **because Sol asked for properties rather than mechanisms**, and both checked a mechanism anyway. That is now in `CLAUDE.md`'s traps.
-**Result:** 360 → 367 tests. Also fixed: legacy datasets are no longer stamped with today's `EPISODE_LENGTH`, the reset regression test uses an explicit allowlist plus a spy on the call count, and byte-identity claims compare every array rather than `obs` alone.
-**Left:** zero GPU-hours. Sol permits the **W3 Friday development pilot on development seeds**; confirmatory execution and repair validation stay blocked until these fixes are bundled.
+### 2026-08-16 (bundle 81781d3 review) · The repair fix that never reached training · Claude
+**Did:** three more blockers (D-056), all verified before fixing, all confirmed.
+**The serious one:** I fixed the unresolved/effective unit split in the *collection* API last round and never carried it into *training*. `train_ensemble` still took one unit for both the model and the streams. Measured: a **capacity repair built the original `hidden=16` network** — the repair was never applied, **nothing raised**, and every capacity condition would have been labelled "repair failed" on a model that was never repaired. Fixed and verified per arm: baseline 16, capacity repair 256, feature repair 30 input dims against the baseline's 22, data repair 2,500 transitions against 250.
+**Why my tests missed it:** they tested collection, and the defect was in training. Sol asked for one-epoch training tests per arm; those now exist.
+**Also:** the confirmatory size guard lived only in `collect_pools`, so `collect(unit, 99, seed=1000, pool="evaluation")` still minted a 99-transition confirmatory evaluation pool — my delta claimed that path was closed when it was closed in one of two places. And repaired datasets recorded the effective unit but not the source unit, arm or stage, so they could not reconstruct their own stream.
+**Result:** 367 → 385 tests. Narrowed the `granularity` claim as Sol required — it is a guard on one entry point, not proof that every confirmatory path is closed, and the error message now says so.
+**Left:** zero GPU-hours. Sol permits the **W3 Friday pilot on development seeds**; confirmatory execution and repair validation remain blocked until these fixes are bundled.
 **Next:** W3 Fri development pilot — ask the student before spending compute.
 ---
 

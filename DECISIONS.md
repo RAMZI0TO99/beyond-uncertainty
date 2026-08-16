@@ -491,3 +491,18 @@ Every decision a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** P§7.2, P§10.1, P§14.2. Corrects D-052's implementation and D-054's override closure.
 **Reviewed by Sol:** findings are Sol's; these fixes are not yet reviewed.
 
+### D-056 · 2026-08-16 · The repair split reaches training, and the size guard reaches `collect()`
+**Three more blockers from Sol on `81781d3`, all verified before fixing, all confirmed.**
+
+**(1) `collect()` accepted any size on a confirmatory seed.** The guard lived only in `collect_pools`, so `collect(unit, 99, stage="exp1", seed=1000)` succeeded — and so did the same call with `pool="evaluation"`, minting a 99-transition confirmatory evaluation pool. My delta said the override path was closed; it was closed in one of two places. **Fix:** `expected_size(effective, pool, episode_length)` gives each pool exactly one legal confirmatory size, and `collect()` enforces it directly. Tested on direct calls for all three pools.
+
+**(2) The unresolved/effective split never reached training, and this was the serious one.** `train_ensemble` took one unit and used it for the model *and* the streams. Measured: with the unresolved unit a **capacity repair built the original `hidden=16` network** — the repair was never applied, **nothing raised**, and every capacity condition would have been labelled "repair failed" on a model that was never repaired. Feature repair failed differently, on the input schema. With the effective unit the model was right but the streams moved off the baseline's.
+**Fix:** `train_ensemble(unit, pools, ..., arm=)` resolves the effective unit for `WorldModel` and keeps the unresolved unit for every named stream — the same split the pools already used. Verified per arm: baseline `hidden=16`; capacity repair `hidden=256`; feature repair input 30 dims against the baseline's 22; data repair 2,500 training transitions against 250. `Ensemble` now carries `unit`, `effective_unit` and `arm`.
+**Why pool tests did not catch it:** they tested *collection*. The defect was in *training*. Sol asked for one-epoch training tests per arm, which is what now exists.
+
+**(3) Repaired datasets could not reconstruct their own stream.** `TransitionDataset.unit` held the effective unit while the stream was keyed on the unresolved one, and neither the source unit, the arm nor the stage was recorded — so a feature-repair dataset was indistinguishable from a baseline whose unit already had those features. **Fix:** `source_unit`, `arm`, `stage` and `stream_version` are recorded and round-trip, alongside `pool` and `episode_length`.
+
+**Wording narrowed, per Sol.** The `granularity` guard is a guard on `train_ensemble`, not proof that every confirmatory path is closed — `bootstrap_episodes()` plus `train(train_index=...)` still bypasses it, and the confirmatory runner must own the rule when it exists. The error message says so. Also corrected: `9bdb22a` was a *reviewed* base, not a fully certified commit.
+**Plan ref:** P§7.2, P§7.3, P§8.3, P§14.2. Completes D-055.
+**Reviewed by Sol:** findings are Sol's; these fixes are not yet reviewed.
+

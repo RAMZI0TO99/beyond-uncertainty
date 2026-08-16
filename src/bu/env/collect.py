@@ -32,13 +32,24 @@ import numpy as np
 
 from .. import constants as K
 from ..config import Arm, UnitSpec
-from ..streams import POOL_PURPOSES, is_confirmatory, stream
+from ..streams import POOL_PURPOSES, STREAM_VERSION, is_confirmatory, stream
 from .gridworld import INTERACT, N_ACTIONS, SHAPES, GridState, GridWorld, is_passable
 from .policy import ExploratoryPolicy
 
 #: Steps per episode before the environment is reset with a fresh layout.
 #: Preregistered in constants.py (D-052); re-exported here for callers.
 DEFAULT_EPISODE_LENGTH = K.EPISODE_LENGTH
+
+
+def expected_size(effective: UnitSpec, pool: str, episode_length: int) -> int:
+    """The one legal size for a pool: registered N, or a frozen episode count."""
+    if pool == "train":
+        return effective.n_transitions
+    if pool == "validation":
+        return K.VALIDATION_EPISODES * episode_length
+    if pool == "evaluation":
+        return K.EVALUATION_EPISODES * episode_length
+    raise ValueError(f"unknown pool {pool!r}")
 
 
 class Policy(Protocol):
@@ -136,6 +147,7 @@ class TransitionDataset:
     next_obs: np.ndarray
     episode: np.ndarray
     step: np.ndarray
+    #: The **effective** unit -- what was actually generated.
     unit: UnitSpec
     coverage: CoverageReport
     seed: int
@@ -144,6 +156,15 @@ class TransitionDataset:
     #: checked out (D-054).
     episode_length: int = K.EPISODE_LENGTH
     pool: str = "train"
+    #: The **unresolved** unit, the arm and the stage: together with `pool` and
+    #: `stream_version` these are exactly what the generating stream was keyed
+    #: on (D-056). Without them a repaired dataset cannot reconstruct its own
+    #: stream, and a feature-repair dataset is indistinguishable from a baseline
+    #: whose unit already had the restored features.
+    source_unit: UnitSpec | None = None
+    arm: str = "baseline"
+    stage: str = "pilot"
+    stream_version: int = STREAM_VERSION
 
     def __len__(self) -> int:
         return len(self.action)
@@ -171,6 +192,15 @@ class TransitionDataset:
                         k: list(v) if isinstance(v, tuple) else v
                         for k, v in dataclasses.asdict(self.unit).items()
                     },
+                    "source_unit": {
+                        k: list(v) if isinstance(v, tuple) else v
+                        for k, v in dataclasses.asdict(
+                            self.source_unit or self.unit
+                        ).items()
+                    },
+                    "arm": self.arm,
+                    "stage": self.stage,
+                    "stream_version": self.stream_version,
                     "seed": self.seed,
                     "episode_length": self.episode_length,
                     "pool": self.pool,
@@ -200,6 +230,13 @@ class TransitionDataset:
             # (D-055). A record that does not state its generator is rejected.
             episode_length=_require_provenance(meta, "episode_length"),
             pool=_require_provenance(meta, "pool"),
+            source_unit=UnitSpec(**{
+                **_require_provenance(meta, "source_unit"),
+                "withheld_features": tuple(meta["source_unit"]["withheld_features"]),
+            }),
+            arm=_require_provenance(meta, "arm"),
+            stage=_require_provenance(meta, "stage"),
+            stream_version=_require_provenance(meta, "stream_version"),
             coverage=CoverageReport(
                 n_transitions=cov["n_transitions"],
                 n_episodes=cov["n_episodes"],
@@ -279,9 +316,21 @@ def collect(
     # environment, validation and evaluation pool from its own baseline -- and
     # Plan §7.2 requires a repair to be scored on the same recorded failure set.
     effective = Arm(arm).resolve(unit)
-    n = effective.n_transitions if n_transitions is None else n_transitions
+    n = expected_size(effective, pool, episode_length) if n_transitions is None else n_transitions
     if n <= 0:
         raise ValueError(f"n_transitions must be positive, got {n}")
+    # The guard belongs *here*, not only in collect_pools: a confirmatory caller
+    # could otherwise reach this function directly and mint an evaluation pool
+    # of any size (D-056). Every pool has one legal size on a confirmatory seed.
+    if is_confirmatory(seed):
+        want = expected_size(effective, pool, episode_length)
+        if n != want:
+            raise ValueError(
+                f"n_transitions={n} for the {pool!r} pool on confirmatory seed "
+                f"{seed}, but the frozen size is {want}. Dataset size is "
+                "Experiment 1's manipulation and the pool sizes are frozen "
+                "procedure (D-052); a confirmatory run may not choose either."
+            )
     env = GridWorld(effective)
     env_rng = stream(unit, stage, env_purpose, seed)
     pol = (
@@ -365,6 +414,10 @@ def collect(
         seed=seed,
         episode_length=episode_length,
         pool=pool,
+        source_unit=unit,
+        arm=arm,
+        stage=stage,
+        stream_version=STREAM_VERSION,
     )
 
 
@@ -434,24 +487,11 @@ def collect_pools(
     streams, while the repair still changes what it is supposed to change
     (D-055).
     """
-    registered = Arm(arm).resolve(unit).n_transitions
-    n = registered if n_transitions is None else n_transitions
-    if n != registered and is_confirmatory(seed):
-        raise ValueError(
-            f"n_transitions={n} on confirmatory seed {seed}, but the unit "
-            f"registers {registered}. The dataset size *is* Experiment 1's "
-            "manipulation; overriding it silently would make a condition's "
-            "recorded identity a lie about the data it trained on (D-055)."
-        )
     common = dict(stage=stage, seed=seed, arm=arm, episode_length=episode_length)
     return Pools(
-        train=collect(unit, n, pool="train", **common),
-        validation=collect(
-            unit, K.VALIDATION_EPISODES * episode_length, pool="validation", **common
-        ),
-        evaluation=collect(
-            unit, K.EVALUATION_EPISODES * episode_length, pool="evaluation", **common
-        ),
+        train=collect(unit, n_transitions, pool="train", **common),
+        validation=collect(unit, None, pool="validation", **common),
+        evaluation=collect(unit, None, pool="evaluation", **common),
     )
 
 

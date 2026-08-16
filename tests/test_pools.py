@@ -197,7 +197,7 @@ def test_confirmatory_runs_cannot_deviate_from_the_frozen_procedure(call):
     """
     unit = UnitSpec(hidden_size=32, n_transitions=500)
     if call == "n_transitions":
-        with pytest.raises(ValueError, match="registers"):
+        with pytest.raises(ValueError, match="frozen size"):
             collect_pools(unit, stage="exp1", seed=SEED, n_transitions=99)
     elif call == "policy":
         with pytest.raises(ValueError, match="custom policy"):
@@ -319,3 +319,120 @@ def test_an_episode_does_not_depend_on_how_many_preceded_it():
     worn.rng = np.random.default_rng(11)
 
     assert [fresh.act(state) for _ in range(30)] == [worn.act(state) for _ in range(30)]
+
+
+# --- repaired ensembles train the right model (D-056) ---------------------
+
+
+REPAIR_CASES = [
+    ("baseline", UnitSpec(family="capacity", hidden_size=16, n_transitions=500), "exp2b"),
+    ("capacity_repair",
+     UnitSpec(family="capacity", hidden_size=16, n_transitions=500), "exp2b"),
+    ("feature_repair",
+     UnitSpec(family="missing_feature", withheld_features=("shape",),
+              confound_rate=0.5, n_transitions=500, hidden_size=32), "exp2a"),
+    ("data_repair",
+     UnitSpec(family="estimation", n_transitions=250, hidden_size=32), "exp1"),
+]
+
+
+@pytest.mark.parametrize("arm, unit, stage", REPAIR_CASES)
+def test_every_repair_arm_trains_the_effective_model(arm, unit, stage):
+    """Pool-collection tests were not enough (D-056).
+
+    Passing one unit for both the model and the streams was silently wrong in
+    opposite directions. With the unresolved unit a **capacity repair built the
+    original small network** — the repair was never applied, nothing raised, and
+    every capacity condition would have been labelled "repair failed". With the
+    effective unit the model was right but the streams moved off the baseline's.
+    """
+    from bu.models.ensemble import train_ensemble
+
+    pools = collect_pools(unit, stage=stage, seed=SEED, arm=arm)
+    ensemble = train_ensemble(
+        unit, pools, TrainConfig(max_epochs=2, ensemble_size=2),
+        stage=stage, seed=SEED, arm=arm,
+    )
+    effective = Arm(arm).resolve(unit)
+
+    assert ensemble.members[0].position_head.in_features == effective.hidden_size
+    assert ensemble.members[0].encoder.size == pools.train.obs.shape[1]
+    assert len(pools.train) == effective.n_transitions
+    assert ensemble.effective_unit == effective
+    assert ensemble.unit == unit, "the unresolved unit must survive on the ensemble"
+
+
+def test_a_capacity_repair_is_actually_larger_than_its_baseline():
+    """The specific silent failure, pinned."""
+    from bu.models.ensemble import train_ensemble
+
+    unit = UnitSpec(family="capacity", hidden_size=16, n_transitions=500)
+    cfg = TrainConfig(max_epochs=1, ensemble_size=1)
+    base = train_ensemble(unit, collect_pools(unit, stage="exp2b", seed=SEED),
+                          cfg, stage="exp2b", seed=SEED)
+    repaired = train_ensemble(
+        unit, collect_pools(unit, stage="exp2b", seed=SEED, arm="capacity_repair"),
+        cfg, stage="exp2b", seed=SEED, arm="capacity_repair",
+    )
+    assert base.members[0].position_head.in_features == 16
+    assert repaired.members[0].position_head.in_features == max(K.HIDDEN_SIZES)
+
+
+def test_a_feature_repair_widens_the_input():
+    unit = UnitSpec(family="missing_feature", withheld_features=("shape",),
+                    confound_rate=0.5, n_transitions=500)
+    narrow = collect_pools(unit, stage="exp2a", seed=SEED).train.obs.shape[1]
+    wide = collect_pools(unit, stage="exp2a", seed=SEED,
+                         arm="feature_repair").train.obs.shape[1]
+    assert wide > narrow
+
+
+@pytest.mark.parametrize("arm, unit, stage", REPAIR_CASES)
+def test_repair_streams_still_key_on_the_unresolved_unit(arm, unit, stage):
+    """The other half: the model changes, the randomness does not."""
+    from bu.streams import stream_key
+
+    assert stream_key(unit, stage, "init") == stream_key(
+        Arm("baseline").resolve(unit), stage, "init"
+    )
+    base = collect_pools(unit, stage=stage, seed=SEED)
+    repaired = collect_pools(unit, stage=stage, seed=SEED, arm=arm)
+    assert np.array_equal(base.evaluation.action, repaired.evaluation.action)
+
+
+# --- direct collect() is guarded too (D-056) ------------------------------
+
+
+@pytest.mark.parametrize("pool", ["train", "validation", "evaluation"])
+def test_direct_collect_enforces_the_frozen_size_on_confirmatory_seeds(pool):
+    """The guard lived only in collect_pools, so a confirmatory caller could
+    reach collect() directly and mint a pool of any size (D-056)."""
+    unit = UnitSpec(family="estimation", n_transitions=5000)
+    with pytest.raises(ValueError, match="frozen size"):
+        collect(unit, 99, stage="exp1", seed=SEED, pool=pool)
+
+
+def test_development_seeds_may_still_choose_any_size():
+    unit = UnitSpec(family="estimation", n_transitions=5000)
+    assert len(collect(unit, 99, stage="exp1", seed=0)) == 99
+
+
+# --- repaired datasets can reconstruct their own stream (D-056) -----------
+
+
+@pytest.mark.parametrize("arm, unit, stage", REPAIR_CASES)
+def test_a_repaired_dataset_records_what_generated_it(arm, unit, stage, tmp_path):
+    """Without the unresolved unit, arm and stage, a repaired dataset cannot
+    reconstruct its stream — and a feature-repair dataset is indistinguishable
+    from a baseline whose unit already had the restored features."""
+    from bu.env.collect import TransitionDataset
+    from bu.streams import STREAM_VERSION
+
+    dataset = collect_pools(unit, stage=stage, seed=SEED, arm=arm).evaluation
+    reloaded = TransitionDataset.load(dataset.save(tmp_path / f"{arm}.npz"))
+
+    assert reloaded.source_unit == unit
+    assert reloaded.unit == Arm(arm).resolve(unit)
+    assert (reloaded.arm, reloaded.stage, reloaded.pool) == (arm, stage, "evaluation")
+    assert reloaded.stream_version == STREAM_VERSION
+    assert reloaded.episode_length == K.EPISODE_LENGTH
