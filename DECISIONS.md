@@ -506,3 +506,16 @@ Every decision a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** P§7.2, P§7.3, P§8.3, P§14.2. Completes D-055.
 **Reviewed by Sol:** findings are Sol's; these fixes are not yet reviewed.
 
+### D-057 · 2026-08-16 · Pools must belong to the run that trains on them — and a third tautological test
+**Two findings from Sol on `c207c55`, both verified, both confirmed.**
+
+**(1) Pools and the ensemble could disagree about the arm.** `arm` reaches `collect_pools` and `train_ensemble` independently, and nothing checked that they agreed. Measured: baseline pools plus `arm="data_repair"` **trained on 250 transitions** while the ensemble reported the data-repair identity with its effective 2,500. That is a false repair label of exactly the kind D-056 removed, arriving one layer up — the run records one condition and trains on another.
+Capacity repair accepted mismatched pools silently, because capacity does not change the observation width. Feature repair happened to die on a dimension mismatch, and Sol's point about that is the one worth keeping: **an accidental runtime error in one arm is not an invariant.**
+**Fix:** `assert_pools_match()` runs before any model is built and validates every pool's `source_unit`, effective `unit`, `arm`, `stage`, `seed` and pool label against the requested run. Five mismatch classes tested — baseline pools with a repair arm, repair pools with baseline, wrong seed, wrong stage, wrong source unit — plus a positive test per arm so the guard cannot be so strict that the legitimate path breaks.
+
+**(2) The model-stream test was tautological — the third of this kind.** It asserted `stream_key(unit, …) == stream_key(Arm("baseline").resolve(unit), …)`. Resolving the *baseline* arm returns the unit unchanged, so it compared a value with itself and passed for every arm while testing nothing.
+**Fix:** the test now monkeypatches `stream` inside `train_ensemble` and captures which unit each of `bootstrap`, `init` and `batch` was actually keyed on, asserting all three received the **unresolved** unit for every repair arm. It also asserts **non-vacuity** — for an arm that moves an identity field, the effective-unit key genuinely differs, so the test is capable of failing.
+**The pattern, now three deep:** "evaluation cannot reach selection" checked a parameter name; the pool non-overlap test checked value overlap while claiming episode comparison; this one compared a value with itself. All three were written *in response to* Sol asking for property tests. The common failure is writing the assertion that is easiest to express from inside the implementation rather than the one that states the claim.
+**Plan ref:** P§7.2, P§8.3. Completes D-055 and D-056.
+**Reviewed by Sol:** findings are Sol's; these fixes are not yet reviewed.
+

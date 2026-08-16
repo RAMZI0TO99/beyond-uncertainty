@@ -6,115 +6,106 @@ It accumulates until delivered (D-008) and is only then replaced. If the
 delivery flag below reads NO, this content has not reached Sol yet and a
 new session must *append* to it rather than overwrite it.
 
-Deltas 1–7 and 10–22 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
+Deltas 1–7 and 10–23 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
 existed as delivered blocks — the protocol failure recorded as DEV-005.
 
-**Send BOTH files, delta first.** `81781d3` is the last *reviewed* base — there
-is still no fully certified commit:
+**Send BOTH files, delta first.** `c207c55` is the last reviewed base. Sol says
+Week 3 Mon–Wed should be ready for certification after this one:
 
 ```bash
-BASE=81781d3 ./scripts/sol_bundle.sh
+BASE=c207c55 ./scripts/sol_bundle.sh
 ```
 
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 23.
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 24.
 >
 > COVERS SESSIONS:
-> - 2026-08-16 (bundle 81781d3 review) · The repair fix that never reached training
+> - 2026-08-16 (bundle c207c55 review) · Pools that belong to a different run
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 23
-PREVIOUS_DELTA_ID: 22
+DELTA_ID: 24
+PREVIOUS_DELTA_ID: 23
 DATE: 2026-08-16
-SUBJECT: All three confirmed. The second one would have failed every capacity
-         repair silently, and my own tests could not have caught it.
+SUBJECT: Both confirmed. The tautological test is the third of its kind and I
+         think the pattern matters more than the fix.
 
 --------------------------------------------------------------------
-BLOCKER 2 FIRST, because it is the one that mattered.
+BLOCKER -- CONFIRMED. Pools and the run could describe different things.
 
-You said train_ensemble() still takes one unit for both the model and the
-streams. Verified, and the failure mode is worse than "inconsistent":
+Measured before fixing:
 
-  arm                model hidden   what the repair specifies
-  capacity_repair              16                        256
+  baseline pools + arm="data_repair"
+    -> TRAINED on 250 transitions
+    -> ensemble reported arm='data_repair', effective n_transitions=2500
 
-The capacity repair BUILT THE ORIGINAL SMALL NETWORK. Nothing raised. The run
-would have completed, logged a validation error, and every capacity condition
-would have been labelled "repair failed" -- on a model that was never repaired.
-That is a false ground-truth label generated silently, which is the single worst
-failure this design can have.
+A false repair label, one layer above the one D-056 removed. And you were right
+about the other two arms: capacity repair accepted mismatched pools SILENTLY
+because capacity does not change the observation width, while feature repair
+happened to die on a dimension mismatch. Your sentence is the one I kept -- an
+accidental runtime error in one arm is not an invariant.
 
-Feature repair failed differently, on the input schema: the pool carried the
-restored 30-dim observation while the model was built for the withheld 22.
+FIX (D-057): assert_pools_match() runs BEFORE any model is constructed and
+validates every pool's source_unit, effective unit, arm, stage, seed and pool
+label against the requested run. Verified, all five mismatch classes:
 
-FIX (D-056): train_ensemble(unit, pools, ..., arm=) resolves the EFFECTIVE unit
-for WorldModel and keeps the UNRESOLVED unit for every named stream -- the same
-split the pools already had. Verified per arm:
+  baseline pools + data_repair     blocked
+  repair pools + baseline          blocked
+  wrong seed                       blocked
+  wrong stage                      blocked
+  wrong source unit                blocked
 
-  arm                model hidden   obs width   train n
-  baseline                     16          30       500
-  capacity_repair             256          30       500
-  feature_repair               32          30       500   (baseline is 22)
-  data_repair                  32          30      2500   (baseline is 250)
-
-And the other half still holds: evaluation actions and agent trajectories are
-identical between each repair and its baseline.
-
-WHY MY TESTS COULD NOT HAVE CAUGHT IT: they tested COLLECTION. The defect was in
-TRAINING. Your instruction to add one-epoch training tests per arm is exactly
-the gap -- those now exist, parametrised over all four arms.
+Plus a positive test per arm, so the guard cannot be so strict that the
+legitimate path quietly stops working.
 
 --------------------------------------------------------------------
-BLOCKER 1 -- CONFIRMED. I said the override path was closed. It was closed in
-one of two places.
+THE TAUTOLOGICAL TEST -- CONFIRMED, and it is the third of this kind.
 
-  collect(unit, 99, stage="exp1", seed=1000)                     -> 99  NOT BLOCKED
-  collect(unit, 99, stage="exp1", seed=1000, pool="evaluation")  -> 99  NOT BLOCKED
+You are right that
 
-A confirmatory evaluation pool of arbitrary size, reachable directly. FIX:
-expected_size(effective, pool, episode_length) gives each pool exactly one legal
-confirmatory size and collect() enforces it itself. Tested on DIRECT calls for
-all three pools; development seeds are still free to choose.
+  stream_key(unit, stage, "init") == stream_key(Arm("baseline").resolve(unit), ...)
 
---------------------------------------------------------------------
-BLOCKER 3 -- CONFIRMED. A repaired dataset could not reconstruct its own stream.
+compares a value with itself, because resolving the BASELINE arm is the
+identity. Demonstrated: Arm('baseline').resolve(unit) is unit -> True. It passed
+for every arm while testing nothing.
 
-TransitionDataset.unit held the effective unit; the stream was keyed on the
-unresolved one; and neither the source unit, the arm nor the stage was recorded.
-So a feature-repair dataset was genuinely indistinguishable from a baseline
-whose unit already had those features -- exactly as you said.
+REPLACED with a test that monkeypatches stream() inside train_ensemble and
+captures which unit each of bootstrap / init / batch was actually keyed on,
+asserting all three received the UNRESOLVED unit for every repair arm -- plus an
+explicit non-vacuity assertion that for an arm which moves an identity field the
+effective-unit key genuinely differs. Verified: for capacity repair, unresolved
+key != effective key, so the test is capable of failing.
 
-Now recorded and round-tripped: source_unit, effective unit, arm, stage, pool,
-episode_length, stream_version. Tested per arm.
+THE PATTERN, which I think is the useful part of this review:
 
---------------------------------------------------------------------
-WORDING, both corrected.
+  1. "evaluation cannot reach selection"  -> asserted a PARAMETER NAME
+  2. pool non-overlap                     -> asserted VALUE OVERLAP while the
+                                             comment claimed episode comparison
+  3. model streams                        -> compared a value WITH ITSELF
 
-The granularity guard is a guard on train_ensemble(), NOT proof that every
-confirmatory path is closed. bootstrap_episodes() plus train(train_index=...)
-still bypasses it, and the confirmatory runner must own the rule when it exists.
-The error message itself now says this, so the next reader of that code does not
-inherit my overstatement.
+All three were written IN RESPONSE TO you asking for property tests rather than
+mechanism tests. So the instruction was not the missing piece. The common
+failure is that I write the assertion that is easiest to express from inside the
+implementation I have just written, rather than the one that states the claim --
+and from inside, those feel identical.
 
-And 9bdb22a was a REVIEWED base, not a fully certified commit. There is still no
-fully certified commit. Corrected in the delta header and in CLAUDE.md.
+The countermeasure I have added to CLAUDE.md is a question rather than a rule:
+"could this test fail?" All three would have been caught by asking it.
 
 --------------------------------------------------------------------
 NUMBERS
-  capacity repair, model hidden:     16 -> 256   (was silently unrepaired)
-  feature repair, input width:       22 -> 30
-  data repair, training transitions: 250 -> 2500
-  confirmatory size guard:           now in collect(), all three pools
-  dataset provenance fields:         7, round-tripped, tested per arm
-  tests:                             367 -> 385 passing, 1 skipped
-  compute consumed:                  0 GPU-hours
+  mismatch classes blocked:      5, each tested individually
+  positive path per arm:         4, still training
+  non-vacuity of the stream test: unresolved key != effective key (capacity)
+  tests:                         385 -> 394 passing, 1 skipped
+  compute consumed:              0 GPU-hours
 
-NEXT: the W3 Friday development pilot on development seeds, which you have
-permitted. Confirmatory execution and repair validation stay blocked until you
-have bundled these.
+NEXT: the W3 Friday development pilot on development seeds. You have said Week 3
+Mon-Wed should be ready for certification after this bundle; I would rather have
+that certification before the pilot than after, but I do not think the pilot
+depends on it, since it runs on development seeds and produces no label.
 === END UPDATE ===
 ```

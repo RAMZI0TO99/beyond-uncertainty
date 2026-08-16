@@ -205,9 +205,11 @@ def test_confirmatory_runs_cannot_deviate_from_the_frozen_procedure(call):
     else:
         from bu.models.ensemble import train_ensemble
 
+        pools = collect_pools(unit, stage="exp1", seed=SEED)  # matching, so the
+        # D-057 guard passes and the granularity guard is what fires
         with pytest.raises(ValueError, match="fixed primary method"):
             train_ensemble(
-                unit, _pools(500), TrainConfig(max_epochs=1, ensemble_size=1),
+                unit, pools, TrainConfig(max_epochs=1, ensemble_size=1),
                 stage="exp1", seed=SEED, granularity="transition",
             )
 
@@ -388,16 +390,107 @@ def test_a_feature_repair_widens_the_input():
 
 
 @pytest.mark.parametrize("arm, unit, stage", REPAIR_CASES)
-def test_repair_streams_still_key_on_the_unresolved_unit(arm, unit, stage):
-    """The other half: the model changes, the randomness does not."""
-    from bu.streams import stream_key
+def test_repair_streams_are_keyed_on_the_unresolved_unit(arm, unit, stage, monkeypatch):
+    """Rewritten: the previous version was tautological (D-057).
 
-    assert stream_key(unit, stage, "init") == stream_key(
-        Arm("baseline").resolve(unit), stage, "init"
+    It asserted ``stream_key(unit, ...) == stream_key(Arm("baseline").resolve(unit), ...)``
+    — but resolving the *baseline* arm returns the unit unchanged, so it
+    compared a value with itself and passed for every arm without testing
+    anything. That is the third instance of the property-versus-mechanism
+    pattern already in CLAUDE.md's traps.
+
+    This captures the units ``train_ensemble`` actually passes to ``stream()``,
+    and asserts non-vacuity: for a repair that changes an identity field, the
+    effective-unit key genuinely differs, so the test could fail.
+    """
+    import bu.models.ensemble as ensemble_module
+    from bu.models.ensemble import train_ensemble
+    from bu.streams import stream, stream_key
+
+    seen: list[tuple] = []
+
+    def _spy(unit_arg, stage_arg, purpose, seed_arg, *, member=None):
+        seen.append((unit_arg, purpose))
+        return stream(unit_arg, stage_arg, purpose, seed_arg, member=member)
+
+    monkeypatch.setattr(ensemble_module, "stream", _spy)
+
+    pools = collect_pools(unit, stage=stage, seed=SEED, arm=arm)
+    train_ensemble(
+        unit, pools, TrainConfig(max_epochs=1, ensemble_size=2),
+        stage=stage, seed=SEED, arm=arm,
     )
-    base = collect_pools(unit, stage=stage, seed=SEED)
-    repaired = collect_pools(unit, stage=stage, seed=SEED, arm=arm)
-    assert np.array_equal(base.evaluation.action, repaired.evaluation.action)
+
+    model_side = {"bootstrap", "init", "batch"}
+    used = {purpose: {u for u, p in seen if p == purpose} for purpose in model_side}
+    assert set(used) == model_side, f"a model-side stream was never drawn: {used}"
+    for purpose, units in used.items():
+        assert units == {unit}, (
+            f"{purpose} was keyed on {units} rather than the unresolved unit"
+        )
+
+    # Non-vacuity: for an arm that moves an identity field, keying on the
+    # effective unit would have produced a different stream.
+    effective = Arm(arm).resolve(unit)
+    if effective != unit:
+        assert stream_key(unit, stage, "init") != stream_key(effective, stage, "init")
+
+
+# --- pools and the run must describe the same thing (D-057) ---------------
+
+
+MISMATCHES = [
+    ("baseline pools with a repair arm", dict(arm="data_repair"), dict()),
+    ("repair pools with baseline", dict(arm="baseline"), dict(arm="data_repair")),
+    ("a different seed", dict(), dict(seed=SEED + 1)),
+    ("a different stage", dict(), dict(stage="config_sweep")),
+]
+
+
+@pytest.mark.parametrize("label, run_kw, pool_kw", MISMATCHES)
+def test_mismatched_pools_fail_before_any_model_is_built(label, run_kw, pool_kw):
+    """Measured before this guard: baseline pools plus ``arm="data_repair"``
+    trained on 250 transitions while the ensemble reported the data-repair
+    identity with its effective 2,500 — a false repair label one layer above
+    the one D-056 removed (D-057)."""
+    from bu.models.ensemble import train_ensemble
+
+    unit = UnitSpec(family="estimation", n_transitions=250, hidden_size=32)
+    pools = collect_pools(
+        unit, stage=pool_kw.get("stage", "exp1"), seed=pool_kw.get("seed", SEED),
+        arm=pool_kw.get("arm", "baseline"),
+    )
+    with pytest.raises(ValueError, match="not generated for this run"):
+        train_ensemble(
+            unit, pools, TrainConfig(max_epochs=1, ensemble_size=1),
+            stage=run_kw.get("stage", "exp1"), seed=run_kw.get("seed", SEED),
+            arm=run_kw.get("arm", "baseline"),
+        )
+
+
+def test_pools_from_a_different_unit_are_rejected():
+    from bu.models.ensemble import train_ensemble
+
+    unit = UnitSpec(family="estimation", n_transitions=250, hidden_size=32)
+    other = UnitSpec(family="estimation", n_transitions=500, hidden_size=32)
+    with pytest.raises(ValueError, match="source_unit differs"):
+        train_ensemble(
+            unit, collect_pools(other, stage="exp1", seed=SEED),
+            TrainConfig(max_epochs=1, ensemble_size=1), stage="exp1", seed=SEED,
+        )
+
+
+@pytest.mark.parametrize("arm, unit, stage", REPAIR_CASES)
+def test_matched_pools_are_accepted_for_every_arm(arm, unit, stage):
+    """The guard must not be so strict that the legitimate path stops working."""
+    from bu.models.ensemble import train_ensemble
+
+    pools = collect_pools(unit, stage=stage, seed=SEED, arm=arm)
+    ensemble = train_ensemble(
+        unit, pools, TrainConfig(max_epochs=1, ensemble_size=1),
+        stage=stage, seed=SEED, arm=arm,
+    )
+    assert ensemble.arm == arm
 
 
 # --- direct collect() is guarded too (D-056) ------------------------------

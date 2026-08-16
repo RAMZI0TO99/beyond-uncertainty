@@ -42,11 +42,11 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-16 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–2 complete and audited. W3 Mon, Tue and Wed done.** All six of Sol's 2026-08-16 reviews actioned. Running ahead of the 2026-08-17 start — see DEV-002 |
+| **Current week / day** | **Weeks 1–2 complete and audited. W3 Mon, Tue and Wed done.** All eight of Sol's 2026-08-16 reviews actioned. Running ahead of the 2026-08-17 start — see DEV-002 |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **385 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
+| **Tests** | **394 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
 | **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). Week 3 ran entirely on CPU in seconds; the student's GPU was under another workload all week |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -63,8 +63,8 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 - **Week 1** — repo, `constants.py` (D-005), config and three identities (D-006), run records, JSONL logging, gridworld, masking encoder. Audited: seven defects (D-015), version bump under a Change Record (D-016).
 - **Week 2** — confound parameter, enumerator (D-018), scripted policy and collector with coverage evidence (D-020), both prose cells drafted (D-019, awaiting the student's rewrite). Audited: six defects (D-021).
 - **Sol's earlier rulings implemented** — identity registry (D-009), `stage` in run identity (D-012), critic whitelist frozen (D-013).
-- **All five of Sol's 2026-08-16 reviews actioned in full** (D-025 … D-045). All five verdicts were CHALLENGED; every finding was independently verified before anything changed, and every one stood. The second found 375 fits of phantom compute. The fourth and fifth were both about **my reasoning rather than the code**, on the same paragraph: a worst-case bound reported as a measurement (D-042), then two different estimands compared as if one approximated the other (D-044).
-- **Week 3 Mon–Wed built** (D-046, D-049, D-050) and then **substantially corrected** after Sol's sixth review (D-051 … D-053). The correction is the important part: the behaviour policy was **non-stationary across episodes**, so dataset size was confounded with behaviour distribution; validation was carved from a nested prefix, so the held-out set was a function of dataset size *and* a "100-transition" condition trained on 50; and N=100 had one training episode, making its episode bootstrap degenerate. All three fixed and verified.
+- **All eight of Sol's 2026-08-16 reviews actioned in full** (D-025 … D-057). Every verdict was CHALLENGED; every finding was independently verified before anything changed, and every one stood. The second found 375 fits of phantom compute. The fourth and fifth were both about **my reasoning rather than the code**, on the same paragraph: a worst-case bound reported as a measurement (D-042), then two different estimands compared as if one approximated the other (D-044).
+- **Week 3 Mon–Wed built** (D-046, D-049, D-050) and then **substantially corrected** across Sol's sixth, seventh and eighth reviews (D-051 … D-057). The correction is the important part: the behaviour policy was **non-stationary across episodes**, so dataset size was confounded with behaviour distribution; validation was carved from a nested prefix, so the held-out set was a function of dataset size *and* a "100-transition" condition trained on 50; and N=100 had one training episode, making its episode bootstrap degenerate. All three fixed and verified.
 - **D-030's named streams are built** (`src/bu/streams.py`), verified on the pairing properties rather than merely present: Experiment 1's datasets are nested prefixes, 2A/2B levels share a group, units in **different comparison groups** are independent at equal seeds — units inside one group are correlated by design (D-039, corrected by D-042 and D-044). `arm` never affects stream identity; raw `stage` is absent from a key but can reach data-stream *derivation* via `comparison_stage`, which is why `execution_plan` verifies that every role merged into one fit resolves to identical streams (D-038).
 
 **In flight:** nothing running. **No compute consumed.**
@@ -194,6 +194,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-054** | 2026-08-16 | Frozen data-generation procedure, bounded sensitivity scope, a claim withdrawn | finding Sol's |
 | **D-055** | 2026-08-16 | Three blockers: repair pairing, evaluation exclusion, confirmatory overrides | finding Sol's |
 | **D-056** | 2026-08-16 | The repair split reaches training, and the size guard reaches `collect()` | finding Sol's |
+| **D-057** | 2026-08-16 | Pools must belong to the run that trains on them; a third tautological test | finding Sol's |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -297,14 +298,13 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept here.
 
-### 2026-08-16 (bundle 81781d3 review) · The repair fix that never reached training · Claude
-**Did:** three more blockers (D-056), all verified before fixing, all confirmed.
-**The serious one:** I fixed the unresolved/effective unit split in the *collection* API last round and never carried it into *training*. `train_ensemble` still took one unit for both the model and the streams. Measured: a **capacity repair built the original `hidden=16` network** — the repair was never applied, **nothing raised**, and every capacity condition would have been labelled "repair failed" on a model that was never repaired. Fixed and verified per arm: baseline 16, capacity repair 256, feature repair 30 input dims against the baseline's 22, data repair 2,500 transitions against 250.
-**Why my tests missed it:** they tested collection, and the defect was in training. Sol asked for one-epoch training tests per arm; those now exist.
-**Also:** the confirmatory size guard lived only in `collect_pools`, so `collect(unit, 99, seed=1000, pool="evaluation")` still minted a 99-transition confirmatory evaluation pool — my delta claimed that path was closed when it was closed in one of two places. And repaired datasets recorded the effective unit but not the source unit, arm or stage, so they could not reconstruct their own stream.
-**Result:** 367 → 385 tests. Narrowed the `granularity` claim as Sol required — it is a guard on one entry point, not proof that every confirmatory path is closed, and the error message now says so.
-**Left:** zero GPU-hours. Sol permits the **W3 Friday pilot on development seeds**; confirmatory execution and repair validation remain blocked until these fixes are bundled.
-**Next:** W3 Fri development pilot — ask the student before spending compute.
+### 2026-08-16 (bundle c207c55 review) · Pools that belong to a different run · Claude
+**Did:** two findings (D-057), both verified, both confirmed. Sol says Week 3 Mon–Wed should be ready for certification after these.
+**(1) Pools and the ensemble could disagree about the arm.** `arm` reached `collect_pools` and `train_ensemble` independently and nothing checked they matched. Measured: baseline pools plus `arm="data_repair"` **trained on 250 transitions** while reporting the data-repair identity with its effective 2,500 — the same class of false repair label as D-056, one layer up. Capacity repair accepted mismatched pools silently; feature repair happened to die on a dimension mismatch, and Sol's point stands that an accidental runtime error in one arm is not an invariant. `assert_pools_match()` now validates source unit, effective unit, arm, stage, seed and pool label before any model is built; five mismatch classes tested, plus a positive test per arm.
+**(2) My model-stream test was tautological** — `stream_key(unit, …) == stream_key(Arm("baseline").resolve(unit), …)` compares a value with itself, because resolving the baseline arm is the identity. Replaced with one that monkeypatches `stream` inside `train_ensemble`, captures which unit `bootstrap`/`init`/`batch` were actually keyed on, and asserts non-vacuity.
+**The pattern is now three deep** and all three were written *because* Sol asked for property tests: a parameter-name check, a value-overlap check claiming episode comparison, and a value compared with itself. The common failure is writing the assertion easiest to express from inside the implementation rather than the one that states the claim. That framing is now in `CLAUDE.md`.
+**Result:** 385 → 394 tests. **Zero GPU-hours.**
+**Next:** W3 Fri development pilot — Sol permits it on development seeds; ask the student before spending compute.
 ---
 
 ## 8. → TO SOL — *moved to its own file*

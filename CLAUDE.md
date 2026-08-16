@@ -109,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 385 passing, 1 skipped
+.venv/bin/python -m pytest -q                      # 394 passing, 1 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -190,11 +190,14 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
   repair silently built the *unrepaired* model — nothing raised, and every
   capacity condition would have been labelled "repair failed" (D-056). When a
   distinction matters, grep for every place it should appear.
-- **Test the property, not the mechanism that currently delivers it.** Twice in
-  two reviews I wrote a test that checked a mechanism and claimed a property —
-  "evaluation can't reach selection" asserted a *parameter name* did not exist,
-  while the pools shared a type and the call ran fine. Both were written
-  *because* Sol asked for property tests (D-055).
+- **Test the property, not the mechanism that currently delivers it.** Three
+  times now, each written *because* Sol asked for property tests: "evaluation
+  can't reach selection" asserted a *parameter name* did not exist; the pool
+  non-overlap test checked value overlap while claiming episode comparison; a
+  stream test compared `unit` with `Arm("baseline").resolve(unit)`, which is
+  the same object. The failure is writing the assertion easiest to express from
+  inside the implementation instead of the one that states the claim. Ask: could
+  this test fail? (D-055, D-057).
 - **One arm passing is not evidence about another.** Repair pairing held for
   data and capacity repair because their experiments exclude the field those
   repairs change. Feature repair changes a field 2A does not exclude, and broke.

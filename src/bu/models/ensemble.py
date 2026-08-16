@@ -93,6 +93,50 @@ def bootstrap_episodes(
     return np.concatenate([by_episode[int(e)] for e in drawn])
 
 
+def assert_pools_match(
+    pools: Pools, *, unit: UnitSpec, arm: str, stage: str, seed: int
+) -> None:
+    """The pools must have been generated for *this* run (D-057).
+
+    ``arm`` reaches ``collect_pools`` and ``train_ensemble`` independently, so
+    nothing stopped a caller pairing baseline pools with a repair arm. Measured
+    before this guard existed: baseline pools plus ``arm="data_repair"`` trained
+    on **250** transitions while the ensemble reported the data-repair identity
+    with its effective 2,500 — a false repair label of exactly the kind D-056
+    was meant to remove, arriving one layer up.
+
+    Capacity repair accepted mismatched pools without complaint, because
+    capacity does not change the observation width. Feature repair happened to
+    die on a dimension mismatch — but an accidental runtime error in one arm is
+    not an invariant, which is the whole reason this is a check rather than a
+    convention.
+    """
+    expected_effective = Arm(arm).resolve(unit)
+    for role in ("train", "validation", "evaluation"):
+        dataset = getattr(pools, role)
+        problems: list[str] = []
+        if dataset.pool != role:
+            problems.append(f"pool={dataset.pool!r}, expected {role!r}")
+        if dataset.source_unit is not None and dataset.source_unit != unit:
+            problems.append("source_unit differs from the requested unit")
+        if dataset.unit != expected_effective:
+            problems.append(f"effective unit differs from Arm({arm!r}).resolve(unit)")
+        if dataset.arm != arm:
+            problems.append(f"arm={dataset.arm!r}, expected {arm!r}")
+        if dataset.stage != stage:
+            problems.append(f"stage={dataset.stage!r}, expected {stage!r}")
+        if dataset.seed != seed:
+            problems.append(f"seed={dataset.seed}, expected {seed}")
+        if problems:
+            raise ValueError(
+                f"the {role} pool was not generated for this run: "
+                + "; ".join(problems)
+                + ". Pools and the ensemble must describe the same "
+                "(unit, arm, stage, seed), or a run records one condition and "
+                "trains on another (D-057)."
+            )
+
+
 @dataclass
 class Ensemble:
     """K models fitted to the same condition, differing only by their streams."""
@@ -165,6 +209,7 @@ def train_ensemble(
     """
     config = config or TrainConfig()
     effective = Arm(arm).resolve(unit)
+    assert_pools_match(pools, unit=unit, arm=arm, stage=stage, seed=seed)
     if granularity != "episode" and is_confirmatory(seed):
         raise ValueError(
             f"granularity={granularity!r} on confirmatory seed {seed}. Episode "
