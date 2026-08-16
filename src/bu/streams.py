@@ -68,12 +68,17 @@ from .config import UNIT_IDENTITY_FIELDS, Config, UnitSpec, _to_plain
 #: construction, the purpose list or the hashing changes -- the numbers a run
 #: draws are not reproducible across versions.
 #:
+#: v3 (2026-08-16): ``val_env``/``val_policy``/``eval_env``/``eval_policy``
+#: added (D-052). The validation and evaluation pools must be generated
+#: *independently* of training, or a nested prefix would make a condition's
+#: held-out data a function of how much training data it happened to have.
+#:
 #: v2 (2026-08-16): ``batch`` added to PURPOSES (D-049). The derivation is
 #: unchanged and the purpose is part of every key, so no existing key would
 #: have collided -- but the rule above says a change to the purpose list is a
 #: bump, and honouring a rule only when it is convenient is how the rule stops
 #: being one. No confirmatory data exists, so the bump costs nothing.
-STREAM_VERSION = 2
+STREAM_VERSION = 3
 
 #: The five named streams. Separated so that, for example, drawing a different
 #: number of bootstrap samples cannot shift the environment a model trains on.
@@ -83,11 +88,26 @@ STREAM_VERSION = 2
 #: would make a fit depend on process history rather than on
 #: ``(unit_id, seed, member)`` -- the exact defect D-047 removed from weight
 #: initialisation.
-PURPOSES: tuple[str, ...] = ("env", "policy", "bootstrap", "init", "batch")
+PURPOSES: tuple[str, ...] = (
+    "env", "policy",            # the training pool
+    "val_env", "val_policy",    # the fixed validation pool
+    "eval_env", "eval_policy",  # the fixed evaluation pool
+    "bootstrap", "init", "batch",
+)
+
+#: Pool name -> (environment purpose, policy purpose). Three physically separate
+#: draws, so no transition can appear in more than one pool (D-052).
+POOL_PURPOSES: dict[str, tuple[str, str]] = {
+    "train": ("env", "policy"),
+    "validation": ("val_env", "val_policy"),
+    "evaluation": ("eval_env", "eval_policy"),
+}
 
 #: Streams that generate *data*. These key on the comparison group, so that
 #: common random numbers survive inside a paired comparison.
-DATA_PURPOSES: frozenset[str] = frozenset({"env", "policy"})
+DATA_PURPOSES: frozenset[str] = frozenset(
+    {"env", "policy", "val_env", "val_policy", "eval_env", "eval_policy"}
+)
 
 #: The axis each canonical experiment manipulates, and therefore the only field
 #: removed when forming its comparison group. Preregistered here: which axis is

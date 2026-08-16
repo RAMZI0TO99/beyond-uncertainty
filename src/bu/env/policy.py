@@ -93,6 +93,16 @@ class ExploratoryPolicy:
         self.epsilon = epsilon
         #: (context, action) -> count, where context is the adjacent object's
         #: causal class. Drives the coverage bias over actions.
+        #:
+        #: **Reset at every episode** (D-051). These counters used to persist
+        #: across episodes, which made the policy non-stationary: later episodes
+        #: were drawn from a different behaviour distribution than earlier ones.
+        #: Because Experiment 1's datasets are nested prefixes, dataset *size*
+        #: was then confounded with behaviour -- measured over one collection,
+        #: the moved-transition fraction rose 0.340 -> 0.527 and rule-carrying
+        #: transitions per step fell 0.520 -> 0.280 between the first 100
+        #: transitions and the first 5,000. A data-size sweep would have varied
+        #: two things at once, and H1 is a claim about only one of them.
         self.visits: Counter[tuple[str, int]] = Counter()
         #: causal class -> count of bumps taken into it. Kept separately from
         #: `visits` because the two are keyed differently: `visits` records the
@@ -101,6 +111,17 @@ class ExploratoryPolicy:
         #: keys out of `visits` left mixed-adjacency bumps uncounted, so the
         #: balancer was partly blind exactly where the choice mattered most.
         self.bump_visits: Counter[str] = Counter()
+
+    def reset(self) -> None:
+        """Clear the adaptive counters. Called at the start of every episode.
+
+        Fixed action probabilities and the within-episode coverage logic are
+        retained; only cross-episode adaptation is removed. That is what makes
+        episodes independent draws from one stationary behaviour distribution,
+        which is what the bootstrap and the data-size sweep both assume.
+        """
+        self.visits.clear()
+        self.bump_visits.clear()
 
     # --- action selection -------------------------------------------------
 

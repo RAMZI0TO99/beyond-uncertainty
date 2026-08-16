@@ -43,64 +43,54 @@ import torch
 
 from .. import constants as K
 from ..config import TrainConfig, UnitSpec
-from ..env.collect import TransitionDataset
+from ..env.collect import Pools, TransitionDataset
 from ..streams import stream
-from .train import EpisodeSplit, TrainResult, split_by_episode, train
+from .train import TrainResult, episode_indices, train
 from .world_model import WorldModel
 
-Granularity = Literal["episode", "transition"]
+Granularity = Literal["episode", "transition", "none"]
 
 
-def bootstrap_split(
+def bootstrap_episodes(
     dataset: TransitionDataset,
-    base: EpisodeSplit,
     rng: np.random.Generator,
     *,
     granularity: Granularity = "episode",
     ratio: float = 1.0,
-) -> EpisodeSplit:
-    """Resample the training side of ``base``; leave validation untouched.
+) -> np.ndarray:
+    """Transition indices for one member's resample of the **training** pool.
 
     Args:
         granularity: ``"episode"`` draws whole episodes with replacement -- a
-            block bootstrap, which respects the temporal correlation that makes
-            an episode the unit of near-duplication. ``"transition"`` draws rows
-            with replacement, which is the classical bootstrap and treats
-            correlated rows as exchangeable.
-        ratio: resample size as a fraction of the training set.
+            block bootstrap, and the **primary method** for H1 and H2 (D-053).
+            ``"transition"`` draws rows, which treats correlated transitions as
+            exchangeable and retains nearly every episode, suppressing the
+            data-resampling component of disagreement. It is a labelled
+            secondary sensitivity only and never determines a verdict.
+        ratio: resample size as a fraction of the training pool.
     """
     if ratio <= 0:
         raise ValueError(f"bootstrap ratio must be positive, got {ratio}")
 
     if granularity == "transition":
-        n = max(1, int(round(len(base.train) * ratio)))
-        drawn = rng.choice(base.train, size=n, replace=True)
-        return EpisodeSplit(
-            train=np.sort(drawn),
-            val=base.val,
-            train_episodes=base.train_episodes,
-            val_episodes=base.val_episodes,
-        )
+        n = max(1, int(round(len(dataset) * ratio)))
+        return np.sort(rng.choice(len(dataset), size=n, replace=True))
+
+    if granularity == "none":
+        # Initialisation-only ensemble: every member sees the whole pool, so
+        # all disagreement comes from weights. A cleaner sensitivity than a
+        # transition bootstrap, because it isolates the source rather than
+        # blurring it (Sol, Q-011).
+        return np.arange(len(dataset))
 
     if granularity != "episode":
         raise ValueError(f"unknown bootstrap granularity {granularity!r}")
 
-    episodes = np.array(base.train_episodes)
+    by_episode = episode_indices(dataset)
+    episodes = np.array(sorted(by_episode))
     n = max(1, int(round(len(episodes) * ratio)))
     drawn = rng.choice(episodes, size=n, replace=True)
-
-    # Concatenate the transitions of every drawn episode, with multiplicity: an
-    # episode drawn twice contributes its rows twice, which is what gives the
-    # bootstrap its weight distribution.
-    by_episode = {int(e): np.flatnonzero(dataset.episode == e) for e in np.unique(episodes)}
-    train = np.concatenate([by_episode[int(e)] for e in drawn]) if len(drawn) else np.array([], int)
-
-    return EpisodeSplit(
-        train=train,
-        val=base.val,
-        train_episodes=tuple(int(e) for e in drawn),
-        val_episodes=base.val_episodes,
-    )
+    return np.concatenate([by_episode[int(e)] for e in drawn])
 
 
 @dataclass
@@ -110,7 +100,6 @@ class Ensemble:
     unit: UnitSpec
     members: tuple[WorldModel, ...]
     results: tuple[TrainResult, ...]
-    split: EpisodeSplit
     granularity: Granularity
 
     def __len__(self) -> int:
@@ -141,7 +130,7 @@ class Ensemble:
 
 def train_ensemble(
     unit: UnitSpec,
-    dataset: TransitionDataset,
+    pools: Pools,
     config: TrainConfig | None = None,
     *,
     stage: str,
@@ -155,17 +144,19 @@ def train_ensemble(
     of ``bootstrap``, ``init`` and ``batch``. Nothing about a member depends on
     the order members happen to be trained in, so a member can be refitted alone
     and reproduce exactly.
+
+    Only the **training** pool is resampled. Validation and evaluation are fixed
+    and shared, so per-member errors are comparable and the evaluation set is
+    identical across members, dataset sizes and conditions (D-052).
     """
     config = config or TrainConfig()
-    base = split_by_episode(dataset, config.val_fraction)
 
     members: list[WorldModel] = []
     results: list[TrainResult] = []
 
     for k in range(config.ensemble_size):
-        member_split = bootstrap_split(
-            dataset,
-            base,
+        index = bootstrap_episodes(
+            pools.train,
             stream(unit, stage, "bootstrap", seed, member=k),
             granularity=granularity,
             ratio=config.bootstrap_ratio,
@@ -173,10 +164,11 @@ def train_ensemble(
         model = WorldModel(unit, stream(unit, stage, "init", seed, member=k))
         result = train(
             model,
-            dataset,
+            pools.train,
+            pools.validation,
             config,
             rng=stream(unit, stage, "batch", seed, member=k),
-            split=member_split,
+            train_index=index,
         )
         members.append(model)
         results.append(result)
@@ -186,14 +178,15 @@ def train_ensemble(
             # criterion, and it is logged per member rather than aggregated:
             # the spread across members is the quantity H1 and H2 are about,
             # and a mean would discard exactly it.
+            n_unique = len(np.unique(pools.train.episode[index]))
             logger.log(
                 member=k,
                 val_position=result.best_val_position,
                 best_epoch=result.best_epoch,
                 epochs_run=result.epochs_run,
                 stopped_early=result.stopped_early,
-                n_train=len(member_split.train),
-                n_unique_train_episodes=len(set(member_split.train_episodes)),
+                n_train=len(index),
+                n_unique_train_episodes=n_unique,
                 granularity=granularity,
             )
 
@@ -201,7 +194,6 @@ def train_ensemble(
         unit=unit,
         members=tuple(members),
         results=tuple(results),
-        split=base,
         granularity=granularity,
     )
 

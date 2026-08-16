@@ -30,13 +30,15 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from .. import constants as K
 from ..config import UnitSpec
-from ..streams import stream
+from ..streams import POOL_PURPOSES, stream
 from .gridworld import INTERACT, N_ACTIONS, SHAPES, GridState, GridWorld, is_passable
 from .policy import ExploratoryPolicy
 
 #: Steps per episode before the environment is reset with a fresh layout.
-DEFAULT_EPISODE_LENGTH = 50
+#: Preregistered in constants.py (D-052); re-exported here for callers.
+DEFAULT_EPISODE_LENGTH = K.EPISODE_LENGTH
 
 
 class Policy(Protocol):
@@ -205,6 +207,7 @@ def collect(
     *,
     seed: int = 0,
     stage: str = "pilot",
+    pool: str = "train",
     episode_length: int = DEFAULT_EPISODE_LENGTH,
     policy: Policy | None = None,
 ) -> TransitionDataset:
@@ -228,15 +231,24 @@ def collect(
       **independent** layouts, because the key includes the unit rather than the
       seed alone. That coupling is what Q-008 was raised about, and confidence
       intervals taken over units depend on its absence.
+
+    ``pool`` selects which of three **physically separate** draws this is
+    (D-052). Validation and evaluation come from their own streams rather than
+    from a slice of training, so no transition can appear in two pools and a
+    condition's held-out data does not depend on how much training data it
+    happened to have. **The registered N is training transitions only.**
     """
     n = unit.n_transitions if n_transitions is None else n_transitions
     if n <= 0:
         raise ValueError(f"n_transitions must be positive, got {n}")
+    if pool not in POOL_PURPOSES:
+        raise ValueError(f"unknown pool {pool!r}; expected {sorted(POOL_PURPOSES)}")
 
+    env_purpose, policy_purpose = POOL_PURPOSES[pool]
     env = GridWorld(unit)
-    env_rng = stream(unit, stage, "env", seed)
+    env_rng = stream(unit, stage, env_purpose, seed)
     pol = (
-        ExploratoryPolicy(unit, rng=stream(unit, stage, "policy", seed))
+        ExploratoryPolicy(unit, rng=stream(unit, stage, policy_purpose, seed))
         if policy is None
         else policy
     )
@@ -254,6 +266,12 @@ def collect(
 
     episode = 0
     while len(actions) < n:
+        # Stationarity: every episode starts from the same behaviour
+        # distribution, so episodes are independent draws and a nested prefix
+        # is a smaller sample of the *same* process rather than an earlier,
+        # different one (D-051).
+        if hasattr(pol, "reset"):
+            pol.reset()
         _, info = env.reset(rng=env_rng)
         state: GridState = info["state"]
 
@@ -342,3 +360,44 @@ def _tally(
         if target is not None:
             cls = "pass" if is_passable(target, unit.causal_attribute) else "block"
             bumps[cls] += 1
+
+
+@dataclass(frozen=True)
+class Pools:
+    """The three disjoint datasets a fit needs (D-052).
+
+    ``train`` holds **exactly** the registered N transitions -- validation no
+    longer eats into it, so a "100-transition condition" trains on 100. The
+    other two are fixed-size and identical for every dataset size in a
+    comparison group and for every ensemble member, so a data-size sweep varies
+    training data and nothing else.
+    """
+
+    train: TransitionDataset
+    validation: TransitionDataset
+    evaluation: TransitionDataset
+
+
+def collect_pools(
+    unit: UnitSpec,
+    *,
+    stage: str,
+    seed: int,
+    n_transitions: int | None = None,
+    episode_length: int = DEFAULT_EPISODE_LENGTH,
+) -> Pools:
+    """Training, validation and evaluation pools from three separate streams."""
+    n = unit.n_transitions if n_transitions is None else n_transitions
+    return Pools(
+        train=collect(
+            unit, n, stage=stage, seed=seed, pool="train", episode_length=episode_length
+        ),
+        validation=collect(
+            unit, K.VALIDATION_EPISODES * episode_length,
+            stage=stage, seed=seed, pool="validation", episode_length=episode_length,
+        ),
+        evaluation=collect(
+            unit, K.EVALUATION_EPISODES * episode_length,
+            stage=stage, seed=seed, pool="evaluation", episode_length=episode_length,
+        ),
+    )

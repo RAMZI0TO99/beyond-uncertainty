@@ -106,7 +106,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 344 passing, 1 skipped
+.venv/bin/python -m pytest -q                      # 346 passing, 1 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -137,8 +137,8 @@ src/bu/
   experiments/enumerate_units.py  the 300-unit design matrix
   streams.py     named RNG streams: independent across units, paired within a comparison
   models/world_model.py  the MLP; dynamic-only target, detached auxiliary head
-  models/train.py        episode-strided split, early stopping on position only
-  models/ensemble.py     K members from the bootstrap / init / batch streams
+  models/train.py        early stopping on the movement-position loss only
+  models/ensemble.py     K members; episode block bootstrap of the training pool
   stats/            empty — Weeks 4–5
 ```
 
@@ -197,9 +197,18 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 *Last session: 2026-08-16. Week 1 Monday is 2026-08-17, so the project is
 running roughly two weeks ahead of its own calendar (DEV-002).*
 
-**Weeks 1 and 2 complete and audited. Week 3 Mon, Tue and Wed done.** Six Sol
-reviews actioned in full on 2026-08-16 (D-025 … D-050). Gate 1 is 2026-09-19.
-**Zero GPU-hours consumed** — everything so far runs on CPU in seconds.
+**Weeks 1 and 2 complete and audited. Week 3 Mon, Tue and Wed done** — then
+substantially corrected by Sol's sixth review. Seven Sol reviews actioned on
+2026-08-16 (D-025 … D-053). Gate 1 is 2026-09-19. **Zero GPU-hours consumed** —
+everything so far runs on CPU in seconds.
+
+**The correction is the thing to understand before touching Week 3 code.** The
+behaviour policy was **non-stationary across episodes**, and because Experiment
+1's datasets are nested prefixes, *dataset size was confounded with behaviour
+distribution* — rule-carrying transitions per step ran 0.520 at N=100 against
+0.280 at N=5000. I had diagnosed this as a splitting problem and been wrong; it
+was a data-generation problem. Fixed in D-051 and verified as stationarity
+(+1.1 SE by episode index over 40 seeds), not asserted.
 
 Design: **300 units** in **240 comparison groups**, **8,197 fits** against
 P§14.2's ~8,700.
@@ -212,12 +221,19 @@ P§14.2's ~8,700.
   **action-conditional** — position on movement steps, activation on `interact`
   (D-047). `WorldModel(unit, rng)` requires an `init`-stream generator; depth is
   frozen at 2; there is no loss-weighting knob.
-- **`models/train.py`** — episode-level **strided** split, early stopping on the
-  movement-position validation loss **only**, best checkpoint restored, no global
-  grad-norm clip, minibatch order from the `batch` stream (D-049).
-- **`models/ensemble.py`** — K members from the `bootstrap`, `init` and `batch`
-  streams; bootstrap touches training only; per-member validation error logged
-  per member (D-050).
+- **`models/train.py`** — takes **separate train and validation datasets**, early
+  stopping on the movement-position validation loss **only**, best checkpoint
+  restored, no global grad-norm clip, batch order from the `batch` stream
+  (D-049, restructured by D-052).
+- **`models/ensemble.py`** — K members; **episode block bootstrap** of the
+  training pool is the fixed primary for H1/H2, transition-level is a labelled
+  secondary that may not overturn a verdict, `"none"` gives an
+  initialisation-only sensitivity (D-050, D-053).
+- **`collect_pools()`** — three physically separate draws (D-052). Training is
+  **exactly the registered N**; validation (40 episodes) and evaluation (100)
+  are fixed and byte-identical across every dataset size. Never carve validation
+  out of training again: doing so made the held-out set a function of N *and*
+  made a "100-transition" condition train on 50.
 
 ### Next: W3 Fri — and it is the first cell that spends compute
 
@@ -229,10 +245,10 @@ they say otherwise. Then W3 Sat: look at the curves and write down what you see
 
 ### Open, and what each blocks
 
-- **Q-011 — bootstrap granularity.** It changes disagreement, which is H1's
-  dependent variable, and the episode/transition ratio is *not constant across n*
-  (1.30× / 1.77× / 1.25×), so it **bends** the curve W4 Mon's trend test runs on
-  rather than scaling it. Blocks W4 Mon.
+- **No open questions.** Q-011 closed by D-053.
+- **Numbers taken before D-051/D-052 are void.** D-020's coverage evidence and
+  the Q-011 disagreement measurements were both taken under the non-stationary
+  policy and the derived split. Re-measure; do not quote them.
 - **D-047's open item.** The detached auxiliary head sits at 0.2575 against a
   0.1652 copy baseline after a hand-rolled 3,000 epochs. Sol's conditional for a
   second trunk turns on whether the *real* loop closes that — answer it from

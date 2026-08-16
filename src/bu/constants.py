@@ -85,6 +85,25 @@ CONFIRMATORY_SEED_BASE = 1000
 #: point estimate's estimand.
 BALANCED_ACCURACY_WEIGHTING = "unit"
 
+#: Steps per episode. **10, not 50** (D-052). At 50 the smallest condition
+#: (N=100) contained two episodes, and after an internal split one *training*
+#: episode -- an episode bootstrap over one episode has exactly one possible
+#: sample, so ensemble diversity there came from initialisation alone. At 10 it
+#: contains ten. Measured cost at N=5000: rule-carrying transitions 748/1177 ->
+#: 712/1123 and (shape, action) coverage 100% either way, so the independence is
+#: bought for ~5% of the informative transitions.
+EPISODE_LENGTH = 10
+
+#: Complete episodes in the fixed validation pool, used only for early stopping
+#: and checkpoint selection. **Identical for every dataset size in a comparison
+#: group**, and disjoint from training (D-052).
+VALIDATION_EPISODES = 40
+
+#: Complete episodes in the fixed evaluation pool: reported error, disagreement
+#: curves and failure-set construction. Never used for stopping or selection,
+#: and identical across dataset sizes *and* ensemble members.
+EVALUATION_EPISODES = 100
+
 # --- Design scale (Plan §10.7) --------------------------------------------
 
 #: Minimum labelled configuration-conditions, and minimum held out. Power

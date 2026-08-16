@@ -7,25 +7,25 @@ failure by shrinking the dataset. If a small-data condition also happened to be
 under-trained, the sweep would measure optimisation effort rather than sample
 size, and H1 would be testing the wrong proposition.
 
-Split by episode, never by transition
--------------------------------------
-Transitions inside one episode are temporally correlated -- the same fact that
-makes Plan §7.3 require random intercepts for episode within seed. A
-transition-level split therefore puts near-duplicates of training rows into
-validation, early stopping fires late, and the held-out loss is optimistic in
-proportion to how correlated the data is. That is worst in exactly the
-small-data conditions Experiment 1 depends on.
+A separate validation pool, not a slice of training (D-052)
+-----------------------------------------------------------
+Validation comes from its own generating stream, never from carving up the
+training set. Two reasons, both found the hard way.
 
-**Strided rather than contiguous.** The held-out episodes are every k-th, not
-the last k-th. The scripted policy carries its coverage counters *across*
-episodes (`ExploratoryPolicy.visits`), so its action distribution drifts as a
-collection proceeds -- measured over 100 episodes, the fraction of transitions
-that moved the agent falls from 0.543 in the first fifth to 0.476 in the last,
-and the action distribution shifts with it. A contiguous tail split would hold
-out a distribution the model was never trained on and call the gap
-generalisation. Striding also keeps the validation episodes *identical across
-dataset sizes*, because Experiment 1's datasets are nested prefixes (D-030) --
-so the six conditions in a data-size sweep differ in training data alone.
+**A slice makes the held-out set a function of dataset size.** Holding out every
+k-th episode of a nested prefix gave the N=250 condition one validation episode
+and the N=5000 condition twenty. Dataset size then changed the training data,
+the validation composition, the validation sample size, the early-stopping noise
+and the chance of selecting a lucky checkpoint -- all at once, and worst at
+small N, which is where Experiment 1's conclusion is decided.
+
+**A slice also spends the registered N on validation.** A "100-transition"
+condition trained on 50. The registered N is training transitions; validation
+and evaluation are separate pools and do not count against it.
+
+Transitions inside one episode remain temporally correlated -- the fact that
+makes Plan §7.3 require random intercepts for episode within seed -- so the
+pools are whole episodes and the bootstrap resamples whole episodes.
 
 What early stopping is allowed to watch (D-047)
 -----------------------------------------------
@@ -52,54 +52,12 @@ from ..env.collect import TransitionDataset
 from .world_model import Losses, WorldModel, losses
 
 
-@dataclass(frozen=True)
-class EpisodeSplit:
-    """A held-out split taken at the episode level, never the transition level."""
-
-    train: np.ndarray
-    val: np.ndarray
-    train_episodes: tuple[int, ...]
-    val_episodes: tuple[int, ...]
-
-    def __post_init__(self) -> None:
-        overlap = set(self.train_episodes) & set(self.val_episodes)
-        if overlap:
-            raise ValueError(f"episodes {sorted(overlap)} are in both splits")
-
-
-def split_by_episode(
-    dataset: TransitionDataset, val_fraction: float
-) -> EpisodeSplit:
-    """Hold out every k-th episode, with k derived from ``val_fraction``.
-
-    Deterministic and RNG-free: the split is a function of the dataset's episode
-    structure, so it is reproducible from the config alone and identical across
-    the nested-prefix datasets of a data-size sweep.
-    """
-    if not 0.0 < val_fraction < 1.0:
-        raise ValueError(f"val_fraction must lie in (0, 1), got {val_fraction}")
-
-    episodes = np.unique(dataset.episode)
-    if len(episodes) < 2:
-        raise ValueError(
-            f"{len(episodes)} episode(s) in this dataset; an episode-level split "
-            "needs at least two. Collect more transitions or shorten episodes -- "
-            "do not fall back to a transition-level split, which leaks."
-        )
-
-    stride = max(2, int(round(1.0 / val_fraction)))
-    val_episodes = tuple(int(e) for e in episodes[::stride])
-    train_episodes = tuple(int(e) for e in episodes if int(e) not in set(val_episodes))
-    if not train_episodes:
-        raise ValueError("the split left no training episodes")
-
-    val_mask = np.isin(dataset.episode, val_episodes)
-    return EpisodeSplit(
-        train=np.flatnonzero(~val_mask),
-        val=np.flatnonzero(val_mask),
-        train_episodes=train_episodes,
-        val_episodes=val_episodes,
-    )
+def episode_indices(dataset: TransitionDataset) -> dict[int, np.ndarray]:
+    """Transition indices grouped by episode -- the unit the bootstrap resamples."""
+    return {
+        int(e): np.flatnonzero(dataset.episode == e)
+        for e in np.unique(dataset.episode)
+    }
 
 
 @dataclass
@@ -111,7 +69,8 @@ class TrainResult:
     epochs_run: int
     stopped_early: bool
     history: tuple[dict[str, Any], ...] = field(default_factory=tuple)
-    split: EpisodeSplit | None = None
+    n_train: int = 0
+    n_validation: int = 0
 
     def curve(self, key: str) -> tuple[float, ...]:
         return tuple(row[key] for row in self.history)
@@ -119,11 +78,12 @@ class TrainResult:
 
 def train(
     model: WorldModel,
-    dataset: TransitionDataset,
+    train_data: TransitionDataset,
+    validation: TransitionDataset,
     config: TrainConfig | None = None,
     *,
     rng: np.random.Generator,
-    split: EpisodeSplit | None = None,
+    train_index: np.ndarray | None = None,
     logger: Any | None = None,
 ) -> TrainResult:
     """Fit ``model`` with early stopping on the movement-position validation loss.
@@ -138,26 +98,31 @@ def train(
             logged", and the only form in which a figure can be regenerated
             without rerunning the fit.
 
-        split: an explicit split, for callers that must control it. The
-            ensemble trainer supplies one per member: a **bootstrap-resampled
-            training set against the shared, unresampled validation set**, so
-            per-member validation errors are comparable to each other.
+        train_index: optional transition indices into ``train_data``, for the
+            ensemble's per-member bootstrap resample. The validation pool is
+            never resampled, so per-member errors stay comparable.
 
     Restores the best checkpoint before returning, so the model a caller holds
     afterwards is the one the validation loss selected, not the last one trained.
     """
     config = config or TrainConfig()
-    split = split if split is not None else split_by_episode(dataset, config.val_fraction)
 
-    obs = torch.as_tensor(dataset.obs)
-    action = torch.as_tensor(dataset.action)
-    next_obs = torch.as_tensor(dataset.next_obs)
+    obs = torch.as_tensor(train_data.obs)
+    action = torch.as_tensor(train_data.action)
+    next_obs = torch.as_tensor(train_data.next_obs)
 
-    train_idx = torch.as_tensor(split.train, dtype=torch.long)
-    val_idx = torch.as_tensor(split.val, dtype=torch.long)
+    v_obs = torch.as_tensor(validation.obs)
+    v_action = torch.as_tensor(validation.action)
+    v_next = torch.as_tensor(validation.next_obs)
+
+    train_idx = torch.as_tensor(
+        np.arange(len(train_data)) if train_index is None else train_index,
+        dtype=torch.long,
+    )
+    val_idx = torch.arange(len(validation), dtype=torch.long)
 
     _assert_trainable(model, obs, action, next_obs, train_idx, "training")
-    _assert_trainable(model, obs, action, next_obs, val_idx, "validation")
+    _assert_trainable(model, v_obs, v_action, v_next, val_idx, "validation")
 
     optimiser = torch.optim.Adam(model.parameters(), lr=config.lr)
     # No global gradient-norm clip. One clip spanning both parameter groups
@@ -189,7 +154,7 @@ def train(
             epoch_activation += float(out.activation.detach())
             n_batches += 1
 
-        val = _evaluate(model, obs, action, next_obs, val_idx)
+        val = _evaluate(model, v_obs, v_action, v_next, val_idx)
         row = {
             "epoch": epoch,
             "train_position": epoch_position / n_batches,
@@ -223,7 +188,8 @@ def train(
         epochs_run=epoch + 1,
         stopped_early=stopped_early,
         history=tuple(history),
-        split=split,
+        n_train=len(train_idx),
+        n_validation=len(validation),
     )
 
 
