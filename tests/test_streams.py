@@ -43,8 +43,13 @@ ESTIMATION = dict(
 # --- independence across units --------------------------------------------
 
 
-def test_two_units_at_one_seed_draw_independent_environments():
-    """Q-008 as raised: seed 0 in two different units gave correlated layouts."""
+def test_units_in_different_groups_draw_independent_environments():
+    """Q-008 as raised: seed 0 in two different units gave correlated layouts.
+
+    Stated over units in *different* comparison groups, which is the only form
+    of the claim that is true. Units inside one group are intentionally
+    dependent -- see the grouped-dependence tests below and D-039.
+    """
     a = UnitSpec(**ESTIMATION, n_transitions=500)
     b = UnitSpec(
         causal_attribute="colour", layout="sparse", confound_rate=0.5,
@@ -230,3 +235,130 @@ def test_the_hypothesis_seed_block_is_a_prefix_of_the_validation_block():
         confirmatory_seeds(K.SEEDS_HYPOTHESIS)
         == confirmatory_seeds(K.SEEDS_REPAIR_VALIDATION)[: K.SEEDS_HYPOTHESIS]
     )
+
+
+# --- grouped dependence (Sol review of delta 12 · D-039) ------------------
+#
+# The cost of common random numbers: units sharing a group are DEPENDENT by
+# design. Every split and every interval has to respect that, or H3 is
+# evaluated on near-identical trajectories sitting on both sides of a split.
+
+
+def test_the_canonical_design_collapses_into_fifteen_groups():
+    from bu.experiments.enumerate_units import canonical_units, comparison_groups
+
+    groups = comparison_groups(canonical_units())
+    assert len(canonical_units()) == 75
+    assert len(groups) == 15, "5 configs x 3 canonical experiments"
+
+
+def test_sweep_units_are_singleton_groups():
+    """Independence genuinely holds there, so the rule must not over-cluster."""
+    from bu.experiments.enumerate_units import (
+        canonical_units, comparison_groups, design_units)
+
+    canon = {Config(unit=u).unit_id for u in canonical_units()}
+    sweep = tuple(u for u in design_units() if Config(unit=u).unit_id not in canon)
+    groups = comparison_groups(sweep)
+    assert len(groups) == len(sweep) == 225
+    assert all(len(v) == 1 for v in groups.values())
+
+
+def test_a_group_never_spans_both_intended_classes():
+    """A group is atomic for splitting, so a mixed group could not be assigned."""
+    from bu.experiments.enumerate_units import comparison_groups, design_units
+
+    for members in comparison_groups(design_units()).values():
+        classes = {0 if u.family == "estimation" else 1 for u in members}
+        assert len(classes) == 1
+
+
+def test_group_level_balance_is_reported_and_is_not_the_unit_level_balance():
+    """The number that matters for power is not the one the design advertises.
+
+    Plan §10.7 makes power depend on min(N0, N1). At unit level the design is
+    150/150; at the level that is actually independent it is 125/115. Pinned so
+    the Week 5 MDE simulation cannot quietly resolve over 300 unit ids.
+    """
+    from collections import Counter
+
+    from bu.experiments.enumerate_units import comparison_groups, design_units
+
+    groups = comparison_groups(design_units())
+    assert len(groups) == 240
+    counts = Counter(
+        0 if members[0].family == "estimation" else 1 for members in groups.values()
+    )
+    assert (counts[0], counts[1]) == (125, 115)
+    assert min(counts.values()) < 150
+
+
+# --- the multi-role stream invariant (D-038) ------------------------------
+
+
+def test_every_multi_role_fit_resolves_to_one_set_of_streams():
+    """Exhaustive over the plan, not over an example.
+
+    fit_id deduplicates on (unit, arm, seed). If two roles on one fit needed
+    different data, that deduplication would be wrong rather than economical.
+    """
+    from bu.experiments.enumerate_units import design_units, execution_plan
+    from bu.streams import stream_key
+
+    checked = 0
+    for fit in execution_plan(design_units()):
+        if len(fit.roles) < 2:
+            continue
+        checked += 1
+        for purpose in PURPOSES:
+            keys = {str(stream_key(fit.unit, role, purpose)) for role in fit.roles}
+            assert len(keys) == 1, (fit.fit_id, fit.roles, purpose)
+    assert checked == 75, "expected the 15 ladder units x 5 shared seeds"
+
+
+def test_incompatible_roles_are_rejected_rather_than_merged():
+    """The invariant must bite, not merely hold by luck today.
+
+    It currently holds because no canonical unit also carries a config_sweep
+    obligation. That is a property of this enumeration, not of the design, so
+    it is asserted against a constructed violation.
+    """
+    from bu.streams import assert_roles_share_one_stream
+
+    unit = UnitSpec(**ESTIMATION, n_transitions=100)
+    assert_roles_share_one_stream(unit, ("exp1", "repair_validation"))  # compatible
+    with pytest.raises(ValueError, match="different 'env' streams"):
+        assert_roles_share_one_stream(unit, ("exp1", "config_sweep"))
+
+
+# --- the pilot boundary is enforced, not merely checkable (D-040) ---------
+
+
+def test_development_seeds_are_rejected_by_confirmatory_analyses():
+    from bu.streams import assert_confirmatory
+
+    assert_confirmatory(confirmatory_seeds(5), what="test")
+    with pytest.raises(ValueError, match="development seeds"):
+        assert_confirmatory([0, 1, 2], what="threshold calibration")
+
+
+def test_a_mixed_batch_fails_closed():
+    """Silently dropping development rows would leave an analysis computed on
+    fewer units than it reports."""
+    from bu.streams import assert_confirmatory
+
+    with pytest.raises(ValueError, match="mixed with confirmatory"):
+        assert_confirmatory([0, K.CONFIRMATORY_SEED_BASE], what="repair acceptance")
+
+
+def test_an_empty_batch_is_not_an_error():
+    from bu.streams import assert_confirmatory
+
+    assert_confirmatory([], what="test")
+
+
+def test_seed_partition_names_both_sides():
+    from bu.streams import seed_partition
+
+    assert seed_partition(0) == "development"
+    assert seed_partition(K.CONFIRMATORY_SEED_BASE) == "confirmatory"

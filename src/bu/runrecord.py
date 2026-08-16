@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .streams import is_confirmatory, seed_partition
 from .config import IDENTITY_VERSION, SCHEMA_VERSION, UNIT_IDENTITY_FIELDS, Config
 
 #: Recorded for every run so an environment difference is visible in the record
@@ -109,6 +110,11 @@ def write_run_record(
         # stage says which experimental obligation this run discharges, and a
         # unit can owe runs to several (D-012).
         "stage": config.stage,
+        # Which side of the pilot boundary this run sits on (D-034, D-040).
+        # Recorded rather than inferred later: an analysis that has to
+        # reconstruct it from the seed will one day forget to.
+        "seed_partition": seed_partition(config.seed),
+        "confirmatory": is_confirmatory(config.seed),
         "schema_version": SCHEMA_VERSION,
         # Which identity registry produced unit_id. Ids are comparable only
         # within one identity version (see config.UNIT_IDENTITY_FIELDS).

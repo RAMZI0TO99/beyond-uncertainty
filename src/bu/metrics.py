@@ -21,6 +21,7 @@ import pandas as pd
 
 from .config import Config
 from .runrecord import read_run_record, write_run_record
+from .streams import assert_confirmatory
 
 METRICS_FILE = "metrics.jsonl"
 
@@ -94,6 +95,7 @@ def load_runs(
     *,
     run_ids: Iterable[str] | None = None,
     require_clean_git: bool = False,
+    require_confirmatory: bool = False,
 ) -> pd.DataFrame:
     """Load every run's metrics into one long-format DataFrame.
 
@@ -127,6 +129,11 @@ def load_runs(
         require_clean_git: raise if any loaded run was recorded from a dirty
             working tree. Off by default (development runs are routinely
             dirty); switch on for anything that reaches the thesis.
+        require_confirmatory: raise if any loaded run used a development seed
+            (D-034, D-040). **Switch this on in threshold calibration, repair
+            acceptance and every critic loader.** Off by default so pipeline
+            debugging at low seeds still works, which is the whole point of
+            keeping a development range.
     """
     wanted = set(run_ids) if run_ids is not None else None
     frames: list[pd.DataFrame] = []
@@ -140,6 +147,9 @@ def load_runs(
                 f"run {rec['run_id']} was recorded from a dirty working tree; "
                 "its commit hash does not identify the code that ran"
             )
+
+        if require_confirmatory:
+            assert_confirmatory(int(rec["seed"]), what=f"load_runs({root!r})")
 
         path = run_dir / METRICS_FILE
         if not path.exists():
@@ -170,6 +180,7 @@ _IDENTITY_COLS = (
     "stage",
     "arm",
     "family",
+    "seed_partition",
 )
 
 
@@ -185,6 +196,9 @@ def _identity_columns(rec: dict[str, Any]) -> dict[str, Any]:
         "stage": rec.get("stage", rec["config"].get("stage", "unknown")),
         "arm": rec["config"]["arm"]["kind"],
         "family": unit["family"],
+        # Which side of the pilot boundary. Carried into the frame so an
+        # analysis can assert on it rather than reconstruct it from the seed.
+        "seed_partition": rec.get("seed_partition", "development"),
     }
     for k, v in unit.items():
         if k == "family":

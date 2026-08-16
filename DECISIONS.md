@@ -313,3 +313,33 @@ Every decision a future reader would otherwise have to reconstruct. Format:
 **Reviewed by Sol:** pending.
 
 ---
+
+### D-038 · 2026-08-16 · A multi-role fit must resolve to one set of streams
+**Decision:** `assert_roles_share_one_stream()` runs inside `execution_plan()`. If two roles attached to one fit resolve to different `env`, `policy`, `bootstrap` or `init` keys, plan construction **raises**. Tested exhaustively over the plan and against a constructed violation.
+**Why:** Sol's finding, and the correction it makes to my own wording. I wrote that stage "never enters any key". That is true of a key's *contents* and false of its *derivation*: `comparison_group_id` hashes `comparison_stage(unit, stage)`, so stage reaches data-stream identity indirectly. D-033 deduplicates on `(unit, arm, seed)`, so if two roles needed different data the deduplication would be wrong rather than economical — it would silently merge two fits requiring different datasets.
+**Measured:** the invariant holds today across all 75 multi-role fits — but only because no canonical unit also carries a `config_sweep` obligation. That is a property of this enumeration, not of the design, and `("exp1", "config_sweep")` on one unit genuinely does resolve to two different `env` streams. "Happens to hold" is what makes this a check rather than a comment.
+**Plan ref:** not covered by the plan; follows from P§7.2 and P§14.2.
+**Reviewed by Sol:** finding is Sol's; the fix is not yet reviewed.
+
+### D-039 · 2026-08-16 · Comparison groups are the clustering every split and interval must respect
+**Decision:** `group_of(unit, stage)` is the partitioning key for all downstream statistics, and `comparison_groups()` reports the structure. Three consequences are binding: a comparison group stays **entirely** within one critic partition or CV fold; the Week 5 MDE simulation resolves over **groups**, not over 300 unit ids; H1/H2 comparisons inside a group are paired or blocked, never treated as independent draws. Class balancing stays at unit level but is performed subject to the group constraint, and D-031's reserve draw must preserve groups too.
+**Why:** the cost of the common-random-number design Sol prescribed in D-030. Units sharing a group were deliberately given related or nested data — that is what the pairing buys — so they are not independent. Splitting them randomly would put near-identical trajectories on both sides of a critic split and inflate H3.
+**Measured, and the part that goes beyond the finding:** the 75 canonical units collapse into **15** groups (Sol's estimate, exact); the 225 sweep units stay singletons; 300 units → **240** independent groups. More consequentially, the design's intended-class balance is **150/150 at unit level but 125/115 at group level**, so `min(N₀, N₁)` — the quantity P§10.7 makes power depend on — falls from 150 to **115**, a 23% reduction. The design advertises a balance it does not have at the level that is actually independent. This is now printed by the enumerator rather than left to be discovered in Week 5.
+**Not yet built:** the grouped splitter (Week 6/11) and the grouped MDE simulation (W5 Thu). The key and the report exist so neither can be written in ignorance of the clustering.
+**Plan ref:** P§10.4, P§10.7, S§W5 Thu.
+**Reviewed by Sol:** **yes — this decision is Sol's**, extended with the group-level balance measurement.
+
+### D-040 · 2026-08-16 · The pilot boundary is enforced, not merely checkable
+**Decision:** `assert_confirmatory(seeds, what=...)` fails closed on any development seed, **and on a mixed batch**. Run records carry `seed_partition` and `confirmatory`; `load_runs()` gains `require_confirmatory=`; `seed_partition` is a column in the analysis frame. Development seeds below 1000 stay fully usable for MLP debugging and pipeline tests — that is what the range is for.
+**Why:** Sol's finding. D-034 declared the boundary and built a namespace that made exclusion *easy to check*, which is not the same as *impossible to violate* — `stream()` still accepted development seeds normally, and every downstream analysis would have had to remember. A mixed batch fails rather than silently dropping the development rows, because dropping them leaves an analysis quietly computed on fewer units than it reports.
+**Still to wire:** threshold calibration, repair acceptance and the critic loaders do not exist yet (W4–W11). Each must pass `require_confirmatory=True`; the guard exists so that is a one-line obligation rather than a design question.
+**Plan ref:** P§10.6, P§4.2.
+**Reviewed by Sol:** finding is Sol's; this implementation is not yet reviewed.
+
+### D-041 · 2026-08-16 · The bundle selects its own contents
+**Decision:** `sol_bundle.sh` prints the review base, the exact arguments it was invoked with, a `git diff --stat` manifest against that base, and the complete diff — none of which the caller chooses. `BASE=<rev>` sets the review base.
+**Why:** Sol's finding, and it retires a claim of mine that was too strong. The script's own comment said it "cannot flatter" because it is generated rather than hand-written. Generation is not enough: the delta-12 bundle shipped a clean commit and two files, leaving nine implementation claims uncertified — an honest bundle that still misrepresented the work by omission. What the caller picks is now surrounded by what the caller cannot pick.
+**Also corrected:** the claim that commit, dirty flag and test result are the bundle's "first three lines" was simply false — they were near the top. They are now literally the first three lines.
+**Plan ref:** not covered by the plan. Extends D-036.
+**Reviewed by Sol:** finding is Sol's.
+

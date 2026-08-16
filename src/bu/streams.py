@@ -32,20 +32,31 @@ So the key depends on what the stream is *for*:
 * Sweep-only units have no comparison group, so their key is ``unit_id`` and
   they are independent of everything.
 
+**Independence is a claim about units in *different* groups.** Units inside one
+comparison group are *intentionally* dependent -- that is what common random
+numbers buy. Nothing here may be described as "two units are independent"
+without that qualification, and the dependence has to travel downstream: see
+:func:`group_of` and D-039.
+
 **``arm`` is never part of any key.** A baseline and its repairs must see the
 same environment stream and the same recorded failure set (Plan §7.2, step 4) --
 that is what makes the acceptance test paired. Note that the key is built from
 the *unresolved* unit, so a data repair's 10x dataset is a nested extension of
 the baseline's rather than a different draw.
 
-``stage`` is never part of any key either, which is what makes a fit's identity
-``(unit, arm, seed)`` and lets one fit discharge several obligations (D-033).
+``stage`` does not appear in a key's *contents*, which is what makes a fit's
+identity ``(unit, arm, seed)`` and lets one fit discharge several obligations
+(D-033). It is not absent from the *derivation*, though, and the difference
+matters: :func:`comparison_group_id` hashes ``comparison_stage(unit, stage)``,
+so stage reaches data-stream identity indirectly. Deduplicating a multi-role fit
+is therefore only sound if every role resolves to the same streams, which
+:func:`assert_roles_share_one_stream` enforces rather than assumes (D-038).
 """
 
 from __future__ import annotations
 
 import hashlib
-from typing import Any
+from typing import Any, Iterable
 
 import numpy as np
 
@@ -169,16 +180,99 @@ def stream(
     return np.random.default_rng(int(digest[:32], 16))
 
 
+def assert_roles_share_one_stream(unit: UnitSpec, roles: tuple[str, ...]) -> None:
+    """Every role attached to one fit must resolve to the same streams (D-038).
+
+    ``fit_id`` deduplicates on ``(unit, arm, seed)``, so two obligations that
+    collapse to one fit had better *need* the same data. Stage is absent from a
+    stream key's contents, but it is not absent from its derivation:
+    ``comparison_group_id`` hashes ``comparison_stage(unit, stage)``, so stage
+    reaches data-stream identity indirectly. Today the invariant happens to
+    hold, because no canonical unit also carries a ``config_sweep`` role -- and
+    "happens to" is the word that makes this a check rather than a comment. A
+    canonical unit given a sweep obligation would silently deduplicate two fits
+    that require different datasets.
+    """
+    if len(roles) < 2:
+        return
+    for purpose in PURPOSES:
+        keys = {str(stream_key(unit, role, purpose)) for role in roles}
+        if len(keys) > 1:
+            raise ValueError(
+                f"roles {roles} on one fit resolve to different {purpose!r} "
+                f"streams: {sorted(keys)}. These are not the same computation "
+                "and must not be deduplicated into one fit."
+            )
+
+
+def group_of(unit: UnitSpec, stage: str) -> str:
+    """The partitioning key for anything that splits or clusters units (D-039).
+
+    Conditions sharing a group were *deliberately* given related or nested data
+    -- that is the point of common random numbers. The cost is that they are
+    not statistically independent, so this identifier must travel into every
+    split and every interval:
+
+    * a group stays **entirely** within one critic partition or CV fold, or
+      near-identical trajectories appear on both sides of the split and inflate
+      H3;
+    * Week 5's MDE simulation resolves over groups, not over the 300 unit ids;
+    * H1/H2 comparisons within a group are paired or blocked, never treated as
+      independent draws.
+
+    Sweep-only units are singleton groups, so the rule degrades to "by unit"
+    exactly where independence genuinely holds.
+    """
+    return comparison_group_id(unit, stage)
+
+
 def is_confirmatory(seed: int) -> bool:
     """Whether a seed may contribute to a confirmatory result (D-034)."""
     return seed >= K.CONFIRMATORY_SEED_BASE
 
 
 def confirmatory_seeds(n: int) -> tuple[int, ...]:
-    """The first ``n`` seeds of the confirmatory range."""
+    """The first ``n`` seeds of the confirmatory range.
+
+    The only sanctioned way for a confirmatory runner to obtain seeds (D-040).
+    """
     if n <= 0:
         raise ValueError(f"n must be positive, got {n}")
     return tuple(K.CONFIRMATORY_SEED_BASE + i for i in range(n))
+
+
+def seed_partition(seed: int) -> str:
+    return "confirmatory" if is_confirmatory(seed) else "development"
+
+
+def assert_confirmatory(seeds: "int | Iterable[int]", *, what: str) -> None:
+    """Fail closed on development data reaching a confirmatory analysis (D-040).
+
+    D-034 declared the boundary; this enforces it. A namespace that is merely
+    easy to check is not an exclusion -- the Week 2 coverage evidence and the
+    identity-predictor probe both shaped design decisions, and data that shaped
+    a choice cannot also test it.
+
+    A **mixed** collection fails too, and deliberately: silently dropping the
+    development rows would leave an analysis quietly computed on fewer units
+    than it reports.
+    """
+    values = [int(seeds)] if isinstance(seeds, int) else [int(s) for s in seeds]
+    if not values:
+        return
+    partitions = {seed_partition(s) for s in values}
+    if partitions == {"confirmatory"}:
+        return
+    offenders = sorted({s for s in values if not is_confirmatory(s)})
+    raise ValueError(
+        f"{what} received development seeds {offenders[:8]}"
+        f"{' ...' if len(offenders) > 8 else ''}"
+        + (" mixed with confirmatory seeds" if len(partitions) > 1 else "")
+        + f". Seeds below CONFIRMATORY_SEED_BASE={K.CONFIRMATORY_SEED_BASE} are "
+        "development data and are permanently excluded from confirmatory runs, "
+        "threshold calibration, repair acceptance and the critic (D-034). Use "
+        "confirmatory_seeds()."
+    )
 
 
 def _digest(payload: dict[str, Any]) -> str:

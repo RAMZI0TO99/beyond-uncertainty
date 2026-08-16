@@ -203,7 +203,7 @@ def test_unit_ids_match_their_golden_values():
     actual = {name: Config(unit=u).unit_id for name, u in cases.items()}
     assert actual == GOLDEN_UNIT_IDS, (
         "unit_id changed. If that was intended, bump IDENTITY_VERSION, record a "
-        "Change Record in PROJECT_STATE.md §3, and update these values. If it "
+        "Change Record in DECISIONS.md, and update these values. If it "
         "was not intended, something silently altered what a unit means."
     )
 

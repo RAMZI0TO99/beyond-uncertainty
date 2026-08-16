@@ -105,9 +105,9 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 247 passing, 1 skipped
+.venv/bin/python -m pytest -q                      # 257 passing, 1 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
-./scripts/sol_bundle.sh src/bu/config.py           # verification bundle for Sol
+BASE=<last-reviewed-commit> ./scripts/sol_bundle.sh  # verification bundle for Sol
 ```
 
 - venv is `--system-site-packages` (reuses CUDA torch); `pyproject.toml` pins all.
@@ -167,18 +167,27 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 - **Verify Sol's findings before acting on them.** Every one so far has held, and
   two were *worse* than stated — but the checking is what makes actioning them
   honest, and twice it sharpened the finding. Reproduce the arithmetic yourself.
-- **Give Sol the bundle, never a folder.** Sol once reviewed a stale copy and
-  correctly refused to certify it. `sol_bundle.sh` states commit and dirty flag
-  in its first three lines; a folder states nothing (D-036).
+- **Give Sol the bundle, never a folder** — and set `BASE` to the last commit
+  Sol reviewed. Sol once reviewed a stale copy and correctly refused to certify
+  it; a later bundle was honest but shipped two files and left nine claims
+  uncertified. Generated is not the same as complete (D-036, D-041).
+- **A correctness property standing on an accident is not a property.** The
+  multi-role stream invariant held across all 75 shared fits — only because no
+  canonical unit happened to also carry a sweep obligation (D-038).
 
 ---
 
 ## Where the project stands
 
-Weeks 1 and 2 complete and audited, and **both** of Sol's 2026-08-16 reviews
-actioned in full (D-025 … D-037). **Zero compute consumed** — nothing has
-trained. Gate 1 is 2026-09-19. Design: 300 units, 150/150, **8,197 fits**
-against ~8,700. No open questions.
+Weeks 1 and 2 complete and audited, and **all three** of Sol's 2026-08-16
+reviews actioned in full (D-025 … D-041). **Zero compute consumed** — nothing has
+trained. Gate 1 is 2026-09-19. Design: 300 units, **240 comparison groups**,
+**8,197 fits** against ~8,700. No open questions.
+
+**The number that governs power is 115, not 150.** The design is 150/150 on
+intended class at unit level, but units sharing a comparison group share data by
+construction, and at group level it is 125/115. `min(N₀, N₁) = 115` (D-039).
+A comparison group must never span a critic split or a CV fold.
 
 **Next: Week 3, the world model. Nothing blocks it.**
 
@@ -196,6 +205,8 @@ stopping leaks. W3 Wed the bootstrap ensemble, drawing from the `bootstrap` and
 
 **Confirmatory runs use seeds ≥ `CONFIRMATORY_SEED_BASE` (1000).** Everything
 below is pilot data and may never enter a confirmatory result, the threshold
-calibration, repair acceptance, or the critic (D-034).
+calibration, repair acceptance, or the critic (D-034). Week 3 development runs
+at low seeds deliberately. Pass `require_confirmatory=True` to `load_runs()` in
+every analysis that reaches the thesis (D-040).
 
 Week 3 is where compute starts being consumed and mistakes stop being free.

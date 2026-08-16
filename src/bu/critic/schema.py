@@ -13,7 +13,7 @@ is safe by default. A blacklist would fail open on exactly that event.
 Frozen 2026-08-15, before any labelled data exists and before any H1/H2 result
 could influence which features look useful (Sol, Q-006). The feature groups are
 taken verbatim from Plan §13.5.1 and the variants from Plan §12.1. Changing
-CRITIC_FEATURE_SCHEMA requires a Change Record in PROJECT_STATE.md §3, and after
+CRITIC_FEATURE_SCHEMA requires a Change Record in DECISIONS.md, and after
 Week 6 it requires a reason that is not "the critic performs better without it".
 
 Three structures, physically separate (Sol, Q-006)

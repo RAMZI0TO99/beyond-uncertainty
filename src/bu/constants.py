@@ -7,7 +7,7 @@ would have produced a different ground-truth label depending on which section
 the implementation happened to follow. Constants scattered across modules fail
 the same way, silently.
 
-Changing anything in this file requires a Change Record in PROJECT_STATE.md §3
+Changing anything in this file requires a Change Record in DECISIONS.md
 naming the constant, the new value, the reason, and whether any data has already
 been seen. If data has been seen, the answer is almost certainly no.
 """

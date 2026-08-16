@@ -36,6 +36,7 @@ from dataclasses import dataclass
 
 from .. import constants as K
 from ..config import LAYOUTS, STAGE_SEEDS, Arm, Config, UnitSpec, seeds_for
+from ..streams import assert_roles_share_one_stream, group_of
 
 #: Environment axes. Their product is the configuration space (Plan §13.1.2).
 CAUSAL_ATTRIBUTES = ("shape", "colour", "position")
@@ -568,6 +569,9 @@ def execution_plan(units: tuple[UnitSpec, ...] | None = None) -> tuple[Fit, ...]
         # Baselines: one fit per seed in the union of what the stages demand.
         for seed in range(max(ob.seeds for ob in demands)):
             roles = tuple(sorted(ob.stage for ob in demands if seed < ob.seeds))
+            # Fail here rather than produce a plan that quietly merges two
+            # obligations needing different datasets (D-038).
+            assert_roles_share_one_stream(unit, roles)
             plan.append(Fit(unit=unit, arm="baseline", seed=seed, roles=roles))
 
         # Repairs: their own stage policy, which is not the baseline's.
@@ -614,6 +618,36 @@ def total_model_fits(units: tuple[UnitSpec, ...] | None = None) -> dict[str, int
         "ablations": 150,  # Plan §14.2's line item; sized in Week 14
         "total": baseline_fits + repair_fits + 150,
     }
+
+
+def stage_of(unit: UnitSpec) -> str:
+    """The canonical stage a unit carries, or ``config_sweep`` if it is sweep-only."""
+    canonical_ids = {Config(unit=u).unit_id for u in canonical_units()}
+    return (
+        _CANONICAL_STAGE[unit.family]
+        if Config(unit=unit).unit_id in canonical_ids
+        else "config_sweep"
+    )
+
+
+def comparison_groups(
+    units: tuple[UnitSpec, ...] | None = None,
+) -> dict[str, tuple[UnitSpec, ...]]:
+    """Units keyed by the group they share data-generating randomness with.
+
+    **The clustering every split and every interval must respect** (D-039).
+    Common random numbers make units inside a group dependent by design, so
+    treating 300 unit ids as 300 independent observations overstates the
+    evidence. Concretely: the 75 canonical units collapse into 15 groups, the
+    225 sweep units stay singletons, and the design's intended-class balance
+    falls from 150/150 at unit level to **125/115** at group level -- which is
+    the level ``min(N0, N1)`` should be read at (Plan §10.7).
+    """
+    units = full_matrix() if units is None else units
+    out: dict[str, list[UnitSpec]] = {}
+    for unit in units:
+        out.setdefault(group_of(unit, stage_of(unit)), []).append(unit)
+    return {k: tuple(v) for k, v in out.items()}
 
 
 # --- reporting (W2 Tue: "prints the count by axis") -----------------------
@@ -666,6 +700,24 @@ def summarise(units: tuple[UnitSpec, ...] | None = None) -> str:
                 f"  x {seeds_for(stage)} seeds"
             )
     lines.append(f"{'total':>18}: {len(obs):>4} obligations over {len(units)} units")
+
+    groups = comparison_groups(units)
+    lines += ["", "Comparison groups -- the clustering splits must respect (D-039)", "-" * 60]
+    lines.append(f"  units {len(units)}  ->  independent groups {len(groups)}")
+    sizes = Counter(len(v) for v in groups.values())
+    lines.append(
+        "  group sizes: "
+        + "  ".join(f"{size}x{count}" for size, count in sorted(sizes.items()))
+    )
+    gclass = Counter(
+        0 if members[0].family == "estimation" else 1 for members in groups.values()
+    )
+    lines.append(
+        f"  intended class at GROUP level: D=0 {gclass[0]}, D=1 {gclass[1]}, "
+        f"min = {min(gclass.values())}"
+    )
+    lines.append("  Units inside a group share data by design, so this -- not the")
+    lines.append("  unit count -- is what the Week 5 MDE simulation resolves over.")
 
     lines += ["", "Compute implied (Plan §14.2 accounting)", "-" * 60]
     fits = total_model_fits(units)

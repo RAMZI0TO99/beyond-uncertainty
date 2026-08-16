@@ -191,7 +191,7 @@ UNIT_IDENTITY_FIELDS: tuple[str, ...] = (
 
 #: Fields of UnitSpec deliberately excluded from statistical identity. Empty
 #: today: every field above is a genuine axis of the design. Anything added here
-#: needs a reason recorded in PROJECT_STATE.md §3, because excluding a field
+#: needs a reason recorded in DECISIONS.md, because excluding a field
 #: means two configs differing in it collapse to one unit.
 UNIT_NON_IDENTITY_FIELDS: tuple[str, ...] = ()
 
@@ -458,7 +458,7 @@ def _assert_classification_exhaustive() -> None:
                 f"{cls.__name__}: field(s) {sorted(unclassified)} are not "
                 "classified. Add each to the identity registry or to the "
                 "explicit exclusion list, and record the reason in "
-                "PROJECT_STATE.md §3. Does this field define an independent "
+                "DECISIONS.md. Does this field define an independent "
                 "configuration-condition?"
             )
         if phantom := declared - actual:
