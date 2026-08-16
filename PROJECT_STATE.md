@@ -46,7 +46,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **360 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
+| **Tests** | **367 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
 | **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). Week 3 ran entirely on CPU in seconds; the student's GPU was under another workload all week |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -192,6 +192,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-052** | 2026-08-16 | Three disjoint pools, and a shorter episode | finding Sol's |
 | **D-053** | 2026-08-16 | Q-011 closed — episode bootstrap primary, alternatives are sensitivities | Sol's |
 | **D-054** | 2026-08-16 | Frozen data-generation procedure, bounded sensitivity scope, a claim withdrawn | finding Sol's |
+| **D-055** | 2026-08-16 | Three blockers: repair pairing, evaluation exclusion, confirmatory overrides | finding Sol's |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -295,13 +296,15 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept here.
 
-### 2026-08-16 (delta 20 review) · Freezing the procedure, and withdrawing a claim · Claude
-**Did:** actioned Sol's seventh review (D-054). Withdrew the stationarity overclaim; froze the data-generation procedure against silent override; bounded the bootstrap sensitivities to the W3 Friday pilot; added the non-overlap and evaluation-isolation tests Sol asked for as *properties* rather than mechanisms; corrected D-020's methodology evidence.
-**The claim I withdrew:** D-051 reported "+1.1 SE by episode index" as though it established IID episodes. A null diagnostic never proves the null. Stationarity is a **structural** property — no mutable state but independent RNG progression crosses an episode boundary — and two structural tests now assert that instead.
-**Better evidence found while verifying episode length**, over eight seeds: the rule-carrying transition rate is **flat in N** (0.227 / 0.252 / 0.250 at N = 100 / 1,000 / 5,000) where it ran 0.520 / 0.355 / 0.280 before. Unique episodes per bootstrap member is 0.655 / 0.639 / 0.634 — the classic ~63% at *every* size including 100, which is the fix working. Disagreement at N=100 has CV 0.12 across five seeds.
-**Result:** 346 → 360 tests. `episode_length` now raises on a confirmatory seed, is recorded on the dataset and survives a round trip; the sensitivities are declared **W3 Friday pilot only**, not in the 8,197-fit plan, because a capability in `granularity=` is not a decision to use it.
-**Left:** nothing running, still **zero GPU-hours**. `docs/method_draft.md` carries the stationary figures and says plainly that the earlier measurement was superseded.
-**Next:** W3 Fri, once the bundle reaches Sol. **The recurring process failure is delivery, not the work:** Sol has now twice reported receiving only `DELTA_TO_SOL.md`, so D-047 … D-054 are still uncertified and `165892b` is still the last certified commit.
+### 2026-08-16 (bundle 9bdb22a review) · Two tests that checked a mechanism and claimed a property · Claude
+**Did:** the delivery gap closed — Sol received the bundle and reviewed it. Three blockers, all verified before fixing, all confirmed (D-055).
+**(1) Feature repair broke P§7.2's paired failure set.** `collect_pools` used one unit for both stream identity and environment construction. `data_repair` and `capacity_repair` survived by accident — their experiments exclude the field the repair changes — but `feature_repair` changes `withheld_features`, which 2A does not exclude, so the repair was scored against a **different evaluation pool from its own baseline**. Fixed: identity from the unresolved unit, environment from the effective one. Tested for all three arms on the latent trajectory, since restoring a feature changes the observation width.
+**(2) "Evaluation cannot reach model selection" was simply false.** My test asserted a parameter *name* did not exist; the pools share a type, so passing evaluation as validation ran fine — verified, `n_validation=1000`. Every reported number would have been selected on. Now `TransitionDataset` carries its `pool` and `train()` checks provenance.
+**(3) Confirmatory override paths closed** — `n_transitions`, custom policy, and `granularity`. The last mattered most: granularity is not in `Config`, so a non-primary fit would have occupied the *same recorded identity* as the primary one.
+**The pattern worth recording:** two of the three were tests I wrote **because Sol asked for properties rather than mechanisms**, and both checked a mechanism anyway. That is now in `CLAUDE.md`'s traps.
+**Result:** 360 → 367 tests. Also fixed: legacy datasets are no longer stamped with today's `EPISODE_LENGTH`, the reset regression test uses an explicit allowlist plus a spy on the call count, and byte-identity claims compare every array rather than `obs` alone.
+**Left:** zero GPU-hours. Sol permits the **W3 Friday development pilot on development seeds**; confirmatory execution and repair validation stay blocked until these fixes are bundled.
+**Next:** W3 Fri development pilot — ask the student before spending compute.
 ---
 
 ## 8. → TO SOL — *moved to its own file*

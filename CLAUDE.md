@@ -109,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 360 passing, 1 skipped
+.venv/bin/python -m pytest -q                      # 367 passing, 1 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -185,6 +185,15 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
   I read a 97.7% loss share as "98% of the gradient" — measured, the trunk
   gradient was 16–36% activation, the opposite way round. Measure the quantity
   you are about to make a claim about (D-047).
+- **Test the property, not the mechanism that currently delivers it.** Twice in
+  two reviews I wrote a test that checked a mechanism and claimed a property —
+  "evaluation can't reach selection" asserted a *parameter name* did not exist,
+  while the pools shared a type and the call ran fine. Both were written
+  *because* Sol asked for property tests (D-055).
+- **One arm passing is not evidence about another.** Repair pairing held for
+  data and capacity repair because their experiments exclude the field those
+  repairs change. Feature repair changes a field 2A does not exclude, and broke.
+  Parametrise over every arm (D-055).
 - **A null result never proves the null.** I reported "+1.1 SE by episode index"
   as though it established IID episodes. It is *consistent* with them. Where a
   property is structural, assert the structure (D-054).
@@ -205,9 +214,11 @@ running roughly two weeks ahead of its own calendar (DEV-002).*
 
 **Weeks 1 and 2 complete and audited. Week 3 Mon, Tue and Wed done** — then
 substantially corrected by Sol's sixth and seventh reviews. Seven Sol reviews
-actioned on 2026-08-16 (D-025 … D-054). **D-047 … D-054 are UNCERTIFIED**: the
-bundles were generated but never reached Sol, so `165892b` is still the last
-certified commit and Sol blocks W3 Friday on it. Gate 1 is 2026-09-19. **Zero GPU-hours consumed** —
+actioned on 2026-08-16 (D-025 … D-054). Bundle `9bdb22a` reached Sol and
+was reviewed: methodology accepted, three implementation blockers found and
+fixed in D-055. **Sol permits the W3 Friday pilot on development seeds only**;
+confirmatory execution and repair validation stay blocked until D-055 is
+bundled from `BASE=9bdb22a`. Gate 1 is 2026-09-19. **Zero GPU-hours consumed** —
 everything so far runs on CPU in seconds.
 
 **The correction is the thing to understand before touching Week 3 code.** The

@@ -31,7 +31,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from .. import constants as K
-from ..config import UnitSpec
+from ..config import Arm, UnitSpec
 from ..streams import POOL_PURPOSES, is_confirmatory, stream
 from .gridworld import INTERACT, N_ACTIONS, SHAPES, GridState, GridWorld, is_passable
 from .policy import ExploratoryPolicy
@@ -195,8 +195,11 @@ class TransitionDataset:
             step=z["step"],
             unit=UnitSpec(**unit_fields),
             seed=int(meta["seed"]),
-            episode_length=int(meta.get("episode_length", K.EPISODE_LENGTH)),
-            pool=str(meta.get("pool", "train")),
+            # Never stamp a historical dataset with the currently checked-out
+            # constant -- that is the opposite of a provenance guarantee
+            # (D-055). A record that does not state its generator is rejected.
+            episode_length=_require_provenance(meta, "episode_length"),
+            pool=_require_provenance(meta, "pool"),
             coverage=CoverageReport(
                 n_transitions=cov["n_transitions"],
                 n_episodes=cov["n_episodes"],
@@ -216,6 +219,7 @@ def collect(
     *,
     seed: int = 0,
     stage: str = "pilot",
+    arm: str = "baseline",
     pool: str = "train",
     episode_length: int = DEFAULT_EPISODE_LENGTH,
     policy: Policy | None = None,
@@ -247,15 +251,18 @@ def collect(
     condition's held-out data does not depend on how much training data it
     happened to have. **The registered N is training transitions only.**
     """
-    n = unit.n_transitions if n_transitions is None else n_transitions
-    if n <= 0:
-        raise ValueError(f"n_transitions must be positive, got {n}")
     if pool not in POOL_PURPOSES:
         raise ValueError(f"unknown pool {pool!r}; expected {sorted(POOL_PURPOSES)}")
     # Episode length is frozen experimental procedure (D-052, D-054): it sets
     # how many independent clusters a condition contains and therefore what a
     # block bootstrap can resample. A development override is allowed and is
     # recorded on the dataset; a confirmatory seed may not use one.
+    if policy is not None and is_confirmatory(seed):
+        raise ValueError(
+            f"a custom policy was injected on confirmatory seed {seed}. The "
+            "behaviour policy is frozen experimental procedure (D-051, D-054) "
+            "and is not a call-site argument for a run that reaches a result."
+        )
     if episode_length != K.EPISODE_LENGTH and is_confirmatory(seed):
         raise ValueError(
             f"episode_length={episode_length} on confirmatory seed {seed}; the "
@@ -265,10 +272,20 @@ def collect(
         )
 
     env_purpose, policy_purpose = POOL_PURPOSES[pool]
-    env = GridWorld(unit)
+    # Stream identity comes from the UNRESOLVED unit; the environment and
+    # encoder come from the EFFECTIVE one (D-055). Without the split, resolving
+    # a feature repair changed `withheld_features`, which Experiment 2A's
+    # comparison group does not exclude, so the repair drew a different
+    # environment, validation and evaluation pool from its own baseline -- and
+    # Plan §7.2 requires a repair to be scored on the same recorded failure set.
+    effective = Arm(arm).resolve(unit)
+    n = effective.n_transitions if n_transitions is None else n_transitions
+    if n <= 0:
+        raise ValueError(f"n_transitions must be positive, got {n}")
+    env = GridWorld(effective)
     env_rng = stream(unit, stage, env_purpose, seed)
     pol = (
-        ExploratoryPolicy(unit, rng=stream(unit, stage, policy_purpose, seed))
+        ExploratoryPolicy(effective, rng=stream(unit, stage, policy_purpose, seed))
         if policy is None
         else policy
     )
@@ -308,7 +325,7 @@ def collect(
             steps.append(step)
 
             _tally(
-                unit, state, action, nxt,
+                effective, state, action, nxt,
                 shape_action, causal_action, bumps,
             )
             if nxt.agent != state.agent:
@@ -343,7 +360,7 @@ def collect(
         next_obs=np.asarray(next_list, dtype=np.float32),
         episode=np.asarray(episodes, dtype=np.int64),
         step=np.asarray(steps, dtype=np.int64),
-        unit=unit,
+        unit=effective,
         coverage=coverage,
         seed=seed,
         episode_length=episode_length,
@@ -405,21 +422,44 @@ def collect_pools(
     *,
     stage: str,
     seed: int,
+    arm: str = "baseline",
     n_transitions: int | None = None,
     episode_length: int = DEFAULT_EPISODE_LENGTH,
 ) -> Pools:
-    """Training, validation and evaluation pools from three separate streams."""
-    n = unit.n_transitions if n_transitions is None else n_transitions
+    """Training, validation and evaluation pools from three separate streams.
+
+    ``unit`` is the **unresolved** unit and ``arm`` the repair applied to it.
+    Keeping them apart is what makes the acceptance test paired: a baseline and
+    all of its repairs draw the same environment, validation and evaluation
+    streams, while the repair still changes what it is supposed to change
+    (D-055).
+    """
+    registered = Arm(arm).resolve(unit).n_transitions
+    n = registered if n_transitions is None else n_transitions
+    if n != registered and is_confirmatory(seed):
+        raise ValueError(
+            f"n_transitions={n} on confirmatory seed {seed}, but the unit "
+            f"registers {registered}. The dataset size *is* Experiment 1's "
+            "manipulation; overriding it silently would make a condition's "
+            "recorded identity a lie about the data it trained on (D-055)."
+        )
+    common = dict(stage=stage, seed=seed, arm=arm, episode_length=episode_length)
     return Pools(
-        train=collect(
-            unit, n, stage=stage, seed=seed, pool="train", episode_length=episode_length
-        ),
+        train=collect(unit, n, pool="train", **common),
         validation=collect(
-            unit, K.VALIDATION_EPISODES * episode_length,
-            stage=stage, seed=seed, pool="validation", episode_length=episode_length,
+            unit, K.VALIDATION_EPISODES * episode_length, pool="validation", **common
         ),
         evaluation=collect(
-            unit, K.EVALUATION_EPISODES * episode_length,
-            stage=stage, seed=seed, pool="evaluation", episode_length=episode_length,
+            unit, K.EVALUATION_EPISODES * episode_length, pool="evaluation", **common
         ),
     )
+
+
+def _require_provenance(meta: dict[str, Any], field: str) -> Any:
+    if field not in meta:
+        raise ValueError(
+            f"dataset record has no {field!r}; it predates the provenance fields "
+            "(D-055) and its generator is unknown. Regenerate it rather than "
+            "assuming today's constants describe it."
+        )
+    return meta[field]

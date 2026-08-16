@@ -473,3 +473,21 @@ Every decision a future reader would otherwise have to reconstruct. Format:
 **Plan ref:** P§13.2, P§3.2.1, P§14.2, P§14.3. Corrects D-051's stationarity claim; bounds D-053's sensitivities.
 **Reviewed by Sol:** clarifications are Sol's; this implementation is not yet reviewed.
 
+### D-055 · 2026-08-16 · Three blockers, two of them tests that checked a mechanism and claimed a property
+**Sol's three blockers on `9bdb22a`, all verified before fixing, all confirmed.**
+
+**(1) Feature repair broke the paired failure set.** `collect_pools` used one unit for both stream identity and environment construction, so resolving a repair changed the stream key. Measured: `data_repair` and `capacity_repair` preserved the key (Experiment 1 excludes `n_transitions` from its comparison group, 2B excludes `hidden_size`) — but `feature_repair` changes `withheld_features`, which 2A does **not** exclude, so the repair drew a **different** environment, validation and evaluation pool from its own baseline. P§7.2 requires a repair to be scored on the same recorded failure set; it was not.
+**Fix:** stream identity now derives from the **unresolved** unit while the environment and encoder use the **effective** one. Tested for all three arms, compared on the **latent** trajectory — actions, episode indices and agent positions — because restoring a feature changes the observation width and byte equality of encoded observations is the wrong test.
+**Why my test missed it:** it covered `data_repair` only. Two arms working was not evidence about the third, and the one that failed was the one whose repair touches an identity field its own experiment does not exclude.
+
+**(2) "Evaluation cannot reach model selection" was false.** My test asserted that `train` has no parameter *named* `evaluation`. The pools share a type, so `train(model, pools.train, pools.evaluation, ...)` simply ran — verified, `n_validation=1000` — and every reported number would have been selected on. **Fix:** `TransitionDataset` carries its `pool`, and `train` requires `train_data.pool == "train"` and `validation.pool == "validation"`. Provenance is checked instead of the signature.
+**This is the second time in two reviews** I wrote a test that checked a mechanism and claimed a property, in a test written *because* Sol asked for properties. Recorded as a pattern, not an incident.
+
+**(3) The frozen procedure had open confirmatory paths.** A confirmatory caller could override `n_transitions`, inject a policy without `reset()`, or pass `granularity="transition"`. The last is the worst: granularity is not part of `Config`, so a non-primary fit would have occupied the **same recorded identity** as the primary one. All three now raise on a confirmatory seed and remain available below `CONFIRMATORY_SEED_BASE`.
+
+**Two further corrections.**
+*Provenance:* loading a record without `episode_length` used to stamp it with the current constant, so a dataset generated at 50 would be relabelled 10 — the opposite of a provenance guarantee. It now raises. *Reset regression test:* it only noticed non-empty dicts, lists and sets, so a scalar counter or array would have passed. Replaced with an explicit allowlist of permitted persistent fields plus a spy asserting `collect()` calls `reset()` exactly once per episode.
+*Byte-identity claims* across dataset sizes now compare every array, not only `obs`.
+**Plan ref:** P§7.2, P§10.1, P§14.2. Corrects D-052's implementation and D-054's override closure.
+**Reviewed by Sol:** findings are Sol's; these fixes are not yet reviewed.
+

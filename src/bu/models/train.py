@@ -107,6 +107,24 @@ def train(
     """
     config = config or TrainConfig()
 
+    # The evaluation pool must never reach checkpoint selection, and "train()
+    # has no parameter called evaluation" was not that guarantee -- the pools
+    # share a type, so `train(model, pools.train, pools.evaluation, ...)`
+    # simply worked, and every reported number would have been selected on
+    # (D-055). Provenance is checked instead of the signature.
+    if train_data.pool != "train":
+        raise ValueError(
+            f"training data came from the {train_data.pool!r} pool; only the "
+            "training pool may be trained on"
+        )
+    if validation.pool != "validation":
+        raise ValueError(
+            f"validation data came from the {validation.pool!r} pool. Early "
+            "stopping and checkpoint selection may only read the validation "
+            "pool -- the evaluation pool exists so reported error, disagreement "
+            "and failure sets are never selected on."
+        )
+
     obs = torch.as_tensor(train_data.obs)
     action = torch.as_tensor(train_data.action)
     next_obs = torch.as_tensor(train_data.next_obs)

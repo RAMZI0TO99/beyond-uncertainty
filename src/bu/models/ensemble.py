@@ -44,7 +44,7 @@ import torch
 from .. import constants as K
 from ..config import TrainConfig, UnitSpec
 from ..env.collect import Pools, TransitionDataset
-from ..streams import stream
+from ..streams import is_confirmatory, stream
 from .train import TrainResult, episode_indices, train
 from .world_model import WorldModel
 
@@ -150,6 +150,15 @@ def train_ensemble(
     identical across members, dataset sizes and conditions (D-052).
     """
     config = config or TrainConfig()
+    if granularity != "episode" and is_confirmatory(seed):
+        raise ValueError(
+            f"granularity={granularity!r} on confirmatory seed {seed}. Episode "
+            "block bootstrap is the fixed primary method (D-053); the other "
+            "schemes are development diagnostics for the Week 3 Friday pilot "
+            "and are not in the 8,197-fit plan (D-054). They are also not part "
+            "of Config or run identity, so a non-primary confirmatory fit would "
+            "occupy the same recorded identity as the primary one."
+        )
 
     members: list[WorldModel] = []
     results: list[TrainResult] = []
