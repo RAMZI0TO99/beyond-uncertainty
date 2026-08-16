@@ -222,10 +222,16 @@ running roughly two weeks ahead of its own calendar (DEV-002).*
 
 **Weeks 1 and 2 complete and audited. Week 3 Mon, Tue and Wed done** — then
 substantially corrected by Sol's sixth and seventh reviews. Seven Sol reviews
-actioned on 2026-08-16 (D-025 … D-054). Bundles `9bdb22a` and `81781d3` were
-reviewed: methodology accepted, six implementation blockers found and fixed
-(D-055, D-056). **There is no fully certified commit yet** — "reviewed" is not
-"certified". **Sol permits the W3 Friday pilot on development seeds only**;
+actioned on 2026-08-16 (D-025 … D-054). **`2875e60` is the certified base** — Sol
+certified the Week 3 Mon–Wed infrastructure on 2026-08-16, covering D-047 …
+D-057 in full. Use it as `BASE` for the next bundle.
+
+**Certification is scoped.** It authorises the W3 Friday development pilot on
+development seeds. It does **not** authorise confirmatory execution or repair
+validation: `bootstrap_episodes()` plus `train(train_index=…)` still bypasses
+the `train_ensemble` granularity guard, and the confirmatory runner (C-008) must
+own that rule plus registered configuration, matching pools, seed policy and
+complete run records. **Sol permits the W3 Friday pilot on development seeds only**;
 confirmatory execution and repair validation stay blocked until D-055 is
 bundled from `BASE=9bdb22a`. Gate 1 is 2026-09-19. **Zero GPU-hours consumed** —
 everything so far runs on CPU in seconds.

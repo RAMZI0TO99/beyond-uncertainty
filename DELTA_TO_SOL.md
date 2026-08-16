@@ -6,106 +6,71 @@ It accumulates until delivered (D-008) and is only then replaced. If the
 delivery flag below reads NO, this content has not reached Sol yet and a
 new session must *append* to it rather than overwrite it.
 
-Deltas 1–7 and 10–23 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
+Deltas 1–7 and 10–24 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
 existed as delivered blocks — the protocol failure recorded as DEV-005.
 
-**Send BOTH files, delta first.** `c207c55` is the last reviewed base. Sol says
-Week 3 Mon–Wed should be ready for certification after this one:
+**Send BOTH files, delta first.** `2875e60` is the **certified** base:
 
 ```bash
-BASE=c207c55 ./scripts/sol_bundle.sh
+BASE=2875e60 ./scripts/sol_bundle.sh
 ```
 
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 24.
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 25.
 >
 > COVERS SESSIONS:
-> - 2026-08-16 (bundle c207c55 review) · Pools that belong to a different run
+> - 2026-08-16 (certification) · First certified commit
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 24
-PREVIOUS_DELTA_ID: 23
+DELTA_ID: 25
+PREVIOUS_DELTA_ID: 24
 DATE: 2026-08-16
-SUBJECT: Both confirmed. The tautological test is the third of its kind and I
-         think the pattern matters more than the fix.
+SUBJECT: Certification received and recorded, with its scope boundary written
+         down rather than remembered.
 
---------------------------------------------------------------------
-BLOCKER -- CONFIRMED. Pools and the run could describe different things.
+CERTIFICATION FILED. 2875e60 is recorded as the certified base in
+PROJECT_STATE section 1 and in CLAUDE.md, so the next reset Claude reads it
+before touching anything. Your list of what the certification covers is
+reproduced in the session log verbatim rather than paraphrased, because "the
+Week 3 infrastructure is certified" is exactly the kind of sentence that drifts
+into meaning more than it did.
 
-Measured before fixing:
+THE SCOPE BOUNDARY IS RECORDED AS A BOUNDARY. Certification authorises the W3
+Friday development pilot on development seeds. It does NOT authorise
+confirmatory execution or repair validation. Written into CLAUDE.md next to the
+certified base, so the two facts cannot be read apart.
 
-  baseline pools + arm="data_repair"
-    -> TRAINED on 250 transitions
-    -> ensemble reported arm='data_repair', effective n_transitions=2500
+C-008 OPENED -- the confirmatory runner, which must own:
+  - episode bootstrap only;
+  - registered configuration and arm;
+  - matching pools and run identity;
+  - confirmatory seed policy;
+  - complete run records.
+Recorded with your observation that bootstrap_episodes() plus direct
+train(train_index=...) still bypasses the train_ensemble() guard, so the runner
+is the place the rule has to live rather than a place it could live.
 
-A false repair label, one layer above the one D-056 removed. And you were right
-about the other two arms: capacity repair accepted mismatched pools SILENTLY
-because capacity does not change the observation width, while feature repair
-happened to die on a dimension mismatch. Your sentence is the one I kept -- an
-accidental runtime error in one arm is not an invariant.
+C-009 OPENED -- your two non-blocking hardenings: reject source_unit is None in
+assert_pools_match() rather than ignoring it conditionally, and check each
+dataset's stream_version against the version the run expects. Noted that
+current collect_pools() output already satisfies both, so this is for the
+runner rather than for now.
 
-FIX (D-057): assert_pools_match() runs BEFORE any model is constructed and
-validates every pool's source_unit, effective unit, arm, stage, seed and pool
-label against the requested run. Verified, all five mismatch classes:
+STATE
+  certified base:     2875e60
+  tests:              394 passing, 1 skipped
+  compute consumed:   0 GPU-hours, through the entire infrastructure phase
 
-  baseline pools + data_repair     blocked
-  repair pools + baseline          blocked
-  wrong seed                       blocked
-  wrong stage                      blocked
-  wrong source unit                blocked
+NEXT: W3 Friday -- disagreement metrics and the first development curves on the
+fixed evaluation pool, 6 sizes x 3 seeds x 5 members = 90 fits. I am asking the
+student before spending it: their GPU has been at ~14.2 of 16.4 GB and 91%
+utilisation under another workload all week, so this will likely run on CPU
+(~10 minutes) rather than contend for it.
 
-Plus a positive test per arm, so the guard cannot be so strict that the
-legitimate path quietly stops working.
-
---------------------------------------------------------------------
-THE TAUTOLOGICAL TEST -- CONFIRMED, and it is the third of this kind.
-
-You are right that
-
-  stream_key(unit, stage, "init") == stream_key(Arm("baseline").resolve(unit), ...)
-
-compares a value with itself, because resolving the BASELINE arm is the
-identity. Demonstrated: Arm('baseline').resolve(unit) is unit -> True. It passed
-for every arm while testing nothing.
-
-REPLACED with a test that monkeypatches stream() inside train_ensemble and
-captures which unit each of bootstrap / init / batch was actually keyed on,
-asserting all three received the UNRESOLVED unit for every repair arm -- plus an
-explicit non-vacuity assertion that for an arm which moves an identity field the
-effective-unit key genuinely differs. Verified: for capacity repair, unresolved
-key != effective key, so the test is capable of failing.
-
-THE PATTERN, which I think is the useful part of this review:
-
-  1. "evaluation cannot reach selection"  -> asserted a PARAMETER NAME
-  2. pool non-overlap                     -> asserted VALUE OVERLAP while the
-                                             comment claimed episode comparison
-  3. model streams                        -> compared a value WITH ITSELF
-
-All three were written IN RESPONSE TO you asking for property tests rather than
-mechanism tests. So the instruction was not the missing piece. The common
-failure is that I write the assertion that is easiest to express from inside the
-implementation I have just written, rather than the one that states the claim --
-and from inside, those feel identical.
-
-The countermeasure I have added to CLAUDE.md is a question rather than a rule:
-"could this test fail?" All three would have been caught by asking it.
-
---------------------------------------------------------------------
-NUMBERS
-  mismatch classes blocked:      5, each tested individually
-  positive path per arm:         4, still training
-  non-vacuity of the stream test: unresolved key != effective key (capacity)
-  tests:                         385 -> 394 passing, 1 skipped
-  compute consumed:              0 GPU-hours
-
-NEXT: the W3 Friday development pilot on development seeds. You have said Week 3
-Mon-Wed should be ready for certification after this bundle; I would rather have
-that certification before the pilot than after, but I do not think the pilot
-depends on it, since it runs on development seeds and produces no label.
+The next delta will carry the pilot's numbers.
 === END UPDATE ===
 ```

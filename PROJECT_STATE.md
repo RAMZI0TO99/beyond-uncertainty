@@ -42,10 +42,10 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-16 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–2 complete and audited. W3 Mon, Tue and Wed done.** All eight of Sol's 2026-08-16 reviews actioned. Running ahead of the 2026-08-17 start — see DEV-002 |
+| **Current week / day** | **Weeks 1–2 audited; W3 Mon–Wed built, corrected and CERTIFIED at `2875e60`.** Nine Sol reviews actioned on 2026-08-16. Running ahead of the 2026-08-17 start — see DEV-002 |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
-| **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
+| **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `2875e60`** — Sol certified the Week 3 Mon–Wed infrastructure on 2026-08-16, covering D-047 … D-057. Set `BASE` to this for the next bundle |
 | **Tests** | **394 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
 | **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). Week 3 ran entirely on CPU in seconds; the student's GPU was under another workload all week |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
@@ -77,7 +77,7 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 
 **No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **One open item carried into W3 Tue:** the detached head sits at 0.2575 against a copy baseline of 0.1652 after 3,000 epochs, and Sol's conditional for a second trunk turns on whether the real training loop can close that — it must not be decided from a hand-rolled loop.
 
-**Blocked on:** nothing for Week 3. Sol permits MLP implementation and development training. Still blocked, by Sol and correctly: **confirmatory collection** and **critic splitting / Week 5 MDE approval** — see C-003, C-005, C-006. No open questions.
+**Blocked on:** nothing for the W3 Friday development pilot — Sol approved it on development seeds. Still blocked, correctly: **confirmatory execution** and **repair validation**, both waiting on the confirmatory runner; **critic splitting** and **W5 MDE approval** — see C-003, C-005, C-006, C-008. No open questions.
 
 **Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split conditionally, and DEV-005 was a hit against that condition. Sol weighed it on 2026-08-16 and **kept the split**, on the grounds that the mechanised protocol tests improve the arrangement more than reassigning implementation would. The watch stays live: consequential design decisions go into a delta **and get delivered** before dependent code is built on them, and Claude flags any decision it believes meets that bar at the moment of making it. D-030 is the current test of that — decided, filed, and deliberately left unbuilt.
 
@@ -290,6 +290,8 @@ Two conditions:
 | C-005 | Grouped dataset partitioning for the critic splitter — a comparison group never spans a split | Sol, 2026-08-16 (delta 12) | **Open** — key and report built (D-039); splitter is W6/W11 |
 | C-006 | Week 5 MDE simulation: reproduce the **actual paired balanced-accuracy estimator** — real group sizes and class membership, group-preserving partitions, unit weights, paired critic-vs-baseline predictions, ICC grid — and validate against the analytic result at ICC = 0 **and** ICC = 1 | Sol, 2026-08-16 (deltas 12–14) | **Open** — fully specified in D-044; due W5 Thu |
 | C-007 | Pass `require_confirmatory=True` in threshold calibration, repair acceptance and every critic loader as each is built | Sol, 2026-08-16 (delta 12) | **Open** — guard built (D-040); call sites are W4–W11 |
+| C-008 | **Build the confirmatory runner**, which must own: episode bootstrap only, registered configuration and arm, matching pools and run identity, confirmatory seed policy, complete run records. `bootstrap_episodes()` + `train(train_index=…)` still bypasses the `train_ensemble` guard | Sol, 2026-08-16 (cert of 2875e60) | **Open** — blocks confirmatory execution and repair validation |
+| C-009 | Runner hardening: reject `source_unit is None` in `assert_pools_match()` rather than ignoring it, and check each dataset's `stream_version` against the run's | Sol, 2026-08-16 | **Open** — non-blocking; current `collect_pools` output already satisfies both |
 | C-003 | Predeclare the D-031 reserve draw order | Sol, 2026-08-16 | **Open** — due W5 Thu with the MDE simulation |
 
 ---
@@ -298,13 +300,12 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept here.
 
-### 2026-08-16 (bundle c207c55 review) · Pools that belong to a different run · Claude
-**Did:** two findings (D-057), both verified, both confirmed. Sol says Week 3 Mon–Wed should be ready for certification after these.
-**(1) Pools and the ensemble could disagree about the arm.** `arm` reached `collect_pools` and `train_ensemble` independently and nothing checked they matched. Measured: baseline pools plus `arm="data_repair"` **trained on 250 transitions** while reporting the data-repair identity with its effective 2,500 — the same class of false repair label as D-056, one layer up. Capacity repair accepted mismatched pools silently; feature repair happened to die on a dimension mismatch, and Sol's point stands that an accidental runtime error in one arm is not an invariant. `assert_pools_match()` now validates source unit, effective unit, arm, stage, seed and pool label before any model is built; five mismatch classes tested, plus a positive test per arm.
-**(2) My model-stream test was tautological** — `stream_key(unit, …) == stream_key(Arm("baseline").resolve(unit), …)` compares a value with itself, because resolving the baseline arm is the identity. Replaced with one that monkeypatches `stream` inside `train_ensemble`, captures which unit `bootstrap`/`init`/`batch` were actually keyed on, and asserts non-vacuity.
-**The pattern is now three deep** and all three were written *because* Sol asked for property tests: a parameter-name check, a value-overlap check claiming episode comparison, and a value compared with itself. The common failure is writing the assertion easiest to express from inside the implementation rather than the one that states the claim. That framing is now in `CLAUDE.md`.
-**Result:** 385 → 394 tests. **Zero GPU-hours.**
-**Next:** W3 Fri development pilot — Sol permits it on development seeds; ask the student before spending compute.
+### 2026-08-16 (certification) · First certified commit · Claude
+**Did:** Sol reviewed bundle `2875e60` and **certified the Week 3 Mon–Wed infrastructure**. This is the project's first fully certified commit. Recorded C-008 (the confirmatory runner Sol requires before confirmatory execution or repair validation) and C-009 (two non-blocking hardenings for it).
+**What is certified, by Sol's own list:** dynamic-only prediction objective, auxiliary gradient isolation, reproducible training and ensemble streams, stationary per-episode collection, fixed train/validation/evaluation pools, registered N meaning training transitions, non-degenerate episode bootstrap, episode bootstrap as the primary H1/H2 method, evaluation excluded from model selection, paired repair pools, correct effective repair models, complete repaired-dataset provenance, confirmatory collection-size guards, pool/run consistency enforcement. That is D-047 … D-057 in full.
+**Scope boundary, recorded so it is not misread later:** certification authorises the **W3 Friday development pilot on development seeds**. It does *not* authorise confirmatory execution or repair validation — `bootstrap_episodes()` plus `train(train_index=…)` still bypasses the `train_ensemble` granularity guard, and the future runner must own that rule along with registered configuration, matching pools, seed policy and complete run records.
+**Result:** 394 passing, 1 skipped. **Zero GPU-hours consumed** through the entire infrastructure phase.
+**Next:** W3 Fri — disagreement metrics and the first development curves, on the fixed evaluation pool. 90 fits. **Ask the student before spending compute.**
 ---
 
 ## 8. → TO SOL — *moved to its own file*
