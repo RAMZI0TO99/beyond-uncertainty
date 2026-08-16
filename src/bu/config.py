@@ -329,11 +329,13 @@ class Config:
         counted as twenty-five, when seeds 0-4 are one set of runs wearing two
         labels.
 
-        They are the same fit because nothing that varies between the two
-        obligations reaches the computation. D-030 derives every stream from
-        ``(unit_id, seed, purpose)`` -- stage is deliberately not in it -- so
-        the two would be bit-identical. Stage is an analysis role, not a
-        property of the model.
+        Arm never affects stream identity. Raw stage is absent from a stream
+        key's contents, but stage *can* reach data-stream derivation through
+        ``comparison_stage`` -- so "stage is not in the stream" would be false.
+        What makes the deduplication sound is that ``execution_plan`` verifies
+        every role merged into one fit resolves to identical streams (D-038),
+        and raises when they do not. Stage is an analysis role; it is allowed to
+        select a comparison group, and never allowed to split one fit into two.
         """
         return f"{self.config_id}-s{self.seed:03d}"
 

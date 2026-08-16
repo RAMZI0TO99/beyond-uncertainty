@@ -21,7 +21,7 @@ import pandas as pd
 
 from .config import Config
 from .runrecord import read_run_record, write_run_record
-from .streams import assert_confirmatory
+from .streams import assert_confirmatory, is_confirmatory, seed_partition
 
 METRICS_FILE = "metrics.jsonl"
 
@@ -148,8 +148,25 @@ def load_runs(
                 "its commit hash does not identify the code that ran"
             )
 
+        # The numerical seed is authoritative; the recorded fields are a
+        # convenience. If they disagree, something rewrote a run record and the
+        # analysis must not proceed on either value (D-042).
+        seed = int(rec["seed"])
+        recorded = rec.get("seed_partition")
+        if recorded is not None and recorded != seed_partition(seed):
+            raise RuntimeError(
+                f"run {rec['run_id']} records seed_partition={recorded!r} but "
+                f"seed {seed} is {seed_partition(seed)!r}. The seed is "
+                "authoritative; the record has been altered."
+            )
+        recorded_flag = rec.get("confirmatory")
+        if recorded_flag is not None and bool(recorded_flag) != is_confirmatory(seed):
+            raise RuntimeError(
+                f"run {rec['run_id']} records confirmatory={recorded_flag!r} but "
+                f"seed {seed} is {seed_partition(seed)!r}."
+            )
         if require_confirmatory:
-            assert_confirmatory(int(rec["seed"]), what=f"load_runs({root!r})")
+            assert_confirmatory(seed, what=f"load_runs({root!r})")
 
         path = run_dir / METRICS_FILE
         if not path.exists():
@@ -198,7 +215,7 @@ def _identity_columns(rec: dict[str, Any]) -> dict[str, Any]:
         "family": unit["family"],
         # Which side of the pilot boundary. Carried into the frame so an
         # analysis can assert on it rather than reconstruct it from the seed.
-        "seed_partition": rec.get("seed_partition", "development"),
+        "seed_partition": rec.get("seed_partition", seed_partition(int(rec["seed"]))),
     }
     for k, v in unit.items():
         if k == "family":

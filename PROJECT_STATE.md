@@ -42,13 +42,13 @@ This is the single shared working file for the project. It is written by Claude,
 | **Last updated** | 2026-08-16 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1 and 2 complete and audited**, plus all three of Sol's 2026-08-16 reviews actioned. Running ahead of the 2026-08-17 start — see DEV-002 |
+| **Current week / day** | **Weeks 1 and 2 complete and audited**, plus all four of Sol's 2026-08-16 reviews actioned. Running ahead of the 2026-08-17 start — see DEV-002 |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **257 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, and the stream-pairing properties of D-030 |
+| **Tests** | **265 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, and the stream-pairing properties of D-030 |
 | **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
-| **Design scale** | 300 units · **240 comparison groups** · 150/150 at unit level but **125/115 at group level** · **8,197 model fits** vs P§14.2's ~8,700 |
+| **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
 **Hypothesis status**
 
@@ -63,8 +63,8 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 - **Week 1** — repo, `constants.py` (D-005), config and three identities (D-006), run records, JSONL logging, gridworld, masking encoder. Audited: seven defects (D-015), version bump under a Change Record (D-016).
 - **Week 2** — confound parameter, enumerator (D-018), scripted policy and collector with coverage evidence (D-020), both prose cells drafted (D-019, awaiting the student's rewrite). Audited: six defects (D-021).
 - **Sol's earlier rulings implemented** — identity registry (D-009), `stage` in run identity (D-012), critic whitelist frozen (D-013).
-- **All three of Sol's 2026-08-16 reviews actioned in full** (D-025 … D-041). All three verdicts were CHALLENGED; every finding was independently verified before anything changed, and every one stood. The second found 375 fits of phantom compute; the third found that the design's advertised 150/150 balance is 125/115 at the level that is actually independent.
-- **D-030's named streams are built** (`src/bu/streams.py`), verified on the pairing properties rather than merely present: Experiment 1's datasets are nested prefixes, 2A/2B levels share a group, units in **different comparison groups** are independent at equal seeds — units inside one group are dependent by design (D-039) — and neither `arm` nor `stage` reaches a key.
+- **All four of Sol's 2026-08-16 reviews actioned in full** (D-025 … D-043). All four verdicts were CHALLENGED; every finding was independently verified before anything changed, and every one stood. The second found 375 fits of phantom compute; the fourth caught **me** overstating a worst-case bound as a measured result (D-042) — the only finding so far that was about my reasoning rather than the code.
+- **D-030's named streams are built** (`src/bu/streams.py`), verified on the pairing properties rather than merely present: Experiment 1's datasets are nested prefixes, 2A/2B levels share a group, units in **different comparison groups** are independent at equal seeds — units inside one group are correlated by design (D-039, D-042). `arm` never affects stream identity; raw `stage` is absent from a key but can reach data-stream *derivation* via `comparison_stage`, which is why `execution_plan` verifies that every role merged into one fit resolves to identical streams (D-038).
 
 **In flight:** nothing running. **No compute consumed.**
 
@@ -168,6 +168,8 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-039** | 2026-08-16 | Comparison groups are the clustering every split and interval must respect | Sol's |
 | **D-040** | 2026-08-16 | The pilot boundary is enforced, not merely checkable | finding Sol's |
 | **D-041** | 2026-08-16 | The bundle selects its own contents | finding Sol's |
+| **D-042** | 2026-08-16 | Correction to D-039 — 115 is a worst-case bound, not the effective sample size | Sol's |
+| **D-043** | 2026-08-16 | A bundle base must be Sol-*certified*, not merely reviewed | finding Sol's |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -259,7 +261,7 @@ Two conditions:
 | C-002 | Build the D-030 named-stream module | Sol, 2026-08-16 | **Done** → `src/bu/streams.py`, `tests/test_streams.py` |
 | C-004 | File the dynamic-target decision; correct the baseline accounting; mark inspected data as pilot; implement named streams; regenerate the Sol bundle | Sol, 2026-08-16 (delta 11) | **Done** → D-032 … D-036 |
 | C-005 | Grouped dataset partitioning for the critic splitter — a comparison group never spans a split | Sol, 2026-08-16 (delta 12) | **Open** — key and report built (D-039); splitter is W6/W11 |
-| C-006 | Week 5 MDE simulation must resolve over the 240 groups, not 300 unit ids, and use `min(N₀,N₁) = 115` | Sol, 2026-08-16 (delta 12) | **Open** — due W5 Thu |
+| C-006 | Week 5 MDE simulation: simulate unit outcomes **nested within** the 240 comparison groups, over an ICC grid (0, .25, .5, .75, 1); after the pilot use its ICC estimate and retain the sensitivity results | Sol, 2026-08-16 (delta 12, revised delta 13) | **Open** — procedure specified in D-042; due W5 Thu |
 | C-007 | Pass `require_confirmatory=True` in threshold calibration, repair acceptance and every critic loader as each is built | Sol, 2026-08-16 (delta 12) | **Open** — guard built (D-040); call sites are W4–W11 |
 | C-003 | Predeclare the D-031 reserve draw order | Sol, 2026-08-16 | **Open** — due W5 Thu with the MDE simulation |
 
@@ -269,11 +271,11 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept here.
 
-### 2026-08-16 (delta 12 review) · Grouped dependence, enforced pilot boundary, honest bundles · Claude
-**Did:** actioned Sol's third review. Verified all three material findings first. Enforced the multi-role stream invariant inside `execution_plan()` (D-038); built `group_of()` / `comparison_groups()` and put the clustering in the design report (D-039); made the pilot boundary fail closed with `assert_confirmatory()`, `seed_partition` in every run record and `require_confirmatory=` on `load_runs()` (D-040); made `sol_bundle.sh` print the review base, its own arguments, a changed-file manifest and the full diff (D-041); repointed every Change Record reference from §3 to `DECISIONS.md`; corrected the 245→247 test count and the "first three lines" claim.
-**Result:** 247 → 257 tests. Sol's estimate that the 75 canonical units collapse into 15 comparison groups is exact. **The finding beyond the finding:** the design is 150/150 on intended class at unit level but **125/115 at group level**, so `min(N₀, N₁)` — the quantity P§10.7 makes power depend on — is **115, not 150**. The design was advertising a balance it does not have at the level that is actually independent, and the Week 5 MDE simulation would have inherited that error. Now printed by the enumerator.
-**Also worth recording:** the multi-role stream invariant holds across all 75 shared fits today, but only because no canonical unit also carries a `config_sweep` obligation. `("exp1", "config_sweep")` on one unit really does resolve to two different `env` streams — so this was a correctness property standing on an accident of the enumeration.
-**Left:** nothing running, still **zero compute**. Confirmatory collection and critic splitting remain blocked by Sol, correctly; Week 3 development is not.
+### 2026-08-16 (delta 13 review) · A bound I reported as a result · Claude
+**Did:** actioned Sol's fourth review. Its principal finding was about my reasoning rather than the code, and it was right: I reported `min(N₀, N₁) = 115` as the effective sample size and "a 23% reduction in power", when 115 is the value under *perfect* within-group correlation — a conservative lower bound. Corrected as D-042, which supersedes D-039's effective-sample-size claim and specifies the ICC-sensitive grouped MDE procedure. Also added the `load_runs()` boundary integration tests Sol asked for, made recorded seed metadata fail loudly when it disagrees with the seed, removed the two remaining false "stage never reaches streams" statements, and fixed the bundle's base semantics (D-043).
+**Result:** 257 → 265 tests. The statistical unit is unchanged and remains the configuration-condition; unit-level balance is unchanged at 150/150; 125/115 are cluster counts. The arithmetic that shows why a closed form will not do: the standard unequal-cluster design effect gives 72.6 effective units per class at ICC = 1, while the exact answer at ICC = 1 is the cluster count, 115 — the approximation is conservative at the boundary because the groups are unequal, so W5 simulates rather than solves.
+**Worth recording, because it is the failure mode this project is otherwise defended against:** the wrong number propagated into `PROJECT_STATE.md`, `CLAUDE.md`, the enumerator's printed report, a test docstring and a delivered delta before anyone caught it. Not one of those was a coding error. A bound with its qualifier dropped travels exactly as fast as a result.
+**Left:** nothing running, still **zero compute**. Confirmatory collection, critic splitting and W5 MDE approval remain blocked, correctly. Week 3 development is not.
 **Next:** W3 Mon — the world-model MLP, development seeds, dynamic-only target.
 ---
 

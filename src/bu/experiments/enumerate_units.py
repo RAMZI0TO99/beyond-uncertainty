@@ -635,13 +635,23 @@ def comparison_groups(
 ) -> dict[str, tuple[UnitSpec, ...]]:
     """Units keyed by the group they share data-generating randomness with.
 
-    **The clustering every split and every interval must respect** (D-039).
-    Common random numbers make units inside a group dependent by design, so
-    treating 300 unit ids as 300 independent observations overstates the
-    evidence. Concretely: the 75 canonical units collapse into 15 groups, the
-    225 sweep units stay singletons, and the design's intended-class balance
-    falls from 150/150 at unit level to **125/115** at group level -- which is
-    the level ``min(N0, N1)`` should be read at (Plan §10.7).
+    **The clustering every split and every interval must respect** (D-039), with
+    the interpretation corrected in D-042.
+
+    Common random numbers make units inside a group correlated by design, so
+    treating 300 unit ids as 300 *independent* observations overstates the
+    evidence. What follows from that is a clustering requirement, not a smaller
+    sample: the statistical unit remains the configuration-condition (Plan
+    §10.7, frozen in §2), and correlation is not collapse.
+
+    Facts: the 75 canonical units form 15 groups, the 225 sweep units stay
+    singletons, so 300 units sit in 240 groups. Unit-level intended-class
+    balance is 150/150; group counts are 125/115.
+
+    **Group counts are not class counts.** Effective information lies somewhere
+    between the two extremes and depends on the within-group correlation, the
+    unequal group sizes and the estimator. Week 5's MDE simulation estimates it
+    over an ICC sensitivity grid; nothing here should be read as a sample size.
     """
     units = full_matrix() if units is None else units
     out: dict[str, list[UnitSpec]] = {}
@@ -703,7 +713,7 @@ def summarise(units: tuple[UnitSpec, ...] | None = None) -> str:
 
     groups = comparison_groups(units)
     lines += ["", "Comparison groups -- the clustering splits must respect (D-039)", "-" * 60]
-    lines.append(f"  units {len(units)}  ->  independent groups {len(groups)}")
+    lines.append(f"  units {len(units)}  ->  comparison groups {len(groups)}")
     sizes = Counter(len(v) for v in groups.values())
     lines.append(
         "  group sizes: "
@@ -713,11 +723,14 @@ def summarise(units: tuple[UnitSpec, ...] | None = None) -> str:
         0 if members[0].family == "estimation" else 1 for members in groups.values()
     )
     lines.append(
-        f"  intended class at GROUP level: D=0 {gclass[0]}, D=1 {gclass[1]}, "
-        f"min = {min(gclass.values())}"
+        f"  group counts by intended class: D=0 {gclass[0]}, D=1 {gclass[1]}"
     )
-    lines.append("  Units inside a group share data by design, so this -- not the")
-    lines.append("  unit count -- is what the Week 5 MDE simulation resolves over.")
+    lines.append("  Units in a group share data by design, so they are correlated --")
+    lines.append("  NOT collapsed. The statistical unit is still the configuration-")
+    lines.append(f"  condition, and unit-level balance is still {d0}/{d1}. Group counts")
+    lines.append("  are cluster counts, not class counts: effective information lies")
+    lines.append("  between the two and is estimated by the W5 MDE simulation over an")
+    lines.append("  ICC grid (D-042). Splits and intervals must respect these groups.")
 
     lines += ["", "Compute implied (Plan §14.2 accounting)", "-" * 60]
     fits = total_model_fits(units)

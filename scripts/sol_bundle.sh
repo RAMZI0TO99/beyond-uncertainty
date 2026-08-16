@@ -11,14 +11,19 @@
 # It is generated rather than hand-written, but that alone does NOT make it
 # unable to flatter: a clean commit can still be represented by an incomplete
 # file selection, which is how the delta-12 bundle shipped two files and left
-# nine claims uncertified. So it also prints the review base, the exact
-# arguments it was called with, and the complete manifest and diff of what
-# changed since that base -- none of which the caller chooses.
+# nine claims uncertified. So it also prints a manifest and the complete diff
+# since a declared review base.
+#
+# The caller still chooses BASE, and therefore the diff range -- the protection
+# is not that the range is beyond the caller's control, but that the range is
+# STATED and reviewable. BASE should be the last Sol-*certified* commit, not
+# merely the last one reviewed: a commit Sol challenged for incomplete evidence
+# is not a certified base, and using it as one would silently inherit the gap.
 #
 # Usage:
 #   scripts/sol_bundle.sh                        # default: identity-critical files
 #   scripts/sol_bundle.sh src/bu/env/gridworld.py
-#   BASE=e1a8bad scripts/sol_bundle.sh           # review base for the diff
+#   BASE=e1a8bad scripts/sol_bundle.sh           # last Sol-CERTIFIED commit
 #   scripts/sol_bundle.sh > bundle.txt
 
 set -euo pipefail
@@ -65,7 +70,7 @@ echo "--- tests ---"
 "$PY" -m pytest -q 2>&1 | tail -15 || true
 echo
 
-echo "--- changed since $BASE (manifest; not chosen by the caller) ---"
+echo "--- changed since $BASE (manifest) ---"
 if git rev-parse --verify --quiet "$BASE" >/dev/null; then
     git diff --stat "$BASE"..HEAD | sed 's/^/  /'
 else

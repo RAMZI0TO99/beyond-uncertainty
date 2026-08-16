@@ -273,12 +273,19 @@ def test_a_group_never_spans_both_intended_classes():
         assert len(classes) == 1
 
 
-def test_group_level_balance_is_reported_and_is_not_the_unit_level_balance():
-    """The number that matters for power is not the one the design advertises.
+def test_group_counts_are_pinned_but_not_read_as_class_counts():
+    """Facts about the clustering, deliberately not an inference from it (D-042).
 
-    Plan §10.7 makes power depend on min(N0, N1). At unit level the design is
-    150/150; at the level that is actually independent it is 125/115. Pinned so
-    the Week 5 MDE simulation cannot quietly resolve over 300 unit ids.
+    Unit-level intended-class balance is 150/150 and the statistical unit is
+    still the configuration-condition (Plan §10.7, frozen in §2). The group
+    counts below are **cluster** counts: units in a group are correlated, not
+    collapsed, so effective information lies between the two extremes and
+    depends on the within-group correlation, the unequal group sizes and the
+    estimator. Week 5's MDE simulation estimates it over an ICC grid.
+
+    This test pins the structure so the simulation cannot quietly resolve over
+    300 independent unit ids. It must not be extended to assert an effective
+    sample size -- that was the overreach D-042 corrects.
     """
     from collections import Counter
 
@@ -290,7 +297,12 @@ def test_group_level_balance_is_reported_and_is_not_the_unit_level_balance():
         0 if members[0].family == "estimation" else 1 for members in groups.values()
     )
     assert (counts[0], counts[1]) == (125, 115)
-    assert min(counts.values()) < 150
+
+    # Unit-level balance is unchanged and remains the registered quantity.
+    unit_counts = Counter(
+        0 if u.family == "estimation" else 1 for u in design_units()
+    )
+    assert unit_counts[0] == unit_counts[1] == 150
 
 
 # --- the multi-role stream invariant (D-038) ------------------------------

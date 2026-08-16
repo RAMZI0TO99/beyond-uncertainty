@@ -108,7 +108,7 @@ test.**
 ```bash
 .venv/bin/python -m pytest -q                      # 257 passing, 1 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
-BASE=<last-reviewed-commit> ./scripts/sol_bundle.sh  # verification bundle for Sol
+BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
 
 - venv is `--system-site-packages` (reuses CUDA torch); `pyproject.toml` pins all.
@@ -169,12 +169,16 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
   two were *worse* than stated — but the checking is what makes actioning them
   honest, and twice it sharpened the finding. Reproduce the arithmetic yourself.
 - **Give Sol the bundle, never a folder** — and set `BASE` to the last commit
-  Sol reviewed. Sol once reviewed a stale copy and correctly refused to certify
+  Sol **certified**, not merely reviewed. Sol once reviewed a stale copy and correctly refused to certify
   it; a later bundle was honest but shipped two files and left nine claims
   uncertified. Generated is not the same as complete (D-036, D-041).
 - **A correctness property standing on an accident is not a property.** The
   multi-role stream invariant held across all 75 shared fits — only because no
   canonical unit happened to also carry a sweep obligation (D-038).
+- **Do not promote a worst-case bound into a measured result.** I reported
+  `min(N₀,N₁) = 115` as *the* effective sample size; it is the value under
+  perfect within-group correlation, and Sol caught it. State the bound as a
+  bound and let the simulation estimate the rest (D-042).
 
 ---
 
@@ -185,10 +189,14 @@ reviews actioned in full (D-025 … D-041). **Zero compute consumed** — nothin
 trained. Gate 1 is 2026-09-19. Design: 300 units, **240 comparison groups**,
 **8,197 fits** against ~8,700. No open questions.
 
-**The number that governs power is 115, not 150.** The design is 150/150 on
-intended class at unit level, but units sharing a comparison group share data by
-construction, and at group level it is 125/115. `min(N₀, N₁) = 115` (D-039).
-A comparison group must never span a critic split or a CV fold.
+**The statistical unit is still the configuration-condition** — 150/150 on
+intended class, and that is the registered quantity (P§10.7, §2). Units sharing
+a comparison group are **correlated, not collapsed**: 300 units sit in 240
+groups, group counts are 125/115, and those are *cluster* counts. Effective
+information lies between the two extremes and is estimated by W5's MDE
+simulation over an ICC grid (D-039 corrected by **D-042**). A comparison group
+must never span a critic split or a CV fold. Do not quote 115 as a sample size —
+that overreach is exactly what D-042 exists to correct.
 
 **Next: Week 3, the world model. Nothing blocks it.**
 
