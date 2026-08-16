@@ -14,8 +14,10 @@ which repair is required.
 | File | What it is |
 |---|---|
 | `CLAUDE.md` | **Claude starts here.** Operational handoff: checklist, commands, hard rules, traps |
-| `PROJECT_STATE.md` | Project state: snapshot, decisions, deviations, gate records |
-| `DELTA_TO_SOL.md` | The only thing the student pastes to Sol |
+| `PROJECT_STATE.md` | Project state: snapshot, frozen constants, deviations, gates, open questions |
+| `DECISIONS.md` | The decisions ledger, append-only. `PROJECT_STATE.md` §3 indexes it |
+| `DELTA_TO_SOL.md` | The only thing the student pastes to Sol. Accumulates until delivered |
+| `scripts/sol_bundle.sh` | Generated verification bundle: commit, tree state, tests, diff |
 | `SOL_BRIEF.md` | Operating brief for the reviewing agent |
 | `PROJECT_STATE_ARCHIVE.md` | Delivered deltas and closed session history |
 | `docs/thesis_project_plan_v1_2.docx` | The research design. Authoritative for design |
@@ -40,10 +42,10 @@ Then see the design matrix the experiments draw on:
 downloading one. For a fully isolated environment drop the flag; `pyproject.toml`
 pins every version.
 
-## The three identities
+## The four identities
 
-Most of the analysis discipline in this project follows from one distinction,
-so it is worth understanding before reading any other module:
+Most of the analysis discipline in this project follows from these distinctions,
+so they are worth understanding before reading any other module:
 
 ```python
 from bu import Config, UnitSpec, Arm
@@ -60,9 +62,23 @@ Config(unit=unit, arm=Arm("feature_repair")).unit_id  # ─┘
   balancing happens. A failure condition and its repairs share one, which is
   what makes a ground-truth label assignable to it.
 - **`config_id`** — `unit_id` plus which arm (baseline, or which repair).
-- **`run_id`** — `config_id` plus the seed. One run, one record, one log file.
+- **`run_id`** — `config_id` plus **stage** and seed, so a record states which
+  experimental obligation it discharges.
+- **`fit_id`** — `config_id` plus the seed, with **no stage**: the identity of the
+  *computation*. One unit can owe 5 seeds to an H1/H2 claim and 20 to repair
+  validation, and the twenty **contain** the five — one set of fits wearing two
+  roles, not 25 runs. Conflating `run_id` with `fit_id` once cost 375 phantom fits.
 
-Confidence intervals are taken over `unit_id`, never over transitions.
+Confidence intervals are taken over `unit_id`, never over transitions. Units that
+share a **comparison group** were deliberately given related data, so a group must
+never span a train/test split — see `src/bu/streams.py`.
+
+## Seeds
+
+Confirmatory runs use seeds ≥ `CONFIRMATORY_SEED_BASE` (1000). **Every seed below
+it is development data**, permanently excluded from confirmatory runs, threshold
+calibration, repair acceptance and the critic. Analyses that reach the thesis pass
+`require_confirmatory=True` to `load_runs()`.
 
 ## Running something
 
@@ -89,11 +105,12 @@ src/bu/
   config.py       Config / UnitSpec / Arm and the three identities
   runrecord.py    provenance: config, seed, git commit, dirty flag, packages
   metrics.py      JSONL logging and load_runs()
-  env/            gridworld                        (Week 1)
-  models/         world model, ensemble            (Week 3)
-  stats/          trend test, acceptance test      (Weeks 4–5)
-  critic/         diagnosis critic and baselines   (Weeks 11–12)
-  experiments/    experiment drivers
+  streams.py      named RNG streams: env / policy / bootstrap / init / batch
+  env/            gridworld, masking encoder, policy, collector   (Weeks 1–2)
+  models/         world model, training loop, bootstrap ensemble  (Week 3)
+  stats/          trend test, acceptance test                     (Weeks 4–5)
+  critic/         diagnosis critic and baselines                  (Weeks 11–12)
+  experiments/    the 300-unit design matrix and drivers
 runs/             run outputs — gitignored, regenerable
 figures/          all regenerated from logs — gitignored
 ```

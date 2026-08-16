@@ -2,7 +2,7 @@
 
 **Bachelor's thesis · Diagnosing When Embodied World Models Need More Data or a Different Model**
 
-This is the single shared working file for the project. It is written by Claude, reviewed by Sol, and carried between sessions by the student. If a fact about this project is not in this file, it does not survive the end of a Claude session.
+This is the shared working file for the project. It is written by Claude, reviewed by Sol, and carried between sessions by the student. **It travels with `DECISIONS.md`** — the decisions ledger moved there when this file outgrew its paste cap (D-037), and §3 below indexes it. If a fact about this project is not in one of the two, it does not survive the end of a Claude session.
 
 **The memory asymmetry — read this before anything else.** Sol runs in one continuous session and never forgets. Claude is closed and reopened repeatedly and starts each session blank. This file exists primarily so **Claude can reconstruct** what Sol simply remembers. Two consequences:
 
@@ -23,7 +23,7 @@ This is the single shared working file for the project. It is written by Claude,
 
 ## 0. How to use this file
 
-**Claude — session start.** Before anything else, including for a question that looks trivial: read this file in full (§1 where you are, §2 what you may not change, §3–§5 what past-you decided); check §1's *Last updated* against today and say so if it is over a week stale — a stale snapshot is how a reset agent confidently redoes finished work; check §6 for anything Sol asked for that is unactioned; then tell the student in two lines where things stand and what you think is next, and wait.
+**Claude — session start.** Before anything else, including for a question that looks trivial: read this file in full, then `DECISIONS.md` (§1 where you are, §2 what you may not change, §3's index points into the ledger, §4–§5 deviations and gates); check §1's *Last updated* against today and say so if it is over a week stale — a stale snapshot is how a reset agent confidently redoes finished work; check §6 for anything Sol asked for that is unactioned; then tell the student in two lines where things stand and what you think is next, and wait.
 
 **Claude — session end.** (1) Rewrite §1 so it is true now. (2) Append a §7 session-log entry. (3) Append any new §3 decisions, §4 deviations, §5 gate records. (4) Update `DELTA_TO_SOL.md` — append if undelivered, replace only once delivered (D-008, D-023), naming the session under `COVERS SESSIONS`; it is the only channel through which Sol learns anything. (5) Run the suite: `tests/test_project_state.py` enforces (1)–(4) mechanically (D-022), and if it fails, **fix the file, not the test**. From the first real result onward every delta reporting one carries a `NUMBERS` block (D-011): unit counts including `min(N₀, N₁)`, seeds and policy, point estimate, interval *and what it was taken over*, ambiguous and undiagnosed counts, and which test ran — prose alone leaves Sol unable to audit anything, which is the same as having no reviewer.
 
@@ -42,12 +42,12 @@ This is the single shared working file for the project. It is written by Claude,
 | **Last updated** | 2026-08-16 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–2 complete and audited; W3 Mon done.** All five of Sol's 2026-08-16 reviews actioned. Running ahead of the 2026-08-17 start — see DEV-002 |
+| **Current week / day** | **Weeks 1–2 complete and audited. W3 Mon, Tue and Wed done.** All six of Sol's 2026-08-16 reviews actioned. Running ahead of the 2026-08-17 start — see DEV-002 |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD recorded at the end of §7's latest entry; tree **clean** at that commit. Regenerate ground truth with `scripts/sol_bundle.sh`, which reports hash and dirty flag together |
-| **Tests** | **344 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, and the stream-pairing properties of D-030 |
-| **Compute used** | 0 of ~110–145 GPU-h budget (escalation trigger ≈ 120, P§14.3) |
+| **Tests** | **344 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
+| **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). Week 3 ran entirely on CPU in seconds; the student's GPU was under another workload all week |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
 **Hypothesis status**
@@ -64,6 +64,7 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 - **Week 2** — confound parameter, enumerator (D-018), scripted policy and collector with coverage evidence (D-020), both prose cells drafted (D-019, awaiting the student's rewrite). Audited: six defects (D-021).
 - **Sol's earlier rulings implemented** — identity registry (D-009), `stage` in run identity (D-012), critic whitelist frozen (D-013).
 - **All five of Sol's 2026-08-16 reviews actioned in full** (D-025 … D-045). All five verdicts were CHALLENGED; every finding was independently verified before anything changed, and every one stood. The second found 375 fits of phantom compute. The fourth and fifth were both about **my reasoning rather than the code**, on the same paragraph: a worst-case bound reported as a measurement (D-042), then two different estimands compared as if one approximated the other (D-044).
+- **Week 3 Mon–Wed built** (D-046, D-049, D-050): the world model, the training loop, the bootstrap ensemble. Two measurements shaped them — a transition-level split is **4.5–8.7× optimistic, worst at small n**, and bootstrap granularity **bends** the disagreement curve rather than scaling it (Q-011).
 - **D-030's named streams are built** (`src/bu/streams.py`), verified on the pairing properties rather than merely present: Experiment 1's datasets are nested prefixes, 2A/2B levels share a group, units in **different comparison groups** are independent at equal seeds — units inside one group are correlated by design (D-039, corrected by D-042 and D-044). `arm` never affects stream identity; raw `stage` is absent from a key but can reach data-stream *derivation* via `comparison_stage`, which is why `execution_plan` verifies that every role merged into one fit resolves to identical streams (D-038).
 
 **In flight:** nothing running. **No compute consumed.**
@@ -291,6 +292,7 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept h
 **Raised Q-011, and it is the more consequential half of today.** Resampling granularity is not a free choice, because disagreement is H1's dependent variable. Exploratory, one seed: episode-bootstrap disagreement 0.1437 / 0.1836 / 0.0766 at n = 250 / 1000 / 5000 against transition-bootstrap 0.1101 / 0.1037 / 0.0612. The ratio is **not constant across n** (1.30× / 1.77× / 1.25×), so granularity changes the *shape* of the H1 curve rather than merely its level. The single-seed curve is also non-monotone — which is exactly why S§W3 Fri specifies three seeds and calls that cell "a look, not an H1 claim". **No claim about H1 is made from this.**
 **Compute:** CPU only, ~13s for the 30-fit granularity probe plus 8s for the ensemble. GPU untouched under the student's other workload. **Zero GPU-hours consumed.**
 **Next:** W3 Fri — disagreement metrics and the first curves. **This is the first cell that consumes real compute** (90 fits) and the student is to be asked before it starts.
+**Also this session — documentation pass before closing.** Rewrote `CLAUDE.md`'s status section, which had accumulated by patching until it contradicted itself: it claimed "no open questions" while Q-011 was open, and read Week 3 as both next and done. That file is the *first* thing a reset Claude reads, so an incoherent one is worse than a short one. Corrected `SOL_BRIEF.md`'s re-onboarding path — it still told Sol the delta lives in `PROJECT_STATE.md` §8 and never mentioned `DECISIONS.md`, so a session-loss recovery would have silently lost the ledger. Updated `README.md` for the four identities, the seed boundary and the real `src/` layout.
 ---
 
 ## 8. → TO SOL — *moved to its own file*

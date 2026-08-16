@@ -194,65 +194,70 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ## Where the project stands
 
-Weeks 1 and 2 complete and audited, and **all three** of Sol's 2026-08-16
-reviews actioned in full (D-025 … D-041). **Zero compute consumed** — nothing has
-trained. Gate 1 is 2026-09-19. Design: 300 units, **240 comparison groups**,
-**8,197 fits** against ~8,700. No open questions.
+*Last session: 2026-08-16. Week 1 Monday is 2026-08-17, so the project is
+running roughly two weeks ahead of its own calendar (DEV-002).*
 
-**The statistical unit is still the configuration-condition** — 150/150 on
-intended class, and that is the registered quantity (P§10.7, §2). Units sharing
-a comparison group are **correlated, not collapsed**: 300 units sit in 240
-groups, and 125/115 are *cluster* counts.
+**Weeks 1 and 2 complete and audited. Week 3 Mon, Tue and Wed done.** Six Sol
+reviews actioned in full on 2026-08-16 (D-025 … D-050). Gate 1 is 2026-09-19.
+**Zero GPU-hours consumed** — everything so far runs on CPU in seconds.
 
-**Do not quote any effective sample size without naming the estimand.** The
-weighting is preregistered as `BALANCED_ACCURACY_WEIGHTING = "unit"` (D-044),
-under which the ICC = 1 boundary is 75/72.6; the cluster counts 125/115 are the
-boundary for an equal-cluster-weighted estimand, which the thesis does not use.
-Power is **simulated directly** at W5 — there is deliberately no `n_eff()`
-helper. A comparison group must never span a critic split or a CV fold.
+Design: **300 units** in **240 comparison groups**, **8,197 fits** against
+P§14.2's ~8,700.
 
-**Next: Week 3, the world model. Nothing blocks it.**
+### What exists in Week 3
 
-W3 Mon the MLP — **D-032 fixes what it predicts**: next agent position and
-activation bits only; static object attributes are deterministic passthrough and
-never enter the loss or the error score. The primary error is on agent position,
-over movement transitions, grid-normalised; activation is a secondary metric.
-This is not a stylistic choice — 26 of 30 output dims never change within an
-episode, so full-state MSE dilutes the passability rule ~15-fold and rescales it
-between families as withholding changes the observation width (30 dims vs 22).
+- **`models/world_model.py`** — predicts next agent position and activation bits
+  only; static attributes are deterministic passthrough and never enter the loss
+  (D-032). The auxiliary head reads a **detached** trunk and both losses are
+  **action-conditional** — position on movement steps, activation on `interact`
+  (D-047). `WorldModel(unit, rng)` requires an `init`-stream generator; depth is
+  frozen at 2; there is no loss-weighting knob.
+- **`models/train.py`** — episode-level **strided** split, early stopping on the
+  movement-position validation loss **only**, best checkpoint restored, no global
+  grad-norm clip, minibatch order from the `batch` stream (D-049).
+- **`models/ensemble.py`** — K members from the `bootstrap`, `init` and `batch`
+  streams; bootstrap touches training only; per-member validation error logged
+  per member (D-050).
 
-**W3 Mon is done** (D-046, D-047). The model predicts agent position and
-activation bits; the auxiliary head reads a **detached** trunk and both losses
-are **action-conditional** — position on movement steps, activation on
-`interact` steps. `WorldModel(unit, rng)` requires a generator from the `init`
-stream; depth is frozen at 2 and there is no loss-weighting knob.
+### Next: W3 Fri — and it is the first cell that spends compute
 
-W3 Tue the training loop, and **D-047 binds it**: stop on movement-position
-validation loss only, never on activation; no global grad-norm clip across both
-parameter groups; fail loudly on a batch with no movement transitions; split
-**by episode, not by transition**, or early stopping leaks. Open item carried
-in: the detached head is worse than its copy baseline (0.2575 vs 0.1652) after
-a hand-rolled 3,000 epochs — Sol's conditional for a second trunk turns on
-whether a real loop closes that, and must not be settled from a probe.
+6 sizes × 3 seeds × 5 members = **90 fits**, ~30s on a free GPU or ~10 min CPU.
+**Ask the student before starting it.** Their GPU has been at ~14/16 GB and 91%
+under another workload all week; scan with `nvidia-smi` and stay off it unless
+they say otherwise. Then W3 Sat: look at the curves and write down what you see
+*before* any formal test.
 
-**W3 Tue and Wed are done** (D-049, D-050). Split is **by episode and strided**
-— a transition split measured 4.5–8.7× optimistic, worst at small n, which is
-the direction that corrupts Experiment 1. Ensemble members draw from three
-separate streams so diversity can be attributed.
+### Open, and what each blocks
 
-**W3 Fri is the first cell that consumes real compute** — 6 sizes × 3 seeds × 5
-members = 90 fits, ~30s on a free GPU or ~10 min CPU. **Ask the student before
-starting it**; their GPU has been at ~14/16 GB under another workload all week.
+- **Q-011 — bootstrap granularity.** It changes disagreement, which is H1's
+  dependent variable, and the episode/transition ratio is *not constant across n*
+  (1.30× / 1.77× / 1.25×), so it **bends** the curve W4 Mon's trend test runs on
+  rather than scaling it. Blocks W4 Mon.
+- **D-047's open item.** The detached auxiliary head sits at 0.2575 against a
+  0.1652 copy baseline after a hand-rolled 3,000 epochs. Sol's conditional for a
+  second trunk turns on whether the *real* loop closes that — answer it from
+  Friday's runs, not from a probe.
+- **C-005 / C-006 / C-007** — grouped critic splitter, the ICC-sensitive grouped
+  MDE simulation, and passing `require_confirmatory=True` at each analysis call
+  site as it is built. None is Week 3 work.
 
-**Q-011 is open and blocks nothing yet, but it blocks W4 Mon's trend test.**
-Bootstrap granularity changes disagreement — H1's dependent variable — and the
-episode/transition ratio is *not constant across n* (1.30× / 1.77× / 1.25×), so
-it bends the curve the trend test runs on rather than merely scaling it.
+Still blocked by Sol, correctly: confirmatory collection, critic splitting, and
+W5 MDE approval.
 
-**Confirmatory runs use seeds ≥ `CONFIRMATORY_SEED_BASE` (1000).** Everything
-below is pilot data and may never enter a confirmatory result, the threshold
-calibration, repair acceptance, or the critic (D-034). Week 3 development runs
-at low seeds deliberately. Pass `require_confirmatory=True` to `load_runs()` in
-every analysis that reaches the thesis (D-040).
+### Three things that will bite if forgotten
 
-Week 3 is where compute starts being consumed and mistakes stop being free.
+**Seeds.** Confirmatory runs use seeds ≥ `CONFIRMATORY_SEED_BASE` (1000).
+Everything below is development data, permanently excluded from confirmatory
+results, threshold calibration, repair acceptance and the critic (D-034). Week 3
+runs low seeds deliberately. Analyses that reach the thesis pass
+`require_confirmatory=True` to `load_runs()`.
+
+**Effective sample size.** Never quote one without naming the estimand. The
+weighting is preregistered as `BALANCED_ACCURACY_WEIGHTING = "unit"` (D-044);
+under it the ICC = 1 boundary is 75/72.6. The cluster counts 125/115 belong to an
+equal-cluster-weighted estimand the thesis does not use. The registered
+statistical unit is still the configuration-condition and unit-level balance is
+still 150/150. Power is **simulated** at W5 — there is deliberately no `n_eff()`.
+
+**Comparison groups.** Units sharing one were *given* related data by design, so
+a group must never span a critic split or a CV fold (D-039).
