@@ -134,13 +134,24 @@ def summarise(
     *,
     n_transitions: int,
     seed: int,
+    scale: torch.Tensor | None = None,
 ) -> UncertaintySummary:
     """Per-seed summary. The division happens **here**, before any pooling.
 
     Pooling across seeds and then dividing would be a different statistic, and
     Plan §10.3 names this one.
+
+    ``scale`` should be the **evaluation pool's** per-dimension scale, passed in
+    explicitly whenever ``targets`` is a *subset* of that pool (W3-1). P§10.3
+    requires per-dimension normalised error but does not say which set defines
+    the normalisation, and recomputing it from the subset makes the units move
+    with the subset: measured on one condition, the scale is [0.229, 0.224] over
+    the full evaluation pool and [0.357, 0.357] over the worst 1% of it — a 55%
+    shift. The ratio is invariant to this because numerator and denominator
+    share the scale, but P§10.2's primary *error* is not, and the Week 4 Friday
+    failure set is exactly such a subset.
     """
-    scale = per_dimension_scale(targets)
+    scale = per_dimension_scale(targets) if scale is None else scale
     ensemble_mean = members.mean(dim=0)
 
     error = normalised_error(ensemble_mean, targets, scale)
@@ -215,6 +226,7 @@ def per_transition_table(
     *,
     episode: np.ndarray,
     step: np.ndarray,
+    scale: torch.Tensor | None = None,
 ) -> dict[str, np.ndarray]:
     """The per-transition export the schedule requires (D-059).
 
@@ -224,7 +236,7 @@ def per_transition_table(
     independent regeneration of the registered H2 endpoint are all impossible
     after the fact.
     """
-    scale = per_dimension_scale(targets)
+    scale = per_dimension_scale(targets) if scale is None else scale
     return {
         "episode": np.asarray(episode),
         "step": np.asarray(step),

@@ -529,3 +529,91 @@ def test_a_repaired_dataset_records_what_generated_it(arm, unit, stage, tmp_path
     assert (reloaded.arm, reloaded.stage, reloaded.pool) == (arm, stage, "evaluation")
     assert reloaded.stream_version == STREAM_VERSION
     assert reloaded.episode_length == K.EPISODE_LENGTH
+
+
+# --- W3 audit regressions (D-060) -----------------------------------------
+
+
+def test_member_predictions_restores_training_mode():
+    """W3-4. Inert for this MLP, live for P§9.3's MC-dropout fallback.
+
+    A member silently left in eval mode returns deterministic predictions under
+    test-time dropout, so disagreement would be exactly zero and the fallback
+    estimator would look like it had failed H1 at the very gate it exists for.
+    """
+    from bu.models.ensemble import train_ensemble
+
+    unit = UnitSpec(hidden_size=32, n_transitions=500)
+    pools = collect_pools(unit, stage="exp1", seed=SEED)
+    ensemble = train_ensemble(
+        unit, pools, TrainConfig(max_epochs=1, ensemble_size=2), stage="exp1", seed=SEED
+    )
+    for model in ensemble.members:
+        model.train()
+
+    ensemble.member_predictions(
+        torch.as_tensor(pools.evaluation.obs[:8]),
+        torch.as_tensor(pools.evaluation.action[:8]),
+    )
+    assert all(m.training for m in ensemble.members), "members left in eval mode"
+
+    for model in ensemble.members:
+        model.eval()
+    ensemble.member_predictions(
+        torch.as_tensor(pools.evaluation.obs[:8]),
+        torch.as_tensor(pools.evaluation.action[:8]),
+    )
+    assert not any(m.training for m in ensemble.members), "eval mode not preserved either"
+
+
+@pytest.mark.parametrize("bad", ["negative", "too_large"])
+def test_an_out_of_range_train_index_is_rejected(bad):
+    """W3-6. Torch wraps negative indices silently, so a resample producing one
+    would train on the wrong rows and fail later for an unrelated reason."""
+    unit = UnitSpec(hidden_size=32, n_transitions=500)
+    pools = collect_pools(unit, stage="exp1", seed=SEED)
+    index = np.array([-1]) if bad == "negative" else np.array([len(pools.train) + 1])
+
+    with pytest.raises(ValueError, match="train_index runs"):
+        train(
+            WorldModel(unit, stream(unit, "exp1", "init", SEED)),
+            pools.train, pools.validation, TrainConfig(max_epochs=1),
+            rng=stream(unit, "exp1", "batch", SEED), train_index=index,
+        )
+
+
+def test_the_normalising_scale_can_be_fixed_to_the_pool():
+    """W3-1. The scale is a property of the evaluation pool, not of a subset.
+
+    Recomputing it from a subset makes the *units* move with the subset:
+    measured, [0.229, 0.224] over the full pool against [0.357, 0.357] over its
+    worst 1%. The ratio is invariant because numerator and denominator share it;
+    P§10.2's primary error is not.
+    """
+    from bu.models.uncertainty import per_dimension_scale, summarise
+
+    g = torch.Generator().manual_seed(0)
+    targets = torch.randn(500, 2, generator=g)
+    members = targets.unsqueeze(0) + 0.3 * torch.randn(5, 500, 2, generator=g)
+
+    pool_scale = per_dimension_scale(targets)
+    subset = slice(0, 20)
+
+    free = summarise(members[:, subset], targets[subset], n_transitions=1, seed=0)
+    fixed = summarise(
+        members[:, subset], targets[subset], n_transitions=1, seed=0, scale=pool_scale
+    )
+    assert free.mean_error != pytest.approx(fixed.mean_error, rel=1e-3), (
+        "the subset happened to have the pool's scale; pick a different subset"
+    )
+    # And the RATIO moves too, which is the finding. A scalar scale would
+    # cancel between numerator and denominator; a per-dimension one reshapes
+    # each vector differently, so it does not. Measured on real pilot data the
+    # registered endpoint shifts by up to 4.6% between a pool-derived and a
+    # failure-set-derived scale -- a degree of freedom P§10.3 never fixes.
+    assert free.ratio != pytest.approx(fixed.ratio, rel=1e-6)
+
+
+def test_the_dead_validation_fraction_knob_is_gone():
+    """W3-5. A knob that does nothing still tells a reader a split happens."""
+    assert not hasattr(TrainConfig(), "val_fraction")

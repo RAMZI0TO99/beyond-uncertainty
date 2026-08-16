@@ -169,9 +169,20 @@ class Ensemble:
         """
         outputs = []
         for model in self.members:
+            was_training = model.training
             model.eval()
-            with torch.no_grad():
-                position, _ = model(obs, action)
+            try:
+                with torch.no_grad():
+                    position, _ = model(obs, action)
+            finally:
+                # Restore, rather than leaving every member in eval mode
+                # (W3-4). Inert for this MLP, but P§9.3 plans **MC-dropout** as
+                # the reliability-gate fallback B2 -- "dropout at test time".
+                # Under that estimator a model silently left in eval mode
+                # returns deterministic predictions with **zero disagreement**,
+                # which would read as "MC-dropout also fails H1" and trigger a
+                # false pivot at exactly the gate the fallback exists for.
+                model.train(was_training)
             outputs.append(position)
         return torch.stack(outputs)
 

@@ -133,6 +133,18 @@ def train(
     v_action = torch.as_tensor(validation.action)
     v_next = torch.as_tensor(validation.next_obs)
 
+    if train_index is not None:
+        index = np.asarray(train_index)
+        # Torch wraps negative indices silently, so a resample that produced
+        # one would train on the wrong rows and surface, if at all, as an
+        # unrelated error much later (W3-6).
+        if index.size and (index.min() < 0 or index.max() >= len(train_data)):
+            raise ValueError(
+                f"train_index runs [{index.min()}, {index.max()}] but the "
+                f"training pool has {len(train_data)} rows. Negative indices "
+                "wrap silently in torch rather than raising, so this is checked "
+                "here."
+            )
     train_idx = torch.as_tensor(
         np.arange(len(train_data)) if train_index is None else train_index,
         dtype=torch.long,

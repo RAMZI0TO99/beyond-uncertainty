@@ -42,11 +42,11 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-16 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–2 audited; W3 Mon–Wed CERTIFIED at `2875e60`; W3 Fri and Sat done.** Nine Sol reviews actioned on 2026-08-16. Running ahead of the 2026-08-17 start — see DEV-002 |
+| **Current week / day** | **Weeks 1–2 audited; W3 Mon–Wed CERTIFIED at `2875e60`; W3 Fri/Sat done; W3 audited (D-060).** Nine Sol reviews actioned on 2026-08-16. Running ahead of the 2026-08-17 start — see DEV-002 |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `2875e60`** — Sol certified the Week 3 Mon–Wed infrastructure on 2026-08-16, covering D-047 … D-057. Set `BASE` to this for the next bundle |
-| **Tests** | **413 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
+| **Tests** | **418 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
 | **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). W3 Friday's 90-fit pilot ran on **CPU** at the student's request; their GPU was at 14.2/16.4 GB under another workload all week |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -198,6 +198,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-057** | 2026-08-16 | Pools must belong to the run that trains on them; a third tautological test | finding Sol's |
 | **D-058** | 2026-08-16 | W3 Friday's pilot, and the first thing it found | pending |
 | **D-059** | 2026-08-16 | Correction to D-058 — what the pilot measured, and what it did not | finding Sol's |
+| **D-060** | 2026-08-16 | Week 3 audit — seven defects, and Sol's auxiliary conditional answered | pending |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -303,14 +304,14 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept here.
 
-### 2026-08-16 (delta 26 review) · Two claims withdrawn, and a better mechanism found · Claude
-**Did:** actioned Sol's review of the pilot (D-059). Four findings, all verified, all confirmed — **two of them withdraw claims I made in D-058**. Reran the 90 fits, because the per-transition predictions had not been retained.
-**Withdrawn (1):** 0.462 is **not the registered H2 ratio**. P§10.3 defines that endpoint over a condition's *failure set*; the pilot took every movement transition, and the W4 Friday threshold does not exist yet. It is an exploratory whole-pool ratio, now labelled so in the report, the methodology and the figure footnote.
-**Withdrawn (2):** "an estimation failure produced it" asserted a **verified label** the repair protocol has not yet produced. P§7.1 labels a condition by what repairs it. Now "small-data condition" / "estimation-**design** condition" throughout.
-**The invalid inference, and the better answer.** I compared the sd of the *ensemble mean* to the targets' and concluded members had "all collapsed toward the same near-constant". Members that vary can cancel in their average — verified with a counterexample at ensemble-mean sd 0.051 against member sd 2.556. Measured **per member**, the truth is more interesting: at N=100 members range **0.219–0.639** of the target's variation, at N=250 **0.220–0.836**, at N=5,000 **0.939–0.974**. It is **heterogeneous contraction, not collapse** — and disagreement peaks at N=250 exactly where the spread across members is widest. Some members have learned the rule and others have not.
-**Also:** the schedule's per-transition export was missing entirely and is now written per (N, seed) with episode and step; "the sd is smaller than the gap" replaced by paired within-seed differences (+0.179, +0.360, +0.102); `assert` → `ValueError` (assertions vanish under `-O`); the pairwise-convention docstring claimed a factor of two that does not exist, verified against an explicit enumeration; and the denominator-floor test had zero error *and* zero disagreement, so it never exercised the floor.
-**Result:** 410 → 413 tests. **Zero GPU-hours.** Certified base remains `2875e60`.
-**Next:** W4 Mon — the trend test, read knowing the curve is non-monotone at the small end.
+### 2026-08-16 (W3 audit) · Seven defects, one of which moves a registered endpoint · Claude
+**Did:** the Week 3 audit (D-060), on the precedent of D-015 and D-021 — a behavioural probe of everything built this week, before Week 4 builds a gate verdict on it. Nine Sol reviews are not a substitute: Sol reviews what is reported plus a diff, and cannot probe running code.
+**Seven defects, three serious.** **W3-1** is the one that matters: P§10.3 requires per-dimension normalised error but never says *which set* defines the normalisation, and the scale was recomputed from whatever subset it was handed. Because the scale is a **vector** it does not cancel between the ratio's numerator and denominator — so the **registered H2 endpoint moves by up to 4.6%** with a choice nobody made, and the W4 Friday failure set is exactly such a subset. **W3-2**: the pilot bypassed `RunLogger` entirely, so its outputs had no commit, no dirty flag, no package versions, no `seed_partition` — P§13.7's requirement, using machinery Week 1 built for it. **W3-4**: `member_predictions` left every model in eval mode; inert for this MLP, but P§9.3 plans **MC-dropout** as reliability-gate fallback B2, and under it a model left in eval mode returns deterministic predictions with **zero disagreement** — which reads as "MC-dropout also fails H1" and triggers a false pivot at the gate the fallback exists for.
+**Also:** the activation report used one member of five; `TrainConfig.val_fraction` was dead after D-052; `train_index` was unvalidated and **torch wraps negative indices silently**, so a bad resample would train on the wrong rows and fail later for an unrelated reason.
+**Checked and correct**, which is half the point of an audit: checkpoint restoration on all three exit paths, patience counting, five members sharing no stream before or after training, member results independent of `ensemble_size`, nested prefixes still exact after the restructure, validation/evaluation byte-identical across sizes **and arms**, **zero** shared (obs, action) pairs between train and evaluation, passthrough correct for all five actions and row-wise on mixed batches, trunk isolated under `predict_next_obs`, the block bootstrap genuinely duplicating episodes, the partial minibatch used, no NaN anywhere, and 300 units / 150-150 / 8,197 fits unchanged.
+**D-047's conditional is answered.** Across all five members and every dataset size the detached auxiliary head **never** beats its copy baseline — 0 of 3 seeds everywhere, best member 0.225 against 0.169, no improvement with data. Compute is not the obstacle (a second trunk is 1.98×, taking the design from ~1.6 to ~3.2 CPU-hours). **Recommendation: downgrade rather than spend it** — activation carries no hypothesis and P§10.2's primary error excludes it. Recorded for Sol, not decided.
+**Result:** 413 → 418 tests, every finding with a named regression test. **Zero GPU-hours.**
+**Next:** W4 Mon — the trend test, once Sol has ruled on W3-1's scale choice, which W4 consumes.
 ---
 
 ## 8. → TO SOL — *moved to its own file*

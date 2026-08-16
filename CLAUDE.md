@@ -185,6 +185,11 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
   I read a 97.7% loss share as "98% of the gradient" — measured, the trunk
   gradient was 16–36% activation, the opposite way round. Measure the quantity
   you are about to make a claim about (D-047).
+- **An audit finds a different class of defect than a review does.** Nine Sol
+  reviews had passed over Week 3; the audit then found seven defects, three
+  serious — including one that moves the registered H2 endpoint by 4.6%. Sol
+  reviews what you *report* plus a diff; only probing the running system finds
+  the rest (D-015, D-021, D-060).
 - **A fix in one layer is not a fix.** The unresolved/effective unit split was
   implemented in collection and never carried into training, so a capacity
   repair silently built the *unrepaired* model — nothing raised, and every

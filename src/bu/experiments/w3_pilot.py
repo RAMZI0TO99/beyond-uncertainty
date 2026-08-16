@@ -29,13 +29,14 @@ import numpy as np
 import torch
 
 from .. import constants as K
-from ..config import TrainConfig, UnitSpec
+from ..config import Config, TrainConfig, UnitSpec
+from ..metrics import RunLogger
 from ..env.collect import collect_pools
 from ..models.ensemble import train_ensemble
 from ..models.uncertainty import (
     UncertaintySummary, across_seeds, per_transition_table, spread_diagnostic, summarise,
 )
-from ..models.world_model import activation_report, primary_error
+from ..models.world_model import activation_report
 
 #: One configuration, as the schedule specifies. The reference configuration
 #: (D-025), so the pilot looks at the conditions the ladder will later validate.
@@ -89,9 +90,16 @@ def run(
                 hidden_size=hidden_size,
             )
             pools = collect_pools(unit, stage="exp1", seed=seed)
-            ensemble = train_ensemble(
-                unit, pools, TrainConfig(), stage="exp1", seed=seed
-            )
+            # Through RunLogger, so the run record carries the commit, the dirty
+            # flag, the package versions and the seed partition (W3-2). P§13.7
+            # requires every figure to be regenerable from logs *with* the
+            # provenance that explains them; the first version of this pilot
+            # wrote bare JSON and had none of it.
+            config = Config(unit=unit, seed=seed, stage="exp1")
+            with RunLogger.start(config, root=out / "records") as logger:
+                ensemble = train_ensemble(
+                    unit, pools, TrainConfig(), stage="exp1", seed=seed, logger=logger
+                )
 
             obs = torch.as_tensor(pools.evaluation.obs)
             action = torch.as_tensor(pools.evaluation.action)
@@ -106,7 +114,25 @@ def run(
 
             summary = summarise(members, targets, n_transitions=n, seed=seed)
             spread = spread_diagnostic(members, targets)
-            report = activation_report(ensemble.members[0], obs, action, next_obs)
+            # Across every member, not member 0 (W3-3). D-047's conditional is
+            # about the detached head in general, and one member of five could
+            # be the best or the worst of them.
+            reports = [
+                activation_report(model, obs, action, next_obs)
+                for model in ensemble.members
+            ]
+            report = {
+                "n_interact": reports[0].n_interact,
+                "n_changed": reports[0].n_changed,
+                "copy_baseline_interact": reports[0].copy_baseline_interact,
+                "error_interact_per_member": [r.error_interact for r in reports],
+                "error_changed_per_member": [r.error_changed for r in reports],
+                "error_interact_mean": float(np.mean([r.error_interact for r in reports])),
+                "beats_copy_baseline": bool(
+                    np.mean([r.error_interact for r in reports])
+                    < reports[0].copy_baseline_interact
+                ),
+            }
 
             # The schedule requires PER-TRANSITION export; summaries are derived
             # from it, never the other way round (D-059).
@@ -123,7 +149,7 @@ def run(
                     seed=seed,
                     uncertainty=summary.as_row(),
                     val_position_errors=list(ensemble.val_position_errors),
-                    activation=asdict(report),
+                    activation=report,
                     spread=spread.as_row(),
                     epochs=[r.epochs_run for r in ensemble.results],
                 )

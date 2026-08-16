@@ -2524,3 +2524,12 @@ NUMBERS
 NEXT: W4 Mon -- the trend test.
 === END UPDATE ===
 ```
+
+### 2026-08-16 (delta 26 review) · Two claims withdrawn, and a better mechanism found · Claude
+**Did:** actioned Sol's review of the pilot (D-059). Four findings, all verified, all confirmed — **two of them withdraw claims I made in D-058**. Reran the 90 fits, because the per-transition predictions had not been retained.
+**Withdrawn (1):** 0.462 is **not the registered H2 ratio**. P§10.3 defines that endpoint over a condition's *failure set*; the pilot took every movement transition, and the W4 Friday threshold does not exist yet. It is an exploratory whole-pool ratio, now labelled so in the report, the methodology and the figure footnote.
+**Withdrawn (2):** "an estimation failure produced it" asserted a **verified label** the repair protocol has not yet produced. P§7.1 labels a condition by what repairs it. Now "small-data condition" / "estimation-**design** condition" throughout.
+**The invalid inference, and the better answer.** I compared the sd of the *ensemble mean* to the targets' and concluded members had "all collapsed toward the same near-constant". Members that vary can cancel in their average — verified with a counterexample at ensemble-mean sd 0.051 against member sd 2.556. Measured **per member**, the truth is more interesting: at N=100 members range **0.219–0.639** of the target's variation, at N=250 **0.220–0.836**, at N=5,000 **0.939–0.974**. It is **heterogeneous contraction, not collapse** — and disagreement peaks at N=250 exactly where the spread across members is widest. Some members have learned the rule and others have not.
+**Also:** the schedule's per-transition export was missing entirely and is now written per (N, seed) with episode and step; "the sd is smaller than the gap" replaced by paired within-seed differences (+0.179, +0.360, +0.102); `assert` → `ValueError` (assertions vanish under `-O`); the pairwise-convention docstring claimed a factor of two that does not exist, verified against an explicit enumeration; and the denominator-floor test had zero error *and* zero disagreement, so it never exercised the floor.
+**Result:** 410 → 413 tests. **Zero GPU-hours.** Certified base remains `2875e60`.
+**Next:** W4 Mon — the trend test, read knowing the curve is non-monotone at the small end.

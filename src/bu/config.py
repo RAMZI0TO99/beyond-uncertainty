@@ -252,13 +252,17 @@ class Arm:
 
 @dataclass(frozen=True)
 class TrainConfig:
-    """Optimisation and ensemble settings. Not part of the unit identity."""
+    """Optimisation and ensemble settings. Not part of the unit identity.
+
+    ``val_fraction`` was removed in the W3 audit (W3-5): the validation pool is
+    generated independently (D-052) and nothing had referenced the field since.
+    A knob that does nothing still tells a reader that a split happens here.
+    """
 
     lr: float = 1e-3
     batch_size: int = 128
     max_epochs: int = 500
     patience: int = 20
-    val_fraction: float = 0.2
     ensemble_size: int = K.DEFAULT_ENSEMBLE_SIZE
     bootstrap_ratio: float = 1.0
 
