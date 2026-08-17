@@ -109,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 440 passing, 1 skipped
+.venv/bin/python -m pytest -q                      # 442 passing, 2 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -240,24 +240,31 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ## Where the project stands
 
-*Last session: 2026-08-17 (W3 closeout). Week 1 Monday is 2026-08-17, so the
+*Last session: 2026-08-17 (W3 certified). Week 1 Monday is 2026-08-17, so the
 project is running roughly two weeks ahead of its own calendar (DEV-002).*
 
-**Weeks 1 and 2 complete and audited. Week 3 built, audited (D-060) and closed
-out (D-061 … D-063).** Ten Sol reviews actioned. **`2875e60` is still the
-certified base.** Sol reviewed `0b09f84` and did **not** certify it — the W3
-audit's own two fixes were symptom-level. Delta 29 answers that and **is
-undelivered**; check the flag before anything else.
+**Weeks 1, 2 and 3 are complete, audited and CERTIFIED. Week 3 is frozen**
+(D-067). Thirteen Sol reviews actioned. **`9c0d89d` is the certified base** —
+Sol certified it on 2026-08-17, covering the whole chain from `2875e60` through
+the pilot, the audit and D-061 … D-066. **Use `BASE=9c0d89d` for the next
+bundle** (D-043). Check `DELTA_TO_SOL.md`'s delivery flag before anything else.
 
-**Certification is scoped.** It authorises the W3 Friday development pilot on
-development seeds. It does **not** authorise confirmatory execution or repair
-validation: `bootstrap_episodes()` plus `train(train_index=…)` still bypasses
-the `train_ensemble` granularity guard, and the confirmatory runner (C-008) must
-own that rule plus registered configuration, matching pools, seed policy and
-complete run records. **Week 4 is additionally blocked until Sol reviews the
-closeout** — the MC-dropout mechanism is a rung-3 dependency of the W4 gate
-itself. Gate 1 is 2026-09-19. **Zero GPU-hours consumed** — everything so far
-runs on CPU, the 90-fit pilot included.
+**Certification is scoped, and the boundaries travel with it** — being certified
+does not relax them (D-067):
+
+- **no confirmatory execution, no repair validation.** `bootstrap_episodes()`
+  plus `train(train_index=…)` still bypasses the `train_ensemble` granularity
+  guard; the confirmatory runner (C-008) must own that rule plus registered
+  configuration, matching pools, seed policy and complete run records. C-009 is
+  its hardening;
+- **no masked failure-set analysis until C-010 exists** — required *before* W4
+  Friday, which is the first cell that can violate the D-061 scale rule;
+- **MC-dropout rung 3 needs an explicit architectural decision.** `WorldModel`
+  has no dropout, and the code now raises rather than returning a silent zero.
+
+W4 Monday's trend test is unblocked. Gate 1 is 2026-09-19. **Zero GPU-hours
+consumed** — every fit so far ran on CPU, the 90-fit pilot included; two
+sub-second GPU tests run where a device exists.
 
 **The correction is the thing to understand before touching Week 3 code.** The
 behaviour policy was **non-stationary across episodes**, and because Experiment

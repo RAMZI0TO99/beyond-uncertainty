@@ -3151,3 +3151,215 @@ WHAT I AM ASKING YOU TO ATTACK
      rather than an intention.
 === END UPDATE ===
 ```
+
+---
+
+## Delta #31 · delivered to Sol 2026-08-17, with bundle `9c0d89d`
+*Sol's verdict: **CERTIFIED.** The device-local RNG correction accepted; the skipped two-GPU test accepted as explicitly unverified; the corrected CLAUDE.md wording accepted; leaving the append-only §7 and D-061 entries intact accepted, since D-064 records their correction; and the single `SOL_BUNDLE.txt` plus embedded delta id and digest judged sufficient. **New certified base `9c0d89d` — Week 3 closed and frozen** (D-067).*
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 31
+PREVIOUS_DELTA_ID: 30
+DATE: 2026-08-17
+BUNDLE_FILE: SOL_BUNDLE.txt
+SUBJECT: You are right a third time on the same function. Device-local seeding,
+         and the reason my own test could not have caught it.
+
+--------------------------------------------------------------------
+FIRST -- THE BUNDLE YOU REVIEWED WAS NOT THIS DELTA'S. MY FAULT.
+
+You were sent sol_bundle_microcloseout.txt at 08391ae. This delta's bundle was
+generated correctly at 4a6e4dd and was simply not the file that got pasted.
+THREE bundles sat side by side in the repository root -- sol_bundle_closeout,
+sol_bundle_microcloseout, sol_bundle_rng_patch -- produced ninety minutes apart,
+all plausibly named. Picking the wrong one was the likely outcome, not bad luck,
+and the student did nothing wrong.
+
+This is D-036 and D-041 in a third costume. Generating a bundle is not
+delivering one. A bundle that selects its own contents can still mislead. And
+now: a bundle that cannot be told apart from a stale sibling is not delivered
+either. Each time I improved the ARTEFACT and left the HANDOVER unguarded.
+
+FIXED TWO WAYS (D-066):
+  one file  SOL_BUNDLE.txt, overwritten every time. The per-session names are
+            deleted -- they are regenerable from one command and are not
+            evidence; the evidence is attempt-001 and git.
+  one line  the bundle's header now names THIS delta -- its DELTA_ID and its
+            sha256. The two are produced by different commands at different
+            moments, so nothing tied them together. Now you can refuse a
+            mismatched pair in one comparison, without trusting either producer.
+
+            I tried the obvious thing first and it does not work: stamping the
+            commit INTO the delta changes the delta, which changes the commit,
+            so the line always names its own predecessor. I caught that by
+            using it -- the stamped value was already one commit stale the
+            moment it was written. The dependency has to run bundle -> delta,
+            because the bundle is generated last.
+
+I also now verify your eight required properties MECHANICALLY against the
+generated file before sending, rather than by looking at it. On the first run
+that check failed item two -- the tree was dirty because .gitignore was not yet
+committed. That is exactly the sort of thing an eye slides past.
+
+--------------------------------------------------------------------
+THE LEAK, REPRODUCED BEFORE I TOUCHED ANYTHING.
+
+I fixed the FORK to cover the devices in use and left the SEEDING on
+torch.manual_seed, which seeds the CPU generator AND every accelerator device.
+The two sets stopped matching, so the call reseeded generators nothing would
+restore.
+
+Your first case, measured on this machine -- and note the computation never
+touches the GPU at all:
+
+  CPU model, CPU inputs, forkable_devices() -> (None, [])
+  torch.cuda.get_rng_state() preserved across the call?   FALSE
+
+FIXED BY SEEDING DEVICE-LOCALLY, your preferred option:
+
+  seed_locally(seed, device_type, devices):
+      torch.default_generator.manual_seed(seed)        # CPU only, not the
+                                                       # all-device convenience
+      for index in devices:                            # derived devices only
+          with module.device(index): module.manual_seed(seed)
+
+Devices absent from forkable_devices() are never seeded. A "meta" device type
+seeds nothing rather than looking for a module that does not exist. The set
+seeded is now exactly the set the fork restores, by construction of the same
+list -- and I mean that literally this time: it is one variable used twice.
+
+--------------------------------------------------------------------
+WHY MY TEST COULD NOT HAVE CAUGHT IT, WHICH IS THE PART I WANT ON RECORD.
+
+The CUDA test checked the one device that was both seeded AND forked. That is
+the single configuration in which the mismatch cancels. I wrote it against the
+machine it runs on rather than against the claim it makes.
+
+That is the D-055 / D-057 defect class -- an assertion that cannot fail in the
+configuration it runs in -- arriving through HARDWARE rather than through code.
+A one-GPU machine cannot distinguish "seeds what it forks" from "seeds
+everything and forks one thing". It is the fourth time this class has bitten me
+and the first time the cause was the machine.
+
+--------------------------------------------------------------------
+TESTS, INCLUDING ONE I CANNOT RUN.
+
+  CPU call, every CUDA device unchanged      RUNS HERE, and FAILED before the
+                                             fix -- this is your first case
+  two CUDA devices, used and unused both
+    unchanged                                SKIPPED. This machine has one GPU.
+                                             DECLARED AS UNVERIFIED, not
+                                             reported as passing
+  seed_locally directly: CPU generator
+    moves, no device generator does          runs on any machine, no GPU needed
+  stochasticity + seed reproducibility       retained, and now asserted ON THE
+                                             DEVICE too: same seed identical,
+                                             different seed differs, spread
+                                             still 1e-3+
+
+The multi-GPU guarantee therefore rests on seed_locally seeding only the derived
+indices, which the third test covers directly, plus the two-device test standing
+ready for a machine that can run it. I would rather say that than imply
+coverage I do not have.
+
+--------------------------------------------------------------------
+THE STALE CLAUDE.md SENTENCE -- CORRECTED, AND ONE I AM LEAVING ALONE.
+
+You are right that it is the dangerous one: it instructs the NEXT Claude, who
+has no memory, using the model you withdrew. Replaced with the explicit-and-
+auditable claim plus the C-010 pointer, and a second instance in the same file's
+module map is corrected too. I swept both the code and the docs for the phrasing
+and there are now no surviving instances outside the entries that withdraw it.
+
+One I am deliberately NOT editing, and I want you to know it is a choice: the
+PROJECT_STATE.md section 7 session-log entry from the closeout still contains
+"Enforced by construction". Section 7 is append-only (D-014, which exists
+because I once reordered that ledger), and the entry immediately following it
+withdraws the claim by name. If you would rather I break the append-only rule to
+strike it, say so and I will -- but I did not want to make that call myself.
+
+Same reasoning for D-061 in the ledger: untouched, with D-064 naming it as the
+correction, which is how D-042 corrected D-039 and D-044 corrected D-042.
+
+NUMBERS
+  CPU-only call, CUDA rng preserved:   old FALSE -> new TRUE (measured)
+  devices seeded on a CPU call:        0 (was: every CUDA device)
+  fits rerun:                          ZERO. attempt-001 unchanged, digest
+                                       cdaa497cec68 on rows.json as before
+  tests:                               440 -> 442 passing, 2 skipped
+  compute consumed:                    0 GPU-hours of budget
+
+YOUR TWO PROVISIONAL RULINGS ARE TAKEN AS GIVEN, AND BOTH ARE IMPLEMENTED
+
+  two-device test    stays SKIPPED and explicitly UNVERIFIED. Never reported as
+                     passed. The implementation-level test carries the
+                     guarantee: seed_locally() moves the CPU generator and NO
+                     device generator, on any machine, GPU or not.
+  append-only        section 7 and D-061 left intact, D-064 correcting them in
+                     place in the chronology. CLAUDE.md now carries ONLY the
+                     explicit-and-auditable description -- both instances, and
+                     I swept code and docs for the phrasing.
+
+WHAT I AM ASKING YOU TO ATTACK
+  1. Whether a single file name plus the bundle naming its delta is enough, or
+     whether the bundle should be generated BY the same command that finalises
+     the delta so the two cannot diverge at all.
+=== END UPDATE ===
+```
+
+---
+
+# §7 session log — Week 3, archived on certification at `9c0d89d`
+
+### 2026-08-16 (W3 audit) · Seven defects, one of which moves a registered endpoint · Claude
+**Did:** the Week 3 audit (D-060), on the precedent of D-015 and D-021 — a behavioural probe of everything built this week, before Week 4 builds a gate verdict on it. Nine Sol reviews are not a substitute: Sol reviews what is reported plus a diff, and cannot probe running code.
+**Seven defects, three serious.** **W3-1** is the one that matters: P§10.3 requires per-dimension normalised error but never says *which set* defines the normalisation, and the scale was recomputed from whatever subset it was handed. Because the scale is a **vector** it does not cancel between the ratio's numerator and denominator — so the **registered H2 endpoint moves by up to 4.6%** with a choice nobody made, and the W4 Friday failure set is exactly such a subset. **W3-2**: the pilot bypassed `RunLogger` entirely, so its outputs had no commit, no dirty flag, no package versions, no `seed_partition` — P§13.7's requirement, using machinery Week 1 built for it. **W3-4**: `member_predictions` left every model in eval mode; inert for this MLP, but P§9.3 plans **MC-dropout** as reliability-gate fallback B2, and under it a model left in eval mode returns deterministic predictions with **zero disagreement** — which reads as "MC-dropout also fails H1" and triggers a false pivot at the gate the fallback exists for.
+**Also:** the activation report used one member of five; `TrainConfig.val_fraction` was dead after D-052; `train_index` was unvalidated and **torch wraps negative indices silently**, so a bad resample would train on the wrong rows and fail later for an unrelated reason.
+**Checked and correct**, which is half the point of an audit: checkpoint restoration on all three exit paths, patience counting, five members sharing no stream before or after training, member results independent of `ensemble_size`, nested prefixes still exact after the restructure, validation/evaluation byte-identical across sizes **and arms**, **zero** shared (obs, action) pairs between train and evaluation, passthrough correct for all five actions and row-wise on mixed batches, trunk isolated under `predict_next_obs`, the block bootstrap genuinely duplicating episodes, the partial minibatch used, no NaN anywhere, and 300 units / 150-150 / 8,197 fits unchanged.
+**D-047's conditional is answered.** Across all five members and every dataset size the detached auxiliary head **never** beats its copy baseline — 0 of 3 seeds everywhere, best member 0.225 against 0.169, no improvement with data. Compute is not the obstacle (a second trunk is 1.98×, taking the design from ~1.6 to ~3.2 CPU-hours). **Recommendation: downgrade rather than spend it** — activation carries no hypothesis and P§10.2's primary error excludes it. Recorded for Sol, not decided.
+**Result:** 413 → 418 tests, every finding with a named regression test. **Zero GPU-hours.**
+**Next:** W4 Mon — the trend test, once Sol has ruled on W3-1's scale choice, which W4 consumes.
+---
+
+### 2026-08-17 (W3 closeout) · Two fixes that fixed the symptom, and a ruling on the scale · Claude
+**Did:** Sol's review of deltas 27–28. D-059's interpretation corrections accepted; **`0b09f84` not certified**, and Week 3 not closed on two serious findings. Both verified before anything changed, per the standing rule, and **one of the two is different from how it was stated**.
+**1. The MC-dropout fix did not fix MC-dropout.** Sol is exactly right: `member_predictions` restored `model.training` but still called `eval()` before the forward pass, so dropout was off *during* inference. Reproduced against the old path on a model with a real dropout layer — sample spread and mean pairwise disagreement both **exactly 0.000e+00**, against 0.298 and 0.547 under the replacement. Replaced with an explicit prediction policy, dropout re-activated per no-grad pass, modes restored per **submodule**, and **MC-dropout on a dropout-free model now raises** — `WorldModel` has none, so rung 3 is an explicit architectural choice rather than a silent zero.
+**2. The rerun hazard is real, by a different route.** The append-with-restarting-counter mechanism is real at the class level (measured: ten records numbered 0–4, 0–4) but **unreachable** through `RunLogger.start`, which `write_run_record` rejects first — a same-scope rerun was refused *before writing anything*, files byte-identical. What is reachable is the same end state via a **different-scope** rerun: no `run_id` collision, so two executions' records and exports sat in one directory while `rows.json` described only the second. Fixed at three layers: `RunLogger` refuses to append (and continues the counter when told to), the pilot writes into a fresh `attempt-NNN` it never reopens, and `load_runs()` raises when one `run_id` appears in two directories.
+**D-061 adopted as ruled.** The scale is measured once from the full movement evaluation pool before any mask. Enforced by construction: `NormalisationScale` is the only accepted argument and its only constructor reads a pool, so masking has nothing to recompute from. The **stale invariance claim is corrected in the artefacts** — it was in the module docstring and in a test's own docstring, not only in the ledger. **The pilot's numbers do not move:** a full rerun reproduces all four uncertainty fields at every size and seed, and all 90 member validation errors, exactly.
+**D-063 adopted:** no second trunk; the head is a non-decisional diagnostic, and all four views are now reported per member with a **per-slice** copy baseline.
+**Also found:** `runs/` and `figures/` are gitignored, so the evidence manifest Sol asked for **could never have reached a bundle**. The compact artefacts are now tracked by explicit exception; `manifest.json` + `rows.json` carry 18 runs × 5 member errors = 90 fits in 64 KB.
+**Result:** 418 → 436 tests. **Zero GPU-hours** — the 90-fit rerun was CPU.
+**Next:** deliver the closeout bundle. W4 Mon stays blocked until it passes review.
+---
+
+---
+
+### 2026-08-17 (W3 micro-closeout) · A claim narrowed, and an isolation that only held on CPU · Claude
+**Did:** Sol's review of delta 29. The substantive Week 3 corrections are **accepted** — D-061, D-063 and D-062's logging/attempt mechanism outright, and D-062's MC-dropout mechanism on CPU. All four of my questions were ruled on: the corrected rerun account accepted; the per-slice copy baseline accepted and preferred; the duplicate-`run_id` guard confirmed as belonging in `load_runs` **as defence in depth**, with the confirmatory runner additionally owing an explicit immutable-attempt selection; and exact reproduction accepted as valid evidence that D-061 **pins** the W3 numbers — but **not** as validation of the future masked call site. Two narrow items remained, both mine, neither requiring a rerun (D-064).
+**1. "Enforced by construction" was too strong, and Sol is right.** `NormalisationScale`'s dataclass constructor is public, `from_evaluation_pool()` accepts a masked tensor, and the low-level metrics still take raw tensors. The true claim is narrower: the registered summary path **will not invent** a scale, so a subset cannot be normalised by accident — the rest is a **call-site invariant** the W4 runner must carry (C-010). Since it cannot be prevented at the type it is made auditable: a masked construction records the mask's size, and a test now asserts that (10, not 200) with a different vector. The old test's *name* claimed what its assertions did not, which is the D-055/D-057 defect in my own regression test.
+**2. The RNG isolation was CPU-only.** `fork_rng(devices=[])` forks CPU always but device generators only for devices it is handed, so a GPU run advanced the CUDA generator — and the fallback estimator is the thing that would run on a GPU. Verified on this machine's device rather than reasoned about: under the old call `torch.cuda.get_rng_state()` was **not** preserved; under the fix it is, and the samples still vary. Devices are now derived from the model's parameters, buffers and inputs; two accelerator types raise; the CPU path is unchanged.
+**Also, and it is the sharper lesson:** the bundle's own exclusion mechanism — built to keep the bundle reviewable — **excluded the evidence the bundle existed to deliver**. Sol could see digests and counters but not the 18 rows, the 90 validation errors or the per-member auxiliary values. A test passing on my machine is not evidence in the reviewer's hands. `rows.json` ships explicitly from now on.
+**Result:** 436 → 440 tests. **Zero GPU-hours** of budget; one sub-second, ~68 MiB GPU test now runs where a device exists.
+**Next:** deliver the micro-closeout. Sol expects to certify Week 3 on it, with no further scientific decision.
+
+---
+
+### 2026-08-17 (W3 RNG correction) · The seeding was wider than the fork · Claude
+**Did:** Sol's review of delta 30. **Every scientific item is now accepted** — `rows.json` read and independently verified by Sol (18 rows, 18 unique run ids, 90 member errors, one scale vector per seed, reference counts 831/824/839, **0/90 wins over the copy baseline in all three activation slices**), the D-061 correction, C-010's formulation, D-063, device derivation, and the mixed-accelerator refusal. Certification held on one narrow code item, and Sol was right again (D-065).
+**The leak.** D-064 fixed the *fork* to cover the devices in use and left the *seeding* on `torch.manual_seed`, which seeds the CPU generator **and every accelerator device**. The two sets stopped matching, so the call reseeded generators nothing would restore — including on a **CPU-only** call, where the computation never touches the GPU at all. Reproduced before changing anything: `torch.cuda.get_rng_state()` was not preserved across a pure-CPU MC-dropout call. Fixed by seeding device-locally — the CPU default generator directly, then each derived device — so the set seeded is exactly the set the fork restores.
+**Why my own test missed it, which is the part to keep.** The CUDA test checked the one device that was both seeded *and* forked: the single configuration where the mismatch cancels. Written against the machine it ran on rather than against the claim. That is D-055/D-057's defect class arriving through **hardware** — a one-GPU machine cannot tell "seeds what it forks" from "seeds everything, forks one thing". The two-device test is written and **skips here**; it is declared unverified rather than reported as passing.
+**Also:** `CLAUDE.md` still taught the next Claude the withdrawn "a mask has nothing to recompute from" model, in the file a reset Claude reads first. Corrected, with a pointer to C-010. The §7 entry carrying the old wording is **not** edited — §7 is append-only (D-014) and the entry after it withdraws the claim by name.
+**Result:** 440 → 442 tests, 2 skipped. **Zero GPU-hours** of budget.
+**Next:** deliver the RNG patch. Sol certifies Week 3 on it.
+
+---
+
+### 2026-08-17 (W3 bundle repackage) · The right bundle existed; the wrong one was sent · Claude
+**Did:** Sol reported delta 31's bundle as stale — `08391ae`, 440 tests, the old `torch.manual_seed` — and it was, because **three** bundle files sat side by side in the repository root, generated ninety minutes apart, all plausibly named. Sol reviewed a delta describing code its bundle did not contain. The correct bundle had been generated at `4a6e4dd` and was simply not the one picked. **My packaging failure, not the student's** (D-066).
+**This is D-036 and D-041 in a third costume.** Generating a bundle is not delivering one; a bundle that selects its own contents can still mislead; and now — a bundle that cannot be told apart from a stale sibling is not delivered either. Each time the fix improved the *artefact* and left the *handover* unguarded.
+**Fixed:** one canonical `SOL_BUNDLE.txt`, overwritten each time, with the per-session names deleted so a stale copy cannot survive beside a fresh one; and a `BUNDLE_COMMIT:` line in every delta, so the delta and the bundle — produced by different commands at different moments — can be checked against each other in one line. Sol's eight required properties are now verified **mechanically against the generated file** before sending; on the first run that check caught a dirty tree, which is exactly what an eye slides past.
+**Sol's provisional rulings, both accepted:** the two-device test stays skipped and **explicitly unverified**, carried by the implementation-level test that `seed_locally()` touches only the CPU generator and the derived indices; and the append-only §7 and D-061 entries stay intact, with `CLAUDE.md` carrying only the corrected description.
+**Result:** 442 tests, 2 skipped, unchanged — no code changed. **Zero GPU-hours.**
+**Next:** resend delta 31 with its actual bundle.
+

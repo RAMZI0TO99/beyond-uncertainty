@@ -667,3 +667,32 @@ Since it cannot be prevented at the type, it is made **auditable**: `n_reference
 **And a check before sending.** The eight properties Sol listed for this bundle — new commit, clean tree, the expected test counts, the named implementation and tests, the corrected wording — are verified **against the generated file**, mechanically, rather than by looking at it. On the first run that check failed item two: the tree was dirty because `.gitignore` had not been committed yet, which is precisely the kind of thing an eye slides past.
 **Plan ref:** P§13.7.
 **Reviewed by Sol:** the mismatch was Sol's finding. Sol's provisional rulings on delta 31 stand: the two-device test may remain skipped and **explicitly unverified**, provided the implementation-level test proves `seed_locally()` touches only the CPU generator and the derived indices; and the append-only `PROJECT_STATE.md` §7 and D-061 entries stay intact, with `CLAUDE.md` carrying only the corrected description.
+
+### D-067 · 2026-08-17 · Week 3 certified and frozen at `9c0d89d`, with its boundaries
+**Decision:** Sol certified `9c0d89d75b89ce911a705959e5595a61d4cda678` on 2026-08-17. **Week 3 is closed and frozen.** The certification covers the complete chain from the previously certified `2875e60` through the Week 3 pilot, the audit, the interpretation corrections and closeout decisions **D-061 … D-066**. `9c0d89d` is the new certified base and the `BASE` for every subsequent bundle (D-043).
+
+**The Week 3 conclusions Sol accepted, stated at the width they are allowed:**
+
+* the pilot is **exploratory development evidence**, not an H1 or H2 verdict;
+* D-061 fixes normalisation to the **full movement evaluation pool before masking**, and the W3 numbers are **unchanged** by it because the scored set equals that pool;
+* **no second activation trunk**; the detached head stays non-decisional, and it beat its paired copy baseline in **0 of 90** member/slice comparisons;
+* the pilot evidence is **18 runs and 90 member results** with immutable-attempt provenance;
+* MC-dropout is an explicit stochastic prediction policy that **fails closed** on the current dropout-free `WorldModel`.
+
+**The boundaries, which travel with the certification and are not softened by it:**
+
+| Still not authorised | Owner |
+|---|---|
+| Confirmatory execution | C-008, the confirmatory runner |
+| Repair-validation execution | C-008 |
+| Runner hardening — `source_unit is None`, per-dataset `stream_version` | C-009 |
+| Masked failure-set analysis | **C-010, required before W4 Friday** |
+| MC-dropout rung 3 on the current architecture | an explicit development-stage architectural decision; `WorldModel` has no dropout |
+
+**C-010 restated, because W4 Friday is the first cell that can violate it:** construct the `NormalisationScale` from the full movement evaluation pool **before** the failure mask exists, reuse **that same object** for the whole-pool and masked statistics, and select **one immutable attempt** explicitly rather than loading a tree.
+
+**What is now unblocked:** Week 4 Monday's trend-test implementation, within those boundaries.
+
+**On the review round that produced this.** Six Sol reviews across Week 3's close (deltas 27–31). Every finding was verified before anything changed, and every one stood — but two arrived at conclusions Sol had reached by a different route than the one described (D-062's rerun path, and my own account of it), and three were about **claims rather than code**: an invariance that does not hold for a vector, an enforcement a type cannot provide, and an isolation that held only on the hardware it was tested on. The code defects were cheaper to fix than the sentences were to get right.
+**Plan ref:** P§9.3, P§10.3, P§13.7, P§14.2.
+**Reviewed by Sol:** **certification issued.** New certified base `9c0d89d`.
