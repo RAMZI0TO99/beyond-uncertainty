@@ -109,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 442 passing, 2 skipped
+.venv/bin/python -m pytest -q                      # 483 passing, 2 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -148,7 +148,12 @@ src/bu/
                          summary path will not invent (D-061, D-064; see C-010)
   experiments/w3_pilot.py  the W3 Fri sweep; per-transition export; immutable
                            attempt-NNN directories with an evidence manifest (D-062)
-  stats/            empty — Weeks 4–5
+  stats/trend.py    THE H1 statistic: Spearman rho vs dataset size, exact
+                    paired seed-block bootstrap, no RNG. ONE implementation
+                    shared by the W4 gate and the W10 verdict (D-068)
+  stats/gate.py     the W4 reliability gate: eligibility, all-three-must-pass
+                    aggregation, the rung on the record. A WRAPPER over
+                    trend_test, never a second implementation (D-070)
 ```
 
 **The four identities, which most analysis discipline follows from:**
@@ -240,14 +245,24 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ## Where the project stands
 
-*Last session: 2026-08-17 (W3 certified). Week 1 Monday is 2026-08-17, so the
-project is running roughly two weeks ahead of its own calendar (DEV-002).*
+*Last session: 2026-08-17 (W4 Mon closeout). Week 1 Monday is 2026-08-17, so the
+project is running roughly three weeks ahead of its own calendar (DEV-002).*
 
-**Weeks 1, 2 and 3 are complete, audited and CERTIFIED. Week 3 is frozen**
-(D-067). Thirteen Sol reviews actioned. **`9c0d89d` is the certified base** —
-Sol certified it on 2026-08-17, covering the whole chain from `2875e60` through
-the pilot, the audit and D-061 … D-066. **Use `BASE=9c0d89d` for the next
-bundle** (D-043). Check `DELTA_TO_SOL.md`'s delivery flag before anything else.
+**Weeks 1–3 complete, audited, CERTIFIED and frozen** (D-067). **W4 Monday's
+trend test is certified too** at `a84cf6c`, and the W4 gate wrapper is built
+(D-070). Fifteen Sol reviews actioned.
+
+**Certified bases, in one chain:** `9c0d89d` (Week 3 implementation, frozen) →
+`7dbcd32` (documentation continuation) → `a84cf6c` (W4 Mon trend test). **Use
+`BASE=a84cf6c` for the next bundle** (D-043).
+
+**START HERE.** `DELTA_TO_SOL.md` holds **delta 34, undelivered**. The student
+was sending it to Sol; ask whether Sol replied before doing anything else. It
+asks Sol to review the gate wrapper's eligibility and aggregation rules, and
+raises three questions — the 18 frozen `config_id`s encoding `hidden_size=256`,
+whether the gate should record the curves it read, and whether rungs 1 and 2
+need predeclared parameter values before Tuesday runs (otherwise Wednesday
+chooses them after seeing Tuesday fail).
 
 **Certification is scoped, and the boundaries travel with it** — being certified
 does not relax them (D-067):
@@ -299,24 +314,48 @@ P§14.2's ~8,700.
   out of training again: doing so made the held-out set a function of N *and*
   made a "100-transition" condition train on 50.
 
-### Next: W4 Mon — but only once Sol has reviewed the closeout
+### Next: W4 Tue — gate day 1, and the first cell that spends real compute
 
-The rank-correlation trend test, written once and used for **both** the W4 gate
-and the W10 H1 verdict. Read it knowing the pilot's disagreement curve is
-**non-monotone at the small end** — it peaks at N=250, reproduced in all three
-paired seeds — because a rank correlation over six sizes is exactly the
-instrument that bends. A gate failing at rung 0 sends you down the fallback
-ladder Tue–Thu, and rung 3 is MC-dropout, which now **raises** on the
-dropout-free `WorldModel` rather than returning a silent zero (D-062).
+**Do not start it until two things are true:** Sol has reviewed delta 34's
+wrapper, and the student has said which device to use. The eligibility and
+aggregation rules are what make Tuesday's number a *verdict*, and they are far
+cheaper to change before a number exists than after.
+
+**Shape:** 3 predeclared configurations × **5** development seeds × 6 sizes =
+**90 ensembles / 450 fits**. The W3 pilot did 90 fits in ~10 min on CPU, so
+expect roughly an hour on CPU or minutes on GPU. `nvidia-smi` first; the
+student's other workload finished and the card was at ~0.9/16 GB.
+
+**What the gate needs, all already enforced by `reliability_gate()`:** exactly
+those three configurations, exactly five development seeds, six sizes, one
+`trend_test` per configuration, **all three must pass**. Record the verdict
+**and the rung**. A rung-0 failure starts the ladder Wed–Thu, and rung 3 is
+MC-dropout, which **raises** on the dropout-free `WorldModel` (D-062) — so
+reaching it is an explicit architectural decision, not a run.
+
+**Read Monday's result knowing what it is:** rho = −0.9429, CI [−0.9429,
+−0.8286] on the *three-seed pilot* — a smoke test, not a gate verdict, and its
+interval has only **two distinct values** across 27 resamples. At five seeds the
+support is 3,125 and the quantiles start to mean something.
 
 The pilot is rerunnable: `python -m bu.experiments.w3_pilot` writes a fresh
 `runs/w3_pilot/attempt-NNN/` with a manifest and never touches a previous one.
-~10 min on CPU. **Ask the student before spending their GPU** — it has been at
-~14/16 GB under another workload all week; scan with `nvidia-smi` first.
 
 ### Open, and what each blocks
 
-- **No open questions.** Q-011 closed by D-053.
+- **Three questions are with Sol** in delta 34, and Tuesday should not run
+  before they are answered: whether the 18 frozen `config_id`s encode the right
+  fixed axes (they carry `hidden_size=256`, the default grid and object count);
+  whether the gate should record the curves it read, so a verdict is
+  recomputable without the run records; and whether **rungs 1 and 2 need
+  predeclared parameter values before Tuesday** — otherwise Wednesday picks them
+  after having seen Tuesday fail, which is choosing a repair after seeing the
+  result.
+- **The W4 gate is frozen before it runs** (D-070): exactly 3 predeclared
+  configurations × exactly 5 development seeds × 6 sizes, **all three must
+  pass**, no majority vote, no pooled curve. The 18 `config_id`s are golden
+  values with a regeneration test — if that test fails, an identity field
+  changed and it needs a Change Record, not a test update.
 - **Numbers taken before D-051/D-052 are void.** D-020's coverage evidence and
   the Q-011 disagreement measurements were both taken under the non-stationary
   policy and the derived split. Re-measure; do not quote them.
