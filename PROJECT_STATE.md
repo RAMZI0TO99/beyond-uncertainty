@@ -46,7 +46,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: still `2875e60`.** Sol reviewed `0b09f84` and did **not** certify it — Week 3 stays open until the closeout bundle passes. Set `BASE=2875e60` |
-| **Tests** | **437 passing, 1 skipped**. Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
+| **Tests** | **436 passing, 1 skipped**. Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
 | **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). The 90-fit pilot and its closeout rerun both ran on **CPU**; the student's GPU has been at ~14/16 GB under another workload all week |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -326,7 +326,7 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept h
 **D-061 adopted as ruled.** The scale is measured once from the full movement evaluation pool before any mask. Enforced by construction: `NormalisationScale` is the only accepted argument and its only constructor reads a pool, so masking has nothing to recompute from. The **stale invariance claim is corrected in the artefacts** — it was in the module docstring and in a test's own docstring, not only in the ledger. **The pilot's numbers do not move:** a full rerun reproduces all four uncertainty fields at every size and seed, and all 90 member validation errors, exactly.
 **D-063 adopted:** no second trunk; the head is a non-decisional diagnostic, and all four views are now reported per member with a **per-slice** copy baseline.
 **Also found:** `runs/` and `figures/` are gitignored, so the evidence manifest Sol asked for **could never have reached a bundle**. The compact artefacts are now tracked by explicit exception; `manifest.json` + `rows.json` carry 18 runs × 5 member errors = 90 fits in 64 KB.
-**Result:** 418 → 437 tests. **Zero GPU-hours** — the 90-fit rerun was CPU.
+**Result:** 418 → 436 tests. **Zero GPU-hours** — the 90-fit rerun was CPU.
 **Next:** deliver the closeout bundle. W4 Mon stays blocked until it passes review.
 ---
 

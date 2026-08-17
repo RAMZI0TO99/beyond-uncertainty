@@ -160,6 +160,33 @@ baseline number describes the change rate more than it describes either model.
 It is model-independent by construction, so it is one number per condition
 rather than per member, and it is labelled as such.
 
+THE FOUR VIEWS, 3 seeds x 5 members = 15 fits per cell:
+
+     N        slice   members mean   best member   copy baseline   beat
+   100 all_interact         0.4613        0.3766          0.1693   0/15
+   100      changed         0.4672        0.3952          0.2500   0/15
+   100    unchanged         0.4495        0.3393          0.0000   0/15
+   250 all_interact         0.3171        0.2248          0.1693   0/15
+   250      changed         0.3423        0.2642          0.2500   0/15
+   250    unchanged         0.2647        0.1333          0.0000   0/15
+   500 all_interact         0.2499        0.2268          0.1693   0/15
+   500      changed         0.2841        0.2659          0.2500   0/15
+   500    unchanged         0.1791        0.1480          0.0000   0/15
+  1000 all_interact         0.2545        0.2381          0.1693   0/15
+  1000      changed         0.2873        0.2758          0.2500   0/15
+  1000    unchanged         0.1864        0.1621          0.0000   0/15
+  2500 all_interact         0.2571        0.2481          0.1693   0/15
+  2500      changed         0.2900        0.2804          0.2500   0/15
+  2500    unchanged         0.1887        0.1787          0.0000   0/15
+  5000 all_interact         0.2617        0.2430          0.1693   0/15
+  5000      changed         0.2933        0.2747          0.2500   0/15
+  5000    unchanged         0.1956        0.1822          0.0000   0/15
+
+0 of 15 in EVERY slice at EVERY size. The unchanged slice is the sharpest of
+the four and is the one the combined number was hiding: copying scores exactly
+0.0000 there by construction, and the head scores 0.18-0.45. It does not
+improve with data past N=500 in any slice.
+
 Conclusion, at the width the evidence carries: the detached head did not
 reliably beat copying and is retained as a diagnostic. Not evidence about any
 H1/H2 mechanism.
@@ -195,8 +222,10 @@ NUMBERS
   pilot rerun vs published: EXACT on 4 fields x 6 sizes x 3 seeds, and on all
                             90 member validation errors
   scale vectors:            3 (one per seed), n_reference 824-839
-  delivered attempt:        18 runs, 90 member records, 21 artefacts digested
-  tests:                    418 -> 437 passing, 1 skipped
+  auxiliary vs copy:        0 of 15 fits beat it, in all 3 slices at all 6 sizes
+  delivered attempt:        18 runs, 90 member records, 21 artefacts digested,
+                            manifest naming commit ed550a0 with dirty=false
+  tests:                    418 -> 436 passing, 1 skipped
   compute consumed:         0 GPU-hours (the rerun was CPU)
 
 WHAT I AM ASKING YOU TO ATTACK
