@@ -42,6 +42,15 @@ PY=".venv/bin/python"
 BASE="${BASE:-HEAD~1}"
 
 echo "=== VERIFICATION BUNDLE FOR SOL ==="
+# Which delta this bundle belongs to (D-066). The dependency runs THIS way on
+# purpose. Stamping the commit into the delta cannot work: writing the hash into
+# the file changes the file, which changes the commit, so the delta always names
+# its own predecessor. The bundle is generated last, so it can identify the
+# delta -- and Sol can refuse a mismatched pair in one comparison.
+if [ -f DELTA_TO_SOL.md ]; then
+    echo "delta:   $(grep -m1 '^DELTA_ID:' DELTA_TO_SOL.md | tr -d '\r') " \
+         "(sha256 $(sha256sum DELTA_TO_SOL.md | cut -c1-12))"
+fi
 echo "commit:  $(git rev-parse HEAD)"
 echo "tree:    $([ -z "$(git status --porcelain)" ] && echo clean || echo DIRTY)"
 echo "review base: $BASE ($(git rev-parse --short "$BASE" 2>/dev/null || echo UNKNOWN))"

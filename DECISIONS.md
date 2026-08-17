@@ -660,7 +660,9 @@ Since it cannot be prevented at the type, it is made **auditable**: `n_reference
 **Two changes, one removing the ambiguity and one making a mismatch detectable:**
 
 * one file name, overwritten each time, so "the bundle" is unambiguous and a stale copy cannot survive beside a fresh one. The old per-session names are deleted; they are regenerable from one command and are not evidence — the evidence is `attempt-001` and git;
-* `BUNDLE_COMMIT:` in the delta itself. The delta and its bundle are produced at different moments by different commands, so nothing else ties them together; now the reviewer can check correspondence in one line without trusting either producer.
+* the **bundle names its delta** — `DELTA_ID` and the delta file's sha256, in the bundle's header. The two are produced at different moments by different commands, so nothing else tied them together; now the reviewer can refuse a mismatched pair in one comparison without trusting either producer.
+
+  The obvious version of this does not work, and I found that out by using it. Stamping the *commit* into the *delta* changes the delta, which changes the commit — so the stamped line always names its own predecessor, and mine was one commit stale the moment it was written. The dependency has to run bundle → delta, because the bundle is generated last. Recorded because the broken version looks correct and I would otherwise reach for it again.
 
 **And a check before sending.** The eight properties Sol listed for this bundle — new commit, clean tree, the expected test counts, the named implementation and tests, the corrected wording — are verified **against the generated file**, mechanically, rather than by looking at it. On the first run that check failed item two: the tree was dirty because `.gitignore` had not been committed yet, which is precisely the kind of thing an eye slides past.
 **Plan ref:** P§13.7.
