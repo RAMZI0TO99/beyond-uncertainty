@@ -696,3 +696,37 @@ Since it cannot be prevented at the type, it is made **auditable**: `n_reference
 **On the review round that produced this.** Six Sol reviews across Week 3's close (deltas 27–31). Every finding was verified before anything changed, and every one stood — but two arrived at conclusions Sol had reached by a different route than the one described (D-062's rerun path, and my own account of it), and three were about **claims rather than code**: an invariance that does not hold for a vector, an enforcement a type cannot provide, and an isolation that held only on the hardware it was tested on. The code defects were cheaper to fix than the sentences were to get right.
 **Plan ref:** P§9.3, P§10.3, P§13.7, P§14.2.
 **Reviewed by Sol:** **certification issued.** New certified base `9c0d89d`.
+
+### D-068 · 2026-08-17 · Change Record — the H1 trend test's reading rule, frozen before it saw data
+**Change Record.** New constants in `src/bu/constants.py`: `TREND_EXPECTED_DIRECTION = "negative"`, `TREND_PASS_REQUIRES_UPPER_BOUND_BELOW = 0.0`, `TREND_BOOTSTRAP = "exact_paired_seed_block"`, `TREND_QUANTILE_METHOD = "linear"`. **Has data been seen?** The Week 3 development pilot exists and its disagreement curve is known to be non-monotone at the small end. **That is exactly why the rule was fixed by Sol in advance, and why it is recorded here before the function was applied to anything.** No confirmatory data exists.
+
+**The rule (Sol's, adopted verbatim).** Spearman's rho between ascending dataset size and mean pairwise disagreement, over **all six** preregistered sizes. Expected direction **negative**. **Pass only when the entire 95% interval lies below zero** — containing or touching zero fails, entirely above zero is a *reversal* and fails, a constant curve or undefined coefficient fails. Individual out-of-order points carry **no separate veto** beyond their effect on rho and its interval.
+
+**Explicitly forbidden**, because each converts an inconvenient result into a passing one: removing N=100 or N=250, smoothing the curve, switching to Kendall, or adding a separate monotonic-order rule. P§4.2 says ordinary non-monotonicity in six observed means is not itself the criterion. The N=250 peak should weaken the statistic naturally — **that is evidence, not an exception to repair**.
+
+**The interval.** A paired seed-block bootstrap: one seed's complete six-size curve is one block, because the six sizes within a seed are nested prefixes and not independent (D-030). Resample seeds with replacement, average across selected seeds at each size, recompute rho on the six means, take the 2.5th and 97.5th percentiles. With 3 development and 5 confirmatory seeds the space is **enumerated exactly** — 3³ = 27 and 5⁵ = 3,125 ordered tuples, which reproduces the ordinary bootstrap's multinomial multiplicities by construction. **No bootstrap RNG exists**, so there is no seed to record, drift or forget, and a registered endpoint cannot differ between two runs of it. The quantile method is declared in code rather than left to a library default that has changed across numpy versions.
+
+The point estimate is rho on the **across-seed mean curve**. Per-seed curves and per-seed rho are diagnostics and do not enter the pass rule: a "3 of 5 seeds show it" reading is the unreliable-positive Gate 2 exists to refuse.
+
+**The partition boundary, frozen with it.** W4 gate: **development seeds only** — it is estimator selection, and using confirmatory seeds to choose whether to keep the ensemble would consume confirmatory evidence during method selection. W10 verdict: **confirmatory seeds only**. Same statistic, interval, direction and pass rule at both. The partition argument validates and labels the input and **must not change the mathematics**. Development and confirmatory seeds are **never pooled**, and the W4 coefficient is never quoted as the H1 result. Once the gate selects a rung, that choice is frozen before confirmatory execution; if the default ensemble fails and a fallback passes, H1 is recorded as **falsified for the ensemble** and the fallback becomes the predeclared secondary path.
+
+**One thing the implementation refuses that the rule only implies.** The size grid must be exactly the six registered sizes. Without that check the grid is an argument, and a five-point statistic computed over a trimmed grid is indistinguishable from the registered one in every artefact carrying it — the "drop the awkward small end" move, arriving through a keyword rather than through a decision. Found while writing the test for it, because the first version of that test passed for the wrong reason.
+**Plan ref:** P§4.2, P§10.3, P§11.3, S§W4 Mon, S§W10 Mon.
+**Reviewed by Sol:** **Sol's ruling**, adopted verbatim; the grid check is mine.
+
+### D-069 · 2026-08-17 · W4 Monday — the trend test built, and what it says about the pilot
+**Decision:** `src/bu/stats/trend.py` implements D-068's rule as one function used by both stages, with 22 tests covering every clause Sol required plus the partition boundary. Applied to the **development pilot** — which is what Schedule W4 Mon asks for, and is **not** the Week 4 gate (that is Tuesday, five seeds across three configurations).
+
+| | |
+|---|---|
+| rho (across-seed mean curve) | **−0.9429** |
+| 95% interval | **[−0.9429, −0.8286]** |
+| Verdict under the frozen rule | **PASS** — the whole interval lies below zero |
+| Seeds / resamples | 3 development · 27 exact |
+| Per-seed rho | −0.9429, −0.8286, −0.9429 |
+
+**Sol's prediction held.** The N=250 peak costs exactly **one** of fifteen pairwise inversions, weakening rho from −1.0 to −0.9429 — weakened naturally, with nothing removed or smoothed, and the interval stays wholly negative.
+
+**The limitation, which matters more than the verdict.** With three seeds the exact bootstrap has **27 resamples taking only two distinct values** — −0.9429 with multiplicity 20 and −0.8286 with multiplicity 7. So the "95% interval" here *is* the full support of the distribution: the 2.5th percentile is its minimum and the 97.5th its maximum. The interval is **coarse**, not tight, and its narrowness is a property of having three highly consistent seeds rather than evidence of precision. At five confirmatory seeds the support is 3,125 and the quantiles become meaningful. **This number is development evidence about the pipeline, not a measurement of H1**, and the same coarseness will apply to the Week 4 Tuesday gate if it too runs at three seeds — worth settling before Tuesday rather than after.
+**Plan ref:** P§4.2, S§W4 Mon.
+**Reviewed by Sol:** pending — the coarse-interval limitation is the thing to attack.

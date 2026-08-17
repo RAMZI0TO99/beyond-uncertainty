@@ -115,6 +115,32 @@ EVALUATION_EPISODES = 100
 NORMALISATION_SCALE_SOURCE = "evaluation_pool"
 NORMALISATION_SCALE_DOMAIN = "movement"
 
+# --- The H1 trend test (Plan §4.2, Schedule W4 Mon; frozen by D-068) ------
+#
+# One function serves the Week 4 reliability gate and the Week 10 H1 verdict.
+# The reading rule below was fixed by Sol **before** the function was applied to
+# any data, which is the whole point of it: a rank correlation over six sizes
+# bends on a non-monotone small end, and the pilot's disagreement curve peaks at
+# N=250. Choosing a friendlier instrument after seeing that is exactly what
+# preregistration exists to prevent.
+
+#: H1 predicts disagreement **falls** as data grows. A positive trend is a
+#: reversal and fails; it is not an alternative form of success.
+TREND_EXPECTED_DIRECTION = "negative"
+
+#: Pass only when the whole interval is below zero. Touching zero fails.
+TREND_PASS_REQUIRES_UPPER_BOUND_BELOW = 0.0
+
+#: The interval is a **paired seed-block bootstrap**: one seed's complete
+#: six-size curve is one block. With 3 development and 5 confirmatory seeds the
+#: resample space is small enough to **enumerate exactly** (3³ = 27, 5⁵ = 3,125)
+#: rather than sample, so no bootstrap RNG exists to seed, drift or forget.
+TREND_BOOTSTRAP = "exact_paired_seed_block"
+
+#: Declared rather than left to a library default, because the default has
+#: changed across numpy versions and the interval is a registered endpoint.
+TREND_QUANTILE_METHOD = "linear"
+
 # --- Design scale (Plan §10.7) --------------------------------------------
 
 #: Minimum labelled configuration-conditions, and minimum held out. Power

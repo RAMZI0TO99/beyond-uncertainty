@@ -42,11 +42,11 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-17 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–3 COMPLETE, AUDITED AND CERTIFIED. Week 3 is frozen** (D-067). Thirteen Sol reviews actioned; D-061 … D-066 all certified in one chain from `2875e60`. **Next: W4 Mon**, the trend test, now unblocked within the boundaries below. Week 1 Monday is **today** — roughly two weeks ahead of calendar (DEV-002) |
+| **Current week / day** | **Weeks 1–3 CERTIFIED and frozen at `9c0d89d`** (D-067); documentation continuation certified at `7dbcd32`. **W4 Mon DONE** — the trend test is built under Sol's frozen reading rule (D-068) and applied to the pilot (D-069). Fourteen Sol reviews actioned. **Next: W4 Tue**, gate day 1. Week 1 Monday is **today** — roughly two weeks ahead of calendar (DEV-002) |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
-| **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `9c0d89d`** — Sol certified it on 2026-08-17, covering the whole chain from `2875e60` through the pilot, the audit and D-061 … D-066. **Set `BASE=9c0d89d` for the next bundle** (D-043) |
-| **Tests** | **442 passing, 2 skipped** (CUDA tests run only where a device exists; the two-GPU test skips on this machine and is declared unverified) (the CUDA test runs only where a device exists). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
+| **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `9c0d89d`** — Sol certified it on 2026-08-17, covering the whole chain from `2875e60` through the pilot, the audit and D-061 … D-066. **Set `BASE=7dbcd32` for the next bundle** — Sol certified it as the documentation continuation so this housekeeping is not re-sent; the frozen *implementation* remains `9c0d89d` (D-043, D-067) |
+| **Tests** | **464 passing, 2 skipped** (CUDA tests run only where a device exists; the two-GPU test skips on this machine and is declared unverified) (the CUDA test runs only where a device exists). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
 | **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). Every fit so far ran on **CPU**. Two sub-second GPU tests now run in the suite (~68 MiB) to cover the CUDA RNG fork and seeding — the student's other workload has finished and the card is at ~0.9/16 GB |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -75,11 +75,12 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 2. **W3 Wed — DONE** (D-050). Five members on 5,000 transitions in 8.0s CPU; per-member validation errors 0.0034–0.0061, sd 0.0010, each drawing ~50 of 80 training episodes. **Raised Q-011.**
 3. **W3 Fri and Sat — DONE** (D-058, corrected by **D-059**). 90 fits on CPU, rerun with per-transition export. **Error falls monotonically in N; disagreement does not** — it peaks at N=250, direction reproduced in all three seeds paired (+0.179, +0.360, +0.102). Measured **per member**: at N=100 members range 0.219–0.639 of the target's variation, at N=250 0.220–0.836, at N=5,000 0.939–0.974. The mechanism is **heterogeneous contraction, not collapse** — disagreement peaks where the spread across members is widest. The lowest whole-pool ratio is at N=100 (0.462), but that is **not** the registered H2 ratio, which is defined over the failure set and needs the W4 Fri threshold.
 4. **W3 closeout — DONE** (D-061, D-062, D-063), on Sol's review of deltas 27–28. Two serious findings, both verified first and **one of them different from how it was stated**: the MC-dropout fix restored state without re-enabling dropout (measured on a real dropout model: **exactly zero** disagreement under the old path), and the rerun hazard was reachable through a *different-scope* rerun rather than the append path, which `write_run_record` already blocked. Scale ruling adopted and the pilot's numbers reproduce **exactly**. No second trunk.
-5. **W4 Mon — NEXT, and now unblocked.** The rank-correlation trend test, used for both the W4 gate and the W10 H1 verdict. **Read it knowing the disagreement curve is non-monotone at the small end** — a rank correlation over the six sizes is exactly the instrument that non-monotonicity bends. **C-010 must be built before W4 Friday**, which is the first cell that can violate the D-061 scale rule.
+5. **W4 Mon — DONE** (D-068, D-069). The trend test is one function for both stages, built under Sol's rule **frozen before it saw data**, with 22 tests. On the pilot: **rho = −0.9429, 95% CI [−0.9429, −0.8286], PASS** on development seeds. The N=250 peak costs exactly one of fifteen pairwise inversions and weakens rho naturally, as Sol predicted — nothing removed, nothing smoothed. **The interval is coarse, and that is the finding:** the 27 resamples take only **two** distinct values, so it is the full support rather than a tight estimate. Development evidence about the pipeline, **not** a measurement of H1 and **not** the gate.
+6. **W4 Tue — NEXT.** Gate day 1: five seeds across three configurations, verdict and **rung** recorded. Settle before running whether three seeds would repeat the coarse-interval problem. **C-010 must be built before W4 Friday**, the first cell that can violate the D-061 scale rule.
 
 **No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **D-047's open item is closed** by D-063: the real loop never closed the gap at any size or member, Sol ruled against a second trunk, and the detached head is now a **non-decisional diagnostic** — barred from the trunk, from early stopping and checkpoint selection, from the failure set, from repair labels and from the critic's residual.
 
-**Blocked on:** nothing for W4 Monday — **certification unblocks the trend test** (D-067). Still blocked, correctly, and the boundaries travel *with* the certification rather than being relaxed by it: **confirmatory execution** and **repair validation** (C-008, C-009); **the masked failure-set analysis until C-010 is built — required before W4 Friday**; **MC-dropout rung 3**, which needs an explicit architectural decision because `WorldModel` has no dropout; **critic splitting** and **W5 MDE approval** (C-003, C-005, C-006). No open questions.
+**Blocked on:** nothing for W4 Tuesday's gate day 1. Still blocked, correctly, and the boundaries travel *with* the certification rather than being relaxed by it: **confirmatory execution** and **repair validation** (C-008, C-009); **the masked failure-set analysis until C-010 is built — required before W4 Friday**; **MC-dropout rung 3**, which needs an explicit architectural decision because `WorldModel` has no dropout; **critic splitting** and **W5 MDE approval** (C-003, C-005, C-006). No open questions.
 
 **Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split conditionally, and DEV-005 was a hit against that condition. Sol weighed it on 2026-08-16 and **kept the split**, on the grounds that the mechanised protocol tests improve the arrangement more than reassigning implementation would. The watch stays live: consequential design decisions go into a delta **and get delivered** before dependent code is built on them, and Claude flags any decision it believes meets that bar at the moment of making it. D-030 is the current test of that — decided, filed, and deliberately left unbuilt.
 
@@ -111,6 +112,9 @@ These are the preregistered quantities. They are fixed **before** data collectio
 | Normalising scale | the **full movement evaluation pool**, measured **before any failure mask**, then reused for every subset, member and dataset size sharing that pool | D-061 |
 | Bootstrap | **episode-level block bootstrap**, primary for H1/H2 | D-053 |
 | Bootstrap sensitivities | transition-level and init-only: **W3 Fri pilot only**, never a verdict, not in the 8,197 | D-054 |
+| H1 trend test | Spearman's rho, disagreement vs the **six** registered sizes; **negative** expected; passes only if the **whole** 95% interval is below zero | D-068 |
+| Trend interval | **exact** paired seed-block bootstrap — 3³ = 27 / 5⁵ = 3,125 enumerated, no RNG; quantile method `linear` | D-068 |
+| Trend partitions | W4 gate **development only**, W10 verdict **confirmatory only**, never pooled, same mathematics | D-068 |
 | Policy | adaptive counters **reset every episode**; overrides rejected on confirmatory seeds | D-051, D-054 |
 | Reduction order when behind | catch-up day → ablations → full Exp 5 → configuration count (only to measured MDE) | S "When you fall behind" |
 | **Seeds are not a reduction lever** | Withdrawn as an option in P v1.2 | P§14.3 |
@@ -208,6 +212,8 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-065** | 2026-08-17 | The seeding was wider than the fork — device-local seeding | finding Sol's |
 | **D-066** | 2026-08-17 | One bundle file, and a delta that names the commit it describes | finding Sol's |
 | **D-067** | 2026-08-17 | Week 3 certified and frozen at `9c0d89d`, with its boundaries | **certified** |
+| **D-068** | 2026-08-17 | Change Record — the H1 trend test's reading rule, frozen before it saw data | Sol's ruling |
+| **D-069** | 2026-08-17 | W4 Monday — the trend test built, and what it says about the pilot | pending |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -320,6 +326,17 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **20 archived, 1 kept
 **Standing corrections now live in `CLAUDE.md`:** restoring state is not fixing a mechanism; verify a finding's *route*, not just its conclusion; and a test written against the machine it runs on can pass in the one configuration where the defect cancels.
 **Result:** 442 tests, 2 skipped. **Zero GPU-hours** of the ~110–145 budgeted.
 **Next:** W4 Mon — the trend test. Read it knowing the pilot's disagreement curve peaks at N=250, which is what a rank correlation over six sizes is most sensitive to.
+
+---
+
+### 2026-08-17 (W4 Mon) · The trend test, under a rule frozen before it saw data · Claude
+**Did:** Sol certified `7dbcd32` as the documentation continuation — use it as the next `BASE`; the frozen *implementation* stays `9c0d89d` — and **authorised W4 Mon under a fully specified reading rule** (D-068). Built `src/bu/stats/trend.py`: one function for the W4 gate and the W10 verdict, 22 tests covering every clause Sol required plus the partition boundary.
+**The rule was frozen first, and that is the point.** Spearman's rho over **all six** registered sizes, negative expected, **pass only if the whole 95% interval is below zero**, undefined or constant fails, out-of-order points carry no separate veto. The interval is an **exact** paired seed-block bootstrap — 27 or 3,125 ordered tuples enumerated, **no RNG at all**, quantile method declared in code. Removing N=100 or N=250, smoothing, or switching to Kendall are each forbidden by name.
+**On the pilot** (development seeds — Schedule W4 Mon's criterion, **not** the gate): **rho = −0.9429, 95% CI [−0.9429, −0.8286], PASS.** Sol's prediction held exactly: the N=250 peak costs **one** of fifteen pairwise inversions, weakening rho from −1.0 naturally, with nothing removed.
+**The limitation is the more useful result.** With three seeds the 27 resamples take only **two** distinct values (−0.9429 ×20, −0.8286 ×7), so the "95% interval" *is* the full support — its narrowness is a property of three consistent seeds, not evidence of precision. At five seeds the support is 3,125 and the quantiles mean something. Flagged for Sol before Tuesday, because if gate day 1 also runs at three seeds it inherits the same coarseness.
+**One loophole closed while testing.** The size grid is now required to be exactly the six registered sizes. Without it the grid is a keyword argument, and a five-point statistic over a trimmed grid is indistinguishable from the registered one in every artefact carrying it — the "drop the awkward small end" move arriving through a parameter rather than a decision. Found because the first version of that test passed for the wrong reason.
+**Result:** 442 → 464 tests, 2 skipped. **Zero GPU-hours.**
+**Next:** W4 Tue, gate day 1 — five seeds across three configurations, recording the verdict **and the rung**.
 
 ## 8. → TO SOL — *moved to its own file*
 

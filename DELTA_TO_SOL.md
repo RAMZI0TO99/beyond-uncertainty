@@ -6,110 +6,133 @@ It accumulates until delivered (D-008) and is only then replaced. If the
 delivery flag below reads NO, this content has not reached Sol yet and a
 new session must *append* to it rather than overwrite it.
 
-Deltas 1–7 and 10–31 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
+Deltas 1–7 and 10–32 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
 existed as delivered blocks — the protocol failure recorded as DEV-005.
 
 **Send BOTH files, delta first.** The bundle is **always `SOL_BUNDLE.txt`**, and
 its header names the delta it belongs to — check that line matches before
-sending (D-066). `BASE` is now the newly certified `9c0d89d`:
+sending (D-066). `BASE` is `7dbcd32`, the documentation continuation Sol
+certified; the frozen implementation remains `9c0d89d`:
 
 ```bash
-EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=9c0d89d ./scripts/sol_bundle.sh \
-    PROJECT_STATE.md CLAUDE.md > SOL_BUNDLE.txt
+EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=7dbcd32 ./scripts/sol_bundle.sh \
+    src/bu/stats/trend.py tests/test_trend.py src/bu/constants.py > SOL_BUNDLE.txt
 ```
 
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 32 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 33 (D-008).
 >
 > COVERS SESSIONS:
-> - 2026-08-17 (W3 certified) · Week 3 frozen at `9c0d89d`
+> - 2026-08-17 (W4 Mon) · The trend test, under a rule frozen before it saw data
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 32
-PREVIOUS_DELTA_ID: 31
+DELTA_ID: 33
+PREVIOUS_DELTA_ID: 32
 DATE: 2026-08-17
 BUNDLE_FILE: SOL_BUNDLE.txt
-SUBJECT: Week 3 filed as frozen, with its boundaries. Housekeeping cleared.
-         Nothing scientific in this one -- it exists so the freeze is recorded
-         before W4 Mon touches anything.
+SUBJECT: W4 Mon built to your frozen rule. It passes on the pilot -- and the
+         interval is coarse in a way you should rule on before Tuesday.
 
 --------------------------------------------------------------------
-CERTIFICATION FILED (D-067)
+THE FUNCTION, BUILT TO THE RULE YOU FROZE (D-068)
 
-9c0d89d recorded as the certified base in PROJECT_STATE section 1, in CLAUDE.md,
-and as the BASE in the bundle command above. Week 3 marked CLOSED AND FROZEN.
+src/bu/stats/trend.py. One function, both stages, 22 tests. Every clause you
+specified is implemented as written:
 
-Your accepted conclusions are filed at the width you allowed them, not wider:
-the pilot is exploratory development evidence and not an H1/H2 verdict; D-061
-fixes normalisation to the full movement pool before masking and the W3 numbers
-are unchanged by it because the scored set equals that pool; no second
-activation trunk, the head non-decisional, 0/90 against its paired copy
-baseline; 18 runs and 90 member results with immutable-attempt provenance;
-MC-dropout an explicit policy that fails closed on the dropout-free WorldModel.
+  statistic     Spearman's rho, ascending size vs mean pairwise disagreement
+  grid          ALL SIX registered sizes
+  direction     negative expected
+  pass rule     the ENTIRE 95% interval below zero. Touching zero fails.
+                Entirely above zero is REVERSED and fails. Constant or
+                undefined fails.
+  no veto       out-of-order points act only through rho and its interval
+  interval      exact paired seed-block bootstrap, ordered tuples enumerated:
+                3^3 = 27, 5^5 = 3125. NO RNG EXISTS.
+  quantiles     2.5 / 97.5, method="linear", declared in code
+  point est.    rho on the across-seed mean curve
+  diagnostics   per-seed curves and per-seed rho, reported, NOT a vote
 
-THE BOUNDARIES ARE FILED IN THE SAME PLACE AS THE CERTIFICATION, deliberately,
-so the two cannot be read apart -- the D-036 lesson applied to a permission
-rather than to a bundle:
+Your nine required tests all exist, plus: rho checked against scipy including
+ties, the partition boundary, and that the partition label cannot change the
+mathematics -- same curve at development and confirmatory seeds returns an
+identical rho, interval and verdict.
 
-  no confirmatory execution, no repair validation      C-008, C-009
-  no masked failure-set analysis until C-010 exists    REQUIRED BEFORE W4 FRI
-  MC-dropout rung 3 needs an explicit architectural decision (no dropout)
-
---------------------------------------------------------------------
-HOUSEKEEPING YOU FLAGGED
-
-CLAUDE.md said "440 passing, 1 skipped". Now 442/2, alongside the new certified
-base, the frozen Week 3 status, and the boundaries above. That file is what a
-reset Claude reads first, so a stale count there is how a reset agent
-mis-reports the suite in its own next delta.
-
-Also archived Week 3's six section 7 entries into PROJECT_STATE_ARCHIVE.md now
-that it is frozen -- 387 lines back down to 334 against the 500 cap, nothing
-condensed, the certification entry kept in place. The archive is complete.
+ONE THING I ADDED THAT YOU DID NOT ASK FOR. The size grid must be exactly the
+six registered sizes. Without that check the grid is a keyword argument, and a
+five-point statistic computed over a trimmed grid is INDISTINGUISHABLE from the
+registered one in every artefact that carries it -- the "drop the awkward small
+end" move arriving through a parameter instead of a decision. I found it because
+my first version of that test passed for the wrong reason.
 
 --------------------------------------------------------------------
-WHAT W4 MONDAY WILL BE, SO YOU CAN OBJECT BEFORE IT IS BUILT
+APPLIED TO THE PILOT -- DEVELOPMENT SEEDS, AND NOT THE GATE.
 
-Schedule W4 Mon: implement the trend test ONCE and use the same function for the
-W4 gate and the W10 H1 verdict -- rank correlation of disagreement against
-dataset size across the six sizes, with a confidence interval over seeds,
-returning coefficient, interval and pass/fail. Not an effect-against-variance
-comparison (Plan 4.2).
+  rho (across-seed mean curve)   -0.9429
+  95% interval                   [-0.9429, -0.8286]
+  verdict under the frozen rule  PASS -- the whole interval lies below zero
+  seeds / resamples              3 development / 27 exact
+  per-seed rho                   -0.9429, -0.8286, -0.9429
 
-Two things I intend to carry into it, and would rather you challenged now:
+  mean curve:  N=100 0.6014 | 250 0.8150 | 500 0.5502 | 1000 0.4159 |
+               2500 0.2685 | 5000 0.2127
 
-  1. The pilot's disagreement curve is NON-MONOTONE at the small end -- it peaks
-     at N=250, reproduced in all three paired seeds. A rank correlation over six
-     sizes is exactly the instrument that bends on that. I do not intend to
-     handle it specially. It is a property of the data, the test is
-     preregistered, and choosing a friendlier instrument after seeing the curve
-     is the thing preregistration exists to prevent. But you should know that I
-     know, and that a rung-0 failure at the W4 gate is a live possibility
-     rather than a surprise.
+YOUR PREDICTION HELD EXACTLY. The N=250 peak costs ONE of fifteen pairwise
+inversions. rho weakens from -1.0 to -0.9429 naturally, with nothing removed and
+nothing smoothed, and the interval stays wholly negative.
 
-  2. The trend test runs on DEVELOPMENT seeds for the W4 gate and confirmatory
-     seeds for the W10 verdict, and it is the SAME function. I will make the
-     partition an explicit argument rather than something a caller can drift
-     on, per D-034 and D-040.
+--------------------------------------------------------------------
+THE LIMITATION, WHICH I THINK MATTERS MORE THAN THE VERDICT.
 
-C-010 is queued ahead of W4 Fri, not W4 Mon, since Monday's test does not mask.
+The 27 resamples take only TWO DISTINCT VALUES:
+
+  -0.942857  x20 of 27
+  -0.828571  x7 of 27
+
+So the "95% interval" here IS THE FULL SUPPORT of the distribution -- the 2.5th
+percentile is its minimum and the 97.5th is its maximum. Its narrowness is a
+property of having three highly consistent seeds, not evidence of precision.
+With three blocks the exact bootstrap simply cannot resolve a tail.
+
+I am not proposing a change to the rule. I am flagging it because SCHEDULE W4
+TUESDAY RUNS THE GATE AT FIVE SEEDS ACROSS THREE CONFIGURATIONS, and at five
+seeds the support is 3,125 and the quantiles mean something. If any part of
+Tuesday ends up running at three seeds, it inherits this coarseness, and I would
+rather that be a decision than a discovery.
+
+Question: does the pass rule need a minimum-seed condition attached to it, or is
+"the whole interval below zero" acceptable even when the interval has two atoms?
+The rule as frozen would pass a three-seed result whose distribution has no tail
+to speak of.
+
+--------------------------------------------------------------------
+BOUNDARIES OBSERVED
+
+  W4 gate      development seeds only. The pilot run above is exactly that,
+               and it is NOT the gate -- Tuesday is.
+  W10 verdict  confirmatory only. Same function, and the partition argument
+               is validated, never inferred, never pooled. Tested.
+  H1 result    the coefficient above is NEVER quoted as the H1 result.
+  C-010        still queued ahead of W4 Fri. Monday creates no failure mask,
+               and the trend test never touches the scale.
 
 NUMBERS
-  certified base:      2875e60 -> 9c0d89d
-  decisions certified: D-061 ... D-066 in one chain
-  tests:               442 passing, 2 skipped (unchanged; no code this session)
-  state file:          387 -> 334 lines against the 500 cap
-  compute consumed:    0 GPU-hours of ~110-145 budgeted
+  rho / interval:       -0.9429, [-0.9429, -0.8286], PASS (development)
+  distinct resamples:   2 of 27 -- the coarseness above
+  pairwise inversions:  1 of 15, from the N=250 peak
+  tests:                442 -> 464 passing, 2 skipped
+  compute consumed:     0 GPU-hours
 
 WHAT I AM ASKING YOU TO ATTACK
-  1. Whether refusing to special-case the non-monotone small end is right, or
-     whether the preregistered test needs a stated reading rule BEFORE it runs
-     rather than after the coefficient exists.
-  2. Whether the W4 gate should be run on development seeds at all, given every
-     number it produces is excluded from confirmatory results by D-034.
+  1. The two-atom interval. Does the frozen pass rule need a minimum-seed
+     condition, and if so is it three or five?
+  2. Whether requiring the exact six-size grid is right, or whether a legitimate
+     future caller needs a subset I have now made impossible.
+  3. Whether "undefined coefficient anywhere in the resample distribution fails"
+     is the correct handling, or whether only an undefined POINT estimate should
+     fail while undefined resamples are dropped.
 === END UPDATE ===
 ```
