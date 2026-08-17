@@ -42,12 +42,12 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-17 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–2 audited; W3 Mon–Wed CERTIFIED at `2875e60`; W3 Fri/Sat done; W3 audited (D-060) and now closed out (D-061 … D-063).** Ten Sol reviews actioned. Week 1 Monday is **today** — the project is roughly two weeks ahead of its own calendar (DEV-002) |
+| **Current week / day** | **Weeks 1–2 audited; W3 Mon–Wed CERTIFIED at `2875e60`; W3 audited (D-060), closed out (D-061 … D-063) and micro-corrected (D-064).** Eleven Sol reviews actioned. Sol expects to certify Week 3 once the micro-closeout checks out, **with no further scientific decision**. Week 1 Monday is **today** — roughly two weeks ahead of calendar (DEV-002) |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: still `2875e60`.** Sol reviewed `0b09f84` and did **not** certify it — Week 3 stays open until the closeout bundle passes. Set `BASE=2875e60` |
-| **Tests** | **436 passing, 1 skipped**. Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
-| **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). The 90-fit pilot and its closeout rerun both ran on **CPU**; the student's GPU has been at ~14/16 GB under another workload all week |
+| **Tests** | **440 passing, 1 skipped** (the CUDA test runs only where a device exists). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
+| **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). The 90-fit pilot and its closeout rerun both ran on **CPU**. One sub-second GPU test now runs in the suite (~68 MiB) to cover the CUDA RNG fork — the student's other workload has finished and the card is at ~0.9/16 GB |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
 **Hypothesis status**
@@ -204,6 +204,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-061** | 2026-08-17 | The normalising scale is the evaluation pool's, fixed before any mask | Sol's ruling |
 | **D-062** | 2026-08-17 | Two fixes that fixed the symptom — MC-dropout inference, and rerunnable evidence | findings Sol's |
 | **D-063** | 2026-08-17 | No second trunk; the activation head is a non-decisional diagnostic | Sol's ruling |
+| **D-064** | 2026-08-17 | Corrections to D-061 and D-062 — a claim narrowed, and an isolation that was CPU-only | findings Sol's |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -302,6 +303,7 @@ Two conditions:
 | C-008 | **Build the confirmatory runner**, which must own: episode bootstrap only, registered configuration and arm, matching pools and run identity, confirmatory seed policy, complete run records. `bootstrap_episodes()` + `train(train_index=…)` still bypasses the `train_ensemble` guard | Sol, 2026-08-16 (cert of 2875e60) | **Open** — blocks confirmatory execution and repair validation |
 | C-009 | Runner hardening: reject `source_unit is None` in `assert_pools_match()` rather than ignoring it, and check each dataset's `stream_version` against the run's | Sol, 2026-08-16 | **Open** — non-blocking; current `collect_pools` output already satisfies both |
 | C-003 | Predeclare the D-031 reserve draw order | Sol, 2026-08-16 | **Open** — due W5 Thu with the MDE simulation |
+| C-010 | **W4 runner call-site invariants**, required tests: build the `NormalisationScale` from the full movement evaluation pool **before** the failure mask exists, and reuse **that object** for the whole-pool and masked statistics; and select **one immutable attempt** explicitly rather than loading a tree. Exact reproduction of the pilot does not validate the masked call site (D-064) | Sol, 2026-08-17 | **Open** — blocks W4 Fri |
 
 ---
 
@@ -331,6 +333,14 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept h
 ---
 
 ---
+
+### 2026-08-17 (W3 micro-closeout) · A claim narrowed, and an isolation that only held on CPU · Claude
+**Did:** Sol's review of delta 29. The substantive Week 3 corrections are **accepted** — D-061, D-063 and D-062's logging/attempt mechanism outright, and D-062's MC-dropout mechanism on CPU. All four of my questions were ruled on: the corrected rerun account accepted; the per-slice copy baseline accepted and preferred; the duplicate-`run_id` guard confirmed as belonging in `load_runs` **as defence in depth**, with the confirmatory runner additionally owing an explicit immutable-attempt selection; and exact reproduction accepted as valid evidence that D-061 **pins** the W3 numbers — but **not** as validation of the future masked call site. Two narrow items remained, both mine, neither requiring a rerun (D-064).
+**1. "Enforced by construction" was too strong, and Sol is right.** `NormalisationScale`'s dataclass constructor is public, `from_evaluation_pool()` accepts a masked tensor, and the low-level metrics still take raw tensors. The true claim is narrower: the registered summary path **will not invent** a scale, so a subset cannot be normalised by accident — the rest is a **call-site invariant** the W4 runner must carry (C-010). Since it cannot be prevented at the type it is made auditable: a masked construction records the mask's size, and a test now asserts that (10, not 200) with a different vector. The old test's *name* claimed what its assertions did not, which is the D-055/D-057 defect in my own regression test.
+**2. The RNG isolation was CPU-only.** `fork_rng(devices=[])` forks CPU always but device generators only for devices it is handed, so a GPU run advanced the CUDA generator — and the fallback estimator is the thing that would run on a GPU. Verified on this machine's device rather than reasoned about: under the old call `torch.cuda.get_rng_state()` was **not** preserved; under the fix it is, and the samples still vary. Devices are now derived from the model's parameters, buffers and inputs; two accelerator types raise; the CPU path is unchanged.
+**Also, and it is the sharper lesson:** the bundle's own exclusion mechanism — built to keep the bundle reviewable — **excluded the evidence the bundle existed to deliver**. Sol could see digests and counters but not the 18 rows, the 90 validation errors or the per-member auxiliary values. A test passing on my machine is not evidence in the reviewer's hands. `rows.json` ships explicitly from now on.
+**Result:** 436 → 440 tests. **Zero GPU-hours** of budget; one sub-second, ~68 MiB GPU test now runs where a device exists.
+**Next:** deliver the micro-closeout. Sol expects to certify Week 3 on it, with no further scientific decision.
 
 ## 8. → TO SOL — *moved to its own file*
 

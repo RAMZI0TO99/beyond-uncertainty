@@ -124,6 +124,40 @@ def prediction_mode(model: nn.Module, mode: PredictionMode) -> Iterator[None]:
             module.training = was_training
 
 
+def forkable_devices(
+    model: nn.Module, *tensors: torch.Tensor
+) -> tuple[str | None, list[int]]:
+    """The non-CPU device type and indices this computation actually touches.
+
+    ``fork_rng`` always forks the **CPU** generator, and forks device generators
+    only for the devices it is handed. ``fork_rng(devices=[])`` therefore
+    isolates the CPU RNG and silently leaves a CUDA generator advancing — so the
+    isolation claim held only on CPU, which is where it was tested (D-064).
+
+    Returns ``(None, [])`` for a purely CPU computation, which keeps the
+    CPU-only path exactly as it was. Raises if one call spans two accelerator
+    types, because a single ``fork_rng`` cannot cover both and quietly forking
+    one of them is the defect this function exists to remove.
+    """
+    devices = {p.device for p in model.parameters()}
+    devices |= {b.device for b in model.buffers()}
+    devices |= {t.device for t in tensors}
+
+    accelerators = sorted(
+        {(d.type, d.index or 0) for d in devices if d.type != "cpu"}
+    )
+    if not accelerators:
+        return None, []
+    types = {device_type for device_type, _ in accelerators}
+    if len(types) > 1:
+        raise ValueError(
+            f"MC-dropout spans more than one accelerator type ({sorted(types)}); "
+            "one fork_rng cannot isolate both generators"
+        )
+    device_type = types.pop()
+    return device_type, sorted({index for _, index in accelerators})
+
+
 def mc_dropout_predictions(
     model: nn.Module,
     obs: torch.Tensor,
@@ -141,16 +175,28 @@ def mc_dropout_predictions(
     where the members come from.
 
     ``seed`` forks torch's global RNG rather than advancing it, so sampling here
-    cannot shift any other stream and a rung-3 verdict is reproducible.
+    cannot shift any other stream and a rung-3 verdict is reproducible. The fork
+    covers the CPU generator **and** the generator of every accelerator device
+    the model or its inputs live on (D-064): ``fork_rng`` forks CPU always but
+    device generators only for the devices it is given, so the previous
+    ``devices=[]`` isolated CPU and left a CUDA generator advancing. The gate's
+    fallback estimator is exactly the thing that would be run on a GPU.
     """
     if n_samples < 2:
         raise ValueError(
             f"MC-dropout needs at least two samples to have any disagreement, "
             f"got {n_samples}"
         )
+    device_type, devices = forkable_devices(model, obs, action)
+    fork: dict[str, Any] = {"devices": devices}
+    if device_type is not None:
+        fork["device_type"] = device_type
+
     outputs = []
     with prediction_mode(model, "mc_dropout"):
-        with torch.random.fork_rng(devices=[]):
+        # torch.manual_seed seeds every device's generator, and the fork puts
+        # all of them back — so seeding here is local to this call.
+        with torch.random.fork_rng(**fork):
             if seed is not None:
                 torch.manual_seed(seed)
             with torch.no_grad():

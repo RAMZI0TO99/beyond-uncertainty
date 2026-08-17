@@ -22,8 +22,19 @@ What the plan fixes, and what follows from it
   pool restricted to movement transitions, computed **before** any failure mask.
   P§10.3 never said, and the code recomputed it from whatever subset it was
   handed — which moves the registered H2 endpoint by up to 4.6% (D-060, W3-1).
-  :class:`NormalisationScale` is the only way to supply one, and it can only be
-  built from a pool, so a mask has no route to recompute it.
+
+  What :class:`NormalisationScale` does and does not give you (D-064): the
+  registered summary path **requires an explicit scale object** and will not
+  invent one, so a subset can no longer be normalised by accident. It does not
+  make a subset-derived scale *impossible* — the dataclass constructor is
+  public, :meth:`NormalisationScale.from_evaluation_pool` accepts any 2-D
+  tensor including a masked one, and the low-level metric functions still take
+  raw tensors. The rule is therefore a **call-site invariant**, and it is the
+  caller's job to satisfy it: the W3 pilot builds the scale from the full
+  movement evaluation pool, and the W4 runner must build it **before** it
+  produces the failure mask and reuse the same object for the whole-pool and
+  masked calculations. That invariant is a required test of the W4 runner, not
+  a property this module can enforce alone.
 * **Ratio of means, never mean of ratios.** Near-zero denominators make
   per-transition ratios arbitrarily large and a mean of them meaningless. The
   two are different statistics and can differ in the sign of an effect.
@@ -90,11 +101,14 @@ class NormalisationScale:
     for the whole-pool and the failure-subset calculations, across every member
     and every dataset size sharing that evaluation pool.
 
-    The ruling is enforced by construction rather than by convention. This class
-    is the only accepted scale argument in the summary path, and the only way to
-    build one is :meth:`from_evaluation_pool`, whose ``n_reference`` records how
-    many transitions it saw. A caller holding a masked subset has nothing to
-    build a scale *from* except the pool, so masking cannot recompute it.
+    **What this type actually guarantees** (D-064). It makes the scale explicit
+    and auditable: the registered summary path will not accept a missing scale
+    and will not invent one, and ``n_reference`` records how many transitions
+    the vector was measured over, so a subset-derived scale is *visible* in
+    every artefact that carries it. It does **not** make one impossible — this
+    constructor is public and :meth:`from_evaluation_pool` will accept a masked
+    tensor if handed one. The ruling is a call-site invariant, checked where the
+    call site is built, not a property the type can enforce by itself.
     """
 
     vector: torch.Tensor
@@ -112,6 +126,9 @@ class NormalisationScale:
         Args:
             targets: ``(n_pool, dims)`` — every transition in the evaluation
                 pool that lies in ``domain``, with no failure mask applied.
+                Passing a masked subset here is a **call-site error** this
+                method cannot detect; ``n_reference`` is what makes it visible
+                afterwards (D-064).
         """
         if targets.ndim != 2:
             raise ValueError(

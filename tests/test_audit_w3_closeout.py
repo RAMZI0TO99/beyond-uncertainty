@@ -27,7 +27,8 @@ from bu.env.collect import collect_pools
 from bu.experiments import w3_pilot
 from bu.metrics import RunLogger
 from bu.models.ensemble import (
-    dropout_modules, mc_dropout_predictions, prediction_mode, train_ensemble,
+    dropout_modules, forkable_devices, mc_dropout_predictions, prediction_mode,
+    train_ensemble,
 )
 from bu.models.uncertainty import NormalisationScale, pairwise_disagreement
 from bu.models.world_model import WorldModel
@@ -181,11 +182,15 @@ def test_the_ensemble_prediction_mode_reaches_the_members():
         ensemble.member_predictions(obs, action, mode="eval")
 
 
-def test_mc_dropout_does_not_disturb_the_global_rng(probe, probe_batch):
+def test_mc_dropout_does_not_disturb_the_cpu_rng(probe, probe_batch):
     """Sampling forks the RNG rather than advancing it.
 
     Otherwise selecting rung 3 at the gate would shift every subsequent draw in
     the process, and a fallback estimator would silently change data elsewhere.
+
+    Renamed from "the global RNG" (D-064): on a CPU-only run this *is* the
+    global RNG, but the claim was being read as unrestricted, and the CUDA
+    generator was not covered at all. The device case is below.
     """
     obs, action = probe_batch
     torch.manual_seed(7)
@@ -193,6 +198,62 @@ def test_mc_dropout_does_not_disturb_the_global_rng(probe, probe_batch):
     torch.manual_seed(7)
     mc_dropout_predictions(probe, obs, action, n_samples=4, seed=0)
     assert torch.equal(before, torch.randn(3))
+
+
+def test_a_cpu_computation_forks_no_accelerator(probe, probe_batch):
+    """The CPU path is unchanged: no device is named, so none is forked."""
+    obs, action = probe_batch
+    assert forkable_devices(probe, obs, action) == (None, [])
+
+
+def test_devices_are_derived_from_the_model_and_its_inputs():
+    """The list comes from what the computation touches, not from a default.
+
+    Checked without CUDA by using meta tensors, so the derivation itself is
+    covered on any machine — the GPU test below is then about the RNG rather
+    than about this bookkeeping.
+    """
+    model = DropoutProbe().to("meta")
+    obs = torch.zeros(4, 4, device="meta")
+    action = torch.zeros(4, dtype=torch.long, device="meta")
+    assert forkable_devices(model, obs, action) == ("meta", [0])
+
+    mixed = DropoutProbe()  # cpu parameters, meta inputs
+    assert forkable_devices(mixed, obs, action) == ("meta", [0])
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="no CUDA device")
+def test_mc_dropout_does_not_disturb_the_cuda_rng():
+    """The claim Sol found unsupported (D-064).
+
+    ``fork_rng`` always forks CPU but forks device generators only for the
+    devices it is handed, so the previous ``devices=[]`` left the CUDA
+    generator advancing. The reliability gate's fallback estimator is precisely
+    what would be run on a GPU, and a shifted CUDA generator moves every
+    subsequent draw in that process.
+
+    Deliberately tiny: a 32x4 input through a 16-unit layer.
+    """
+    torch.manual_seed(0)
+    model = DropoutProbe().cuda()
+    obs = torch.randn(32, 4, device="cuda")
+    action = torch.zeros(32, dtype=torch.long, device="cuda")
+
+    assert forkable_devices(model, obs, action) == ("cuda", [0])
+
+    torch.cuda.manual_seed_all(11)
+    before_cuda = torch.cuda.get_rng_state()
+    before_cpu = torch.get_rng_state()
+
+    samples = mc_dropout_predictions(model, obs, action, n_samples=8, seed=3)
+
+    assert torch.equal(torch.cuda.get_rng_state(), before_cuda), (
+        "the CUDA generator advanced; fork_rng was not given the device"
+    )
+    assert torch.equal(torch.get_rng_state(), before_cpu)
+    # And it is still a real MC-dropout sample on the device.
+    assert samples.is_cuda
+    assert float(samples.std(dim=0).mean()) > 1e-3
 
 
 def test_mc_dropout_is_reproducible_from_its_seed(probe, probe_batch):
@@ -346,11 +407,15 @@ def test_the_pilot_scale_comes_from_the_pool_and_is_shared(tmp_path):
     assert list(exported["scale"]) == pytest.approx(attempt.rows[0].uncertainty["scale"])
 
 
-def test_a_mask_cannot_recompute_the_scale():
-    """The ruling is enforced by construction, not by remembering to pass it.
+def test_the_summary_path_will_not_invent_a_scale():
+    """What the type actually guarantees — no more (D-064).
 
-    A caller holding a masked subset has nothing to build a scale from except
-    the pool, and the summary path will not accept a bare tensor default.
+    The name this test used to carry was "a mask cannot recompute the scale",
+    which claimed more than any assertion below establishes and more than the
+    code delivers: the dataclass constructor is public and
+    ``from_evaluation_pool`` will accept a masked tensor. What is enforced here
+    is narrower and real — the registered summary path refuses to *invent* a
+    scale, so a subset can no longer be normalised by accident.
     """
     from bu.models import uncertainty
 
@@ -362,11 +427,33 @@ def test_a_mask_cannot_recompute_the_scale():
     with pytest.raises(TypeError, match="scale"):
         uncertainty.normalised_error(members.mean(dim=0), targets)
 
-    # And the one constructor that exists records what it measured.
     scale = NormalisationScale.from_evaluation_pool(targets)
     assert scale.n_reference == 200
     with pytest.raises(ValueError, match="expected"):
         NormalisationScale.from_evaluation_pool(targets[:, 0])
+
+
+def test_a_subset_derived_scale_is_visible_in_the_artefact():
+    """Since it cannot be prevented here, it must be *auditable* (D-064).
+
+    ``n_reference`` is the mechanism: a scale built from a mask records the
+    size of the mask, so any artefact carrying it can be checked against the
+    evaluation pool it claims to be measured in.
+    """
+    targets = torch.randn(200, 2)
+    mask = torch.zeros(200, dtype=torch.bool)
+    mask[:10] = True
+
+    pool = NormalisationScale.from_evaluation_pool(targets)
+    illegal = NormalisationScale.from_evaluation_pool(targets[mask])
+
+    assert pool.n_reference == 200
+    assert illegal.n_reference == 10, (
+        "a subset-derived scale must record the subset's size, or nothing "
+        "downstream can tell the two apart"
+    )
+    assert not torch.equal(pool.vector, illegal.vector)
+    assert illegal.as_row()["scale_n_reference"] == 10
 
 
 # --- the delivered evidence ------------------------------------------------
