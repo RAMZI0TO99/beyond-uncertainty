@@ -649,3 +649,19 @@ Since it cannot be prevented at the type, it is made **auditable**: `n_reference
 **Also.** `CLAUDE.md`'s operational overview still told the next Claude that `NormalisationScale` "is the only accepted argument … so a failure mask has nothing to recompute from" — the exact model D-064 withdrew, in the one file a reset Claude reads first. Replaced with the explicit-and-auditable claim and a pointer to C-010. The `PROJECT_STATE.md` §7 entry that carries the old wording is **not** edited: §7 is append-only (D-014), and the entry immediately following it withdraws the claim by name.
 **Plan ref:** P§9.3.
 **Reviewed by Sol:** Sol's finding on delta 30. The multi-GPU case is unverified on the development machine and is declared as such.
+
+### D-066 · 2026-08-17 · One bundle file, and a delta that names the commit it describes
+**Decision:** the generated bundle has **one** canonical name, `SOL_BUNDLE.txt`, and every delta carries a `BUNDLE_COMMIT:` line naming the commit its bundle must report. If the bundle's header disagrees with that line, Sol refuses the pair before reviewing content.
+
+**What happened.** Delta 31 was correct and its bundle was correctly generated at `4a6e4dd`. Sol received `sol_bundle_microcloseout.txt` at `08391ae` — the *previous* bundle — and reviewed a delta describing code the bundle did not contain. Three files named `sol_bundle_closeout.txt`, `sol_bundle_microcloseout.txt` and `sol_bundle_rng_patch.txt` sat side by side in the repository root, generated ninety minutes apart, all with plausible names. Picking the wrong one was the likely outcome, not an unlucky one.
+
+**Whose failure this is.** Mine, and it is the same failure as D-036 and D-041 in a third costume. Those said: generating a bundle is not delivering one, and a bundle that selects its own contents can still mislead. This one says **a bundle that cannot be told apart from a stale sibling is not delivered either.** The student did nothing wrong; the packaging made the error available. Each previous instance was fixed by making the artefact better, and each time the *handover* stayed unguarded.
+
+**Two changes, one removing the ambiguity and one making a mismatch detectable:**
+
+* one file name, overwritten each time, so "the bundle" is unambiguous and a stale copy cannot survive beside a fresh one. The old per-session names are deleted; they are regenerable from one command and are not evidence — the evidence is `attempt-001` and git;
+* `BUNDLE_COMMIT:` in the delta itself. The delta and its bundle are produced at different moments by different commands, so nothing else ties them together; now the reviewer can check correspondence in one line without trusting either producer.
+
+**And a check before sending.** The eight properties Sol listed for this bundle — new commit, clean tree, the expected test counts, the named implementation and tests, the corrected wording — are verified **against the generated file**, mechanically, rather than by looking at it. On the first run that check failed item two: the tree was dirty because `.gitignore` had not been committed yet, which is precisely the kind of thing an eye slides past.
+**Plan ref:** P§13.7.
+**Reviewed by Sol:** the mismatch was Sol's finding. Sol's provisional rulings on delta 31 stand: the two-device test may remain skipped and **explicitly unverified**, provided the implementation-level test proves `seed_locally()` touches only the CPU generator and the derived indices; and the append-only `PROJECT_STATE.md` §7 and D-061 entries stay intact, with `CLAUDE.md` carrying only the corrected description.

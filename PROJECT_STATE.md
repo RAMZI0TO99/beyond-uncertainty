@@ -206,6 +206,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-063** | 2026-08-17 | No second trunk; the activation head is a non-decisional diagnostic | Sol's ruling |
 | **D-064** | 2026-08-17 | Corrections to D-061 and D-062 — a claim narrowed, and an isolation that was CPU-only | findings Sol's |
 | **D-065** | 2026-08-17 | The seeding was wider than the fork — device-local seeding | finding Sol's |
+| **D-066** | 2026-08-17 | One bundle file, and a delta that names the commit it describes | finding Sol's |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -352,6 +353,16 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept h
 **Also:** `CLAUDE.md` still taught the next Claude the withdrawn "a mask has nothing to recompute from" model, in the file a reset Claude reads first. Corrected, with a pointer to C-010. The §7 entry carrying the old wording is **not** edited — §7 is append-only (D-014) and the entry after it withdraws the claim by name.
 **Result:** 440 → 442 tests, 2 skipped. **Zero GPU-hours** of budget.
 **Next:** deliver the RNG patch. Sol certifies Week 3 on it.
+
+---
+
+### 2026-08-17 (W3 bundle repackage) · The right bundle existed; the wrong one was sent · Claude
+**Did:** Sol reported delta 31's bundle as stale — `08391ae`, 440 tests, the old `torch.manual_seed` — and it was, because **three** bundle files sat side by side in the repository root, generated ninety minutes apart, all plausibly named. Sol reviewed a delta describing code its bundle did not contain. The correct bundle had been generated at `4a6e4dd` and was simply not the one picked. **My packaging failure, not the student's** (D-066).
+**This is D-036 and D-041 in a third costume.** Generating a bundle is not delivering one; a bundle that selects its own contents can still mislead; and now — a bundle that cannot be told apart from a stale sibling is not delivered either. Each time the fix improved the *artefact* and left the *handover* unguarded.
+**Fixed:** one canonical `SOL_BUNDLE.txt`, overwritten each time, with the per-session names deleted so a stale copy cannot survive beside a fresh one; and a `BUNDLE_COMMIT:` line in every delta, so the delta and the bundle — produced by different commands at different moments — can be checked against each other in one line. Sol's eight required properties are now verified **mechanically against the generated file** before sending; on the first run that check caught a dirty tree, which is exactly what an eye slides past.
+**Sol's provisional rulings, both accepted:** the two-device test stays skipped and **explicitly unverified**, carried by the implementation-level test that `seed_locally()` touches only the CPU generator and the derived indices; and the append-only §7 and D-061 entries stay intact, with `CLAUDE.md` carrying only the corrected description.
+**Result:** 442 tests, 2 skipped, unchanged — no code changed. **Zero GPU-hours.**
+**Next:** resend delta 31 with its actual bundle.
 
 ## 8. → TO SOL — *moved to its own file*
 
