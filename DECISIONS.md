@@ -633,3 +633,19 @@ Since it cannot be prevented at the type, it is made **auditable**: `n_reference
 **The compact-base exception is allowed for this closeout only.** Sol: certification still forms one chain from `2875e60`, and this is not permission to use reviewed-but-uncertified bases routinely.
 **Plan ref:** P§9.3, P§10.3, P§13.7.
 **Reviewed by Sol:** both corrections are Sol's findings on delta 29. No experiment was rerun; the 90 fits stand.
+
+### D-065 · 2026-08-17 · The seeding was wider than the fork — device-local seeding
+**Decision:** `mc_dropout_predictions` seeds **only** the generators its `fork_rng` will restore. `torch.default_generator.manual_seed(seed)` for the CPU, then each derived accelerator device individually; devices absent from `forkable_devices()` are never seeded.
+
+**The defect, found by Sol on delta 30 and reproduced before changing anything.** D-064 fixed the *fork* to cover the devices in use, and left the *seeding* using `torch.manual_seed`, which is a convenience that seeds the CPU generator **and every accelerator device's** generator. The two sets no longer matched, so the call reseeded generators nothing would restore:
+
+* a **CPU** MC-dropout call on a CUDA machine forks the CPU generator alone, then reseeds every CUDA device. Measured on this machine: `torch.cuda.get_rng_state()` was **not** preserved across a call whose computation never touched the GPU at all;
+* a call on **cuda:0** of a multi-GPU machine forks device 0 and reseeds devices 1, 2, …, which are never put back.
+
+**Why the D-064 test missed it, which is the part worth keeping.** The CUDA test checked the one device that was both seeded *and* forked — the single case where the mismatch cancels. It was written against the machine it ran on rather than against the claim, and the claim was "the global RNG is untouched". This is the same defect class as D-055 and D-057 — an assertion that cannot fail in the configuration it runs in — arriving through *hardware* rather than through code. A single-GPU machine cannot distinguish "seeds what it forks" from "seeds everything and forks one thing".
+
+**Tests.** A CPU-only call now asserts **every** CUDA device's state is unchanged — this runs on the development machine and is the case that failed before the fix. A two-device test asserts used and unused devices are both untouched; it **skips here** and is recorded as skipped rather than presented as passing, because this machine has one GPU. `seed_locally` is additionally tested directly on any machine: the CPU generator moves, no device generator does, and a `"meta"` device type seeds nothing rather than looking for a module that does not exist. Stochasticity and seed reproducibility are retained and now also asserted **on the device** — device-local seeding costs neither.
+
+**Also.** `CLAUDE.md`'s operational overview still told the next Claude that `NormalisationScale` "is the only accepted argument … so a failure mask has nothing to recompute from" — the exact model D-064 withdrew, in the one file a reset Claude reads first. Replaced with the explicit-and-auditable claim and a pointer to C-010. The `PROJECT_STATE.md` §7 entry that carries the old wording is **not** edited: §7 is append-only (D-014), and the entry immediately following it withdraws the claim by name.
+**Plan ref:** P§9.3.
+**Reviewed by Sol:** Sol's finding on delta 30. The multi-GPU case is unverified on the development machine and is declared as such.

@@ -144,7 +144,8 @@ src/bu/
   models/ensemble.py     K members; episode block bootstrap; the explicit
                          deterministic / mc_dropout prediction policy (D-062)
   models/uncertainty.py  P§10.3's disagreement, predictive variance, H2 ratio;
-                         NormalisationScale — the only way to supply a scale (D-061)
+                         NormalisationScale — an explicit, auditable scale the
+                         summary path will not invent (D-061, D-064; see C-010)
   experiments/w3_pilot.py  the W3 Fri sweep; per-transition export; immutable
                            attempt-NNN directories with an evidence manifest (D-062)
   stats/            empty — Weeks 4–5
@@ -317,11 +318,19 @@ The pilot is rerunnable: `python -m bu.experiments.w3_pilot` writes a fresh
   second trunk, and the head is now a **non-decisional diagnostic**: barred from
   the trunk, from early stopping and checkpoint selection, from the failure set,
   from repair labels and from the critic's residual. Do not resurrect it.
-- **The normalising scale is preregistered** (D-061): the full movement
-  evaluation pool, before any mask. `NormalisationScale` is the only accepted
-  argument in the summary path and its only constructor reads a pool, so a
-  failure mask has nothing to recompute from. W4 Fri is the first cell where
-  this bites — do not add a `scale=None` convenience back.
+- **The normalising scale is preregistered** (D-061, **wording corrected by
+  D-064**): the full movement evaluation pool, before any mask. What the code
+  gives you is **explicit and auditable, not impossible to get wrong** — the
+  registered summary path refuses to *invent* a scale, and `n_reference` records
+  how many transitions a vector was measured over, so a subset-derived one is
+  visible in every artefact carrying it. But `NormalisationScale`'s constructor
+  is public and `from_evaluation_pool()` will accept a masked tensor, so the
+  rule is a **call-site invariant**, not a property of the type. **C-010** is
+  the obligation: the W4 runner must build the scale *before* the failure mask
+  exists, reuse **that object** for the whole-pool and masked statistics, and
+  select one immutable attempt explicitly. W4 Fri is the first cell where this
+  bites — do not add a `scale=None` convenience back, and do not repeat the
+  withdrawn claim that a mask "has nothing to recompute from".
 - **C-005 / C-006 / C-007 / C-009** — grouped critic splitter, the ICC-sensitive
   grouped MDE simulation, passing `require_confirmatory=True` at each analysis
   call site, and runner hardening. None is Week 3 work.

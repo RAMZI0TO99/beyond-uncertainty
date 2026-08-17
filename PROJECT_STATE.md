@@ -42,12 +42,12 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-17 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–2 audited; W3 Mon–Wed CERTIFIED at `2875e60`; W3 audited (D-060), closed out (D-061 … D-063) and micro-corrected (D-064).** Eleven Sol reviews actioned. Sol expects to certify Week 3 once the micro-closeout checks out, **with no further scientific decision**. Week 1 Monday is **today** — roughly two weeks ahead of calendar (DEV-002) |
+| **Current week / day** | **Weeks 1–2 audited; W3 Mon–Wed CERTIFIED at `2875e60`; W3 audited (D-060), closed out (D-061 … D-063), corrected (D-064) and RNG-corrected (D-065).** Twelve Sol reviews actioned. Sol has accepted every scientific item — `rows.json` independently checked, D-061/C-010, D-063, device derivation, mixed-accelerator refusal — and holds certification on **one narrow code item**, now fixed. Week 1 Monday is **today** — roughly two weeks ahead of calendar (DEV-002) |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: still `2875e60`.** Sol reviewed `0b09f84` and did **not** certify it — Week 3 stays open until the closeout bundle passes. Set `BASE=2875e60` |
-| **Tests** | **440 passing, 1 skipped** (the CUDA test runs only where a device exists). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
-| **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). The 90-fit pilot and its closeout rerun both ran on **CPU**. One sub-second GPU test now runs in the suite (~68 MiB) to cover the CUDA RNG fork — the student's other workload has finished and the card is at ~0.9/16 GB |
+| **Tests** | **442 passing, 2 skipped** (CUDA tests run only where a device exists; the two-GPU test skips on this machine and is declared unverified) (the CUDA test runs only where a device exists). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
+| **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). Every fit so far ran on **CPU**. Two sub-second GPU tests now run in the suite (~68 MiB) to cover the CUDA RNG fork and seeding — the student's other workload has finished and the card is at ~0.9/16 GB |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
 **Hypothesis status**
@@ -205,6 +205,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-062** | 2026-08-17 | Two fixes that fixed the symptom — MC-dropout inference, and rerunnable evidence | findings Sol's |
 | **D-063** | 2026-08-17 | No second trunk; the activation head is a non-decisional diagnostic | Sol's ruling |
 | **D-064** | 2026-08-17 | Corrections to D-061 and D-062 — a claim narrowed, and an isolation that was CPU-only | findings Sol's |
+| **D-065** | 2026-08-17 | The seeding was wider than the fork — device-local seeding | finding Sol's |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -341,6 +342,16 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept h
 **Also, and it is the sharper lesson:** the bundle's own exclusion mechanism — built to keep the bundle reviewable — **excluded the evidence the bundle existed to deliver**. Sol could see digests and counters but not the 18 rows, the 90 validation errors or the per-member auxiliary values. A test passing on my machine is not evidence in the reviewer's hands. `rows.json` ships explicitly from now on.
 **Result:** 436 → 440 tests. **Zero GPU-hours** of budget; one sub-second, ~68 MiB GPU test now runs where a device exists.
 **Next:** deliver the micro-closeout. Sol expects to certify Week 3 on it, with no further scientific decision.
+
+---
+
+### 2026-08-17 (W3 RNG correction) · The seeding was wider than the fork · Claude
+**Did:** Sol's review of delta 30. **Every scientific item is now accepted** — `rows.json` read and independently verified by Sol (18 rows, 18 unique run ids, 90 member errors, one scale vector per seed, reference counts 831/824/839, **0/90 wins over the copy baseline in all three activation slices**), the D-061 correction, C-010's formulation, D-063, device derivation, and the mixed-accelerator refusal. Certification held on one narrow code item, and Sol was right again (D-065).
+**The leak.** D-064 fixed the *fork* to cover the devices in use and left the *seeding* on `torch.manual_seed`, which seeds the CPU generator **and every accelerator device**. The two sets stopped matching, so the call reseeded generators nothing would restore — including on a **CPU-only** call, where the computation never touches the GPU at all. Reproduced before changing anything: `torch.cuda.get_rng_state()` was not preserved across a pure-CPU MC-dropout call. Fixed by seeding device-locally — the CPU default generator directly, then each derived device — so the set seeded is exactly the set the fork restores.
+**Why my own test missed it, which is the part to keep.** The CUDA test checked the one device that was both seeded *and* forked: the single configuration where the mismatch cancels. Written against the machine it ran on rather than against the claim. That is D-055/D-057's defect class arriving through **hardware** — a one-GPU machine cannot tell "seeds what it forks" from "seeds everything, forks one thing". The two-device test is written and **skips here**; it is declared unverified rather than reported as passing.
+**Also:** `CLAUDE.md` still taught the next Claude the withdrawn "a mask has nothing to recompute from" model, in the file a reset Claude reads first. Corrected, with a pointer to C-010. The §7 entry carrying the old wording is **not** edited — §7 is append-only (D-014) and the entry after it withdraws the claim by name.
+**Result:** 440 → 442 tests, 2 skipped. **Zero GPU-hours** of budget.
+**Next:** deliver the RNG patch. Sol certifies Week 3 on it.
 
 ## 8. → TO SOL — *moved to its own file*
 

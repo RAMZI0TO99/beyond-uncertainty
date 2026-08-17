@@ -158,6 +158,33 @@ def forkable_devices(
     return device_type, sorted({index for _, index in accelerators})
 
 
+def seed_locally(seed: int, device_type: str | None, devices: list[int]) -> None:
+    """Seed **only** the generators a matching ``fork_rng`` will restore (D-065).
+
+    ``torch.manual_seed`` is a convenience that seeds the CPU generator *and
+    every accelerator device's* generator. Pairing it with a fork that
+    snapshotted only the devices in use leaves the rest permanently reseeded:
+
+    * a **CPU** MC-dropout call on a CUDA machine forks the CPU generator only,
+      then reseeds every CUDA device — measured, `torch.cuda.get_rng_state()`
+      was not preserved across a CPU-only call;
+    * a call on **cuda:0** of a multi-GPU machine forks device 0 and reseeds
+      devices 1, 2, … which are never restored.
+
+    The single-GPU CUDA test missed both, because the one device it checked was
+    both seeded *and* forked. So this seeds the CPU default generator directly
+    rather than through the all-device helper, and then each derived device
+    individually — every generator touched here is one the fork will put back.
+    """
+    torch.default_generator.manual_seed(seed)
+    if device_type is None or device_type == "meta":
+        return
+    module = torch.get_device_module(device_type)
+    for index in devices:
+        with module.device(index):
+            module.manual_seed(seed)
+
+
 def mc_dropout_predictions(
     model: nn.Module,
     obs: torch.Tensor,
@@ -174,13 +201,20 @@ def mc_dropout_predictions(
     disagreement metric is unchanged. Nothing about H1's definition moves; only
     where the members come from.
 
-    ``seed`` forks torch's global RNG rather than advancing it, so sampling here
-    cannot shift any other stream and a rung-3 verdict is reproducible. The fork
-    covers the CPU generator **and** the generator of every accelerator device
-    the model or its inputs live on (D-064): ``fork_rng`` forks CPU always but
-    device generators only for the devices it is given, so the previous
-    ``devices=[]`` isolated CPU and left a CUDA generator advancing. The gate's
-    fallback estimator is exactly the thing that would be run on a GPU.
+    ``seed`` forks torch's RNG rather than advancing it, so sampling here cannot
+    shift any other stream and a rung-3 verdict is reproducible. Two things have
+    to line up for that to be true, and each was wrong once:
+
+    * the **fork** covers the CPU generator and the generator of every
+      accelerator device the model or its inputs live on. ``fork_rng`` forks CPU
+      always but device generators only for those it is given, so the original
+      ``devices=[]`` isolated CPU and left a CUDA generator advancing (D-064);
+    * the **seeding** touches only those same generators. ``torch.manual_seed``
+      seeds every device, so pairing it with a narrower fork reseeded devices
+      nothing would restore — including on a purely CPU call (D-065).
+
+    The gate's fallback estimator is exactly the thing that would be run on a
+    GPU, which is why neither was acceptable as a CPU-only guarantee.
     """
     if n_samples < 2:
         raise ValueError(
@@ -194,11 +228,11 @@ def mc_dropout_predictions(
 
     outputs = []
     with prediction_mode(model, "mc_dropout"):
-        # torch.manual_seed seeds every device's generator, and the fork puts
-        # all of them back — so seeding here is local to this call.
         with torch.random.fork_rng(**fork):
             if seed is not None:
-                torch.manual_seed(seed)
+                # Device-local, so the set of generators seeded is exactly the
+                # set this fork restores (D-065).
+                seed_locally(seed, device_type, devices)
             with torch.no_grad():
                 for _ in range(n_samples):
                     position, _ = model(obs, action)

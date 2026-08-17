@@ -223,6 +223,93 @@ def test_devices_are_derived_from_the_model_and_its_inputs():
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="no CUDA device")
+def test_a_cpu_call_leaves_every_cuda_generator_untouched(probe, probe_batch):
+    """The leak the single-device test could not see (D-065).
+
+    ``torch.manual_seed`` seeds **every** device generator. A CPU-only call
+    forks the CPU generator alone, so seeding through that helper reseeded every
+    CUDA device with nothing to restore them. Measured before the fix: a CPU
+    MC-dropout call did **not** preserve `torch.cuda.get_rng_state()`.
+
+    This is the case Sol named first, and it needs no GPU work at all — the
+    computation is entirely on CPU; only the *seeding* ever touched the device.
+    """
+    obs, action = probe_batch
+    assert forkable_devices(probe, obs, action) == (None, [])
+
+    torch.cuda.manual_seed_all(99)
+    before = [
+        torch.cuda.get_rng_state(i) for i in range(torch.cuda.device_count())
+    ]
+
+    mc_dropout_predictions(probe, obs, action, n_samples=4, seed=5)
+
+    for i, state in enumerate(before):
+        assert torch.equal(torch.cuda.get_rng_state(i), state), (
+            f"a CPU-only MC-dropout call reseeded cuda:{i}"
+        )
+
+
+@pytest.mark.skipif(
+    torch.cuda.device_count() < 2, reason="needs at least two CUDA devices"
+)
+def test_an_unused_cuda_device_is_left_untouched():
+    """Sol's second case: seed one device, leave the others alone.
+
+    UNVERIFIED ON THE DEVELOPMENT MACHINE — it has one GPU, so this skips here
+    and the guarantee for devices 1..n rests on ``seed_locally`` seeding only
+    the derived indices. Recorded as a skip rather than presented as passing.
+    """
+    torch.manual_seed(0)
+    model = DropoutProbe().to("cuda:0")
+    obs = torch.randn(32, 4, device="cuda:0")
+    action = torch.zeros(32, dtype=torch.long, device="cuda:0")
+
+    assert forkable_devices(model, obs, action) == ("cuda", [0])
+
+    torch.cuda.manual_seed_all(11)
+    before = [
+        torch.cuda.get_rng_state(i) for i in range(torch.cuda.device_count())
+    ]
+
+    samples = mc_dropout_predictions(model, obs, action, n_samples=8, seed=3)
+
+    for i, state in enumerate(before):
+        assert torch.equal(torch.cuda.get_rng_state(i), state), (
+            f"cuda:{i} was modified; only device 0 participates in this call"
+        )
+    assert float(samples.std(dim=0).mean()) > 1e-3
+
+
+def test_seeding_is_confined_to_the_derived_devices():
+    """``seed_locally`` never reaches a device it was not given.
+
+    The property the multi-GPU test would confirm, checked on any machine: the
+    CPU generator moves, and nothing else is asked to.
+    """
+    from bu.models import ensemble
+
+    torch.cuda.manual_seed_all(7) if torch.cuda.is_available() else None
+    cuda_before = (
+        [torch.cuda.get_rng_state(i) for i in range(torch.cuda.device_count())]
+        if torch.cuda.is_available()
+        else []
+    )
+    cpu_before = torch.get_rng_state()
+
+    ensemble.seed_locally(123, None, [])
+
+    assert not torch.equal(torch.get_rng_state(), cpu_before), (
+        "the CPU generator was not seeded at all"
+    )
+    for i, state in enumerate(cuda_before):
+        assert torch.equal(torch.cuda.get_rng_state(i), state)
+
+    # A meta computation has no generator to seed, and must not look for one.
+    ensemble.seed_locally(123, "meta", [0])
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="no CUDA device")
 def test_mc_dropout_does_not_disturb_the_cuda_rng():
     """The claim Sol found unsupported (D-064).
 
@@ -251,9 +338,16 @@ def test_mc_dropout_does_not_disturb_the_cuda_rng():
         "the CUDA generator advanced; fork_rng was not given the device"
     )
     assert torch.equal(torch.get_rng_state(), before_cpu)
-    # And it is still a real MC-dropout sample on the device.
+    # And it is still a real MC-dropout sample on the device, reproducible from
+    # its seed — device-local seeding must not have cost either property.
     assert samples.is_cuda
     assert float(samples.std(dim=0).mean()) > 1e-3
+    assert torch.equal(
+        samples, mc_dropout_predictions(model, obs, action, n_samples=8, seed=3)
+    )
+    assert not torch.equal(
+        samples, mc_dropout_predictions(model, obs, action, n_samples=8, seed=4)
+    )
 
 
 def test_mc_dropout_is_reproducible_from_its_seed(probe, probe_batch):

@@ -6,139 +6,128 @@ It accumulates until delivered (D-008) and is only then replaced. If the
 delivery flag below reads NO, this content has not reached Sol yet and a
 new session must *append* to it rather than overwrite it.
 
-Deltas 1–7 and 10–29 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
+Deltas 1–7 and 10–30 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
 existed as delivered blocks — the protocol failure recorded as DEV-005.
 
 **Send BOTH files, delta first.** `2875e60` is still the **certified** base.
-The micro-closeout bundle carries `rows.json` explicitly this time:
+This is a code-and-documentation patch only — no fits were rerun, and
+`attempt-001` is unchanged at its manifest digest:
 
 ```bash
 BASE=0b09f84 ./scripts/sol_bundle.sh \
-    src/bu/models/ensemble.py src/bu/models/uncertainty.py \
-    runs/w3_pilot/attempt-001/manifest.json runs/w3_pilot/attempt-001/rows.json
+    src/bu/models/ensemble.py tests/test_audit_w3_closeout.py
 ```
 
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 30 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 31 (D-008).
 >
 > COVERS SESSIONS:
-> - 2026-08-17 (W3 micro-closeout) · A claim narrowed, and an isolation that only held on CPU
+> - 2026-08-17 (W3 RNG correction) · The seeding was wider than the fork
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 30
-PREVIOUS_DELTA_ID: 29
+DELTA_ID: 31
+PREVIOUS_DELTA_ID: 30
 DATE: 2026-08-17
-SUBJECT: Micro-closeout. Both items corrected, no fits rerun, and rows.json is
-         in the bundle this time.
+SUBJECT: You are right a third time on the same function. Device-local seeding,
+         and the reason my own test could not have caught it.
 
 --------------------------------------------------------------------
-1. rows.json IS IN THE BUNDLE.
+THE LEAK, REPRODUCED BEFORE I TOUCHED ANYTHING.
 
-You are right, and the way this happened is worth one sentence: the exclusion
-mechanism I built to keep the bundle REVIEWABLE is what removed the evidence the
-bundle existed to DELIVER. You could see digests and counters and not the rows
-they described. That is D-036 and D-041 arriving one level down, and my own
-"a test passed on my machine" is not evidence in your hands.
+I fixed the FORK to cover the devices in use and left the SEEDING on
+torch.manual_seed, which seeds the CPU generator AND every accelerator device.
+The two sets stopped matching, so the call reseeded generators nothing would
+restore.
 
-The bundle now names rows.json explicitly. No fits were rerun; it is the same
-attempt-001 generated at ed550a0 on a clean tree, byte-identical, and its digest
-in the manifest is unchanged. You can now read all 18 summary rows, the 90
-member validation errors, the per-member auxiliary slices, and the per-row
-normalisation metadata directly.
+Your first case, measured on this machine -- and note the computation never
+touches the GPU at all:
 
---------------------------------------------------------------------
-2. THE RNG ISOLATION WAS CPU-ONLY. FIXED BY DERIVING THE DEVICES.
+  CPU model, CPU inputs, forkable_devices() -> (None, [])
+  torch.cuda.get_rng_state() preserved across the call?   FALSE
 
-Confirmed from torch's own documentation of fork_rng: "CPU RNG state is always
-forked", device generators only for devices passed in. So devices=[] isolated
-CPU and left CUDA advancing, exactly as you said.
+FIXED BY SEEDING DEVICE-LOCALLY, your preferred option:
 
-MEASURED ON THIS MACHINE'S CUDA DEVICE, not reasoned about:
+  seed_locally(seed, device_type, devices):
+      torch.default_generator.manual_seed(seed)        # CPU only, not the
+                                                       # all-device convenience
+      for index in devices:                            # derived devices only
+          with module.device(index): module.manual_seed(seed)
 
-  old, fork_rng(devices=[])   torch.cuda.get_rng_state() preserved?  False
-  new, derived devices        torch.cuda.get_rng_state() preserved?  True
-                              and samples still vary on the device:  True
-
-I took your first option rather than the CPU restriction. Restricting MC-dropout
-to CPU would put rung 3 of the reliability ladder on a different device from
-everything around it at the W4 gate, which seems a worse trade than deriving the
-devices properly.
-
-  forkable_devices(model, *tensors) reads the devices of the model's PARAMETERS
-  and BUFFERS and of the input tensors. CPU-only returns (None, []) and the
-  CPU path is byte-for-byte what it was. A call spanning two accelerator types
-  RAISES, because one fork_rng cannot isolate both and quietly forking one of
-  them is the defect I would be re-introducing.
-
-Tests: the CUDA test runs where a device exists and asserts the CUDA generator
-is preserved AND that samples still vary; the device DERIVATION is covered on
-any machine using meta tensors, so a CPU-only checkout still tests the logic;
-and the old test is renamed from "the global RNG" to "the CPU RNG", which is
-the claim it actually made.
+Devices absent from forkable_devices() are never seeded. A "meta" device type
+seeds nothing rather than looking for a module that does not exist. The set
+seeded is now exactly the set the fork restores, by construction of the same
+list -- and I mean that literally this time: it is one variable used twice.
 
 --------------------------------------------------------------------
-3. "ENFORCED BY CONSTRUCTION" WAS TOO STRONG. WITHDRAWN.
+WHY MY TEST COULD NOT HAVE CAUGHT IT, WHICH IS THE PART I WANT ON RECORD.
 
-You are right on every particular. The dataclass constructor is public,
-from_evaluation_pool() takes any 2-D tensor including a masked one, and the
-low-level metric path accepts raw tensors. I overstated what a type can do.
+The CUDA test checked the one device that was both seeded AND forked. That is
+the single configuration in which the mismatch cancels. I wrote it against the
+machine it runs on rather than against the claim it makes.
 
-REPLACED, in the module docstring, the class docstring and the constructor's
-own Args, with the narrow true claim:
-
-  - the registered summary path REQUIRES an explicit NormalisationScale and
-    will not invent one, so a subset cannot be normalised BY ACCIDENT;
-  - the W3 pilot constructs it from the full movement evaluation pool;
-  - the W4 runner MUST construct it BEFORE producing the failure mask and MUST
-    reuse the same object for the whole-pool and masked calculations.
-
-The third is a CALL-SITE INVARIANT, and it is filed as a required test of the
-W4 runner (C-010) rather than as a property this module claims.
-
-Since it cannot be prevented at the type, I made it AUDITABLE. n_reference
-records how many transitions the vector was measured over, so a subset-derived
-scale is visible in every artefact carrying it. A new test builds one from a
-10-row mask against a 200-row pool and asserts it records 10 and produces a
-different vector.
-
-The test I had called "a mask cannot recompute the scale" is renamed to "the
-summary path will not invent a scale". Its name claimed more than its
-assertions established -- which is D-055 and D-057 happening inside a
-regression test I wrote for exactly that class of defect. Third time.
+That is the D-055 / D-057 defect class -- an assertion that cannot fail in the
+configuration it runs in -- arriving through HARDWARE rather than through code.
+A one-GPU machine cannot distinguish "seeds what it forks" from "seeds
+everything and forks one thing". It is the fourth time this class has bitten me
+and the first time the cause was the machine.
 
 --------------------------------------------------------------------
-YOUR RULINGS, FILED (D-064)
+TESTS, INCLUDING ONE I CANNOT RUN.
 
-  rerun account          accepted -- three-layer fix covers both routes
-  per-slice baseline     accepted and preferred
-  duplicate-run_id       stays in load_runs as defence in depth; the
-                         confirmatory runner ALSO owes explicit selection of
-                         one immutable attempt -> C-010
-  exact reproduction     valid that D-061 PINS the W3 numbers, since the scored
-                         set here is the complete movement pool; NOT validation
-                         of the masked call site -> tested in the W4 runner
-  compact base           allowed for this closeout only; certification remains
-                         one chain from 2875e60. Noted, and not repeated.
+  CPU call, every CUDA device unchanged      RUNS HERE, and FAILED before the
+                                             fix -- this is your first case
+  two CUDA devices, used and unused both
+    unchanged                                SKIPPED. This machine has one GPU.
+                                             DECLARED AS UNVERIFIED, not
+                                             reported as passing
+  seed_locally directly: CPU generator
+    moves, no device generator does          runs on any machine, no GPU needed
+  stochasticity + seed reproducibility       retained, and now asserted ON THE
+                                             DEVICE too: same seed identical,
+                                             different seed differs, spread
+                                             still 1e-3+
+
+The multi-GPU guarantee therefore rests on seed_locally seeding only the derived
+indices, which the third test covers directly, plus the two-device test standing
+ready for a machine that can run it. I would rather say that than imply
+coverage I do not have.
+
+--------------------------------------------------------------------
+THE STALE CLAUDE.md SENTENCE -- CORRECTED, AND ONE I AM LEAVING ALONE.
+
+You are right that it is the dangerous one: it instructs the NEXT Claude, who
+has no memory, using the model you withdrew. Replaced with the explicit-and-
+auditable claim plus the C-010 pointer, and a second instance in the same file's
+module map is corrected too. I swept both the code and the docs for the phrasing
+and there are now no surviving instances outside the entries that withdraw it.
+
+One I am deliberately NOT editing, and I want you to know it is a choice: the
+PROJECT_STATE.md section 7 session-log entry from the closeout still contains
+"Enforced by construction". Section 7 is append-only (D-014, which exists
+because I once reordered that ledger), and the entry immediately following it
+withdraws the claim by name. If you would rather I break the append-only rule to
+strike it, say so and I will -- but I did not want to make that call myself.
+
+Same reasoning for D-061 in the ledger: untouched, with D-064 naming it as the
+correction, which is how D-042 corrected D-039 and D-044 corrected D-042.
 
 NUMBERS
-  CUDA rng preserved:       old False -> new True (measured on device)
-  CUDA test cost:           ~68 MiB, sub-second, 32x4 input through 16 units
-  subset-scale audit:       n_reference 10 vs pool 200, different vectors
-  fits rerun:               ZERO. attempt-001 is unchanged at its manifest hash
-  tests:                    436 -> 440 passing, 1 skipped
-  compute consumed:         0 GPU-hours of budget
+  CPU-only call, CUDA rng preserved:   old FALSE -> new TRUE (measured)
+  devices seeded on a CPU call:        0 (was: every CUDA device)
+  fits rerun:                          ZERO. attempt-001 unchanged, digest
+                                       cdaa497cec68 on rows.json as before
+  tests:                               440 -> 442 passing, 2 skipped
+  compute consumed:                    0 GPU-hours of budget
 
 WHAT I AM ASKING YOU TO ATTACK
-  1. Deriving devices rather than restricting to CPU. It is the larger change
-     of the two options you offered, and it is mine.
-  2. Whether raising on a mixed-accelerator call is right, or whether it should
-     fork each type in turn. I chose to raise because I could not test the
-     multi-type path on one device.
-  3. Whether C-010 as filed states the W4 invariant tightly enough to be a test
-     rather than an intention.
+  1. Whether declaring the two-device test as skipped-and-unverified is
+     acceptable, or whether the multi-GPU guarantee needs a machine before
+     Week 3 can be certified.
+  2. Whether leaving the append-only section 7 entry uncorrected is the right
+     call, given it is historical rather than operational.
 === END UPDATE ===
 ```
