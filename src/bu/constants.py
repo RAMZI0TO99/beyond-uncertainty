@@ -104,6 +104,17 @@ VALIDATION_EPISODES = 40
 #: and identical across dataset sizes *and* ensemble members.
 EVALUATION_EPISODES = 100
 
+#: What defines the per-dimension normalising scale (D-061, Sol's ruling).
+#: Plan §10.3 requires per-dimension normalised error and never says which set
+#: the normalisation is measured over. It matters: the scale is a **vector**, so
+#: it does not cancel between the H2 ratio's numerator and denominator, and
+#: recomputing it from a failure subset moved the registered endpoint by up to
+#: 4.6%. Measured once from the full evaluation pool restricted to the movement
+#: domain, **before any failure mask**, then reused for the whole pool and every
+#: subset of it, across every member and dataset size sharing that pool.
+NORMALISATION_SCALE_SOURCE = "evaluation_pool"
+NORMALISATION_SCALE_DOMAIN = "movement"
+
 # --- Design scale (Plan §10.7) --------------------------------------------
 
 #: Minimum labelled configuration-conditions, and minimum held out. Power

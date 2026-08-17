@@ -17,6 +17,7 @@ from bu.models.uncertainty import (
     RATIO_FLOOR,
     UncertaintySummary,
     across_seeds,
+    NormalisationScale,
     normalised_error,
     pairwise_disagreement,
     per_dimension_scale,
@@ -105,7 +106,10 @@ def test_a_constant_dimension_does_not_divide_by_zero():
 
 def test_a_perfect_prediction_has_zero_error():
     targets = torch.randn(32, 2)
-    assert torch.allclose(normalised_error(targets, targets), torch.zeros(32), atol=1e-6)
+    scale = NormalisationScale.from_evaluation_pool(targets)
+    assert torch.allclose(
+        normalised_error(targets, targets, scale), torch.zeros(32), atol=1e-6
+    )
 
 
 # --- the H2 ratio ----------------------------------------------------------
@@ -121,8 +125,8 @@ def test_the_ratio_is_of_means_not_a_mean_of_ratios():
     members = _members(spread=0.5)
     targets = members.mean(dim=0) + 1e-4 * torch.randn(members.shape[1], 2)
 
-    summary = summarise(members, targets, n_transitions=100, seed=0)
-    scale = per_dimension_scale(targets)
+    scale = NormalisationScale.from_evaluation_pool(targets)
+    summary = summarise(members, targets, n_transitions=100, seed=0, scale=scale)
     per_transition = (
         pairwise_disagreement(members, scale)
         / torch.clamp(normalised_error(members.mean(dim=0), targets, scale), min=RATIO_FLOOR)
@@ -142,7 +146,10 @@ def test_the_denominator_floor_controls_a_nonzero_numerator():
     offset = torch.randn(64, 2)
     members = torch.stack([targets + offset, targets - offset])  # mean == targets
 
-    summary = summarise(members, targets, n_transitions=100, seed=0)
+    summary = summarise(
+        members, targets, n_transitions=100, seed=0,
+        scale=NormalisationScale.from_evaluation_pool(targets),
+    )
     assert summary.mean_error == pytest.approx(0.0, abs=1e-6)
     assert summary.mean_disagreement > 0.1
     assert summary.ratio == pytest.approx(
@@ -244,10 +251,17 @@ def test_the_per_transition_table_keeps_episode_and_step():
     from bu.models.uncertainty import per_transition_table
 
     members = _members(k=5, n=32)
+    targets = torch.randn(32, 2)
     table = per_transition_table(
-        members, torch.randn(32, 2),
+        members, targets,
         episode=np.arange(32) // 8, step=np.arange(32) % 8,
+        scale=NormalisationScale.from_evaluation_pool(targets),
     )
-    assert set(table) == {"episode", "step", "error", "disagreement", "predictive_variance"}
-    for value in table.values():
-        assert len(value) == 32
+    per_transition = {"episode", "step", "error", "disagreement", "predictive_variance"}
+    # The scale travels with the export so a downstream failure-set analysis
+    # can check which normalisation produced these rows (D-061).
+    assert set(table) == per_transition | {
+        "scale", "scale_n_reference", "scale_domain", "scale_source"
+    }
+    for key in per_transition:
+        assert len(table[key]) == 32

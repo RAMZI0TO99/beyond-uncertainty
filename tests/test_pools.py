@@ -582,36 +582,42 @@ def test_an_out_of_range_train_index_is_rejected(bad):
         )
 
 
-def test_the_normalising_scale_can_be_fixed_to_the_pool():
-    """W3-1. The scale is a property of the evaluation pool, not of a subset.
+def test_the_normalising_scale_is_fixed_to_the_pool():
+    """W3-1, ruled on by D-061. The scale belongs to the pool, not to a subset.
 
     Recomputing it from a subset makes the *units* move with the subset:
-    measured, [0.229, 0.224] over the full pool against [0.357, 0.357] over its
-    worst 1%. The ratio is invariant because numerator and denominator share it;
-    P§10.2's primary error is not.
+    measured, [0.229, 0.224] over the full pool against [0.294, 0.348] over its
+    worst 5%. **Both** the primary error and the registered H2 ratio move with
+    it — a scalar scale would cancel between numerator and denominator, but a
+    per-dimension one divides each dimension differently, so the two norms have
+    no common factor. Measured on pilot data the endpoint shifts by up to 4.6%.
+
+    The docstring this replaces asserted the ratio was invariant. It was not.
     """
-    from bu.models.uncertainty import per_dimension_scale, summarise
+    from bu.models.uncertainty import NormalisationScale, summarise
 
     g = torch.Generator().manual_seed(0)
     targets = torch.randn(500, 2, generator=g)
     members = targets.unsqueeze(0) + 0.3 * torch.randn(5, 500, 2, generator=g)
 
-    pool_scale = per_dimension_scale(targets)
+    pool_scale = NormalisationScale.from_evaluation_pool(targets)
     subset = slice(0, 20)
+    subset_scale = NormalisationScale.from_evaluation_pool(targets[subset])
 
-    free = summarise(members[:, subset], targets[subset], n_transitions=1, seed=0)
+    free = summarise(
+        members[:, subset], targets[subset], n_transitions=1, seed=0, scale=subset_scale
+    )
     fixed = summarise(
         members[:, subset], targets[subset], n_transitions=1, seed=0, scale=pool_scale
     )
     assert free.mean_error != pytest.approx(fixed.mean_error, rel=1e-3), (
         "the subset happened to have the pool's scale; pick a different subset"
     )
-    # And the RATIO moves too, which is the finding. A scalar scale would
-    # cancel between numerator and denominator; a per-dimension one reshapes
-    # each vector differently, so it does not. Measured on real pilot data the
-    # registered endpoint shifts by up to 4.6% between a pool-derived and a
-    # failure-set-derived scale -- a degree of freedom P§10.3 never fixes.
     assert free.ratio != pytest.approx(fixed.ratio, rel=1e-6)
+    # The scale that produced the number is carried in the number's own record,
+    # and it names how many transitions it was measured over -- 500, not 20.
+    assert fixed.scale_n_reference == 500
+    assert fixed.scale == pytest.approx(tuple(float(v) for v in pool_scale.vector))
 
 
 def test_the_dead_validation_fraction_knob_is_gone():

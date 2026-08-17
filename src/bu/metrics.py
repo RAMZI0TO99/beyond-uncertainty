@@ -41,12 +41,41 @@ class RunLogger:
     without the provenance that explains it.
     """
 
-    def __init__(self, run_dir: str | Path, run_id: str) -> None:
+    def __init__(self, run_dir: str | Path, run_id: str, *, append: bool = False) -> None:
+        """
+        Args:
+            append: continue an existing metric stream. **Off by default**, and
+                the default is the safety property (D-062).
+
+                The stream opened in append mode while the record counter
+                restarted at zero, so writing twice into one run directory
+                produced two records numbered ``i=0``, two numbered ``i=1``, and
+                an analysis with no way to tell a rerun from a longer run.
+                ``RunLogger.start`` never reaches this — ``write_run_record``
+                rejects a duplicate ``run_id`` first — but the constructor is
+                public, and the confirmatory runner (C-008) is exactly the
+                caller that would hold a run directory open across a resume.
+
+                When explicitly requested, the counter **continues** from the
+                records already on disk rather than restarting, so ``i`` stays
+                unique within a stream either way.
+        """
         self.run_dir = Path(run_dir)
         self.run_id = run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        self._fh = (self.run_dir / METRICS_FILE).open("a", buffering=1)
-        self._n = 0
+        path = self.run_dir / METRICS_FILE
+        existing = 0
+        if path.exists():
+            existing = sum(1 for line in path.read_text().splitlines() if line.strip())
+        if existing and not append:
+            raise FileExistsError(
+                f"{path} already holds {existing} record(s). Refusing to append: "
+                "a second write into one run directory silently mixes two runs' "
+                "evidence under one run_id. Write to a fresh directory, or pass "
+                "append=True to continue this stream deliberately (D-062)."
+            )
+        self._fh = path.open("a", buffering=1)
+        self._n = existing
 
     @classmethod
     def start(
@@ -140,11 +169,27 @@ def load_runs(
     """
     wanted = set(run_ids) if run_ids is not None else None
     frames: list[pd.DataFrame] = []
+    seen: dict[str, Path] = {}
 
     for run_dir in iter_run_dirs(root):
         rec = read_run_record(run_dir)
         if wanted is not None and rec["run_id"] not in wanted:
             continue
+
+        # Two directories carrying one run_id are two *executions* of the same
+        # identity -- most plainly, two attempt directories from the same pilot
+        # (D-062). Loading both silently doubles every one of that run's records
+        # and every interval taken over them. The run_id uniqueness guard in
+        # write_run_record only protects a single directory, so the merge is
+        # where this has to be caught.
+        if rec["run_id"] in seen:
+            raise RuntimeError(
+                f"run_id {rec['run_id']} appears in two directories:\n"
+                f"  {seen[rec['run_id']]}\n  {run_dir}\n"
+                "These are separate executions of one identity. Load a single "
+                "attempt directory rather than a tree containing several."
+            )
+        seen[rec["run_id"]] = run_dir
         if require_clean_git and not rec.get("git", {}).get("trustworthy", False):
             raise RuntimeError(
                 f"run {rec['run_id']} was recorded from a dirty working tree; "

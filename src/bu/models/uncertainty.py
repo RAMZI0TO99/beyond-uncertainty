@@ -18,6 +18,12 @@ What the plan fixes, and what follows from it
   scientific error to the two grid-normalised agent-position dimensions — but
   the normalisation is applied anyway, because the plan says so and because the
   scale it divides by is measured on the evaluation pool rather than assumed.
+* **Which set defines that scale is now fixed** (D-061): the full evaluation
+  pool restricted to movement transitions, computed **before** any failure mask.
+  P§10.3 never said, and the code recomputed it from whatever subset it was
+  handed — which moves the registered H2 endpoint by up to 4.6% (D-060, W3-1).
+  :class:`NormalisationScale` is the only way to supply one, and it can only be
+  built from a pool, so a mask has no route to recompute it.
 * **Ratio of means, never mean of ratios.** Near-zero denominators make
   per-transition ratios arbitrarily large and a mean of them meaningless. The
   two are different statistics and can differ in the sign of an effect.
@@ -37,37 +43,133 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 
+from .. import constants as K
+
 #: Guard on the H2 denominator (Plan §10.3). Not tuned; it exists so a
 #: near-zero mean error cannot produce an arbitrarily large ratio.
 RATIO_FLOOR = 1e-6
 
 
 def per_dimension_scale(targets: torch.Tensor) -> torch.Tensor:
-    """Per-dimension scale used to normalise error (Plan §10.3).
+    """Per-dimension scale (Plan §10.3). **The only place a scale is computed.**
 
-    Measured on the evaluation targets rather than assumed, and floored so a
-    constant dimension cannot divide by zero.
+    Measured rather than assumed, and floored so a constant dimension cannot
+    divide by zero. Not called directly by analysis code: go through
+    :meth:`NormalisationScale.from_evaluation_pool`, which records *what* the
+    vector was computed from (D-061).
     """
     scale = targets.std(dim=0, unbiased=False)
     return torch.clamp(scale, min=RATIO_FLOOR)
 
 
+#: The registered domain of the normalisation (DEV-007): the primary error is
+#: agent position over movement transitions, so the scale is measured there.
+#: Both live in ``constants.py`` because they are preregistered definitional
+#: choices, not implementation details — the same reason the acceptance
+#: threshold does (D-061).
+SCALE_DOMAIN = K.NORMALISATION_SCALE_DOMAIN
+#: What the scale is computed from. Sol's D-061 ruling admits exactly one value.
+SCALE_SOURCE = K.NORMALISATION_SCALE_SOURCE
+
+
+@dataclass(frozen=True)
+class NormalisationScale:
+    """The per-dimension scale, with the evidence of where it came from (D-061).
+
+    **Why this is an object rather than a tensor.** P§10.3 requires per-dimension
+    normalisation but never says which set defines it, and the W3 audit found the
+    code recomputing it from whatever targets it was handed. Because the scale is
+    a **vector**, it does not cancel between the ratio's numerator and its
+    denominator: dividing each dimension by a different amount reshapes both
+    vectors, and their norms have no common factor to cancel. Measured on pilot
+    data, the registered H2 endpoint moved by up to 4.6% between a pool-derived
+    and a failure-set-derived scale — a degree of freedom nobody chose.
+
+    Sol's ruling: compute it **once from the full evaluation pool restricted to
+    movement transitions, before any failure mask**, and reuse that exact vector
+    for the whole-pool and the failure-subset calculations, across every member
+    and every dataset size sharing that evaluation pool.
+
+    The ruling is enforced by construction rather than by convention. This class
+    is the only accepted scale argument in the summary path, and the only way to
+    build one is :meth:`from_evaluation_pool`, whose ``n_reference`` records how
+    many transitions it saw. A caller holding a masked subset has nothing to
+    build a scale *from* except the pool, so masking cannot recompute it.
+    """
+
+    vector: torch.Tensor
+    #: Transitions the vector was computed from — the pool, never a subset.
+    n_reference: int
+    domain: str = SCALE_DOMAIN
+    source: str = SCALE_SOURCE
+
+    @classmethod
+    def from_evaluation_pool(
+        cls, targets: torch.Tensor, *, domain: str = SCALE_DOMAIN
+    ) -> NormalisationScale:
+        """Build from the **full** evaluation-pool targets, pre-mask (D-061).
+
+        Args:
+            targets: ``(n_pool, dims)`` — every transition in the evaluation
+                pool that lies in ``domain``, with no failure mask applied.
+        """
+        if targets.ndim != 2:
+            raise ValueError(
+                f"expected (n_pool, dims) evaluation targets, got {tuple(targets.shape)}"
+            )
+        return cls(
+            vector=per_dimension_scale(targets),
+            n_reference=int(targets.shape[0]),
+            domain=domain,
+        )
+
+    def as_row(self) -> dict:
+        """Persisted with every result artefact, so a number carries its units."""
+        return {
+            "scale": [float(v) for v in self.vector],
+            "scale_n_reference": self.n_reference,
+            "scale_domain": self.domain,
+            "scale_source": self.source,
+        }
+
+
+def _vector(scale: NormalisationScale | torch.Tensor) -> torch.Tensor:
+    if isinstance(scale, NormalisationScale):
+        return scale.vector
+    if isinstance(scale, torch.Tensor):
+        return scale
+    raise TypeError(
+        f"scale must be a NormalisationScale (or a raw tensor in low-level "
+        f"code), got {type(scale).__name__}. Build one with "
+        "NormalisationScale.from_evaluation_pool(pool_targets) — never from the "
+        "subset being scored (D-061)."
+    )
+
+
 def normalised_error(
-    predictions: torch.Tensor, targets: torch.Tensor, scale: torch.Tensor | None = None
+    predictions: torch.Tensor,
+    targets: torch.Tensor,
+    scale: NormalisationScale | torch.Tensor,
 ) -> torch.Tensor:
     """Per-transition error, per-dimension normalised.
+
+    ``scale`` is **required**. It used to default to ``None`` meaning "recompute
+    from ``targets``", which is exactly the defect D-061 rules on: scoring a
+    failure subset then silently measured it in the subset's own units.
 
     Args:
         predictions: ``(batch, dims)`` — one model's predictions, or an
             ensemble mean.
         targets: ``(batch, dims)``.
+        scale: the evaluation pool's fixed scale.
     """
-    scale = per_dimension_scale(targets) if scale is None else scale
-    return torch.linalg.vector_norm((predictions - targets) / scale, dim=1)
+    return torch.linalg.vector_norm(
+        (predictions - targets) / _vector(scale), dim=1
+    )
 
 
 def pairwise_disagreement(
-    members: torch.Tensor, scale: torch.Tensor | None = None
+    members: torch.Tensor, scale: NormalisationScale | torch.Tensor | None = None
 ) -> torch.Tensor:
     """Mean pairwise distance between member predictions, per transition.
 
@@ -84,14 +186,14 @@ def pairwise_disagreement(
         raise ValueError(f"disagreement needs at least two members, got {k}")
 
     if scale is not None:
-        members = members / scale
+        members = members / _vector(scale)
     # (batch, k, dims) -> (batch, k, k) pairwise distances
     distances = torch.cdist(members.permute(1, 0, 2), members.permute(1, 0, 2))
     return distances.sum(dim=(1, 2)) / (k * (k - 1))
 
 
 def predictive_variance(
-    members: torch.Tensor, scale: torch.Tensor | None = None
+    members: torch.Tensor, scale: NormalisationScale | torch.Tensor | None = None
 ) -> torch.Tensor:
     """Ensemble predictive variance, per transition (Plan §10.3).
 
@@ -99,7 +201,7 @@ def predictive_variance(
     transition like the disagreement it sits beside.
     """
     if scale is not None:
-        members = members / scale
+        members = members / _vector(scale)
     return members.var(dim=0, unbiased=False).sum(dim=1)
 
 
@@ -115,8 +217,15 @@ class UncertaintySummary:
     mean_predictive_variance: float
     #: Plan §10.3's H2 ratio: a **ratio of means**, floored, per seed.
     ratio: float
+    #: The normalisation these numbers are expressed in (D-061). Carried in the
+    #: summary itself so a number cannot travel without its units — the failure
+    #: mode of D-042 and D-044, arriving through a different quantity.
+    scale: tuple[float, ...] = ()
+    scale_n_reference: int = 0
+    scale_domain: str = SCALE_DOMAIN
+    scale_source: str = SCALE_SOURCE
 
-    def as_row(self) -> dict[str, float | int]:
+    def as_row(self) -> dict:
         return {
             "n_transitions": self.n_transitions,
             "seed": self.seed,
@@ -125,6 +234,10 @@ class UncertaintySummary:
             "mean_disagreement": self.mean_disagreement,
             "mean_predictive_variance": self.mean_predictive_variance,
             "ratio": self.ratio,
+            "scale": list(self.scale),
+            "scale_n_reference": self.scale_n_reference,
+            "scale_domain": self.scale_domain,
+            "scale_source": self.scale_source,
         }
 
 
@@ -134,24 +247,28 @@ def summarise(
     *,
     n_transitions: int,
     seed: int,
-    scale: torch.Tensor | None = None,
+    scale: NormalisationScale,
 ) -> UncertaintySummary:
     """Per-seed summary. The division happens **here**, before any pooling.
 
     Pooling across seeds and then dividing would be a different statistic, and
     Plan §10.3 names this one.
 
-    ``scale`` should be the **evaluation pool's** per-dimension scale, passed in
-    explicitly whenever ``targets`` is a *subset* of that pool (W3-1). P§10.3
-    requires per-dimension normalised error but does not say which set defines
-    the normalisation, and recomputing it from the subset makes the units move
-    with the subset: measured on one condition, the scale is [0.229, 0.224] over
-    the full evaluation pool and [0.357, 0.357] over the worst 1% of it — a 55%
-    shift. The ratio is invariant to this because numerator and denominator
-    share the scale, but P§10.2's primary *error* is not, and the Week 4 Friday
-    failure set is exactly such a subset.
+    ``scale`` is the evaluation pool's fixed scale and is **required** (D-061).
+    It previously defaulted to recomputing from ``targets``, so scoring a failure
+    subset measured it in the subset's own units: measured on one condition, the
+    scale is [0.229, 0.224] over the full evaluation pool and [0.294, 0.348] over
+    its worst 5%.
+
+    **A correction to what this docstring used to say.** It claimed the *ratio*
+    was invariant to the choice because numerator and denominator share the
+    scale. That is false, and the W3 audit measured it false: a **scalar** scale
+    would cancel, but a per-dimension one divides each dimension by a different
+    amount, reshaping both vectors so their norms have no common factor. The
+    registered H2 endpoint moved by up to 4.6% on the choice alone. The error was
+    to reason about a vector as though it were a scalar, and it survived three
+    files until Sol asked (D-061).
     """
-    scale = per_dimension_scale(targets) if scale is None else scale
     ensemble_mean = members.mean(dim=0)
 
     error = normalised_error(ensemble_mean, targets, scale)
@@ -167,6 +284,10 @@ def summarise(
         mean_disagreement=float(disagreement.mean()),
         mean_predictive_variance=float(variance.mean()),
         ratio=float(disagreement.mean()) / max(mean_error, RATIO_FLOOR),
+        scale=tuple(float(v) for v in scale.vector),
+        scale_n_reference=scale.n_reference,
+        scale_domain=scale.domain,
+        scale_source=scale.source,
     )
 
 
@@ -226,7 +347,7 @@ def per_transition_table(
     *,
     episode: np.ndarray,
     step: np.ndarray,
-    scale: torch.Tensor | None = None,
+    scale: NormalisationScale,
 ) -> dict[str, np.ndarray]:
     """The per-transition export the schedule requires (D-059).
 
@@ -235,14 +356,21 @@ def per_transition_table(
     level, failure-set filtering, the local error/disagreement correlation and
     independent regeneration of the registered H2 endpoint are all impossible
     after the fact.
+
+    The scale travels **inside the export** (D-061). A downstream failure-set
+    analysis reading this file must apply its mask to these rows, not recompute
+    a normalisation from them, and it can now check which vector produced them.
     """
-    scale = per_dimension_scale(targets) if scale is None else scale
     return {
         "episode": np.asarray(episode),
         "step": np.asarray(step),
         "error": normalised_error(members.mean(dim=0), targets, scale).numpy(),
         "disagreement": pairwise_disagreement(members, scale).numpy(),
         "predictive_variance": predictive_variance(members, scale).numpy(),
+        "scale": np.asarray([float(v) for v in scale.vector], dtype=np.float64),
+        "scale_n_reference": np.asarray(scale.n_reference),
+        "scale_domain": np.asarray(scale.domain),
+        "scale_source": np.asarray(scale.source),
     }
 
 

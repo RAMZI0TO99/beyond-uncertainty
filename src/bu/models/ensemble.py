@@ -35,11 +35,13 @@ measurement in the delta.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Iterator, Literal
 
 import numpy as np
 import torch
+import torch.nn as nn
 
 from .. import constants as K
 from ..config import Arm, TrainConfig, UnitSpec
@@ -49,6 +51,113 @@ from .train import TrainResult, episode_indices, train
 from .world_model import WorldModel
 
 Granularity = Literal["episode", "transition", "none"]
+
+#: How predictions are generated. **An explicit policy, not a default** (D-062).
+#:
+#: * ``"deterministic"`` — the estimator H1 and H2 are stated over: a plain
+#:   ensemble, every member evaluated with dropout and batch-norm in inference
+#:   behaviour.
+#: * ``"mc_dropout"`` — P§9.3's reliability-gate fallback B2, *"dropout at test
+#:   time"*. Dropout layers stay **active** during each no-gradient forward
+#:   pass; everything else is still in inference behaviour.
+PredictionMode = Literal["deterministic", "mc_dropout"]
+
+
+def dropout_modules(model: nn.Module) -> list[nn.Module]:
+    """Every dropout layer in ``model``, of any dimensionality."""
+    return [m for m in model.modules() if isinstance(m, nn.modules.dropout._DropoutNd)]
+
+
+@contextmanager
+def prediction_mode(model: nn.Module, mode: PredictionMode) -> Iterator[None]:
+    """Put ``model`` in the inference behaviour ``mode`` names, then restore it.
+
+    **Why this is not just ``model.eval()``** (D-062). The W3 audit found
+    ``member_predictions`` leaving members in eval mode and fixed the *state
+    leak* by saving and restoring ``model.training``. Sol pointed out that this
+    did not fix the mechanism it was written for: the forward pass still ran
+    under ``eval()``, so under MC-dropout the dropout layers were **off** and the
+    estimator would return deterministic predictions with exactly **zero
+    disagreement**. That reads as "MC-dropout also fails H1" and triggers a false
+    pivot at the very gate the fallback exists for. Restoring the mode afterwards
+    is necessary and was never sufficient.
+
+    So: ``eval()`` for everything, then dropout put **back** into training
+    behaviour when the mode asks for it — which is what test-time dropout is, and
+    which is not the same thing as calling ``model.train()`` (that would also
+    switch batch-norm to batch statistics, an unrelated change to the estimator).
+
+    Requesting ``"mc_dropout"`` from a model with **no dropout layers raises**.
+    Silence there is the whole defect: an architecture without dropout returns
+    identical samples, and a zero-disagreement result is indistinguishable from
+    a real negative. The current :class:`WorldModel` has no dropout, so rung 3
+    at the Week 4 gate must add one deliberately and will be told so.
+
+    Modes are restored **per submodule**, not from the top-level flag: this
+    function changes submodules independently, so ``model.train(was_training)``
+    would not put a partially-mixed model back as it found it.
+    """
+    if mode not in ("deterministic", "mc_dropout"):
+        raise ValueError(
+            f"unknown prediction mode {mode!r}; expected 'deterministic' or "
+            "'mc_dropout'"
+        )
+
+    saved = {module: module.training for module in model.modules()}
+    try:
+        model.eval()
+        if mode == "mc_dropout":
+            layers = dropout_modules(model)
+            if not layers:
+                raise ValueError(
+                    "mode='mc_dropout' on a model with no dropout layers. Every "
+                    "sample would be identical and disagreement would be exactly "
+                    "zero, which is indistinguishable from the estimator failing "
+                    "H1 (P§9.3 fallback B2, D-062). Add dropout to the "
+                    "architecture before selecting this estimator."
+                )
+            for layer in layers:
+                layer.train()
+        yield
+    finally:
+        for module, was_training in saved.items():
+            module.training = was_training
+
+
+def mc_dropout_predictions(
+    model: nn.Module,
+    obs: torch.Tensor,
+    action: torch.Tensor,
+    *,
+    n_samples: int,
+    seed: int | None = None,
+) -> torch.Tensor:
+    """``(n_samples, batch, position_dims)`` stochastic forward passes (P§9.3).
+
+    Rung 3 of the reliability-gate ladder replaces the *ensemble* with repeated
+    stochastic passes through **one** model, so the returned tensor has the shape
+    :func:`~bu.models.uncertainty.pairwise_disagreement` already consumes and the
+    disagreement metric is unchanged. Nothing about H1's definition moves; only
+    where the members come from.
+
+    ``seed`` forks torch's global RNG rather than advancing it, so sampling here
+    cannot shift any other stream and a rung-3 verdict is reproducible.
+    """
+    if n_samples < 2:
+        raise ValueError(
+            f"MC-dropout needs at least two samples to have any disagreement, "
+            f"got {n_samples}"
+        )
+    outputs = []
+    with prediction_mode(model, "mc_dropout"):
+        with torch.random.fork_rng(devices=[]):
+            if seed is not None:
+                torch.manual_seed(seed)
+            with torch.no_grad():
+                for _ in range(n_samples):
+                    position, _ = model(obs, action)
+                    outputs.append(position)
+    return torch.stack(outputs)
 
 
 def bootstrap_episodes(
@@ -159,30 +268,28 @@ class Ensemble:
         return tuple(r.best_val_position for r in self.results)
 
     def member_predictions(
-        self, obs: torch.Tensor, action: torch.Tensor
+        self,
+        obs: torch.Tensor,
+        action: torch.Tensor,
+        *,
+        mode: PredictionMode = "deterministic",
     ) -> torch.Tensor:
         """``(n_members, batch, position_dims)`` predicted next agent positions.
 
         Only the position head: H1 and H2 are claims about disagreement on the
         quantity the manipulated mechanism moves (D-032, DEV-007). Disagreement
         metrics themselves are Week 3 Friday; this is the tensor they read.
+
+        ``mode`` selects the inference behaviour explicitly (D-062). The default
+        is the registered estimator; ``"mc_dropout"`` draws one stochastic pass
+        per member and **raises** on a dropout-free architecture rather than
+        returning a silently deterministic answer. See :func:`prediction_mode`.
         """
         outputs = []
         for model in self.members:
-            was_training = model.training
-            model.eval()
-            try:
+            with prediction_mode(model, mode):
                 with torch.no_grad():
                     position, _ = model(obs, action)
-            finally:
-                # Restore, rather than leaving every member in eval mode
-                # (W3-4). Inert for this MLP, but P§9.3 plans **MC-dropout** as
-                # the reliability-gate fallback B2 -- "dropout at test time".
-                # Under that estimator a model silently left in eval mode
-                # returns deterministic predictions with **zero disagreement**,
-                # which would read as "MC-dropout also fails H1" and trigger a
-                # false pivot at exactly the gate the fallback exists for.
-                model.train(was_training)
             outputs.append(position)
         return torch.stack(outputs)
 

@@ -39,15 +39,15 @@ This is the shared working file for the project. It is written by Claude, review
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-16 |
+| **Last updated** | 2026-08-17 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–2 audited; W3 Mon–Wed CERTIFIED at `2875e60`; W3 Fri/Sat done; W3 audited (D-060).** Nine Sol reviews actioned on 2026-08-16. Running ahead of the 2026-08-17 start — see DEV-002 |
+| **Current week / day** | **Weeks 1–2 audited; W3 Mon–Wed CERTIFIED at `2875e60`; W3 Fri/Sat done; W3 audited (D-060) and now closed out (D-061 … D-063).** Ten Sol reviews actioned. Week 1 Monday is **today** — the project is roughly two weeks ahead of its own calendar (DEV-002) |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
-| **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `2875e60`** — Sol certified the Week 3 Mon–Wed infrastructure on 2026-08-16, covering D-047 … D-057. Set `BASE` to this for the next bundle |
-| **Tests** | **418 passing, 1 skipped**. Includes golden `unit_id` values, the observational-aliasing property Experiment 2A rests on, the stream-pairing properties of D-030, and gradient isolation between the two heads |
-| **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). W3 Friday's 90-fit pilot ran on **CPU** at the student's request; their GPU was at 14.2/16.4 GB under another workload all week |
+| **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: still `2875e60`.** Sol reviewed `0b09f84` and did **not** certify it — Week 3 stays open until the closeout bundle passes. Set `BASE=2875e60` |
+| **Tests** | **437 passing, 1 skipped**. Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
+| **Compute used** | **0 GPU-hours** of ~110–145 budgeted (trigger ≈ 120, P§14.3). The 90-fit pilot and its closeout rerun both ran on **CPU**; the student's GPU has been at ~14/16 GB under another workload all week |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
 **Hypothesis status**
@@ -74,11 +74,12 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 1. **W3 Tue — DONE** (D-049). Trains 5,000 transitions, early-stops at epoch 10 of 31 in 1.5s CPU, curve reaching `load_runs()`. Split by episode and **strided**, all of D-047's constraints implemented. Measured: a transition-level split is **4.5–8.7× optimistic**, worst at small n.
 2. **W3 Wed — DONE** (D-050). Five members on 5,000 transitions in 8.0s CPU; per-member validation errors 0.0034–0.0061, sd 0.0010, each drawing ~50 of 80 training episodes. **Raised Q-011.**
 3. **W3 Fri and Sat — DONE** (D-058, corrected by **D-059**). 90 fits on CPU, rerun with per-transition export. **Error falls monotonically in N; disagreement does not** — it peaks at N=250, direction reproduced in all three seeds paired (+0.179, +0.360, +0.102). Measured **per member**: at N=100 members range 0.219–0.639 of the target's variation, at N=250 0.220–0.836, at N=5,000 0.939–0.974. The mechanism is **heterogeneous contraction, not collapse** — disagreement peaks where the spread across members is widest. The lowest whole-pool ratio is at N=100 (0.462), but that is **not** the registered H2 ratio, which is defined over the failure set and needs the W4 Fri threshold.
-4. **W4 Mon — NEXT** — the rank-correlation trend test, used for both the W4 gate and the W10 H1 verdict. **Read it knowing the disagreement curve is non-monotone at the small end.**
+4. **W3 closeout — DONE** (D-061, D-062, D-063), on Sol's review of deltas 27–28. Two serious findings, both verified first and **one of them different from how it was stated**: the MC-dropout fix restored state without re-enabling dropout (measured on a real dropout model: **exactly zero** disagreement under the old path), and the rerun hazard was reachable through a *different-scope* rerun rather than the append path, which `write_run_record` already blocked. Scale ruling adopted and the pilot's numbers reproduce **exactly**. No second trunk.
+5. **W4 Mon — NEXT, once the closeout bundle passes review.** The rank-correlation trend test, used for both the W4 gate and the W10 H1 verdict. **Read it knowing the disagreement curve is non-monotone at the small end** — a rank correlation over the six sizes is exactly the instrument that non-monotonicity bends. Sol has blocked W4 confirmatory work until the closeout is reviewed.
 
-**No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **One open item carried into W3 Tue:** the detached head sits at 0.2575 against a copy baseline of 0.1652 after 3,000 epochs, and Sol's conditional for a second trunk turns on whether the real training loop can close that — it must not be decided from a hand-rolled loop.
+**No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **D-047's open item is closed** by D-063: the real loop never closed the gap at any size or member, Sol ruled against a second trunk, and the detached head is now a **non-decisional diagnostic** — barred from the trunk, from early stopping and checkpoint selection, from the failure set, from repair labels and from the critic's residual.
 
-**Blocked on:** nothing for the W3 Friday development pilot — Sol approved it on development seeds. Still blocked, correctly: **confirmatory execution** and **repair validation**, both waiting on the confirmatory runner; **critic splitting** and **W5 MDE approval** — see C-003, C-005, C-006, C-008. No open questions.
+**Blocked on:** **W4 confirmatory work, until the closeout bundle passes review** — Sol's condition, and the right one: the MC-dropout mechanism is a rung-3 dependency of the W4 gate itself. Still blocked, correctly: **confirmatory execution** and **repair validation**, both waiting on the confirmatory runner; **critic splitting** and **W5 MDE approval** — see C-003, C-005, C-006, C-008, C-009. No open questions.
 
 **Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split conditionally, and DEV-005 was a hit against that condition. Sol weighed it on 2026-08-16 and **kept the split**, on the grounds that the mechanised protocol tests improve the arrangement more than reassigning implementation would. The watch stays live: consequential design decisions go into a delta **and get delivered** before dependent code is built on them, and Claude flags any decision it believes meets that bar at the moment of making it. D-030 is the current test of that — decided, filed, and deliberately left unbuilt.
 
@@ -107,6 +108,7 @@ These are the preregistered quantities. They are fixed **before** data collectio
 | Stream version | **3** — separate validation and evaluation data streams | D-052 |
 | Episode length | **10** steps | D-052 |
 | Validation / evaluation pools | **40 / 100** complete episodes, fixed and shared | D-052 |
+| Normalising scale | the **full movement evaluation pool**, measured **before any failure mask**, then reused for every subset, member and dataset size sharing that pool | D-061 |
 | Bootstrap | **episode-level block bootstrap**, primary for H1/H2 | D-053 |
 | Bootstrap sensitivities | transition-level and init-only: **W3 Fri pilot only**, never a verdict, not in the 8,197 | D-054 |
 | Policy | adaptive counters **reset every episode**; overrides rejected on confirmatory seeds | D-051, D-054 |
@@ -199,6 +201,9 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-058** | 2026-08-16 | W3 Friday's pilot, and the first thing it found | pending |
 | **D-059** | 2026-08-16 | Correction to D-058 — what the pilot measured, and what it did not | finding Sol's |
 | **D-060** | 2026-08-16 | Week 3 audit — seven defects, and Sol's auxiliary conditional answered | pending |
+| **D-061** | 2026-08-17 | The normalising scale is the evaluation pool's, fixed before any mask | Sol's ruling |
+| **D-062** | 2026-08-17 | Two fixes that fixed the symptom — MC-dropout inference, and rerunnable evidence | findings Sol's |
+| **D-063** | 2026-08-17 | No second trunk; the activation head is a non-decisional diagnostic | Sol's ruling |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -312,6 +317,19 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; 14 archived, 1 kept h
 **D-047's conditional is answered.** Across all five members and every dataset size the detached auxiliary head **never** beats its copy baseline — 0 of 3 seeds everywhere, best member 0.225 against 0.169, no improvement with data. Compute is not the obstacle (a second trunk is 1.98×, taking the design from ~1.6 to ~3.2 CPU-hours). **Recommendation: downgrade rather than spend it** — activation carries no hypothesis and P§10.2's primary error excludes it. Recorded for Sol, not decided.
 **Result:** 413 → 418 tests, every finding with a named regression test. **Zero GPU-hours.**
 **Next:** W4 Mon — the trend test, once Sol has ruled on W3-1's scale choice, which W4 consumes.
+---
+
+### 2026-08-17 (W3 closeout) · Two fixes that fixed the symptom, and a ruling on the scale · Claude
+**Did:** Sol's review of deltas 27–28. D-059's interpretation corrections accepted; **`0b09f84` not certified**, and Week 3 not closed on two serious findings. Both verified before anything changed, per the standing rule, and **one of the two is different from how it was stated**.
+**1. The MC-dropout fix did not fix MC-dropout.** Sol is exactly right: `member_predictions` restored `model.training` but still called `eval()` before the forward pass, so dropout was off *during* inference. Reproduced against the old path on a model with a real dropout layer — sample spread and mean pairwise disagreement both **exactly 0.000e+00**, against 0.298 and 0.547 under the replacement. Replaced with an explicit prediction policy, dropout re-activated per no-grad pass, modes restored per **submodule**, and **MC-dropout on a dropout-free model now raises** — `WorldModel` has none, so rung 3 is an explicit architectural choice rather than a silent zero.
+**2. The rerun hazard is real, by a different route.** The append-with-restarting-counter mechanism is real at the class level (measured: ten records numbered 0–4, 0–4) but **unreachable** through `RunLogger.start`, which `write_run_record` rejects first — a same-scope rerun was refused *before writing anything*, files byte-identical. What is reachable is the same end state via a **different-scope** rerun: no `run_id` collision, so two executions' records and exports sat in one directory while `rows.json` described only the second. Fixed at three layers: `RunLogger` refuses to append (and continues the counter when told to), the pilot writes into a fresh `attempt-NNN` it never reopens, and `load_runs()` raises when one `run_id` appears in two directories.
+**D-061 adopted as ruled.** The scale is measured once from the full movement evaluation pool before any mask. Enforced by construction: `NormalisationScale` is the only accepted argument and its only constructor reads a pool, so masking has nothing to recompute from. The **stale invariance claim is corrected in the artefacts** — it was in the module docstring and in a test's own docstring, not only in the ledger. **The pilot's numbers do not move:** a full rerun reproduces all four uncertainty fields at every size and seed, and all 90 member validation errors, exactly.
+**D-063 adopted:** no second trunk; the head is a non-decisional diagnostic, and all four views are now reported per member with a **per-slice** copy baseline.
+**Also found:** `runs/` and `figures/` are gitignored, so the evidence manifest Sol asked for **could never have reached a bundle**. The compact artefacts are now tracked by explicit exception; `manifest.json` + `rows.json` carry 18 runs × 5 member errors = 90 fits in 64 KB.
+**Result:** 418 → 437 tests. **Zero GPU-hours** — the 90-fit rerun was CPU.
+**Next:** deliver the closeout bundle. W4 Mon stays blocked until it passes review.
+---
+
 ---
 
 ## 8. → TO SOL — *moved to its own file*

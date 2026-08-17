@@ -427,6 +427,12 @@ class ActivationReport:
     error must **not** be called irreducible without the INTERACT aliasing
     check: where object positions are visible the interact rule is
     deterministic, so which bit flips may well be predictable.
+
+    **The four views, each against its own baseline** (D-063). Sol asked for all
+    four rather than the combined slice alone, and the per-slice baselines are
+    what make them comparable: copying is *exactly right* on a no-change
+    transition and *exactly wrong* on a changed one, so a single pooled baseline
+    number says more about the change rate than about either model.
     """
 
     n_interact: int
@@ -435,6 +441,11 @@ class ActivationReport:
     error_changed: float
     error_interact_unchanged: float
     copy_baseline_interact: float
+    #: Copying, restricted to the same slices. Model-independent by
+    #: construction -- it reads the data only -- so it is identical across
+    #: ensemble members and is reported once per condition.
+    copy_baseline_changed: float = float("nan")
+    copy_baseline_unchanged: float = float("nan")
 
     def summary(self) -> str:
         return (
@@ -458,16 +469,20 @@ def activation_report(
     target = next_obs[interact][:, idx]
     changed = (current != target).any(dim=1)
 
+    nan = float("nan")
     if int(interact.sum()) == 0:
-        return ActivationReport(0, 0, float("nan"), float("nan"), float("nan"), float("nan"))
+        return ActivationReport(0, 0, nan, nan, nan, nan, nan, nan)
 
+    # Evaluated deterministically and without gradients. The auxiliary head is a
+    # diagnostic and may not touch the primary trunk, the checkpoint choice or
+    # anything downstream of them (D-063).
     with torch.no_grad():
         _, logits = model(obs[interact], action[interact])
         error = (torch.sigmoid(logits) - target).abs().mean(dim=1)
     copy = (current - target).abs().mean(dim=1)
 
     def _mean(x: torch.Tensor) -> float:
-        return float(x.mean()) if x.numel() else float("nan")
+        return float(x.mean()) if x.numel() else nan
 
     return ActivationReport(
         n_interact=int(interact.sum()),
@@ -476,6 +491,8 @@ def activation_report(
         error_changed=_mean(error[changed]),
         error_interact_unchanged=_mean(error[~changed]),
         copy_baseline_interact=_mean(copy),
+        copy_baseline_changed=_mean(copy[changed]),
+        copy_baseline_unchanged=_mean(copy[~changed]),
     )
 
 
