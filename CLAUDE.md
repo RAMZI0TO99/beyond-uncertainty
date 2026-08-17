@@ -141,9 +141,12 @@ src/bu/
   streams.py     named RNG streams: independent across units, paired within a comparison
   models/world_model.py  the MLP; dynamic-only target, detached auxiliary head
   models/train.py        early stopping on the movement-position loss only
-  models/ensemble.py     K members; episode block bootstrap of the training pool
-  models/uncertainty.py  P§10.3's disagreement, predictive variance, H2 ratio
-  experiments/w3_pilot.py  the W3 Fri sweep; per-transition export
+  models/ensemble.py     K members; episode block bootstrap; the explicit
+                         deterministic / mc_dropout prediction policy (D-062)
+  models/uncertainty.py  P§10.3's disagreement, predictive variance, H2 ratio;
+                         NormalisationScale — the only way to supply a scale (D-061)
+  experiments/w3_pilot.py  the W3 Fri sweep; per-transition export; immutable
+                           attempt-NNN directories with an evidence manifest (D-062)
   stats/            empty — Weeks 4–5
 ```
 
@@ -209,6 +212,18 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
   data and capacity repair because their experiments exclude the field those
   repairs change. Feature repair changes a field 2A does not exclude, and broke.
   Parametrise over every arm (D-055).
+- **Restoring the state is not fixing the mechanism.** The W3 audit found
+  `member_predictions` leaving models in eval mode, and fixed it by saving and
+  restoring `model.training` — while still running the forward pass under
+  `eval()`. Under MC-dropout that is still zero disagreement; measured against
+  the old path, **exactly** 0.000e+00. The test passed because it asserted on
+  the flag the fix touched. Ask what the mechanism is *for*, then test that
+  (D-062).
+- **Verify the mechanism of a finding, not only its conclusion.** Sol's rerun
+  finding was right about the end state and wrong about the route: the append
+  path it named is unreachable through `RunLogger.start`, and the same damage
+  arrives through a *different-scope* rerun instead. Had I fixed only what was
+  described, the hole would have stayed open (D-062).
 - **A null result never proves the null.** I reported "+1.1 SE by episode index"
   as though it established IID episodes. It is *consistent* with them. Where a
   property is structural, assert the structure (D-054).
@@ -224,24 +239,24 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ## Where the project stands
 
-*Last session: 2026-08-16. Week 1 Monday is 2026-08-17, so the project is
-running roughly two weeks ahead of its own calendar (DEV-002).*
+*Last session: 2026-08-17 (W3 closeout). Week 1 Monday is 2026-08-17, so the
+project is running roughly two weeks ahead of its own calendar (DEV-002).*
 
-**Weeks 1 and 2 complete and audited. Week 3 Mon, Tue and Wed done** — then
-substantially corrected by Sol's sixth and seventh reviews. Seven Sol reviews
-actioned on 2026-08-16 (D-025 … D-054). **`2875e60` is the certified base** — Sol
-certified the Week 3 Mon–Wed infrastructure on 2026-08-16, covering D-047 …
-D-057 in full. Use it as `BASE` for the next bundle.
+**Weeks 1 and 2 complete and audited. Week 3 built, audited (D-060) and closed
+out (D-061 … D-063).** Ten Sol reviews actioned. **`2875e60` is still the
+certified base.** Sol reviewed `0b09f84` and did **not** certify it — the W3
+audit's own two fixes were symptom-level. Delta 29 answers that and **is
+undelivered**; check the flag before anything else.
 
 **Certification is scoped.** It authorises the W3 Friday development pilot on
 development seeds. It does **not** authorise confirmatory execution or repair
 validation: `bootstrap_episodes()` plus `train(train_index=…)` still bypasses
 the `train_ensemble` granularity guard, and the confirmatory runner (C-008) must
 own that rule plus registered configuration, matching pools, seed policy and
-complete run records. **Sol permits the W3 Friday pilot on development seeds only**;
-confirmatory execution and repair validation stay blocked until D-055 is
-bundled from `BASE=9bdb22a`. Gate 1 is 2026-09-19. **Zero GPU-hours consumed** —
-everything so far runs on CPU in seconds.
+complete run records. **Week 4 is additionally blocked until Sol reviews the
+closeout** — the MC-dropout mechanism is a rung-3 dependency of the W4 gate
+itself. Gate 1 is 2026-09-19. **Zero GPU-hours consumed** — everything so far
+runs on CPU, the 90-fit pilot included.
 
 **The correction is the thing to understand before touching Week 3 code.** The
 behaviour policy was **non-stationary across episodes**, and because Experiment
@@ -276,13 +291,20 @@ P§14.2's ~8,700.
   out of training again: doing so made the held-out set a function of N *and*
   made a "100-transition" condition train on 50.
 
-### Next: W3 Fri — and it is the first cell that spends compute
+### Next: W4 Mon — but only once Sol has reviewed the closeout
 
-6 sizes × 3 seeds × 5 members = **90 fits**, ~30s on a free GPU or ~10 min CPU.
-**Ask the student before starting it.** Their GPU has been at ~14/16 GB and 91%
-under another workload all week; scan with `nvidia-smi` and stay off it unless
-they say otherwise. Then W3 Sat: look at the curves and write down what you see
-*before* any formal test.
+The rank-correlation trend test, written once and used for **both** the W4 gate
+and the W10 H1 verdict. Read it knowing the pilot's disagreement curve is
+**non-monotone at the small end** — it peaks at N=250, reproduced in all three
+paired seeds — because a rank correlation over six sizes is exactly the
+instrument that bends. A gate failing at rung 0 sends you down the fallback
+ladder Tue–Thu, and rung 3 is MC-dropout, which now **raises** on the
+dropout-free `WorldModel` rather than returning a silent zero (D-062).
+
+The pilot is rerunnable: `python -m bu.experiments.w3_pilot` writes a fresh
+`runs/w3_pilot/attempt-NNN/` with a manifest and never touches a previous one.
+~10 min on CPU. **Ask the student before spending their GPU** — it has been at
+~14/16 GB under another workload all week; scan with `nvidia-smi` first.
 
 ### Open, and what each blocks
 
@@ -290,13 +312,19 @@ they say otherwise. Then W3 Sat: look at the curves and write down what you see
 - **Numbers taken before D-051/D-052 are void.** D-020's coverage evidence and
   the Q-011 disagreement measurements were both taken under the non-stationary
   policy and the derived split. Re-measure; do not quote them.
-- **D-047's open item.** The detached auxiliary head sits at 0.2575 against a
-  0.1652 copy baseline after a hand-rolled 3,000 epochs. Sol's conditional for a
-  second trunk turns on whether the *real* loop closes that — answer it from
-  Friday's runs, not from a probe.
-- **C-005 / C-006 / C-007** — grouped critic splitter, the ICC-sensitive grouped
-  MDE simulation, and passing `require_confirmatory=True` at each analysis call
-  site as it is built. None is Week 3 work.
+- **D-047's open item is closed** by D-063. The real loop never beat the copy
+  baseline — 0 of 15 fits, in every slice at every size — Sol ruled against a
+  second trunk, and the head is now a **non-decisional diagnostic**: barred from
+  the trunk, from early stopping and checkpoint selection, from the failure set,
+  from repair labels and from the critic's residual. Do not resurrect it.
+- **The normalising scale is preregistered** (D-061): the full movement
+  evaluation pool, before any mask. `NormalisationScale` is the only accepted
+  argument in the summary path and its only constructor reads a pool, so a
+  failure mask has nothing to recompute from. W4 Fri is the first cell where
+  this bites — do not add a `scale=None` convenience back.
+- **C-005 / C-006 / C-007 / C-009** — grouped critic splitter, the ICC-sensitive
+  grouped MDE simulation, passing `require_confirmatory=True` at each analysis
+  call site, and runner hardening. None is Week 3 work.
 
 Still blocked by Sol, correctly: confirmatory collection, critic splitting, and
 W5 MDE approval.

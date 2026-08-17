@@ -297,4 +297,32 @@ in the heterogeneous-contraction regime, because their disagreement has a
 different mechanism from the rest of the sweep.
 
 *Figures:* `figures/w3_error_vs_data.png`, `figures/w3_disagreement_vs_data.png`.
-*Per-transition exports:* `runs/w3_pilot/transitions_n*_seed*.npz`.
+*Per-transition exports:* `runs/w3_pilot/attempt-001/transitions_n*_seed*.npz`,
+accounted for with their digests in `runs/w3_pilot/attempt-001/manifest.json`.
+
+## The normalising scale, and why it is fixed to the evaluation pool *(2026-08-17, D-061)*
+
+Plan §10.3 requires per-dimension normalised error and does not say which set
+defines the normalisation. That omission is not cosmetic. Because the scale is a
+**vector**, it does not cancel between the numerator and the denominator of the
+disagreement-to-error ratio: dividing each dimension by a different amount
+reshapes both vectors, so their norms share no common factor. Recomputing the
+scale from a failure subset rather than from the evaluation pool therefore moves
+the registered H2 endpoint — measured on pilot data, by up to **4.6%** at a 5%
+failure set, with the pool scale at [0.229, 0.224] against [0.294, 0.348] over
+the worst 5%. Week 4 Friday's failure set is exactly such a subset.
+
+The scale is therefore fixed by preregistration: the per-dimension standard
+deviation of the targets, computed **once from the full evaluation pool
+restricted to movement transitions, before any failure mask**, and reused
+unchanged for the whole-pool and failure-subset statistics alike, across every
+ensemble member and every dataset size that shares that evaluation pool. It is
+recorded alongside every result it produced, with the number of transitions it
+was measured over. Restricting attention to a failure set changes *what* is
+measured; it does not change the units it is measured in.
+
+This is a definition rather than a result, and it does not move any number
+reported above: the pilot scores the whole movement pool, so the pool scale and
+the scored-set scale coincide there, and a complete rerun reproduces every
+figure in the table exactly. It takes effect from Week 4 Friday, when a failure
+mask first exists.
