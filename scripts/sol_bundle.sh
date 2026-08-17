@@ -79,8 +79,32 @@ fi
 echo
 
 echo "--- complete diff since $BASE ---"
+# EXCLUDE holds git pathspecs kept OUT of the diff body. It exists for bulk
+# result data -- an 1,800-line rows.json crowds the code Sol has to review out
+# of a paste-limited channel -- and never for source. It is deliberately loud:
+# every excluded path is listed below with its digest and line count, so the
+# omission is declared and checkable rather than a quiet narrowing of the diff
+# (D-041). An undeclared file selection is how the delta-12 bundle shipped two
+# files and left nine claims uncertified.
+if [ -n "${EXCLUDE:-}" ]; then
+    echo "DIFF EXCLUDES (declared, not silent): $EXCLUDE"
+    echo "The files below are in the repository at the commit above; only their"
+    echo "diff bodies are omitted here. Verify them with the digests:"
+    for path in $EXCLUDE; do
+        git ls-files "$path" | while read -r f; do
+            echo "  $f ($(wc -l < "$f") lines, sha256 $(sha256sum "$f" | cut -c1-12))"
+        done
+    done
+    echo
+fi
 if git rev-parse --verify --quiet "$BASE" >/dev/null; then
-    git diff "$BASE"..HEAD
+    if [ -n "${EXCLUDE:-}" ]; then
+        EXCLUDE_SPEC=()
+        for path in $EXCLUDE; do EXCLUDE_SPEC+=(":(exclude)$path"); done
+        git diff "$BASE"..HEAD -- . "${EXCLUDE_SPEC[@]}"
+    else
+        git diff "$BASE"..HEAD
+    fi
 fi
 echo
 

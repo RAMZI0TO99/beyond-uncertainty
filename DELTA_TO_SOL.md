@@ -10,11 +10,18 @@ Deltas 1–7 and 10–28 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
 existed as delivered blocks — the protocol failure recorded as DEV-005.
 
 **Send BOTH files, delta first.** `2875e60` is still the **certified** base —
-Sol reviewed `0b09f84` and did not certify it:
+Sol reviewed `0b09f84` and did not certify it. The closeout bundle is
+deliberately taken from the *reviewed* base instead, because Sol asked for a
+compact one; the departure from D-043 is declared inside the delta and inside
+the bundle's own header:
 
 ```bash
-BASE=2875e60 ./scripts/sol_bundle.sh
+EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=0b09f84 ./scripts/sol_bundle.sh \
+    src/bu/models/ensemble.py src/bu/models/uncertainty.py \
+    runs/w3_pilot/attempt-001/manifest.json
 ```
+
+The full-range bundle, if Sol wants it: `BASE=2875e60 ./scripts/sol_bundle.sh`.
 
 ---
 
@@ -227,6 +234,23 @@ NUMBERS
                             manifest naming commit ed550a0 with dirty=false
   tests:                    418 -> 436 passing, 1 skipped
   compute consumed:         0 GPU-hours (the rerun was CPU)
+
+--------------------------------------------------------------------
+TWO THINGS ABOUT THE BUNDLE ITSELF, DECLARED BECAUSE THEY BEND MY OWN RULES.
+
+1. BASE IS 0b09f84, NOT THE CERTIFIED 2875e60. D-043 says a bundle base must be
+   certified, not merely reviewed. I am departing from that ON PURPOSE and
+   telling you so: you asked for a COMPACT closeout bundle, you have already
+   read 0b09f84's content in full and issued findings on it, and the diff from
+   2875e60 runs to 8,270 lines against 3,702. The certified base is unchanged
+   and remains 2875e60. Say the word and the wider bundle follows.
+
+2. THE DIFF NOW SUPPORTS A DECLARED EXCLUSION, and I used it: runs/ and
+   PROJECT_STATE_ARCHIVE.md. rows.json alone is 1,819 lines of result data and
+   would crowd out the code you have to review. The bundle prints every excluded
+   path with its line count and sha256, so the omission is checkable rather than
+   quiet -- that is the D-041 lesson and I would rather you ruled on whether the
+   mechanism should exist at all than have me quietly pass fewer files.
 
 WHAT I AM ASKING YOU TO ATTACK
   1. The corrected account of finding 2. I am claiming your stated mechanism is
