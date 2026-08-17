@@ -141,6 +141,27 @@ TREND_BOOTSTRAP = "exact_paired_seed_block"
 #: changed across numpy versions and the interval is a registered endpoint.
 TREND_QUANTILE_METHOD = "linear"
 
+# --- The Week 4 reliability gate (S§W4 Tue, Plan §11.3; frozen by D-070) ---
+#
+# Predeclared **before** Tuesday's run. The gate tests the estimator across
+# three layouts while holding the causal rule and the confounding fixed, so a
+# failure is attributable to the estimator rather than to the manipulation.
+
+#: The three gate configurations differ only in layout.
+GATE_CAUSAL_ATTRIBUTE = "shape"
+GATE_CONFOUND_RATE = 0.0
+GATE_LAYOUTS = ("uniform", "clustered", "sparse")
+
+#: Five **development** seeds per configuration. Development because the gate is
+#: estimator *selection*: spending confirmatory seeds to choose an estimator
+#: consumes the evidence the Week 10 verdict needs (D-034, D-068).
+GATE_SEEDS = (0, 1, 2, 3, 4)
+
+#: Rung 0 passes only if **all three** configuration-level trend tests pass. No
+#: majority vote and no pooled curve: this is a reliability gate, and
+#: sensitivity to configuration is itself a failure of reliability.
+GATE_AGGREGATION = "all_configurations_must_pass"
+
 # --- Design scale (Plan §10.7) --------------------------------------------
 
 #: Minimum labelled configuration-conditions, and minimum held out. Power

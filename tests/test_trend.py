@@ -115,12 +115,50 @@ def test_a_mildly_non_monotone_curve_can_still_pass():
 
 
 def test_constant_disagreement_fails():
-    """No direction at all. The strongest evidence against a trend must not
-    produce an interval by imputation."""
+    """Undefined rank correlation → the interval cannot be formed → fail closed.
+
+    The reason is stated narrowly (D-070). A flat curve is *not* reliably "the
+    strongest evidence against a trend" — a flat resampled mean can also come
+    from cancellation between opposing non-constant seed curves, which says
+    nothing about direction. All that can be claimed is that the registered
+    interval is undefined.
+    """
     result = trend_test(curve([0.5] * 6), partition="development")
     assert np.isnan(result.rho)
     assert not result.passed
-    assert "undefined coefficient" in result.reason
+    assert "undefined rank correlation" in result.reason
+    assert "fails closed" in result.reason
+
+
+def test_undefined_replicates_are_never_dropped():
+    """Dropping them would condition the distribution on being defined (D-070).
+
+    Here two seeds fall and one rises so that a resample of the risers and
+    fallers cancels to a flat mean. The surviving replicates would form a
+    tidy negative interval — which is exactly the manufactured directional
+    result the fail-closed rule prevents.
+    """
+    # Three non-constant curves with slopes -0.1, -0.3 and +0.2. The resample
+    # {0, 0, 2} averages to slope zero -- a flat curve produced entirely by
+    # CANCELLATION, with no constant seed anywhere in the input. This is the
+    # case Sol's narrowed wording is about.
+    curves = {
+        0: dict(zip(SIZES, [1.0, 0.9, 0.8, 0.7, 0.6, 0.5])),
+        1: dict(zip(SIZES, [2.0, 1.7, 1.4, 1.1, 0.8, 0.5])),
+        2: dict(zip(SIZES, [0.2, 0.4, 0.6, 0.8, 1.0, 1.2])),
+    }
+    result = trend_test(curves, partition="development")
+
+    assert result.rho == pytest.approx(-1.0), (
+        "the POINT ESTIMATE is a perfect negative trend -- which is exactly why "
+        "dropping undefined replicates would be dangerous here"
+    )
+    assert np.isnan(result.ci_low) and np.isnan(result.ci_high)
+    assert not result.passed
+    assert "undefined rank correlation" in result.reason
+    assert not any(
+        np.isnan(rho) for rho in result.per_seed_rho
+    ), "no individual seed curve is constant; the flatness comes from mixing"
 
 
 @pytest.mark.parametrize(

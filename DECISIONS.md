@@ -730,3 +730,28 @@ The point estimate is rho on the **across-seed mean curve**. Per-seed curves and
 **The limitation, which matters more than the verdict.** With three seeds the exact bootstrap has **27 resamples taking only two distinct values** — −0.9429 with multiplicity 20 and −0.8286 with multiplicity 7. So the "95% interval" here *is* the full support of the distribution: the 2.5th percentile is its minimum and the 97.5th its maximum. The interval is **coarse**, not tight, and its narrowness is a property of having three highly consistent seeds rather than evidence of precision. At five confirmatory seeds the support is 3,125 and the quantiles become meaningful. **This number is development evidence about the pipeline, not a measurement of H1**, and the same coarseness will apply to the Week 4 Tuesday gate if it too runs at three seeds — worth settling before Tuesday rather than after.
 **Plan ref:** P§4.2, S§W4 Mon.
 **Reviewed by Sol:** pending — the coarse-interval limitation is the thing to attack.
+
+### D-070 · 2026-08-17 · Sol's three rulings, and the gate wrapper Tuesday needs
+**Decision:** Sol certified `a84cf6c` as the W4 Monday trend-test implementation and ruled on all three open questions. All three adopted; the third is a correction to my reasoning rather than to the code.
+
+**Ruling 1 — minimum seeds. Do not change the statistical pass rule after seeing the two-atom interval.** Distinguish instead between a *statistical result* and *gate eligibility*: the three-seed pilot satisfies the frozen directional rule and can expose behaviour, but **cannot produce an authorised gate verdict**. The requirement goes in a wrapper, not in the mathematical core, so the legitimate three-seed diagnostic keeps working. Built as `src/bu/stats/gate.py`, requiring exactly three predeclared configurations, exactly five development seeds each, all six sizes, one `trend_test` per configuration, and no missing, substituted or additional seeds.
+
+**Aggregation, fixed before anything runs: rung 0 passes only if all three configurations pass.** No majority vote, no pooled curve. All three coefficients and intervals are reported. If one fails, the rung fails and the ladder begins — *this is a reliability gate, and configuration sensitivity is itself a failure of reliability.* The rung and estimator name travel with the verdict, and a pass at rung 3 or 4 prints that H1 is **falsified for ensembles** (P§11.3).
+
+**The three configurations, predeclared with their exact identities** — shape-causal, confound 0, one per layout, so the causal rule and confounding are held fixed and only the layout varies. A configuration spans **six units**, not one, because `n_transitions` is an identity field and the curve runs across them:
+
+| layout | config_ids, N = 100 … 5000 |
+|---|---|
+| uniform | `ea25c6151f4d` `0d36ad29332c` `320bc9ee4f21` `daaba764439a` `00608aa75f91` `d9c4c70b4678` |
+| clustered | `3daf1dcda5ac` `802912059512` `a91c2fa273e6` `970c22a075e6` `92ff27a2439d` `f35fdc40f563` |
+| sparse | `523dc25c40fa` `8b9b5956a71b` `463729da740b` `2390f6786b20` `14d78f124c26` `d11d4bbd54af` |
+
+They are **frozen as golden values with a test that regenerates them**. Derived at run time, a change to identity canonicalisation would silently redirect the gate at different units while the record still named the old ones — the D-016 lesson. `GATE_CAUSAL_ATTRIBUTE`, `GATE_CONFOUND_RATE`, `GATE_LAYOUTS`, `GATE_SEEDS` and `GATE_AGGREGATION` are in `constants.py`, because they are preregistered choices and that file is the preregistration.
+
+**Ruling 2 — keep the exact six-size grid refusal.** There is no legitimate subset caller for the registered statistic. A future exploratory analysis over fewer sizes must be a **separately named descriptive function** returning neither a `TrendResult` nor a registered verdict. Documented in the module rather than left as a guard whose reason a later reader must reconstruct.
+
+**Ruling 3 — a correction to my explanation, not to the behaviour.** Undefined replicates still fail closed and are never dropped: dropping them would condition the bootstrap distribution on the statistic being defined and could **manufacture a directional interval from the survivors**. But my stated reason was wrong. I had called a constant curve "the strongest possible evidence against a trend"; Sol pointed out it can equally arise through **cancellation between opposing non-constant seed curves**, which says nothing about direction. The reason now reads: *at least one paired seed-block resample produces an undefined rank correlation, so the registered bootstrap interval is undefined and the reliability result fails closed.*
+
+A test now constructs exactly that case — three non-constant curves at slopes −0.1, −0.3 and +0.2, where the resample {0, 0, 2} cancels to flat. **The point estimate is a perfect −1.0 and the result still fails**, which is precisely why dropping the undefined replicates would have been dangerous: the survivors would have formed a tidy negative interval.
+**Plan ref:** P§4.2, P§11.3, S§W4 Tue–Thu.
+**Reviewed by Sol:** all three rulings Sol's; `a84cf6c` certified. The wrapper is pending review before Tuesday runs.

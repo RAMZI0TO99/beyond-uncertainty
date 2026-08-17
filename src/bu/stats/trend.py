@@ -28,7 +28,16 @@ evidence, not an exception to repair.**
   containing or touching zero fails. An interval entirely above zero is a
   reversed trend and fails. A constant curve or an undefined coefficient fails;
 * individual out-of-order points have **no separate veto** beyond their effect
-  on rho and its interval.
+  on rho and its interval;
+* the size grid must be **exactly** the six registered sizes. There is no
+  legitimate subset caller for the registered statistic (D-070); an exploratory
+  analysis over fewer sizes belongs in a separately named descriptive function
+  that returns no :class:`TrendResult` and no registered verdict.
+
+This module is the **single mathematical implementation**. The Week 4 gate wraps
+it (see :mod:`bu.stats.gate`) and the Week 10 verdict will call it directly;
+neither reimplements the statistic, because a gate and a verdict that disagree
+for reasons nobody recorded is the failure the shared function prevents.
 
 The interval, and why it is enumerated rather than sampled
 -----------------------------------------------------------
@@ -83,9 +92,9 @@ def _ranks(values: np.ndarray) -> np.ndarray:
 def spearman(x: np.ndarray, y: np.ndarray) -> float:
     """Spearman's rho: Pearson correlation of the average ranks.
 
-    Returns ``nan`` when either side has no rank variation — a constant
-    disagreement curve has no direction, and D-068 makes an undefined
-    coefficient a **failure** rather than something to impute.
+    Returns ``nan`` when either side has no rank variation. A series with no
+    rank variation has no direction to report, and D-068 makes an undefined
+    coefficient a **failure** rather than something to impute or drop.
     """
     rx, ry = _ranks(np.asarray(x, dtype=float)), _ranks(np.asarray(y, dtype=float))
     sx, sy = rx.std(), ry.std()
@@ -166,6 +175,11 @@ def _validate(
     if list(sizes) != sorted(sizes):
         raise ValueError(f"sizes must be ascending, got {sizes}")
     if tuple(sizes) != tuple(K.DATA_SIZES):
+        # Kept deliberately absolute (D-070). There is no legitimate subset
+        # caller for the *registered* statistic. An exploratory analysis over
+        # fewer sizes must be a separately named descriptive function that
+        # returns neither a TrendResult nor a registered pass/fail verdict —
+        # otherwise a subset result becomes quotable as the H1 endpoint.
         # D-068 says "use all six preregistered dataset sizes". Without this the
         # grid is an argument, and a five-point statistic computed over a
         # trimmed grid is indistinguishable from the registered one in every
@@ -253,14 +267,23 @@ def trend_test(
     )
 
     if np.isnan(resampled).any() or np.isnan(rho):
-        # An undefined coefficient anywhere in the distribution fails (D-068).
-        # Imputing or dropping it would let a constant curve — the strongest
-        # possible evidence *against* a trend — quietly produce an interval.
+        # Fails closed, and dropping the undefined replicates would be worse
+        # than useless: it would condition the bootstrap distribution on the
+        # statistic being defined, and could manufacture a directional interval
+        # out of the survivors (D-070).
+        #
+        # The reason is stated narrowly. An earlier version called a constant
+        # curve "the strongest possible evidence against a trend", which is not
+        # sound — a flat resampled mean can equally arise from **cancellation
+        # between opposing non-constant seed curves**, which is not evidence
+        # about direction at all. What can be said is only that the interval
+        # cannot be formed.
         ci_low = ci_high = float("nan")
         passed = False
         reason = (
-            "undefined coefficient: at least one resampled curve has no rank "
-            "variation, which is a constant disagreement curve"
+            "at least one paired seed-block resample produces an undefined rank "
+            "correlation, so the registered bootstrap interval is undefined and "
+            "the reliability result fails closed"
         )
     else:
         lo, hi = 100 * (1 - K.CONFIDENCE_LEVEL) / 2, 100 * (1 + K.CONFIDENCE_LEVEL) / 2
