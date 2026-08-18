@@ -927,3 +927,15 @@ The atom/mass table goes in the results text, a footnote or the supplement — i
 **Data seen:** none beyond the already-certified W4 Tue evidence. Zero GPU-hours; the probe cost 15 CPU fits in a scratch directory.
 **Plan ref:** P§10.1, P§10.3, S§W4 Fri.
 **Reviewed by Sol:** not yet — delta 40. W4 Friday must not run before it is.
+
+### D-077 · 2026-08-18 · C-009 — the pool guard's two opt-outs closed
+**Decision:** `assert_pools_match()` now refuses a dataset whose `source_unit` is **unrecorded**, and one whose `stream_version` differs from the running registry. Both were Sol's, filed as C-009 on 2026-08-16 and marked non-blocking because `collect_pools`' own output already satisfied them.
+
+**Why "already satisfied" was not a reason to leave them.** The clause read `if dataset.source_unit is not None and dataset.source_unit != unit`, which makes the strongest check in the guard **opt-out**: a dataset that never recorded where it came from skipped the one clause that catches a pool borrowed from another condition. Absent provenance is not matching provenance. The same shape as D-071's flattened fields — a check that passes because the thing it checks is missing.
+
+**Stream version matters more than it looks.** D-052 bumped `STREAM_VERSION` *because the pools themselves changed*: validation used to be carved from a nested training prefix, so a "100-transition" condition trained on 50. A pool generated under the previous registry is a different experiment wearing this one's identity, and nothing compared the two.
+
+**Found by the suite being silent.** Adding both refusals broke **no existing test**, which is the point: nothing in 563 tests exercised either path, so both were unguarded and untested at once. Three regressions added, including one asserting well-formed pools still pass — a guard that refuses everything is not a guard.
+**Tests:** 563 → **565 passing**, 2 skipped. (A fourth test was added and one existing helper renamed: my new `_pools` helper shadowed a module-level `_pools` defined 600 lines above, breaking nine unrelated tests until renamed. Caught immediately by the suite.)
+**Plan ref:** hardens D-052, D-057.
+**Reviewed by Sol:** item is Sol's (C-009); the implementation is in delta 40.

@@ -623,3 +623,64 @@ def test_the_normalising_scale_is_fixed_to_the_pool():
 def test_the_dead_validation_fraction_knob_is_gone():
     """W3-5. A knob that does nothing still tells a reader a split happens."""
     assert not hasattr(TrainConfig(), "val_fraction")
+
+
+# --- C-009: the pool guard's two opt-outs ----------------------------------
+
+
+def _guard_pools(seed=0, stage="exp1"):
+    from bu.config import UnitSpec
+    from bu.env.collect import collect_pools
+
+    return collect_pools(UnitSpec(n_transitions=100), stage=stage, seed=seed), UnitSpec(
+        n_transitions=100
+    )
+
+
+def test_a_pool_with_no_recorded_source_unit_is_refused():
+    """Absent provenance is not matching provenance (C-009).
+
+    The clause used to read `if source_unit is not None and ...`, so a dataset
+    that never recorded where it came from skipped the strongest check in the
+    guard — the one that catches a pool borrowed from another condition.
+    """
+    import dataclasses
+
+    import pytest
+
+    from bu.models.ensemble import assert_pools_match
+
+    pools, unit = _guard_pools()
+    stripped = dataclasses.replace(pools, train=dataclasses.replace(pools.train, source_unit=None))
+    with pytest.raises(ValueError, match="source_unit is not recorded"):
+        assert_pools_match(stripped, unit=unit, arm="baseline", stage="exp1", seed=0)
+
+
+def test_a_pool_from_a_previous_stream_version_is_refused():
+    """D-052 bumped STREAM_VERSION because the pools themselves changed (C-009).
+
+    A pool generated under the old registry is a different experiment wearing
+    this one's identity: validation was carved from a nested training prefix,
+    so a "100-transition" condition trained on 50.
+    """
+    import dataclasses
+
+    import pytest
+
+    from bu.models.ensemble import assert_pools_match
+    from bu.streams import STREAM_VERSION
+
+    pools, unit = _guard_pools()
+    stale = dataclasses.replace(
+        pools, evaluation=dataclasses.replace(pools.evaluation, stream_version=STREAM_VERSION - 1)
+    )
+    with pytest.raises(ValueError, match="stream_version="):
+        assert_pools_match(stale, unit=unit, arm="baseline", stage="exp1", seed=0)
+
+
+def test_well_formed_pools_still_pass_the_hardened_guard():
+    """The guard must refuse the two new cases without refusing a real run."""
+    from bu.models.ensemble import assert_pools_match
+
+    pools, unit = _guard_pools()
+    assert_pools_match(pools, unit=unit, arm="baseline", stage="exp1", seed=0)

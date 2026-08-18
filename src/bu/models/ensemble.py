@@ -46,7 +46,7 @@ import torch.nn as nn
 from .. import constants as K
 from ..config import Arm, TrainConfig, UnitSpec
 from ..env.collect import Pools, TransitionDataset
-from ..streams import is_confirmatory, stream
+from ..streams import STREAM_VERSION, is_confirmatory, stream
 from .train import TrainResult, episode_indices, train
 from .world_model import WorldModel
 
@@ -306,8 +306,29 @@ def assert_pools_match(
         problems: list[str] = []
         if dataset.pool != role:
             problems.append(f"pool={dataset.pool!r}, expected {role!r}")
-        if dataset.source_unit is not None and dataset.source_unit != unit:
+        if dataset.source_unit is None:
+            # C-009. Ignoring a missing source_unit made the strongest check
+            # here opt-out: a dataset that simply never recorded which unit it
+            # came from passed the one clause that would have caught a pool
+            # borrowed from another condition. Absent provenance is not
+            # matching provenance.
+            problems.append(
+                "source_unit is not recorded, so it cannot be checked against the "
+                "requested unit; a pool without provenance is not a pool known to "
+                "belong to this run"
+            )
+        elif dataset.source_unit != unit:
             problems.append("source_unit differs from the requested unit")
+        if dataset.stream_version != STREAM_VERSION:
+            # C-009. The pools and the run must have been generated under one
+            # stream registry: D-052 bumped STREAM_VERSION precisely because the
+            # validation and evaluation streams changed, so a pool from the
+            # previous version is a different experiment wearing this one's
+            # identity.
+            problems.append(
+                f"stream_version={dataset.stream_version}, but this run is generating "
+                f"under {STREAM_VERSION}"
+            )
         if dataset.unit != expected_effective:
             problems.append(f"effective unit differs from Arm({arm!r}).resolve(unit)")
         if dataset.arm != arm:

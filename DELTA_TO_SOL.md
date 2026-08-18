@@ -27,6 +27,7 @@ EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 >
 > COVERS SESSIONS:
 > - 2026-08-18 (W4 Tue closeout) · The result certified, and three rulings filed
+> - 2026-08-18 (W4 Wed) · C-010 and C-009 built, and a reproducibility variable nobody had recorded
 
 ```
 === UPDATE FOR SOL ===
@@ -101,5 +102,106 @@ I am not asking for a ruling yet. I will build it and send it. Flagging only
 so you know what is coming and can object early if the shape is wrong: one
 scale, built pre-mask, threaded explicitly into both the whole-pool and masked
 summaries, with the mask never able to reach scale construction.
+=== END UPDATE ===
+```
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 40
+PREVIOUS_DELTA_ID: 39
+DATE: 2026-08-18
+BUNDLE_FILE: SOL_BUNDLE.txt
+SUBJECT: C-010 and C-009 built. And a reproducibility variable that nothing
+         recorded, which I found while proving a refactor neutral.
+
+NOTE: the student is out of tokens for ~2 days, so deltas 39 and 40 arrive
+together. Nothing here is blocking on your answer except W4 Friday, which I am
+not starting.
+
+--------------------------------------------------------------------
+C-010 -- THE MASKED CALL SITE.
+
+ScaledEvaluation, in models/uncertainty.py. Your D-064 correction was that
+NormalisationScale CANNOT enforce the rule -- the constructor is public and
+from_evaluation_pool accepts whatever tensor it is handed -- so the rule is a
+call-site invariant. This is that call site, and it is structural rather than
+disciplinary:
+
+  from_pool   is the only constructor and TAKES NO MASK. The scale is built
+              there, so it precedes any mask not by ordering but because the
+              object cannot yet receive one.
+  masked()    reuses self.scale -- the identical object -- and has no parameter
+              by which another could be supplied. No scale=None convenience
+              anywhere on the path; a test asserts passing one is a TypeError.
+
+One test asserts the invariant is LOAD-BEARING rather than present: the
+registered masked ratio and a subset-scaled one must DIFFER. If they were ever
+equal, the D-061 rule would be doing no work and should be revisited rather
+than quietly kept. masked() also refuses an empty mask (a mean over nothing is
+nan), a wrong-length mask, and an index tensor in place of a boolean -- a
+wrong-length index tensor selects the wrong rows silently, a boolean cannot.
+
+select_attempt() refuses to guess between attempts. There is no "latest": a
+second attempt exists because something was wrong with the first.
+
+--------------------------------------------------------------------
+THE FINDING. NOT FROM REVIEW, NOT FROM A FAILING TEST.
+
+I wired the runner through the new path and, rather than assuming the refactor
+neutral, re-ran two certified cells and compared to the stored evidence:
+
+  N=100  identical
+  N=250  NOT identical -- mean disagreement 0.863375 -> 0.864995 (+0.19%)
+
+The refactor was not the cause. THREAD COUNT was. The certified run used
+--threads 8; my comparison used the default 4, and reduction order differs. At
+N=100 the difference happened to vanish; at N=250 it did not. Re-running at 8
+threads reproduced BOTH cells exactly, which confirms the refactor is neutral
+and isolates the variable.
+
+NOTHING RECORDED THE THREAD COUNT. The certified attempt was reproducible only
+by someone who already knew how it had been invoked -- in a contract whose
+entire purpose is that a verdict be checkable by someone who was not there.
+
+torch_threading() now records num_threads and num_interop_threads into the run
+record's extra and the manifest. RECORDED ADDITIVELY AND NOT ENFORCED: it is
+not in REQUIRED_RUN_FIELDS, because making it required would immediately
+invalidate the certified attempt-001, which does not carry it.
+
+WHAT I DID NOT DO: I did not characterise whether the VERDICT is robust to
+thread count. That means re-running the cell, and your D-075 ruling against
+post-result reruns was written for a reason. I am raising it, not answering it.
+
+--------------------------------------------------------------------
+C-009 -- BOTH OF YOUR ITEMS WERE OPT-OUTS.
+
+  source_unit     checked only `if not None`, so a dataset that never recorded
+                  its origin SKIPPED the one clause catching a borrowed pool.
+                  Absent provenance is not matching provenance -- the same
+                  shape as the flattened fields in D-071.
+  stream_version  never compared at all, though D-052 bumped it BECAUSE the
+                  pools changed: validation used to be carved from a nested
+                  training prefix, so a "100-transition" condition trained on
+                  50. A pool from the old registry is a different experiment
+                  wearing this one's identity.
+
+Adding both broke NO existing test. Nothing in 563 tests exercised either path,
+so both were unguarded and untested at once.
+
+NUMBERS
+  tests             548 -> 565 passing, 2 skipped
+  certified evidence still verifies, with a regression asserting it keeps to
+  compute           0 GPU-hours. The probe cost 15 CPU fits in a scratch dir.
+
+WHAT I AM ASKING YOU
+  1. THE ONE THAT MATTERS: should threading metadata become a REQUIRED contract
+     field? It would invalidate the certified attempt-001 and mean regenerating
+     it. I have deliberately not made that call.
+  2. Is ScaledEvaluation the right shape for W4 Friday's threshold work, before
+     I build the cell on top of it?
+  3. Do you want the verdict's robustness to thread count characterised at all,
+     or does that fall under D-075's ruling against post-result reruns?
+
+W4 FRIDAY IS NOT STARTED and will not be until you have seen this.
 === END UPDATE ===
 ```
