@@ -48,8 +48,18 @@ echo "=== VERIFICATION BUNDLE FOR SOL ==="
 # its own predecessor. The bundle is generated last, so it can identify the
 # delta -- and Sol can refuse a mismatched pair in one comparison.
 if [ -f DELTA_TO_SOL.md ]; then
-    echo "delta:   $(grep -m1 '^DELTA_ID:' DELTA_TO_SOL.md | tr -d '\r') " \
-         "(sha256 $(sha256sum DELTA_TO_SOL.md | cut -c1-12))"
+    # ALL the ids, not just the first. Deltas accumulate while undelivered
+    # (D-008), so a header naming only the earliest understates what the
+    # bundle covers -- and D-066 exists so the header names what it is for.
+    ids=$(grep '^DELTA_ID:' DELTA_TO_SOL.md | tr -d '\r' | awk '{print $2}' | paste -sd, -)
+    count=$(grep -c '^DELTA_ID:' DELTA_TO_SOL.md)
+    if [ "$count" -gt 1 ]; then
+        echo "delta:   DELTA_ID: $ids  ($count accumulated, undelivered)" \
+             "(sha256 $(sha256sum DELTA_TO_SOL.md | cut -c1-12))"
+    else
+        echo "delta:   DELTA_ID: $ids " \
+             "(sha256 $(sha256sum DELTA_TO_SOL.md | cut -c1-12))"
+    fi
 fi
 echo "commit:  $(git rev-parse HEAD)"
 echo "tree:    $([ -z "$(git status --porcelain)" ] && echo clean || echo DIRTY)"
