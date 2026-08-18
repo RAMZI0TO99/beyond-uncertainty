@@ -446,6 +446,15 @@ invalidate the certified attempt, which is Sol's call (delta 40).
   `masked()` reuses that identical object. **Do not add a `scale=None`
   convenience back**, and do not repeat the withdrawn claim that a mask "has
   nothing to recompute from".
+- **Repair efficacy may not show on position error.** The recovered repair path
+  (D-080) was probed end-to-end on all three arms and the pairing invariants
+  hold at real training — including feature repair, the D-055 danger arm. But on
+  a `shape`-withheld smoke unit, feature and capacity repair moved position
+  error **not at all** while data repair moved it 74.8%. A static attribute
+  plausibly does not affect movement dynamics, so for missing-feature failures,
+  repair efficacy may need reading on the **activation** task, not position
+  alone. Tentative — a whole-pool smoke test with no threshold — but check it
+  when real repair validation runs (P§7.3, the failure set needs W4 Friday).
 - **C-003** — predeclare the D-031 reserve draw order. A predeclaration, so it
   goes to Sol *before* anything is built on it.
 - **C-005 / C-007 / C-008** — grouped critic splitter, `require_confirmatory=True`
