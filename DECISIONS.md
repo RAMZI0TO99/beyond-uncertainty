@@ -1043,3 +1043,35 @@ Clearing five points on the conservative (unpaired) assumption needs on the orde
 **Data seen:** none. All probes were synthetic or over the design matrix; no run records read, no fits logged.
 **Plan ref:** P§7.3, P§10.4, P§10.7. Audits C-006 (D-078), D-079, D-080.
 **Reviewed by Sol:** not yet — rides the diff since `ca545ed`. **Finding 1 is material to the delta-41 MDE ruling** and must be read with it.
+
+### D-083 · 2026-08-18 · Audit continued — the named streams and the identities are sound; one latent float-identity risk
+**Decision:** Continued the audit onto the **foundational** infrastructure — `streams.py` (the named RNG streams every experiment depends on) and the identity canonicalisation in `config.py` (D-016's territory). Both are **clean** on their load-bearing invariants, measured rather than read. One latent risk recorded.
+
+**`streams.py` — clean, all measured on actual draws.** Units in different comparison groups are genuinely **independent** at the same seed (cross-stream correlation ±0.01, sampling noise, never identical, across all nine purposes). Units sharing a comparison group get **common random numbers** — two Experiment-2A confound levels of one base config produce byte-identical `env` streams (the pairing the acceptance test needs). `arm` and `stage` are structurally **absent** from every key; a data stream is keyed on the comparison group, a model stream on `unit_id`. The D-038 multi-role guard **fires** on the dangerous case (`exp1` + `config_sweep` resolve to different `env` streams) and stays silent on the safe one — so the invariant D-038 flagged as "standing on an accident" is now a real check. `_digest` uses `json.dumps(sort_keys=True)`, so dict ordering cannot change a stream; ensemble members get independent, reproducible streams.
+
+**The identities — clean on collisions and determinism.** The full 531-unit matrix yields 531 distinct `unit_id`s and 1,278 distinct `config_id`s — no collisions. `withheld_features` is canonicalised: different orderings and duplicates collapse to one id (`('shape','colour')` == `('colour','shape')`, `('shape','shape')` == `('shape',)`), while genuinely different sets stay distinct. Ids are deterministic across a fresh process, and survive the JSON round-trip (`to_dict` → `from_dict`) for every grid confound level — so the gate evidence contract's reconstruction is float-safe for the real design.
+
+**LATENT FINDING — `confound_rate` is an unquantised float identity field.** It is the **only** float in the identity, and unlike the tuple fields it is embedded raw rather than canonicalised. Measured: `confound_rate=0.1+0.2` (which is `0.30000000000000004`) produces a **different** `unit_id` than `0.3`. This **cannot bite the current design** — every `confound_rate` is a literal from the frozen grid (`CONFOUND_LEVELS_*`), `9/10 == 0.9` at the bit level, and the JSON round-trip is exact — so identity is stable *because the grid always uses the same literal*, which is a D-038-style accident, not a guarantee. A future computed or file-loaded rate (`0.1+0.2`, a rounded export) would silently mint a phantom distinct unit. **Not fixed:** the consistent fix is to quantise the float in canonicalisation, but that **changes every golden `unit_id`** and so needs an `IDENTITY_VERSION` bump and a Change Record under Sol — it is not a silent edit. Recorded as the risk to weigh; the cheap interim guard would be to assert `confound_rate` is drawn from the frozen grid at construction.
+**Tests:** unchanged at **627 passing**, 2 skipped — this audit changed no code; it is measurement.
+**Data seen:** none. Synthetic units and the design matrix only.
+**Plan ref:** P§13.1.2 (identity), D-016, D-030, D-038.
+**Reviewed by Sol:** not yet — rides the diff since `ca545ed`.
+
+### D-084 · 2026-08-18 · Audit closeout — the detached head verified, and what the pass covered
+**Decision:** Closing the audit pass (D-082, D-083, this). One more structural probe, then the scope and verdict, recorded so none of it is blindly re-audited.
+
+**The detached auxiliary head (D-047) — verified exactly.** D-047 was itself a correction of my wrong reasoning (I had read loss share as gradient share), so its central claim — the activation loss **cannot** move the trunk — is exactly the kind of structural assertion worth measuring rather than trusting. Backpropagating the activation loss alone leaves the trunk gradient at **0.000e+00**; the position loss alone gives **1.14e+04**; and the activation head's own weights still receive gradient (**3.18e+03**), so the head learns while barred from the representation the position head reads. The `h.detach()` does exactly what D-047 says.
+
+**What the pass covered, and the verdict.** Probed behaviour empirically across the code Sol has not reviewed and the load-bearing foundations:
+- **`mde.py`** (D-082) — **finding**: the power test is anti-conservative (type-I 0.06–0.09), so the MDEs are optimistic; reported for Sol, strengthens Gate-1-at-risk.
+- **`acceptance.py`** (D-082) — **finding, fixed**: the seed random intercept was silently dropped; CI-neutral, now explicit with a regression test.
+- **`repair.py`** (D-082) — clean: repairs genuinely applied, pairing holds on all arms.
+- **`streams.py`** (D-083) — clean: independence, common-random-number pairing, `arm`/`stage` absence, the D-038 guard fires, digest order-independent.
+- **identities** (D-083) — clean on 531-unit collisions and determinism; **latent risk**: `confound_rate` is an unquantised float, stable only because the grid uses literals.
+- **`world_model.py`** (here) — clean: trunk gradient isolation exact.
+
+**Overall:** the foundations are sound. Two real findings, one fixed in place, one (the MDE inference procedure) held for Sol because it is methodological and interacts with delta 41; one latent identity risk that needs an `IDENTITY_VERSION` bump to fix and so is Sol's. The audit found a **different class of defect than Sol's reviews did** (D-060's lesson holds): Sol reviews what is reported plus a diff; probing the running system found the seed-intercept omission and the power miscalibration, neither of which a diff would reveal.
+**Tests:** **627 passing**, 2 skipped. Only D-082's acceptance fix changed code; the rest is measurement.
+**Data seen:** none.
+**Plan ref:** P§10.2, D-047, D-060.
+**Reviewed by Sol:** not yet — the whole audit (D-082 … D-084) rides the diff since `ca545ed`.

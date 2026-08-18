@@ -261,6 +261,8 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-080** | 2026-08-18 | A recovered W5 Monday repair path, found uncommitted (DEV-005 class) | Recovery |
 | **D-081** | 2026-08-18 | W5 Friday — the figure-regeneration command, every figure from logs | Deliverable |
 | **D-082** | 2026-08-18 | Audit of unreviewed stats — MDE power test anti-conservative (report); acceptance seed intercept missing (fixed) | **Audit** |
+| **D-083** | 2026-08-18 | Audit continued — streams and identities sound; latent confound_rate float-identity risk | **Audit** |
+| **D-084** | 2026-08-18 | Audit closeout — detached head verified exact; scope and verdict (foundations sound) | **Audit** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
