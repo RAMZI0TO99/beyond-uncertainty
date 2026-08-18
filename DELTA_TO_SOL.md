@@ -107,11 +107,16 @@ string never selected anything; it was decorative, so nothing downstream could
 ever have detected the contradiction.
 
 Estimator and every training parameter now come from a frozen RungSpec selected
-SOLELY by rung. I did not test this by asserting the argument name is absent --
-that is the D-055 mistake I have made three times. The property tested is that
-no serialised claim about the estimator is load-bearing anywhere: tamper the
-estimator field in a saved record, call recompute(), and it still reads
-"ensemble".
+SOLELY by rung.
+
+Two tests, and I want to be exact about which one carries the weight, because
+"assert the parameter name does not exist" is the D-055 mistake I have made
+three times. One test does assert that passing estimator= now raises TypeError
+-- that is a convenience check on the signature and it proves nothing about the
+property. THE LOAD-BEARING TEST is the other one: tamper the estimator field in
+a saved record, call recompute(), and it still reads "ensemble". That is the
+actual claim -- no serialised assertion about the estimator is load-bearing
+anywhere.
 
 --------------------------------------------------------------------
 YOUR ANSWER 2 -- VERIFIED AS NECESSARY, NOT MERELY ADOPTED.
