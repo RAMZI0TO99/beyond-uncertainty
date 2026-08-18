@@ -28,6 +28,7 @@ EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 > COVERS SESSIONS:
 > - 2026-08-18 (W4 Tue closeout) · The result certified, and three rulings filed
 > - 2026-08-18 (W4 Wed) · C-010 and C-009 built, and a reproducibility variable nobody had recorded
+> - 2026-08-18 (W4 Thu) · C-006 built, and the MDE does not clear five points
 
 ```
 === UPDATE FOR SOL ===
@@ -203,5 +204,122 @@ WHAT I AM ASKING YOU
      or does that fall under D-075's ruling against post-result reruns?
 
 W4 FRIDAY IS NOT STARTED and will not be until you have seen this.
+=== END UPDATE ===
+```
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 41
+PREVIOUS_DELTA_ID: 40
+DATE: 2026-08-18
+BUNDLE_FILE: SOL_BUNDLE.txt
+SUBJECT: C-006 built, both your validations pass -- AND THE MDE DOES NOT CLEAR
+         FIVE POINTS. This is the one I need you to attack hardest.
+
+--------------------------------------------------------------------
+C-006 IS BUILT TO YOUR SPECIFICATION.
+
+src/bu/stats/mde.py. Actual group sizes, actual class membership,
+group-preserving held-out draws, unit weights, paired predictions,
+within-group correlation, balanced-accuracy DIFFERENCE with a group-bootstrap
+interval. NO n_eff() -- your ruling that naming one invites the misuse which
+produced the first wrong number. The analytic effective sample sizes exist only
+in tests/test_mde.py, as the validation, never as an export.
+
+BOTH VALIDATIONS PASS.
+  ICC = 0   simulated SD of the difference matches the independent-units
+            analytic result
+  ICC = 1   matches the unit-weighted boundary, and a test asserts that
+            boundary is 75.00 / 72.58 RECOMPUTED FROM THE LIVE DESIGN MATRIX,
+            so a design change fails loudly instead of leaving stale power
+            claims behind
+Also checked: the group bootstrap is calibrated against the true sampling SD,
+and the false-positive rate at zero effect is under 10%. A bootstrap that
+understated the spread would report power the design does not have.
+
+I MISREAD D-044 AT FIRST AND WANT IT ON RECORD. Your "D = 0" and "D = 1" are
+the CLASSES, not design effects. Class 0: 150 units, 125 groups, sum m^2 = 300,
+so 150^2/300 = 75.00. Class 1: 150 units, 115 groups, sum m^2 = 310 -> 72.58.
+Verified against the enumerator. Also: NO COMPARISON GROUP SPANS BOTH CLASSES,
+so a group-preserving partition is automatically class-preserving -- C-005's
+splitter can rely on that.
+
+--------------------------------------------------------------------
+THE RESULT. THE DESIGN DOES NOT CLEAR THE FIVE-POINT MARGIN.
+
+MDE at 80% power, alpha 0.05 two-sided, baseline accuracy 0.70, conservative
+pairing (independent systems):
+
+  held out   min(N0,N1)   ICC 0   ICC .25   ICC .5   ICC .75   ICC 1
+        20           10      28        28       28        28      28
+        41           20      23        24       24        25      26
+        60           30      20        21       21        21      22
+        80           40      18        19       20        21      22
+
+SAMPLE SIZE IS THE DRIVER, NOT CORRELATION. Even at ICC = 0 -- no within-group
+dependence at all -- it is 18 points against a 5-point margin. So the
+conclusion does not rest on the ICC assumption, which is the parameter least
+knowable before data.
+
+CHECKED AGAINST HAND ARITHMETIC, NOT TRUSTED. Independent units, 40 per class,
+baseline 0.70: SD of the difference 0.0705, so the 80%-power MDE is 2.802 x
+0.0705 = 19.8 points, against 19.0 simulated. At 300 held out: 9.8 analytic
+against 11.0 simulated at ICC 0.25.
+
+EVERY LEVER TESTED. NONE RESCUES IT.
+  pairing            19.0 -> 11.5 at corr 0.9 -> 8.0 at corr 0.99
+  baseline accuracy  11.5 -> 8.0 going from 0.70 to 0.90
+  hold out ALL 300   10.5 unpaired, 6.0 at pairing 0.9
+                     (not a real option: the critic would have no training data)
+
+WHAT WOULD CLEAR IT, design shape preserved:
+
+  held out    pair 0    pair 0.5    pair 0.9
+       150        14          12           8
+       300        11           9           6
+       600         8           7           5
+      1200         6           5           3
+
+Conservatively, five points needs ON THE ORDER OF 1,500-2,000 HELD-OUT UNITS,
+against the 60-80 the schedule anticipates and the 300 the design enumerates.
+Roughly a twenty-fold gap in held-out count.
+
+--------------------------------------------------------------------
+I HAVE NOT ACTED ON IT, AND I DO NOT THINK I SHOULD.
+
+P§14.3's remedy is configuration count -- never seeds, withdrawn as a lever in
+v1.2, and never the reliability protocol. But that is a scope and compute
+decision belonging to the student and to you, and it interacts with the
+8,197-fit budget and the 120 GPU-hour trigger.
+
+TWO THINGS I WANT YOU TO ATTACK BEFORE ANYONE ACTS ON THIS NUMBER:
+
+  1. IS THE SIMULATED ESTIMAND THE ONE H3'S TEST WILL ACTUALLY USE? I have
+     modelled unit-level binary correctness, unit-weighted within class, mean
+     of the two class accuracies, difference against a paired baseline. If H3's
+     comparison is anything else, this table is answering the wrong question.
+
+  2. IS "MDE VS EQUIVALENCE MARGIN" EVEN THE RIGHT COMPARISON? P§10.7 frames it
+     that way explicitly and I followed the plan exactly. But an MDE is a
+     difference-DETECTION quantity and the 5 points is an EQUIVALENCE margin,
+     and I am not convinced those are commensurable. If the plan's own framing
+     is wrong, this whole table is the right computation of the wrong thing --
+     and I would rather you tell me that now than after a configuration count
+     is raised twenty-fold on the strength of it.
+
+STATED ASSUMPTIONS, because the answer depends on them:
+  power 0.80          P§10.7, verbatim
+  alpha 0.05 2-sided  NOT IN THE PLAN. My choice, for consistency with P§7.3's
+                      95% CI and D-068. Recorded as DEV-008. One-sided would
+                      shrink the MDE ~11% and change nothing.
+  baseline 0.70       unless swept
+  pairing 0           conservative default
+  ICC                 a LATENT correlation; the induced binary correlation is
+                      lower in between the two validated endpoints
+
+NUMBERS
+  tests             566 -> 581 passing, 2 skipped
+  compute           none. This reads the design matrix, not run records.
+  certified base    ca545ed. W4 Friday still not started.
 === END UPDATE ===
 ```

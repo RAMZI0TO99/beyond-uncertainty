@@ -939,3 +939,45 @@ The atom/mass table goes in the results text, a footnote or the supplement — i
 **Tests:** 563 → **565 passing**, 2 skipped. (A fourth test was added and one existing helper renamed: my new `_pools` helper shadowed a module-level `_pools` defined 600 lines above, breaking nine unrelated tests until renamed. Caught immediately by the suite.)
 **Plan ref:** hardens D-052, D-057.
 **Reviewed by Sol:** item is Sol's (C-009); the implementation is in delta 40.
+
+### D-078 · 2026-08-18 · C-006 built, and the MDE does not clear the five-point margin
+**Decision:** C-006 is built (`src/bu/stats/mde.py`, `tests/test_mde.py`), to D-044's specification: the actual group sizes and class membership, group-preserving held-out draws, unit weights, paired predictions, within-group correlation, and the balanced-accuracy **difference** with a group-bootstrap interval. There is deliberately **no `n_eff()`** — D-044 ruled that naming one would invite the misuse that produced the first wrong number, so the analytic effective sample sizes appear only in the tests, as the validation.
+
+**Both validations D-044 required pass.** At ICC = 0 the simulated SD of the difference matches the independent-units analytic result; at ICC = 1 it matches the unit-weighted boundary, and a separate test asserts that boundary is **75.00 / 72.58** — recomputed from the live design matrix, so if the design ever changes, every power statement derived from it fails loudly rather than going stale. The group-bootstrap interval is separately checked for calibration, and the false-positive rate at zero effect is under 10%: a bootstrap that understated the spread would report power the design does not have.
+
+**A clarification worth recording, because I misread it first.** D-044's "D = 0" and "D = 1" are the **classes**, not design effects. Class 0 is 150 units in 125 comparison groups (120 singletons and five of size six), Σm² = 300, so n_eff at ICC = 1 is 150²/300 = 75.00. Class 1 is 150 units in 115 groups (105 singletons, five of size four, five of size five), Σm² = 310, giving 72.58. Verified against the enumerator. **No comparison group spans both classes**, so a group-preserving partition is automatically class-preserving — which the splitter (C-005) may rely on.
+
+**THE RESULT: the design does not clear the five-point margin, and it is not close.** At the scheduled held-out counts (S§W5's N = 20/40/60/80), the minimum detectable balanced-accuracy difference at 80% power is:
+
+| held out | min(N₀,N₁) | ICC 0 | ICC 0.25 | ICC 0.5 | ICC 0.75 | ICC 1 |
+|---|---|---|---|---|---|---|
+| 20 | 10 | 28 | 28 | 28 | 28 | 28 |
+| 41 | 20 | 23 | 24 | 24 | 25 | 26 |
+| 60 | 30 | 20 | 21 | 21 | 21 | 22 |
+| 80 | 40 | 18 | 19 | 20 | 21 | 22 |
+
+**Sample size is the driver, not correlation.** Even at ICC = 0 — no within-group dependence at all — the MDE at 80 held-out units is **18 points against a 5-point margin**. The conclusion therefore does not rest on the ICC assumption, which is the parameter least knowable before data.
+
+**Checked against hand arithmetic rather than trusted.** Independent units, 40 per class, baseline 0.70: SD of the difference is 0.0705, so the 80%-power MDE is 2.802 × 0.0705 = **19.8 points**, against 19.0 simulated. At 300 held out the analytic gives 9.8 against 11.0 simulated at ICC 0.25. The simulation is measuring what the formula measures.
+
+**Every lever was tested, and none rescues it.** Pairing between the critic and the fitted baseline is the largest: at 80 held out it moves the MDE from 19.0 (independent) to 11.5 at correlation 0.9 and 8.0 at 0.99 — still above 5. Higher baseline accuracy helps slightly (11.5 → 8.0 going from 0.70 to 0.90). Holding out **all 300 units** — impossible, as it leaves the critic no training data — gives 10.5 unpaired and 6.0 at pairing 0.9.
+
+**What would clear it**, with the design's shape preserved:
+
+| held out | pairing 0 | pairing 0.5 | pairing 0.9 |
+|---|---|---|---|
+| 150 | 14 | 12 | 8 |
+| 300 | 11 | 9 | 6 |
+| 600 | 8 | 7 | **5** |
+| 1200 | 6 | **5** | 3 |
+
+Clearing five points on the conservative (unpaired) assumption needs on the order of **1,500–2,000 held-out units**, against the 60–80 the schedule anticipates and the 300 total the design enumerates — a roughly twenty-fold gap in held-out count.
+
+**This is exactly what P§10.7 and Gate 1 exist to find, and it is found in Week 4 rather than Week 15.** S§W5: *"If the MDE does not clear five percentage points, raise the configuration count now. It costs Kaggle time, not your time. Discovering this in Week 15 costs the thesis."* P§14.3's remedy is configuration count — **never seeds**, withdrawn as a lever in Plan v1.2, and never the reliability protocol.
+
+**I am not acting on it.** Raising the configuration count is a scope and compute decision that belongs to the student and to Sol, and it interacts with the 8,197-fit budget and the ~120 GPU-hour escalation trigger. Two things also need adversarial review before anyone acts: whether the simulated estimand is the one H3's test will actually use, and whether the plan's framing — MDE as a difference-detection quantity compared against an *equivalence* margin — is the right comparison at all.
+**Stated assumptions, because the answer depends on them:** power 0.80 (P§10.7, verbatim); **α = 0.05 two-sided, which the plan does not state** — chosen for consistency with the 95% intervals used in P§7.3 and D-068, and recorded as DEV-008; baseline accuracy 0.70 unless swept; system pairing 0 as the conservative default; the ICC parameter is a **latent** correlation, so the induced binary correlation is lower in between the two validated endpoints.
+**Tests:** 566 → **581 passing**, 2 skipped.
+**Data seen:** none. This is a simulation over the design matrix; no run records were read and no compute was spent on fits.
+**Plan ref:** P§4.2, P§10.4, P§10.7, P§14.3, S§W5 Thu. Implements C-006 as specified by D-044.
+**Reviewed by Sol:** **not yet, and this one must be** — delta 41.

@@ -46,7 +46,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `9c0d89d`** — Sol certified it on 2026-08-17, covering the whole chain from `2875e60` through the pilot, the audit and D-061 … D-066. **Certified base is now `ca545ed`** — Sol certified the stored W4 Tue result on 2026-08-18; `2efad258` (the implementation) is subsumed by it. **Set `BASE=ca545ed` for the next bundle** — Sol certified it as the documentation continuation so this housekeeping is not re-sent; the frozen *implementation* remains `9c0d89d` (D-043, D-067) |
-| **Tests** | **565 passing, 2 skipped** (CUDA tests run only where a device exists; the two-GPU test skips on this machine and is declared unverified) (the CUDA test runs only where a device exists). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
+| **Tests** | **581 passing, 2 skipped** (CUDA tests run only where a device exists; the two-GPU test skips on this machine and is declared unverified) (the CUDA test runs only where a device exists). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
 | **Compute used** | **0 GPU-hours** · first real spend: **450 CPU fits in 4 m 52 s** (W4 Tue rung 0) of ~110–145 budgeted (trigger ≈ 120, P§14.3). Every fit so far ran on **CPU**. Two sub-second GPU tests now run in the suite (~68 MiB) to cover the CUDA RNG fork and seeding — the student's other workload has finished and the card is at ~0.9/16 GB |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -78,6 +78,20 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 5. **W4 Mon — DONE** (D-068, D-069). The trend test is one function for both stages, built under Sol's rule **frozen before it saw data**, with 22 tests. On the pilot: **rho = −0.9429, 95% CI [−0.9429, −0.8286], PASS** on development seeds. The N=250 peak costs exactly one of fifteen pairwise inversions and weakens rho naturally, as Sol predicted — nothing removed, nothing smoothed. **The interval is coarse, and that is the finding:** the 27 resamples take only **two** distinct values, so it is the full support rather than a tight estimate. Development evidence about the pipeline, **not** a measurement of H1 and **not** the gate.
 6. **W4 Tue — DONE. Rung 0 PASSES** (D-074). All three configurations, on the certified commit with a clean tree: **rho = −0.9429** for every one, intervals [−0.9429, −0.9429] (uniform), [−0.9429, −0.8286] (clustered), [−0.9429, −0.9429] (sparse). 90 ensembles / 450 fits in **4 m 52 s** on CPU; `recompute()` exact; suite green after. Per Sol the ladder **stops here** — rungs 1 and 2 are not run. **Read the interval correctly:** the exact bootstrap is discrete with 2–3 atoms, and uniform and sparse are degenerate only just (second atom at 1.63% and 2.14% against a 2.5% threshold). The *verdict* is unaffected — every atom is far below zero — but the width is not a precision claim. **The N=250 peak reproduces in 14 of 15 curves**; clustered seed 4 peaks at N=500 instead. Disagreement is **not** monotone in dataset size; the test passes because Spearman tolerates one inversion.
 7. **W4 Fri — NEXT, and C-010 must be finished first.** Threshold calibration is the first cell that can violate the D-061 scale rule, and the masked call site is still unbuilt. Wednesday and Thursday are free because the ladder stopped; per Q-004 that time goes to review, understanding and prose — **never** to scope.
+
+**⚠ GATE 1 IS AT RISK, and this is the most consequential open item** (D-078). The
+W5 MDE simulation is built and both of D-044's validations pass — but the answer
+is that the design **does not clear the five-point margin**: 18–22 points at the
+scheduled held-out counts, against a 5-point requirement. **Sample size is the
+driver, not correlation** — even at ICC = 0 it is 18 points, so the conclusion
+does not rest on the least knowable parameter. Every lever was tested: pairing
+(19.0 → 11.5 → 8.0 as it rises to 0.99), baseline accuracy, and even holding out
+all 300 units (10.5 unpaired, 6.0 paired). Clearing five points conservatively
+needs on the order of **1,500–2,000 held-out units** against the 60–80 scheduled.
+P§14.3's remedy is **configuration count — never seeds**. **Not acted on:** that
+is a scope and compute decision for the student and Sol, and the framing itself
+(an MDE compared against an *equivalence* margin) needs adversarial review first.
+Found in Week 4 rather than Week 15, which is what S§W5 says the exercise is for.
 
 **Two things the thesis must carry, recorded now because a reset loses them** (D-075):
 - **Never print a zero-width interval bare.** `[−0.9429, −0.9429]` reflects **quantile discreteness, not zero sampling uncertainty** — the bootstrap distribution has only 2–3 distinct values because Spearman over six sizes has highly discrete support. Sol's sentence for the results text is quoted verbatim in D-075, and the atom/mass table must travel with it.
@@ -238,6 +252,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-075** | 2026-08-18 | Sol's rulings on the result, and the wording the thesis must carry about zero-width intervals | Sol's rulings |
 | **D-076** | 2026-08-18 | C-010 built — the masked call site, and a reproducibility defect found while proving it neutral | Obligation |
 | **D-077** | 2026-08-18 | C-009 — the pool guard's two opt-outs closed | Sol's item |
+| **D-078** | 2026-08-18 | C-006 built — and the MDE does **not** clear the five-point margin | **Result — Gate 1 risk** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -331,7 +346,7 @@ Two conditions:
 | C-002 | Build the D-030 named-stream module | Sol, 2026-08-16 | **Done** → `src/bu/streams.py`, `tests/test_streams.py` |
 | C-004 | File the dynamic-target decision; correct the baseline accounting; mark inspected data as pilot; implement named streams; regenerate the Sol bundle | Sol, 2026-08-16 (delta 11) | **Done** → D-032 … D-036 |
 | C-005 | Grouped dataset partitioning for the critic splitter — a comparison group never spans a split | Sol, 2026-08-16 (delta 12) | **Open** — key and report built (D-039); splitter is W6/W11 |
-| C-006 | Week 5 MDE simulation: reproduce the **actual paired balanced-accuracy estimator** — real group sizes and class membership, group-preserving partitions, unit weights, paired critic-vs-baseline predictions, ICC grid — and validate against the analytic result at ICC = 0 **and** ICC = 1 | Sol, 2026-08-16 (deltas 12–14) | **Open** — fully specified in D-044; due W5 Thu |
+| ~~C-006~~ | Week 5 MDE simulation: reproduce the **actual paired balanced-accuracy estimator** — real group sizes and class membership, group-preserving partitions, unit weights, paired critic-vs-baseline predictions, ICC grid — and validate against the analytic result at ICC = 0 **and** ICC = 1 | Sol, 2026-08-16 (deltas 12–14) | **Done** → D-078. Both validations pass. **The MDE does not clear five points** — 18–22 pp at the scheduled held-out counts. Awaiting Sol (delta 41) |
 | C-007 | Pass `require_confirmatory=True` in threshold calibration, repair acceptance and every critic loader as each is built | Sol, 2026-08-16 (delta 12) | **Open** — guard built (D-040); call sites are W4–W11 |
 | C-008 | **Build the confirmatory runner**, which must own: episode bootstrap only, registered configuration and arm, matching pools and run identity, confirmatory seed policy, complete run records. `bootstrap_episodes()` + `train(train_index=…)` still bypasses the `train_ensemble` guard | Sol, 2026-08-16 (cert of 2875e60) | **Open** — blocks confirmatory execution and repair validation |
 | C-009 | Runner hardening: reject `source_unit is None` in `assert_pools_match()` rather than ignoring it, and check each dataset's `stream_version` against the run's | Sol, 2026-08-16 | **Done** → D-077. Both were opt-outs, and adding them broke no test — nothing had exercised either path |
@@ -345,79 +360,7 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **20 archived, 1 kept here** — Week 3's six close entries were archived when it was certified and frozen at `9c0d89d` (D-067). Nothing is condensed; the archive is complete.
 
-### 2026-08-17 (W3 certified) · Week 3 frozen at `9c0d89d` · Claude
-**Did:** Sol certified `9c0d89d`, covering the complete chain from `2875e60` through the pilot, the audit and D-061 … D-066. **Week 3 is closed and frozen** (D-067). Filed the certification, its accepted conclusions and — the part that matters more — its **boundaries**, which travel with it and are not relaxed by it: no confirmatory execution, no repair validation (C-008, C-009), **no masked failure-set analysis until C-010 exists, required before W4 Friday**, and MC-dropout rung 3 needs an explicit architectural decision because `WorldModel` has no dropout. Cleared Sol's non-blocking housekeeping: `CLAUDE.md` said 440/1 and now says 442/2, alongside the new base and status.
-**What the six-review close actually cost, and where.** Every finding was verified before anything changed and every one stood. But only two were code defects reachable by a user; **three were about claims rather than code** — an invariance that does not hold for a vector, an enforcement a type cannot provide, and an isolation that held only on the hardware it was tested on — and one was **packaging**, where the right bundle existed and the wrong one was sent. The sentences were consistently more expensive to get right than the code was.
-**Standing corrections now live in `CLAUDE.md`:** restoring state is not fixing a mechanism; verify a finding's *route*, not just its conclusion; and a test written against the machine it runs on can pass in the one configuration where the defect cancels.
-**Result:** 442 tests, 2 skipped. **Zero GPU-hours** of the ~110–145 budgeted.
-**Next:** W4 Mon — the trend test. Read it knowing the pilot's disagreement curve peaks at N=250, which is what a rank correlation over six sizes is most sensitive to.
-
----
-
-### 2026-08-17 (W4 Mon) · The trend test, under a rule frozen before it saw data · Claude
-**Did:** Sol certified `7dbcd32` as the documentation continuation — use it as the next `BASE`; the frozen *implementation* stays `9c0d89d` — and **authorised W4 Mon under a fully specified reading rule** (D-068). Built `src/bu/stats/trend.py`: one function for the W4 gate and the W10 verdict, 22 tests covering every clause Sol required plus the partition boundary.
-**The rule was frozen first, and that is the point.** Spearman's rho over **all six** registered sizes, negative expected, **pass only if the whole 95% interval is below zero**, undefined or constant fails, out-of-order points carry no separate veto. The interval is an **exact** paired seed-block bootstrap — 27 or 3,125 ordered tuples enumerated, **no RNG at all**, quantile method declared in code. Removing N=100 or N=250, smoothing, or switching to Kendall are each forbidden by name.
-**On the pilot** (development seeds — Schedule W4 Mon's criterion, **not** the gate): **rho = −0.9429, 95% CI [−0.9429, −0.8286], PASS.** Sol's prediction held exactly: the N=250 peak costs **one** of fifteen pairwise inversions, weakening rho from −1.0 naturally, with nothing removed.
-**The limitation is the more useful result.** With three seeds the 27 resamples take only **two** distinct values (−0.9429 ×20, −0.8286 ×7), so the "95% interval" *is* the full support — its narrowness is a property of three consistent seeds, not evidence of precision. At five seeds the support is 3,125 and the quantiles mean something. Flagged for Sol before Tuesday, because if gate day 1 also runs at three seeds it inherits the same coarseness.
-**One loophole closed while testing.** The size grid is now required to be exactly the six registered sizes. Without it the grid is a keyword argument, and a five-point statistic over a trimmed grid is indistinguishable from the registered one in every artefact carrying it — the "drop the awkward small end" move arriving through a parameter rather than a decision. Found because the first version of that test passed for the wrong reason.
-**Result:** 442 → 464 tests, 2 skipped. **Zero GPU-hours.**
-**Next:** W4 Tue, gate day 1 — five seeds across three configurations, recording the verdict **and the rung**.
-
----
-
-### 2026-08-17 (W4 Mon closeout) · Three rulings, and the gate wrapper Tuesday needs · Claude
-**Did:** Sol **certified `a84cf6c`** as the W4 Monday trend-test implementation and ruled on all three open questions (D-070). Built `src/bu/stats/gate.py` — the wrapper that makes a gate verdict *authorised* rather than merely computed.
-**Ruling 1 — do not move the statistical rule after seeing the two-atom interval.** Separate the *statistical result* from *gate eligibility* instead: the three-seed pilot satisfies the frozen rule and cannot be a gate verdict. The wrapper requires exactly three predeclared configurations × exactly five development seeds × six sizes, and **rung 0 passes only if all three configurations pass** — no majority vote, no pooled curve, because configuration sensitivity is itself a reliability failure. The three configurations are predeclared with their **18 exact `config_id`s frozen as golden values**: a configuration spans six units, not one, and deriving the ids at run time would let an identity change silently redirect the gate (the D-016 lesson).
-**Ruling 2 — keep the exact six-size refusal.** No legitimate subset caller exists for the registered statistic; an exploratory subset analysis must be a separately named descriptive function returning no `TrendResult` and no verdict.
-**Ruling 3 — a correction to my reasoning, not the code.** Undefined replicates still fail closed and are never dropped — dropping them would condition the distribution on the statistic being defined and could **manufacture** a directional interval. But I had justified it by calling a flat curve "the strongest possible evidence against a trend", and Sol is right that it can equally come from **cancellation between opposing non-constant curves**. A test now builds exactly that: slopes −0.1, −0.3, +0.2 where one resample cancels to flat, **the point estimate is a perfect −1.0, and the result still fails** — which is why dropping the undefined replicates would have been dangerous rather than merely untidy.
-**Result:** 464 → 483 tests, 2 skipped. **Zero GPU-hours.**
-**Next:** W4 Tue, gate day 1 — 90 ensembles / 450 fits, the first real compute. Ask before starting it.
-
-## 8. → TO SOL — *moved to its own file*
-
-The delta Sol receives lives in **`DELTA_TO_SOL.md`** (D-023). It was moved out
-because consolidating four sessions pushed this file past its 500-line paste
-cap, and the two files have different audiences anyway: this one is Claude's
-reconstruction of state, that one is Sol's feed.
-
-It also removes an instruction that was easy to get wrong. "Paste §8" meant
-scrolling to find a section boundary; "paste `DELTA_TO_SOL.md`" does not.
-
-**Current status:** see the delivery flag at the top of `DELTA_TO_SOL.md`.
-
-### 2026-08-18 (W4 Tue prep) · Sol's two blockers on the gate wrapper · Claude
-
-**Did:** Sol reviewed delta 34, accepted the exact-grid rationale, the undefined-bootstrap correction, the cancellation regression test, the three-configuration design, five-seed eligibility and all-three-must-pass aggregation — and **refused to certify `311a23c` as the executable Tuesday gate** on two blockers, with an explicit instruction not to begin Tuesday's compute or request the GPU. Both verified before anything was changed (D-071).
-
-**Blocker 1, and it is worse than the finding says.** The gate accepted bare curves and then stamped the eighteen golden `config_id`s onto the result without checking the curves came from those configurations. Reproduced: **five lines of invented floats returned `passed=True` carrying all eighteen golden ids, with no model ever fitted** — not "could look authorised", but a PASS indistinguishable from a real one in every artefact.
-
-**The thing neither of us had named.** `ensemble_size` and `bootstrap_ratio` are deliberately non-identity fields, so **rungs 0, 1 and 2 share `config_id`, `run_id` and `fit_id` exactly** — verified directly. Sol's requested check, config_id against the golden list, is therefore *necessary but not sufficient*: it passes unchanged for rung-1 evidence presented as rung 0. The rung is only verifiable against the training parameters in the run record. Both checks are now in, and a test asserts the identity collapse so that if the rungs ever become identity-bearing, the provenance story gets revisited instead of silently changing.
-
-**Blocker 2.** `reliability_gate(curves, rung=0, estimator="mc_dropout")` was accepted. The free-form override is gone; estimator and every training parameter come from a frozen `RungSpec` chosen solely by rung. Tested as a property rather than an argument name: a tampered `estimator` in a saved record does not survive `recompute()`.
-
-**Built:** `GateEvidence` / `EvidenceCell` and an evidence-bound `reliability_gate(evidence, *, rung)`; the curve-only path demoted to the private `_gate_from_curves`; `GateEvidence.from_attempt()` reading one immutable attempt and failing closed on any missing field, a dirty tree, or the W3 pilot's own manifest; all ninety raw cells on the record with `recompute()` re-running the whole path from it. Sol's answer 2 was verified as *necessary*, not just adopted — `TrendResult` keeps only `mean_curve` and `per_seed_rho`, from neither of which the 5×6 matrix is recoverable.
-
-**Frozen before rung 0 runs, on Sol's answer 3:** rung 0 = ensemble/5/1.0, rung 1 = ensemble/10/1.0, rung 2 = subbagging/10/**0.5**. Rungs 3–4 deliberately unfrozen until immediately before execution. **Pre-data semantic correction to P§11.3:** the plan says raise the bootstrap ratio to raise member diversity, but the implemented ratio is draws over episode count, so coverage is 1 − e^−ratio — measured **0.395 / 0.635 / 0.866** at 0.5 / 1.0 / 2.0. Raising it makes members *more* alike. Rung 2 lowers it, which is what the plan actually asks for.
-
-**Numbers:** tests 483 → **507 passing**, 2 skipped. Zero GPU-hours; no gate cell executed; no data seen.
-
-**Next:** Sol re-reviews delta 35 and the fix. **No Tuesday compute until it is certified.** Then the student's device answer, then gate day 1. C-010 before W4 Friday; C-011 (one attempt directory per rung) before the ladder.
-
-### 2026-08-18 (W4 Tue prep, round 2) · The evidence contract, and the runner that emits it · Claude
-
-**Did:** Sol reviewed delta 35, accepted everything D-071 built — frozen rungs, the subbagging correction, the removed estimator override, the 90-cell grid, raw-curve serialisation and recomputation, and the rung-identity discovery — and **refused to certify `867145d`** on one finding: the binding was to claims, not to execution. Verified first, and it reproduces exactly. A fabricated manifest with the correct 90 identities, correct rung parameters and invented floats **passed and returned PASS**. D-071's five-line attack had simply become a ninety-entry one (D-072).
-
-**Fixed by moving the boundary to the artefacts.** Each run entry now carries its complete canonical `Config`; the gate reconstructs it and derives every identity from that, refusing any flattened value that contradicts it. The **complete** `TrainConfig` is checked against the frozen rung — Sol was right that `lr`, `batch_size`, `max_epochs` and `patience` were unchecked, and a test now asserts the frozen field list covers `TrainConfig` exhaustively. The manifest is cross-checked against `run.json` and `metrics.jsonl` written at training time, members are **counted from the metric stream** rather than believed, every artefact digest is verified, and each disagreement must reproduce from the row it names.
-
-**Two things the ruling as written would not have caught, both found by building it.** `granularity` is a `train_ensemble` argument, not a `Config` field, so it could never be derived from the config — it is now attested in the run record and cross-checked. And my first attempt-identity derivation, `rung + spec hash + directory name`, **produced the same id for two different attempts** — exactly the collision Sol's ruling names. Building two proved it; the identity is now derived from a digest of the run records themselves.
-
-**Built `src/bu/experiments/w4_gate.py`** — the runner, which emits evidence and decides nothing. Refuses confirmatory seeds and unfrozen rungs before doing any work; writes one immutable attempt per **rung-spec hash** (**C-011 done**, at the finer granularity Sol ruled); builds the normalising scale from the full movement evaluation pool before any mask and reuses that object across all six sizes (**C-010 partly done**, masked call site still W4 Fri); digests the evaluation pool so a curve measured on six different pools is refused.
-
-**One defect found by probing rather than by review:** a missing `rows.json` raised an incidental `FileNotFoundError` rather than refusing. An accidental runtime error is not an invariant — it is now an explicit refusal.
-
-**Numbers:** tests 507 → **532 passing**, 2 skipped. A 10-fit smoke run took **3.5 s** on CPU and reproduced the W3 pilot's uniform/N=100/seed-0 disagreement of **0.685593** exactly, so the full 450-fit rung 0 is minutes on CPU rather than the hour previously estimated. **Zero GPU-hours**; no gate cell executed; the smoke run went to a scratch directory, never to `runs/`.
-
-**Next:** Sol reviews delta 36 — the runner, the manifest code, the gate changes and the tests. **No Tuesday compute until it is certified.** Then the student's device answer, then gate day 1.
+*(W3 certification through the W4 Tuesday gate rounds — the trend test, Sol's two blockers, and the evidence contract — moved to `PROJECT_STATE_ARCHIVE.md` when this file passed its 500-line paste cap. Six entries, 2026-08-17 to 2026-08-18; the decisions they produced are D-068 … D-072 and remain indexed in §3.)*
 
 ### 2026-08-18 (W4 Tue prep, round 3) · The closeout, and an accepted architecture · Claude
 
@@ -480,3 +423,26 @@ scrolling to find a section boundary; "paste `DELTA_TO_SOL.md`" does not.
 **Numbers:** tests 548 → **565 passing**, 2 skipped. Zero GPU-hours; the reproducibility probe cost 15 CPU fits in a scratch directory. The certified W4 Tue evidence still verifies, and a regression now asserts it will keep doing so.
 
 **Next:** **W4 Friday is blocked on Sol** reviewing C-010 (delta 40) — it is the first cell where a mask exists, so it is the first that can violate D-061. **C-006**, the W5 MDE simulation, remains buildable without a ruling: D-044 specifies it fully. **C-003** (predeclaring the D-031 reserve draw order) is a predeclaration and must reach Sol first.
+
+### DEV-008 · 2026-08-18 · The MDE simulation's significance level is not in the plan
+**Deviation:** P§10.7 fixes power at eighty percent but does not state a significance level. The C-006 simulation uses **α = 0.05, two-sided**.
+**Why:** consistency with every other interval in the project — repair acceptance is a 95% CI excluding zero (P§7.3), and the H1 trend test is a 95% interval (D-068). A one-sided test would shrink the MDE by about 11% and change no conclusion.
+**Goes in methodology:** **yes.** It is an assumption the reported MDE depends on, and the MDE is a Gate 1 condition. Stated rather than absorbed silently.
+
+### 2026-08-18 (W4 Thu) · C-006 built, and the MDE does not clear five points · Claude
+
+**Did:** built **C-006**, the W5 minimum-detectable-effect simulation (D-078), to D-044's specification — actual group sizes and class membership, group-preserving held-out draws, unit weights, paired predictions, within-group correlation, and the balanced-accuracy **difference** with a group-bootstrap interval. No `n_eff()`: D-044 ruled that naming one invites the misuse that produced the first wrong number, so the analytic boundaries live only in the tests, as validation.
+
+**Both of D-044's validations pass.** ICC = 0 matches the independent-units analytic; ICC = 1 matches the unit-weighted boundary, and a test asserts that boundary is **75.00 / 72.58** recomputed from the live design matrix, so a design change fails loudly instead of leaving stale power claims. The bootstrap interval is separately checked for calibration, and the false-positive rate at zero effect is under 10%.
+
+**Corrected my own misreading:** D-044's "D = 0 / D = 1" are the **classes**, not design effects. Class 0 is 150 units in 125 groups (Σm² = 300 → 75.00); class 1 is 150 in 115 (Σm² = 310 → 72.58). **No group spans both classes**, so a group-preserving partition is automatically class-preserving — which C-005's splitter may rely on.
+
+**⚠ The result: the design does not clear the five-point margin, and not by a little.** At the scheduled held-out counts the MDE at 80% power is **18–22 points**. Sample size is the driver, not correlation: even at **ICC = 0** it is 18 points, so the conclusion does not rest on the parameter least knowable before data. Checked against hand arithmetic — 19.8 analytic against 19.0 simulated at 40 per class; 9.8 against 11.0 at 300 held out.
+
+**Every lever tested, none rescues it.** Pairing is the largest (19.0 → 11.5 at 0.9 → 8.0 at 0.99); baseline accuracy helps slightly; holding out **all 300** units gives 10.5 unpaired and 6.0 paired. Clearing five points conservatively needs **~1,500–2,000 held-out units** against the 60–80 scheduled — roughly a twenty-fold gap.
+
+**Not acted on.** P§14.3's remedy is configuration count — never seeds — but that is a scope and compute decision for the student and Sol, interacting with the 8,197-fit budget and the 120 GPU-hour trigger. Two things need adversarial review before anyone acts: whether the simulated estimand is the one H3's test will use, and whether comparing an MDE against an *equivalence* margin is the right comparison at all. **DEV-008** records that α is not in the plan and that 0.05 two-sided is my stated assumption.
+
+**Numbers:** tests 566 → **581 passing**, 2 skipped. No compute; this reads the design matrix, not run records. This file passed its 500-line cap, so six closed W4-gate entries moved to the archive.
+
+**Next:** **stop.** Sol must answer before W4 Friday (C-010, delta 40) and before anything is decided about the MDE (delta 41). Both are queued.
