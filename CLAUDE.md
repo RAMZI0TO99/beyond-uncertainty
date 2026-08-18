@@ -109,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 483 passing, 2 skipped
+.venv/bin/python -m pytest -q                      # 581 passing, 2 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -144,16 +144,27 @@ src/bu/
   models/ensemble.py     K members; episode block bootstrap; the explicit
                          deterministic / mc_dropout prediction policy (D-062)
   models/uncertainty.py  P§10.3's disagreement, predictive variance, H2 ratio;
-                         NormalisationScale — an explicit, auditable scale the
-                         summary path will not invent (D-061, D-064; see C-010)
+                         NormalisationScale — explicit and auditable but NOT
+                         self-enforcing (D-064); ScaledEvaluation is the call
+                         site that enforces it: from_pool takes no mask, so the
+                         scale precedes any mask structurally (D-061, D-076)
   experiments/w3_pilot.py  the W3 Fri sweep; per-transition export; immutable
                            attempt-NNN directories with an evidence manifest (D-062)
   stats/trend.py    THE H1 statistic: Spearman rho vs dataset size, exact
                     paired seed-block bootstrap, no RNG. ONE implementation
                     shared by the W4 gate and the W10 verdict (D-068)
-  stats/gate.py     the W4 reliability gate: eligibility, all-three-must-pass
-                    aggregation, the rung on the record. A WRAPPER over
-                    trend_test, never a second implementation (D-070)
+  stats/gate.py     the W4 reliability gate. Eligibility, all-three-must-pass
+                    aggregation, the frozen RungSpec ladder, and the EVIDENCE
+                    CONTRACT: a verdict is bound cell-by-cell to the canonical
+                    Config, the run records and the artefact digests behind it.
+                    A wrapper over trend_test, never a second implementation
+                    (D-070 … D-073). `select_attempt()` refuses to guess
+  stats/mde.py      the W5 MDE simulation. Reproduces the ACTUAL estimator --
+                    unit-weighted balanced accuracy over correlated groups,
+                    paired, group-bootstrap interval. Deliberately exports NO
+                    n_eff(); the analytic boundaries live only in the tests, as
+                    the validation (D-044, D-078)
+  experiments/w4_gate.py  the gate runner. Emits evidence, decides nothing
 ```
 
 **The four identities, which most analysis discipline follows from:**
@@ -233,6 +244,23 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 - **A null result never proves the null.** I reported "+1.1 SE by episode index"
   as though it established IID episodes. It is *consistent* with them. Where a
   property is structural, assert the structure (D-054).
+- **A check that passes because the thing it checks is missing is not a check.**
+  Sol refused the gate three times over one shape of defect: identities stamped
+  onto whatever was handed in; a manifest checked only against itself; then six
+  fields the contract *required to be present* and never compared. Each time the
+  fix moved the boundary one layer and stopped short of execution. Ask what
+  would have to be true for this check to fail (D-071 … D-073).
+- **Correcting a right number to a wrong one still counts as being wrong.** I
+  estimated rung 0 at "minutes on CPU", then "corrected" it to ~50 minutes by
+  scaling the W3 pilot's rate. It was 4 m 52 s — the first estimate was right.
+  The pilot is ~10× slower per fit because it also writes per-transition
+  exports and figures. I scaled a rate without asking what it was a rate *of*.
+- **Ask whether an assertion could fail.** I wrote
+  `assert X is not Y or True` — a tautology — into the very delta where I told
+  Sol I had avoided that failure mode (D-055, again, in D-073).
+- **Thread count is not numerically neutral.** Re-running certified cells at 4
+  threads instead of 8 moved a result by 0.19%. Reduction order differs. Record
+  the threading with any result you intend to be reproducible (D-076).
 - **A number without its estimand is not a number.** Two consecutive Sol
   findings, both on the same paragraph and neither a coding error: I reported
   `min(N₀,N₁) = 115` as *the* effective sample size when it was a bound
@@ -245,52 +273,101 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ## Where the project stands
 
-*Last session: 2026-08-17 (W4 Mon closeout). Week 1 Monday is 2026-08-17, so the
-project is running roughly three weeks ahead of its own calendar (DEV-002).*
+*Last session: 2026-08-18 (W4 Thu). Week 1 Monday is 2026-08-17, so the project
+is running roughly three weeks ahead of its own calendar (DEV-002).*
 
-**Weeks 1–3 complete, audited, CERTIFIED and frozen** (D-067). **W4 Monday's
-trend test is certified too** at `a84cf6c`, and the W4 gate wrapper is built
-(D-070). Fifteen Sol reviews actioned.
+**Weeks 1–3 complete, audited, CERTIFIED and frozen** (D-067). **W4 Monday,
+Tuesday and its stored result are all certified.** Twenty Sol reviews actioned.
 
 **Certified bases, in one chain:** `9c0d89d` (Week 3 implementation, frozen) →
-`7dbcd32` (documentation continuation) → `a84cf6c` (W4 Mon trend test). **Use
-`BASE=a84cf6c` for the next bundle** (D-043).
+`7dbcd32` (docs) → `a84cf6c` (W4 Mon trend test) → `2efad258` (W4 Tue gate and
+evidence contract) → **`ca545ed` (the stored W4 Tue result — use
+`BASE=ca545ed`)**. Three intermediate commits were reviewed and explicitly
+**not** certified; `2efad258` subsumes them.
 
-**START HERE.** `DELTA_TO_SOL.md` holds **delta 34, undelivered**. The student
-was sending it to Sol; ask whether Sol replied before doing anything else. It
-asks Sol to review the gate wrapper's eligibility and aggregation rules, and
-raises three questions — the 18 frozen `config_id`s encoding `hidden_size=256`,
-whether the gate should record the curves it read, and whether rungs 1 and 2
-need predeclared parameter values before Tuesday runs (otherwise Wednesday
-chooses them after seeing Tuesday fail).
+**START HERE.** `DELTA_TO_SOL.md` holds **deltas 39, 40 and 41 — three
+accumulated, undelivered.** The student was out of Sol tokens for ~2 days, so
+they travel together (D-008's accumulation, which is what the channel is for).
+Ask whether Sol has replied before doing anything else. **Two of them must be
+answered before more work:**
 
-**Certification is scoped, and the boundaries travel with it** — being certified
-does not relax them (D-067):
+- **delta 40** — C-010's masked call site. **W4 Friday must not run before Sol
+  reviews it**; Friday is the first cell where a mask exists, so the first that
+  can violate D-061.
+- **delta 41** — **the MDE does not clear the five-point margin.** See below.
+  Nothing about configuration count should be decided before Sol rules.
 
-- **no confirmatory execution, no repair validation.** `bootstrap_episodes()`
-  plus `train(train_index=…)` still bypasses the `train_ensemble` granularity
-  guard; the confirmatory runner (C-008) must own that rule plus registered
-  configuration, matching pools, seed policy and complete run records. C-009 is
-  its hardening;
-- **no masked failure-set analysis until C-010 exists** — required *before* W4
-  Friday, which is the first cell that can violate the D-061 scale rule;
-- **MC-dropout rung 3 needs an explicit architectural decision.** `WorldModel`
-  has no dropout, and the code now raises rather than returning a silent zero.
+### ⚠ The biggest open thing: Gate 1 is at risk (D-078)
 
-W4 Monday's trend test is unblocked. Gate 1 is 2026-09-19. **Zero GPU-hours
-consumed** — every fit so far ran on CPU, the 90-fit pilot included; two
-sub-second GPU tests run where a device exists.
+C-006 is built and both of D-044's validations pass — and the answer is that
+**the design cannot resolve a five-point balanced-accuracy difference at 80%
+power.** At the scheduled held-out counts the MDE is **18–22 points**.
 
-**The correction is the thing to understand before touching Week 3 code.** The
-behaviour policy was **non-stationary across episodes**, and because Experiment
-1's datasets are nested prefixes, *dataset size was confounded with behaviour
-distribution* — rule-carrying transitions per step ran 0.520 at N=100 against
-0.280 at N=5000. I had diagnosed this as a splitting problem and been wrong; it
-was a data-generation problem. Fixed in D-051 and verified as stationarity
-(+1.1 SE by episode index over 40 seeds), not asserted.
+**Sample size is the driver, not correlation.** At ICC = 0 it is still 18
+points, so the conclusion does not rest on the parameter least knowable before
+data. Checked against hand arithmetic (19.8 analytic vs 19.0 simulated). Every
+lever tested: pairing takes it to 8.0 at correlation 0.99; holding out *all 300*
+units gives 6.0 paired. Clearing five points conservatively needs on the order
+of **1,500–2,000 held-out units** against the 60–80 scheduled.
 
-Design: **300 units** in **240 comparison groups**, **8,197 fits** against
-P§14.2's ~8,700.
+**Do not act on this number.** P§14.3's remedy is configuration count — never
+seeds — but that is the student's and Sol's decision, and two things need
+adversarial review first: whether the simulated estimand is the one H3's test
+will use, and whether comparing an **MDE** against an **equivalence margin** is
+coherent at all. The plan frames it that way (P§10.7) and the simulation follows
+the plan exactly; if the framing is wrong, the table is the right computation of
+the wrong thing.
+
+### W4 Tuesday's result, certified
+
+**Rung 0 PASSES** on all three configurations (D-074, D-075). rho = **−0.9429**
+for uniform, clustered and sparse alike; 90 ensembles / **450 fits in 4 m 52 s**
+on CPU. The ladder is **stopped** — rungs 1 and 2 are not to be run.
+
+**Never print a zero-width interval bare.** Two of the three intervals are a
+single point, and that is **quantile discreteness, not zero sampling
+uncertainty**: the exact bootstrap has only 2–3 distinct values because Spearman
+over six sizes has highly discrete support. Sol's sentence for the thesis is
+quoted verbatim in D-075 and the atom/mass table must travel with it.
+
+**Clustered seed 4 is reported, not investigated.** 14 of 15 curves peak at
+N=250; that one peaks at N=500. Sol ruled: no extra seeds, no smoothing, no
+rerun, no estimator change — investigating now would be post-result
+exploration. Confirmation waits for W10's confirmatory seeds.
+
+### The evidence contract, and why it took four rounds
+
+The W4 gate went through **four** Sol reviews before certification, each finding
+the trust boundary one layer short of execution: bare curves stamped with the
+golden ids; then a self-consistent flattened manifest a 90-entry fabrication
+still passed; then six fields the contract *advertised* but never compared. All
+reproduced before being fixed. The lesson worth carrying: **a check that passes
+because the thing it checks is missing is not a check** (D-071 … D-073).
+
+`reliability_gate(evidence, *, rung)` now reconstructs each run from its
+canonical `Config`, checks the **complete** `TrainConfig` against the frozen
+rung, cross-checks the manifest against run records and metric streams written
+at training time, verifies artefact digests, and requires each disagreement to
+reproduce from the row it names. `runs/w4_gate/` evidence is **tracked in git**
+(1.2 MB) because digests without files cannot be verified from a fresh clone.
+
+**Threading is not numerically neutral and was unrecorded** (D-076). Re-running
+certified cells at 4 threads instead of 8 reproduced N=100 exactly and moved
+N=250 by 0.19%. Now recorded **additively** — making it a required field would
+invalidate the certified attempt, which is Sol's call (delta 40).
+
+**Zero GPU-hours.** The only compute ever spent is 450 CPU fits (W4 Tue) plus
+~25 CPU fits of smoke and probe work in scratch directories.
+
+### Next, in order
+
+1. **Sol answers deltas 39–41.** Nothing else moves first.
+2. **W4 Fri** — threshold calibration. Blocked on delta 40. It **permanently
+   freezes** a §2 constant, so it is the most irreversible act so far.
+3. **C-003** — predeclare the D-031 reserve draw order. A predeclaration, so it
+   goes to Sol before anything is built on it.
+4. **C-005 / C-007 / C-008 / C-009** — C-009 is **done** (D-077); the rest are
+   W6–W11 or blocked.
 
 ### What exists in Week 3
 
@@ -314,48 +391,16 @@ P§14.2's ~8,700.
   out of training again: doing so made the held-out set a function of N *and*
   made a "100-transition" condition train on 50.
 
-### Next: W4 Tue — gate day 1, and the first cell that spends real compute
-
-**Do not start it until two things are true:** Sol has reviewed delta 34's
-wrapper, and the student has said which device to use. The eligibility and
-aggregation rules are what make Tuesday's number a *verdict*, and they are far
-cheaper to change before a number exists than after.
-
-**Shape:** 3 predeclared configurations × **5** development seeds × 6 sizes =
-**90 ensembles / 450 fits**. The W3 pilot did 90 fits in ~10 min on CPU, so
-expect roughly an hour on CPU or minutes on GPU. `nvidia-smi` first; the
-student's other workload finished and the card was at ~0.9/16 GB.
-
-**What the gate needs, all already enforced by `reliability_gate()`:** exactly
-those three configurations, exactly five development seeds, six sizes, one
-`trend_test` per configuration, **all three must pass**. Record the verdict
-**and the rung**. A rung-0 failure starts the ladder Wed–Thu, and rung 3 is
-MC-dropout, which **raises** on the dropout-free `WorldModel` (D-062) — so
-reaching it is an explicit architectural decision, not a run.
-
-**Read Monday's result knowing what it is:** rho = −0.9429, CI [−0.9429,
-−0.8286] on the *three-seed pilot* — a smoke test, not a gate verdict, and its
-interval has only **two distinct values** across 27 resamples. At five seeds the
-support is 3,125 and the quantiles start to mean something.
-
-The pilot is rerunnable: `python -m bu.experiments.w3_pilot` writes a fresh
-`runs/w3_pilot/attempt-NNN/` with a manifest and never touches a previous one.
-
 ### Open, and what each blocks
 
-- **Three questions are with Sol** in delta 34, and Tuesday should not run
-  before they are answered: whether the 18 frozen `config_id`s encode the right
-  fixed axes (they carry `hidden_size=256`, the default grid and object count);
-  whether the gate should record the curves it read, so a verdict is
-  recomputable without the run records; and whether **rungs 1 and 2 need
-  predeclared parameter values before Tuesday** — otherwise Wednesday picks them
-  after having seen Tuesday fail, which is choosing a repair after seeing the
-  result.
-- **The W4 gate is frozen before it runs** (D-070): exactly 3 predeclared
-  configurations × exactly 5 development seeds × 6 sizes, **all three must
-  pass**, no majority vote, no pooled curve. The 18 `config_id`s are golden
-  values with a regeneration test — if that test fails, an identity field
-  changed and it needs a Change Record, not a test update.
+- **Deltas 39–41 are with Sol** and two must be answered before more work: the
+  masked call site (blocks W4 Fri) and the MDE (blocks any decision about
+  configuration count). A third question rides along — whether threading
+  metadata becomes a **required** contract field, which would invalidate the
+  certified `attempt-001` and mean regenerating it.
+- **W4 Friday freezes a §2 constant permanently.** The failure threshold is
+  calibrated once on a reference model and never revised. Treat it as the most
+  irreversible act in the project so far.
 - **Numbers taken before D-051/D-052 are void.** D-020's coverage evidence and
   the Q-011 disagreement measurements were both taken under the non-stationary
   policy and the derived split. Re-measure; do not quote them.
@@ -364,25 +409,22 @@ The pilot is rerunnable: `python -m bu.experiments.w3_pilot` writes a fresh
   second trunk, and the head is now a **non-decisional diagnostic**: barred from
   the trunk, from early stopping and checkpoint selection, from the failure set,
   from repair labels and from the critic's residual. Do not resurrect it.
-- **The normalising scale is preregistered** (D-061, **wording corrected by
-  D-064**): the full movement evaluation pool, before any mask. What the code
-  gives you is **explicit and auditable, not impossible to get wrong** — the
-  registered summary path refuses to *invent* a scale, and `n_reference` records
-  how many transitions a vector was measured over, so a subset-derived one is
-  visible in every artefact carrying it. But `NormalisationScale`'s constructor
-  is public and `from_evaluation_pool()` will accept a masked tensor, so the
-  rule is a **call-site invariant**, not a property of the type. **C-010** is
-  the obligation: the W4 runner must build the scale *before* the failure mask
-  exists, reuse **that object** for the whole-pool and masked statistics, and
-  select one immutable attempt explicitly. W4 Fri is the first cell where this
-  bites — do not add a `scale=None` convenience back, and do not repeat the
-  withdrawn claim that a mask "has nothing to recompute from".
-- **C-005 / C-006 / C-007 / C-009** — grouped critic splitter, the ICC-sensitive
-  grouped MDE simulation, passing `require_confirmatory=True` at each analysis
-  call site, and runner hardening. None is Week 3 work.
+- **The normalising scale is preregistered** (D-061, wording corrected by D-064)
+  and **C-010 now enforces it** (D-076). `ScaledEvaluation.from_pool` takes no
+  mask, so the scale precedes any mask structurally rather than by ordering, and
+  `masked()` reuses that identical object. **Do not add a `scale=None`
+  convenience back**, and do not repeat the withdrawn claim that a mask "has
+  nothing to recompute from".
+- **C-003** — predeclare the D-031 reserve draw order. A predeclaration, so it
+  goes to Sol *before* anything is built on it.
+- **C-005 / C-007 / C-008** — grouped critic splitter, `require_confirmatory=True`
+  at each analysis call site, and the confirmatory runner. None is W4 work.
+  **C-006 and C-009 are done** (D-078, D-077); **C-010 and C-011** are done
+  (D-076, D-072).
 
 Still blocked by Sol, correctly: confirmatory collection, critic splitting, and
-W5 MDE approval.
+W5 MDE *approval* — the simulation exists now, but what to do about its answer
+does not.
 
 ### Three things that will bite if forgotten
 
