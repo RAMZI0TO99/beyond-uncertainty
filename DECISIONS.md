@@ -1002,3 +1002,18 @@ Clearing five points on the conservative (unpaired) assumption needs on the orde
 **Data seen:** none. Synthetic throughout.
 **Plan ref:** P§7.3, S§W5 Tue–Wed. Implements the §2 acceptance-test row.
 **Reviewed by Sol:** not yet — delta 42.
+
+### D-080 · 2026-08-18 · A recovered W5 Monday repair path, found uncommitted
+**Decision:** `src/bu/experiments/repair.py` and `tests/test_repair.py` were present but **untracked** at the start of this session — a previous session built the W5 Monday repair path, wrote 22 tests for it, and never committed it. That is the DEV-005 failure class (work that does not reach the record), and it was invisible because **pytest collects untracked files**: their 22 tests were already inside every "N passing" figure reported to Sol this session, while the tracked tree did not contain them. Committing closes that mismatch and protects the work from a `git clean`.
+
+**I did not write these files, so I reviewed them before vouching for them.** Read both in full; ran all 22 tests (pass in 1.4 s); and probed the module end-to-end on a real four-arm training run rather than trusting its own tests — the repair path feeds `bu.stats.acceptance` correctly, and 10× data repair yields a 74.8% error reduction on a development-seed smoke test. Confirmed it touches no frozen constant, produces no confirmatory data, and writes no run record (`evaluate_arm` takes no logger).
+
+**What it is.** W5 Monday's "three repair functions callable": `applicable_arms` reports which repairs a unit can receive without raising; `evaluate_arm` trains one arm and scores every movement transition, **reusing the baseline's pre-mask scale** (D-061, C-010) and refusing a repaired arm handed no scale; `acceptance_inputs` assembles the paired arrays the acceptance test consumes. Every pairing property is parametrised over **every applicable arm**, per D-055 — the file's own docstring cites that lesson, which is part of why it reads as genuine project work rather than a stray draft.
+
+**What it depends on that did not exist when it was written.** It imports `ScaledEvaluation`, which this session built for C-010 (D-076). So at session start it was un-importable — a draft written against planned machinery. That it now composes cleanly is a point in its favour, not a coincidence to lean on: the end-to-end probe is the evidence, not the import resolving.
+
+**Not yet reviewed by Sol, and why not via a delta.** The delta channel is at its 400-line cap with deltas 39–42 undelivered (the student is out of Sol credit until the 20th). Rather than cram or overwrite, this rides the **complete git diff since `ca545ed`**, which the bundle carries in full and which already includes this ledger entry — so Sol sees both the code and its provenance. A dedicated delta narrating W5 Monday joins the next batch after 39–42 are delivered.
+**Tests:** unchanged at **597 passing**, 2 skipped — the 22 were always collected; only their tracking changed.
+**Data seen:** none. The end-to-end probe was a development-seed smoke test, in memory, no records written.
+**Plan ref:** P§7.2, S§W5 Mon.
+**Reviewed by Sol:** not yet — carried in the diff, narrated in the delta after delivery.

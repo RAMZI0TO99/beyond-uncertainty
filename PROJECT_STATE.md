@@ -254,6 +254,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-077** | 2026-08-18 | C-009 — the pool guard's two opt-outs closed | Sol's item |
 | **D-078** | 2026-08-18 | C-006 built — and the MDE does **not** clear the five-point margin | **Result — Gate 1 risk** |
 | **D-079** | 2026-08-18 | W5 Tue/Wed — the acceptance test and its permutation null, calibrated | Deliverable |
+| **D-080** | 2026-08-18 | A recovered W5 Monday repair path, found uncommitted (DEV-005 class) | Recovery |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
