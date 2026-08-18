@@ -109,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 626 passing, 2 skipped
+.venv/bin/python -m pytest -q                      # 627 passing, 2 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -320,6 +320,19 @@ D-081). **Gate 1 stands at three of four conditions**: reliability gate passed
 and certified, compute within budget, permutation null calibrated — only the MDE
 verdict is open, and it is the one Sol must settle. There is **no unblocked work
 left**; everything remaining waits on Sol or on the W4 Friday threshold.
+
+**An audit of the unreviewed and foundational code ran** (D-082 … D-084),
+probing behaviour rather than reading. It found: the acceptance test silently
+dropped the seed random intercept P§7.3 requires — a bug in this session's own
+code, now **fixed** with a regression test (CI-neutral, no result moved); the
+MDE power test is **anti-conservative** (type-I 0.06–0.09), so the reported MDEs
+are optimistic and Gate-1-at-risk is if anything strengthened — held for Sol as
+part of the delta-41 ruling; and a **latent** risk that `confound_rate` is an
+unquantised float identity field (fixing needs an `IDENTITY_VERSION` bump, so
+Sol's call). Streams, identities and the detached auxiliary head verified clean.
+The audit has **no §7 log entry** — the delta channel was at its cap — so it
+lives in the ledger (D-082 … D-084) and rides the diff. **`acceptance.py` was
+changed after D-079; D-079 is not its final state.**
 
 ### ⚠ The biggest open thing: Gate 1 is at risk (D-078)
 
