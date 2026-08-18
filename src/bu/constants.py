@@ -226,12 +226,27 @@ COMPUTE_ESCALATION_TRIGGER_GPU_HOURS = 120
 #: Sol's ruling is that their method-specific parameters are frozen before
 #: either is executed, not now. Reaching rung 3 also means H1 is falsified for
 #: ensembles (P§11.3) -- an architectural decision, not a run (D-062).
+#
+# EVERY training parameter is frozen, not only the two the rung varies (D-072).
+# Sol: "Parameters such as learning rate, batch size, epoch budget and patience
+# currently remain unchecked. A run altered through one of those settings could
+# pass the present gate." They are pinned here rather than inherited from
+# `TrainConfig`'s defaults, so that changing a default cannot silently move what
+# the frozen ladder means.
+#
+# (Sol's list also named validation fraction. `val_fraction` was REMOVED in the
+# Week 3 audit -- the validation pool is generated independently under D-052 --
+# so there is no such knob to check. Noted rather than silently skipped.)
 RUNG_SPECS: dict[int, dict] = {
     0: {
         "estimator": "ensemble",
         "ensemble_size": 5,
         "bootstrap_ratio": 1.0,
         "granularity": "episode",
+        "lr": 1e-3,
+        "batch_size": 128,
+        "max_epochs": 500,
+        "patience": 20,
         "description": "episode-bootstrap deep ensemble, the registered default",
     },
     1: {
@@ -239,6 +254,10 @@ RUNG_SPECS: dict[int, dict] = {
         "ensemble_size": 10,
         "bootstrap_ratio": 1.0,
         "granularity": "episode",
+        "lr": 1e-3,
+        "batch_size": 128,
+        "max_epochs": 500,
+        "patience": 20,
         "description": "episode-bootstrap deep ensemble, ensemble size doubled",
     },
     2: {
@@ -246,10 +265,27 @@ RUNG_SPECS: dict[int, dict] = {
         "ensemble_size": 10,
         "bootstrap_ratio": 0.5,
         "granularity": "episode",
+        "lr": 1e-3,
+        "batch_size": 128,
+        "max_epochs": 500,
+        "patience": 20,
         "description": "episode SUBBAGGING at ratio 0.5 -- see the semantic "
         "correction above; this raises member diversity, raising the ratio lowers it",
     },
 }
+
+#: The training fields a rung freezes, in the order they are hashed. Adding a
+#: field to `TrainConfig` without adding it here leaves it unchecked, so the
+#: gate asserts this list covers `TrainConfig` exhaustively.
+RUNG_TRAIN_FIELDS: tuple[str, ...] = (
+    "lr", "batch_size", "max_epochs", "patience", "ensemble_size", "bootstrap_ratio",
+)
+
+#: The evidence contract the W4 gate reads. The verifier refuses a manifest
+#: whose version it does not recognise rather than reading it optimistically:
+#: an older manifest is missing exactly the fields that make a verdict
+#: checkable, which is how the delta-35 gate accepted a fabricated one (D-072).
+EVIDENCE_CONTRACT_VERSION = 1
 
 #: Named for refusal messages and for the record. A rung in this tuple exists in
 #: the ladder but cannot be executed until its parameters are frozen.

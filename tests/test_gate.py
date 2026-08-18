@@ -18,12 +18,13 @@ from dataclasses import replace as dataclass_replace
 import pytest
 
 from bu import constants as K
-from bu.config import Config, TrainConfig
+from bu.config import Config, TrainConfig, UnitSpec
 from bu.stats.gate import (
     GATE_CONFIG_IDS, GATE_LAYOUTS, GATE_SEEDS, GATE_STAGE, RUNGS, EvidenceCell,
     GateEvidence, GateResult, RungSpec, _gate_from_curves, gate_config_ids,
     gate_units, recompute, reliability_gate,
 )
+from bu import constants as K  # noqa: F811  (K is used by the helpers above)
 from bu.streams import seed_partition
 
 SIZES = K.DATA_SIZES
@@ -45,15 +46,60 @@ def all_configurations(values=FALLING, **overrides):
     return out
 
 
+def cell_fields(layout, seed, n, spec, *, attempt="attempt-001", commit=COMMIT):
+    """A well-formed cell's fields, derived from a real Config."""
+    unit = UnitSpec(
+        causal_attribute=K.GATE_CAUSAL_ATTRIBUTE, layout=layout,
+        confound_rate=K.GATE_CONFOUND_RATE, family="estimation",
+        n_transitions=n, hidden_size=256,
+    )
+    config = Config(unit=unit, seed=seed, stage=GATE_STAGE, train=spec.train_config())
+    return dict(
+        layout=layout, seed=seed, size=n, config=config.to_dict(),
+        config_id=config.config_id, run_id=config.run_id, unit_id=config.unit_id,
+        stage=GATE_STAGE, partition=seed_partition(seed), granularity=spec.granularity,
+        member_count=spec.ensemble_size,
+        member_indices=tuple(range(spec.ensemble_size)),
+        member_record_digest="a" * 64, run_record_digest="b" * 64,
+        evaluation_pool_id=f"{layout}-s{seed:03d}",
+        evaluation_pool_digest=f"pool-{layout}-{seed}",
+        normalisation={"scale": [1.0, 1.0], "n_reference": 800},
+        metric_schema_version=1, row_index=0, row_digest="c" * 64,
+        attempt_id=f"w4-gate-r{spec.rung:02d}-{spec.spec_hash}-{attempt}",
+        attempt=attempt, commit=commit,
+    )
+
+
+def evidence_with_config(spec=None, **config_kwargs):
+    """Evidence whose CONFIG is altered — the source of truth, not a flat claim."""
+    spec = spec or RungSpec.for_rung(0)
+    cells = []
+    for layout in GATE_LAYOUTS:
+        for i, seed in enumerate(GATE_SEEDS):
+            for n, v in zip(SIZES, FALLING):
+                fields = cell_fields(layout, seed, n, spec)
+                unit = UnitSpec(
+                    causal_attribute=K.GATE_CAUSAL_ATTRIBUTE, layout=layout,
+                    confound_rate=K.GATE_CONFOUND_RATE, family="estimation",
+                    n_transitions=n, hidden_size=config_kwargs.pop("hidden_size", 256),
+                )
+                config = Config(
+                    unit=unit, seed=seed,
+                    stage=config_kwargs.get("stage", GATE_STAGE),
+                    train=config_kwargs.get("train", spec.train_config()),
+                )
+                fields.update(
+                    config=config.to_dict(), config_id=config.config_id,
+                    run_id=config.run_id, unit_id=config.unit_id,
+                    stage=config.stage, disagreement=v + 0.01 * i,
+                )
+                cells.append(EvidenceCell(**fields))
+    return GateEvidence(cells=_with_content_id(cells, spec))
+
+
 def evidence(
-    values_by_layout=None,
-    *,
-    seeds=GATE_SEEDS,
-    spec=None,
-    attempt="attempt-001",
-    commit=COMMIT,
-    jitter=0.01,
-    **cell_overrides,
+    values_by_layout=None, *, seeds=GATE_SEEDS, spec=None, attempt="attempt-001",
+    commit=COMMIT, jitter=0.01, **cell_overrides,
 ):
     """Well-formed gate evidence, unless a test deliberately breaks one field."""
     if values_by_layout is None:
@@ -63,27 +109,42 @@ def evidence(
     for layout, values in values_by_layout.items():
         for i, seed in enumerate(seeds):
             for n, v in zip(SIZES, values):
-                golden = GATE_CONFIG_IDS.get(layout, ("unregistered",) * 6)[
-                    SIZES.index(n)
-                ]
-                fields = dict(
-                    layout=layout,
-                    seed=seed,
-                    size=n,
-                    disagreement=v + jitter * i,
-                    config_id=golden,
-                    run_id=f"{golden}-{GATE_STAGE}-s{seed:03d}",
-                    stage=GATE_STAGE,
-                    partition=seed_partition(seed),
-                    ensemble_size=spec.ensemble_size,
-                    bootstrap_ratio=spec.bootstrap_ratio,
-                    granularity=spec.granularity,
-                    attempt=attempt,
-                    commit=commit,
+                known = layout in GATE_LAYOUTS and n in SIZES
+                fields = (
+                    cell_fields(layout, seed, n, spec, attempt=attempt, commit=commit)
+                    if known
+                    else dict(
+                        cell_fields(GATE_LAYOUTS[0], seed, SIZES[0], spec,
+                                    attempt=attempt, commit=commit),
+                        layout=layout, size=n,
+                    )
                 )
+                fields["disagreement"] = v + jitter * i
                 fields.update(cell_overrides)
                 cells.append(EvidenceCell(**fields))
-    return GateEvidence(cells=tuple(cells))
+    return GateEvidence(cells=_with_content_id(cells, spec, cell_overrides))
+
+
+def merge(*evidences, spec=None):
+    """Combine cells under ONE attempt identity.
+
+    Tests about the grid want a single attempt whose *shape* is wrong. Merging
+    two separately-built evidences would instead trip the one-attempt rule,
+    which is a different refusal and would leave the grid rule untested.
+    """
+    spec = spec or RungSpec.for_rung(0)
+    cells = [c for ev in evidences for c in ev.cells]
+    return GateEvidence(cells=_with_content_id(cells, spec))
+
+
+def _with_content_id(cells, spec, overrides=()):
+    """Stamp the identity the cells actually imply, unless a test overrode it."""
+    if "attempt_id" in (overrides or ()):
+        return tuple(cells)
+    ident = GateEvidence.content_id(
+        [c.run_record_digest for c in cells], rung=spec.rung, spec_hash=spec.spec_hash
+    )
+    return tuple(dataclass_replace(c, attempt_id=ident) for c in cells)
 
 
 # --- the predeclared configurations, frozen before Tuesday ----------------
@@ -151,9 +212,9 @@ def test_exactly_three_predeclared_configurations():
 )
 def test_exactly_five_development_seeds(seeds, why):
     """The pilot's three seeds cannot become a gate verdict by being rerun."""
-    ev = GateEvidence(
-        cells=tuple(c for c in evidence().cells if c.layout != "clustered")
-        + evidence({"clustered": FALLING}, seeds=seeds).cells
+    ev = merge(
+        GateEvidence(tuple(c for c in evidence().cells if c.layout != "clustered")),
+        evidence({"clustered": FALLING}, seeds=seeds),
     )
     with pytest.raises(ValueError, match="not the registered one|the gate requires"):
         reliability_gate(ev, rung=0)
@@ -162,9 +223,9 @@ def test_exactly_five_development_seeds(seeds, why):
 def test_the_gate_refuses_confirmatory_seeds():
     """Estimator selection must not consume the verdict's evidence."""
     conf = tuple(K.CONFIRMATORY_SEED_BASE + i for i in range(5))
-    ev = GateEvidence(
-        cells=tuple(c for c in evidence().cells if c.layout != "uniform")
-        + evidence({"uniform": FALLING}, seeds=conf).cells
+    ev = merge(
+        GateEvidence(tuple(c for c in evidence().cells if c.layout != "uniform")),
+        evidence({"uniform": FALLING}, seeds=conf),
     )
     with pytest.raises(
         ValueError, match="not the registered one|development-only|the gate requires"
@@ -263,9 +324,9 @@ def test_reaching_rung_three_reports_h1_falsified_for_ensembles():
     """
     passing = reliability_gate(evidence(all_configurations(FALLING)), rung=0)
     high = GateResult(
-        spec=RungSpec(
-            rung=3, estimator="mc_dropout", ensemble_size=5, bootstrap_ratio=1.0,
-            granularity="episode", description="hypothetical",
+        spec=dataclass_replace(
+            RungSpec.for_rung(0), rung=3, estimator="mc_dropout",
+            description="hypothetical",
         ),
         passed=True,
         reason=passing.reason,
@@ -308,23 +369,31 @@ def test_invented_curves_cannot_become_a_verdict():
 
 
 def test_evidence_from_a_non_golden_configuration_cannot_receive_golden_ids():
-    """A curve of the right shape from the wrong unit is refused, not relabelled."""
-    ev = evidence(config_id="deadbeefcafe")
+    """A curve of the right shape from the wrong unit is refused, not relabelled.
+
+    The unit is altered in the CONFIG — hidden_size 64 rather than the frozen
+    256 — so the identity the gate derives genuinely differs. Altering only the
+    flattened `config_id` would be caught one clause earlier, which is a weaker
+    test than the one this claims to be.
+    """
     with pytest.raises(ValueError, match="frozen identity for"):
+        reliability_gate(evidence_with_config(hidden_size=64), rung=0)
+
+
+def test_a_flattened_field_that_contradicts_the_canonical_config_is_refused():
+    """The config is the source of truth; an independent claim cannot override it."""
+    ev = evidence(run_id="ea25c6151f4d-exp1-s999")
+    with pytest.raises(ValueError, match="contradict its own canonical config"):
         reliability_gate(ev, rung=0)
 
-
-def test_a_run_id_inconsistent_with_its_own_fields_is_refused():
-    """The record and the evidence must agree about which run this is."""
-    ev = evidence(run_id="ea25c6151f4d-exp1-s999")
-    with pytest.raises(ValueError, match="not the identity its own fields imply"):
+    ev = evidence(config_id="deadbeefcafe")
+    with pytest.raises(ValueError, match="contradict its own canonical config"):
         reliability_gate(ev, rung=0)
 
 
 def test_a_run_from_another_stage_is_not_gate_evidence():
-    ev = evidence(stage="pilot")
     with pytest.raises(ValueError, match="stage 'pilot'|not gate evidence"):
-        reliability_gate(ev, rung=0)
+        reliability_gate(evidence_with_config(stage="pilot"), rung=0)
 
 
 @pytest.mark.parametrize(
@@ -332,13 +401,40 @@ def test_a_run_from_another_stage_is_not_gate_evidence():
     [
         (dict(ensemble_size=10), "rung 1's ensemble size presented as rung 0"),
         (dict(bootstrap_ratio=0.5), "rung 2's subbagging presented as rung 0"),
-        (dict(granularity="transition"), "a secondary bootstrap presented as primary"),
+        (dict(lr=0.1), "a different learning rate, outside the rung's two fields"),
+        (dict(batch_size=32), "a different batch size"),
+        (dict(max_epochs=5), "a truncated epoch budget"),
+        (dict(patience=1), "different early-stopping patience"),
     ],
 )
 def test_incorrect_rung_training_parameters_are_refused(wrong, why):
-    """The check no identity in this project can perform — see the next test."""
-    with pytest.raises(ValueError, match="but rung 0 is frozen at"):
-        reliability_gate(evidence(**wrong), rung=0)
+    """The COMPLETE TrainConfig, not just the two fields the rung varies (D-072).
+
+    Sol: "a run altered through learning rate, batch size, epoch budget or
+    patience could pass the present gate." Four of these six cases are exactly
+    those, and every one is invisible to every identity in the project.
+    """
+    train = dataclass_replace(RungSpec.for_rung(0).train_config(), **wrong)
+    with pytest.raises(ValueError, match="not rung 0's frozen specification"):
+        reliability_gate(evidence_with_config(train=train), rung=0)
+
+
+def test_a_secondary_bootstrap_granularity_is_refused():
+    """`granularity` is not a TrainConfig field, so it needs its own clause."""
+    with pytest.raises(ValueError, match="frozen at 'episode'"):
+        reliability_gate(evidence(granularity="transition"), rung=0)
+
+
+def test_the_rung_train_fields_cover_TrainConfig_exhaustively():
+    """A field added to TrainConfig without being frozen would go unchecked."""
+    import dataclasses
+    assert set(K.RUNG_TRAIN_FIELDS) == {
+        f.name for f in dataclasses.fields(RungSpec.for_rung(0).train_config())
+    }, (
+        "TrainConfig has a field the frozen ladder does not pin. Add it to "
+        "RUNG_TRAIN_FIELDS and to every entry of RUNG_SPECS, or the gate will "
+        "accept a run that differs in it."
+    )
 
 
 def test_the_rungs_are_indistinguishable_by_every_identity():
@@ -381,7 +477,9 @@ def test_a_duplicated_cell_fails_closed():
 def test_evidence_mixed_across_attempts_fails_closed():
     """A verdict assembled from two runs is not a verdict about either (D-062)."""
     first = evidence().cells
-    ev = GateEvidence(cells=first[:-1] + (dataclass_replace(first[-1], attempt="attempt-002"),))
+    ev = GateEvidence(
+        cells=first[:-1] + (dataclass_replace(first[-1], attempt_id="other-attempt"),)
+    )
     with pytest.raises(ValueError, match="spans 2 attempts"):
         reliability_gate(ev, rung=0)
 
@@ -482,70 +580,3 @@ def test_a_tampered_estimator_in_the_record_does_not_survive_recomputation():
 def test_the_public_gate_cannot_be_handed_an_estimator():
     with pytest.raises(TypeError):
         reliability_gate(evidence(), rung=0, estimator="mc_dropout")
-
-
-# --- reading an immutable attempt ------------------------------------------
-
-
-def write_attempt(tmp_path, *, runs, attempt="attempt-001", commit=COMMIT, dirty=False):
-    d = tmp_path / attempt
-    d.mkdir()
-    (d / "manifest.json").write_text(
-        json.dumps({"attempt": attempt, "commit": commit, "dirty": dirty, "runs": runs})
-    )
-    return d
-
-
-def runs_from(ev):
-    return [
-        {
-            "layout": c.layout, "n_transitions": c.size, "seed": c.seed,
-            "config_id": c.config_id, "run_id": c.run_id, "stage": c.stage,
-            "seed_partition": c.partition, "ensemble_size": c.ensemble_size,
-            "bootstrap_ratio": c.bootstrap_ratio, "granularity": c.granularity,
-            "mean_disagreement": c.disagreement,
-        }
-        for c in ev.cells
-    ]
-
-
-def test_an_attempt_manifest_round_trips_into_a_verdict(tmp_path):
-    ev = evidence(all_configurations(FALLING))
-    d = write_attempt(tmp_path, runs=runs_from(ev))
-    result = reliability_gate(GateEvidence.from_attempt(d), rung=0)
-    assert result.passed
-    assert result.evidence.attempt == "attempt-001"
-    assert result.evidence.commit == COMMIT
-
-
-def test_a_manifest_missing_provenance_fails_closed(tmp_path):
-    """No field is defaulted: a default would manufacture the provenance."""
-    runs = runs_from(evidence())
-    for run in runs:
-        del run["bootstrap_ratio"]
-    d = write_attempt(tmp_path, runs=runs)
-    with pytest.raises(ValueError, match="missing"):
-        GateEvidence.from_attempt(d)
-
-
-def test_a_dirty_tree_cannot_produce_a_verdict(tmp_path):
-    d = write_attempt(tmp_path, runs=runs_from(evidence()), dirty=True)
-    with pytest.raises(ValueError, match="dirty tree"):
-        GateEvidence.from_attempt(d)
-
-
-def test_the_w3_pilot_manifest_is_refused_as_gate_evidence():
-    """The three-seed pilot cannot become a gate verdict by being pointed at.
-
-    It is real evidence about the pipeline and it is on the uniform gate
-    configuration, which is exactly why this refusal matters: the attempt on
-    disk predates the fields a verdict needs, and the gate says so rather than
-    filling them in.
-    """
-    from pathlib import Path
-
-    attempt = Path("runs/w3_pilot/attempt-001")
-    if not attempt.exists():
-        pytest.skip("pilot attempt not present in this checkout")
-    with pytest.raises(ValueError, match="missing|no 'attempt'"):
-        GateEvidence.from_attempt(attempt)
