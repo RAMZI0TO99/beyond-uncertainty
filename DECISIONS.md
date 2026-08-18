@@ -885,3 +885,22 @@ Uniform and sparse are degenerate **only just**: their second atom sits at 1.63%
 **Data seen:** development seeds only (0–4), permanently excluded from confirmatory results, threshold calibration, repair acceptance and the critic (D-034).
 **Plan ref:** P§11.3, S§W4 Tue.
 **Reviewed by Sol:** `2efad258` certified 2026-08-18 and authorised for execution. The verdict itself awaits review in delta 38.
+
+### D-075 · 2026-08-18 · Sol's rulings on the rung-0 result, and the wording the thesis must carry
+**Decision:** Sol **certified the rung-0 result** and `ca545ed` as the stored Week 4 Tuesday result, which becomes the next review base. The gate passes at rung 0 on all three predeclared configurations independently; the ladder is correctly stopped and rungs 1 and 2 are not to be run. Three rulings, all adopted.
+
+**Ruling 1 — report the point intervals exactly, with the atom structure beside them.** Do **not** widen or replace the registered intervals after seeing their discreteness: they are the correct exact percentile intervals under the frozen procedure, and changing them after seeing the data is precisely what preregistration exists to prevent. But `[−0.9429, −0.9429]` **must never appear without its explanation**. Sol's wording, to go into the thesis results text verbatim or near-verbatim:
+
+> "Exact paired seed-block bootstrap percentile intervals were computed over all 3,125 resamples. Because Spearman correlation over six dataset sizes has highly discrete support, the bootstrap distributions contained only two or three distinct values. A zero-width percentile interval therefore reflects quantile discreteness, not zero sampling uncertainty."
+
+The atom/mass table goes in the results text, a footnote or the supplement — it is **necessary for honest interpretation**, not optional colour. The registered conclusion is unchanged because every atom in every configuration is strictly negative: the pass does not depend on which atom contains the 97.5th percentile.
+
+**Ruling 2 — do not investigate clustered seed 4 now.** Keep and report the curve exactly as observed. The evidence checks found no integrity failure, the paired procedure already includes the seed, and the all-three gate passes with it in. Targeted investigation now would be **post-result exploration** and could invite a model change on the strength of one development curve. **Do not** add seeds, smooth the curve, rerun the cell, or alter the estimator. Record it descriptively — 14 of 15 curves peak at N=250; clustered seed 4 peaks at N=500 with N=250 below N=100; the across-seed clustered trend still passes — and leave substantive confirmation to W10's untouched confirmatory seeds. If the shape recurs there, discuss it as configuration/seed heterogeneity.
+
+**Ruling 3 — tracking the 1.2 MB of evidence in git is correct.** The verifier depends on the run records and member streams; tracking only their digests while discarding the files would leave a fresh checkout able to read every claim and verify none. Keep tracked: manifest, rows, 90 run records, 450 member metric records, serialised verdict. **Do not** add checkpoints or per-transition exports solely for this gate. Keeping `runs/` bodies out of ordinary bundle diffs is acceptable because the omission is explicit, every omitted file is listed with its digest, the files exist in the certified commit, the compact verdict is in the delta, and this certification makes `ca545ed` the base so later bundles will not carry the evidence diff again.
+
+**Housekeeping accepted:** moving the verdict beside the attempt was correct — an attempt must contain only the evidence its manifest covers, and derived verdicts belong outside it. The runtime correction is accepted: report the measured **4 m 52 s** CPU runtime and state that the W3 pilot was **not a comparable per-fit workload**, because it also wrote per-transition exports, per-member activation reports, spread diagnostics and figures.
+
+**W4 Tuesday is complete.** Proceed to the next scheduled work item without running fallback estimators and without a special clustered-seed-4 investigation.
+**Plan ref:** P§11.3, S§W4 Tue.
+**Reviewed by Sol:** all three rulings Sol's, 2026-08-18. `ca545ed` certified.

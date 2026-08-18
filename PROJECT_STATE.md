@@ -42,10 +42,10 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-18 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–3 CERTIFIED and frozen at `9c0d89d`** (D-067); documentation continuation certified at `7dbcd32`. **W4 Mon CERTIFIED at `a84cf6c`**. **`2efad258` CERTIFIED** as the W4 Tuesday gate implementation and evidence contract, subsuming three uncertified intermediates (D-071 … D-073). **W4 Tue is DONE: rung 0 PASSES, all three configurations** (D-074), 450 fits in 4 m 52 s on CPU. Per Sol the ladder **stops** — rungs 1 and 2 are not run. Nineteen Sol reviews actioned. **Next: W4 Fri**, threshold calibration, which needs C-010 finished first. Week 1 Monday was 2026-08-17 — roughly **three** weeks ahead of calendar (DEV-002) |
+| **Current week / day** | **Weeks 1–3 CERTIFIED and frozen at `9c0d89d`** (D-067); documentation continuation certified at `7dbcd32`. **W4 Mon CERTIFIED at `a84cf6c`**. **`2efad258` CERTIFIED** as the W4 Tuesday gate implementation and evidence contract, subsuming three uncertified intermediates (D-071 … D-073). **W4 Tue is DONE and the result is CERTIFIED at `ca545ed`** — rung 0 PASSES on all three configurations (D-074, D-075), 450 fits in 4 m 52 s on CPU. Ladder stopped; rungs 1 and 2 are not to be run. Twenty Sol reviews actioned. **Next: W4 Fri**, threshold calibration, which needs C-010 finished first. Week 1 Monday was 2026-08-17 — roughly **three** weeks ahead of calendar (DEV-002) |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
-| **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `9c0d89d`** — Sol certified it on 2026-08-17, covering the whole chain from `2875e60` through the pilot, the audit and D-061 … D-066. **Certified base is now `2efad258`** — Sol certified it 2026-08-18 and it subsumes the three uncertified intermediates. **Set `BASE=2efad258` for the next bundle** — Sol certified it as the documentation continuation so this housekeeping is not re-sent; the frozen *implementation* remains `9c0d89d` (D-043, D-067) |
+| **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `9c0d89d`** — Sol certified it on 2026-08-17, covering the whole chain from `2875e60` through the pilot, the audit and D-061 … D-066. **Certified base is now `ca545ed`** — Sol certified the stored W4 Tue result on 2026-08-18; `2efad258` (the implementation) is subsumed by it. **Set `BASE=ca545ed` for the next bundle** — Sol certified it as the documentation continuation so this housekeeping is not re-sent; the frozen *implementation* remains `9c0d89d` (D-043, D-067) |
 | **Tests** | **548 passing, 2 skipped** (CUDA tests run only where a device exists; the two-GPU test skips on this machine and is declared unverified) (the CUDA test runs only where a device exists). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
 | **Compute used** | **0 GPU-hours** · first real spend: **450 CPU fits in 4 m 52 s** (W4 Tue rung 0) of ~110–145 budgeted (trigger ≈ 120, P§14.3). Every fit so far ran on **CPU**. Two sub-second GPU tests now run in the suite (~68 MiB) to cover the CUDA RNG fork and seeding — the student's other workload has finished and the card is at ~0.9/16 GB |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
@@ -54,7 +54,7 @@ This is the shared working file for the project. It is written by Claude, review
 
 | | Claim | Status | Decided at |
 |---|---|---|---|
-| H1 | Ensemble disagreement tracks estimation failure | **W4 gate PASSED at rung 0** on development seeds (D-074); not tested | Gate check W4 **done**, verdict W10 Mon |
+| H1 | Ensemble disagreement tracks estimation failure | **W4 gate PASSED at rung 0, certified** on development seeds (D-074, D-075); hypothesis not tested | Gate check W4 **done**, verdict W10 Mon |
 | H2 | Disagreement-to-error ratio is low under hypothesis-class failure | Not tested | W10 Tue → **Gate 2** |
 | H3 | Learned critic beats fitted (error, disagreement) rule by > 5 pts | Not tested | W15 Fri |
 
@@ -77,7 +77,11 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 4. **W3 closeout — DONE** (D-061, D-062, D-063), on Sol's review of deltas 27–28. Two serious findings, both verified first and **one of them different from how it was stated**: the MC-dropout fix restored state without re-enabling dropout (measured on a real dropout model: **exactly zero** disagreement under the old path), and the rerun hazard was reachable through a *different-scope* rerun rather than the append path, which `write_run_record` already blocked. Scale ruling adopted and the pilot's numbers reproduce **exactly**. No second trunk.
 5. **W4 Mon — DONE** (D-068, D-069). The trend test is one function for both stages, built under Sol's rule **frozen before it saw data**, with 22 tests. On the pilot: **rho = −0.9429, 95% CI [−0.9429, −0.8286], PASS** on development seeds. The N=250 peak costs exactly one of fifteen pairwise inversions and weakens rho naturally, as Sol predicted — nothing removed, nothing smoothed. **The interval is coarse, and that is the finding:** the 27 resamples take only **two** distinct values, so it is the full support rather than a tight estimate. Development evidence about the pipeline, **not** a measurement of H1 and **not** the gate.
 6. **W4 Tue — DONE. Rung 0 PASSES** (D-074). All three configurations, on the certified commit with a clean tree: **rho = −0.9429** for every one, intervals [−0.9429, −0.9429] (uniform), [−0.9429, −0.8286] (clustered), [−0.9429, −0.9429] (sparse). 90 ensembles / 450 fits in **4 m 52 s** on CPU; `recompute()` exact; suite green after. Per Sol the ladder **stops here** — rungs 1 and 2 are not run. **Read the interval correctly:** the exact bootstrap is discrete with 2–3 atoms, and uniform and sparse are degenerate only just (second atom at 1.63% and 2.14% against a 2.5% threshold). The *verdict* is unaffected — every atom is far below zero — but the width is not a precision claim. **The N=250 peak reproduces in 14 of 15 curves**; clustered seed 4 peaks at N=500 instead. Disagreement is **not** monotone in dataset size; the test passes because Spearman tolerates one inversion.
-7. **W4 Fri — NEXT, and C-010 must be finished first.** Threshold calibration is the first cell that can violate the D-061 scale rule, and the masked call site is still unbuilt.
+7. **W4 Fri — NEXT, and C-010 must be finished first.** Threshold calibration is the first cell that can violate the D-061 scale rule, and the masked call site is still unbuilt. Wednesday and Thursday are free because the ladder stopped; per Q-004 that time goes to review, understanding and prose — **never** to scope.
+
+**Two things the thesis must carry, recorded now because a reset loses them** (D-075):
+- **Never print a zero-width interval bare.** `[−0.9429, −0.9429]` reflects **quantile discreteness, not zero sampling uncertainty** — the bootstrap distribution has only 2–3 distinct values because Spearman over six sizes has highly discrete support. Sol's sentence for the results text is quoted verbatim in D-075, and the atom/mass table must travel with it.
+- **Clustered seed 4 is reported, not investigated.** 14 of 15 curves peak at N=250; that one peaks at N=500 with N=250 below N=100. Sol ruled: no extra seeds, no smoothing, no rerun, no estimator change — investigating now would be post-result exploration. Substantive confirmation waits for W10's confirmatory seeds.
 
 **No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **D-047's open item is closed** by D-063: the real loop never closed the gap at any size or member, Sol ruled against a second trunk, and the detached head is now a **non-decisional diagnostic** — barred from the trunk, from early stopping and checkpoint selection, from the failure set, from repair labels and from the critic's residual.
 
@@ -231,6 +235,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-072** | 2026-08-18 | The evidence contract — the trust boundary reaches execution, and the W4 runner that emits it | Sol's finding |
 | **D-073** | 2026-08-18 | The closeout — six advertised checks that were not being performed; architecture accepted | Sol's closeout |
 | **D-074** | 2026-08-18 | W4 Tuesday — rung 0 passes on all three configurations, and what the interval actually is | Result |
+| **D-075** | 2026-08-18 | Sol's rulings on the result, and the wording the thesis must carry about zero-width intervals | Sol's rulings |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -443,3 +448,19 @@ scrolling to find a section boundary; "paste `DELTA_TO_SOL.md`" does not.
 **A correction:** I told Sol rung 0 would be "minutes", then corrected that to ~50 minutes from the pilot's rate. It was 4 m 52 s — the first estimate was right and the correction was wrong. The pilot is ~10× slower per fit because it also writes per-transition exports, activation reports and figures. I scaled a rate without asking what it was a rate of.
 
 **Next:** delta 38 carries the verdict for review. Then **W4 Fri**, threshold calibration — **C-010 must be finished first**.
+
+### 2026-08-18 (W4 Tue closeout) · The result certified, and three rulings filed · Claude
+
+**Did:** Sol **certified the rung-0 result** and `ca545ed` as the stored Week 4 Tuesday result, now the review base. The gate passes at rung 0 on all three predeclared configurations independently; the ladder is correctly stopped. Three rulings filed as D-075, all adopted, none requiring code.
+
+**Ruling 1 — the intervals stay exactly as registered, and never travel alone.** Widening or replacing them after seeing their discreteness is what preregistration exists to prevent. But `[−0.9429, −0.9429]` must never appear without its explanation, and Sol supplied the wording for the results text — quoted verbatim in D-075 so it survives a reset. The atom/mass table is **necessary for honest interpretation**, not optional colour. The conclusion is unchanged: every atom is strictly negative, so the pass does not depend on which one holds the 97.5th percentile.
+
+**Ruling 2 — clustered seed 4 is not to be investigated.** No integrity failure was found, the paired procedure already includes the seed, and the gate passes with it in. Looking now would be post-result exploration and could invite a model change on one development curve. Recorded descriptively and left to W10's untouched confirmatory seeds.
+
+**Ruling 3 — tracking the 1.2 MB of evidence is correct**, because the verifier depends on the run records and member streams; digests without files leave a fresh checkout able to read every claim and verify none. Keeping `runs/` out of bundle diffs is acceptable given the omission is explicit and the files are in the certified commit. No checkpoints, no per-transition exports for this gate.
+
+**Also accepted:** moving the verdict beside the attempt, and the runtime correction — report 4 m 52 s and state that the W3 pilot is not a comparable per-fit workload.
+
+**Numbers:** unchanged. 548 passing, 2 skipped. Zero GPU-hours. The 450 CPU fits of W4 Tue remain the only compute spent.
+
+**Next:** **W4 Fri**, threshold calibration — **C-010 must be finished first**, since it is the first cell that can violate the D-061 scale rule. W4 Wed and Thu are free because the ladder stopped; per Q-004 that gain goes to review and prose, never to scope.
