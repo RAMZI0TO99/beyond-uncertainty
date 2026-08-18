@@ -109,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 581 passing, 2 skipped
+.venv/bin/python -m pytest -q                      # 626 passing, 2 skipped
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -159,12 +159,22 @@ src/bu/
                     Config, the run records and the artefact digests behind it.
                     A wrapper over trend_test, never a second implementation
                     (D-070 … D-073). `select_attempt()` refuses to guess
+  stats/acceptance.py  the repair acceptance test (P§7.3) and its permutation
+                    null. Three conditions, all required; episode-mean fallback
+                    is a labelled different method; permutes whole runs, never
+                    transitions (D-079)
   stats/mde.py      the W5 MDE simulation. Reproduces the ACTUAL estimator --
                     unit-weighted balanced accuracy over correlated groups,
                     paired, group-bootstrap interval. Deliberately exports NO
                     n_eff(); the analytic boundaries live only in the tests, as
                     the validation (D-044, D-078)
   experiments/w4_gate.py  the gate runner. Emits evidence, decides nothing
+  experiments/repair.py   the repair path (P§7.2): train an arm, score it on a
+                    fixed failure set, assemble the paired arrays acceptance
+                    consumes. Reuses the baseline's pre-mask scale; every pairing
+                    property parametrised over every arm (D-055, D-080)
+  experiments/make_figures.py  one command, every figure from logs only, no
+                    compute; fails loudly on a missing log (D-081)
 ```
 
 **The four identities, which most analysis discipline follows from:**
@@ -285,17 +295,31 @@ evidence contract) → **`ca545ed` (the stored W4 Tue result — use
 `BASE=ca545ed`)**. Three intermediate commits were reviewed and explicitly
 **not** certified; `2efad258` subsumes them.
 
-**START HERE.** `DELTA_TO_SOL.md` holds **deltas 39, 40 and 41 — three
-accumulated, undelivered.** The student was out of Sol tokens for ~2 days, so
-they travel together (D-008's accumulation, which is what the channel is for).
-Ask whether Sol has replied before doing anything else. **Two of them must be
+**START HERE.** `DELTA_TO_SOL.md` holds **deltas 39–42 — four accumulated,
+undelivered** — plus a reconciliation note and two later decisions (D-080,
+D-081) that ride the **complete git diff since `ca545ed`** rather than their own
+delta blocks, because the delta prose channel is at its 400-line cap. The
+student runs out of Sol credit for days at a time, so deltas accumulate; that is
+what the channel is for (D-008). **The bundle is the ground truth Sol reviews —
+the full diff carries everything, the delta blocks narrate the highlights.** Ask
+whether Sol has replied before doing anything else. **Two questions must be
 answered before more work:**
 
-- **delta 40** — C-010's masked call site. **W4 Friday must not run before Sol
-  reviews it**; Friday is the first cell where a mask exists, so the first that
-  can violate D-061.
+- **delta 40** — C-010's masked call site (built, `ScaledEvaluation`). **W4
+  Friday must not run before Sol reviews it**; Friday is the first cell where a
+  mask exists, so the first that can violate D-061. Delta 40 also asks whether
+  threading metadata becomes a **required** contract field, which would
+  invalidate the certified `attempt-001`.
 - **delta 41** — **the MDE does not clear the five-point margin.** See below.
   Nothing about configuration count should be decided before Sol rules.
+
+**Weeks 1–5 that need no ruling are DONE.** W5 Mon (the repair path, *recovered*
+from a prior session's uncommitted work — D-080), W5 Tue/Wed (acceptance test +
+permutation null, D-079), and W5 Fri (`make_figures.py`, every figure from logs,
+D-081). **Gate 1 stands at three of four conditions**: reliability gate passed
+and certified, compute within budget, permutation null calibrated — only the MDE
+verdict is open, and it is the one Sol must settle. There is **no unblocked work
+left**; everything remaining waits on Sol or on the W4 Friday threshold.
 
 ### ⚠ The biggest open thing: Gate 1 is at risk (D-078)
 
@@ -361,13 +385,20 @@ invalidate the certified attempt, which is Sol's call (delta 40).
 
 ### Next, in order
 
-1. **Sol answers deltas 39–41.** Nothing else moves first.
+1. **Sol answers deltas 39–42.** Nothing else moves first — there is no
+   unblocked work left, so this is not a soft blocker.
 2. **W4 Fri** — threshold calibration. Blocked on delta 40. It **permanently
-   freezes** a §2 constant, so it is the most irreversible act so far.
-3. **C-003** — predeclare the D-031 reserve draw order. A predeclaration, so it
+   freezes** a §2 constant, so it is the most irreversible act so far. C-010
+   (`ScaledEvaluation`) is built and is what it would run on.
+3. **W5 Sat — Gate 1** — write the verdict. Three of four conditions are met;
+   the fourth (MDE clears five points) is **failing**, and what to do about it
+   is exactly delta 41's question. The verdict cannot be written until Sol
+   rules on the MDE framing.
+4. **C-003** — predeclare the D-031 reserve draw order. A predeclaration, so it
    goes to Sol before anything is built on it.
-4. **C-005 / C-007 / C-008 / C-009** — C-009 is **done** (D-077); the rest are
-   W6–W11 or blocked.
+5. **C-005 / C-007 / C-008** — grouped critic splitter, the confirmatory-guard
+   call sites, the confirmatory runner. W6–W11 or blocked. C-006, C-009, C-010,
+   C-011 are **done** (D-078, D-077, D-076, D-072).
 
 ### What exists in Week 3
 
