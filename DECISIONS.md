@@ -838,3 +838,50 @@ A second consequence, recorded for Wednesday: because `run_id` is identical acro
 **Data seen: none.** Zero GPU-hours; no gate cell executed.
 **Plan ref:** P§11.3, S§W4 Tue.
 **Reviewed by Sol:** items Sol's, 2026-08-18. Sol's condition: if the micro-closeout passes, **rung-0 compute can begin immediately, on CPU**.
+
+### D-074 · 2026-08-18 · W4 Tuesday — rung 0 passes, and what the interval actually is
+**Decision:** Sol **certified `2efad258`** as the Week 4 Tuesday reliability-gate implementation and evidence contract, subsuming the three uncertified intermediate commits, and authorised rung-0 execution on CPU at the registered defaults. Run executed and **rung 0 PASSES**. Per Sol's instruction the ladder **stops**: rungs 1 and 2 are not run.
+
+**Pre-flight, as Sol required:** tree clean, HEAD at `2efad258af7638b2657c44bb80a7e753743cfa03`, `git_state()` reporting `dirty: False`, no `allow_dirty`.
+
+| | |
+|---|---|
+| attempt | `w4-gate-r00-93bec8081d97-4f58c24f213c` |
+| path | `runs/w4_gate/rung-00-93bec8081d97/attempt-001/` |
+| commit | `2efad258af7638b2657c44bb80a7e753743cfa03` |
+| rung spec hash | `93bec8081d97` |
+| manifest sha256 | `0fee9444a247…` |
+| verdict sha256 | `c0d92221b03c…` |
+| shape | 3 configurations × 5 development seeds × 6 sizes = 90 ensembles / **450 fits** |
+| runtime | **4 m 52 s** on CPU, 0.65 s per fit |
+| post-run suite | **548 passing, 2 skipped** |
+| `recompute()` | **exact equality** with the serialised verdict |
+
+**Verdict — rung 0 (ensemble): PASS, all three configurations.**
+
+| configuration | rho | 95% interval | verdict |
+|---|---|---|---|
+| uniform | −0.9429 | [−0.9429, −0.9429] | PASS |
+| clustered | −0.9429 | [−0.9429, −0.8286] | PASS |
+| sparse | −0.9429 | [−0.9429, −0.9429] | PASS |
+
+**The three rhos are identical, and that is a property of the statistic, not a coincidence.** Spearman reads ranks only, and all three mean curves carry the *same rank pattern*: monotone falling except a peak at N=250. −0.9429 is exactly one adjacent transposition from perfect reversal — the N=250 peak costing one of fifteen pairwise inversions, precisely as D-069 found at three seeds and as Sol predicted before any of it ran.
+
+**What the interval is, said properly.** Two of the three intervals are a single point, and that must not be read as zero uncertainty. The exact paired bootstrap is **discrete with very few atoms** — the enumerated distribution over all 3,125 resamples:
+
+| configuration | −0.9429 | −0.8286 | −0.7714 | distinct values |
+|---|---|---|---|---|
+| uniform | 98.37% | 1.63% | — | 2 |
+| clustered | 81.86% | 17.82% | 0.32% | 3 |
+| sparse | 97.86% | 2.14% | — | 2 |
+
+Uniform and sparse are degenerate **only just**: their second atom sits at 1.63% and 2.14% against the 2.5% quantile threshold. Sparse is within 0.36 percentage points of its upper bound flipping to −0.8286. **The verdict does not depend on this at all** — every atom in every configuration is far below zero, so the registered rule passes under any of them — but the reported *width* does, and a reader taking [−0.9429, −0.9429] as a precise estimate would be wrong. This is the same coarseness D-069 reported at three seeds; five seeds enlarge the support from 27 to 3,125 without adding many distinct values, because the statistic is a rank correlation over six points.
+
+**The N=250 peak reproduces almost everywhere.** In **14 of the 15** seed-configuration curves, disagreement peaks at N=250 rather than falling monotonically. The exception is **clustered seed 4**, whose peak is at N=500 with N=250 falling *below* N=100 — a different shape, kept and reported rather than smoothed. Disagreement is therefore **not** monotone in dataset size; the gate passes because Spearman tolerates exactly one inversion. This is a reliability result about the *estimator*, not H1's verdict, which is W10 on confirmatory seeds.
+
+**Two housekeeping corrections.** The verdict was first serialised *into* the attempt directory, which mutates evidence after its manifest is written; it now lives beside the attempt as `verdict-attempt-001.json`, and the attempt re-verifies unchanged. And the whole attempt — manifest, rows, all 90 run records and 450 metric streams, 1.2 MB — is now **tracked in git**, a deliberate widening of the pilot's manifest-and-rows-only exception: the contract's trust boundary *is* those digests, and untracked, a fresh clone could read every claim and verify none of them.
+
+**A measurement error of mine, corrected.** I told Sol in delta 36 that rung 0 would be "minutes on CPU", then corrected that to ~50 minutes by scaling the W3 pilot's 10-minute/90-fit rate. The actual time was 4 m 52 s: **the original estimate was right and the correction was wrong.** The pilot is ~10× slower per fit because it also computes per-transition exports, per-member activation reports, spread diagnostics and figures. I scaled a rate without asking what it was a rate *of*.
+**Data seen:** development seeds only (0–4), permanently excluded from confirmatory results, threshold calibration, repair acceptance and the critic (D-034).
+**Plan ref:** P§11.3, S§W4 Tue.
+**Reviewed by Sol:** `2efad258` certified 2026-08-18 and authorised for execution. The verdict itself awaits review in delta 38.
