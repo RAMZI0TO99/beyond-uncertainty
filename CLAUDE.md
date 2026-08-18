@@ -334,11 +334,18 @@ lever tested: pairing takes it to 8.0 at correlation 0.99; holding out *all 300*
 units gives 6.0 paired. Clearing five points conservatively needs on the order
 of **1,500–2,000 held-out units** against the 60–80 scheduled.
 
+**The numbers are if anything optimistic** (D-082 audit). The power test is
+anti-conservative — type-I error 0.06–0.09 vs 0.05, worse at higher ICC —
+because it uses a Wald `1.96×SE` rule rather than D-044's group-bootstrap
+percentile, and both over-reject at ~20–40 clusters. So the true MDE is *larger*
+than 18–22; the risk is real, not a simulation artefact.
+
 **Do not act on this number.** P§14.3's remedy is configuration count — never
-seeds — but that is the student's and Sol's decision, and two things need
+seeds — but that is the student's and Sol's decision, and **three** things need
 adversarial review first: whether the simulated estimand is the one H3's test
-will use, and whether comparing an **MDE** against an **equivalence margin** is
-coherent at all. The plan frames it that way (P§10.7) and the simulation follows
+will use, whether comparing an **MDE** against an **equivalence margin** is
+coherent at all, and (D-082) which inference procedure the MDE should use, since
+the current one over-rejects. The plan frames it that way (P§10.7) and the simulation follows
 the plan exactly; if the framing is wrong, the table is the right computation of
 the wrong thing.
 

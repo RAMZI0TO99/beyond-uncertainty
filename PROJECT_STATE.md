@@ -46,7 +46,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `ca545ed`** — Sol certified the stored W4 Tuesday result on 2026-08-18. The chain: `9c0d89d` (Week 3 implementation, frozen) → `7dbcd32` (docs) → `a84cf6c` (W4 Mon trend test) → `2efad258` (W4 Tue gate + evidence contract) → `ca545ed` (the stored result). Three intermediate commits were reviewed and explicitly **not** certified; `2efad258` subsumes them. **Set `BASE=ca545ed` for the next bundle** (D-043, D-067, D-075) |
-| **Tests** | **626 passing, 2 skipped** (the two GPU tests run only where a device exists; on this machine they skip and are declared unverified). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
+| **Tests** | **627 passing, 2 skipped** (the two GPU tests run only where a device exists; on this machine they skip and are declared unverified). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
 | **Compute used** | **0 GPU-hours** · first real spend: **450 CPU fits in 4 m 52 s** (W4 Tue rung 0) of ~110–145 budgeted (trigger ≈ 120, P§14.3). Every fit so far ran on **CPU**. Two sub-second GPU tests now run in the suite (~68 MiB) to cover the CUDA RNG fork and seeding — the student's other workload has finished and the card is at ~0.9/16 GB |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -92,6 +92,10 @@ P§14.3's remedy is **configuration count — never seeds**. **Not acted on:** t
 is a scope and compute decision for the student and Sol, and the framing itself
 (an MDE compared against an *equivalence* margin) needs adversarial review first.
 Found in Week 4 rather than Week 15, which is what S§W5 says the exercise is for.
+The D-082 audit found the power test **anti-conservative** (type-I error
+0.06–0.09 vs 0.05), so the reported MDEs are optimistic and the true design is
+even less powerful — the risk is real, and which inference procedure to use joins
+the delta-41 questions.
 
 **Two things the thesis must carry, recorded now because a reset loses them** (D-075):
 - **Never print a zero-width interval bare.** `[−0.9429, −0.9429]` reflects **quantile discreteness, not zero sampling uncertainty** — the bootstrap distribution has only 2–3 distinct values because Spearman over six sizes has highly discrete support. Sol's sentence for the results text is quoted verbatim in D-075, and the atom/mass table must travel with it.
@@ -256,6 +260,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-079** | 2026-08-18 | W5 Tue/Wed — the acceptance test and its permutation null, calibrated | Deliverable |
 | **D-080** | 2026-08-18 | A recovered W5 Monday repair path, found uncommitted (DEV-005 class) | Recovery |
 | **D-081** | 2026-08-18 | W5 Friday — the figure-regeneration command, every figure from logs | Deliverable |
+| **D-082** | 2026-08-18 | Audit of unreviewed stats — MDE power test anti-conservative (report); acceptance seed intercept missing (fixed) | **Audit** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 

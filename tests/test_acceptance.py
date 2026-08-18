@@ -248,3 +248,40 @@ def test_an_uncalibrated_null_is_reported_as_such():
     )
     assert not result.calibrated
     assert "ABOVE NOMINAL" in result.reason
+
+
+def test_the_model_has_a_seed_random_intercept_not_only_episode(monkeypatch):
+    """P§7.3 wants random intercepts for seed AND episode-within-seed (D-082).
+
+    Passing vc_formula without re_formula makes statsmodels silently drop the
+    default group intercept, leaving only the episode component. The CI is
+    unchanged for the paired repair contrast, so no verdict test would catch the
+    omission -- this asserts the model *structure* directly. It captures the
+    fitted MixedLMResults and checks its seed random-effect covariance is
+    populated.
+    """
+    import statsmodels.formula.api as smf
+    from bu.stats import acceptance as A
+
+    captured = {}
+    real_fit = smf.mixedlm
+
+    def spy(*args, **kwargs):
+        model = real_fit(*args, **kwargs)
+        real_model_fit = model.fit
+
+        def fit(*a, **k):
+            res = real_model_fit(*a, **k)
+            captured["cov_re_size"] = res.cov_re.size
+            return res
+
+        model.fit = fit
+        return model
+
+    monkeypatch.setattr(smf, "mixedlm", spy)
+    acceptance_test(*synthetic(reduction=0.35, rng=np.random.default_rng(0)))
+
+    assert captured.get("cov_re_size", 0) > 0, (
+        "the fitted model has no seed random intercept; vc_formula without "
+        "re_formula dropped it, and the model is not the one P§7.3 registers"
+    )

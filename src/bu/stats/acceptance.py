@@ -191,8 +191,16 @@ def acceptance_test(
                 "error ~ repair",
                 data=data,
                 groups=data["seed"],
-                # Episode within seed, as a variance component. The seed enters
-                # through `groups`; this nests episodes inside it.
+                # The seed random intercept must be REQUESTED explicitly. Found
+                # by audit (D-082): passing vc_formula without re_formula makes
+                # statsmodels drop its default group intercept, so the model had
+                # only the episode component and no seed intercept -- contrary to
+                # P§7.3 and to this function's own docstring. CI-neutral for the
+                # paired repair contrast (the seed effect cancels within episode,
+                # verified identical), but the model must still be the registered
+                # one, not one that happens to give the same number.
+                re_formula="1",
+                # Episode within seed, as a variance component nested in `groups`.
                 vc_formula={"episode": "0 + C(episode)"},
             )
             fit = model.fit(reml=True, method="lbfgs")
