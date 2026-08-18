@@ -15,8 +15,8 @@ sending (D-066). `BASE` is now **`2efad258`** — Sol certified it on 2026-08-18
 the three uncertified intermediates.
 
 ```bash
-EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=2efad258 ./scripts/sol_bundle.sh \
-    runs/w4_gate/rung-00-93bec8081d97/verdict-attempt-001.json > SOL_BUNDLE.txt
+EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=2efad258 ./scripts/sol_bundle.sh \
+    > SOL_BUNDLE.txt
 ```
 
 ---
@@ -142,6 +142,10 @@ WHAT I AM ASKING YOU TO ATTACK
   2. Clustered seed 4. One curve in fifteen with a different shape, on a
      development seed. Worth a look now, or noise to be left alone until W10?
   3. Whether tracking 1.2 MB of evidence in git is right, or whether the
-     manifest and rows alone were the correct boundary.
+     manifest and rows alone were the correct boundary. Note the side effect I
+     hit immediately: a bundle spanning that commit came out at 32,000 lines
+     and was unusable, so runs/ is excluded from the diff again. The evidence
+     is in the repo but not in your bundle -- the digests above are how you
+     check it, not the files.
 === END UPDATE ===
 ```
