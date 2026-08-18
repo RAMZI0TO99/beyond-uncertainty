@@ -904,3 +904,26 @@ The atom/mass table goes in the results text, a footnote or the supplement — i
 **W4 Tuesday is complete.** Proceed to the next scheduled work item without running fallback estimators and without a special clustered-seed-4 investigation.
 **Plan ref:** P§11.3, S§W4 Tue.
 **Reviewed by Sol:** all three rulings Sol's, 2026-08-18. `ca545ed` certified.
+
+### D-076 · 2026-08-18 · C-010 built — the masked call site, and a reproducibility defect found while proving it neutral
+**Decision:** C-010 is discharged. `ScaledEvaluation` (in `models/uncertainty.py`) is the call site D-064 said the rule needed, and `select_attempt()` is the explicit single-attempt selection. Neither required a new scientific decision: D-061 already ruled the rule, and this is its enforcement.
+
+**Why a type and not a convention.** D-064 was explicit that `NormalisationScale` *cannot* make a subset-derived scale impossible — the constructor is public and `from_evaluation_pool` accepts whatever tensor it is handed. So the guarantee is structural instead: `from_pool` is the only constructor and **takes no mask**, so the scale is built before the object is capable of receiving one; `masked()` reuses `self.scale`, the identical object, and there is no parameter by which a caller could supply another. There is deliberately no `scale=None` convenience on this path, and a test asserts that passing one is a `TypeError`.
+
+**The invariant is tested as load-bearing, not merely present.** One test computes the registered masked summary and the subset-scaled one and asserts the H2 ratio **differs** — if both choices ever gave the same answer, the rule would be doing no work and should be revisited rather than quietly kept. `masked()` also refuses an empty mask (a mean over nothing is nan, and a silently empty failure set is how nan reaches a registered endpoint), a wrong-length mask, and an index tensor in place of a boolean — a wrong-length index tensor selects the wrong rows without erroring, a wrong-length boolean cannot.
+
+**`select_attempt()` refuses to guess.** Given a rung directory holding more than one attempt it names them and requires a choice. There is no "latest": a second attempt exists precisely because something was wrong with the first, and sort order would be a guess presented as a default.
+
+**The runner now goes through this path**, and the refactor was proved numerically neutral against the certified evidence rather than assumed to be — which is how the following was found.
+
+**A reproducibility defect, found by probing (not review, not a test failure).** Re-running two certified cells through the refactored path reproduced N=100 **exactly** and N=250 **not**: mean disagreement 0.863375 → 0.864995, a 0.19% move. The refactor was not the cause. The cause is **thread count** — the certified run used `--threads 8`, the comparison run the default 4, and different thread counts change the order of floating-point reductions. At N=100 the difference happened to vanish; at N=250 it did not. Re-running at 8 threads reproduced both cells exactly, confirming the refactor is neutral and the threading is the variable.
+
+**Nothing recorded the thread count.** The certified attempt was reproducible only by someone who already knew how it had been invoked — a gap in an evidence contract whose entire purpose is that a verdict be checkable by someone who was not there. `torch_threading()` now records `num_threads` and `num_interop_threads` into both the run record's `extra` and the manifest.
+
+**Recorded additively, and deliberately not enforced.** It is **not** in `REQUIRED_RUN_FIELDS`, because making it required would immediately invalidate the certified `attempt-001`, which does not carry it. Whether reproducibility metadata becomes a required contract field — and whether the certified attempt must therefore be regenerated — is **Sol's call, not mine**, and is the open question in delta 40. The certified attempt still verifies unchanged, and a regression test asserts it will keep doing so: if a later change to the reader breaks the stored W4 Tuesday result, that needs a Change Record rather than a test update.
+
+**Not done, deliberately:** no characterisation of whether the *verdict* is robust to thread count. That would mean re-running the cell, and Sol's D-075 ruling against post-result reruns was written for a reason. The verdict stands on the stored evidence, which verifies; whether it reproduces bit-for-bit at another thread count is a question I am raising rather than answering.
+**Tests:** 548 → **563 passing**, 2 skipped. Includes a regression that the certified rung-0 attempt still loads, verifies and returns PASS at rho ≈ −0.9429 on all three configurations.
+**Data seen:** none beyond the already-certified W4 Tue evidence. Zero GPU-hours; the probe cost 15 CPU fits in a scratch directory.
+**Plan ref:** P§10.1, P§10.3, S§W4 Fri.
+**Reviewed by Sol:** not yet — delta 40. W4 Friday must not run before it is.

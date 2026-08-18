@@ -1143,3 +1143,35 @@ def recompute(row: Mapping) -> GateResult:
     return reliability_gate(
         GateEvidence.from_record(row["evidence"]), rung=row["rung"]
     )
+
+
+def select_attempt(root, *, attempt: str | None = None) -> Path:
+    """Name **one** immutable attempt explicitly. Never pick one silently (C-010).
+
+    D-064's second obligation. Loading "the attempt directory" from a tree that
+    holds several is how a verdict ends up describing a run nobody chose --
+    ``attempt-001`` and ``attempt-002`` differ precisely because something was
+    wrong with one of them, and "the latest" is a guess dressed as a default.
+
+    Args:
+        root: the rung directory, e.g. ``runs/w4_gate/rung-00-<spec_hash>``.
+        attempt: the directory name. Optional **only** when exactly one exists.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        raise ValueError(f"{root} is not a directory")
+    attempts = sorted(p.name for p in root.glob("attempt-*") if p.is_dir())
+    if not attempts:
+        raise ValueError(f"{root} holds no attempt-NNN directory")
+    if attempt is None:
+        if len(attempts) > 1:
+            raise ValueError(
+                f"{root} holds {len(attempts)} attempts {attempts}; name the one you "
+                "mean. There is no 'latest': a second attempt exists because "
+                "something was wrong with the first, and choosing by sort order "
+                "would be a guess presented as a default (C-010, D-062)"
+            )
+        attempt = attempts[0]
+    if attempt not in attempts:
+        raise ValueError(f"{root} has no attempt {attempt!r}; it holds {attempts}")
+    return root / attempt

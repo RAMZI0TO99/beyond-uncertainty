@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -55,7 +55,7 @@ from ..env.collect import collect_pools
 from ..models.world_model import MOVEMENT_ACTIONS
 from ..metrics import RunLogger
 from ..models.ensemble import train_ensemble
-from ..models.uncertainty import NormalisationScale, summarise
+from ..models.uncertainty import NormalisationScale, ScaledEvaluation
 from ..runrecord import git_state
 
 from ..stats.gate import (
@@ -119,6 +119,27 @@ class CellResult:
     row: dict
 
 
+def torch_threading() -> dict:
+    """The threading configuration, which is **not** numerically neutral (D-076).
+
+    Found by probing rather than by review: re-running a certified cell at four
+    threads instead of eight reproduced N=100 exactly and moved N=250's mean
+    disagreement by 0.19% (0.863375 -> 0.864995). Different thread counts change
+    the order of floating-point reductions, and at N=100 the difference happened
+    to vanish while at N=250 it did not. Nothing recorded the thread count, so
+    the certified attempt was reproducible only by someone who already knew how
+    it had been invoked.
+
+    Recorded **additively**: it is not in `REQUIRED_RUN_FIELDS`, because making
+    it required would invalidate the already-certified attempt-001, and that is
+    Sol's call rather than mine.
+    """
+    return {
+        "num_threads": torch.get_num_threads(),
+        "num_interop_threads": torch.get_num_interop_threads(),
+    }
+
+
 def run_cell(
     *,
     layout: str,
@@ -161,6 +182,9 @@ def run_cell(
         "rung_spec_hash": spec.spec_hash,
         "evaluation_pool_digest": digest,
         "cell": CELL,
+        # Not attested against by the gate: additive until Sol rules on whether
+        # reproducibility metadata becomes a required contract field (D-076).
+        "threading": torch_threading(),
     }
     with RunLogger.start(config, root=attempt / "records", extra=extra) as logger:
         ensemble = train_ensemble(
@@ -175,15 +199,21 @@ def run_cell(
     members = ensemble.member_predictions(obs[move], action[move])
     targets = ensemble.members[0].targets(next_obs[move])[0]
 
-    # C-010 / D-061: the scale is built from the FULL movement evaluation pool,
-    # before any failure mask exists, and the SAME OBJECT is reused for every
-    # size sharing the pool. W4 Friday's masked statistics must reuse it too.
-    scale = scales.get(key)
-    if scale is None:
-        scale = NormalisationScale.from_evaluation_pool(targets)
-        scales[key] = scale
+    # C-010 / D-061. `ScaledEvaluation.from_pool` takes no mask and builds the
+    # scale there, so the mask cannot reach scale construction; W4 Friday's
+    # masked statistics go through `.masked()` on this same object and reuse
+    # this same scale. One scale per evaluation pool, shared across all six
+    # sizes -- and because D-052 fixes the pool across sizes, the first size to
+    # build it is the one every later size reuses.
+    evaluation = ScaledEvaluation.from_pool(
+        members, targets, n_transitions=n, seed=seed
+    )
+    if key in scales:
+        evaluation = replace(evaluation, scale=scales[key])
+    else:
+        scales[key] = evaluation.scale
 
-    summary = summarise(members, targets, n_transitions=n, seed=seed, scale=scale)
+    summary = evaluation.whole_pool()
     row = {
         "layout": layout,
         "n_transitions": n,
@@ -213,7 +243,7 @@ def run_cell(
         "run_record_digest": _sha256_file(record_dir / "run.json"),
         "evaluation_pool_id": f"{layout}-s{seed:03d}",
         "evaluation_pool_digest": digest,
-        "normalisation": scale.as_row(),
+        "normalisation": evaluation.scale.as_row(),
         "metric_schema_version": METRIC_SCHEMA_VERSION,
         "mean_disagreement": summary.as_row()["mean_disagreement"],
         # row_index / row_digest are filled once rows.json is ordered.
@@ -273,6 +303,7 @@ def write_manifest(
         "dirty": git.dirty,
         "branch": git.branch,
         "packages": package_versions(),
+        "threading": torch_threading(),
         "n_runs": len(cells),
         "n_member_records": n_members,
         "runs": [c.run for c in cells],

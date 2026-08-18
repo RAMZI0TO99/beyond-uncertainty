@@ -544,3 +544,48 @@ def test_the_runner_refuses_a_dirty_tree_before_fitting_anything(tmp_path, monke
                out_dir=tmp_path / "gate", verbose=False)
     assert not called, "a fit was started despite the dirty tree"
     assert not (tmp_path / "gate").exists(), "an attempt directory was created"
+
+
+def test_the_threading_configuration_is_recorded(tmp_path):
+    """It is not numerically neutral, and nothing recorded it before (D-076).
+
+    Re-running a certified cell at four threads instead of eight reproduced
+    N=100 exactly and moved N=250's mean disagreement by 0.19%. The thread count
+    changes floating-point reduction order; at N=100 the difference happened to
+    vanish and at N=250 it did not. Recorded additively — making it a required
+    contract field would invalidate the certified attempt, which is Sol's call.
+    """
+    from bu.experiments.w4_gate import run
+
+    attempt = run(rung=0, layouts=("uniform",), seeds=(0,), sizes=(100,), threads=2,
+                  out_dir=tmp_path / "gate", verbose=False, allow_dirty=True)
+    manifest = json.loads((attempt / "manifest.json").read_text())
+
+    assert manifest["threading"]["num_threads"] == 2
+    record = json.loads(
+        (attempt / "records" / manifest["runs"][0]["run_id"] / "run.json").read_text()
+    )
+    assert record["extra"]["threading"]["num_threads"] == 2
+
+
+def test_the_certified_rung_zero_attempt_still_verifies():
+    """The stored W4 Tue result must survive every later change to the reader.
+
+    If this fails, something in the verifier moved under the certified evidence
+    and the stored result can no longer be checked — which would need a Change
+    Record, not a test update.
+    """
+    from pathlib import Path
+    from bu.stats.gate import reliability_gate, select_attempt
+
+    root = Path("runs/w4_gate/rung-00-93bec8081d97")
+    if not root.exists():
+        pytest.skip("certified attempt not present in this checkout")
+
+    evidence = GateEvidence.from_attempt(select_attempt(root, attempt="attempt-001"))
+    result = reliability_gate(evidence, rung=0)
+    assert result.passed
+    assert len(evidence.cells) == 90
+    assert evidence.commit == "2efad258af7638b2657c44bb80a7e753743cfa03"
+    for name in GATE_LAYOUTS:
+        assert result.per_configuration[name].rho == pytest.approx(-0.9429, abs=5e-5)

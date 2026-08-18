@@ -401,3 +401,137 @@ def across_seeds(summaries: list[UncertaintySummary]) -> dict[str, float]:
         out[f"{field}_mean"] = float(values.mean())
         out[f"{field}_sd"] = float(values.std(ddof=1)) if len(values) > 1 else 0.0
     return out
+
+
+@dataclass(frozen=True)
+class ScaledEvaluation:
+    """The evaluation pool, its one scale, and the only sanctioned way to score a
+    subset of it (**C-010**, enforcing D-061 as corrected by D-064).
+
+    **What this closes.** ``NormalisationScale`` makes the scale explicit and
+    auditable, but D-064 was explicit that it cannot make a subset-derived scale
+    *impossible*: the constructor is public and
+    :meth:`NormalisationScale.from_evaluation_pool` will accept a masked tensor
+    if handed one. The rule is a **call-site invariant**. This type is that call
+    site, and it enforces the rule structurally rather than by discipline:
+
+    * :meth:`from_pool` is the only constructor, and it takes **no mask**. The
+      scale is built there, from the full movement evaluation pool, before any
+      mask exists — not "before the mask is applied", but before the object is
+      capable of receiving one.
+    * :meth:`masked` reuses ``self.scale`` — the identical object, not an equal
+      one — and there is no parameter by which a caller could supply another.
+      There is deliberately no ``scale=None`` convenience anywhere on this path.
+
+    **Why it matters, measured rather than asserted.** The scale is a *vector*,
+    so it does not cancel between the ratio's numerator and denominator. On
+    pilot data the registered H2 endpoint moved by up to **4.6%** between a
+    pool-derived and a failure-set-derived scale: [0.229, 0.224] over the full
+    evaluation pool against [0.294, 0.348] over its worst 5%. That is a degree
+    of freedom nobody chose, and W4 Friday is the first cell where a mask exists
+    at all — so it is the first cell where this can go wrong.
+
+    **What it still does not guarantee.** If a caller hands ``from_pool`` an
+    already-masked tensor, the scale is that subset's. Nothing here can detect
+    it, exactly as D-064 says. What survives is visibility: ``n_reference``
+    records the transition count the vector was measured over and travels into
+    every summary this object produces, including masked ones — so a masked
+    summary always reports the *pool's* reference count, and a subset-derived
+    scale shows up as a reference count that does not match the pool.
+    """
+
+    #: ``(K, n_pool, dims)`` — every member's prediction over the full movement
+    #: evaluation pool.
+    members: torch.Tensor
+    #: ``(n_pool, dims)`` — the pool's targets, unmasked.
+    targets: torch.Tensor
+    #: Built in :meth:`from_pool`, before this object could hold a mask.
+    scale: NormalisationScale
+    n_transitions: int
+    seed: int
+
+    @classmethod
+    def from_pool(
+        cls,
+        members: torch.Tensor,
+        targets: torch.Tensor,
+        *,
+        n_transitions: int,
+        seed: int,
+    ) -> ScaledEvaluation:
+        """Build from the **full** movement evaluation pool. Takes no mask.
+
+        Args:
+            members: ``(K, n_pool, dims)``, every member over the whole pool.
+            targets: ``(n_pool, dims)``, the whole pool's targets, **unmasked**.
+        """
+        if members.ndim != 3:
+            raise ValueError(
+                f"members must be (K, n_pool, dims); got shape {tuple(members.shape)}"
+            )
+        if targets.ndim != 2 or targets.shape[0] != members.shape[1]:
+            raise ValueError(
+                f"targets must be (n_pool, dims) matching members' pool axis; got "
+                f"{tuple(targets.shape)} against members {tuple(members.shape)}"
+            )
+        if targets.shape[0] == 0:
+            raise ValueError(
+                "the evaluation pool is empty, so there is nothing to measure a "
+                "scale over. A scale built from nothing would propagate as nan "
+                "into every summary that reused it"
+            )
+        return cls(
+            members=members,
+            targets=targets,
+            scale=NormalisationScale.from_evaluation_pool(targets),
+            n_transitions=n_transitions,
+            seed=seed,
+        )
+
+    @property
+    def n_pool(self) -> int:
+        return int(self.targets.shape[0])
+
+    def whole_pool(self) -> UncertaintySummary:
+        """Summarise the entire pool, in the pool's own scale."""
+        return summarise(
+            self.members,
+            self.targets,
+            n_transitions=self.n_transitions,
+            seed=self.seed,
+            scale=self.scale,
+        )
+
+    def masked(self, mask: torch.Tensor) -> UncertaintySummary:
+        """Summarise a subset — the failure set — **in the pool's scale** (D-061).
+
+        Args:
+            mask: boolean ``(n_pool,)``. Index tensors are refused: a long
+                tensor of the wrong length silently selects the wrong rows,
+                whereas a boolean of the wrong length cannot.
+        """
+        if mask.dtype != torch.bool:
+            raise ValueError(
+                f"mask must be a boolean tensor, got dtype {mask.dtype}. An index "
+                "tensor of the wrong length selects the wrong transitions without "
+                "any error; a boolean of the wrong length cannot"
+            )
+        if mask.shape != (self.n_pool,):
+            raise ValueError(
+                f"mask has shape {tuple(mask.shape)}; the evaluation pool has "
+                f"{self.n_pool} transitions. A mask built against a different pool "
+                "would score a different set than the one it names"
+            )
+        if not bool(mask.any()):
+            raise ValueError(
+                "the mask selects no transitions. A mean over nothing is nan, and "
+                "a silently empty failure set is how nan reaches a registered "
+                "endpoint (see `movement_position_error`)"
+            )
+        return summarise(
+            self.members[:, mask],
+            self.targets[mask],
+            n_transitions=self.n_transitions,
+            seed=self.seed,
+            scale=self.scale,
+        )
