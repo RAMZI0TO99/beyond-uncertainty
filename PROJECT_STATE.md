@@ -42,11 +42,11 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-18 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–3 CERTIFIED and frozen at `9c0d89d`** (D-067); documentation continuation certified at `7dbcd32`. **W4 Mon CERTIFIED at `a84cf6c`**. **`2efad258` CERTIFIED** as the W4 Tuesday gate implementation and evidence contract, subsuming three uncertified intermediates (D-071 … D-073). **W4 Tue is DONE and the result is CERTIFIED at `ca545ed`** — rung 0 PASSES on all three configurations (D-074, D-075), 450 fits in 4 m 52 s on CPU. Ladder stopped; rungs 1 and 2 are not to be run. Twenty Sol reviews actioned. **C-006, C-009, C-010, C-011 all built.** **Next: W4 Fri**, threshold calibration — blocked on Sol reviewing C-010 (delta 40). **Gate 1 is at risk: the MDE does not clear five points** (D-078). Week 1 Monday was 2026-08-17 — roughly **three** weeks ahead of calendar (DEV-002) |
+| **Current week / day** | **Weeks 1–3 CERTIFIED and frozen at `9c0d89d`** (D-067); documentation continuation certified at `7dbcd32`. **W4 Mon CERTIFIED at `a84cf6c`**. **`2efad258` CERTIFIED** as the W4 Tuesday gate implementation and evidence contract, subsuming three uncertified intermediates (D-071 … D-073). **W4 Tue is DONE and the result is CERTIFIED at `ca545ed`** — rung 0 PASSES on all three configurations (D-074, D-075), 450 fits in 4 m 52 s on CPU. Ladder stopped; rungs 1 and 2 are not to be run. Twenty Sol reviews actioned. **C-006, C-009, C-010, C-011 built; W5 Tue/Wed done (D-079).** **Three of Gate 1's four conditions are settled** — only the MDE's verdict is open. **Next: W4 Fri**, threshold calibration — blocked on Sol reviewing C-010 (delta 40). **Gate 1 is at risk: the MDE does not clear five points** (D-078). Week 1 Monday was 2026-08-17 — roughly **three** weeks ahead of calendar (DEV-002) |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `ca545ed`** — Sol certified the stored W4 Tuesday result on 2026-08-18. The chain: `9c0d89d` (Week 3 implementation, frozen) → `7dbcd32` (docs) → `a84cf6c` (W4 Mon trend test) → `2efad258` (W4 Tue gate + evidence contract) → `ca545ed` (the stored result). Three intermediate commits were reviewed and explicitly **not** certified; `2efad258` subsumes them. **Set `BASE=ca545ed` for the next bundle** (D-043, D-067, D-075) |
-| **Tests** | **581 passing, 2 skipped** (CUDA tests run only where a device exists; the two-GPU test skips on this machine and is declared unverified) (the CUDA test runs only where a device exists). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
+| **Tests** | **597 passing, 2 skipped** (CUDA tests run only where a device exists; the two-GPU test skips on this machine and is declared unverified) (the CUDA test runs only where a device exists). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
 | **Compute used** | **0 GPU-hours** · first real spend: **450 CPU fits in 4 m 52 s** (W4 Tue rung 0) of ~110–145 budgeted (trigger ≈ 120, P§14.3). Every fit so far ran on **CPU**. Two sub-second GPU tests now run in the suite (~68 MiB) to cover the CUDA RNG fork and seeding — the student's other workload has finished and the card is at ~0.9/16 GB |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -253,6 +253,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-076** | 2026-08-18 | C-010 built — the masked call site, and a reproducibility defect found while proving it neutral | Obligation |
 | **D-077** | 2026-08-18 | C-009 — the pool guard's two opt-outs closed | Sol's item |
 | **D-078** | 2026-08-18 | C-006 built — and the MDE does **not** clear the five-point margin | **Result — Gate 1 risk** |
+| **D-079** | 2026-08-18 | W5 Tue/Wed — the acceptance test and its permutation null, calibrated | Deliverable |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -446,3 +447,21 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **20 archived, 1 kept
 **Numbers:** tests 566 → **581 passing**, 2 skipped. No compute; this reads the design matrix, not run records. This file passed its 500-line cap, so six closed W4-gate entries moved to the archive.
 
 **Next:** **stop.** Sol must answer before W4 Friday (C-010, delta 40) and before anything is decided about the MDE (delta 41). Both are queued.
+
+### 2026-08-18 (W5 Tue/Wed, early) · The acceptance test and its permutation null · Claude
+
+**Did:** built `src/bu/stats/acceptance.py` — the repair acceptance test (P§7.3, S§W5 Tue) and the permutation null calibrating it (S§W5 Wed), both validated on **synthetic data with a known truth**, which is what the schedule's "done when" asks for. No run records, no compute, nothing frozen, and no Sol ruling needed: P§7.3 specifies the test and §2 already carries it (D-079).
+
+**Three conditions, each shown able to refuse alone.** A 35% simulated reduction is accepted and recovered to within 5 points. A **5% reduction over 3,200 transitions — statistically unmissable — is refused**, which is what the 20% practical floor is for. A repair in the wrong direction is refused on direction.
+
+**The permutation moves whole runs, never transitions.** P§7.3 is explicit that permuting across episodes or transitions destroys the dependence structure; the unit is the (seed, arm) block, and a test asserts no run is ever split.
+
+**The measured result, and why the headline number is the wrong one to quote.** False-positive rate **0 of 200** on null data. But counting only the two *statistical* conditions the permuted rate is **5.5% against a nominal 5%** — that is the number establishing the model's interval is correctly sized under the real dependence structure. The 20% floor adds conservatism on top. Quoting 0% alone would credit the model with calibration the floor was supplying: the same shape as D-042's bound-reported-as-a-measurement.
+
+**Replaced a flaky test of my own rather than loosening it.** Asserting the two-condition rate lay strictly above 0 at 60 permutations needs luck (0.95⁶⁰ ≈ 4.6% see zero) and duly failed. It now checks the property directly — the model's SE must match the permutation spread within a factor of two.
+
+**Gate 1 now stands at three of four:** reliability gate **passed** and certified; compute **within budget** (450 CPU fits, zero GPU-hours against a ~120-hour trigger); permutation null **calibrated**; **MDE does not clear five points** — the one needing Sol.
+
+**Numbers:** tests 581 → **597 passing**, 2 skipped. No compute.
+
+**Next:** W5 Mon's three repair functions and W5 Fri's figure script are the remaining unblocked cells. Everything else waits on deltas 39–42.

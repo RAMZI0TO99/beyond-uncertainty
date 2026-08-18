@@ -29,6 +29,7 @@ EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 > - 2026-08-18 (W4 Tue closeout) · The result certified, and three rulings filed
 > - 2026-08-18 (W4 Wed) · C-010 and C-009 built, and a reproducibility variable nobody had recorded
 > - 2026-08-18 (W4 Thu) · C-006 built, and the MDE does not clear five points
+> - 2026-08-18 (W5 Tue/Wed, early) · The acceptance test and its permutation null
 
 ```
 === UPDATE FOR SOL ===
@@ -321,5 +322,68 @@ NUMBERS
   tests             566 -> 581 passing, 2 skipped
   compute           none. This reads the design matrix, not run records.
   certified base    ca545ed. W4 Friday still not started.
+=== END UPDATE ===
+```
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 42
+PREVIOUS_DELTA_ID: 41
+DATE: 2026-08-18
+BUNDLE_FILE: SOL_BUNDLE.txt
+SUBJECT: W5 Tue + Wed done on synthetic data. Gate 1 now stands at three of
+         four conditions; the MDE is the one left, and it is yours.
+
+ACCEPTANCE TEST (P§7.3, S§W5 Tue). Per-transition error, fixed effect for
+repair, random intercept for seed, variance component for EPISODE WITHIN SEED
+-- episode identity scoped to its seed, since episode 0 of seed 0 and of seed 1
+are different episodes (D-052). Episode-mean fallback recorded as a DIFFERENT
+method, and allow_fallback=False makes non-convergence an error rather than a
+silent substitution. If neither converges it fails closed: an unestimated
+effect is not a null one.
+
+Three conditions, each shown able to refuse alone:
+  35% simulated reduction  ACCEPTED, size recovered to within 5 points
+  5% reduction, n=3200     REFUSED -- statistically unmissable, interval
+                           comfortably excluding zero, and still refused. That
+                           is what the 20% practical floor is for.
+  wrong direction          REFUSED on direction, not on interval width
+
+PERMUTATION NULL (S§W5 Wed). Permuted at the RUN level -- every transition in
+one (seed, arm) block moves together, count of repaired runs preserved. Your
+plan is explicit that permuting across episodes or transitions destroys the
+dependence structure; a test asserts no run is ever split.
+
+  FPR on null data: 0 of 200 permutations.
+
+BUT 0% IS THE WRONG NUMBER TO QUOTE ALONE, and finding out why was the useful
+part. Counting only the two STATISTICAL conditions, the permuted acceptance
+rate is 5.5% against a nominal 5%. THAT is the number establishing the mixed
+model's interval is correctly sized under the real dependence structure. The
+20% floor then adds conservatism on top. Reporting 0% by itself would credit
+the model with a calibration the floor was supplying -- the same shape as
+D-042's bound-reported-as-a-measurement, which is why I am flagging it rather
+than leading with the tidier figure.
+
+A FLAKY TEST OF MINE, REPLACED NOT LOOSENED. I first asserted the two-condition
+rate lay strictly above 0 at 60 permutations. Telling 5% from 0% at n=60 needs
+luck (0.95^60 = 4.6% see zero) and it duly failed. Rather than widen the bound
+until it passed, it now checks the property directly: the model's SE must match
+the permutation spread within a factor of two.
+
+GATE 1 NOW STANDS AT THREE OF FOUR
+  reliability gate passed    YES -- certified, rung 0 (D-074)
+  compute within budget      YES -- 450 CPU fits, 0 GPU-hours vs ~120h trigger
+  permutation null calibrated YES -- this delta
+  MDE clears five points     NO  -- delta 41, and the one I cannot settle
+
+NUMBERS
+  tests            581 -> 597 passing, 2 skipped
+  data seen        none. Synthetic throughout.
+  compute          none.
+
+Nothing here needs a ruling before I continue; W5 Mon's repair functions and
+W5 Fri's figure script are the remaining unblocked cells. Deltas 39-42 travel
+together -- the student is out of credit until the 20th.
 === END UPDATE ===
 ```

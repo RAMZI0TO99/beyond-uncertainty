@@ -981,3 +981,24 @@ Clearing five points on the conservative (unpaired) assumption needs on the orde
 **Data seen:** none. This is a simulation over the design matrix; no run records were read and no compute was spent on fits.
 **Plan ref:** P§4.2, P§10.4, P§10.7, P§14.3, S§W5 Thu. Implements C-006 as specified by D-044.
 **Reviewed by Sol:** **not yet, and this one must be** — delta 41.
+
+### D-079 · 2026-08-18 · W5 Tue and Wed — the acceptance test and its permutation null
+**Decision:** Built `src/bu/stats/acceptance.py`: the repair acceptance test (P§7.3, S§W5 Tue) and the permutation null that calibrates it (S§W5 Wed). Both validated on **synthetic data with a known truth**, which is exactly what S§W5 Tue's "done when" asks for — no run records, no compute, nothing frozen. Neither needed a Sol ruling: P§7.3 specifies the test and §2 already carries it as a frozen constant.
+
+**Three conditions, all required, each shown able to refuse on its own.** A negative fixed effect; a 95% interval excluding zero; and a reduction clearing the **20% minimum practical effect**. A 35% simulated reduction is accepted and its size recovered to within 5 points. A 5% reduction over 3,200 transitions — statistically unmissable, interval comfortably excluding zero — is **refused**, which is what condition three is for: it stops a large enough sample manufacturing a "successful" repair out of a negligible one. A repair in the wrong direction is refused on direction, not on interval width.
+
+**The model is per-transition, not five summary numbers.** Fixed effect for repair, random intercept for seed, and a variance component for **episode within seed** — episode identity is scoped to its seed, because episode 0 of seed 0 and episode 0 of seed 1 are different episodes (D-052), and pooling them would put transitions from different seeds in one group. A test asserts that scoping.
+
+**The fallback is specification, not rescue.** When the registered model does not converge, the data collapse to episode means and the same three conditions apply there. The result records `method`, because "passed under the fallback" and "passed under the registered model" are different claims; `allow_fallback=False` makes non-convergence an error rather than a silent substitution. If neither converges the result **fails closed** — an unestimated effect is not a null one.
+
+**The permutation null permutes at the right level, and that is the whole point.** P§7.3: labels move "at the level of the repair assignment within condition, never across episodes or transitions, which would destroy the dependence structure". The unit of permutation is therefore the **run** — every transition in one (seed, arm) block moves together, and the number of repaired runs is preserved. A transition-level shuffle would break exactly the correlation the model exists to account for, producing a null far too narrow and a test that *looks* better calibrated than it is. A test asserts no run is ever split.
+
+**The result, measured on null data (no true repair effect): a false-positive rate of 0 in 200 permutations.** But **0% is the wrong number to quote alone**, and finding out why was the useful part. Counting only the two *statistical* conditions, the permuted acceptance rate is **5.5% against a nominal 5%** — that is the number establishing the mixed model's interval is correctly sized under the real dependence structure. The 20% practical floor then adds conservatism on top. Quoting 0% without that would credit the model with a calibration the floor was providing: the same shape of error as D-042's bound-reported-as-a-measurement.
+
+**A flaky test of my own, replaced rather than loosened.** I first asserted the two-condition rate lay strictly between 0 and 20% at 60 permutations. Distinguishing 5% from 0% at n=60 needs luck — 0.95⁶⁰ ≈ 4.6% of runs see zero acceptances — and it duly failed. Rather than widen the bound until it passed, the test now checks the property directly: the model's standard error must match the permutation spread within a factor of two. Cheaper, and it tests the claim rather than an estimate of it.
+
+**Gate 1 standing after this.** Of its four conditions: reliability gate **passed** (D-074, certified); compute **within budget** (450 CPU fits, zero GPU-hours against a ~120 GPU-hour trigger); permutation null **calibrated** (here); MDE **does not clear five points** (D-078, and the one needing Sol).
+**Tests:** 581 → **597 passing**, 2 skipped.
+**Data seen:** none. Synthetic throughout.
+**Plan ref:** P§7.3, S§W5 Tue–Wed. Implements the §2 acceptance-test row.
+**Reviewed by Sol:** not yet — delta 42.
