@@ -755,3 +755,37 @@ They are **frozen as golden values with a test that regenerates them**. Derived 
 A test now constructs exactly that case — three non-constant curves at slopes −0.1, −0.3 and +0.2, where the resample {0, 0, 2} cancels to flat. **The point estimate is a perfect −1.0 and the result still fails**, which is precisely why dropping the undefined replicates would have been dangerous: the survivors would have formed a tidy negative interval.
 **Plan ref:** P§4.2, P§11.3, S§W4 Tue–Thu.
 **Reviewed by Sol:** all three rulings Sol's; `a84cf6c` certified. The wrapper is pending review before Tuesday runs.
+
+### D-071 · 2026-08-18 · Sol's two blockers on the gate wrapper — the verdict is now bound to its evidence, and the ladder is frozen
+**Decision:** Sol reviewed the wrapper at `311a23c`, accepted the mathematics, the eligibility rule, the aggregation rule and the cancellation regression test, and **refused to certify it as the executable Tuesday gate** on two blockers. Both verified before anything changed. Both real; the first is **worse than stated**, and there is a third consequence neither of us had named.
+
+**Blocker 1 — the evidence was never bound to the frozen identities.** `reliability_gate()` accepted bare curves indexed only by layout, seed and size, then attached the eighteen golden `config_id`s to the result without checking that those curves came from those configurations. Reproduced before fixing, and the reproduction is sharper than the finding: **five lines of invented floats returned `passed=True`, carrying all eighteen golden ids, with no model ever fitted.** The verdict was byte-indistinguishable in every artefact from an authorised one. Not "could receive an apparently authorised verdict" — did, and passed.
+
+**The consequence neither of us had named: rungs 0, 1 and 2 are indistinguishable by every identity in this project.** `ensemble_size` and `bootstrap_ratio` are deliberately outside `UNIT_IDENTITY_FIELDS`, so a rung-1 run of a cell has the **same `config_id`, the same `run_id` and the same `fit_id`** as the rung-0 run it replaces — verified directly. So the check Sol asked for, "actual config_id against the corresponding golden ID", is **necessary but not sufficient**: it passes unchanged for rung-1 evidence presented as rung 0. The rung is verifiable only against the training parameters recorded in the run record, which `Config.to_dict()` does carry. `GateEvidence._verify_cell` therefore checks both, and a test asserts the identity collapse so that if the rungs ever *become* identity-bearing, the provenance story is revisited rather than silently changing.
+
+A second consequence, recorded for Wednesday: because `run_id` is identical across rungs and `write_run_record` refuses to overwrite, a rung-1 run **cannot** be written into the same tree as rung 0. That is fail-closed and correct, but it means the ladder needs one immutable attempt directory per rung, settled before Wednesday rather than discovered by a `FileExistsError` mid-run.
+
+**Built:** `GateEvidence` / `EvidenceCell`. The public `reliability_gate(evidence, *, rung)` verifies every cell before computing anything — layout, size, development seed, `config_id` against the golden value, `run_id` against the identity its own fields imply, stage, partition, the rung's training specification, and **one attempt and one commit** across all ninety cells, with no cell missing, duplicated or unregistered. The curve-only path is now the private `_gate_from_curves`, reachable only through it; a raw dict is refused with an explicit `TypeError` rather than an incidental `AttributeError`, because an accidental runtime error is not an invariant. `GateEvidence.from_attempt()` reads one immutable attempt directory and **fails closed on any missing field** — defaulting one would manufacture exactly the provenance the type exists to verify. It refuses a dirty tree, and it correctly refuses the W3 pilot's own manifest, which predates the required fields.
+
+**Blocker 2 — rung identity could contradict the recorded estimator.** `reliability_gate(curves, rung=0, estimator="mc_dropout")` was accepted and produced a record claiming rung 0 while naming a rung-3 estimator. The free-form override is **removed**: the estimator and every training parameter now come from a frozen `RungSpec` selected **solely by rung**. The property tested is not that the argument is gone but that no serialised claim about the estimator is load-bearing anywhere — a tampered `estimator` field in a saved record does not survive `recompute()`.
+
+**Raw curves are recorded (Sol's answer 2), and the necessity was verified.** `TrendResult` keeps `mean_curve` and `per_seed_rho`, and the 5×6 matrix is recoverable from neither, so the exact paired bootstrap genuinely cannot be rebuilt from a saved verdict without them. The record now carries all ninety raw cells with their source run and config ids, the derived mean curve, each configuration's rho, exact interval and verdict, the aggregate verdict, the rung specification and the attempt/commit provenance. `recompute(row)` re-runs the entire path — verification included — from the record alone.
+
+**Change Record — the fallback ladder, frozen before rung 0 runs.** Sol's answer 3: freeze the rung parameters before observing the rung-0 result, otherwise Wednesday chooses the repair after having watched Tuesday fail. Cumulative, each rung changing one parameter:
+
+| rung | estimator | ensemble_size | bootstrap_ratio | granularity |
+|---|---|---|---|---|
+| 0 | ensemble | 5 | 1.0 | episode |
+| 1 | ensemble | 10 | 1.0 | episode |
+| 2 | episode **subbagging** | 10 | **0.5** | episode |
+| 3 | mc_dropout | *deliberately not frozen* | | |
+| 4 | last_layer_laplace | *deliberately not frozen* | | |
+
+**Data seen: none.** Zero GPU-hours, no gate cell executed. Rungs 3 and 4 are secondary estimators whose method-specific parameters are frozen before either is executed, not now; `RungSpec.for_rung(3)` raises. Reaching rung 3 still means H1 is falsified for ensembles (P§11.3), and `WorldModel` has no dropout, so it stays an architectural decision rather than a run (D-062).
+
+**Pre-data semantic correction to P§11.3 (rung 2).** The plan says to raise inter-member diversity by *increasing* the bootstrap ratio. In the implemented API `bootstrap_ratio` is with-replacement draws over episode count, so expected unique-pool coverage is 1 − e^−ratio — **measured 0.395 at 0.5, 0.635 at 1.0, 0.866 at 2.0**. Raising the ratio makes members cover more of the same pool and therefore **more alike**, the opposite of the plan's stated intent. Rung 2 subbags at 0.5, which is the parameter move that actually implements what the plan asks for. Recorded as a correction rather than applied silently, and asserted by a test so that a future edit "restoring" the literal wording fails.
+
+**Verified, not assumed:** every claim above was reproduced before the change — the fabricated-curve PASS, the rung/estimator contradiction, the identity collapse across rungs, the coverage arithmetic, and the non-recoverability of the raw matrix from `TrendResult`.
+**Tests:** 483 → **507 passing**, 2 skipped. All five regressions Sol required, plus the rung-identity collapse, the pilot-manifest refusal, the dirty-tree refusal and the recomputability round trip.
+**Plan ref:** P§11.3, S§W4 Tue–Thu.
+**Reviewed by Sol:** blockers Sol's, 2026-08-18. `311a23c` explicitly **not** certified; certified base remains `a84cf6c`. **No Tuesday compute until this is reviewed.**

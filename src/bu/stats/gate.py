@@ -48,16 +48,59 @@ from ..config import Config, UnitSpec
 from ..streams import seed_partition
 from .trend import TrendResult, trend_test
 
-#: The fallback ladder (S§W4 Tue–Thu). Rung 0 is the default ensemble; reaching
+#: The fallback ladder (S§W4 Tue-Thu). Rung 0 is the default ensemble; reaching
 #: rung 3 or 4 means H1 is falsified *for ensembles* even though a gate verdict
-#: exists (P§11.3).
-RUNGS: dict[int, str] = {
-    0: "ensemble",
-    1: "ensemble_10",
-    2: "bootstrap_ratio",
-    3: "mc_dropout",
-    4: "last_layer_laplace",
-}
+#: exists (P§11.3). Names only -- the executable parameters are in
+#: ``constants.RUNG_SPECS``, frozen before rung 0 ran (D-071).
+RUNGS: dict[int, str] = K.RUNG_NAMES
+
+
+@dataclass(frozen=True)
+class RungSpec:
+    """The frozen training specification for one rung (D-071).
+
+    Selected **solely by rung**. There is no free-form estimator argument and no
+    way to override a parameter: before this existed,
+    ``reliability_gate(curves, rung=0, estimator="mc_dropout")`` was accepted
+    and produced a record claiming rung 0 while naming a rung-3 estimator. The
+    estimator name was decorative -- it labelled the record without selecting
+    anything -- so nothing could ever have detected the contradiction downstream.
+    """
+
+    rung: int
+    estimator: str
+    ensemble_size: int
+    bootstrap_ratio: float
+    granularity: str
+    description: str
+
+    @classmethod
+    def for_rung(cls, rung: int) -> "RungSpec":
+        """The frozen spec, or a refusal. Never an inferred or defaulted one."""
+        if rung in K.RUNG_PARAMETERS_UNFROZEN:
+            raise ValueError(
+                f"rung {rung} ({K.RUNG_NAMES[rung]}) is a secondary estimator whose "
+                "method-specific parameters are deliberately NOT frozen yet. Sol's "
+                "ruling: freeze them before it is executed, not while reading a "
+                "failed rung below it. Reaching rung 3 also means H1 is recorded as "
+                "falsified for ensembles (P§11.3), and `WorldModel` has no dropout, "
+                "so it is an architectural decision rather than a run (D-062)."
+            )
+        if rung not in K.RUNG_SPECS:
+            raise ValueError(f"rung must be one of {sorted(K.RUNG_SPECS)}, got {rung}")
+        spec = K.RUNG_SPECS[rung]
+        return cls(rung=rung, **spec)
+
+    def as_row(self) -> dict:
+        return {
+            "rung": self.rung,
+            "estimator": self.estimator,
+            "ensemble_size": self.ensemble_size,
+            "bootstrap_ratio": self.bootstrap_ratio,
+            "granularity": self.granularity,
+            "description": self.description,
+        }
+
 
 #: The three predeclared gate configurations, recorded **before** execution
 #: (D-070). Shape-causal at confound 0 throughout: the manipulation and the
@@ -132,8 +175,9 @@ def gate_config_ids(layout: str) -> tuple[str, ...]:
 class GateResult:
     """One rung's verdict, with everything needed to report it honestly."""
 
-    rung: int
-    estimator: str
+    #: The frozen training specification. The estimator name comes from here and
+    #: from nowhere else, so it cannot contradict the rung (D-071).
+    spec: RungSpec
     passed: bool
     reason: str
     #: One per configuration, in ``GATE_LAYOUTS`` order. Preserved rather than
@@ -141,11 +185,26 @@ class GateResult:
     per_configuration: dict[str, TrendResult]
     seeds: tuple[int, ...]
     config_ids: dict[str, tuple[str, ...]]
+    #: Every raw per-seed curve, bound to its source run. Sol: "the exact paired
+    #: bootstrap cannot be reconstructed from the mean curve alone" -- verified,
+    #: `TrendResult` keeps `mean_curve` and `per_seed_rho`, from neither of which
+    #: the 5x6 matrix is recoverable. So the evidence travels with the verdict.
+    evidence: GateEvidence
+
+    @property
+    def rung(self) -> int:
+        return self.spec.rung
+
+    @property
+    def estimator(self) -> str:
+        return self.spec.estimator
 
     def as_row(self) -> dict:
         return {
             "rung": self.rung,
             "estimator": self.estimator,
+            "rung_spec": self.spec.as_row(),
+            "evidence": self.evidence.as_row(),
             "passed": self.passed,
             "reason": self.reason,
             "seeds": list(self.seeds),
@@ -225,27 +284,23 @@ def _validate_eligibility(
                 )
 
 
-def reliability_gate(
+def _gate_from_curves(
     curves_by_configuration: Mapping[str, Mapping[int, Mapping[int, float]]],
     *,
-    rung: int,
-    estimator: str | None = None,
+    spec: RungSpec,
+    evidence: GateEvidence,
 ) -> GateResult:
-    """Run the registered trend test on each configuration and aggregate.
+    """The mathematics and the aggregation, once the evidence is verified.
 
-    Args:
-        curves_by_configuration: ``{layout: {seed: {size: disagreement}}}`` for
-            exactly the three predeclared layouts, each at exactly five
-            development seeds.
-        rung: which rung of the fallback ladder produced these curves. Recorded
-            with the verdict, because "passed at rung 0" and "passed at rung 3"
-            are different claims about the same downstream numbers.
-        estimator: defaults to the ladder's name for that rung.
+    **Private.** Sol's ruling: this "may remain as a private mathematical helper,
+    but it must not produce the authorised gate artefact by itself." It is
+    reachable only through :func:`reliability_gate`, which will not construct a
+    ``GateEvidence`` it has not verified.
 
     Returns:
         The verdict, with every configuration's coefficient and interval kept.
     """
-    _validate_eligibility(curves_by_configuration, rung)
+    _validate_eligibility(curves_by_configuration, spec.rung)
 
     results = {
         name: trend_test(curves_by_configuration[name], partition="development")
@@ -264,11 +319,327 @@ def reliability_gate(
         )
 
     return GateResult(
-        rung=rung,
-        estimator=estimator or RUNGS[rung],
+        spec=spec,
+        evidence=evidence,
         passed=passed,
         reason=reason,
         per_configuration=results,
         seeds=GATE_SEEDS,
         config_ids={name: GATE_CONFIG_IDS[name] for name in GATE_LAYOUTS},
+    )
+
+
+# --------------------------------------------------------------------------
+# Evidence binding (D-071)
+#
+# Sol, 2026-08-18: the curve-only function "accepts bare curves indexed only by
+# layout, seed, and size. It then attaches the frozen 18 config_id values to the
+# result without verifying that those curves came from those configurations."
+#
+# Reproduced before fixing, and it is worse than the finding says: five lines of
+# invented floats of the right shape produced a **PASS**, carrying all eighteen
+# golden ids, with no model ever fitted. The verdict was indistinguishable in
+# every artefact from an authorised one.
+#
+# Worse still, and not in the finding: rungs 0, 1 and 2 are indistinguishable by
+# EVERY identity in this project. `ensemble_size` and `bootstrap_ratio` are
+# deliberately non-identity fields (UNIT_IDENTITY_FIELDS), so a rung-1 run has
+# the same config_id, the same run_id and the same fit_id as the rung-0 run it
+# replaces. Checking config_id against the golden list is therefore NECESSARY
+# BUT NOT SUFFICIENT: it passes unchanged for rung-1 evidence presented as rung
+# 0. The rung must be verified against the training parameters recorded in the
+# run record, which `Config.to_dict()` does carry.
+# --------------------------------------------------------------------------
+
+#: The experimental obligation the gate's runs discharge. In run identity, so a
+#: run borrowed from another stage cannot be presented as gate evidence.
+GATE_STAGE = "exp1"
+
+#: What an attempt manifest must carry per run for the gate to read it. Absent
+#: fields fail closed rather than defaulting: a default here would silently
+#: manufacture the very provenance this type exists to verify.
+REQUIRED_RUN_FIELDS: tuple[str, ...] = (
+    "layout",
+    "n_transitions",
+    "seed",
+    "config_id",
+    "run_id",
+    "stage",
+    "seed_partition",
+    "ensemble_size",
+    "bootstrap_ratio",
+    "granularity",
+    "mean_disagreement",
+)
+
+
+@dataclass(frozen=True)
+class EvidenceCell:
+    """One (layout, seed, size) cell, bound to the run that produced it."""
+
+    layout: str
+    seed: int
+    size: int
+    disagreement: float
+    config_id: str
+    run_id: str
+    stage: str
+    partition: str
+    ensemble_size: int
+    bootstrap_ratio: float
+    granularity: str
+    attempt: str
+    commit: str
+
+    @property
+    def key(self) -> tuple[str, int, int]:
+        return (self.layout, self.seed, self.size)
+
+    def as_row(self) -> dict:
+        return {
+            "layout": self.layout,
+            "seed": self.seed,
+            "size": self.size,
+            "disagreement": self.disagreement,
+            "config_id": self.config_id,
+            "run_id": self.run_id,
+            "stage": self.stage,
+            "partition": self.partition,
+            "ensemble_size": self.ensemble_size,
+            "bootstrap_ratio": self.bootstrap_ratio,
+            "granularity": self.granularity,
+            "attempt": self.attempt,
+            "commit": self.commit,
+        }
+
+    @classmethod
+    def from_row(cls, row: Mapping) -> "EvidenceCell":
+        return cls(**{k: row[k] for k in cls.__dataclass_fields__})
+
+
+@dataclass(frozen=True)
+class GateEvidence:
+    """The 90 cells behind one rung's verdict, verified before it is computed."""
+
+    cells: tuple[EvidenceCell, ...]
+
+    @property
+    def attempt(self) -> str:
+        return self.cells[0].attempt
+
+    @property
+    def commit(self) -> str:
+        return self.cells[0].commit
+
+    def verify(self, spec: RungSpec) -> None:
+        """Refuse anything that is not authorised gate evidence. Every clause fails closed."""
+        if not self.cells:
+            raise ValueError("no evidence cells; the gate has nothing to verify")
+
+        # One attempt, one commit. A verdict assembled from two runs is not a
+        # verdict about either (D-062's immutable-attempt rule).
+        attempts = {c.attempt for c in self.cells}
+        commits = {c.commit for c in self.cells}
+        if len(attempts) != 1:
+            raise ValueError(
+                f"evidence spans {len(attempts)} attempts {sorted(attempts)}; a gate "
+                "verdict is computed from exactly one immutable attempt (D-062)"
+            )
+        if len(commits) != 1:
+            raise ValueError(
+                f"evidence spans {len(commits)} commits {sorted(commits)}; one verdict, "
+                "one code state"
+            )
+
+        # The grid, exactly: no cell missing, none duplicated, none extra.
+        expected = {
+            (layout, seed, size)
+            for layout in GATE_LAYOUTS
+            for seed in GATE_SEEDS
+            for size in K.DATA_SIZES
+        }
+        seen: dict[tuple[str, int, int], EvidenceCell] = {}
+        for cell in self.cells:
+            if cell.key in seen:
+                raise ValueError(
+                    f"duplicate evidence for {cell.key}: run_ids {seen[cell.key].run_id} "
+                    f"and {cell.run_id}. Which one the verdict used would be decided by "
+                    "iteration order"
+                )
+            seen[cell.key] = cell
+        if set(seen) != expected:
+            missing = sorted(expected - set(seen))
+            extra = sorted(set(seen) - expected)
+            raise ValueError(
+                f"evidence grid is not the registered one: {len(missing)} missing "
+                f"{missing[:4]}, {len(extra)} unregistered {extra[:4]}. The gate is "
+                f"exactly {len(GATE_LAYOUTS)}x{len(GATE_SEEDS)}x{len(K.DATA_SIZES)} "
+                f"= {len(expected)} cells (D-070)"
+            )
+
+        for cell in self.cells:
+            self._verify_cell(cell, spec)
+
+    @staticmethod
+    def _verify_cell(cell: EvidenceCell, spec: RungSpec) -> None:
+        size_index = K.DATA_SIZES.index(cell.size)
+        golden = GATE_CONFIG_IDS[cell.layout][size_index]
+        if cell.config_id != golden:
+            raise ValueError(
+                f"cell {cell.key} carries config_id {cell.config_id!r}, but the frozen "
+                f"identity for {cell.layout} at N={cell.size} is {golden!r}. Evidence "
+                "from a different configuration cannot be issued the golden ids "
+                "(D-071)"
+            )
+        if cell.stage != GATE_STAGE:
+            raise ValueError(
+                f"cell {cell.key} has stage {cell.stage!r}; the gate reads "
+                f"{GATE_STAGE!r} runs. A run discharging a different obligation is "
+                "not gate evidence (D-012)"
+            )
+        expected_run_id = f"{golden}-{GATE_STAGE}-s{cell.seed:03d}"
+        if cell.run_id != expected_run_id:
+            raise ValueError(
+                f"cell {cell.key} names run_id {cell.run_id!r}, which is not the "
+                f"identity its own fields imply ({expected_run_id!r}). The record and "
+                "the evidence disagree about which run this is"
+            )
+        if seed_partition(cell.seed) != "development" or cell.partition != "development":
+            raise ValueError(
+                f"cell {cell.key} is partition {cell.partition!r} / "
+                f"{seed_partition(cell.seed)!r}. The reliability gate is "
+                "development-only: spending confirmatory seeds on estimator "
+                "selection consumes the evidence W10 needs (D-034, D-068)"
+            )
+        # The rung check that identity cannot do. See the note above: rungs 0-2
+        # share config_id, run_id and fit_id, so this is the only place a
+        # substituted rung is detectable at all.
+        actual = (cell.ensemble_size, cell.bootstrap_ratio, cell.granularity)
+        wanted = (spec.ensemble_size, spec.bootstrap_ratio, spec.granularity)
+        if actual != wanted:
+            raise ValueError(
+                f"cell {cell.key} was trained at ensemble_size={cell.ensemble_size}, "
+                f"bootstrap_ratio={cell.bootstrap_ratio}, granularity="
+                f"{cell.granularity!r}, but rung {spec.rung} is frozen at "
+                f"ensemble_size={spec.ensemble_size}, "
+                f"bootstrap_ratio={spec.bootstrap_ratio}, "
+                f"granularity={spec.granularity!r}. These parameters are NOT in any "
+                "identity, so nothing else in the project would have noticed (D-071)"
+            )
+
+    def curves(self) -> dict[str, dict[int, dict[int, float]]]:
+        """``{layout: {seed: {size: disagreement}}}`` -- what the statistic reads."""
+        out: dict[str, dict[int, dict[int, float]]] = {
+            layout: {seed: {} for seed in GATE_SEEDS} for layout in GATE_LAYOUTS
+        }
+        for cell in self.cells:
+            out[cell.layout][cell.seed][cell.size] = cell.disagreement
+        return out
+
+    def as_row(self) -> dict:
+        """Every raw cell, so the verdict is recomputable without the run records."""
+        return {
+            "attempt": self.attempt,
+            "commit": self.commit,
+            "n_cells": len(self.cells),
+            "cells": [c.as_row() for c in sorted(self.cells, key=lambda c: c.key)],
+        }
+
+    @classmethod
+    def from_record(cls, row: Mapping) -> "GateEvidence":
+        """Rebuild from :meth:`as_row`, so a serialised verdict can be recomputed."""
+        return cls(cells=tuple(EvidenceCell.from_row(c) for c in row["cells"]))
+
+    @classmethod
+    def from_attempt(cls, attempt_dir) -> "GateEvidence":
+        """Read one immutable attempt directory. Missing fields fail closed."""
+        import json
+        from pathlib import Path
+
+        attempt_dir = Path(attempt_dir)
+        manifest = json.loads((attempt_dir / "manifest.json").read_text())
+        for field in ("attempt", "commit", "dirty", "runs"):
+            if field not in manifest:
+                raise ValueError(
+                    f"{attempt_dir}/manifest.json has no {field!r}; it is not a gate "
+                    "evidence manifest. The gate will not infer provenance it was not "
+                    "given (D-071)"
+                )
+        if manifest["dirty"]:
+            raise ValueError(
+                f"{attempt_dir} was produced from a dirty tree (commit "
+                f"{manifest['commit'][:7]}); a verdict must name one reproducible code "
+                "state"
+            )
+        cells = []
+        for run in manifest["runs"]:
+            missing = [f for f in REQUIRED_RUN_FIELDS if f not in run]
+            if missing:
+                raise ValueError(
+                    f"run {run.get('run_id', '<unnamed>')} in {attempt_dir} is missing "
+                    f"{missing}. Gate evidence must carry its own provenance and "
+                    "training specification -- the W3 pilot manifest predates this and "
+                    "is correctly refused here (D-071)"
+                )
+            cells.append(
+                EvidenceCell(
+                    layout=run["layout"],
+                    seed=run["seed"],
+                    size=run["n_transitions"],
+                    disagreement=run["mean_disagreement"],
+                    config_id=run["config_id"],
+                    run_id=run["run_id"],
+                    stage=run["stage"],
+                    partition=run["seed_partition"],
+                    ensemble_size=run["ensemble_size"],
+                    bootstrap_ratio=run["bootstrap_ratio"],
+                    granularity=run["granularity"],
+                    attempt=manifest["attempt"],
+                    commit=manifest["commit"],
+                )
+            )
+        return cls(cells=tuple(cells))
+
+
+def reliability_gate(evidence: GateEvidence, *, rung: int) -> GateResult:
+    """**The** gate. Verify the evidence, then compute the verdict from it.
+
+    This is the only function that produces an authorised gate artefact. There
+    is no ``estimator`` argument and no way to pass curves directly: the
+    estimator is derived from the frozen :class:`RungSpec` selected by ``rung``,
+    and the curves are read out of evidence that has already been checked cell
+    by cell against the golden identities, the run records and the rung's
+    training specification.
+
+    Args:
+        evidence: one immutable attempt's 90 cells, each naming its source run.
+        rung: which rung of the ladder. Selects the frozen training spec; a rung
+            whose parameters are not yet frozen is refused (D-071).
+
+    Returns:
+        The verdict, carrying the rung spec and every raw cell that produced it.
+    """
+    if not isinstance(evidence, GateEvidence):
+        raise TypeError(
+            "the gate takes verified GateEvidence, not "
+            f"{type(evidence).__name__}. Passing curves directly is the defect "
+            "D-071 closed: bare floats of the right shape produced a PASS "
+            "carrying the golden config ids with nothing ever fitted. Build "
+            "evidence with GateEvidence.from_attempt(); an incidental "
+            "AttributeError here would be an accident, not a refusal."
+        )
+    spec = RungSpec.for_rung(rung)
+    evidence.verify(spec)
+    return _gate_from_curves(evidence.curves(), spec=spec, evidence=evidence)
+
+
+def recompute(row: Mapping) -> GateResult:
+    """Recompute a serialised verdict from its own record alone (Sol, D-071).
+
+    "The final gate JSON must be independently recomputable without consulting
+    informal logs." This reads back :meth:`GateResult.as_row` and re-runs the
+    whole path -- verification included -- from the raw cells it carries.
+    """
+    return reliability_gate(
+        GateEvidence.from_record(row["evidence"]), rung=row["rung"]
     )

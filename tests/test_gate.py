@@ -1,24 +1,35 @@
-"""The Week 4 reliability gate's eligibility and aggregation rules (D-070).
+"""The Week 4 reliability gate's eligibility, aggregation and evidence binding.
 
 The gate is where an *authorised verdict* is distinguished from a computed
 number. Every test here asserts a refusal or an aggregation rule, because the
 statistic itself is already tested in `test_trend.py` and is deliberately not
 reimplemented here.
+
+D-071 added the part that was missing: a verdict must be bound to the evidence
+that produced it. Before it, five lines of invented floats produced a PASS
+carrying all eighteen golden `config_id`s with no model ever fitted.
 """
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace as dataclass_replace
+
 import pytest
 
 from bu import constants as K
+from bu.config import Config, TrainConfig
 from bu.stats.gate import (
-    GATE_CONFIG_IDS, GATE_LAYOUTS, GATE_SEEDS, RUNGS, gate_config_ids,
-    gate_units, reliability_gate,
+    GATE_CONFIG_IDS, GATE_LAYOUTS, GATE_SEEDS, GATE_STAGE, RUNGS, EvidenceCell,
+    GateEvidence, GateResult, RungSpec, _gate_from_curves, gate_config_ids,
+    gate_units, recompute, reliability_gate,
 )
+from bu.streams import seed_partition
 
 SIZES = K.DATA_SIZES
 FALLING = [0.9, 0.7, 0.5, 0.4, 0.3, 0.2]
 RISING = [0.2, 0.3, 0.4, 0.5, 0.7, 0.9]
+COMMIT = "a" * 40
 
 
 def curves(values, seeds=GATE_SEEDS, jitter=0.01):
@@ -29,9 +40,50 @@ def curves(values, seeds=GATE_SEEDS, jitter=0.01):
 
 
 def all_configurations(values=FALLING, **overrides):
-    out = {name: curves(values) for name in GATE_LAYOUTS}
-    out.update({name: curves(v) for name, v in overrides.items()})
+    out = {name: values for name in GATE_LAYOUTS}
+    out.update(overrides)
     return out
+
+
+def evidence(
+    values_by_layout=None,
+    *,
+    seeds=GATE_SEEDS,
+    spec=None,
+    attempt="attempt-001",
+    commit=COMMIT,
+    jitter=0.01,
+    **cell_overrides,
+):
+    """Well-formed gate evidence, unless a test deliberately breaks one field."""
+    if values_by_layout is None:
+        values_by_layout = all_configurations()
+    spec = spec or RungSpec.for_rung(0)
+    cells = []
+    for layout, values in values_by_layout.items():
+        for i, seed in enumerate(seeds):
+            for n, v in zip(SIZES, values):
+                golden = GATE_CONFIG_IDS.get(layout, ("unregistered",) * 6)[
+                    SIZES.index(n)
+                ]
+                fields = dict(
+                    layout=layout,
+                    seed=seed,
+                    size=n,
+                    disagreement=v + jitter * i,
+                    config_id=golden,
+                    run_id=f"{golden}-{GATE_STAGE}-s{seed:03d}",
+                    stage=GATE_STAGE,
+                    partition=seed_partition(seed),
+                    ensemble_size=spec.ensemble_size,
+                    bootstrap_ratio=spec.bootstrap_ratio,
+                    granularity=spec.granularity,
+                    attempt=attempt,
+                    commit=commit,
+                )
+                fields.update(cell_overrides)
+                cells.append(EvidenceCell(**fields))
+    return GateEvidence(cells=tuple(cells))
 
 
 # --- the predeclared configurations, frozen before Tuesday ----------------
@@ -74,18 +126,18 @@ def test_the_three_configurations_vary_only_the_layout():
 
 
 def test_exactly_three_predeclared_configurations():
-    with pytest.raises(ValueError, match="exactly the three predeclared"):
-        reliability_gate({"uniform": curves(FALLING)}, rung=0)
+    with pytest.raises(ValueError, match="not the registered one|exactly the three"):
+        reliability_gate(evidence({"uniform": FALLING}), rung=0)
 
     extra = all_configurations()
-    extra["dense"] = curves(FALLING)
-    with pytest.raises(ValueError, match="exactly the three predeclared"):
-        reliability_gate(extra, rung=0)
+    extra["dense"] = FALLING
+    with pytest.raises(ValueError, match="not the registered one|exactly the three"):
+        reliability_gate(evidence(extra), rung=0)
 
     substituted = all_configurations()
     substituted["elsewhere"] = substituted.pop("sparse")
-    with pytest.raises(ValueError, match="exactly the three predeclared"):
-        reliability_gate(substituted, rung=0)
+    with pytest.raises(ValueError, match="not the registered one|exactly the three"):
+        reliability_gate(evidence(substituted), rung=0)
 
 
 @pytest.mark.parametrize(
@@ -99,39 +151,45 @@ def test_exactly_three_predeclared_configurations():
 )
 def test_exactly_five_development_seeds(seeds, why):
     """The pilot's three seeds cannot become a gate verdict by being rerun."""
-    bad = all_configurations()
-    bad["clustered"] = curves(FALLING, seeds=seeds)
-    with pytest.raises(ValueError, match="the gate requires"):
-        reliability_gate(bad, rung=0)
+    ev = GateEvidence(
+        cells=tuple(c for c in evidence().cells if c.layout != "clustered")
+        + evidence({"clustered": FALLING}, seeds=seeds).cells
+    )
+    with pytest.raises(ValueError, match="not the registered one|the gate requires"):
+        reliability_gate(ev, rung=0)
 
 
 def test_the_gate_refuses_confirmatory_seeds():
     """Estimator selection must not consume the verdict's evidence."""
     conf = tuple(K.CONFIRMATORY_SEED_BASE + i for i in range(5))
-    bad = all_configurations()
-    bad["uniform"] = curves(FALLING, seeds=conf)
-    with pytest.raises(ValueError, match="the gate requires|development-only"):
-        reliability_gate(bad, rung=0)
+    ev = GateEvidence(
+        cells=tuple(c for c in evidence().cells if c.layout != "uniform")
+        + evidence({"uniform": FALLING}, seeds=conf).cells
+    )
+    with pytest.raises(
+        ValueError, match="not the registered one|development-only|the gate requires"
+    ):
+        reliability_gate(ev, rung=0)
 
 
 def test_an_unknown_rung_is_refused():
     with pytest.raises(ValueError, match="rung must be one of"):
-        reliability_gate(all_configurations(), rung=5)
+        reliability_gate(evidence(), rung=9)
 
 
 def test_an_incomplete_curve_is_still_refused_downstream():
-    """The wrapper does not weaken any of `trend_test`'s refusals."""
-    bad = all_configurations()
+    """The private helper does not weaken any of `trend_test`'s refusals."""
+    bad = {name: curves(FALLING) for name in GATE_LAYOUTS}
     del bad["sparse"][GATE_SEEDS[0]][SIZES[2]]
     with pytest.raises(ValueError, match="missing dataset sizes"):
-        reliability_gate(bad, rung=0)
+        _gate_from_curves(bad, spec=RungSpec.for_rung(0), evidence=evidence())
 
 
 # --- aggregation ----------------------------------------------------------
 
 
 def test_rung_zero_passes_only_when_all_three_pass():
-    result = reliability_gate(all_configurations(FALLING), rung=0)
+    result = reliability_gate(evidence(all_configurations(FALLING)), rung=0)
     assert result.passed
     assert len(result.per_configuration) == 3
     assert all(r.passed for r in result.per_configuration.values())
@@ -140,8 +198,7 @@ def test_rung_zero_passes_only_when_all_three_pass():
 
 def test_one_failing_configuration_fails_the_rung():
     """No majority vote. Configuration sensitivity IS a reliability failure."""
-    mixed = all_configurations(FALLING, sparse=RISING)
-    result = reliability_gate(mixed, rung=0)
+    result = reliability_gate(evidence(all_configurations(FALLING, sparse=RISING)), rung=0)
 
     assert not result.passed
     assert result.per_configuration["uniform"].passed
@@ -153,8 +210,7 @@ def test_one_failing_configuration_fails_the_rung():
 
 def test_every_configuration_result_is_preserved():
     """All three coefficients and intervals are reported, never reduced."""
-    mixed = all_configurations(FALLING, sparse=RISING)
-    row = reliability_gate(mixed, rung=0).as_row()
+    row = reliability_gate(evidence(all_configurations(FALLING, sparse=RISING)), rung=0).as_row()
 
     assert set(row["configurations"]) == set(GATE_LAYOUTS)
     for name in GATE_LAYOUTS:
@@ -174,7 +230,7 @@ def test_curves_are_never_pooled_across_configurations():
     mixed = all_configurations(
         [0.90, 0.70, 0.50, 0.40, 0.30, 0.20], sparse=[0.20, 0.30, 0.40, 0.50, 0.55, 0.60]
     )
-    result = reliability_gate(mixed, rung=0)
+    result = reliability_gate(evidence(mixed), rung=0)
     assert not result.passed
     assert not result.per_configuration["sparse"].passed
     # Each configuration's own seeds only: five blocks, not fifteen.
@@ -188,27 +244,308 @@ def test_curves_are_never_pooled_across_configurations():
 
 def test_the_rung_and_estimator_travel_with_the_verdict():
     """"Passed at rung 0" and "passed at rung 3" are different claims."""
-    for rung, name in RUNGS.items():
-        result = reliability_gate(all_configurations(FALLING), rung=rung)
+    for rung in sorted(K.RUNG_SPECS):
+        spec = RungSpec.for_rung(rung)
+        result = reliability_gate(evidence(all_configurations(FALLING), spec=spec), rung=rung)
         assert result.rung == rung
-        assert result.estimator == name
+        assert result.estimator == spec.estimator
         assert result.as_row()["rung"] == rung
-        assert result.as_row()["estimator"] == name
+        assert result.as_row()["estimator"] == spec.estimator
+        assert result.as_row()["rung_spec"] == spec.as_row()
 
 
 def test_reaching_rung_three_reports_h1_falsified_for_ensembles():
-    """P§11.3: a pass at rung 3 or 4 is a secondary path, not a clean pass."""
-    high = reliability_gate(all_configurations(FALLING), rung=3)
-    assert high.passed
+    """P§11.3: a pass at rung 3 or 4 is a secondary path, not a clean pass.
+
+    Rung 3 cannot be *executed* until its parameters are frozen, so the reporting
+    property is asserted on a hand-built result. The refusal is asserted
+    separately below — these are two different claims and both must hold.
+    """
+    passing = reliability_gate(evidence(all_configurations(FALLING)), rung=0)
+    high = GateResult(
+        spec=RungSpec(
+            rung=3, estimator="mc_dropout", ensemble_size=5, bootstrap_ratio=1.0,
+            granularity="episode", description="hypothetical",
+        ),
+        passed=True,
+        reason=passing.reason,
+        per_configuration=passing.per_configuration,
+        seeds=passing.seeds,
+        config_ids=passing.config_ids,
+        evidence=passing.evidence,
+    )
     assert "FALSIFIED FOR" in high.summary()
     assert "secondary" in high.summary()
-
-    low = reliability_gate(all_configurations(FALLING), rung=0)
-    assert "FALSIFIED FOR" not in low.summary()
+    assert "FALSIFIED FOR" not in passing.summary()
 
 
 def test_the_record_states_the_partition_and_the_aggregation_rule():
-    row = reliability_gate(all_configurations(FALLING), rung=0).as_row()
+    row = reliability_gate(evidence(all_configurations(FALLING)), rung=0).as_row()
     assert row["partition"] == "development"
     assert row["seeds"] == list(GATE_SEEDS)
     assert row["config_ids"]["uniform"] == list(GATE_CONFIG_IDS["uniform"])
+
+
+# --- evidence binding (D-071) ---------------------------------------------
+#
+# Sol, 2026-08-18. Each of these is a route by which a number could have been
+# issued the authority of a gate verdict without having earned it.
+
+
+def test_invented_curves_cannot_become_a_verdict():
+    """The regression for the defect itself.
+
+    Before D-071 this exact construction returned PASS carrying all eighteen
+    golden `config_id`s, having fitted nothing. It is the whole reason the
+    public entry point takes evidence rather than curves.
+    """
+    invented = {
+        layout: {seed: {n: 1.0 / (i + 1) for i, n in enumerate(SIZES)} for seed in GATE_SEEDS}
+        for layout in GATE_LAYOUTS
+    }
+    with pytest.raises(TypeError):
+        reliability_gate(invented, rung=0)
+
+
+def test_evidence_from_a_non_golden_configuration_cannot_receive_golden_ids():
+    """A curve of the right shape from the wrong unit is refused, not relabelled."""
+    ev = evidence(config_id="deadbeefcafe")
+    with pytest.raises(ValueError, match="frozen identity for"):
+        reliability_gate(ev, rung=0)
+
+
+def test_a_run_id_inconsistent_with_its_own_fields_is_refused():
+    """The record and the evidence must agree about which run this is."""
+    ev = evidence(run_id="ea25c6151f4d-exp1-s999")
+    with pytest.raises(ValueError, match="not the identity its own fields imply"):
+        reliability_gate(ev, rung=0)
+
+
+def test_a_run_from_another_stage_is_not_gate_evidence():
+    ev = evidence(stage="pilot")
+    with pytest.raises(ValueError, match="stage 'pilot'|not gate evidence"):
+        reliability_gate(ev, rung=0)
+
+
+@pytest.mark.parametrize(
+    "wrong, why",
+    [
+        (dict(ensemble_size=10), "rung 1's ensemble size presented as rung 0"),
+        (dict(bootstrap_ratio=0.5), "rung 2's subbagging presented as rung 0"),
+        (dict(granularity="transition"), "a secondary bootstrap presented as primary"),
+    ],
+)
+def test_incorrect_rung_training_parameters_are_refused(wrong, why):
+    """The check no identity in this project can perform — see the next test."""
+    with pytest.raises(ValueError, match="but rung 0 is frozen at"):
+        reliability_gate(evidence(**wrong), rung=0)
+
+
+def test_the_rungs_are_indistinguishable_by_every_identity():
+    """Why the parameter check above is the *only* defence, not a belt-and-braces one.
+
+    `ensemble_size` and `bootstrap_ratio` are deliberately non-identity fields,
+    so rung 0, rung 1 and rung 2 runs of the same cell share config_id, run_id
+    and fit_id exactly. Verifying identity against the golden list — which is
+    what the D-071 finding literally asked for — therefore passes unchanged for
+    rung-1 evidence presented as rung 0. If this test ever fails, the rungs have
+    become identity-bearing and the gate's provenance story changes.
+    """
+    unit = gate_units("uniform")[0]
+    rung0 = Config(unit=unit, seed=0, stage=GATE_STAGE, train=TrainConfig(ensemble_size=5, bootstrap_ratio=1.0))
+    rung2 = Config(unit=unit, seed=0, stage=GATE_STAGE, train=TrainConfig(ensemble_size=10, bootstrap_ratio=0.5))
+
+    assert rung0.config_id == rung2.config_id
+    assert rung0.run_id == rung2.run_id
+    assert rung0.fit_id == rung2.fit_id
+    # ...and yet the run record does carry the distinction, which is what makes
+    # the rung verifiable at all.
+    assert rung0.to_dict()["train"]["ensemble_size"] == 5
+    assert rung2.to_dict()["train"]["bootstrap_ratio"] == 0.5
+
+
+def test_a_missing_cell_fails_closed():
+    ev = GateEvidence(cells=evidence().cells[:-1])
+    with pytest.raises(ValueError, match="1 missing"):
+        reliability_gate(ev, rung=0)
+
+
+def test_a_duplicated_cell_fails_closed():
+    """Which of two runs the verdict used would otherwise be iteration order."""
+    cells = evidence().cells
+    ev = GateEvidence(cells=cells + (cells[0],))
+    with pytest.raises(ValueError, match="duplicate evidence"):
+        reliability_gate(ev, rung=0)
+
+
+def test_evidence_mixed_across_attempts_fails_closed():
+    """A verdict assembled from two runs is not a verdict about either (D-062)."""
+    first = evidence().cells
+    ev = GateEvidence(cells=first[:-1] + (dataclass_replace(first[-1], attempt="attempt-002"),))
+    with pytest.raises(ValueError, match="spans 2 attempts"):
+        reliability_gate(ev, rung=0)
+
+
+def test_evidence_mixed_across_commits_fails_closed():
+    first = evidence().cells
+    ev = GateEvidence(cells=first[:-1] + (dataclass_replace(first[-1], commit="b" * 40),))
+    with pytest.raises(ValueError, match="spans 2 commits"):
+        reliability_gate(ev, rung=0)
+
+
+# --- rungs whose parameters are not frozen ---------------------------------
+
+
+@pytest.mark.parametrize("rung", K.RUNG_PARAMETERS_UNFROZEN)
+def test_a_rung_without_frozen_parameters_is_refused(rung):
+    """Sol: freeze them before executing, not after watching a lower rung fail."""
+    with pytest.raises(ValueError, match="deliberately NOT frozen"):
+        reliability_gate(evidence(), rung=rung)
+
+
+def test_the_frozen_rungs_are_cumulative_and_ordered():
+    """Each rung changes exactly one parameter from the one below it."""
+    zero, one, two = (RungSpec.for_rung(r) for r in (0, 1, 2))
+    assert (zero.ensemble_size, zero.bootstrap_ratio) == (5, 1.0)
+    assert (one.ensemble_size, one.bootstrap_ratio) == (10, 1.0)
+    assert (two.ensemble_size, two.bootstrap_ratio) == (10, 0.5)
+    assert zero.granularity == one.granularity == two.granularity == "episode"
+
+
+def test_rung_two_lowers_the_bootstrap_ratio_because_that_is_what_raises_diversity():
+    """The pre-data semantic correction to P§11.3, asserted rather than annotated.
+
+    `bootstrap_ratio` is draws-with-replacement over episode count, so expected
+    unique coverage is 1 - e^-ratio: raising it makes members *more* alike. Rung
+    2 therefore subbags at 0.5. A future edit that "restores" the plan's literal
+    wording by raising the ratio above 1.0 fails here.
+    """
+    import numpy as np
+
+    assert RungSpec.for_rung(2).bootstrap_ratio < 1.0
+
+    rng = np.random.default_rng(0)
+    episodes = 80
+    coverage = {}
+    for ratio in (0.5, 1.0, 2.0):
+        n = max(1, int(round(episodes * ratio)))
+        coverage[ratio] = np.mean(
+            [len(np.unique(rng.choice(episodes, size=n, replace=True))) / episodes for _ in range(200)]
+        )
+    assert coverage[0.5] < coverage[1.0] < coverage[2.0]
+    assert coverage[0.5] == pytest.approx(1 - np.exp(-0.5), abs=0.02)
+
+
+# --- the verdict is recomputable from its own record ------------------------
+
+
+def test_a_serialised_verdict_recomputes_from_its_own_evidence():
+    """Sol: recomputable "without consulting informal logs"."""
+    original = reliability_gate(evidence(all_configurations(FALLING, sparse=RISING)), rung=0)
+    row = json.loads(json.dumps(original.as_row()))
+
+    again = recompute(row)
+    assert again.passed == original.passed
+    assert again.estimator == original.estimator
+    assert again.as_row() == original.as_row()
+    for name in GATE_LAYOUTS:
+        assert again.per_configuration[name].rho == original.per_configuration[name].rho
+        assert again.per_configuration[name].ci_low == original.per_configuration[name].ci_low
+
+
+def test_the_record_carries_every_raw_cell_not_just_the_mean_curve():
+    """The exact paired bootstrap cannot be rebuilt from a mean curve."""
+    row = reliability_gate(evidence(), rung=0).as_row()
+    cells = row["evidence"]["cells"]
+    assert len(cells) == len(GATE_LAYOUTS) * len(GATE_SEEDS) * len(SIZES) == 90
+    assert {c["layout"] for c in cells} == set(GATE_LAYOUTS)
+    assert {c["seed"] for c in cells} == set(GATE_SEEDS)
+    assert {c["size"] for c in cells} == set(SIZES)
+    for c in cells:
+        assert c["run_id"] and c["config_id"] and c["commit"]
+
+
+def test_a_tampered_estimator_in_the_record_does_not_survive_recomputation():
+    """The estimator is derived from the rung, so a record cannot assert one.
+
+    This is the property behind removing the free-form override: it is not that
+    the argument is gone, it is that no serialised claim about the estimator is
+    load-bearing anywhere.
+    """
+    row = json.loads(json.dumps(reliability_gate(evidence(), rung=0).as_row()))
+    row["estimator"] = "mc_dropout"
+    row["rung_spec"]["estimator"] = "mc_dropout"
+
+    assert recompute(row).estimator == "ensemble"
+
+
+def test_the_public_gate_cannot_be_handed_an_estimator():
+    with pytest.raises(TypeError):
+        reliability_gate(evidence(), rung=0, estimator="mc_dropout")
+
+
+# --- reading an immutable attempt ------------------------------------------
+
+
+def write_attempt(tmp_path, *, runs, attempt="attempt-001", commit=COMMIT, dirty=False):
+    d = tmp_path / attempt
+    d.mkdir()
+    (d / "manifest.json").write_text(
+        json.dumps({"attempt": attempt, "commit": commit, "dirty": dirty, "runs": runs})
+    )
+    return d
+
+
+def runs_from(ev):
+    return [
+        {
+            "layout": c.layout, "n_transitions": c.size, "seed": c.seed,
+            "config_id": c.config_id, "run_id": c.run_id, "stage": c.stage,
+            "seed_partition": c.partition, "ensemble_size": c.ensemble_size,
+            "bootstrap_ratio": c.bootstrap_ratio, "granularity": c.granularity,
+            "mean_disagreement": c.disagreement,
+        }
+        for c in ev.cells
+    ]
+
+
+def test_an_attempt_manifest_round_trips_into_a_verdict(tmp_path):
+    ev = evidence(all_configurations(FALLING))
+    d = write_attempt(tmp_path, runs=runs_from(ev))
+    result = reliability_gate(GateEvidence.from_attempt(d), rung=0)
+    assert result.passed
+    assert result.evidence.attempt == "attempt-001"
+    assert result.evidence.commit == COMMIT
+
+
+def test_a_manifest_missing_provenance_fails_closed(tmp_path):
+    """No field is defaulted: a default would manufacture the provenance."""
+    runs = runs_from(evidence())
+    for run in runs:
+        del run["bootstrap_ratio"]
+    d = write_attempt(tmp_path, runs=runs)
+    with pytest.raises(ValueError, match="missing"):
+        GateEvidence.from_attempt(d)
+
+
+def test_a_dirty_tree_cannot_produce_a_verdict(tmp_path):
+    d = write_attempt(tmp_path, runs=runs_from(evidence()), dirty=True)
+    with pytest.raises(ValueError, match="dirty tree"):
+        GateEvidence.from_attempt(d)
+
+
+def test_the_w3_pilot_manifest_is_refused_as_gate_evidence():
+    """The three-seed pilot cannot become a gate verdict by being pointed at.
+
+    It is real evidence about the pipeline and it is on the uniform gate
+    configuration, which is exactly why this refusal matters: the attempt on
+    disk predates the fields a verdict needs, and the gate says so rather than
+    filling them in.
+    """
+    from pathlib import Path
+
+    attempt = Path("runs/w3_pilot/attempt-001")
+    if not attempt.exists():
+        pytest.skip("pilot attempt not present in this checkout")
+    with pytest.raises(ValueError, match="missing|no 'attempt'"):
+        GateEvidence.from_attempt(attempt)

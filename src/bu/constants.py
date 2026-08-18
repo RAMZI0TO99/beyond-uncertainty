@@ -200,3 +200,67 @@ DEFAULT_WINDOW = 5
 #: ablations, then full Experiment 5, then configuration count down to the
 #: measured MDE. Seeds are NOT a lever -- withdrawn in Plan v1.2.
 COMPUTE_ESCALATION_TRIGGER_GPU_HOURS = 120
+
+
+# --- The W4 fallback ladder, frozen before rung 0 runs (D-071) -------------
+#
+# Sol's ruling, 2026-08-18: freeze every rung's training parameters **before**
+# observing the rung-0 result. Otherwise Wednesday picks the repair after having
+# watched Tuesday fail, which is choosing a repair after seeing the result --
+# the same class of error the preregistration exists to prevent.
+#
+# The rungs are **cumulative**: each is the previous estimator with one
+# parameter changed, so a pass at rung n names exactly what had to be added.
+#
+# THE RUNG-2 SEMANTIC CORRECTION (pre-data, D-071). Plan §11.3 says to raise
+# inter-member diversity by increasing the bootstrap ratio. In the implemented
+# API `bootstrap_ratio` is the number of with-replacement draws divided by the
+# episode count, so expected unique-pool coverage is 1 - e^-ratio: measured
+# 0.395 at 0.5, 0.635 at 1.0, 0.866 at 2.0. Raising the ratio therefore makes
+# members MORE alike, not less. Rung 2 is subbagging at 0.5 -- the parameter
+# move that actually implements the plan's stated intent. Recorded as a
+# correction to the plan rather than applied silently (P§ wins on design; §4).
+
+#: Rungs whose parameters are frozen and which may therefore be executed.
+#: Rungs 3 and 4 are deliberately absent: they are secondary estimators, and
+#: Sol's ruling is that their method-specific parameters are frozen before
+#: either is executed, not now. Reaching rung 3 also means H1 is falsified for
+#: ensembles (P§11.3) -- an architectural decision, not a run (D-062).
+RUNG_SPECS: dict[int, dict] = {
+    0: {
+        "estimator": "ensemble",
+        "ensemble_size": 5,
+        "bootstrap_ratio": 1.0,
+        "granularity": "episode",
+        "description": "episode-bootstrap deep ensemble, the registered default",
+    },
+    1: {
+        "estimator": "ensemble",
+        "ensemble_size": 10,
+        "bootstrap_ratio": 1.0,
+        "granularity": "episode",
+        "description": "episode-bootstrap deep ensemble, ensemble size doubled",
+    },
+    2: {
+        "estimator": "ensemble",
+        "ensemble_size": 10,
+        "bootstrap_ratio": 0.5,
+        "granularity": "episode",
+        "description": "episode SUBBAGGING at ratio 0.5 -- see the semantic "
+        "correction above; this raises member diversity, raising the ratio lowers it",
+    },
+}
+
+#: Named for refusal messages and for the record. A rung in this tuple exists in
+#: the ladder but cannot be executed until its parameters are frozen.
+RUNG_NAMES: dict[int, str] = {
+    0: "ensemble",
+    1: "ensemble_10",
+    2: "subbagging_10_at_0.5",
+    3: "mc_dropout",
+    4: "last_layer_laplace",
+}
+
+#: Rungs that exist but whose parameters are NOT frozen, and which therefore
+#: fail closed if a gate is asked to produce a verdict at them.
+RUNG_PARAMETERS_UNFROZEN: tuple[int, ...] = (3, 4)
