@@ -50,7 +50,7 @@ import numpy as np
 import torch
 
 from .. import constants as K
-from ..config import SCHEMA_VERSION, Config, UnitSpec
+from ..config import Config, UnitSpec
 from ..env.collect import collect_pools
 from ..models.world_model import MOVEMENT_ACTIONS
 from ..metrics import RunLogger
@@ -60,14 +60,14 @@ from ..runrecord import git_state
 
 from ..stats.gate import (
     GATE_CAUSAL_ATTRIBUTE, GATE_CONFOUND_RATE, GATE_LAYOUTS, GATE_SEEDS,
-    GATE_STAGE, GateEvidence, RungSpec,
+    CELL, GATE_STAGE, MANIFEST_VERSION, METRIC_SCHEMA_VERSION, EVIDENCE_CONTRACT_VERSION,
+    GateEvidence, RungSpec,
 )
 from .w3_pilot import new_attempt_dir
 
-#: Bumped with the manifest layout. The gate refuses a version it does not know.
-MANIFEST_VERSION = 1
-
-CELL = "W4 Tue -- reliability gate"
+# MANIFEST_VERSION, METRIC_SCHEMA_VERSION, EVIDENCE_CONTRACT_VERSION and CELL are
+# defined in `bu.stats.gate`: the reader is what must refuse an unknown version,
+# so the version belongs with the reader (D-073).
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -214,7 +214,7 @@ def run_cell(
         "evaluation_pool_id": f"{layout}-s{seed:03d}",
         "evaluation_pool_digest": digest,
         "normalisation": scale.as_row(),
-        "metric_schema_version": SCHEMA_VERSION,
+        "metric_schema_version": METRIC_SCHEMA_VERSION,
         "mean_disagreement": summary.as_row()["mean_disagreement"],
         # row_index / row_digest are filled once rows.json is ordered.
         "row_index": -1,
@@ -254,10 +254,13 @@ def write_manifest(
     ]
 
     manifest = {
-        "evidence_contract_version": K.EVIDENCE_CONTRACT_VERSION,
+        "evidence_contract_version": EVIDENCE_CONTRACT_VERSION,
         "manifest_version": MANIFEST_VERSION,
         "attempt_id": GateEvidence.content_id(
-            [c.run["run_record_digest"] for c in cells],
+            [
+                [c.run[f] for f in GateEvidence.IDENTITY_DIGESTS]
+                for c in cells
+            ],
             rung=spec.rung, spec_hash=spec.spec_hash,
         ),
         "attempt": attempt.name,
@@ -292,6 +295,7 @@ def run(
     threads: int = 4,
     out_dir: str | Path | None = None,
     verbose: bool = True,
+    allow_dirty: bool = False,
 ) -> Path:
     """Run one rung of the gate and write one immutable attempt. Returns its path.
 
@@ -305,6 +309,18 @@ def run(
     # Captured before anything is written: reading git state afterwards would
     # report the tree dirty because of this attempt's own output (D-062).
     git = git_state()
+    if git.dirty and not allow_dirty:
+        # The verifier refuses a dirty attempt afterwards, which means the fits
+        # were spent producing evidence that could never be used. Fail here
+        # instead: rung 0 is 450 fits (Sol, D-073).
+        raise ValueError(
+            f"the working tree is dirty at commit {git.commit[:7]}; a gate verdict "
+            "must name one reproducible code state. Refusing before any fit rather "
+            "than after all of them -- commit or stash first."
+        )
+    # `allow_dirty` saves the compute check only. It cannot make dirty evidence
+    # usable: the manifest still records `dirty`, and the verifier still refuses
+    # it, so the safety property lives with the reader either way.
     root = Path(out_dir) if out_dir else Path("runs/w4_gate") / f"rung-{rung:02d}-{spec.spec_hash}"
     attempt = new_attempt_dir(root)
 

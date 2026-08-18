@@ -281,11 +281,13 @@ RUNG_TRAIN_FIELDS: tuple[str, ...] = (
     "lr", "batch_size", "max_epochs", "patience", "ensemble_size", "bootstrap_ratio",
 )
 
-#: The evidence contract the W4 gate reads. The verifier refuses a manifest
-#: whose version it does not recognise rather than reading it optimistically:
-#: an older manifest is missing exactly the fields that make a verdict
-#: checkable, which is how the delta-35 gate accepted a fabricated one (D-072).
-EVIDENCE_CONTRACT_VERSION = 1
+#: Schema versions deliberately do NOT live here (Sol, 2026-08-18). This file is
+#: the preregistration: everything in it is a scientific choice frozen before
+#: data. The evidence contract, manifest and metric-row versions are
+#: implementation compatibility versions that must stay *evolvable* through
+#: explicit bumps, which is the opposite property. They are in
+#: `bu.stats.gate` -- EVIDENCE_CONTRACT_VERSION, MANIFEST_VERSION,
+#: METRIC_SCHEMA_VERSION.
 
 #: Named for refusal messages and for the record. A rung in this tuple exists in
 #: the ladder but cannot be executed until its parameters are frozen.

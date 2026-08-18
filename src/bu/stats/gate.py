@@ -383,6 +383,26 @@ def _gate_from_curves(
 # run record, which `Config.to_dict()` does carry.
 # --------------------------------------------------------------------------
 
+#: The evidence contract this gate reads. An unrecognised version is refused
+#: rather than read optimistically: an older manifest is missing exactly the
+#: fields that make a verdict checkable (D-072). These are compatibility
+#: versions, deliberately not preregistered constants (D-073).
+EVIDENCE_CONTRACT_VERSION = 1
+
+#: The manifest layout. Bumped when fields move; separate from the contract
+#: version because the contract can tighten without the layout changing.
+MANIFEST_VERSION = 1
+
+#: The metric-row schema of `metrics.jsonl`. Kept apart from
+#: `config.SCHEMA_VERSION`: the run-record schema and the per-member metric
+#: schema evolve independently, and reusing one for the other would make a
+#: bump to either silently invalidate evidence about the other (D-073).
+METRIC_SCHEMA_VERSION = 1
+
+#: The experimental cell these runs discharge, attested in each run record so a
+#: manifest cannot borrow an honest run from a different obligation.
+CELL = "W4 Tue -- reliability gate"
+
 #: The experimental obligation the gate's runs discharge. In run identity, so a
 #: run borrowed from another stage cannot be presented as gate evidence.
 GATE_STAGE = "exp1"
@@ -471,7 +491,7 @@ class GateEvidence:
     """The 90 cells behind one rung's verdict, verified before it is computed."""
 
     cells: tuple[EvidenceCell, ...]
-    contract_version: int = K.EVIDENCE_CONTRACT_VERSION
+    contract_version: int = EVIDENCE_CONTRACT_VERSION
 
     @property
     def attempt(self) -> str:
@@ -485,8 +505,18 @@ class GateEvidence:
     def commit(self) -> str:
         return self.cells[0].commit
 
+    #: What each run contributes to the attempt's identity. Run records are
+    #: written *before* training, so hashing them alone let two evidence sets
+    #: with identical copied start records but different member streams or rows
+    #: share an identity (Sol, D-073). All four travel in `EvidenceCell`, so the
+    #: identity stays recomputable from the record alone.
+    IDENTITY_DIGESTS: tuple[str, ...] = (
+        "run_record_digest", "member_record_digest", "row_digest",
+        "evaluation_pool_digest",
+    )
+
     @staticmethod
-    def content_id(run_record_digests, *, rung: int, spec_hash: str) -> str:
+    def content_id(entries, *, rung: int, spec_hash: str) -> str:
         """The attempt's identity, derived from the runs it actually contains.
 
         Sol: "Do not use the bare string attempt-001 as the evidence identity.
@@ -494,11 +524,17 @@ class GateEvidence:
         both be `w4-gate-r00-<spec_hash>-attempt-001`, which is what a first
         attempt at this derivation produced -- verified by building two.
 
-        Hashing the run records instead makes the identity a function of the
-        execution: `run.json` carries `started_utc`, so two executions cannot
-        collide, and the digests are themselves checked against the files.
+        Hashing the run records makes the identity a function of the execution
+        -- `run.json` carries `started_utc` -- but run records are written
+        *before* training, so on their own they do not cover what the run
+        produced. The member stream, the source row and the evaluation pool are
+        included for that reason: an attempt that started identically and then
+        produced different numbers gets a different identity.
+
+        Args:
+            entries: one tuple per run, in ``IDENTITY_DIGESTS`` order.
         """
-        payload = "\n".join(sorted(run_record_digests))
+        payload = "\n".join(sorted("|".join(str(f) for f in e) for e in entries))
         digest = hashlib.sha256(payload.encode()).hexdigest()[:12]
         return f"w4-gate-r{rung:02d}-{spec_hash}-{digest}"
 
@@ -506,10 +542,10 @@ class GateEvidence:
 
     def verify(self, spec: RungSpec) -> None:
         """Refuse anything that is not authorised gate evidence. Every clause fails closed."""
-        if self.contract_version != K.EVIDENCE_CONTRACT_VERSION:
+        if self.contract_version != EVIDENCE_CONTRACT_VERSION:
             raise ValueError(
                 f"evidence declares contract version {self.contract_version}; this "
-                f"gate reads version {K.EVIDENCE_CONTRACT_VERSION}. An unrecognised "
+                f"gate reads version {EVIDENCE_CONTRACT_VERSION}. An unrecognised "
                 "version is refused rather than read optimistically -- an older "
                 "manifest is missing exactly the fields that make a verdict "
                 "checkable (D-072)"
@@ -562,7 +598,7 @@ class GateEvidence:
         # After the structural checks, so a missing or duplicated cell is
         # reported as that rather than as an identity mismatch it also causes.
         expected_id = self.content_id(
-            [c.run_record_digest for c in self.cells],
+            [[getattr(c, f) for f in self.IDENTITY_DIGESTS] for c in self.cells],
             rung=spec.rung, spec_hash=spec.spec_hash,
         )
         if self.attempt_id != expected_id:
@@ -765,10 +801,10 @@ class GateEvidence:
                 "verdict cannot be checked against (D-072)"
             )
         version = manifest["evidence_contract_version"]
-        if version != K.EVIDENCE_CONTRACT_VERSION:
+        if version != EVIDENCE_CONTRACT_VERSION:
             raise ValueError(
                 f"{attempt_dir} declares evidence contract version {version}; this gate "
-                f"reads version {K.EVIDENCE_CONTRACT_VERSION}"
+                f"reads version {EVIDENCE_CONTRACT_VERSION}"
             )
         if manifest["dirty"]:
             raise ValueError(
@@ -777,7 +813,38 @@ class GateEvidence:
                 "state"
             )
 
+        if manifest["manifest_version"] != MANIFEST_VERSION:
+            raise ValueError(
+                f"{attempt_dir} declares manifest_version "
+                f"{manifest['manifest_version']}; this gate reads "
+                f"{MANIFEST_VERSION}. The field said unknown versions are refused, "
+                "so it must actually refuse them (D-073)"
+            )
+        # The `spec` argument must never let a contradictory manifest rung become
+        # decorative: if a caller names a rung, the evidence must be that rung's.
+        if spec is not None and spec.rung != manifest["rung"]:
+            raise ValueError(
+                f"{attempt_dir} is rung {manifest['rung']} evidence, but it is being "
+                f"read as rung {spec.rung}. The manifest's rung is not advisory"
+            )
         spec = spec or RungSpec.for_rung(manifest["rung"])
+        if manifest["rung"] != spec.rung:
+            raise ValueError(
+                f"{attempt_dir} declares rung {manifest['rung']}, which is not the "
+                f"frozen rung {spec.rung} being applied"
+            )
+        if manifest["rung_spec"] != spec.as_row():
+            differing = {
+                k: (manifest["rung_spec"].get(k), v)
+                for k, v in spec.as_row().items()
+                if manifest["rung_spec"].get(k) != v
+            }
+            raise ValueError(
+                f"{attempt_dir} carries a rung_spec that is not the frozen one; "
+                f"differing (manifest, frozen): {differing}. The recorded "
+                "specification and the specification being enforced must be the "
+                "same object of belief (D-073)"
+            )
         if manifest["rung_spec_hash"] != spec.spec_hash:
             raise ValueError(
                 f"{attempt_dir} claims rung spec hash {manifest['rung_spec_hash']!r}; "
@@ -785,21 +852,6 @@ class GateEvidence:
                 "evidence was generated under a different definition of this rung, or "
                 "the ladder has been edited since (D-072)"
             )
-        expected_id = cls.content_id(
-            [r.get("run_record_digest", "") for r in manifest["runs"]],
-            rung=spec.rung, spec_hash=spec.spec_hash,
-        )
-        if manifest["attempt_id"] != expected_id:
-            raise ValueError(
-                f"{attempt_dir}: attempt_id {manifest['attempt_id']!r} disagrees with "
-                f"the runs it contains (expected {expected_id!r})"
-            )
-        if attempt_dir.name != manifest["attempt"]:
-            raise ValueError(
-                f"{attempt_dir} contains a manifest describing {manifest['attempt']!r}. "
-                "The directory and the record it holds must be the same attempt"
-            )
-
         cls._verify_artifacts(attempt_dir, manifest["artifacts"])
 
         rows_path = attempt_dir / "rows.json"
@@ -821,7 +873,7 @@ class GateEvidence:
                     "predates this and is correctly refused here (D-072)"
                 )
             cls._verify_bound_row(attempt_dir, run, rows)
-            cls._verify_run_record(attempt_dir, run)
+            cls._verify_run_record(attempt_dir, run, spec)
             cells.append(
                 EvidenceCell(
                     layout=run["layout"], seed=run["seed"], size=run["n_transitions"],
@@ -841,6 +893,30 @@ class GateEvidence:
                     attempt_id=manifest["attempt_id"], attempt=manifest["attempt"],
                     commit=manifest["commit"],
                 )
+            )
+        # After the per-run checks, so a truncated metric stream reports as that
+        # rather than as the identity mismatch it also produces.
+        expected_id = cls.content_id(
+            [[r.get(f, "") for f in cls.IDENTITY_DIGESTS] for r in manifest["runs"]],
+            rung=spec.rung, spec_hash=spec.spec_hash,
+        )
+        if manifest["attempt_id"] != expected_id:
+            raise ValueError(
+                f"{attempt_dir}: attempt_id {manifest['attempt_id']!r} disagrees with "
+                f"the runs it contains (expected {expected_id!r})"
+            )
+        if attempt_dir.name != manifest["attempt"]:
+            raise ValueError(
+                f"{attempt_dir} contains a manifest describing {manifest['attempt']!r}. "
+                "The directory and the record it holds must be the same attempt"
+            )
+
+        total_members = sum(c.member_count for c in cells)
+        if total_members != manifest["n_member_records"]:
+            raise ValueError(
+                f"{attempt_dir}: manifest declares n_member_records="
+                f"{manifest['n_member_records']} but its runs account for "
+                f"{total_members} verified members"
             )
         if len(cells) != manifest["n_runs"]:
             raise ValueError(
@@ -864,6 +940,12 @@ class GateEvidence:
                     f"{attempt_dir}: manifest lists {art['path']!r} but it is not there. "
                     "An attempt is immutable; a missing artefact means it was not"
                 )
+            size = path.stat().st_size
+            if size != art["bytes"]:
+                raise ValueError(
+                    f"{attempt_dir}/{art['path']} is {size} bytes; the manifest "
+                    f"recorded {art['bytes']}"
+                )
             actual = hashlib.sha256(path.read_bytes()).hexdigest()
             if actual != art["sha256"]:
                 raise ValueError(
@@ -874,7 +956,7 @@ class GateEvidence:
                 )
 
     @staticmethod
-    def _verify_run_record(attempt_dir: Path, run: Mapping) -> None:
+    def _verify_run_record(attempt_dir: Path, run: Mapping, spec: "RungSpec") -> None:
         """Cross-check the manifest against the record written at training time.
 
         This is the actual trust boundary. A manifest is a summary the runner
@@ -905,15 +987,30 @@ class GateEvidence:
                 "config in its own run record. The record was written when the run "
                 "started; the manifest is a later summary, so the record wins (D-072)"
             )
-        recorded_granularity = (record.get("extra") or {}).get("granularity")
-        if recorded_granularity != run["granularity"]:
-            raise ValueError(
-                f"{attempt_dir}: run {run['run_id']} claims granularity "
-                f"{run['granularity']!r} but its run record says "
-                f"{recorded_granularity!r}. `granularity` is a `train_ensemble` "
-                "argument rather than a `TrainConfig` field, so the run record is the "
-                "only place it is independently attested"
-            )
+        # All five attestations, not only granularity. Otherwise a manifest can
+        # borrow an honest run record while changing the evaluation pool or the
+        # experimental obligation the run was discharging (Sol, D-073).
+        extra = record.get("extra") or {}
+        attested = {
+            "granularity": run["granularity"],
+            "rung": spec.rung,
+            "rung_spec_hash": spec.spec_hash,
+            "evaluation_pool_digest": run["evaluation_pool_digest"],
+            "cell": CELL,
+        }
+        for field, expected in attested.items():
+            if field not in extra:
+                raise ValueError(
+                    f"{attempt_dir}: run {run['run_id']}'s record carries no "
+                    f"{field!r} attestation. It is written at training time and is "
+                    "what stops a manifest borrowing an honest run record (D-073)"
+                )
+            if extra[field] != expected:
+                raise ValueError(
+                    f"{attempt_dir}: run {run['run_id']} presents {field}="
+                    f"{expected!r}, but its run record attests {extra[field]!r}. The "
+                    "record was written when the run started, so the record wins"
+                )
         metrics_path = record_dir / "metrics.jsonl"
         if not metrics_path.exists():
             raise ValueError(
@@ -935,6 +1032,19 @@ class GateEvidence:
         member_indices = sorted(
             m["member"] for m in members if "member" in m
         )
+        if run["member_count"] != len(member_indices):
+            raise ValueError(
+                f"{attempt_dir}: run {run['run_id']} declares "
+                f"{run['member_count']} members but its metric stream holds "
+                f"{len(member_indices)}. The count is verified against the stream, "
+                "never taken from the manifest (D-073)"
+            )
+        if run["metric_schema_version"] != METRIC_SCHEMA_VERSION:
+            raise ValueError(
+                f"{attempt_dir}: run {run['run_id']} declares metric schema "
+                f"{run['metric_schema_version']}; this gate reads "
+                f"{METRIC_SCHEMA_VERSION}"
+            )
         if member_indices != sorted(run["member_indices"]):
             raise ValueError(
                 f"{attempt_dir}: run {run['run_id']} claims members "
@@ -961,7 +1071,22 @@ class GateEvidence:
                 f"{run['row_digest'][:12]}..., but that row now hashes to "
                 f"{digest[:12]}.... The source row changed after the manifest was written"
             )
-        source = row.get("uncertainty", {}).get("mean_disagreement")
+        # The scale that produced this row travels inside it, so requiring
+        # equality establishes that the manifest's normalisation is the one the
+        # summary was actually computed with -- not merely that it is constant
+        # across sizes (Sol, D-073).
+        uncertainty = row.get("uncertainty", {})
+        row_scale = {
+            k: uncertainty[k] for k in run["normalisation"] if k in uncertainty
+        }
+        if row_scale != run["normalisation"]:
+            raise ValueError(
+                f"{attempt_dir}: run {run['run_id']} reports normalisation "
+                f"{run['normalisation']}, but the source row it binds to was computed "
+                f"under {row_scale}. D-061 registers one scale per evaluation pool; "
+                "a manifest that reports a different one is not describing this number"
+            )
+        source = uncertainty.get("mean_disagreement")
         if source is None:
             raise ValueError(
                 f"{attempt_dir}: row {index} carries no mean_disagreement to reproduce "

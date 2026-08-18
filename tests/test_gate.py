@@ -142,7 +142,8 @@ def _with_content_id(cells, spec, overrides=()):
     if "attempt_id" in (overrides or ()):
         return tuple(cells)
     ident = GateEvidence.content_id(
-        [c.run_record_digest for c in cells], rung=spec.rung, spec_hash=spec.spec_hash
+        [[getattr(c, f) for f in GateEvidence.IDENTITY_DIGESTS] for c in cells],
+        rung=spec.rung, spec_hash=spec.spec_hash,
     )
     return tuple(dataclass_replace(c, attempt_id=ident) for c in cells)
 

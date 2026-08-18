@@ -25,7 +25,8 @@ from bu.experiments.w4_gate import CellResult, write_manifest, gate_units
 from bu.metrics import RunLogger
 from bu.runrecord import GitState
 from bu.stats.gate import (
-    GATE_LAYOUTS, GATE_SEEDS, GATE_STAGE, GateEvidence, RungSpec, reliability_gate,
+    CELL, GATE_LAYOUTS, GATE_SEEDS, GATE_STAGE, METRIC_SCHEMA_VERSION,
+    GateEvidence, RungSpec, reliability_gate,
 )
 
 SIZES = K.DATA_SIZES
@@ -50,16 +51,22 @@ def build_attempt(tmp_path, *, spec=None, name="attempt-001", layouts=GATE_LAYOU
                     unit=gate_units(layout, n), seed=seed, stage=GATE_STAGE,
                     train=train or spec.train_config(),
                 )
-                extra = {"granularity": spec.granularity, "rung": spec.rung}
+                pool = f"pool-{layout}-{seed}" + (f"-{n}" if pool_per_size else "")
+                extra = {
+                    "granularity": spec.granularity, "rung": spec.rung,
+                    "rung_spec_hash": spec.spec_hash,
+                    "evaluation_pool_digest": pool, "cell": CELL,
+                }
                 with RunLogger.start(config, root=attempt / "records", extra=extra) as log:
                     for k in range(spec.ensemble_size):
                         log.log(member=k, val_position=0.01 * (k + 1),
                                 granularity=spec.granularity)
                 value = (disagreement or FALLING)[n]
                 record_dir = attempt / "records" / config.run_id
-                pool = f"pool-{layout}-{seed}" + (f"-{n}" if pool_per_size else "")
+                scale = {"scale": [1.0, 1.0], "scale_n_reference": 800,
+                         "scale_domain": "movement", "scale_source": "evaluation_pool"}
                 row = {"layout": layout, "n_transitions": n, "seed": seed,
-                       "uncertainty": {"mean_disagreement": value}}
+                       "uncertainty": {"mean_disagreement": value, **scale}}
                 cells.append(CellResult(row=row, run={
                     "config": config.to_dict(), "run_id": config.run_id,
                     "config_id": config.config_id, "unit_id": config.unit_id,
@@ -72,8 +79,8 @@ def build_attempt(tmp_path, *, spec=None, name="attempt-001", layouts=GATE_LAYOU
                     "run_record_digest": _digest(record_dir / "run.json"),
                     "evaluation_pool_id": f"{layout}-s{seed:03d}",
                     "evaluation_pool_digest": pool,
-                    "normalisation": {"scale": [1.0, 1.0], "n_reference": 800},
-                    "metric_schema_version": 1,
+                    "normalisation": scale,
+                    "metric_schema_version": METRIC_SCHEMA_VERSION,
                     "mean_disagreement": value,
                     "row_index": -1, "row_digest": "",
                 }))
@@ -207,7 +214,7 @@ def test_a_modified_source_row_fails_its_digest(attempt):
     rows = json.loads((attempt / "rows.json").read_text())
     rows[0]["uncertainty"]["mean_disagreement"] = 0.123
     (attempt / "rows.json").write_text(json.dumps(rows, indent=2))
-    with pytest.raises(ValueError, match="digest|hash"):
+    with pytest.raises(ValueError, match="bytes|digest|hash"):
         GateEvidence.from_attempt(attempt)
 
 
@@ -248,7 +255,7 @@ def test_a_claimed_member_never_fitted_is_refused(attempt):
 def test_a_granularity_contradicting_the_run_record_is_refused(attempt):
     """`granularity` is outside Config, so the run record is its only attestation."""
     edit_manifest(attempt, lambda m: m["runs"][0].update(granularity="transition"))
-    with pytest.raises(ValueError, match="run record says"):
+    with pytest.raises(ValueError, match="its run record attests"):
         GateEvidence.from_attempt(attempt)
 
 
@@ -274,7 +281,7 @@ def test_a_missing_rows_file_is_a_refusal_not_a_crash(attempt):
 
 def test_a_missing_artefact_is_refused(attempt):
     (attempt / "rows.json").write_text("[]")
-    with pytest.raises(ValueError, match="digest|hash"):
+    with pytest.raises(ValueError, match="bytes|digest|hash"):
         GateEvidence.from_attempt(attempt)
 
 
@@ -307,7 +314,7 @@ def test_the_runner_reuses_one_scale_and_one_pool_across_dataset_sizes(tmp_path)
 
     attempt = run(
         rung=0, layouts=("uniform",), seeds=(0,), sizes=(100, 250),
-        out_dir=tmp_path / "gate", verbose=False,
+        out_dir=tmp_path / "gate", verbose=False, allow_dirty=True,
     )
     manifest = json.loads((attempt / "manifest.json").read_text())
     assert len(manifest["runs"]) == 2
@@ -336,7 +343,7 @@ def test_the_runner_refuses_confirmatory_seeds(tmp_path):
 
     with pytest.raises(ValueError, match="confirmatory"):
         run(rung=0, layouts=("uniform",), seeds=(K.CONFIRMATORY_SEED_BASE,),
-            sizes=(100,), out_dir=tmp_path / "gate", verbose=False)
+            sizes=(100,), out_dir=tmp_path / "gate", verbose=False, allow_dirty=True)
 
 
 def test_the_runner_refuses_a_rung_whose_parameters_are_unfrozen(tmp_path):
@@ -344,4 +351,196 @@ def test_the_runner_refuses_a_rung_whose_parameters_are_unfrozen(tmp_path):
 
     with pytest.raises(ValueError, match="deliberately NOT frozen"):
         run(rung=3, layouts=("uniform",), seeds=(0,), sizes=(100,),
-            out_dir=tmp_path / "gate", verbose=False)
+            out_dir=tmp_path / "gate", verbose=False, allow_dirty=True)
+
+
+# --- the closeout: fields that were present but not load-bearing (D-073) ----
+#
+# Sol: "The contract must not advertise checks it does not perform." Each test
+# below covers a field the manifest carried, and the verifier required to be
+# present, without ever comparing it to anything.
+
+
+def test_an_unrecognised_manifest_version_is_refused(attempt):
+    edit_manifest(attempt, lambda m: m.update(manifest_version=99))
+    with pytest.raises(ValueError, match="manifest_version 99"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_a_manifest_rung_contradicting_the_requested_rung_is_refused(attempt):
+    """The `spec=` argument must not make the manifest's rung decorative."""
+    with pytest.raises(ValueError, match="is not advisory"):
+        GateEvidence.from_attempt(attempt, spec=RungSpec.for_rung(1))
+
+
+def test_a_rung_spec_that_is_not_the_frozen_one_is_refused(attempt):
+    """The recorded specification and the enforced one must be the same belief."""
+    edit_manifest(
+        attempt,
+        lambda m: m["rung_spec"].update(ensemble_size=99, description="tampered"),
+    )
+    with pytest.raises(ValueError, match="not the frozen one"):
+        GateEvidence.from_attempt(attempt)
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("rung", 1),
+        ("rung_spec_hash", "deadbeef0000"),
+        ("evaluation_pool_digest", "some-other-pool"),
+        ("cell", "W4 Fri -- threshold calibration"),
+    ],
+)
+def test_every_training_time_attestation_is_cross_checked(attempt, field, value):
+    """A manifest must not be able to borrow an honest run record.
+
+    All five attestations are written into the run record at training time.
+    Before this, only `granularity` was compared, so a manifest could keep a
+    real run's record while changing the pool it claimed to evaluate on, or the
+    experimental obligation the run was discharging.
+    """
+    def edit(m):
+        run = m["runs"][0]
+        record = json.loads(
+            (attempt / "records" / run["run_id"] / "run.json").read_text()
+        )
+        record["extra"][field] = value
+        path = attempt / "records" / run["run_id"] / "run.json"
+        path.write_text(json.dumps(record, indent=2, sort_keys=True))
+        run["run_record_digest"] = _digest(path)
+
+    edit_manifest(attempt, edit)
+    with pytest.raises(ValueError, match="its run record attests|is not advisory"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_a_missing_training_time_attestation_is_refused(attempt):
+    def edit(m):
+        run = m["runs"][0]
+        path = attempt / "records" / run["run_id"] / "run.json"
+        record = json.loads(path.read_text())
+        del record["extra"]["evaluation_pool_digest"]
+        path.write_text(json.dumps(record, indent=2, sort_keys=True))
+        run["run_record_digest"] = _digest(path)
+
+    edit_manifest(attempt, edit)
+    with pytest.raises(ValueError, match="carries no 'evaluation_pool_digest'"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_the_normalisation_must_be_the_scale_the_bound_row_used(attempt):
+    """Constant across sizes is not the same claim as *used for this number*.
+
+    The old check established only that the manifest reported one scale for all
+    six sizes. It would not have noticed a manifest reporting a scale that no
+    row was ever computed under.
+    """
+    edit_manifest(
+        attempt,
+        lambda m: [r.update(normalisation={**r["normalisation"], "scale": [9.0, 9.0]})
+                   for r in m["runs"]],
+    )
+    with pytest.raises(ValueError, match="source row it binds to was computed under"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_the_attempt_id_covers_what_the_run_produced_not_only_its_start(attempt):
+    """Run records are written before training, so they cannot identify output.
+
+    Copying an honest set of start records while substituting different member
+    streams or rows would previously have yielded the same attempt identity.
+    """
+    manifest = json.loads((attempt / "manifest.json").read_text())
+    before = manifest["attempt_id"]
+
+    # Same start records; a different produced number.
+    rows = json.loads((attempt / "rows.json").read_text())
+    rows[0]["uncertainty"]["mean_disagreement"] = 0.4242
+    (attempt / "rows.json").write_text(json.dumps(rows, indent=2))
+    row_digest = hashlib.sha256(
+        json.dumps(rows[0], sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+    recomputed = GateEvidence.content_id(
+        [
+            [
+                r["run_record_digest"],
+                r["member_record_digest"],
+                row_digest if i == 0 else r["row_digest"],
+                r["evaluation_pool_digest"],
+            ]
+            for i, r in enumerate(manifest["runs"])
+        ],
+        rung=0, spec_hash=RungSpec.for_rung(0).spec_hash,
+    )
+    assert recomputed != before, (
+        "the attempt identity did not change when the produced numbers did; two "
+        "evidence sets sharing start records would share an identity"
+    )
+
+
+def test_the_declared_member_total_is_verified(attempt):
+    edit_manifest(attempt, lambda m: m.update(n_member_records=1))
+    with pytest.raises(ValueError, match="n_member_records"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_a_declared_member_count_not_matching_the_stream_is_refused(attempt):
+    def edit(m):
+        run = m["runs"][0]
+        run["member_count"] = 4
+        run["member_indices"] = [0, 1, 2, 3]
+
+    edit_manifest(attempt, edit)
+    with pytest.raises(ValueError, match="metric stream holds|declares 4 members"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_an_unrecognised_metric_schema_version_is_refused(attempt):
+    edit_manifest(attempt, lambda m: m["runs"][0].update(metric_schema_version=7))
+    with pytest.raises(ValueError, match="metric schema 7"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_the_metric_schema_is_read_from_the_gate_not_the_run_record_schema(attempt, monkeypatch):
+    """The two schemas evolve independently, so the gate must read its own.
+
+    They happen to be equal today, which is exactly why this cannot be asserted
+    by comparing the numbers — that assertion would pass whether or not the
+    separation existed. Moving the gate's version and watching the refusal move
+    with it is the property.
+    """
+    import bu.stats.gate as gate
+    from bu.config import SCHEMA_VERSION
+
+    GateEvidence.from_attempt(attempt)  # accepted at the current version
+
+    monkeypatch.setattr(gate, "METRIC_SCHEMA_VERSION", SCHEMA_VERSION + 1)
+    with pytest.raises(ValueError, match="metric schema"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_an_artefact_whose_size_changed_is_refused(attempt):
+    path = attempt / "rows.json"
+    path.write_text(path.read_text() + " ")
+    with pytest.raises(ValueError, match="bytes"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_the_runner_refuses_a_dirty_tree_before_fitting_anything(tmp_path, monkeypatch):
+    """Refusing after 450 fits is refusing too late."""
+    import bu.experiments.w4_gate as w4
+    from bu.runrecord import GitState
+
+    monkeypatch.setattr(
+        w4, "git_state", lambda *a, **k: GitState(commit="c" * 40, dirty=True, branch="main")
+    )
+    called = []
+    monkeypatch.setattr(w4, "run_cell", lambda **kw: called.append(kw))
+
+    with pytest.raises(ValueError, match="working tree is dirty"):
+        w4.run(rung=0, layouts=("uniform",), seeds=(0,), sizes=(100,),
+               out_dir=tmp_path / "gate", verbose=False)
+    assert not called, "a fit was started despite the dirty tree"
+    assert not (tmp_path / "gate").exists(), "an attempt directory was created"
