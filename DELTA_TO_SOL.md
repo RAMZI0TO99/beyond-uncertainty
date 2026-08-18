@@ -30,6 +30,8 @@ EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 > - 2026-08-18 (W4 Wed) · C-010 and C-009 built, and a reproducibility variable nobody had recorded
 > - 2026-08-18 (W4 Thu) · C-006 built, and the MDE does not clear five points
 > - 2026-08-18 (W5 Tue/Wed, early) · The acceptance test and its permutation null
+> - 2026-08-18 (W5 Mon, recovered) · A repair path found uncommitted
+> - 2026-08-18 (W5 Fri) · Every figure from logs, one command
 
 ```
 === UPDATE FOR SOL ===

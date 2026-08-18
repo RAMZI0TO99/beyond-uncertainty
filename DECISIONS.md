@@ -1017,3 +1017,16 @@ Clearing five points on the conservative (unpaired) assumption needs on the orde
 **Data seen:** none. The end-to-end probe was a development-seed smoke test, in memory, no records written.
 **Plan ref:** P§7.2, S§W5 Mon.
 **Reviewed by Sol:** not yet — carried in the diff, narrated in the delta after delivery.
+
+### D-081 · 2026-08-18 · W5 Friday — the figure-regeneration command
+**Decision:** `src/bu/experiments/make_figures.py`. One command regenerates every figure so far **from the immutable attempt directories only** — no training, no memory, no compute (S§W5 Fri, P§13.7). A `FIGURES` registry maps each cell to its producer, so "every figure" is enumerable rather than being whatever the thesis author remembers to run; adding a figure-producing cell means adding it here.
+
+**Two properties make "from logs only" a guarantee, both tested.** It produces the **whole** registered set — the two W3 development-seed curves plus the certified W4 gate trend — and it **fails loudly** when a log it needs is absent rather than silently producing a smaller set that reads as complete. A reader who asked for every figure and got four cannot tell a fifth was skipped.
+
+**The W4 figure is honest about what it is.** It reads the rung-0 attempt chosen by its frozen spec hash through `select_attempt` (which refuses to guess between attempts, C-010), refuses an incomplete grid — a four-seed mean is not the certified five-seed one — and draws **no error bars**, because the exact paired bootstrap is discrete with two or three atoms and a bar would imply a sampling precision the interval does not carry (D-075). Verified visually: three curves, all peaking at N=250, the non-monotone finding D-074 records.
+
+**Figures are gitignored; the ability to regenerate them is tracked.** The PNGs are a deliberate output, never a side effect of a run — so the script and its tests are committed and `figures/` stays ignored.
+**Tests:** 619 → **626 passing**, 2 skipped.
+**Data seen:** none. Plotting only, from tracked logs.
+**Plan ref:** S§W5 Fri, P§13.7.
+**Reviewed by Sol:** not yet — rides the diff since `ca545ed`; delta prose joins the next batch after delivery.

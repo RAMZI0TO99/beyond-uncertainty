@@ -42,11 +42,11 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-18 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–3 CERTIFIED and frozen at `9c0d89d`** (D-067); documentation continuation certified at `7dbcd32`. **W4 Mon CERTIFIED at `a84cf6c`**. **`2efad258` CERTIFIED** as the W4 Tuesday gate implementation and evidence contract, subsuming three uncertified intermediates (D-071 … D-073). **W4 Tue is DONE and the result is CERTIFIED at `ca545ed`** — rung 0 PASSES on all three configurations (D-074, D-075), 450 fits in 4 m 52 s on CPU. Ladder stopped; rungs 1 and 2 are not to be run. Twenty Sol reviews actioned. **C-006, C-009, C-010, C-011 built; W5 Tue/Wed done (D-079).** **Three of Gate 1's four conditions are settled** — only the MDE's verdict is open. **Next: W4 Fri**, threshold calibration — blocked on Sol reviewing C-010 (delta 40). **Gate 1 is at risk: the MDE does not clear five points** (D-078). Week 1 Monday was 2026-08-17 — roughly **three** weeks ahead of calendar (DEV-002) |
+| **Current week / day** | **Weeks 1–3 CERTIFIED and frozen at `9c0d89d`** (D-067); documentation continuation certified at `7dbcd32`. **W4 Mon CERTIFIED at `a84cf6c`**. **`2efad258` CERTIFIED** as the W4 Tuesday gate implementation and evidence contract, subsuming three uncertified intermediates (D-071 … D-073). **W4 Tue is DONE and the result is CERTIFIED at `ca545ed`** — rung 0 PASSES on all three configurations (D-074, D-075), 450 fits in 4 m 52 s on CPU. Ladder stopped; rungs 1 and 2 are not to be run. Twenty Sol reviews actioned. **C-006, C-009, C-010, C-011 built; W5 Mon (recovered, D-080), Tue/Wed (D-079) and Fri (D-081) done.** **Three of Gate 1's four conditions are settled** — only the MDE's verdict is open. **Next: W4 Fri**, threshold calibration — blocked on Sol reviewing C-010 (delta 40). **Gate 1 is at risk: the MDE does not clear five points** (D-078). Week 1 Monday was 2026-08-17 — roughly **three** weeks ahead of calendar (DEV-002) |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `ca545ed`** — Sol certified the stored W4 Tuesday result on 2026-08-18. The chain: `9c0d89d` (Week 3 implementation, frozen) → `7dbcd32` (docs) → `a84cf6c` (W4 Mon trend test) → `2efad258` (W4 Tue gate + evidence contract) → `ca545ed` (the stored result). Three intermediate commits were reviewed and explicitly **not** certified; `2efad258` subsumes them. **Set `BASE=ca545ed` for the next bundle** (D-043, D-067, D-075) |
-| **Tests** | **619 passing, 2 skipped** (CUDA tests run only where a device exists; the two-GPU test skips on this machine and is declared unverified) (the CUDA test runs only where a device exists). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
+| **Tests** | **626 passing, 2 skipped** (CUDA tests run only where a device exists; the two-GPU test skips on this machine and is declared unverified) (the CUDA test runs only where a device exists). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
 | **Compute used** | **0 GPU-hours** · first real spend: **450 CPU fits in 4 m 52 s** (W4 Tue rung 0) of ~110–145 budgeted (trigger ≈ 120, P§14.3). Every fit so far ran on **CPU**. Two sub-second GPU tests now run in the suite (~68 MiB) to cover the CUDA RNG fork and seeding — the student's other workload has finished and the card is at ~0.9/16 GB |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -255,6 +255,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-078** | 2026-08-18 | C-006 built — and the MDE does **not** clear the five-point margin | **Result — Gate 1 risk** |
 | **D-079** | 2026-08-18 | W5 Tue/Wed — the acceptance test and its permutation null, calibrated | Deliverable |
 | **D-080** | 2026-08-18 | A recovered W5 Monday repair path, found uncommitted (DEV-005 class) | Recovery |
+| **D-081** | 2026-08-18 | W5 Friday — the figure-regeneration command, every figure from logs | Deliverable |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -466,3 +467,15 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **20 archived, 1 kept
 **Numbers:** tests 581 → **597 passing**, 2 skipped. No compute.
 
 **Next:** W5 Mon's three repair functions and W5 Fri's figure script are the remaining unblocked cells. Everything else waits on deltas 39–42.
+
+### 2026-08-18 (W5 Mon, recovered) · A repair path found uncommitted · Claude
+
+**Did:** found `src/bu/experiments/repair.py` and `tests/test_repair.py` **untracked** at session start — a previous session's W5 Monday repair path, never committed (DEV-005 class). Reviewed it to standard rather than trusting it: read both in full, ran all 22 tests, probed it end-to-end on a real four-arm training run (10× data repair → 74.8% reduction, correctly accepted). Touches nothing frozen, writes no records. Committed (D-080).
+
+**Caught my own error.** First claimed pytest had been counting its 22 tests all along; verified false (removing the files drops the suite to 597, restoring gives 619), so deltas 39–42's figures never included them. Corrected D-080 in place — undelivered, unseen by Sol — and added a reconciliation note to the delta file so its frozen "597" prose matches the 619 the bundle now runs.
+
+### 2026-08-18 (W5 Fri) · Every figure from logs, one command · Claude
+
+**Did:** built `make_figures.py` (D-081) — `python -m bu.experiments.make_figures` regenerates every figure from the immutable attempts, no compute. Produces the two W3 curves and a new certified W4 gate trend (three curves peaking at N=250, no error bars per D-075), and **fails loudly** on a missing log. 619 → **626 passing**.
+
+**Where things now stand.** Everything through W5 that needs no Sol ruling is done: Mon (recovered), Tue, Wed, Fri. **Gate 1 at three of four.** The delta prose channel is at its cap (≈377/400) with deltas 39–42 undelivered, so D-080 and D-081 ride the complete diff since `ca545ed` and the ledger rather than new delta blocks. **Genuinely out of unblocked work now** — W4 Fri (freezes a §2 constant), the MDE decision, C-003, C-005/7/8 all wait on Sol.
