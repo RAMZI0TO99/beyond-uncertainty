@@ -387,3 +387,12 @@ W5 Fri's figure script are the remaining unblocked cells. Deltas 39-42 travel
 together -- the student is out of credit until the 20th.
 === END UPDATE ===
 ```
+
+> **RECONCILIATION NOTE (not a delta).** Deltas 39–42 above report suite sizes
+> up to **597**. The bundle's live `pytest` now reports **619**. The 22-test
+> difference is `tests/test_repair.py`, recovered this session: `repair.py` and
+> its tests were present but **untracked** at session start (a previous
+> session's uncommitted W5 Monday work) and were silently uncounted in the
+> full-suite runs behind those deltas. Verified by removing the two files — the
+> suite drops to 597 — and committing them restores 619. Reviewed, all 22 pass,
+> probed end-to-end (D-080). Its own delta joins the next batch after delivery.
