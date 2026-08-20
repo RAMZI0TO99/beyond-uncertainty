@@ -1255,3 +1255,38 @@ The runner decides nothing. It fits, scores and records; verdicts are `bu.stats`
 **Data seen:** none.
 **Plan ref:** D-034, D-012, D-077, C-007. Corrects the provenance note in D-091 and delta 43.
 **Reviewed by Sol:** **not yet.**
+
+### D-094 · 2026-08-20 · CHANGE RECORD — the acceptance model gains the pairing, and the literal specification turns out to be degenerate
+**Constant changed:** §2 *Acceptance test*.
+**From:** "Linear mixed-effects on per-transition error; random intercepts for seed and episode-within-seed; episode-mean fallback".
+**To:** "Paired per-transition contrast with seed as the replication level; paired-difference fallback".
+**Authorised by:** Sol, ruling on deltas 43–44 — explicitly *"Authorised Change Record"*.
+**Has data been seen?** **No.** No confirmatory run exists, no repair-validation evidence has been produced, and every measurement below is synthetic. This is why the change is admissible at all: §2 exists to stop constants moving *after* data.
+
+**Why Sol authorised it.** D-086 measured the registered model's interval at **1.51×** the true paired null spread. Sol refused to accept that as a power limitation, on the grounds that repair acceptance **creates the thesis labels**: an over-wide interval converts genuine repairs into ambiguous or undiagnosed units and so alters H2's and H3's population.
+
+**FINDING — the literal specification is not estimable, and its estimable reduction is dangerous.** Sol specified a seed random intercept, an episode-within-seed component and a transition-within-episode component. Measured rather than assumed:
+- **It is structurally over-parameterised.** All three effects are constant within a pair, so all three cancel in the within-pair contrast and become unidentifiable. `statsmodels` raises `LinAlgError: Singular matrix` at 250 pairs and at 1,000 pairs. At 1,600 pairs it fits in **231 s** on a boundary warning — 200 permutations would take **~13 hours**.
+- **Where it does fit, it equals the paired-difference computation exactly**: effect and SE agree to four significant figures, interval identical to six decimals.
+- **Reduced to what is estimable, it treats pairs as iid** — and is therefore blind to the repair effect varying across seeds. Measured, its SE is **up to 8.7× too small** when the effect does vary (ratios 1.05 / 5.63 / 7.66 / 8.70 at seed-effect sd 0 / 0.003 / 0.006 / 0.012).
+
+That last point is the reason the literal form was **not** adopted. It would have replaced a 1.51× *conservative* test with a potentially 8.7× *anti-conservative* one, and anti-conservative is the far worse direction here: a too-narrow interval manufactures repairs out of seed noise, and those become labels. Seed-level variation in the repair effect is also exactly what P§7.3's **twenty** seeds exist to measure.
+
+**What was implemented.** The pairing is taken first — differencing out everything the two arms share on a transition — and **seed remains the replication level**, which is what the authorised "seed random intercept" was for. The interval is a t interval on `n_seeds − 1` degrees of freedom over seed-mean differences: always estimable, no optimiser, **7 ms** against 231 s. Sol's specified fallback is retained for the degenerate case, and on truly constant differences both fail **closed** with nan and `passed=False` rather than inventing a number.
+
+**Result — the corrected criterion is met at every pairing strength tested** (Sol required this; the near-perfect generator is a stress case, not an estimate of real pairing):
+
+| pairing | statistical-only | exact 95% CI | full rule | calibrated |
+|---|---|---|---|---|
+| 1.0 | 7/200 | [1.42%, 7.08%] | 0/200 | **yes** |
+| 0.9 | 5/200 | [0.82%, 5.74%] | 0/200 | **yes** |
+| 0.5 | 5/200 | [0.82%, 5.74%] | 0/200 | **yes** |
+| 0.0 | 5/200 | [0.82%, 5.74%] | 0/200 | **yes** |
+
+Admissible under the corrected D-085: statistical-only **k ∈ [1, 10]**, full rule **k = 0**. The **xfail is removed**, per Sol's instruction not to leave a repaired procedure represented as an expected failure.
+
+**A test was replaced rather than repaired.** D-082's seed-intercept regression asserted a `mixedlm` structure the primary no longer uses, so keeping it would have pinned a mechanism instead of a property. It is replaced by a test that seed-level variation in the effect **widens the interval** — which is precisely what the literal specification fails, so reverting to that form fails the suite.
+**Tests:** 709 → **720 passing**, 2 skipped, **0 xfailed**.
+**Data seen:** none. Synthetic throughout.
+**Plan ref:** P§7.3, §2. Amends D-079, resolves D-086, implements Sol's authorised Change Record.
+**Reviewed by Sol:** the Change Record is Sol's; **the degeneracy finding and the departure from the literal form are new and need a ruling.**

@@ -132,7 +132,7 @@ These are the preregistered quantities. They are fixed **before** data collectio
 |---|---|---|
 | Data-repair budget | **10×** the failure-condition dataset, same generating process | P§7.2 |
 | Repair acceptance | Negative fixed effect, 95% CI excluding zero, **and** ≥ **20%** relative reduction in mean per-transition error | P§7.3 |
-| Acceptance test | Linear mixed-effects on per-transition error; random intercepts for seed and episode-within-seed; episode-mean fallback | P§7.3 |
+| Acceptance test | **Paired per-transition contrast, seed as the replication level**; paired-difference fallback. *Changed under D-094, authorised by Sol, before any data was seen* | P§7.3, D-094 |
 | H3 equivalence margin | **±5 percentage points** balanced accuracy | P§4.2 |
 | Seeds — H1/H2 conditions (Exp 1, 2A, 2B) | **5** | P§14.2 |
 | Seeds — canonical repair validation | **20** | P§7.3, P§14.2 |
@@ -287,6 +287,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-091** | 2026-08-20 | C-008 — the confirmatory runner, and the bypass it was asked to close | Deliverable |
 | **D-092** | 2026-08-20 | C-003 — the reserve draw order, predeclared before it is needed | **Predeclaration** |
 | **D-093** | 2026-08-20 | C-007 at the repair-acceptance call site; provenance note corrected | Sol's item |
+| **D-094** | 2026-08-20 | **CHANGE RECORD** — acceptance model gains the pairing; literal spec found degenerate | **Sol-authorised** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 

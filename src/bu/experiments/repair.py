@@ -244,7 +244,7 @@ def acceptance_inputs(
         )
     masks = _validated_masks(failure_masks, baseline)
 
-    errors, arms, seeds, episodes = [], [], [], []
+    errors, arms, seeds, episodes, steps = [], [], [], [], []
     for base, rep in zip(
         sorted(baseline, key=lambda e: e.seed), sorted(repaired, key=lambda e: e.seed)
     ):
@@ -279,11 +279,17 @@ def acceptance_inputs(
             arms.append(np.full(int(mask.sum()), flag))
             seeds.append(np.full(int(mask.sum()), source.seed))
             episodes.append(source.episode[mask])
+            # The pairing key (D-094). Both arms are scored on the SAME
+            # transitions -- verified above -- so `step` identifies which
+            # transition a row is, and the acceptance model uses it to difference
+            # out the difficulty the two arms share.
+            steps.append(source.step[mask])
     return {
         "errors": np.concatenate(errors),
         "repair": np.concatenate(arms),
         "seed": np.concatenate(seeds),
         "episode": np.concatenate(episodes),
+        "transition": np.concatenate(steps),
     }
 
 

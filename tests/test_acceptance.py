@@ -27,12 +27,12 @@ def synthetic(reduction=0.0, *, n_seeds=20, n_episodes=8, n_transitions=10,
               seed_sd=0.02, episode_sd=0.01, noise=0.01, rng=None):
     """Paired data: the same failure set evaluated under both arms (P§7.2 step 4)."""
     rng = rng or np.random.default_rng(0)
-    errors, repair, seeds, episodes = [], [], [], []
+    errors, repair, seeds, episodes, transitions = [], [], [], [], []
     for s in range(n_seeds):
         s_effect = rng.normal(0, seed_sd)
         for ep in range(n_episodes):
             e_effect = rng.normal(0, episode_sd)
-            for _ in range(n_transitions):
+            for step in range(n_transitions):
                 base = BASE + s_effect + e_effect + rng.normal(0, noise)
                 for arm in (0, 1):
                     value = base * (1 - reduction) if arm else base
@@ -40,7 +40,34 @@ def synthetic(reduction=0.0, *, n_seeds=20, n_episodes=8, n_transitions=10,
                     repair.append(arm)
                     seeds.append(s)
                     episodes.append(ep)
-    return np.array(errors), np.array(repair), np.array(seeds), np.array(episodes)
+                    transitions.append(step)
+    return (np.array(errors), np.array(repair), np.array(seeds),
+            np.array(episodes), np.array(transitions))
+
+
+def synthetic_paired(pair_strength=1.0, *, n_seeds=20, n_episodes=8, n_transitions=10,
+                     noise=0.01, rng=None):
+    """Like `synthetic`, but with the arms' shared transition difficulty tunable.
+
+    `pair_strength=1.0` is the original generator: the arms share the transition
+    draw exactly. `0.0` gives them independent draws. Sol's point is that the
+    near-perfect case is a valid stress test but NOT an estimate of real-data
+    pairing, so calibration has to hold across the range.
+    """
+    rng = rng or np.random.default_rng(0)
+    E, R, S, P, T = [], [], [], [], []
+    for s in range(n_seeds):
+        se = rng.normal(0, 0.02)
+        for ep in range(n_episodes):
+            ee = rng.normal(0, 0.01)
+            for st in range(n_transitions):
+                shared = rng.normal(0, noise)
+                for arm in (0, 1):
+                    own = rng.normal(0, noise)
+                    tn = pair_strength * shared + np.sqrt(max(0.0, 1 - pair_strength**2)) * own
+                    E.append(BASE + se + ee + tn + (rng.normal(0, noise) if arm else 0.0))
+                    R.append(arm); S.append(s); P.append(ep); T.append(st)
+    return (np.array(E), np.array(R), np.array(S), np.array(P), np.array(T))
 
 
 # --- the three conditions, each able to refuse on its own -------------------
@@ -49,7 +76,7 @@ def synthetic(reduction=0.0, *, n_seeds=20, n_episodes=8, n_transitions=10,
 def test_a_real_repair_is_accepted_and_its_size_recovered():
     result = acceptance_test(*synthetic(reduction=0.35, rng=np.random.default_rng(0)))
     assert result.passed
-    assert result.method == "mixedlm"
+    assert result.method == "paired_seed_cluster"
     assert result.effect < 0
     assert result.ci_high < 0
     assert result.relative_reduction == pytest.approx(0.35, abs=0.05), (
@@ -103,69 +130,92 @@ def test_the_fallback_is_recorded_as_a_different_method():
 
     data = synthetic(reduction=0.35, rng=np.random.default_rng(0))
     frame = A._frame(*data)
-    result = A._episode_mean_fallback(
+    result = A._paired_difference_fallback(
         frame, dict(n_transitions=len(frame), n_seeds=20, n_episodes=160,
                     unrepaired_mean=float(frame.loc[frame.repair == 0, "error"].mean())),
         float(frame.loc[frame.repair == 0, "error"].mean()),
     )
-    assert result.method == "episode_mean_fallback"
+    assert result.method == "paired_difference_fallback"
     assert result.passed
     assert "fallback" in result.reason
 
 
+def _constant_difference_data(n_seeds=6, n_ep=3, n_tr=4):
+    """Every pair identical, so the across-seed spread is EXACTLY zero.
+
+    Built from two literal values so the differences are bitwise identical and
+    the standard deviation is truly 0 rather than merely tiny -- an approximately
+    zero spread would take the ordinary path and this would test nothing.
+    """
+    e, r, s, ep, tr = [], [], [], [], []
+    for seed in range(n_seeds):
+        for episode in range(n_ep):
+            for step in range(n_tr):
+                for arm, value in ((0, 1.0), (1, 0.99)):
+                    e.append(value); r.append(arm)
+                    s.append(seed); ep.append(episode); tr.append(step)
+    return (np.array(e), np.array(r), np.array(s), np.array(ep), np.array(tr))
+
+
 def test_refusing_the_fallback_is_possible():
-    """A caller may insist on the registered model rather than a substitute."""
-    import bu.stats.acceptance as A
+    """A caller may insist on the registered model rather than a substitute.
 
-    original = A.acceptance_test
-    data = synthetic(reduction=0.35, rng=np.random.default_rng(0))
-    # Force non-convergence by handing the model a single episode per seed with
-    # no within-seed variation to estimate.
-    errors, repair, seeds, episodes = data
+    The fallback now triggers when the ACROSS-SEED interval cannot be formed --
+    a zero or undefined seed-level spread -- rather than on optimiser
+    non-convergence, because the primary no longer runs an optimiser.
+    """
+    data = _constant_difference_data()
     with pytest.raises(RuntimeError, match="allow_fallback is False"):
-        import statsmodels.formula.api as smf
-        real = smf.mixedlm
-        smf.mixedlm = lambda *a, **k: (_ for _ in ()).throw(ValueError("forced"))
-        try:
-            A.acceptance_test(errors, repair, seeds, episodes, allow_fallback=False)
-        finally:
-            smf.mixedlm = real
-    assert A.acceptance_test is original
+        acceptance_test(*data, allow_fallback=False)
 
 
-# --- input validation -------------------------------------------------------
+def test_a_zero_seed_spread_fails_CLOSED_rather_than_accepting():
+    """With the fallback allowed, a degenerate spread must refuse, not accept.
 
+    Perfectly constant differences leave nothing to estimate an interval from,
+    and the fallback's own model is singular there too. The right behaviour is
+    not to invent a number: the result is nan, `passed` is False, and the reason
+    says so. D-079's rule -- an unestimated effect is not a null one -- read in
+    the direction that matters, since the alternative is accepting a repair on
+    an interval that was never computed.
+    """
+    result = acceptance_test(*_constant_difference_data())
+    assert result.method == "paired_difference_fallback"
+    assert not result.passed
+    assert not result.converged
+    assert np.isnan(result.effect)
+    assert "not a null one" in result.reason
 
 def test_mismatched_lengths_are_refused():
-    errors, repair, seeds, episodes = synthetic(rng=np.random.default_rng(0))
+    errors, repair, seeds, episodes, steps = synthetic(rng=np.random.default_rng(0))
     with pytest.raises(ValueError, match="same length"):
-        acceptance_test(errors[:-1], repair, seeds, episodes)
+        acceptance_test(errors[:-1], repair, seeds, episodes, steps)
 
 
 def test_a_single_arm_is_refused():
     """A one-armed test would report the intercept as an effect."""
-    errors, repair, seeds, episodes = synthetic(rng=np.random.default_rng(0))
+    errors, repair, seeds, episodes, steps = synthetic(rng=np.random.default_rng(0))
     keep = repair == 0
     with pytest.raises(ValueError, match="only one value"):
-        acceptance_test(errors[keep], repair[keep], seeds[keep], episodes[keep])
+        acceptance_test(errors[keep], repair[keep], seeds[keep], episodes[keep], steps[keep])
 
 
 def test_a_non_binary_repair_indicator_is_refused():
-    errors, repair, seeds, episodes = synthetic(rng=np.random.default_rng(0))
+    errors, repair, seeds, episodes, steps = synthetic(rng=np.random.default_rng(0))
     with pytest.raises(ValueError, match="0/1 indicator"):
-        acceptance_test(errors, repair * 2, seeds, episodes)
+        acceptance_test(errors, repair * 2, seeds, episodes, steps)
 
 
 def test_empty_input_is_refused():
     with pytest.raises(ValueError, match="no transitions"):
-        acceptance_test([], [], [], [])
+        acceptance_test([], [], [], [], [])
 
 
 def test_episode_identity_is_scoped_to_its_seed():
     """Two seeds both have an episode 0, and they are different episodes (D-052)."""
     from bu.stats import acceptance as A
 
-    frame = A._frame([1.0, 2.0], [0, 1], [0, 1], [0, 0])
+    frame = A._frame([1.0, 2.0, 3.0, 4.0], [0, 1, 0, 1], [0, 0, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0])
     assert frame["episode"].nunique() == 2, (
         "episode 0 of seed 0 and episode 0 of seed 1 collapsed into one group; the "
         "random intercept would pool transitions from different seeds"
@@ -190,9 +240,9 @@ def _permuted_labels(data, *, n, rng_seed=0):
     seen = []
     real = A.acceptance_test
 
-    def spy(errors, repair, seed, episode, **kw):
+    def spy(errors, repair, seed, episode, transition, **kw):
         seen.append(np.asarray(repair).copy())
-        return real(errors, repair, seed, episode, **kw)
+        return real(errors, repair, seed, episode, transition, **kw)
 
     A.acceptance_test = spy
     try:
@@ -295,42 +345,30 @@ def test_the_global_permutation_would_fail_this_regression():
 
 def test_the_permutation_null_refuses_a_seed_missing_an_arm():
     """A seed with one arm has nothing to swap, so it is refused, not carried."""
-    errors, repair, seeds, episodes = synthetic(rng=np.random.default_rng(0))
+    errors, repair, seeds, episodes, steps = synthetic(rng=np.random.default_rng(0))
     # Strip the repaired arm from one seed.
     keep = ~((np.asarray(seeds) == np.unique(seeds)[0]) & (np.asarray(repair) == 1))
-    with pytest.raises(ValueError, match="not both arms"):
+    # The pairing validator fires first and is the more specific refusal:
+    # stripping an arm from a seed also destroys that seed's pairs.
+    with pytest.raises(ValueError, match="exactly one baseline and one repaired"):
         permutation_null(
             np.asarray(errors)[keep], np.asarray(repair)[keep],
             np.asarray(seeds)[keep], np.asarray(episodes)[keep],
-            n_permutations=5,
+            np.asarray(steps)[keep], n_permutations=5,
         )
 
 
 def test_the_permutation_null_refuses_more_than_two_arms():
     """Different repair types are permuted separately against baseline."""
-    errors, repair, seeds, episodes = synthetic(rng=np.random.default_rng(0))
+    errors, repair, seeds, episodes, steps = synthetic(rng=np.random.default_rng(0))
     repair = np.asarray(repair).copy()
     repair[:10] = 2
     # `_frame` refuses a non-0/1 indicator before the matched-design check
     # is reached; both guards exist, and this pins the one that fires.
     with pytest.raises(ValueError, match="0/1 indicator"):
-        permutation_null(errors, repair, seeds, episodes, n_permutations=5)
+        permutation_null(errors, repair, seeds, episodes, steps, n_permutations=5)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "D-085's statistical-only rule is NOT met on the registered generator: "
-        "0/200, exact CI [0.000%, 1.828%], which does not contain 5%. The "
-        "registered P7.3 model has random intercepts for seed and "
-        "episode-within-seed but NO transition-level pairing term, while the "
-        "acceptance comparison is paired transition-by-transition on the same "
-        "failure set -- so its SE is 1.51x the paired null's true spread and the "
-        "test is CONSERVATIVE. The model is a Section-2 frozen constant, so "
-        "changing it is a Change Record and Sol's ruling, not a fix made here. "
-        "strict=True so that if this ever passes, the suite says so."
-    ),
-)
 def test_the_permutation_null_meets_the_frozen_criterion():
     """D-085's criterion, at the 200 permutations it is frozen at.
 
@@ -353,21 +391,47 @@ def test_the_permutation_null_meets_the_frozen_criterion():
         f"{result.reason}"
     )
     assert result.calibrated
-    # D-085's admissible counts, computed in advance from the exact binomial.
-    assert 4 <= result.n_accepted_statistical <= 16
-    assert 0 <= result.n_accepted_full <= 3
+    # D-085's admissible counts at the CORRECTED 2.5% directional nominal,
+    # computed in advance from the exact binomial. The old [4, 16] / [0, 3]
+    # belonged to a 5% target that the one-directional acceptance rule never had.
+    assert 1 <= result.n_accepted_statistical <= 10
+    assert result.n_accepted_full == 0
     assert np.std(result.effects) > 0, (
         "the permuted effects are identical, so the permutation is not permuting "
         "anything and the calibration check is vacuous"
     )
 
 
+def test_the_nominal_rate_is_directional_and_half_the_two_sided_level():
+    """Sol's correction to its own D-085 rule, pinned.
+
+    Acceptance needs a negative effect AND a two-sided 95% interval below zero.
+    Under the null that fires 2.5% of the time, not 5% -- the two-sided level is
+    split between directions and only one of them accepts. Calibrating against
+    5% demands the test reject twice as often as its own rule permits.
+    """
+    from bu.stats.acceptance import CONFIDENCE, DIRECTIONAL_NOMINAL
+
+    assert DIRECTIONAL_NOMINAL == pytest.approx((1 - CONFIDENCE) / 2) == 0.025
+
+
+def test_the_frozen_admissible_counts_follow_from_the_exact_binomial():
+    """D-085's integers are recomputed here rather than trusted as written."""
+    from bu.stats.acceptance import DIRECTIONAL_NOMINAL as NOM, clopper_pearson
+
+    contains = [k for k in range(201)
+                if clopper_pearson(k, 200)[0] <= NOM <= clopper_pearson(k, 200)[1]]
+    within = [k for k in range(201) if clopper_pearson(k, 200)[1] <= NOM]
+    assert (min(contains), max(contains)) == (1, 10)
+    assert within == [0]
+
+
 def test_sixty_permutations_cannot_satisfy_the_full_rule_at_any_count():
     """Why D-085 freezes n=200: the old n=60 test was unsatisfiable, not lucky."""
-    from bu.stats.acceptance import clopper_pearson
+    from bu.stats.acceptance import DIRECTIONAL_NOMINAL as NOM, clopper_pearson
 
-    assert clopper_pearson(0, 60)[1] > 0.05
-    assert clopper_pearson(0, 200)[1] <= 0.05
+    assert clopper_pearson(0, 60)[1] > NOM
+    assert clopper_pearson(0, 200)[1] <= NOM
 
 
 def test_the_models_interval_matches_the_permutation_spread():
@@ -410,68 +474,101 @@ def test_an_uncalibrated_null_is_reported_as_such():
     assert result.full_ci[1] > result.nominal
 
 
-def test_the_model_has_a_seed_random_intercept_not_only_episode(monkeypatch):
-    """P§7.3 wants random intercepts for seed AND episode-within-seed (D-082).
+def test_seed_remains_the_replication_level_after_the_pairing_correction():
+    """What D-082's seed-intercept regression was really protecting (D-094).
 
-    Passing vc_formula without re_formula makes statsmodels silently drop the
-    default group intercept, leaving only the episode component. The CI is
-    unchanged for the paired repair contrast, so no verdict test would catch the
-    omission -- this asserts the model *structure* directly. It captures the
-    fitted MixedLMResults and checks its seed random-effect covariance is
-    populated.
+    That test asserted a `mixedlm` structure the primary no longer uses, so
+    asserting it now would pin a mechanism instead of a property. The property
+    is that **seed is a modelled level**: the interval is taken across seeds, so
+    seed-level variation in the repair effect must widen it.
+
+    This is the exact failure mode of the literal Change-Record specification.
+    Reduced to what is estimable, that model treats pairs as iid and is blind to
+    seed-level effect variation -- measured, its SE runs up to 8.7x too small,
+    which would make the test anti-conservative and manufacture repairs out of
+    seed noise. If anyone reverts to it, this test fails.
     """
-    import statsmodels.formula.api as smf
-    from bu.stats import acceptance as A
+    def with_seed_spread(sd, rng):
+        e, r, s, ep, tr = synthetic(reduction=0.0, rng=rng)
+        shift = {seed: rng.normal(0, sd) for seed in np.unique(s)}
+        e = e + np.array([shift[a] * b for a, b in zip(s, r)])
+        return e, r, s, ep, tr
 
-    captured = {}
-    real_fit = smf.mixedlm
+    flat = acceptance_test(*with_seed_spread(0.0, np.random.default_rng(1)))
+    varied = acceptance_test(*with_seed_spread(0.01, np.random.default_rng(1)))
 
-    def spy(*args, **kwargs):
-        model = real_fit(*args, **kwargs)
-        real_model_fit = model.fit
-
-        def fit(*a, **k):
-            res = real_model_fit(*a, **k)
-            captured["cov_re_size"] = res.cov_re.size
-            return res
-
-        model.fit = fit
-        return model
-
-    monkeypatch.setattr(smf, "mixedlm", spy)
-    acceptance_test(*synthetic(reduction=0.35, rng=np.random.default_rng(0)))
-
-    assert captured.get("cov_re_size", 0) > 0, (
-        "the fitted model has no seed random intercept; vc_formula without "
-        "re_formula dropped it, and the model is not the one P§7.3 registers"
+    flat_w = flat.ci_high - flat.ci_low
+    varied_w = varied.ci_high - varied.ci_low
+    assert varied_w > 3 * flat_w, (
+        f"interval width {varied_w:.8f} with seed-varying effects vs "
+        f"{flat_w:.8f} without. Seed is not acting as the replication level, so "
+        "the test cannot see effects that differ across training runs -- which is "
+        "what P§7.3's twenty seeds exist to measure"
     )
 
 
-def test_the_registered_model_is_conservative_under_transition_pairing():
-    """The finding the corrected null exposed, pinned so it cannot drift silently.
+def test_the_degrees_of_freedom_come_from_seeds_not_transitions():
+    """20 seeds means t(19), not a normal on 3,200 rows."""
+    from scipy import stats
 
-    The withdrawn global permutation HID this. Breaking the within-seed pairing
-    inflated the null's spread by 1.46x, which almost exactly cancelled the
-    model's 1.51x over-wide SE and produced a reassuring ratio of 1.03 -- so the
-    old check reported "the model's SE matches the permutation spread" and
-    passed comfortably. Two independent errors cancelling into a number that
-    looked like evidence.
+    data = synthetic(reduction=0.35, rng=np.random.default_rng(0))
+    result = acceptance_test(*data)
+    half = (result.ci_high - result.ci_low) / 2
+    se = half / stats.t.ppf(0.975, result.n_seeds - 1)
+    # Reconstructing with a normal quantile would give a visibly different width.
+    assert abs(half / (1.959964 * se) - 1) > 0.05
 
-    This asserts the real relationship. It fails if the model gains a pairing
-    term (which would be a Section-2 Change Record) or if the null regresses to
-    an unpaired shuffle.
+def test_the_paired_model_matches_the_paired_null_spread():
+    """The Change Record's whole purpose, asserted on the number.
+
+    Before D-094 the model's SE was 1.51x the true paired null spread, because
+    P§7.3 had no transition-level term while the comparison is paired per
+    transition. The withdrawn global permutation had HIDDEN that by inflating
+    the null's spread 1.46x, cancelling to a reassuring 1.03. This asserts the
+    two now agree, and fails if either the pairing is dropped from the model or
+    the null stops preserving the matched design.
     """
     data = synthetic(reduction=0.0, rng=np.random.default_rng(1))
     observed = acceptance_test(*data)
-    model_se = (observed.ci_high - observed.ci_low) / (2 * 1.959963985)
+    model_se = (observed.ci_high - observed.ci_low) / 2 / 2.093024  # t(19), 95%
 
     null = permutation_null(*data, n_permutations=200, rng=np.random.default_rng(3))
     paired_sd = float(np.std(null.effects, ddof=1))
 
     ratio = model_se / paired_sd
-    assert ratio > 1.3, (
-        f"model SE {model_se:.6f} vs paired null spread {paired_sd:.6f} = "
-        f"{ratio:.2f}x. The conservatism D-085 recorded is gone -- either the "
-        "acceptance model changed (Section 2 Change Record required) or the "
-        "permutation stopped preserving the matched design"
+    assert 0.7 < ratio < 1.4, (
+        f"model SE {model_se:.8f} vs paired null spread {paired_sd:.8f} = "
+        f"{ratio:.2f}x. The D-094 pairing correction is not holding"
     )
+
+
+def test_the_pairing_is_required_not_optional():
+    """An absent pairing key would silently restore the over-wide interval."""
+    import inspect
+
+    params = inspect.signature(acceptance_test).parameters
+    assert params["transition"].default is inspect.Parameter.empty
+
+
+def test_an_unmatched_pair_is_refused():
+    """A pair with two rows of one arm is not a pair (D-094)."""
+    e, r, s, ep, tr = synthetic(reduction=0.0, rng=np.random.default_rng(1))
+    r = r.copy()
+    r[1] = 0  # that pair now has two baseline rows and no repaired row
+    with pytest.raises(ValueError, match="exactly one baseline and one repaired"):
+        acceptance_test(e, r, s, ep, tr)
+
+
+@pytest.mark.parametrize("pair_strength", [1.0, 0.9, 0.5, 0.0])
+def test_calibration_holds_across_preregistered_pairing_strengths(pair_strength):
+    """Sol's requirement: the near-perfect generator is a stress case, not an estimate.
+
+    The old model failed hardest exactly where pairing was strongest (0/200 at
+    1.0, drifting to 8/200 at 0.0). The corrected one must be calibrated at all
+    of them, or it has merely moved the miscalibration somewhere else.
+    """
+    data = synthetic_paired(pair_strength=pair_strength, rng=np.random.default_rng(1))
+    result = permutation_null(*data, n_permutations=200, rng=np.random.default_rng(3))
+    assert result.calibrated, result.reason
+    assert 1 <= result.n_accepted_statistical <= 10
+    assert result.n_accepted_full == 0
