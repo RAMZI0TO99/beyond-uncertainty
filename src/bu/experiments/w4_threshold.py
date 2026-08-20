@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,6 +92,12 @@ BALANCE_RNG_SEED = 0
 #: Threading, pinned and recorded.
 THRESHOLD_THREADS = 4
 THRESHOLD_INTEROP_THREADS = 4
+
+#: The only permitted attempt-directory names. A frozen format, because prior
+#: attempts are discovered by pattern: a caller who could pass any name (or a
+#: path) could step outside the search and bypass the one-attempt policy
+#: entirely (Sol, delta 45).
+ATTEMPT_NAME = re.compile(r"^attempt-\d{3}$")
 
 #: The file that declares a prior attempt invalid. It must exist BEFORE a second
 #: attempt runs, and it must have been written before the first attempt's
@@ -263,6 +270,13 @@ def assert_may_attempt(root: Path, *, attempt: str) -> Path:
     records that the first attempt was abandoned for a stated reason, and it must
     predate the file that holds the number.
     """
+    if not isinstance(attempt, str) or not ATTEMPT_NAME.match(attempt):
+        raise ValueError(
+            f"attempt name {attempt!r} is not of the frozen form attempt-NNN. "
+            "Prior attempts are discovered by that pattern, so a free-form name -- "
+            "or a path -- would sit outside the search and bypass the one-attempt "
+            "policy entirely"
+        )
     root = Path(root)
     target = root / attempt
     if target.exists():
@@ -271,7 +285,12 @@ def assert_may_attempt(root: Path, *, attempt: str) -> Path:
             "second calibration overwriting the first is how a fixed threshold "
             "becomes a tuned one"
         )
-    prior = sorted(d for d in root.glob("attempt-*") if d.is_dir()) if root.exists() else []
+    # Every permitted name matches ATTEMPT_NAME, and discovery uses the same
+    # pattern -- so no permitted attempt can be invisible to this search.
+    prior = sorted(
+        d for d in (root.iterdir() if root.exists() else [])
+        if d.is_dir() and ATTEMPT_NAME.match(d.name)
+    )
     for earlier in prior:
         declaration = earlier / INVALIDATION_FILE
         result = earlier / "threshold_calibration.json"
@@ -281,6 +300,13 @@ def assert_may_attempt(root: Path, *, attempt: str) -> Path:
                 f"{INVALIDATION_FILE} into it, with the reason, BEFORE reading its "
                 "threshold -- a re-attempt after seeing a number you did not like is "
                 "a tuned threshold, whatever it is called"
+            )
+        if not declaration.read_text(encoding="utf-8").strip():
+            raise ValueError(
+                f"{earlier.name}/{INVALIDATION_FILE} is empty. The declaration must "
+                "record WHY the attempt was abandoned: an empty file is a formality "
+                "that any re-run could satisfy, which is exactly what the one-attempt "
+                "policy exists to prevent"
             )
         if result.exists() and declaration.stat().st_mtime > result.stat().st_mtime:
             raise ValueError(
@@ -429,39 +455,103 @@ def calibrate(out_dir: str | Path, *, attempt: str = "attempt-001") -> Threshold
 
 
 def recompute_threshold(attempt_dir: str | Path) -> float:
-    """Reproduce the threshold from the stored artefacts alone.
+    """Reproduce the threshold from the stored artefacts, trusting almost nothing.
 
-    Sol required this: a number that cannot be recomputed by someone who was not
-    there is a claim, not evidence. This reads the saved error arrays, verifies
-    each against its recorded digest, replays the frozen balancing with the
-    recorded selection, and returns the percentile.
+    Sol, delta 45: the previous version trusted too much of the result JSON. It
+    read the percentile, the method and the selection out of the very file whose
+    number it was meant to check — so an attempt that recorded a different
+    percentile, a short grid, or a hand-written selection would have "recomputed"
+    perfectly. That is the D-071 shape: a manifest checked only against itself.
+
+    Now every frozen constant is compared against the code rather than read from
+    the file, and the deterministic selection is **reconstructed from the stored
+    arrays** and compared with what the attempt recorded, instead of being reused.
     """
     attempt = Path(attempt_dir)
     row = json.loads((attempt / "threshold_calibration.json").read_text(encoding="utf-8"))
-    if len(row["cells"]) != row["required_cells"]:
+
+    def expect(key, want, what):
+        got = row.get(key)
+        if got != want:
+            raise ValueError(
+                f"{what}: the attempt records {got!r} but the frozen specification "
+                f"is {want!r}. The number was not taken under the registered rule"
+            )
+
+    expect("percentile", THRESHOLD_PERCENTILE, "percentile")
+    expect("percentile_method", PERCENTILE_METHOD, "percentile method")
+    expect("required_cells", REQUIRED_CELLS, "required cell count")
+    expect("seeds", list(THRESHOLD_SEEDS), "seed set")
+    expect("failure_rule", "error > threshold (strict)", "failure rule")
+    if row.get("balance", {}).get("rng_seed") != BALANCE_RNG_SEED:
+        raise ValueError("the attempt records a different balancing RNG seed")
+    ref = row.get("reference", {})
+    for key, want in (("stage", THRESHOLD_STAGE), ("size", REFERENCE_SIZE),
+                      ("family", REFERENCE_FAMILY),
+                      ("ensemble_size", K.DEFAULT_ENSEMBLE_SIZE)):
+        if ref.get(key) != want:
+            raise ValueError(
+                f"reference {key}: attempt records {ref.get(key)!r}, frozen is {want!r}"
+            )
+    thr = row.get("threading", {})
+    if (thr.get("num_threads") != THRESHOLD_THREADS
+            or thr.get("num_interop_threads") != THRESHOLD_INTEROP_THREADS):
         raise ValueError(
-            f"{len(row['cells'])} cells stored but {row['required_cells']} required"
+            f"threading {thr} is not the pinned "
+            f"{THRESHOLD_THREADS}/{THRESHOLD_INTEROP_THREADS}; thread count changes "
+            "the reduction order (D-076)"
         )
 
-    pooled: dict[str, list[np.ndarray]] = {}
-    for cell in row["cells"]:
-        path = attempt / cell["errors_file"]
-        digest = _sha256_file(path)
-        if digest != cell["errors_digest"]:
-            raise ValueError(
-                f"{cell['errors_file']} has digest {digest[:12]} but the attempt "
-                f"records {cell['errors_digest'][:12]}. The stored errors are not "
-                "the ones the threshold was taken over"
-            )
-        key = f"{cell['layout']}|{cell['causal_attribute']}"
-        pooled.setdefault(key, []).append(np.load(path))
+    cells = row["cells"]
+    if len(cells) != REQUIRED_CELLS:
+        raise ValueError(f"{len(cells)} cells stored but {REQUIRED_CELLS} required")
+    keys = {(c["layout"], c["causal_attribute"], c["seed"]) for c in cells}
+    if len(keys) != REQUIRED_CELLS:
+        raise ValueError("duplicate (stratum, seed) cells in the attempt")
+    if {(c["layout"], c["causal_attribute"]) for c in cells} != set(reference_strata()):
+        raise ValueError("the stored strata are not the nine registered ones")
+    if {c["seed"] for c in cells} != set(THRESHOLD_SEEDS):
+        raise ValueError("the stored seeds are not the registered set")
+    bad_k = [c for c in cells if c.get("n_members") != K.DEFAULT_ENSEMBLE_SIZE]
+    if bad_k:
+        raise ValueError(
+            f"{len(bad_k)} cell(s) record an ensemble size other than "
+            f"{K.DEFAULT_ENSEMBLE_SIZE}; the threshold is defined on the baseline "
+            "ensemble mean"
+        )
 
-    drawn = []
-    for key in sorted(pooled):
-        idx = np.asarray(row["selected_indices"][key], dtype=int)
-        drawn.append(np.concatenate(pooled[key])[idx])
-    value = float(np.percentile(np.concatenate(drawn), row["percentile"],
-                                method=row["percentile_method"]))
+    pooled: dict[tuple[str, str], list[np.ndarray]] = {}
+    for cell in sorted(cells, key=lambda c: (c["layout"], c["causal_attribute"], c["seed"])):
+        path = attempt / cell["errors_file"]
+        if _sha256_file(path) != cell["errors_digest"]:
+            raise ValueError(
+                f"{cell['errors_file']} has a digest the attempt does not record. "
+                "The stored errors are not the ones the threshold was taken over"
+            )
+        records = attempt / "records" / cell["run_id"]
+        for name, field in (("run.json", "run_record_digest"),
+                            ("metrics.jsonl", "member_record_digest")):
+            target = records / name
+            if not target.exists():
+                raise ValueError(f"{cell['run_id']}/{name} is missing from the attempt")
+            if _sha256_file(target) != cell[field]:
+                raise ValueError(
+                    f"{cell['run_id']}/{name} does not match its recorded digest"
+                )
+        pooled.setdefault((cell["layout"], cell["causal_attribute"]), []).append(
+            np.load(path)
+        )
+
+    arrays = {k: np.concatenate(v) for k, v in pooled.items()}
+    value, selected, _ = _threshold_from_arrays(arrays)
+
+    recorded = {k: list(v) for k, v in row["selected_indices"].items()}
+    if {k: list(v) for k, v in selected.items()} != recorded:
+        raise ValueError(
+            "the deterministic selection reconstructed from the stored arrays does "
+            "not match the one the attempt recorded. The recorded indices are not "
+            "reused here precisely so that a hand-written selection cannot pass"
+        )
     if not np.isclose(value, row["threshold"], rtol=0, atol=1e-12):
         raise ValueError(
             f"recomputed {value!r} but the attempt records {row['threshold']!r}. "

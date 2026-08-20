@@ -233,7 +233,7 @@ def test_declaring_invalid_AFTER_reading_the_threshold_is_refused(tmp_path):
 
 
 def fake_attempt(tmp_path, n=40):
-    """An attempt directory built from arrays -- no fitting, no records."""
+    """An attempt directory built from arrays and stub records -- no fitting."""
     attempt = tmp_path / "attempt-001"
     (attempt / "arrays").mkdir(parents=True)
     arrays, cells = {}, []
@@ -245,13 +245,19 @@ def fake_attempt(tmp_path, n=40):
             name = f"{layout}-{attr}-s{seed}.npy"
             path = attempt / "arrays" / name
             np.save(path, errs)
+            run_id = f"r-{layout}-{attr}-{seed}"
+            rec = attempt / "records" / run_id
+            rec.mkdir(parents=True)
+            (rec / "run.json").write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
+            (rec / "metrics.jsonl").write_text('{"member": 0}\n', encoding="utf-8")
             cells.append({
                 "layout": layout, "causal_attribute": attr, "seed": seed,
-                "n_transitions": n, "run_id": f"r-{layout}-{attr}-{seed}",
+                "n_transitions": n, "run_id": run_id,
                 "config_id": "c", "unit_id": "u", "n_members": 5,
                 "errors_file": f"arrays/{name}",
                 "errors_digest": hashlib.sha256(path.read_bytes()).hexdigest(),
-                "run_record_digest": "x", "member_record_digest": "y",
+                "run_record_digest": hashlib.sha256((rec / "run.json").read_bytes()).hexdigest(),
+                "member_record_digest": hashlib.sha256((rec / "metrics.jsonl").read_bytes()).hexdigest(),
             })
             pooled.append(errs)
         arrays[(layout, attr)] = np.concatenate(pooled)
@@ -259,6 +265,13 @@ def fake_attempt(tmp_path, n=40):
     (attempt / "threshold_calibration.json").write_text(json.dumps({
         "threshold": threshold, "percentile": T.THRESHOLD_PERCENTILE,
         "percentile_method": T.PERCENTILE_METHOD, "required_cells": T.REQUIRED_CELLS,
+        "seeds": list(T.THRESHOLD_SEEDS),
+        "failure_rule": "error > threshold (strict)",
+        "balance": {"rng_seed": T.BALANCE_RNG_SEED},
+        "reference": {"stage": T.THRESHOLD_STAGE, "size": T.REFERENCE_SIZE,
+                      "family": T.REFERENCE_FAMILY, "ensemble_size": 5},
+        "threading": {"num_threads": T.THRESHOLD_THREADS,
+                      "num_interop_threads": T.THRESHOLD_INTEROP_THREADS},
         "cells": cells, "selected_indices": selected,
     }, indent=2), encoding="utf-8")
     return attempt
@@ -307,3 +320,86 @@ def test_a_fraction_typo_is_not_catchable_and_that_is_recorded_here():
     """
     assert T.THRESHOLD_PERCENTILE == 95.0
     assert "percentile" not in inspect.signature(T.calibrate).parameters
+
+
+# --- the three execution blockers Sol named (delta 45) ----------------------
+
+
+@pytest.mark.parametrize("bad", [
+    "attempt-1", "attempt-0001", "attempt", "../attempt-001",
+    "/tmp/attempt-001", "sub/attempt-001", "attempt-001x",
+])
+def test_a_free_form_attempt_name_is_refused(tmp_path, bad):
+    """A name outside the frozen pattern sits outside prior-attempt discovery."""
+    with pytest.raises(ValueError, match="frozen form attempt-NNN"):
+        T.assert_may_attempt(tmp_path, attempt=bad)
+
+
+def test_every_permitted_name_is_visible_to_discovery(tmp_path):
+    """The bypass: if a permitted name were not discovered, the policy is void."""
+    (tmp_path / "attempt-007").mkdir()
+    with pytest.raises(FileExistsError, match="has not been declared invalid"):
+        T.assert_may_attempt(tmp_path, attempt="attempt-008")
+
+
+def test_an_empty_invalidation_file_is_refused(tmp_path):
+    """A formality any re-run could satisfy is not a declaration."""
+    first = tmp_path / "attempt-001"
+    first.mkdir()
+    (first / T.INVALIDATION_FILE).write_text("   \n", encoding="utf-8")
+    with pytest.raises(ValueError, match="must record WHY"):
+        T.assert_may_attempt(tmp_path, attempt="attempt-002")
+
+
+@pytest.mark.parametrize("field, value, match", [
+    ("percentile", 90.0, "percentile"),
+    ("percentile_method", "nearest", "percentile method"),
+    ("seeds", [1, 2, 3, 4, 5], "seed set"),
+    ("failure_rule", "error >= threshold", "failure rule"),
+])
+def test_recompute_refuses_a_result_taken_under_a_different_rule(tmp_path, field, value, match):
+    """It must not read the frozen spec out of the file it is checking."""
+    attempt = fake_attempt(tmp_path)
+    row = json.loads((attempt / "threshold_calibration.json").read_text())
+    row[field] = value
+    (attempt / "threshold_calibration.json").write_text(json.dumps(row), encoding="utf-8")
+    with pytest.raises(ValueError, match=match):
+        T.recompute_threshold(attempt)
+
+
+def test_recompute_refuses_a_hand_written_selection(tmp_path):
+    """THE point of reconstructing rather than reusing the recorded indices."""
+    attempt = fake_attempt(tmp_path)
+    row = json.loads((attempt / "threshold_calibration.json").read_text())
+    key = sorted(row["selected_indices"])[0]
+    row["selected_indices"][key] = list(reversed(row["selected_indices"][key]))
+    (attempt / "threshold_calibration.json").write_text(json.dumps(row), encoding="utf-8")
+    with pytest.raises(ValueError, match="does not match the one the attempt recorded"):
+        T.recompute_threshold(attempt)
+
+
+def test_recompute_verifies_the_run_and_member_records(tmp_path):
+    attempt = fake_attempt(tmp_path)
+    row = json.loads((attempt / "threshold_calibration.json").read_text())
+    victim = attempt / "records" / row["cells"][3]["run_id"] / "metrics.jsonl"
+    victim.write_text('{"member": 99}\n', encoding="utf-8")
+    with pytest.raises(ValueError, match="does not match its recorded digest"):
+        T.recompute_threshold(attempt)
+
+
+def test_recompute_refuses_a_wrong_ensemble_size(tmp_path):
+    attempt = fake_attempt(tmp_path)
+    row = json.loads((attempt / "threshold_calibration.json").read_text())
+    row["cells"][0]["n_members"] = 1
+    (attempt / "threshold_calibration.json").write_text(json.dumps(row), encoding="utf-8")
+    with pytest.raises(ValueError, match="ensemble size other than"):
+        T.recompute_threshold(attempt)
+
+
+def test_recompute_refuses_unpinned_threading(tmp_path):
+    attempt = fake_attempt(tmp_path)
+    row = json.loads((attempt / "threshold_calibration.json").read_text())
+    row["threading"]["num_interop_threads"] = 8
+    (attempt / "threshold_calibration.json").write_text(json.dumps(row), encoding="utf-8")
+    with pytest.raises(ValueError, match="not the pinned"):
+        T.recompute_threshold(attempt)

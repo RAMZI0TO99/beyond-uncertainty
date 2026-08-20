@@ -345,13 +345,10 @@ def test_the_label_is_refused_where_it_would_be_BUILT_not_only_where_it_was_run(
     from bu.experiments.repair import REPAIR_STAGE
 
     scale = object()
-    mask = np.ones(40, dtype=bool)
+    seeds = (0,) + REGISTERED_SEEDS[1:]      # one development seed among them
+    base, rep, masks = registered_set(scale, seeds=seeds)
     with pytest.raises(ValueError, match="development data on a registered stage"):
-        acceptance_inputs(
-            [fake("baseline", 0, scale=scale, stage=REPAIR_STAGE)],
-            [fake("data_repair", 0, scale=scale, stage=REPAIR_STAGE)],
-            failure_masks={0: mask},
-        )
+        acceptance_inputs(base, rep, failure_masks=masks)
 
 
 def test_confirmatory_seeds_on_a_registered_stage_are_accepted():
@@ -359,13 +356,21 @@ def test_confirmatory_seeds_on_a_registered_stage_are_accepted():
     from bu.experiments.repair import REPAIR_STAGE
 
     scale = object()
-    s = K.CONFIRMATORY_SEED_BASE
-    out = acceptance_inputs(
-        [fake("baseline", s, scale=scale, stage=REPAIR_STAGE)],
-        [fake("data_repair", s, scale=scale, stage=REPAIR_STAGE)],
-        failure_masks={s: np.ones(40, dtype=bool)},
-    )
-    assert len(out["errors"]) == 80
+    base, rep, masks = registered_set(scale)
+    out = acceptance_inputs(base, rep, failure_masks=masks)
+    assert len(out["errors"]) == 2 * 40 * len(REGISTERED_SEEDS)
+
+
+REGISTERED_SEEDS = tuple(K.CONFIRMATORY_SEED_BASE + i
+                         for i in range(K.SEEDS_REPAIR_VALIDATION))
+
+
+def registered_set(scale, *, arm="data_repair", seeds=REGISTERED_SEEDS, **kw):
+    """A full registered comparison: the frozen 20-seed set on both arms."""
+    base = [fake("baseline", s, scale=scale, stage=REPAIR_STAGE) for s in seeds]
+    rep = [fake(arm, s, scale=scale, stage=REPAIR_STAGE, **kw) for s in seeds]
+    masks = {s: np.ones(40, dtype=bool) for s in seeds}
+    return base, rep, masks
 
 
 # --- consumer-side refusals (Sol's ruling on delta 44) ----------------------
@@ -379,12 +384,9 @@ def test_whole_pool_scoring_is_refused_on_a_registered_stage():
     registered stage the mapping is mandatory. `None` survives only for pilot.
     """
     scale = object()
-    s = K.CONFIRMATORY_SEED_BASE
+    base, rep, _ = registered_set(scale)
     with pytest.raises(ValueError, match="registered but no failure_masks"):
-        acceptance_inputs(
-            [fake("baseline", s, scale=scale, stage=REPAIR_STAGE)],
-            [fake("data_repair", s, scale=scale, stage=REPAIR_STAGE)],
-        )
+        acceptance_inputs(base, rep)
 
 
 def test_whole_pool_scoring_is_still_available_for_a_probe():
@@ -398,37 +400,53 @@ def test_whole_pool_scoring_is_still_available_for_a_probe():
 def test_a_repaired_evaluation_attesting_an_ensemble_is_refused():
     """The producer enforces K=1; an ArmEvaluation can be built without it."""
     scale = object()
-    s = K.CONFIRMATORY_SEED_BASE
+    base, rep, masks = registered_set(scale, ensemble_size=5)
     with pytest.raises(ValueError, match="attest an ensemble size other than 1"):
-        acceptance_inputs(
-            [fake("baseline", s, scale=scale, stage=REPAIR_STAGE)],
-            [fake("data_repair", s, scale=scale, stage=REPAIR_STAGE, ensemble_size=5)],
-            failure_masks={s: np.ones(40, dtype=bool)},
-        )
+        acceptance_inputs(base, rep, failure_masks=masks)
 
 
 def test_mixed_stages_are_refused():
     """One acceptance test is one obligation; a probe may not supply half a label."""
     scale = object()
-    s = K.CONFIRMATORY_SEED_BASE
+    base, rep, masks = registered_set(scale)
+    rep[0] = fake("data_repair", REGISTERED_SEEDS[0], scale=scale)   # pilot stage
     with pytest.raises(ValueError, match="mixed stages"):
-        acceptance_inputs(
-            [fake("baseline", s, scale=scale, stage=REPAIR_STAGE)],
-            [fake("data_repair", s, scale=scale)],
-            failure_masks={s: np.ones(40, dtype=bool)},
-        )
+        acceptance_inputs(base, rep, failure_masks=masks)
 
 
 def test_two_repair_types_in_one_call_are_refused():
     """Different repairs are different interventions; pooling reports a treatment
     nobody applied."""
     scale = object()
-    s0, s1 = K.CONFIRMATORY_SEED_BASE, K.CONFIRMATORY_SEED_BASE + 1
+    base, rep, masks = registered_set(scale)
+    rep[1] = fake("feature_repair", REGISTERED_SEEDS[1], scale=scale, stage=REPAIR_STAGE)
     with pytest.raises(ValueError, match="Exactly one repair type per"):
-        acceptance_inputs(
-            [fake("baseline", s0, scale=scale, stage=REPAIR_STAGE),
-             fake("baseline", s1, scale=scale, stage=REPAIR_STAGE)],
-            [fake("data_repair", s0, scale=scale, stage=REPAIR_STAGE),
-             fake("feature_repair", s1, scale=scale, stage=REPAIR_STAGE)],
-            failure_masks={s0: np.ones(40, dtype=bool), s1: np.ones(40, dtype=bool)},
-        )
+        acceptance_inputs(base, rep, failure_masks=masks)
+
+
+# --- the exact registered seed set (Sol, delta 45) --------------------------
+
+
+@pytest.mark.parametrize("drop", [1, 5])
+def test_a_short_seed_set_is_refused_at_label_creation(drop):
+    """Nineteen seeds is a different, unregistered experiment."""
+    scale = object()
+    base, rep, masks = registered_set(scale, seeds=REGISTERED_SEEDS[:-drop])
+    with pytest.raises(ValueError, match="registers exactly 20 seeds"):
+        acceptance_inputs(base, rep, failure_masks=masks)
+
+
+def test_arbitrary_confirmatory_seeds_are_refused():
+    """Confirmatory is necessary but not sufficient: it must be THE frozen set."""
+    scale = object()
+    odd = tuple(K.CONFIRMATORY_SEED_BASE + 100 + i for i in range(20))
+    base, rep, masks = registered_set(scale, seeds=odd)
+    with pytest.raises(ValueError, match="unregistered"):
+        acceptance_inputs(base, rep, failure_masks=masks)
+
+
+def test_the_exact_frozen_set_is_accepted():
+    scale = object()
+    base, rep, masks = registered_set(scale)
+    out = acceptance_inputs(base, rep, failure_masks=masks)
+    assert sorted(set(out["seed"])) == list(REGISTERED_SEEDS)

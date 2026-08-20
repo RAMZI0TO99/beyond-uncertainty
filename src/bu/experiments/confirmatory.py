@@ -77,6 +77,12 @@ CONFIRMATORY_TRAIN = TrainConfig()
 #: Repaired arms fit one model (P§14.2); baselines fit the registered ensemble.
 REPAIRED_TRAIN = TrainConfig(ensemble_size=REPAIR_ENSEMBLE_SIZE)
 
+#: Threading, frozen inside the runner rather than accepted from a caller
+#: (Sol, delta 45). It is result-changing (D-076) and absent from run identity,
+#: so a caller-chosen value would file two different numbers under one id.
+CONFIRMATORY_THREADS = 4
+CONFIRMATORY_INTEROP_THREADS = 4
+
 
 @lru_cache(maxsize=1)
 def _registered_obligations() -> frozenset:
@@ -184,9 +190,6 @@ def run_confirmatory(
     arm: str = "baseline",
     out_dir: str | Path,
     scale: NormalisationScale | None = None,
-    threads: int = 4,
-    interop_threads: int = 4,
-    allow_dirty: bool = False,
 ) -> ConfirmatoryRun:
     """Fit one confirmatory ensemble, score it, and write a complete run record.
 
@@ -218,14 +221,26 @@ def run_confirmatory(
         )
 
     git = git_state()
-    if git.dirty and not allow_dirty:
+    if git.dirty:
         raise ValueError(
             f"the working tree is dirty at commit {git.commit[:7]}. A confirmatory "
-            "fit is evidence for a thesis claim and must name one reproducible "
-            "code state. Refusing before the fit rather than after it."
+            "fit is evidence for a thesis claim and must name one reproducible code "
+            "state. There is deliberately no override (Sol, delta 45): an opt-out "
+            "produces registered evidence under a configuration that is not "
+            "represented in run identity, which is the same defect as an "
+            "unrecorded thread count."
         )
 
-    _pin_threading(threads, interop_threads)
+    _pin_threading(CONFIRMATORY_THREADS, CONFIRMATORY_INTEROP_THREADS)
+    threading = torch_threading()
+    if (threading["num_threads"] != CONFIRMATORY_THREADS
+            or threading["num_interop_threads"] != CONFIRMATORY_INTEROP_THREADS):
+        raise ValueError(
+            f"threading is {threading}, not the frozen "
+            f"{CONFIRMATORY_THREADS}/{CONFIRMATORY_INTEROP_THREADS}. Thread count "
+            "changes the reduction order (D-076) and is not part of run identity, "
+            "so a caller-chosen value would put two different numbers under one id."
+        )
     train = CONFIRMATORY_TRAIN if arm == "baseline" else REPAIRED_TRAIN
     config = Config(unit=unit, arm=Arm(arm), seed=seed, stage=stage, train=train)
     pools = collect_pools(unit, stage=stage, seed=seed, arm=arm)
@@ -332,7 +347,6 @@ def run_repair_validation(
     seed: int,
     arm: str,
     out_dir: str | Path,
-    allow_dirty: bool = False,
 ) -> tuple[ConfirmatoryRun, ConfirmatoryRun]:
     """One baseline and one repaired arm, both recorded, both scored from THEIR OWN fit.
 
@@ -360,11 +374,10 @@ def run_repair_validation(
         )
     baseline = run_confirmatory(
         unit, stage=REPAIR_STAGE, seed=seed, arm="baseline", out_dir=out_dir,
-        allow_dirty=allow_dirty,
     )
     repaired = run_confirmatory(
         unit, stage=REPAIR_STAGE, seed=seed, arm=arm, out_dir=out_dir,
-        scale=baseline.evaluation.scale, allow_dirty=allow_dirty,
+        scale=baseline.evaluation.scale,
     )
     if baseline.evaluation.scale is not repaired.evaluation.scale:
         raise AssertionError(

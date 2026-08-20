@@ -40,12 +40,12 @@ import numpy as np
 import torch
 
 from .. import constants as K
-from ..config import ARMS, Arm, Config, TrainConfig, UnitSpec
+from ..config import ARMS, Arm, Config, TrainConfig, UnitSpec, seeds_for
 from ..env.collect import collect_pools
 from ..models.ensemble import assert_pools_match, train_ensemble
 from ..models.uncertainty import NormalisationScale, ScaledEvaluation, normalised_error
 from ..models.world_model import MOVEMENT_ACTIONS
-from ..streams import is_confirmatory
+from ..streams import confirmatory_seeds, is_confirmatory
 
 #: The stage repair validation runs under, at the 20 seeds §2 freezes.
 REPAIR_STAGE = "repair_validation"
@@ -232,17 +232,6 @@ def acceptance_inputs(
     if not baseline:
         raise ValueError("no evaluations; there is nothing to compare")
     _validate_registered_consumption(baseline, repaired, failure_masks)
-    exploratory = sorted({
-        e.seed for e in list(baseline) + list(repaired)
-        if e.stage != EXPLORATORY_STAGE and not is_confirmatory(e.seed)
-    })
-    if exploratory:
-        raise ValueError(
-            f"seed(s) {exploratory} are development data on a registered stage. The "
-            "acceptance test is where a repair label is created, and D-034 excludes "
-            "development seeds from it permanently (C-007). Refused at the point the "
-            "label would be built, not only where the fit was run"
-        )
     masks = _validated_masks(failure_masks, baseline)
 
     errors, arms, seeds, episodes, steps = [], [], [], [], []
@@ -332,6 +321,35 @@ def _validate_registered_consumption(baseline, repaired, failure_masks) -> None:
         )
     if "baseline" in arms:
         raise ValueError("the repaired list carries a baseline arm")
+
+    if registered:
+        # D-034 first: a development seed is a permanent exclusion, and saying
+        # "the set is wrong" about it would describe the smaller problem.
+        development = sorted({e.seed for e in everything if not is_confirmatory(e.seed)})
+        if development:
+            raise ValueError(
+                f"seed(s) {development} are development data on a registered stage. "
+                "The acceptance test is where a repair label is created, and D-034 "
+                "excludes development seeds from it permanently (C-007). Refused at "
+                "the point the label would be built, not only where the fit was run"
+            )
+        required = set(confirmatory_seeds(seeds_for(stage)))
+        present = {e.seed for e in everything}
+        if present != required:
+            missing = sorted(required - present)
+            extra = sorted(present - required)
+            raise ValueError(
+                f"stage {stage!r} registers exactly {len(required)} seeds "
+                f"({min(required)}..{max(required)}), but this call carries "
+                f"{len(present)}"
+                + (f"; missing {missing}" if missing else "")
+                + (f"; unregistered {extra}" if extra else "")
+                + ". Registered repair acceptance runs on the FROZEN seed set, not "
+                "on whichever confirmatory seeds happen to be available: nineteen "
+                "seeds, or a subset chosen after the fact, is a different and "
+                "unregistered experiment (D-034, C-007). Failing closed at the "
+                "point the label is created"
+            )
 
     bad_k = sorted({
         (e.arm, e.seed, e.ensemble_size) for e in repaired

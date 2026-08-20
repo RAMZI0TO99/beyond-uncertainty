@@ -16,21 +16,29 @@ A repair that clears (1) and (2) but not (3) is a real but negligible effect,
 and the third condition exists so that a large enough sample cannot manufacture
 a "successful" repair out of one.
 
-**Why a mixed model rather than a t-test on five numbers.** Step 4 of the
-protocol evaluates every repair on the *same recorded failure set* as the
-unrepaired condition, so the comparison is paired per transition within seed.
-Collapsing to per-seed means throws that structure away. The model is therefore
-per-transition error with a fixed effect for repair and **random intercepts for
-seed and for episode within seed** — transitions inside an episode are not
-independent, and neither are episodes inside a seed.
+**The registered analysis, in one sentence** (P§7.3 as amended by D-094 and
+D-100). For each matched transition, the repaired minus baseline error; those
+differences averaged within each seed; the **twenty seeds as replication
+units**; a t interval on nineteen degrees of freedom; and a relative reduction
+taken against the **equal-seed** baseline mean, so both sides of the ratio are
+weighted the same way.
 
-**The fallback is part of the specification, not a rescue.** Mixed models on
-thousands of correlated rows do not always converge, and a test that silently
-reports whatever the optimiser last held would be worse than one that says so.
-When the full model fails, the data are collapsed to **episode means** and the
-same three conditions are applied to a seed-random-intercept model on those. The
-result records which path ran, because "passed under the fallback" and "passed
-under the registered model" are different claims.
+**Why the pairing is taken first.** Step 4 of the protocol evaluates every
+repair on the *same recorded failure set* as the unrepaired condition, so
+everything the two arms share on a transition — the seed effect, the episode
+effect, that transition's own difficulty — is common to both rows and cancels in
+the difference. Charging it to residual variance instead made the interval 1.51x
+the true paired spread (D-086).
+
+**Why seeds remain the replication level.** Repair effects vary across training
+runs, which is exactly what P§7.3's twenty seeds exist to measure. An analysis
+that treated pairs as exchangeable would understate the standard error by up to
+8.7x (D-094).
+
+**There is no fallback** (D-100). The old episode-mean fallback existed because
+an optimiser could fail; this analysis has none. If the across-seed interval
+cannot be formed, the result fails closed rather than switching the replication
+unit from seeds to episodes on the strength of the observed data.
 """
 
 from __future__ import annotations
@@ -65,6 +73,8 @@ DIRECTIONAL_NOMINAL = (1 - CONFIDENCE) / 2
 class AcceptanceResult:
     """A repair's verdict, with everything needed to report it honestly."""
 
+    #: The **equal-seed mean paired difference**, repaired minus baseline. Not a
+    #: fixed effect from a mixed model (D-100) -- there is no model being fitted.
     effect: float
     ci_low: float
     ci_high: float
@@ -72,8 +82,12 @@ class AcceptanceResult:
     relative_reduction: float
     passed: bool
     reason: str
-    #: ``"mixedlm"`` or ``"episode_mean_fallback"`` — different claims.
+    #: Always ``"paired_seed_cluster"``. Kept as a field because a recorded
+    #: result must say which analysis produced it, and the registered analysis
+    #: has changed once already (D-094, D-100).
     method: str
+    #: Whether the across-seed interval could be formed at all. There is no
+    #: optimiser here, so this is not convergence in the fitting sense.
     converged: bool
     n_transitions: int
     n_seeds: int
@@ -102,8 +116,8 @@ class AcceptanceResult:
         verdict = "ACCEPTED" if self.passed else "REJECTED"
         return (
             f"REPAIR {verdict} ({self.method}"
-            f"{'' if self.converged else ', DID NOT CONVERGE'})\n"
-            f"  fixed effect {self.effect:+.6f}  95% CI "
+            f"{'' if self.converged else ', INTERVAL NOT FORMED'})\n"
+            f"  equal-seed mean paired difference {self.effect:+.6f}  95% t CI "
             f"[{self.ci_low:+.6f}, {self.ci_high:+.6f}]\n"
             f"  relative reduction {self.relative_reduction:+.1%} against a "
             f"{K.MIN_PRACTICAL_EFFECT:.0%} minimum\n"
@@ -184,15 +198,18 @@ def _verdict(effect, ci_low, ci_high, unrepaired_mean) -> tuple[bool, float, str
     practical = relative >= K.MIN_PRACTICAL_EFFECT
     if negative and excludes_zero and practical:
         return True, relative, (
-            "all three conditions met: negative fixed effect, 95% interval "
+            "all three conditions met: negative equal-seed mean paired "
+            "difference, 95% t interval "
             f"excluding zero, and a {relative:.1%} reduction clearing the "
             f"{K.MIN_PRACTICAL_EFFECT:.0%} minimum practical effect"
         )
     failures = []
     if not negative:
-        failures.append("the fixed effect is not negative (error did not fall)")
+        failures.append(
+            "the equal-seed mean paired difference is not negative (error did not fall)"
+        )
     if not excludes_zero:
-        failures.append("the 95% interval includes zero")
+        failures.append("the 95% t interval includes zero")
     if not practical:
         failures.append(
             f"the {relative:.1%} reduction does not clear the "
@@ -227,13 +244,15 @@ def acceptance_test(
             not optional: it is what identifies the two arms' rows as the *same*
             transition, and an absent pairing key would silently restore the
             over-wide interval this Change Record exists to remove.
-        allow_fallback: if the across-seed interval cannot be formed, fall back
-            to the paired-difference model and apply the same three conditions
-            there. Recorded on the result either way; set ``False`` to make that
-            an error rather than a silently different test.
+        allow_fallback: **retained only to refuse it.** There is no fallback in
+            registered acceptance any more (D-100): the analysis has no optimiser
+            that can fail, and switching the replication unit to episodes because
+            of the observed data would be choosing the inference after seeing it.
+            Passing ``False`` is accepted and means what it says; passing ``True``
+            is accepted and changes nothing.
     """
     data = _frame(errors, repair, seed, episode, transition)
-    unrepaired_mean = float(data.loc[data.repair == 0, "error"].mean())
+    unrepaired_mean = equal_seed_baseline_mean(data)
     counts = dict(
         n_transitions=len(data),
         n_seeds=int(data.seed.nunique()),
@@ -242,6 +261,19 @@ def acceptance_test(
     )
 
     return _paired_seed_cluster(data, counts, unrepaired_mean, allow_fallback)
+
+
+def equal_seed_baseline_mean(data: pd.DataFrame) -> float:
+    """The denominator, weighted the same way the effect is (Sol, delta 45).
+
+    ``mean_s(mean_i baseline_error[s, i])``. The effect equally weights seed
+    means, so a denominator that weighted raw transitions would make the
+    reported relative reduction a ratio of two differently-weighted quantities —
+    the D-042/D-044 shape, where a number is correct arithmetic on mismatched
+    estimands. Seeds contribute equally to both.
+    """
+    baseline = data.loc[data.repair == 0]
+    return float(baseline.groupby("seed")["error"].mean().mean())
 
 
 def paired_differences(data: pd.DataFrame) -> pd.DataFrame:
@@ -260,58 +292,63 @@ def paired_differences(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def _paired_seed_cluster(data, counts, unrepaired_mean, allow_fallback) -> AcceptanceResult:
-    """The registered acceptance model as amended by D-094.
+    """The registered acceptance analysis (P§7.3 as amended by D-094, D-100).
 
-    **Why this form rather than the literal variance-component specification.**
-    The authorised Change Record asked for a seed random intercept, an
-    episode-within-seed component and a transition-within-episode component.
-    Measured, that model is **structurally over-parameterised**: every one of
-    those three effects is constant within a pair, so all three cancel in the
-    within-pair contrast and become unidentifiable. `statsmodels` raises
-    `LinAlgError: Singular matrix` on it at 250 and 1,000 pairs, and where it
-    does fit (1,600 pairs, 231 s, on a boundary warning) its fixed effect and
-    interval equal the paired-difference computation to six decimals.
+    **The estimand, stated.** For each matched transition, the repaired minus
+    baseline error. Those differences are averaged within each seed; the twenty
+    seed means are the replication units; the interval is a t interval on
+    nineteen degrees of freedom. The relative reduction is that equal-seed mean
+    difference over the equal-seed baseline mean — both sides weighted the same
+    way. This is **not** a fixed effect from a mixed model and is not described
+    as one.
 
-    Reduced to what is estimable, the literal specification treats pairs as
-    **iid** -- which is blind to the repair effect varying across seeds.
-    Measured, its SE runs up to **8.7x too small** when it does vary, which
-    would make the test badly anti-conservative. That is the wrong direction to
-    err: repair acceptance creates the thesis labels, so a too-narrow interval
-    manufactures repairs out of seed noise. Seed-level variation in the effect is
-    also precisely what P§7.3's twenty seeds exist to measure.
+    **Why this rather than the long-form variance-component model.** Shared
+    intercepts cancel from the paired treatment contrast, so that specification
+    was singular in practice (`LinAlgError` at 250 and 1,000 pairs),
+    computationally unacceptable where it did fit (231 s, which makes a
+    200-permutation null a ~13-hour run), and — reduced to what it could
+    actually estimate — did not represent **repair-effect heterogeneity across
+    seeds**, understating the standard error by up to 8.7×. Those three facts
+    justify this analysis. They are not a proof that every variance component is
+    mathematically unidentifiable in long-form data, and the claim is not made.
 
-    So the pairing is taken first, and **seed remains the replication level** --
-    which is what the authorised "seed random intercept" was for. The seed-mean
-    differences are always estimable, need no optimiser, and give a t interval on
-    `n_seeds - 1` degrees of freedom. Reported for Sol as a finding on the
-    Change Record, not adopted quietly.
+    **There is no fallback.** The previous episode-mean fallback existed because
+    an optimiser could fail; this analysis has no optimiser. If the across-seed
+    interval cannot be formed, the result **fails closed** rather than switching
+    the inferential replication unit from seeds to episodes on the strength of
+    the observed data (Sol, delta 45).
     """
     from scipy import stats
 
     paired = paired_differences(data)
     per_seed = paired.groupby("seed")["difference"].mean()
     n = int(per_seed.size)
-    if n < 2:
+
+    def refuse(reason: str) -> AcceptanceResult:
         return AcceptanceResult(
             effect=float("nan"), ci_low=float("nan"), ci_high=float("nan"),
-            relative_reduction=float("nan"), passed=False,
-            reason=(
-                f"only {n} seed(s): the acceptance interval is taken across seeds, "
-                "so a single seed has no replication to estimate it from. Failing "
-                "closed -- an unestimated effect is not a null one"
-            ),
+            relative_reduction=float("nan"), passed=False, reason=reason,
             method="paired_seed_cluster", converged=False, **counts,
         )
 
+    if n < 2:
+        return refuse(
+            f"only {n} seed(s): the interval is taken across seeds, so there is no "
+            "replication to estimate it from. Failing closed -- an unestimated "
+            "effect is not a null one"
+        )
+
     effect = float(per_seed.mean())
-    se = float(per_seed.std(ddof=1) / np.sqrt(n))
-    if not np.isfinite(se) or se == 0.0:
-        if not allow_fallback:
-            raise RuntimeError(
-                "the across-seed standard error is zero or undefined and "
-                "allow_fallback is False"
-            )
-        return _paired_difference_fallback(data, counts, unrepaired_mean)
+    spread = float(per_seed.std(ddof=1))
+    if not np.isfinite(spread) or spread == 0.0:
+        return refuse(
+            f"the across-seed spread is {spread!r}, so the seed-level interval "
+            "cannot be formed. Failing closed: switching the replication unit from "
+            "seeds to episodes because of the observed data would choose the "
+            "inference after seeing it (Sol, delta 45)"
+        )
+
+    se = spread / np.sqrt(n)
     half = float(stats.t.ppf(1 - (1 - CONFIDENCE) / 2, n - 1)) * se
     low, high = effect - half, effect + half
     passed, relative, reason = _verdict(effect, low, high, unrepaired_mean)
@@ -319,63 +356,6 @@ def _paired_seed_cluster(data, counts, unrepaired_mean, allow_fallback) -> Accep
         effect=effect, ci_low=low, ci_high=high,
         relative_reduction=relative, passed=passed, reason=reason,
         method="paired_seed_cluster", converged=True, **counts,
-    )
-
-
-def _paired_difference_fallback(data, counts, unrepaired_mean) -> AcceptanceResult:
-    """The fallback, rewritten to express the pairing directly (D-094).
-
-    The previous fallback collapsed to episode means **per arm** and fitted
-    ``error ~ repair`` on them. That discards the pairing exactly as the old
-    primary model did: an episode mean for the baseline and an episode mean for
-    the repaired arm are two numbers whose shared per-transition difficulty has
-    already been averaged in, not differenced out. So the fallback carried the
-    same over-wide interval the Change Record removes from the primary — and,
-    being a fallback, it would have done so only on the runs where the primary
-    failed to converge, which is the worst place for a silent difference.
-
-    Sol's instruction: analyse **paired within-episode differences**, with seed
-    as the grouping level. The difference is taken per transition pair first, so
-    everything shared between the arms cancels before any averaging happens.
-    """
-    import statsmodels.formula.api as smf
-
-    wide = data.pivot_table(
-        index=["seed", "episode", "pair"], columns="repair", values="error"
-    )
-    # Pairing is validated in `_frame`, so both columns exist and are complete.
-    paired = (wide[1.0] - wide[0.0]).rename("difference").reset_index()
-    per_episode = paired.groupby(["seed", "episode"], as_index=False)["difference"].mean()
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        try:
-            fit = smf.mixedlm(
-                "difference ~ 1", data=per_episode, groups=per_episode["seed"]
-            ).fit(reml=True, method="lbfgs")
-            converged = bool(getattr(fit, "converged", True))
-            effect = float(fit.fe_params["Intercept"])
-            low, high = fit.conf_int(alpha=1 - CONFIDENCE).loc["Intercept"]
-        except Exception:  # noqa: BLE001
-            converged, effect, low, high = False, float("nan"), float("nan"), float("nan")
-
-    if not converged or not np.isfinite(effect):
-        return AcceptanceResult(
-            effect=float("nan"), ci_low=float("nan"), ci_high=float("nan"),
-            relative_reduction=float("nan"), passed=False,
-            reason=(
-                "neither the registered mixed model nor the paired-difference "
-                "fallback converged, so there is no effect to accept. Failing "
-                "closed: an unestimated effect is not a null one"
-            ),
-            method="paired_difference_fallback", converged=False, **counts,
-        )
-    passed, relative, reason = _verdict(effect, float(low), float(high), unrepaired_mean)
-    return AcceptanceResult(
-        effect=effect, ci_low=float(low), ci_high=float(high),
-        relative_reduction=relative, passed=passed,
-        reason=f"{reason} (paired-difference fallback: the registered model did not converge)",
-        method="paired_difference_fallback", converged=True, **counts,
     )
 
 

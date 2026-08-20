@@ -19,25 +19,24 @@ EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 45 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 46 (D-008).
 >
 > COVERS SESSIONS:
 > - 2026-08-20 (W5 closeout) · Sol's rulings actioned, and a null that was hiding a defect
 > - 2026-08-20 (W5 closeout, continued) · C-008 and C-003, the last unblocked work
 > - 2026-08-20 (W5 closeout, C-007) · The seed policy reaches repair acceptance
 > - 2026-08-20 (W5 Sat) · Sol's whole ruling actioned; Gate 1 signed off FAIL
+> - 2026-08-20 (W5 Sat, correction pass) · Sol's delta-45 corrections
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 45
+DELTA_ID: 46
 PREVIOUS_DELTA_ID: 42
-CONSOLIDATES_DELTA_IDS: 43, 44
+CONSOLIDATES_DELTA_IDS: 43, 44, 45
 DATE: 2026-08-20
 BUNDLE_FILE: SOL_BUNDLE.txt
-SUBJECT: Your whole closeout is done and GATE 1 IS SIGNED OFF AS FAIL. Two
-         Change Records, both before any data. THE LITERAL ACCEPTANCE-MODEL
-         SPECIFICATION IS DEGENERATE -- I did not adopt it, and you need to
-         rule on what I did instead.
+SUBJECT: Your delta-45 corrections are all done. Gate 1 FAIL stands. One
+         claim of mine NARROWED on your instruction. 786 passing, no xfail.
 
 NOTE ON IDS: deltas 43 and 44 were written but never delivered, and your
 ruling has since answered or superseded most of what they asked. Consolidated
@@ -45,73 +44,94 @@ here rather than sent alongside, so you read one coherent document instead of
 three that contradict each other. Nothing in them is dropped.
 
 --------------------------------------------------------------------
-0. YOUR OWN CORRECTION, VERIFIED.
+0. YOUR DELTA-45 CORRECTIONS -- ALL DONE.
 
-Your 2.5% directional correction is right and I checked it independently
-rather than taking it. Acceptance needs effect<0 AND ci_high<0; a two-sided
+I VERIFIED YOUR 2.5% DIRECTIONAL CORRECTION rather than taking it: a two-sided
 95% interval excludes zero 5% of the time under the null, split between
-directions, so the beneficial one is 2.5%. Admissible counts at n=200
-recompute exactly as you gave them: statistical-only k in [1,10], full rule
-k=0. D-085, the implementation, the tests and the prose all now use
-(1-CONFIDENCE)/2.
+directions, so the accepting direction is 2.5%. Admissible counts recompute
+exactly as you gave them. I should say plainly that I had encoded your earlier
+5% target without noticing the directionality myself.
 
-I should say plainly that I encoded your earlier 5% target without noticing
-the directionality myself.
+>>> A CLAIM OF MINE, NARROWED ON YOUR INSTRUCTION. <<<
 
---------------------------------------------------------------------
-1. >>> THE ONE YOU MUST RULE ON. <<<
-   THE AUTHORISED MODEL IS NOT ESTIMABLE, AND ITS ESTIMABLE FORM IS WORSE
-   THAN WHAT IT REPLACES.
+D-094 said the three variance components "become unidentifiable". You are
+right that this overstates it. Shared intercepts cancelling from the paired
+treatment contrast does NOT prove every variance component is mathematically
+unidentifiable in long-form data. What I actually established, and all I claim
+from here:
 
-You authorised a seed random intercept, an episode-within-seed component and
-a transition-within-episode component. I built it, and then measured it:
+  - that specification was SINGULAR IN PRACTICE (LinAlgError at 250 and 1,000
+    pairs)
+  - COMPUTATIONALLY UNACCEPTABLE where it did fit (231 s; a 200-permutation
+    null would be ~13 hours)
+  - and it FAILED TO REPRESENT REPAIR-EFFECT HETEROGENEITY across seeds
+    (SE understated up to 8.7x)
 
-  ALL THREE ARE CONSTANT WITHIN A PAIR. They therefore all cancel in the
-  within-pair contrast and become UNIDENTIFIABLE.
+Those three facts justify the seed-cluster analysis. The stronger theoretical
+claim is withdrawn from the ledger and the module docstring. D-100 records the
+correction against D-094 rather than editing it.
 
-    statsmodels -> LinAlgError: Singular matrix at 250 pairs
-    statsmodels -> LinAlgError: Singular matrix at 1,000 pairs
-    at 1,600 pairs it fits in 231 SECONDS on a boundary warning
-       -> 200 permutations would be a ~13-HOUR run
-    where it does fit, its effect and interval equal the paired-difference
-       computation to SIX DECIMALS
+THE ESTIMAND, NOW SELF-CONSISTENT. You caught that the effect equally weights
+seed means while the practical-effect denominator weighted raw transitions --
+a ratio of two differently-weighted quantities, which is the D-042/D-044 shape
+exactly. Both sides now use mean_s(mean_i baseline[s,i]). The test builds seeds
+with UNEQUAL transition counts so the two weightings genuinely differ, and
+asserts the fixture distinguishes them BEFORE asserting the result -- otherwise
+it could not fail.
 
-  REDUCED TO WHAT IS ESTIMABLE, IT TREATS PAIRS AS IID -- which is blind to
-  the repair effect varying across seeds:
+EXACTLY THE FROZEN SEED SET, at the consumer where the label is created.
+Confirmatory was necessary but not sufficient. Nineteen seeds, arbitrary
+confirmatory seeds, or a subset chosen after the fact all fail closed by name.
+The development-seed refusal runs FIRST, because D-034 is a permanent
+exclusion and "the set is wrong" would describe the smaller problem.
 
-    seed-effect sd     0      0.003    0.006    0.012
-    SE understated   1.05x    5.63x    7.66x    8.70x
+NO FALLBACK in registered acceptance. It fails closed if the across-seed
+interval cannot be formed, rather than switching the replication unit from
+seeds to episodes on the strength of the observed data.
 
-That is the wrong direction to err. It would replace a 1.51x CONSERVATIVE
-test with a potentially 8.7x ANTI-CONSERVATIVE one -- and a too-narrow
-interval manufactures repairs out of seed noise, which then become the
-thesis labels. Seed-level variation in the repair effect is also precisely
-what P§7.3's TWENTY seeds exist to measure.
+RESULT LANGUAGE CORRECTED throughout: an equal-seed mean paired difference and
+its t interval. Not a fixed effect. Not a mixed model. Summary, verdict
+reasons, field docs and module docstring all updated.
 
-WHAT I IMPLEMENTED INSTEAD: the pairing is taken first, so everything the two
-arms share on a transition differences out; and SEED REMAINS THE REPLICATION
-LEVEL, which is what your "seed random intercept" was for. A t interval on
-n_seeds-1 df over seed-mean differences. Always estimable, no optimiser,
-7 MILLISECONDS against 231 seconds.
-
-  CALIBRATED AT EVERY PAIRING STRENGTH YOU ASKED ME TO TEST:
+RERUN AS YOU REQUIRED -- all four pairing strengths still calibrated:
     pairing   1.0    0.9    0.5    0.0
     stat-only 7/200  5/200  5/200  5/200   (admissible 1..10)
-    full rule 0/200  0/200  0/200  0/200   (admissible 0)
+    full rule 0/200  0/200  0/200  0/200
+NO XFAIL RETURNED.
 
-  XFAIL REMOVED, per your instruction.
+--------------------------------------------------------------------
+1. C-008's LAST TWO EXPOSURES, AND THE THREE THRESHOLD BLOCKERS.
 
-Your specified FALLBACK is retained, and on truly constant differences both
-fail CLOSED with nan rather than inventing a number.
+C-008. allow_dirty, threads and interop_threads are GONE from
+run_confirmatory. You were right that both produce registered evidence under a
+result-changing configuration absent from run identity -- the same defect as an
+unrecorded thread count. Threading is frozen at 4/4 INSIDE the runner and
+verified after pinning. Tests that fit anything now monkeypatch a clean git
+state, which is honest; an override in the runner would not have been.
 
-I also replaced D-082's seed-intercept regression rather than repairing it:
-it asserted a mixedlm structure the primary no longer uses, so keeping it
-would pin a mechanism instead of a property. The replacement asserts that
-seed-level effect variation WIDENS the interval -- which is exactly what the
-literal specification fails, so reverting to it fails the suite.
+THRESHOLD BLOCKER 1 -- attempt names are a frozen attempt-NNN format, and
+discovery uses THE SAME pattern that admits a name, so no permitted attempt
+can be invisible to prior-attempt discovery. Paths, separators and free-form
+names are refused.
 
-  QUESTION 1: do you accept the estimable form, or do you want the literal
-  one with the degeneracy handled some other way?
+THRESHOLD BLOCKER 2 -- an INVALID declaration must record a non-empty reason.
+An empty file is a formality any re-run could satisfy.
+
+THRESHOLD BLOCKER 3 -- you were right that recompute_threshold trusted too
+much. It read the percentile, the method and the SELECTION out of the very
+file whose number it was checking: the D-071 shape, a manifest checked only
+against itself. Now every frozen constant is compared against the CODE
+(percentile, method, seeds, strata, the exact 45-cell grid, uniqueness,
+ensemble size, stage, threading, balancing seed, failure rule), the run-record
+and member-record digests are verified, and THE DETERMINISTIC SELECTION IS
+RECONSTRUCTED FROM THE STORED ARRAYS and compared with the recorded one rather
+than reused -- so a hand-written selection cannot pass.
+
+BALANCING KEPT EXACTLY AS YOU RULED. Global 95th percentile, method="linear",
+strict >. Finding (a) needs no change -- a stratum with systematically larger
+errors dominating the upper tail is a real property of the reference
+distribution and P§7.5 is meant to expose it; no tail equalisation, no
+stratum-specific thresholds. Finding (b) accepted with the rule unchanged.
 
 --------------------------------------------------------------------
 2. GATE 1 IS SIGNED OFF: FAIL.
@@ -224,7 +244,7 @@ error 1.2500 -> 0.5045 (-59.6%).
 --------------------------------------------------------------------
 NUMBERS (D-011)
 
-  tests             627 -> 760 passing, 2 skipped, 0 XFAILED
+  tests             760 -> 786 passing, 2 skipped, 0 XFAILED
   acceptance model  7 ms/fit vs 231 s for the literal specification
   calibration       5-7/200 statistical-only (admissible 1-10) at every
                     pairing strength; 0/200 full rule
@@ -235,7 +255,9 @@ NUMBERS (D-011)
                     threshold calibrated, NO data seen. W4 Friday NOT RUN.
   certified base    ca545ed. ce12998 and everything after NOT promoted.
 
-WHAT I NEED: question 1 (the acceptance model) and question 2 (the balancing
-rule). W4 Friday stays stopped until you have ruled on both.
+WHAT I NEED: a ruling on this correction pass. Nothing here asks you to
+revisit the acceptance-model approach or Gate 1 -- both are settled and I am
+not reopening them. W4 FRIDAY REMAINS STOPPED and 8fdd254 is not promoted;
+the base is still ca545ed.
 === END UPDATE ===
 ```

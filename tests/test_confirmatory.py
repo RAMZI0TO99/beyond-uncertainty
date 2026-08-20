@@ -120,12 +120,29 @@ def test_the_bypass_train_ensemble_used_to_confess_is_closed():
 
 
 @pytest.fixture(scope="module")
-def real_run(tmp_path_factory):
+def clean_tree():
+    """Force a clean git state for the module's real runs.
+
+    `run_confirmatory` refuses a dirty tree with no override (Sol, delta 45), so
+    a test that fits anything has to say what code state it is pretending to be.
+    Monkeypatching that is honest; an `allow_dirty` flag in the runner would not
+    have been.
+    """
+    from bu.runrecord import GitState
+
+    real = C.git_state
+    C.git_state = lambda: GitState(commit="d" * 40, dirty=False, branch="main")
+    try:
+        yield
+    finally:
+        C.git_state = real
+
+
+@pytest.fixture(scope="module")
+def real_run(tmp_path_factory, clean_tree):
     """One genuine confirmatory fit at a tiny shape. Two members, ~seconds."""
     out = tmp_path_factory.mktemp("confirmatory")
-    return C.run_confirmatory(
-        registered_unit(), stage="exp1", seed=CONF, out_dir=out, allow_dirty=True,
-    )
+    return C.run_confirmatory(registered_unit(), stage="exp1", seed=CONF, out_dir=out)
 
 
 def test_a_real_run_records_the_granularity_it_actually_used(real_run):
@@ -247,14 +264,14 @@ def test_a_repaired_arm_without_a_scale_is_refused(tmp_path):
     """D-061: the repaired arm reuses the baseline's scale, never its own."""
     with pytest.raises(ValueError, match="was given no scale"):
         C.run_confirmatory(registered_unit(), stage="repair_validation", seed=CONF,
-                           arm="data_repair", out_dir=tmp_path, allow_dirty=True)
+                           arm="data_repair", out_dir=tmp_path)
 
 
 @pytest.fixture(scope="module")
-def repair_pair(tmp_path_factory):
+def repair_pair(tmp_path_factory, clean_tree):
     out = tmp_path_factory.mktemp("repairval")
     return C.run_repair_validation(
-        registered_unit(), seed=CONF, arm="data_repair", out_dir=out, allow_dirty=True
+        registered_unit(), seed=CONF, arm="data_repair", out_dir=out
     )
 
 
@@ -289,24 +306,49 @@ def test_the_two_arms_score_the_same_transitions(repair_pair):
     assert np.array_equal(baseline.evaluation.step, repaired.evaluation.step)
 
 
-def test_the_recorded_evaluations_feed_acceptance_directly(repair_pair):
-    """The whole point: the label is built from the recorded fits, not a re-run."""
+def test_the_recorded_evaluations_are_shaped_for_acceptance(repair_pair):
+    """The plumbing works, and the frozen-seed guard is what stops a partial set.
+
+    A registered label needs the whole 20-seed set (Sol, delta 45), which this
+    module does not fit. So the assertion is twofold: the recorded evaluations
+    carry everything `acceptance_inputs` consumes, AND the only thing refusing
+    them is the seed-set rule -- not a missing field or a broken pairing.
+    """
     from bu.experiments.repair import acceptance_inputs
 
     baseline, repaired = repair_pair
     n = len(baseline.evaluation)
+    for ev in (baseline.evaluation, repaired.evaluation):
+        assert ev.step is not None and ev.episode is not None
+        assert ev.error.shape == (n,)
+        assert ev.stage == "repair_validation"
+
+    with pytest.raises(ValueError, match="registers exactly 20 seeds"):
+        acceptance_inputs(
+            [baseline.evaluation], [repaired.evaluation],
+            failure_masks={CONF: np.ones(n, dtype=bool)},
+        )
+
+
+def test_the_same_evaluations_build_a_label_on_an_exploratory_stage(repair_pair):
+    """Same objects, honestly relabelled: the assembly itself is sound."""
+    from dataclasses import replace as dc_replace
+    from bu.experiments.repair import acceptance_inputs, EXPLORATORY_STAGE
+
+    baseline, repaired = repair_pair
+    n = len(baseline.evaluation)
     out = acceptance_inputs(
-        [baseline.evaluation], [repaired.evaluation],
+        [dc_replace(baseline.evaluation, stage=EXPLORATORY_STAGE)],
+        [dc_replace(repaired.evaluation, stage=EXPLORATORY_STAGE)],
         failure_masks={CONF: np.ones(n, dtype=bool)},
     )
     assert len(out["errors"]) == 2 * n
     assert set(out["transition"]) == set(baseline.evaluation.step)
 
-
 def test_run_repair_validation_refuses_a_baseline_arm(tmp_path):
     with pytest.raises(ValueError, match="pass the repaired arm"):
         C.run_repair_validation(registered_unit(), seed=CONF, arm="baseline",
-                                out_dir=tmp_path, allow_dirty=True)
+                                out_dir=tmp_path)
 
 
 def test_a_single_model_arm_reports_NO_disagreement_rather_than_zero(repair_pair):
@@ -322,3 +364,26 @@ def test_a_single_model_arm_reports_NO_disagreement_rather_than_zero(repair_pair
     assert np.isnan(repaired.mean_disagreement)
     assert baseline.run["mean_disagreement"] is not None
     assert np.isfinite(baseline.mean_disagreement)
+
+
+def test_the_runner_exposes_no_dirty_override_or_thread_choice():
+    """Sol, delta 45: both produce registered evidence under a configuration
+    that is not represented in run identity."""
+    params = set(inspect.signature(C.run_confirmatory).parameters)
+    for forbidden in ("allow_dirty", "threads", "interop_threads"):
+        assert forbidden not in params
+    assert C.CONFIRMATORY_THREADS == 4 and C.CONFIRMATORY_INTEROP_THREADS == 4
+
+
+def test_a_dirty_tree_cannot_be_overridden(tmp_path):
+    from bu.runrecord import GitState
+
+    real = C.git_state
+    C.git_state = lambda: GitState(commit="e" * 40, dirty=True, branch="main")
+    try:
+        with pytest.raises(ValueError, match="no override"):
+            C.run_confirmatory(registered_unit(), stage="exp1", seed=CONF,
+                               out_dir=tmp_path)
+    finally:
+        C.git_state = real
+    assert not list(tmp_path.iterdir())

@@ -112,7 +112,7 @@ These are the preregistered quantities. They are fixed **before** data collectio
 |---|---|---|
 | Data-repair budget | **10×** the failure-condition dataset, same generating process | P§7.2 |
 | Repair acceptance | Negative fixed effect, 95% CI excluding zero, **and** ≥ **20%** relative reduction in mean per-transition error | P§7.3 |
-| Acceptance test | **Paired per-transition contrast, seed as the replication level**; paired-difference fallback. *Changed under D-094, authorised by Sol, before any data was seen* | P§7.3, D-094 |
+| Acceptance test | **Equal-seed mean paired difference, t interval on `n_seeds − 1` df**; equal-seed denominator; **no fallback** — fails closed. *Changed under D-094 and D-100, Sol-authorised, before any data was seen* | P§7.3, D-094, D-100 |
 | H3 equivalence margin | **±5 percentage points** balanced accuracy | P§4.2 |
 | Seeds — H1/H2 conditions (Exp 1, 2A, 2B) | **5** | P§14.2 |
 | Seeds — canonical repair validation | **20** | P§7.3, P§14.2 |
@@ -274,6 +274,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-097** | 2026-08-20 | **CHANGE RECORD** — `threshold_calibration` stage; runner rebuilt; balancing limit found | **For Sol** |
 | **D-098** | 2026-08-20 | **GATE 1 — FAIL**, signed off on Sol's ruling; not a pivot | **Sol's verdict** |
 | **D-099** | 2026-08-20 | Audit of W4/W5 — probed; two findings on the threshold's balancing rule | **Audit** |
+| **D-100** | 2026-08-20 | Sol's delta-45 corrections; D-094's theoretical claim narrowed | Sol's items |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -481,3 +482,17 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **34 archived, 1 kept
 **Audit found two methodological limits of the balancing rule** (D-099), both raised rather than assumed away: it caps row count but **not tail influence** at the 95th percentile, where one stratum of nine is 11.1% of the pool; and its RNG is inert when strata are equal-sized, though real movement counts vary (815–853) so seed 0 does bind and ~4% of reference data is discarded to the smallest stratum.
 
 **Tests:** 745 → **760 passing**, 2 skipped, **0 xfailed**. **Compute:** real fits only in temp directories on the cheapest registered obligation; **no registered evidence, no threshold calibrated, no data seen.**
+
+### 2026-08-20 (W5 Sat, correction pass) · Sol's delta-45 corrections · Claude
+
+**Sol accepted the paired seed-cluster analysis in principle and Gate 1's FAIL**, then listed narrow corrections. All done (D-100); no new experimental data was needed.
+
+**A claim of mine narrowed.** D-094 said the three variance components "become unidentifiable". Sol is right that this overstates it — shared intercepts cancelling from the paired contrast does not prove mathematical unidentifiability in long-form data. What was established, and all that is claimed now: that specification was **singular in practice**, **computationally unacceptable** where it fit, and **failed to represent repair-effect heterogeneity**. Enough to justify the analysis without the stronger claim.
+
+**The estimand made self-consistent**: the effect equally weights seed means, but the denominator was weighting raw transitions — the D-042/D-044 shape. Both sides now use `mean_s(mean_i baseline[s,i])`, with a test whose fixture gives seeds unequal counts so the two weightings genuinely differ.
+
+**Exactly the frozen 20-seed set** is now required where the label is created; nineteen seeds or an after-the-fact subset is a different experiment. **No fallback** in registered acceptance — it fails closed rather than switching replication from seeds to episodes on the strength of the data. **Result language corrected** throughout.
+
+**C-008's last two exposures closed**: `allow_dirty` and caller-chosen thread counts are gone, threading frozen at 4/4 inside the runner. **Threshold**: attempt names frozen to `attempt-NNN` so no permitted name escapes prior-attempt discovery; `INVALID` must state a reason; and `recompute_threshold` no longer reads the frozen spec out of the file it is checking — it compares every constant against the code, verifies run and member digests, and **reconstructs** the deterministic selection rather than reusing the recorded one.
+
+**Rerun as required:** all four pairing-strength calibrations still calibrated. **Tests:** 760 → **786 passing**, 2 skipped, **0 xfailed**. **W4 Friday remains stopped.**

@@ -1386,3 +1386,31 @@ Admissible under the corrected D-085: statistical-only **k ∈ [1, 10]**, full r
 **Data seen:** none. Real fits in temp directories on the cheapest registered obligation; no registered evidence written, no threshold calibrated.
 **Plan ref:** P§7.2, P§7.5, P§10.1, D-035, D-094, D-097.
 **Reviewed by Sol:** **not yet.**
+
+### D-100 · 2026-08-20 · Sol's delta-45 corrections, and a claim narrowed
+**Decision:** Sol accepted the paired seed-cluster analysis **in principle** and Gate 1's FAIL, then listed narrow corrections. All done; no new experimental data was needed, as Sol said.
+
+**CORRECTION TO D-094 — the theoretical claim was overstated.** D-094 said the three variance components "become unidentifiable". Sol is right that this overstates it: shared intercepts cancelling from the paired treatment contrast does **not** by itself prove every variance component is mathematically unidentifiable in long-form data. What was actually established, and all that is claimed from here: **this specification and implementation was singular in practice** (`LinAlgError` at 250 and 1,000 pairs), **computationally unacceptable where it did fit** (231 s, making a 200-permutation null a ~13-hour run), and **failed to represent repair-effect heterogeneity across seeds** (SE understated up to 8.7×). Those three facts justify the seed-cluster analysis without the stronger claim, and the module docstring now says so.
+
+**The estimand, stated and made consistent.** The effect equally weights seed means, but the practical-effect denominator was weighting raw transitions — a ratio of two differently-weighted quantities, which is the D-042/D-044 shape where correct arithmetic on mismatched estimands yields a wrong number. `equal_seed_baseline_mean` now computes `mean_s(mean_i baseline_error[s, i])`, and the relative reduction is that equal-seed mean difference over that denominator. A test builds seeds with **unequal** transition counts so the two weightings genuinely differ, then asserts the fixture distinguishes them before asserting the result — otherwise it could not fail.
+
+**Exactly the frozen seed set, enforced where the label is created.** Confirmatory was necessary but not sufficient: nineteen seeds, or a subset chosen after the fact, is a different and unregistered experiment. `acceptance_inputs` now requires exactly `confirmatory_seeds(seeds_for(stage))` — the full 20 for repair validation — and refuses missing or unregistered seeds by name. The development-seed refusal runs **first**, because D-034 is a permanent exclusion and "the set is wrong" would describe the smaller problem.
+
+**No fallback in registered acceptance.** The episode-mean fallback existed because an optimiser could fail; this analysis has none. If the across-seed interval cannot be formed the result **fails closed**, rather than switching the inferential replication unit from seeds to episodes on the strength of the observed data.
+
+**Result language corrected** throughout: an **equal-seed mean paired difference and its t interval**, not a fixed effect from a mixed model. Summary, verdict reasons, field docs and the module docstring all updated.
+
+**C-008's two remaining exposures closed.** `run_confirmatory` no longer takes `allow_dirty`, `threads` or `interop_threads`. Both could produce registered evidence under a result-changing configuration absent from run identity — the same defect as an unrecorded thread count. Threading is frozen at 4/4 **inside** the runner and verified after pinning. Tests that fit anything now monkeypatch a clean git state, which is honest; an override in the runner would not have been.
+
+**Threshold: the three execution blockers.**
+- **Attempt names are a frozen `attempt-NNN` format.** Prior attempts are discovered by that pattern, so a free-form name or a path would have sat outside the search and bypassed the one-attempt policy. Discovery now uses the same pattern that admits a name, so no permitted attempt can be invisible to it.
+- **An `INVALID` declaration must record a non-empty reason.** An empty file is a formality any re-run could satisfy.
+- **`recompute_threshold` trusts almost nothing.** It compared the number against a selection and a percentile read out of *the same file* — the D-071 shape, a manifest checked only against itself. Every frozen constant is now compared against the code (percentile, method, seeds, strata, exact 45-cell grid, uniqueness, ensemble size, stage, threading, balancing seed, failure rule), the run-record and member-record digests are verified, and the deterministic selection is **reconstructed from the stored arrays** and compared with the recorded one rather than reused — so a hand-written selection cannot pass.
+
+**Balancing kept as ruled.** Global 95th percentile, `method="linear"`, strict `>`. Finding (a) needs no change: a stratum with systematically larger errors dominating the upper tail is a real property of the reference distribution, and P§7.5 is meant to expose that heterogeneity — no tail equalisation, no stratum-specific thresholds. Finding (b) accepted with the rule unchanged; the ~4% discard is acceptable because it was found before execution, is small, gives every stratum equal weight, and has fully frozen selection semantics.
+
+**Rerun as required:** all four pairing-strength calibrations still calibrated (7/200, 5/200, 5/200, 5/200 statistical-only against an admissible [1, 10]; 0/200 full rule). **No xfail returned.**
+**Tests:** 760 → **786 passing**, 2 skipped, **0 xfailed**.
+**Data seen:** none.
+**Plan ref:** P§7.3, P§7.5, P§10.1, D-034, D-042, D-044, D-071, D-076, C-007, C-008. Corrects D-094 and D-097; implements Sol's delta-45 ruling.
+**Reviewed by Sol:** the corrections are Sol's; **this implementation pass is not yet reviewed.**

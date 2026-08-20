@@ -124,22 +124,6 @@ def test_the_three_conditions_are_all_required():
 # --- the fallback is a different claim, and says so -------------------------
 
 
-def test_the_fallback_is_recorded_as_a_different_method():
-    """"Passed under the fallback" and "passed under the registered model" differ."""
-    from bu.stats import acceptance as A
-
-    data = synthetic(reduction=0.35, rng=np.random.default_rng(0))
-    frame = A._frame(*data)
-    result = A._paired_difference_fallback(
-        frame, dict(n_transitions=len(frame), n_seeds=20, n_episodes=160,
-                    unrepaired_mean=float(frame.loc[frame.repair == 0, "error"].mean())),
-        float(frame.loc[frame.repair == 0, "error"].mean()),
-    )
-    assert result.method == "paired_difference_fallback"
-    assert result.passed
-    assert "fallback" in result.reason
-
-
 def _constant_difference_data(n_seeds=6, n_ep=3, n_tr=4):
     """Every pair identical, so the across-seed spread is EXACTLY zero.
 
@@ -157,34 +141,35 @@ def _constant_difference_data(n_seeds=6, n_ep=3, n_tr=4):
     return (np.array(e), np.array(r), np.array(s), np.array(ep), np.array(tr))
 
 
-def test_refusing_the_fallback_is_possible():
-    """A caller may insist on the registered model rather than a substitute.
+def test_there_is_no_fallback_to_fall_back_to():
+    """Sol, delta 45: remove the episode-level fallback from registered acceptance.
 
-    The fallback now triggers when the ACROSS-SEED interval cannot be formed --
-    a zero or undefined seed-level spread -- rather than on optimiser
-    non-convergence, because the primary no longer runs an optimiser.
+    The old fallback existed because an optimiser could fail. This analysis has
+    none, and switching the replication unit from seeds to episodes because of
+    the observed data would be choosing the inference after seeing it.
     """
-    data = _constant_difference_data()
-    with pytest.raises(RuntimeError, match="allow_fallback is False"):
-        acceptance_test(*data, allow_fallback=False)
+    from bu.stats import acceptance as A
+
+    assert not hasattr(A, "_paired_difference_fallback")
+    assert not hasattr(A, "_episode_mean_fallback")
 
 
-def test_a_zero_seed_spread_fails_CLOSED_rather_than_accepting():
-    """With the fallback allowed, a degenerate spread must refuse, not accept.
-
-    Perfectly constant differences leave nothing to estimate an interval from,
-    and the fallback's own model is singular there too. The right behaviour is
-    not to invent a number: the result is nan, `passed` is False, and the reason
-    says so. D-079's rule -- an unestimated effect is not a null one -- read in
-    the direction that matters, since the alternative is accepting a repair on
-    an interval that was never computed.
-    """
+def test_a_zero_seed_spread_FAILS_CLOSED_rather_than_switching_analysis():
+    """The condition that used to trigger the fallback now refuses outright."""
     result = acceptance_test(*_constant_difference_data())
-    assert result.method == "paired_difference_fallback"
+    assert result.method == "paired_seed_cluster"
     assert not result.passed
     assert not result.converged
     assert np.isnan(result.effect)
-    assert "not a null one" in result.reason
+    assert "across-seed spread" in result.reason
+    assert "seeing it" in result.reason
+
+
+def test_a_single_seed_fails_closed():
+    e, r, s, ep, tr = _constant_difference_data(n_seeds=1)
+    result = acceptance_test(e, r, s, ep, tr)
+    assert not result.passed and np.isnan(result.effect)
+    assert "no replication" in result.reason
 
 def test_mismatched_lengths_are_refused():
     errors, repair, seeds, episodes, steps = synthetic(rng=np.random.default_rng(0))
@@ -572,3 +557,49 @@ def test_calibration_holds_across_preregistered_pairing_strengths(pair_strength)
     assert result.calibrated, result.reason
     assert 1 <= result.n_accepted_statistical <= 10
     assert result.n_accepted_full == 0
+
+
+def test_the_effect_and_its_denominator_are_weighted_THE_SAME_WAY():
+    """Sol, delta 45: both sides of the ratio must use equal-seed weighting.
+
+    The effect equally weights seed means. A denominator weighting raw
+    transitions would make the reported relative reduction a ratio of two
+    differently-weighted quantities -- the D-042/D-044 shape, where correct
+    arithmetic on mismatched estimands produces a wrong number.
+
+    Made refutable by giving the seeds UNEQUAL transition counts, so the two
+    weightings genuinely differ.
+    """
+    from bu.stats import acceptance as A
+
+    e, r, s, ep, tr = [], [], [], [], []
+    for seed, n_ep in enumerate((2, 8, 8, 8)):          # seed 0 is much smaller
+        for episode in range(n_ep):
+            for step in range(10):
+                base = 1.0 if seed == 0 else 0.1        # ...and much worse
+                for arm, val in ((0, base), (1, base * 0.5)):
+                    e.append(val); r.append(arm)
+                    s.append(seed); ep.append(episode); tr.append(step)
+    data = A._frame(np.array(e), np.array(r), np.array(s), np.array(ep), np.array(tr))
+
+    equal_seed = A.equal_seed_baseline_mean(data)
+    by_transition = float(data.loc[data.repair == 0, "error"].mean())
+    assert equal_seed != pytest.approx(by_transition), (
+        "the fixture does not distinguish the two weightings, so this test "
+        "could not fail"
+    )
+
+    result = acceptance_test(np.array(e), np.array(r), np.array(s),
+                             np.array(ep), np.array(tr))
+    assert result.unrepaired_mean == pytest.approx(equal_seed)
+    # Every arm is halved, so the equal-seed relative reduction is exactly 50%.
+    assert result.relative_reduction == pytest.approx(0.5, abs=1e-9)
+
+
+def test_the_result_language_is_not_a_mixed_model_claim():
+    """Sol: this is no longer 'a fixed effect from a mixed model'."""
+    result = acceptance_test(*synthetic(reduction=0.35, rng=np.random.default_rng(0)))
+    text = result.summary()
+    assert "equal-seed mean paired difference" in text
+    assert "fixed effect" not in text
+    assert "mixedlm" not in text and result.method == "paired_seed_cluster"
