@@ -1309,3 +1309,20 @@ Admissible under the corrected D-085: statistical-only **k ∈ [1, 10]**, full r
 **Data seen:** none.
 **Plan ref:** P§7.2, P§14.2, D-031, D-034. Sol's ruling on delta 44.
 **Reviewed by Sol:** the items are Sol's; the implementations are not yet reviewed.
+
+### D-096 · 2026-08-20 · C-008 closed — one fit, both products, and an integration defect only the joining revealed
+**Decision:** Sol accepted the bootstrap guard but held C-008 open on integration. All five items done.
+
+**Bound to registered obligations.** `assert_registered_obligation` refuses any (unit, arm, stage, seed) the **execution plan** does not contain — the same artefact the compute estimate is taken over, so "registered" means here what it means in the budget. Sol's objection was that the runner accepted arbitrary unit/stage combinations: such a fit discharges nothing while writing a record indistinguishable from one that does. A seed past a stage's registered count is refused for the same reason.
+
+**Training configuration frozen.** `CONFIRMATORY_TRAIN` is fixed and there is no `train` parameter. `TrainConfig` is deliberately not part of `run_id` (D-072), so two different optimisations would occupy the **same recorded identity** — accepting one from a caller made that reachable. Repaired arms use `REPAIRED_TRAIN` at `ensemble_size=1`.
+
+**Dirty tree refused before fitting**, and a repaired arm without the baseline's scale refused (D-061).
+
+**One fit, both products.** `run_confirmatory` now returns the per-transition `ArmEvaluation` alongside the record, and `run_repair_validation` runs the baseline first — because that is where the scale is created, before any mask — then hands the repaired arm **that same scale object**. Sol: *"Two parallel paths do not satisfy C-008."* Previously the record path and the repair-scoring path trained separately, so nothing guaranteed the number and the evidence attesting it came from one model. A test asserts `evaluation.run_id == run.run_id`.
+
+**FINDING — an integration defect that only appeared once the paths were joined.** A repaired arm fits **one** model, so it has no member spread and `whole_pool()` raised *"disagreement needs at least two members, got 1"*. Each path was individually consistent; their union was not, which is precisely the failure mode Sol's objection predicts. Disagreement is **undefined** for a single model, not zero — reporting 0.0 would be a measurement nobody took and would read as "the members agreed perfectly". The record now carries `null` and the result `nan`, with a test pinning that the baseline still reports a number. The acceptance test never needs disagreement anyway; D-063 bars it from repair labels entirely.
+**Tests:** 745 → **758 passing**, 2 skipped (13 new).
+**Data seen:** none. Real fits, but in temp directories on the cheapest registered obligation; no registered evidence written.
+**Plan ref:** P§14.2, D-053, D-061, D-063, D-072, C-008. Sol's ruling on delta 44.
+**Reviewed by Sol:** **not yet.**
