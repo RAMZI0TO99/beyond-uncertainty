@@ -3806,3 +3806,53 @@ scrolling to find a section boundary; "paste `DELTA_TO_SOL.md`" does not.
 **Provenance correction.** The student reports that **an earlier session was interrupted**, which is the likely source of the three files found modified mid-session and recorded as unexplained in the previous entry and in delta 43. Recorded as *reported*, not verified — `list_sessions` returns nothing even including archived sessions. The classification is unchanged and sharpened: an interrupted session leaving uncommitted work is exactly the DEV-005 / D-080 pattern.
 
 **Tests:** 705 → **709 passing**, 2 skipped, 1 xfailed. **Compute: zero.** Still no unblocked work left.
+
+## Archived from PROJECT_STATE.md §7 on 2026-08-20 — the Sol correction rounds
+
+*Moved when the file passed its cap after W4 Friday executed. Four entries, 2026-08-20: Sol's deltas 43–44 actioned with Gate 1 signed FAIL (D-094 … D-099), the delta-45 corrections (D-100), the delta-46 closeout (D-101) and the delta-47 non-finite guard (D-102). All are superseded by the calibration entry that follows them; nothing is condensed.*
+
+### 2026-08-20 (W5 Sat) · Sol's whole ruling actioned; Gate 1 signed off FAIL · Claude
+
+**All seven of Sol's closeout items done, plus the audit** (D-094 … D-099). Every finding verified before actioning; Sol's own corrected D-085 target checked independently and confirmed.
+
+**Two Change Records, both before any data was seen.** **D-094** — the acceptance model gains the pairing. **The literal specification turned out to be degenerate**: a seed intercept, an episode component and a transition-within-episode component are all constant within a pair, so all three cancel in the contrast and become unidentifiable — `LinAlgError: Singular matrix` at 250 and 1,000 pairs, and 231 s where it fits, which would make 200 permutations a 13-hour run. Reduced to what *is* estimable it treats pairs as **iid**, blind to seed-level effect variation, with SE up to **8.7× too small**. That would have swapped a 1.51× conservative test for an anti-conservative one — the worse direction, since a narrow interval manufactures repairs out of seed noise and those become labels. Implemented instead: pair first, seed stays the replication level, t on n−1 df — **7 ms against 231 s**, and calibrated at every pairing strength (5–7/200 against an admissible [1, 10]). **D-097** — a distinct `threshold_calibration` stage, because `TrainConfig` is not in `run_id` and reusing `exp1` would have collided identities.
+
+**Gate 1 signed off: FAIL** (D-098). Condition 3 was repaired this session and condition 4 still fails; Sol was explicit it must not later be renamed a pass. **Not** the condition-1 pivot — H1's machinery works; what failed is power. The 300-unit design continues under a recorded limitation, Direction C authorised.
+
+**The W4 Friday runner is rebuilt and NOT executed** (D-097), which is what Sol asked to see. `calibrate()` now takes no argument that can change the number.
+
+**Audit found two methodological limits of the balancing rule** (D-099), both raised rather than assumed away: it caps row count but **not tail influence** at the 95th percentile, where one stratum of nine is 11.1% of the pool; and its RNG is inert when strata are equal-sized, though real movement counts vary (815–853) so seed 0 does bind and ~4% of reference data is discarded to the smallest stratum.
+
+**Tests:** 745 → **760 passing**, 2 skipped, **0 xfailed**. **Compute:** real fits only in temp directories on the cheapest registered obligation; **no registered evidence, no threshold calibrated, no data seen.**
+
+### 2026-08-20 (W5 Sat, correction pass) · Sol's delta-45 corrections · Claude
+
+**Sol accepted the paired seed-cluster analysis in principle and Gate 1's FAIL**, then listed narrow corrections. All done (D-100); no new experimental data was needed.
+
+**A claim of mine narrowed.** D-094 said the three variance components "become unidentifiable". Sol is right that this overstates it — shared intercepts cancelling from the paired contrast does not prove mathematical unidentifiability in long-form data. What was established, and all that is claimed now: that specification was **singular in practice**, **computationally unacceptable** where it fit, and **failed to represent repair-effect heterogeneity**. Enough to justify the analysis without the stronger claim.
+
+**The estimand made self-consistent**: the effect equally weights seed means, but the denominator was weighting raw transitions — the D-042/D-044 shape. Both sides now use `mean_s(mean_i baseline[s,i])`, with a test whose fixture gives seeds unequal counts so the two weightings genuinely differ.
+
+**Exactly the frozen 20-seed set** is now required where the label is created; nineteen seeds or an after-the-fact subset is a different experiment. **No fallback** in registered acceptance — it fails closed rather than switching replication from seeds to episodes on the strength of the data. **Result language corrected** throughout.
+
+**C-008's last two exposures closed**: `allow_dirty` and caller-chosen thread counts are gone, threading frozen at 4/4 inside the runner. **Threshold**: attempt names frozen to `attempt-NNN` so no permitted name escapes prior-attempt discovery; `INVALID` must state a reason; and `recompute_threshold` no longer reads the frozen spec out of the file it is checking — it compares every constant against the code, verifies run and member digests, and **reconstructs** the deterministic selection rather than reusing the recorded one.
+
+**Rerun as required:** all four pairing-strength calibrations still calibrated. **Tests:** 760 → **786 passing**, 2 skipped, **0 xfailed**. **W4 Friday remains stopped.**
+
+### 2026-08-20 (W5 Sat, closeout patch) · A hole in my own guard · Claude
+
+**Sol's delta-46 closeout, all five items** (D-101). One was material and it was **my** defect, in the guard I had written two passes earlier to close exactly this class of thing.
+
+`_validate_registered_consumption` treated every non-`pilot` stage as registered and derived the required seeds from that stage's own count. Reproduced before fixing: a five-seed **`exp1`** set and a five-seed **`threshold_calibration`** set each **created a repair label, 400 rows**. Both carry a registered stage and the right confirmatory seeds *for that stage*, so every other clause passed — while the repair protocol had never been run. I had generalised "registered" where the rule needed to name **one** stage. Label creation now requires `repair_validation` **and** the frozen 20 seeds; every other stage is refused by name.
+
+Also: `allow_fallback` removed entirely (it survived the fallback it was named after, defaulting to True and ignored); the wording cleanup finished, with the one surviving description of the old model marked as superseded history; `recompute_threshold` extended to nine further record-integrity fields including each cell's transition count against its array length; and the stale balancing question removed from the delta, which had been saying the issue was settled and asking Sol to settle it.
+
+**Tests:** 786 → **801 passing**, 2 skipped, 0 xfailed. **Gate 1 FAIL, the seed-cluster analysis and the balancing rule are settled and not revisited. W4 Friday remains stopped.**
+
+### 2026-08-20 (W5 Sat, micro-closeout) · A seed could vanish and the result still said twenty · Claude
+
+**Sol's delta-47 guard** (D-102), reproduced before fixing. `_frame` accepted non-finite errors and pandas drops them while pivoting and grouping — so a registered input could clear the 20-seed guard and then lose transitions, or a whole seed, inside the transformation. Measured: one seed of NaN moved the effect (−0.035383 against a clean −0.035657) and the interval, while `n_seeds` **still reported 20**; 37 scattered NaNs left `n_transitions` reporting 3,200. Worse than Sol stated: **+inf and −inf were both absorbed to the same finite answer**, so an upstream sign error would have been invisible.
+
+Guarded at three layers — `_frame` refuses non-finite input outright, `paired_differences` uses `pivot` rather than `pivot_table` and asserts the row count against the validated pair count, and the seed means are checked to match the input seed set exactly. Ten tests. Also fixed a doubled word of my own that spanned a line break.
+
+**Tests:** 801 → **811 passing**, 2 skipped, 0 xfailed. **W4 Friday remains stopped.**

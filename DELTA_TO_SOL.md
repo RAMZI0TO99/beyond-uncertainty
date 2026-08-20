@@ -24,6 +24,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 >
 > COVERS SESSIONS:
 > - 2026-08-20 (W4 Fri) · THE THRESHOLD IS CALIBRATED
+> - 2026-08-20 (W4 Fri, follow-on) · The near-miss mechanised, and the H1 statistic audited
 
 ```
 === UPDATE FOR SOL ===
@@ -133,13 +134,43 @@ NUMBERS (D-011)
   cells             45/45, 9 strata x 5 seeds, all unique, all K=5
   balanced pool     36,927 of 37,406 transitions (1.28% discarded)
   recomputation     bit-identical from artefacts alone
-  tests             811 passing, 2 skipped, 0 xfailed
+  tests             819 passing, 2 skipped, 0 xfailed
   compute           225 CPU fits this run, 675 total, 0 GPU-hours
   data seen         YES -- reference-model errors only. No experimental
                     condition, no hypothesis touched. First registered
                     evidence the project has produced.
   bases             bundle diff from ca545ed; reviewed execution base 93dc296
 
+--------------------------------------------------------------------
+TAKEN WHILE THIS DELTA WAS WITH YOU (D-104). Q-004 governs the calendar lead
+-- review, understanding and documentation, NEVER scope -- so C-005 and Week 6
+are untouched.
+
+THE NEAR-MISS IS NOW A TEST. tests/test_evidence_is_tracked.py. The property
+is narrow on purpose: not "everything under runs/ is tracked" -- D-075
+deliberately tracks only the W3 pilot's manifest and rows -- but EVERY FILE
+WHOSE DIGEST A TRACKED RECORD ATTESTS, AND WHICH A VERIFIER READS BACK, MUST
+ITSELF BE TRACKED. Shown to FAIL rather than merely to pass: `git rm --cached`
+on one error array made it fail by name, and restoring it made it pass. Plus a
+vacuity guard, since a vacuous pass is indistinguishable from a real one.
+
+stats/trend.py AUDITED BY PROBING -- CLEAN. It is THE H1 statistic, shared by
+the certified W4 gate and the future W10 verdict, so a defect there moves a
+registered endpoint.
+  ties            agrees with scipy.stats.spearmanr exactly (-0.985611 on one
+                  tie, -0.956183 on two)
+  bootstrap       genuinely exhaustive: 27 resamples at 3 seeds, 3,125 at 5
+  reading rule    decreasing passes, increasing fails at rho=+1.0, no-trend
+                  fails on interval width
+  robustness      non-finite curves REFUSED outright; a perfectly flat curve
+                  gives rho=nan with passed=False rather than a verdict
+
+AN ASYMMETRY WORTH RECORDING: trend.py ALREADY HAD the non-finite guard that
+acceptance.py lacked until your delta-47 ruling. Two modules by the same hand,
+one guarded and one not -- so a guard's presence in one place is no evidence
+about another. Worth knowing when deciding where to look next.
+
+--------------------------------------------------------------------
 WHAT I AM ASKING FOR: review of this evidence, and the D-035 Change Record
 promoting 0.610702633857727 into constants.py as the permanently frozen
 failure threshold. Gate 1 (FAIL), the seed-cluster analysis, the balancing

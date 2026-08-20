@@ -418,7 +418,7 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **37 archived, 1 kept here** — Week 3's six close entries were archived when it was certified and frozen at `9c0d89d` (D-067). Nothing is condensed; the archive is complete.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **41 archived, 1 kept here** — Week 3's six close entries were archived when it was certified and frozen at `9c0d89d` (D-067). Nothing is condensed; the archive is complete.
 
 *(W3 certification through the W4 Tuesday gate rounds — the trend test, Sol's two blockers, and the evidence contract — moved to `PROJECT_STATE_ARCHIVE.md` when this file passed its 500-line paste cap. Six entries, 2026-08-17 to 2026-08-18; the decisions they produced are D-068 … D-072 and remain indexed in §3.)*
 
@@ -433,51 +433,7 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **37 archived, 1 kept
 
 *(Three W5 closeout sessions of 2026-08-20 — Sol's deltas 39–42 actioned, C-008 and C-003, and C-007 at repair acceptance — were archived the same day when this file passed its cap. They produced D-085 … D-093, all indexed in §3.)*
 
-### 2026-08-20 (W5 Sat) · Sol's whole ruling actioned; Gate 1 signed off FAIL · Claude
-
-**All seven of Sol's closeout items done, plus the audit** (D-094 … D-099). Every finding verified before actioning; Sol's own corrected D-085 target checked independently and confirmed.
-
-**Two Change Records, both before any data was seen.** **D-094** — the acceptance model gains the pairing. **The literal specification turned out to be degenerate**: a seed intercept, an episode component and a transition-within-episode component are all constant within a pair, so all three cancel in the contrast and become unidentifiable — `LinAlgError: Singular matrix` at 250 and 1,000 pairs, and 231 s where it fits, which would make 200 permutations a 13-hour run. Reduced to what *is* estimable it treats pairs as **iid**, blind to seed-level effect variation, with SE up to **8.7× too small**. That would have swapped a 1.51× conservative test for an anti-conservative one — the worse direction, since a narrow interval manufactures repairs out of seed noise and those become labels. Implemented instead: pair first, seed stays the replication level, t on n−1 df — **7 ms against 231 s**, and calibrated at every pairing strength (5–7/200 against an admissible [1, 10]). **D-097** — a distinct `threshold_calibration` stage, because `TrainConfig` is not in `run_id` and reusing `exp1` would have collided identities.
-
-**Gate 1 signed off: FAIL** (D-098). Condition 3 was repaired this session and condition 4 still fails; Sol was explicit it must not later be renamed a pass. **Not** the condition-1 pivot — H1's machinery works; what failed is power. The 300-unit design continues under a recorded limitation, Direction C authorised.
-
-**The W4 Friday runner is rebuilt and NOT executed** (D-097), which is what Sol asked to see. `calibrate()` now takes no argument that can change the number.
-
-**Audit found two methodological limits of the balancing rule** (D-099), both raised rather than assumed away: it caps row count but **not tail influence** at the 95th percentile, where one stratum of nine is 11.1% of the pool; and its RNG is inert when strata are equal-sized, though real movement counts vary (815–853) so seed 0 does bind and ~4% of reference data is discarded to the smallest stratum.
-
-**Tests:** 745 → **760 passing**, 2 skipped, **0 xfailed**. **Compute:** real fits only in temp directories on the cheapest registered obligation; **no registered evidence, no threshold calibrated, no data seen.**
-
-### 2026-08-20 (W5 Sat, correction pass) · Sol's delta-45 corrections · Claude
-
-**Sol accepted the paired seed-cluster analysis in principle and Gate 1's FAIL**, then listed narrow corrections. All done (D-100); no new experimental data was needed.
-
-**A claim of mine narrowed.** D-094 said the three variance components "become unidentifiable". Sol is right that this overstates it — shared intercepts cancelling from the paired contrast does not prove mathematical unidentifiability in long-form data. What was established, and all that is claimed now: that specification was **singular in practice**, **computationally unacceptable** where it fit, and **failed to represent repair-effect heterogeneity**. Enough to justify the analysis without the stronger claim.
-
-**The estimand made self-consistent**: the effect equally weights seed means, but the denominator was weighting raw transitions — the D-042/D-044 shape. Both sides now use `mean_s(mean_i baseline[s,i])`, with a test whose fixture gives seeds unequal counts so the two weightings genuinely differ.
-
-**Exactly the frozen 20-seed set** is now required where the label is created; nineteen seeds or an after-the-fact subset is a different experiment. **No fallback** in registered acceptance — it fails closed rather than switching replication from seeds to episodes on the strength of the data. **Result language corrected** throughout.
-
-**C-008's last two exposures closed**: `allow_dirty` and caller-chosen thread counts are gone, threading frozen at 4/4 inside the runner. **Threshold**: attempt names frozen to `attempt-NNN` so no permitted name escapes prior-attempt discovery; `INVALID` must state a reason; and `recompute_threshold` no longer reads the frozen spec out of the file it is checking — it compares every constant against the code, verifies run and member digests, and **reconstructs** the deterministic selection rather than reusing the recorded one.
-
-**Rerun as required:** all four pairing-strength calibrations still calibrated. **Tests:** 760 → **786 passing**, 2 skipped, **0 xfailed**. **W4 Friday remains stopped.**
-
-### 2026-08-20 (W5 Sat, closeout patch) · A hole in my own guard · Claude
-
-**Sol's delta-46 closeout, all five items** (D-101). One was material and it was **my** defect, in the guard I had written two passes earlier to close exactly this class of thing.
-
-`_validate_registered_consumption` treated every non-`pilot` stage as registered and derived the required seeds from that stage's own count. Reproduced before fixing: a five-seed **`exp1`** set and a five-seed **`threshold_calibration`** set each **created a repair label, 400 rows**. Both carry a registered stage and the right confirmatory seeds *for that stage*, so every other clause passed — while the repair protocol had never been run. I had generalised "registered" where the rule needed to name **one** stage. Label creation now requires `repair_validation` **and** the frozen 20 seeds; every other stage is refused by name.
-
-Also: `allow_fallback` removed entirely (it survived the fallback it was named after, defaulting to True and ignored); the wording cleanup finished, with the one surviving description of the old model marked as superseded history; `recompute_threshold` extended to nine further record-integrity fields including each cell's transition count against its array length; and the stale balancing question removed from the delta, which had been saying the issue was settled and asking Sol to settle it.
-
-**Tests:** 786 → **801 passing**, 2 skipped, 0 xfailed. **Gate 1 FAIL, the seed-cluster analysis and the balancing rule are settled and not revisited. W4 Friday remains stopped.**
-
-### 2026-08-20 (W5 Sat, micro-closeout) · A seed could vanish and the result still said twenty · Claude
-
-**Sol's delta-47 guard** (D-102), reproduced before fixing. `_frame` accepted non-finite errors and pandas drops them while pivoting and grouping — so a registered input could clear the 20-seed guard and then lose transitions, or a whole seed, inside the transformation. Measured: one seed of NaN moved the effect (−0.035383 against a clean −0.035657) and the interval, while `n_seeds` **still reported 20**; 37 scattered NaNs left `n_transitions` reporting 3,200. Worse than Sol stated: **+inf and −inf were both absorbed to the same finite answer**, so an upstream sign error would have been invisible.
-
-Guarded at three layers — `_frame` refuses non-finite input outright, `paired_differences` uses `pivot` rather than `pivot_table` and asserts the row count against the validated pair count, and the seed means are checked to match the input seed set exactly. Ten tests. Also fixed a doubled word of my own that spanned a line break.
-
-**Tests:** 801 → **811 passing**, 2 skipped, 0 xfailed. **W4 Friday remains stopped.**
+*(Four Sol correction rounds of 2026-08-20 — deltas 43–47 actioned, Gate 1 signed FAIL, the acceptance Change Record and the non-finite guard — were archived the same day when this file passed its cap. They produced D-094 … D-102, all indexed in §3.)*
 
 ### 2026-08-20 (W4 Fri) · THE THRESHOLD IS CALIBRATED · Claude
 
@@ -494,3 +450,15 @@ Guarded at three layers — `_frame` refuses non-finite input outright, `paired_
 **And a near-miss worth recording.** The evidence was **silently untracked**: `runs/*` is ignored with per-experiment exceptions and `runs/w4_threshold` had none, so the first version of the commit shipped **two** files while its own message claimed 136. Caught by checking the commit rather than trusting it. Had it gone out, the bundle would have carried digests with no files — the D-041 shape exactly, and `.gitignore`'s own comment warns about this class while nothing enforces it.
 
 **Tests:** 811 passing, 2 skipped. **Compute:** 225 CPU fits (675 total), 0 GPU-hours. **First registered evidence the project has produced.**
+
+### 2026-08-20 (W4 Fri, follow-on) · The near-miss mechanised, and the H1 statistic audited · Claude
+
+**Work taken while delta 49 is with Sol.** Q-004 governs the lead — review, understanding and documentation, **never scope** — so C-005 and Week 6 are untouched.
+
+**D-103's near-miss is now a test** (D-104). The property is narrow on purpose: not "everything under `runs/` is tracked" — D-075 deliberately tracks only the W3 pilot's manifest and rows — but *every file whose digest a tracked record attests, and which a verifier reads back, must itself be tracked*. **Shown to fail**: `git rm --cached` on one error array made it fail by name; restoring made it pass.
+
+**`stats/trend.py` audited by probing — clean.** It is THE H1 statistic, shared by the certified W4 gate and the future W10 verdict, so a defect moves a registered endpoint. Ties agree with `scipy` exactly; the exact bootstrap is genuinely exhaustive (27 at 3 seeds, 3,125 at 5); the reading rule is right in all three directions; non-finite curves refused and degenerate ones fail closed.
+
+**An asymmetry worth carrying:** `trend.py` already had the non-finite guard `acceptance.py` lacked until D-102. Two modules by the same hand, one guarded and one not — so a guard's presence in one place is no evidence about another.
+
+**Tests:** 811 → **819 passing**, 2 skipped, 0 xfailed.
