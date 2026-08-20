@@ -79,38 +79,18 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 6. **W4 Tue — DONE. Rung 0 PASSES** (D-074). All three configurations, on the certified commit with a clean tree: **rho = −0.9429** for every one, intervals [−0.9429, −0.9429] (uniform), [−0.9429, −0.8286] (clustered), [−0.9429, −0.9429] (sparse). 90 ensembles / 450 fits in **4 m 52 s** on CPU; `recompute()` exact; suite green after. Per Sol the ladder **stops here** — rungs 1 and 2 are not run. **Read the interval correctly:** the exact bootstrap is discrete with 2–3 atoms, and uniform and sparse are degenerate only just (second atom at 1.63% and 2.14% against a 2.5% threshold). The *verdict* is unaffected — every atom is far below zero — but the width is not a precision claim. **The N=250 peak reproduces in 14 of 15 curves**; clustered seed 4 peaks at N=500 instead. Disagreement is **not** monotone in dataset size; the test passes because Spearman tolerates one inversion.
 7. **W4 Fri — NEXT, and blocked on Sol.** Threshold calibration is the first cell where a failure mask exists, so the first that can violate the D-061 scale rule. **C-010 is now built** (D-076) — `ScaledEvaluation.from_pool` takes no mask, so the scale precedes any mask structurally — but Sol has not reviewed it (delta 40), and W4 Friday **permanently freezes a §2 constant**. Wednesday and Thursday went to C-006, C-009 and C-010; per Q-004 the gain from the stopped ladder goes to review and obligations, **never** to scope.
 
-**⚠ GATE 1 — TWO CONDITIONS ARE NOT MET, AND ONE IS A *FAIL* RATHER THAN A RISK.**
-
-| condition | status |
-|---|---|
-| reliability gate | **PASS**, certified (D-074, D-075) |
-| compute within budget | **PASS** — *contingent* on D-087's one-model-per-repaired-arm fix. At the old default the design cost **14,885 fits against ~8,700 — 1.71× budget** |
-| permutation calibration | **FAILING** — D-085's criterion unmet; cause understood (D-086) |
-| MDE clears five points | **FAIL** — Sol's ruling, not pending and not at risk (D-089) |
-
-**The MDE is settled and must not be re-litigated by a reset.** Sol ruled: preserve
-the 300-unit design, do **not** expand to 1,500–2,000 held-out units, and treat
-the 18–22 table as **uncertified and explicitly optimistic** (it uses a Wald
-`1.96 × SE` rule where D-044 registers a group-bootstrap percentile, and measured
-null rejection is 6.1–9.2%). "MDE vs the five-point margin" is a **necessary
-sensitivity check only** — it is not an equivalence test. The 300 units are
-classified by **intended** construction class while H3 uses **repair-verified**
-labels with exclusions, so this is an **upper-bound** power scenario. Record that
-H3 detects only comparatively large effects and may be inconclusive around ±5;
-never claim equivalence the interval cannot resolve. **Direction C is an
-authorised outcome.** Continue with the unchanged design and an explicit power
-limitation — do not manufacture a pass by expanding scope or moving the margin.
-
-**The permutation condition failed for a reason worth carrying** (D-086). The
-registered P§7.3 model has **no transition-level pairing term** while the
-comparison is paired transition-by-transition, so its SE is **1.51×** the true
-paired null spread and the test is **conservative**. The withdrawn global
-permutation had been hiding this precisely: it inflated the null's spread by
-**1.46×**, cancelling the over-wide SE into a reassuring **1.03** that passed its
-bound. **Two errors cancelling into a number that read as evidence.** Not fixed —
-the acceptance model is a §2 frozen constant, so it is a Change Record and Sol's
-call. Measured on synthetic data with near-perfect pairing: the **direction** is
-established, the **magnitude on real data is not**.
+**GATE 1 IS SIGNED OFF: FAIL** (D-098, §5). Reliability **PASS** (rung 0,
+certified). Compute **PASS**, contingent on one model per repaired arm.
+Permutation calibration **PASS** — repaired this session by the D-094 Change
+Record. Five-point MDE **FAIL**, and Sol was explicit this must **not** later be
+renamed a pass now that condition 3 is fixed: the MDE failure is independent of
+it. **This is not the condition-1 pivot** — H1's machinery works; what failed is
+the design's power to resolve five points in H3, a sample-size limit. The
+unchanged **300-unit design continues** under a recorded power limitation, with
+**Direction C authorised**. Expansion to the 1,500–2,000 held-out units five
+points would need is refused as incompatible with registered scope. The 18–22
+table stays **uncertified and optimistic** until the simulation uses H3's final
+group-level inference with its null size validated against .05.
 
 **Two things the thesis must carry, recorded now because a reset loses them** (D-075):
 - **Never print a zero-width interval bare.** `[−0.9429, −0.9429]` reflects **quantile discreteness, not zero sampling uncertainty** — the bootstrap distribution has only 2–3 distinct values because Spearman over six sizes has highly discrete support. Sol's sentence for the results text is quoted verbatim in D-075, and the atom/mass table must travel with it.
@@ -293,6 +273,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-096** | 2026-08-20 | C-008 closed — one fit, both products; single-model arms have no disagreement | Deliverable |
 | **D-097** | 2026-08-20 | **CHANGE RECORD** — `threshold_calibration` stage; runner rebuilt; balancing limit found | **For Sol** |
 | **D-098** | 2026-08-20 | **GATE 1 — FAIL**, signed off on Sol's ruling; not a pivot | **Sol's verdict** |
+| **D-099** | 2026-08-20 | Audit of W4/W5 — probed; two findings on the threshold's balancing rule | **Audit** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -486,3 +467,17 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **34 archived, 1 kept
 **Provenance correction.** The student reports that **an earlier session was interrupted**, which is the likely source of the three files found modified mid-session and recorded as unexplained in the previous entry and in delta 43. Recorded as *reported*, not verified — `list_sessions` returns nothing even including archived sessions. The classification is unchanged and sharpened: an interrupted session leaving uncommitted work is exactly the DEV-005 / D-080 pattern.
 
 **Tests:** 705 → **709 passing**, 2 skipped, 1 xfailed. **Compute: zero.** Still no unblocked work left.
+
+### 2026-08-20 (W5 Sat) · Sol's whole ruling actioned; Gate 1 signed off FAIL · Claude
+
+**All seven of Sol's closeout items done, plus the audit** (D-094 … D-099). Every finding verified before actioning; Sol's own corrected D-085 target checked independently and confirmed.
+
+**Two Change Records, both before any data was seen.** **D-094** — the acceptance model gains the pairing. **The literal specification turned out to be degenerate**: a seed intercept, an episode component and a transition-within-episode component are all constant within a pair, so all three cancel in the contrast and become unidentifiable — `LinAlgError: Singular matrix` at 250 and 1,000 pairs, and 231 s where it fits, which would make 200 permutations a 13-hour run. Reduced to what *is* estimable it treats pairs as **iid**, blind to seed-level effect variation, with SE up to **8.7× too small**. That would have swapped a 1.51× conservative test for an anti-conservative one — the worse direction, since a narrow interval manufactures repairs out of seed noise and those become labels. Implemented instead: pair first, seed stays the replication level, t on n−1 df — **7 ms against 231 s**, and calibrated at every pairing strength (5–7/200 against an admissible [1, 10]). **D-097** — a distinct `threshold_calibration` stage, because `TrainConfig` is not in `run_id` and reusing `exp1` would have collided identities.
+
+**Gate 1 signed off: FAIL** (D-098). Condition 3 was repaired this session and condition 4 still fails; Sol was explicit it must not later be renamed a pass. **Not** the condition-1 pivot — H1's machinery works; what failed is power. The 300-unit design continues under a recorded limitation, Direction C authorised.
+
+**The W4 Friday runner is rebuilt and NOT executed** (D-097), which is what Sol asked to see. `calibrate()` now takes no argument that can change the number.
+
+**Audit found two methodological limits of the balancing rule** (D-099), both raised rather than assumed away: it caps row count but **not tail influence** at the 95th percentile, where one stratum of nine is 11.1% of the pool; and its RNG is inert when strata are equal-sized, though real movement counts vary (815–853) so seed 0 does bind and ~4% of reference data is discarded to the smallest stratum.
+
+**Tests:** 745 → **760 passing**, 2 skipped, **0 xfailed**. **Compute:** real fits only in temp directories on the cheapest registered obligation; **no registered evidence, no threshold calibrated, no data seen.**

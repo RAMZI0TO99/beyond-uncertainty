@@ -1366,3 +1366,23 @@ Admissible under the corrected D-085: statistical-only **k ∈ [1, 10]**, full r
 **Data seen:** none.
 **Plan ref:** P§4.2, P§10.7, P§14.3, S§W5 Sat. Records Sol's Gate 1 ruling; rests on D-074, D-078, D-087, D-089, D-094.
 **Reviewed by Sol:** **the verdict is Sol's.**
+
+### D-099 · 2026-08-20 · Audit of Weeks 4 and 5 — probed, not read
+**Decision:** Audited the W4/W5 code in the project's tradition (D-015, D-021, D-060, D-082): probe the running system empirically, because an audit finds a different class of defect than a review does. Everything below was measured.
+
+**`acceptance.py` (D-094's new model) — clean, and the floor still bites.** Effect recovery is unbiased across the range (true 0/5/10/20/25/35/50% → estimated 0.2/5.2/10.2/20.2/25.2/35.2/50.2%). The **20% practical floor is exactly at its boundary** — 20% passes, 10% fails — and is demonstrably load-bearing: a 5% reduction at four times the transitions has an interval **excluding zero** and is still refused, which is what the floor is for. Power at the registered twenty seeds: **20/20** independent datasets accept a 35% repair, **0/20** accept a null one.
+
+**`w4_threshold.py` — three probes clean, one finding.**
+- **Stating `method="linear"` is load-bearing, not decorative.** On one vector the five NumPy methods give **5.0, 7.0, 7.8, 9.0, 9.0**. Inheriting a library default would make a permanently frozen threshold depend on a version.
+- **The strict boundary holds at float precision**: `0.5` is not a failure against a 0.5 threshold, `np.nextafter(0.5, 1)` is.
+- **Two cells swapped — not merely tampered — are caught** by the per-array digests on recomputation.
+- **FINDING: the balancing RNG is inert when strata are equal-sized.** `available = min(len(pool))`, so with equal strata `choice(n, size=n, replace=False)` followed by `sort()` is the identity and seed 0 does nothing. Measured: seeds 0 and 999 give byte-identical selections there. It is **not** inert in the real case — actual movement-transition counts vary by stratum and seed (**815, 824, 825, 825, 843, 853** in the six cells probed), so subsampling binds, RNG seed 0 is genuinely load-bearing, and roughly **4% of reference data is discarded** down to the smallest stratum. Recorded so nobody later reads "frozen at seed 0" as doing more, or less, than it does.
+- Carried from D-097: **balancing caps row count, not tail influence.** One stratum of nine is 11.1% of the pool and the top 5% is smaller, so a systematically-worst stratum still sets the threshold outright. Both threshold findings are for Sol.
+
+**`confirmatory.py` — clean, including the end-to-end repair path.** The obligation guard refuses every **plausible-but-wrong** combination probed — right unit with the wrong stage, right unit with an arm it cannot take, right unit and stage with a seed past the registered count — and accepts the correct one. `run_repair_validation` genuinely applies the repair: distinct `config_id`s, training set enlarged **10.0×** (exactly P§7.2's budgeted factor), K=5 baseline against K=1 repaired, the **same transitions** scored under both arms, and mean error falling **1.2500 → 0.5045 (−59.6%)**.
+
+**Scope and verdict.** W4's gate and threshold machinery and W5's acceptance, repair, confirmatory and reserve code were probed. Two findings, both about the threshold's balancing rule and both **methodological rather than coding errors** — which is the same shape as D-082's MDE finding, and the reason this pass ran before execution rather than after.
+**Tests:** 760 passing, 2 skipped.
+**Data seen:** none. Real fits in temp directories on the cheapest registered obligation; no registered evidence written, no threshold calibrated.
+**Plan ref:** P§7.2, P§7.5, P§10.1, D-035, D-094, D-097.
+**Reviewed by Sol:** **not yet.**
