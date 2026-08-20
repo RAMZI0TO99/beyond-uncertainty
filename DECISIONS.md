@@ -1495,3 +1495,26 @@ Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own e
 **Compute:** 225 CPU fits, 4.3 min. Running total 675 CPU fits, 0 GPU-hours.
 **Plan ref:** P§10.1, S§W4 Fri, D-035, D-097. Sol's authorisation on delta 48.
 **Reviewed by Sol:** **not yet — this is the post-run evidence Sol asked for, and the D-035 promotion Change Record is Sol's to authorise.**
+
+### D-104 · 2026-08-20 · The tracked-evidence check mechanised, and `trend.py` audited
+**Decision:** Work taken while delta 49 is with Sol. Q-004 governs the calendar lead: it goes to review, understanding and documentation, **never scope** — so C-005 and Week 6 remain untouched.
+
+**The near-miss is now mechanised** (`tests/test_evidence_is_tracked.py`). D-103's evidence was silently untracked because `runs/*` is gitignored with per-experiment exceptions and `runs/w4_threshold` had none. `.gitignore`'s own comment warns about this class and nothing enforced it. It does now.
+
+**The property is stated narrowly, and deliberately so.** Not "everything under `runs/` is tracked" — D-075 ruling 3 tracks only the W3 pilot's manifest and rows, and excludes checkpoints and per-transition exports on purpose. The property is: **every file whose digest a tracked evidence record attests, and which a verifier reads back to check it, must itself be tracked.** Otherwise the verdict is uncheckable from a fresh clone, which is the entire reason the digests exist.
+
+**Shown to fail, not merely to pass.** `git rm --cached` on one error array made `test_every_digested_artefact_is_tracked` fail by name, and restoring it made it pass — so the eight passing tests pass on merit rather than because the comparison is inert. There is also a vacuity guard: the module asserts evidence records were actually found, since a vacuous pass is indistinguishable from a real one.
+
+**`stats/trend.py` audited — clean.** Probed rather than read, because it is THE H1 statistic and is shared by the certified W4 gate and the future W10 verdict, so a defect there moves a registered endpoint.
+- **Ties**: agrees with `scipy.stats.spearmanr` exactly on one tie (−0.985611) and two ties (−0.956183).
+- **The exact bootstrap is genuinely exhaustive**: 27 resamples at 3 seeds, 3,125 at 5 — 3³ and 5⁵, not a sample of them.
+- **The reading rule is right**: a decreasing curve passes, an increasing one fails at rho = +1.0, and a no-trend curve fails on interval width.
+- **Non-finite curves are refused outright**, and degenerate ones fail closed: a perfectly flat curve gives `rho = nan` with `passed=False` rather than a verdict.
+
+**An asymmetry worth recording.** `trend.py` **already had** the non-finite guard that `acceptance.py` was missing until D-102. The H1 statistic was written with it and the acceptance test was not — two modules by the same hand, one guarded and one not. Worth knowing when deciding where to look next: the guards are not uniformly applied, so their presence in one place is no evidence about another.
+
+**Minor observation, not a finding.** With one degenerate seed among four sound ones, `rho` comes back finite (−1.0) while the interval is `nan`. The verdict is correctly `False`, so nothing can pass on it, but a point estimate reported without its interval would look sound. D-075 already requires the interval and the atom/mass table to travel with any W4 result, which covers this.
+**Tests:** 811 → **819 passing**, 2 skipped, 0 xfailed.
+**Data seen:** none beyond D-103's already-recorded calibration.
+**Plan ref:** D-041, D-068, D-075, D-102, D-103, Q-004.
+**Reviewed by Sol:** **not yet.**

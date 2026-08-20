@@ -278,6 +278,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-101** | 2026-08-20 | Sol's delta-46 closeout — a stage hole in my own guard, reproduced then fixed | Sol's finding |
 | **D-102** | 2026-08-20 | Fail-closed on non-finite errors — a seed could vanish while n_seeds said 20 | Sol's finding |
 | **D-103** | 2026-08-20 | **W4 FRIDAY EXECUTED** — threshold 0.610703, evidence only, not frozen | **Result** |
+| **D-104** | 2026-08-20 | Tracked-evidence check mechanised; `trend.py` audited clean | **Audit** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
