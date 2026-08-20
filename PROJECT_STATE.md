@@ -138,6 +138,7 @@ These are the preregistered quantities. They are fixed **before** data collectio
 | Seeds — canonical repair validation | **20** | P§7.3, P§14.2 |
 | Seeds — configuration sweep & its repairs | **3** | P§14.2 |
 | Seeds — ablations | **5** | P§14.2 |
+| Seeds — threshold calibration | **5** — added under D-097, Sol-authorised, before any data | S§W4 Fri, D-097 |
 | Labelled configuration-conditions | ≥ **300**, ≥ **60** held out | P§10.7 |
 | Statistical unit | The **configuration-condition** — throughout | P§10.7 |
 | Failure threshold | Calibrated W4 Fri on a reference model, then **frozen permanently** | S§W4, P§10.1 |
@@ -290,6 +291,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-094** | 2026-08-20 | **CHANGE RECORD** — acceptance model gains the pairing; literal spec found degenerate | **Sol-authorised** |
 | **D-095** | 2026-08-20 | Sol's consumer-side repair refusals, and the reserve predeclaration guards | Sol's items |
 | **D-096** | 2026-08-20 | C-008 closed — one fit, both products; single-model arms have no disagreement | Deliverable |
+| **D-097** | 2026-08-20 | **CHANGE RECORD** — `threshold_calibration` stage; runner rebuilt; balancing limit found | **For Sol** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 

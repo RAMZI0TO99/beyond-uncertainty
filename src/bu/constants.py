@@ -60,6 +60,17 @@ SEEDS_SWEEP = 3
 #: Ablations.
 SEEDS_ABLATION = 5
 
+#: Seeds for the W4 Friday failure-threshold calibration (D-097).
+#:
+#: Added under a Change Record, authorised by Sol: *"Register a distinct
+#: threshold_calibration stage with five seeds."* The threshold is a separate
+#: obligation from Experiment 1 -- it trains reference models to define the
+#: failure set rather than to test a hypothesis -- and `TrainConfig` is not part
+#: of `run_id`, so reusing `exp1` would have given a threshold fit the SAME
+#: recorded identity as the Experiment 1 fit at that unit and seed.
+#: **No data had been seen when this was added.**
+SEEDS_THRESHOLD = 5
+
 #: Confirmatory runs start here; every seed below it is development/pilot data
 #: and is permanently excluded from confirmatory runs, failure-threshold
 #: calibration, repair acceptance, and critic training or evaluation (D-034).

@@ -1326,3 +1326,21 @@ Admissible under the corrected D-085: statistical-only **k ∈ [1, 10]**, full r
 **Data seen:** none. Real fits, but in temp directories on the cheapest registered obligation; no registered evidence written.
 **Plan ref:** P§14.2, D-053, D-061, D-063, D-072, C-008. Sol's ruling on delta 44.
 **Reviewed by Sol:** **not yet.**
+
+### D-097 · 2026-08-20 · CHANGE RECORD + the threshold runner rebuilt — and a limit of the balancing rule
+**Constant added:** `SEEDS_THRESHOLD = 5`, and a new registered stage `threshold_calibration`.
+**Authorised by:** Sol — *"Register a distinct threshold_calibration stage with five seeds."*
+**Has data been seen?** **No.** Nothing has been calibrated and no fit has been spent.
+**Why a distinct stage:** `TrainConfig` is deliberately not part of `run_id` (D-072), so reusing `exp1` would have given a threshold fit the **same recorded identity** as the Experiment 1 fit at that unit and seed — an identity collision Sol named explicitly.
+
+**Rebuilt to the frozen specification.** Sol refused the first runner because its public API left result-changing degrees of freedom open. `calibrate(out_dir, attempt=...)` now takes **no argument that can change the number**: `units`, `score_fn`, `allow_dirty`, `rng`, `n_per_stratum` and the seed tuple are all gone. Frozen instead: percentile **95.0** with `method="linear"` stated rather than inherited; failure is **strictly greater** than the threshold; the reference set is the fully-observed estimation family at 5,000, no confound, across all **nine** strata at **exactly seeds 1000–1004**, requiring the **45 cells** exactly with no selective replacement of an inconvenient cell; the **five-member ensemble mean**, because the downstream mask is defined from the baseline ensemble mean and a K=1 distribution is a different statistic at the boundary; balancing pools each stratum's seeds, takes the **minimum** available count and subsamples **without replacement at RNG seed 0**; threading pinned and verified at **4/4**.
+
+**Evidence and recomputation.** Every cell's error array is stored as an artefact with a digest, alongside complete run records, the chosen indices, the normalisation, the threading and the threshold. `recompute_threshold()` reproduces the number from the stored artefacts alone, verifying each array against its digest and refusing if the recomputation disagrees — a number that cannot be recomputed by someone who was not there is a claim, not evidence.
+
+**The attempt protocol has teeth.** One immutable directory; a second attempt is refused unless the first carries an `INVALID` declaration **written before its threshold was inspected**, compared by mtime. Re-running after seeing a number you did not like, and keeping the second, is exactly how a fixed threshold becomes a tuned one.
+
+**FINDING — balancing caps row count, not tail influence, and at the 95th percentile that matters.** Measured: one stratum of nine is **11.1%** of the balanced pool while the top 5% is smaller than that. So a stratum whose errors are systematically the worst **still determines the threshold outright** — the global number becomes that stratum's own ~55th percentile, and balancing changes nothing about it. Balancing does what it claims against an *oversized* stratum (10,000 rows contribute 200, verified), but not against a *systematically harder* one. This bears on P§7.5, which forbids the failure set being a function of the construction label: a harder layout would reach the threshold by exactly this route. Recorded, tested and **raised for Sol** rather than assumed away.
+**Tests:** 758 → **760 passing**, 2 skipped (24 in this module, none of which trains a model).
+**Data seen:** none. **Compute: zero. NOT EXECUTED.**
+**Plan ref:** P§10.1, P§7.5, S§W4 Fri, D-034, D-035, D-061, D-076, C-007, C-010.
+**Reviewed by Sol:** **not yet — this is the revised runner Sol asked to see before execution.**

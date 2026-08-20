@@ -3,48 +3,53 @@
 **This is the most irreversible act in the project.** P§10.1 sets the failure
 threshold at a fixed percentile of the error distribution on a well-fit
 reference model, "set once, in Month 1, on reference data, and not tuned
-afterwards", precisely so it cannot become an unreported degree of freedom. Every
-failure set, every repair label and therefore every H2 and H3 claim is downstream
-of the number this produces.
+afterwards", precisely so it cannot become an unreported degree of freedom.
+Every failure set, every repair label and therefore every H2 and H3 claim is
+downstream of the number this produces.
 
-So this module is built to be **hard to run by accident and impossible to run
-vaguely**:
+Sol refused the first version of this runner because its public API left several
+**result-changing degrees of freedom** open: substitutable reference units, an
+injectable scorer that could generate synthetic evidence indistinguishable from
+real calibration, `allow_dirty`, and free choice of seeds, RNG and balancing
+count -- none of them checked by an eligibility verifier, and none recorded in a
+way that would reveal the substitution afterwards. That is the shape D-071 …
+D-073 kept finding in the gate: the trust boundary stopping one layer short of
+execution.
 
-* the **percentile is a required argument with no default**. It is the single
-  most consequential choice here, and neither P§10.1 nor S§W4 names a value --
-  the plan says "a fixed percentile" and the schedule says to write it to a
-  constants file. A default would make that choice silently, in code, which is
-  the exact failure D-035 lists the percentile among the things W4 Friday must
-  *freeze deliberately*.
-* it calibrates on **confirmatory seeds only**. D-034 permanently excludes every
-  seed below `CONFIRMATORY_SEED_BASE` from threshold calibration, and C-007
-  requires the guard at this call site rather than a comment about it.
-* it **does not write `constants.py`**. It returns evidence. Promoting a number
-  to a frozen constant is a deliberate human act under a Change Record (D-035),
-  not a side effect of running a script.
-* it refuses a **dirty tree**, like the gate: a threshold that cannot name one
-  reproducible code state is not calibrated, it is merely computed.
+So this version takes **no arguments that can change the number**. The reference
+set, the seeds, the balancing rule, the RNG, the percentile and its
+interpolation method are all frozen constants; the only inputs are where to
+write and whether this is a declared re-attempt.
 
-What is deliberately NOT decided here
--------------------------------------
-Two things this module takes as inputs because the plan does not determine them,
-and inventing either would be exactly the unreported degree of freedom P§10.1
-exists to prevent:
-
-1. **the percentile value** -- see above;
-2. **what counts as a "well-fit reference model"** -- this module's answer is the
-   fully-observed estimation family at the largest registered dataset size,
-   balanced over the preregistered strata per D-035. That is a reading of
-   P§10.1's "well-fit... in the same environment", not a quotation of it.
-
-Both are flagged for Sol before execution. The machinery below is complete and
-tested; the two values are not chosen.
+The frozen specification (Sol, ruling on deltas 43–44)
+------------------------------------------------------
+* **Percentile 95.0**, `numpy` method **"linear"** stated explicitly rather than
+  inherited, since a library default that changes would silently move the
+  threshold.
+* A transition is a failure when its registered normalised error is **strictly
+  greater** than the threshold.
+* Reference model: **fully observed estimation family, largest registered size
+  (5,000), no confound, registered architecture**, all **nine** layout ×
+  causal-attribute strata, **exactly confirmatory seeds 1000–1004** — the
+  **45 cells** are required exactly, and a crash, non-finite result or incomplete
+  fit **invalidates the whole attempt** rather than allowing selective
+  replacement of an inconvenient cell.
+* The **five-member baseline ensemble and its ensemble-mean error**, not a single
+  model: the downstream failure mask is defined from the unrepaired baseline
+  ensemble mean, so calibrating a K=1 error distribution and applying it to K=5
+  means would change the statistic at the threshold boundary.
+* Balancing, frozen: pool each stratum's five seeds, take the **minimum**
+  available stratum count, subsample **without replacement** using **RNG seed 0**.
+* Threading pinned at **4 intra-op / 4 inter-op** and recorded.
+* One **immutable attempt directory**; a second attempt is refused unless the
+  first has been **formally declared invalid before its threshold was inspected**.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -53,47 +58,81 @@ import torch
 from .. import constants as K
 from ..config import Config, FEATURES, LAYOUTS, TrainConfig, UnitSpec
 from ..env.collect import collect_pools
+from ..metrics import RunLogger
 from ..models.ensemble import assert_pools_match, train_ensemble
 from ..models.uncertainty import ScaledEvaluation, normalised_error
 from ..models.world_model import MOVEMENT_ACTIONS
 from ..runrecord import git_state
+from ..stats.gate import EVIDENCE_CONTRACT_VERSION, METRIC_SCHEMA_VERSION
+from ..streams import confirmatory_seeds
+from .w4_gate import _pin_threading, torch_threading
 
-#: Reused rather than minted: a fully-observed estimation unit at the largest
-#: registered size IS an Experiment 1 unit, so no new stage identity is created.
-THRESHOLD_STAGE = "exp1"
+#: A distinct obligation, registered in `STAGE_SEEDS` (D-097). Reusing `exp1`
+#: would have given a threshold fit the SAME `run_id` as the Experiment 1 fit at
+#: that unit and seed, because `TrainConfig` is not part of run identity.
+THRESHOLD_STAGE = "threshold_calibration"
 
-#: The reference condition. "Well-fit" is read as the largest registered dataset
-#: size; "fully observed" as the estimation family with nothing withheld and no
-#: confound. D-035 requires balance over the preregistered environment strata so
-#: that no single reference configuration dominates the percentile.
+#: The reference condition. Frozen; not a parameter.
 REFERENCE_FAMILY = "estimation"
 REFERENCE_SIZE = max(K.DATA_SIZES)
 REFERENCE_CONFOUND_RATE = 0.0
 
+#: Exactly these seeds. Not a count, not a range -- the actual tuple.
+THRESHOLD_SEEDS: tuple[int, ...] = confirmatory_seeds(K.SEEDS_THRESHOLD)
+
+#: The percentile, and the interpolation method, both stated.
+THRESHOLD_PERCENTILE = 95.0
+PERCENTILE_METHOD = "linear"
+
+#: Balancing, frozen (Sol): minimum available stratum count, without
+#: replacement, RNG seed 0.
+BALANCE_RNG_SEED = 0
+
+#: Threading, pinned and recorded.
+THRESHOLD_THREADS = 4
+THRESHOLD_INTEROP_THREADS = 4
+
+#: The file that declares a prior attempt invalid. It must exist BEFORE a second
+#: attempt runs, and it must have been written before the first attempt's
+#: threshold was read -- see `assert_may_attempt`.
+INVALIDATION_FILE = "INVALID"
+
 
 def reference_strata() -> tuple[tuple[str, str], ...]:
-    """(layout, causal_attribute) -- the strata the calibration pool balances over."""
+    """The nine (layout, causal_attribute) strata the calibration pool balances over."""
     return tuple((layout, attr) for layout in LAYOUTS for attr in FEATURES)
 
 
 def reference_units() -> tuple[UnitSpec, ...]:
-    """One fully-observed, well-fit reference unit per stratum."""
+    """One fully-observed, well-fit reference unit per stratum. Frozen."""
     return tuple(
         UnitSpec(
-            family=REFERENCE_FAMILY,
-            layout=layout,
-            causal_attribute=attr,
-            confound_rate=REFERENCE_CONFOUND_RATE,
-            n_transitions=REFERENCE_SIZE,
+            family=REFERENCE_FAMILY, layout=layout, causal_attribute=attr,
+            confound_rate=REFERENCE_CONFOUND_RATE, n_transitions=REFERENCE_SIZE,
             withheld_features=(),
         )
         for layout, attr in reference_strata()
     )
 
 
+#: The exact cell grid: nine strata x five seeds.
+REQUIRED_CELLS = len(reference_strata()) * len(THRESHOLD_SEEDS)
+
+
+def is_failure(error, threshold: float):
+    """A transition fails when its error is **strictly greater** than the threshold.
+
+    Stated in one place because the boundary is a real decision: at `>=` a
+    transition exactly on the threshold is a failure, at `>` it is not, and the
+    frozen number is a percentile of a continuous distribution where ties are
+    possible after rounding through JSON.
+    """
+    return np.asarray(error) > threshold
+
+
 @dataclass(frozen=True)
-class StratumErrors:
-    """One reference cell's normalised movement errors, and what produced them."""
+class ReferenceCell:
+    """One (stratum, seed) reference fit: its errors and the record behind them."""
 
     layout: str
     causal_attribute: str
@@ -102,6 +141,11 @@ class StratumErrors:
     run_id: str
     config_id: str
     unit_id: str
+    n_members: int
+
+    @property
+    def stratum(self) -> tuple[str, str]:
+        return (self.layout, self.causal_attribute)
 
     def __len__(self) -> int:
         return int(self.errors.shape[0])
@@ -109,211 +153,328 @@ class StratumErrors:
 
 @dataclass(frozen=True)
 class ThresholdCalibration:
-    """The calibrated number, and everything needed to audit or refuse it."""
+    """The calibrated number, and everything needed to recompute or refuse it."""
 
     threshold: float
     percentile: float
+    percentile_method: str
     n_per_stratum: int
+    n_total: int
     strata: tuple[tuple[str, str], ...]
     seeds: tuple[int, ...]
-    n_total: int
     commit: str
-    cells: tuple[dict, ...] = field(default=())
+    threading: dict
+    cells: tuple[dict, ...]
+    selected_indices: dict
 
     def as_row(self) -> dict:
         return {
+            "evidence_contract_version": EVIDENCE_CONTRACT_VERSION,
+            "metric_schema_version": METRIC_SCHEMA_VERSION,
             "threshold": self.threshold,
             "percentile": self.percentile,
+            "percentile_method": self.percentile_method,
+            "failure_rule": "error > threshold (strict)",
             "n_per_stratum": self.n_per_stratum,
-            "n_strata": len(self.strata),
+            "n_total": self.n_total,
             "strata": [list(s) for s in self.strata],
             "seeds": list(self.seeds),
-            "n_total": self.n_total,
+            "required_cells": REQUIRED_CELLS,
             "commit": self.commit,
-            "reference_family": REFERENCE_FAMILY,
-            "reference_size": REFERENCE_SIZE,
-            "stage": THRESHOLD_STAGE,
+            "threading": self.threading,
+            "reference": {
+                "family": REFERENCE_FAMILY, "size": REFERENCE_SIZE,
+                "confound_rate": REFERENCE_CONFOUND_RATE,
+                "stage": THRESHOLD_STAGE,
+                "ensemble_size": K.DEFAULT_ENSEMBLE_SIZE,
+                "statistic": "ensemble-mean normalised movement error",
+            },
+            "balance": {
+                "rule": "pool each stratum's seeds, take the minimum available "
+                        "stratum count, subsample without replacement",
+                "rng_seed": BALANCE_RNG_SEED,
+            },
             "cells": list(self.cells),
+            "selected_indices": self.selected_indices,
         }
 
     def summary(self) -> str:
         return (
-            f"FAILURE THRESHOLD (NOT YET FROZEN)\n"
-            f"  percentile {self.percentile}  ->  threshold {self.threshold:.6f}\n"
-            f"  balanced pool: {len(self.strata)} strata x {self.n_per_stratum} "
-            f"transitions = {self.n_total}\n"
-            f"  seeds {list(self.seeds)} (confirmatory), commit {self.commit[:7]}\n"
-            f"  This number is EVIDENCE, not a constant. Freezing it into "
-            f"constants.py is a Change Record under D-035."
+            f"FAILURE THRESHOLD (NOT FROZEN UNTIL A CHANGE RECORD SAYS SO)\n"
+            f"  percentile {self.percentile} ({self.percentile_method})  ->  "
+            f"threshold {self.threshold:.6f}\n"
+            f"  a transition fails when error > threshold, strictly\n"
+            f"  {len(self.strata)} strata x {self.n_per_stratum} transitions "
+            f"= {self.n_total}, from {len(self.cells)} cells\n"
+            f"  seeds {list(self.seeds)}, commit {self.commit[:7]}, "
+            f"threads {self.threading}\n"
+            f"  This number is EVIDENCE. Promoting it to a constant is a Change "
+            f"Record under D-035."
         )
 
 
-def _require_confirmatory(seeds) -> tuple[int, ...]:
-    """C-007 at this call site. D-034 excludes development seeds permanently."""
-    seeds = tuple(int(s) for s in seeds)
-    if not seeds:
-        raise ValueError("no seeds; there is nothing to calibrate on")
-    development = [s for s in seeds if s < K.CONFIRMATORY_SEED_BASE]
-    if development:
-        raise ValueError(
-            f"seeds {development} are below CONFIRMATORY_SEED_BASE "
-            f"({K.CONFIRMATORY_SEED_BASE}). D-034 permanently excludes development "
-            "seeds from threshold calibration: the threshold is frozen forever, so "
-            "calibrating it on pilot data would bake development noise into every "
-            "failure set the thesis reports"
-        )
-    if len(set(seeds)) != len(seeds):
-        raise ValueError(f"duplicate seeds {seeds}; each seed contributes once")
-    return seeds
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def score_reference_cell(unit: UnitSpec, *, seed: int) -> StratumErrors:
-    """Train one reference model and return its normalised movement errors.
+def _threshold_from_arrays(arrays: dict, rng_seed: int = BALANCE_RNG_SEED) -> tuple[float, dict, int]:
+    """The frozen balancing and percentile, as a **pure** function of error arrays.
 
-    The scale is built by `ScaledEvaluation.from_pool`, which takes no mask, so
-    it is measured on the FULL movement evaluation pool before any failure mask
-    exists -- which is the point, because the mask does not exist yet: it is what
-    this calibration is about to define (D-061, C-010).
+    Private and deliberately unable to produce an attempt. It returns a bare
+    float, a selection map and a count -- never a `ThresholdCalibration` and
+    never anything `write_attempt` will accept. That is Sol's requirement that
+    synthetic tests sit behind a helper *whose output cannot be frozen*: a test
+    can exercise the balancing and the percentile without any route by which a
+    synthetic number could be written out as a calibration.
+
+    Args:
+        arrays: ``{(layout, attr): 1-D error array}``, already pooled over seeds.
     """
-    config = Config(
-        unit=unit, seed=seed, stage=THRESHOLD_STAGE,
-        train=TrainConfig(ensemble_size=1),
-    )
+    if not arrays:
+        raise ValueError("no reference errors; there is nothing to calibrate on")
+    available = min(len(v) for v in arrays.values())
+    if available <= 0:
+        raise ValueError("a stratum contributed no transitions")
+    rng = np.random.default_rng(rng_seed)
+    selected, drawn = {}, []
+    for stratum in sorted(arrays):
+        pool = np.asarray(arrays[stratum], dtype=float)
+        idx = np.sort(rng.choice(len(pool), size=available, replace=False))
+        selected["|".join(stratum)] = idx.tolist()
+        drawn.append(pool[idx])
+    pooled = np.concatenate(drawn)
+    if not np.all(np.isfinite(pooled)):
+        raise ValueError(
+            "the pooled reference errors contain non-finite values. A crash or a "
+            "non-finite fit invalidates the whole attempt rather than allowing the "
+            "inconvenient cell to be dropped (Sol)"
+        )
+    threshold = float(np.percentile(pooled, THRESHOLD_PERCENTILE, method=PERCENTILE_METHOD))
+    return threshold, selected, available
+
+
+def assert_may_attempt(root: Path, *, attempt: str) -> Path:
+    """One immutable attempt directory, and a re-attempt protocol with teeth.
+
+    A second attempt is refused unless the first carries an `INVALID` declaration
+    **written before its threshold was inspected**. That ordering is the whole
+    point: re-running after seeing a number you did not like, and keeping the
+    second, is how a "fixed" threshold becomes a tuned one. The declaration
+    records that the first attempt was abandoned for a stated reason, and it must
+    predate the file that holds the number.
+    """
+    root = Path(root)
+    target = root / attempt
+    if target.exists():
+        raise FileExistsError(
+            f"{target} already exists. Attempts are written once (P§10.1); a "
+            "second calibration overwriting the first is how a fixed threshold "
+            "becomes a tuned one"
+        )
+    prior = sorted(d for d in root.glob("attempt-*") if d.is_dir()) if root.exists() else []
+    for earlier in prior:
+        declaration = earlier / INVALIDATION_FILE
+        result = earlier / "threshold_calibration.json"
+        if not declaration.exists():
+            raise FileExistsError(
+                f"{earlier.name} exists and has not been declared invalid. Write "
+                f"{INVALIDATION_FILE} into it, with the reason, BEFORE reading its "
+                "threshold -- a re-attempt after seeing a number you did not like is "
+                "a tuned threshold, whatever it is called"
+            )
+        if result.exists() and declaration.stat().st_mtime > result.stat().st_mtime:
+            raise ValueError(
+                f"{earlier.name} was declared invalid AFTER its threshold was "
+                "written, so the declaration cannot be distinguished from a reaction "
+                "to the number. That attempt stands; this one is refused"
+            )
+    return target
+
+
+def score_reference_cell(unit: UnitSpec, *, seed: int, attempt: Path) -> ReferenceCell:
+    """Train one reference ensemble, write its record, return its errors.
+
+    The **five-member baseline ensemble and its ensemble-mean error** (Sol): the
+    downstream failure mask is defined from the unrepaired baseline ensemble
+    mean, so a K=1 error distribution would be a different statistic at the
+    threshold boundary.
+    """
+    config = Config(unit=unit, seed=seed, stage=THRESHOLD_STAGE, train=TrainConfig())
     pools = collect_pools(unit, stage=THRESHOLD_STAGE, seed=seed, arm="baseline")
     assert_pools_match(pools, unit=unit, arm="baseline", stage=THRESHOLD_STAGE, seed=seed)
-    ensemble = train_ensemble(
-        unit, pools, config.train, stage=THRESHOLD_STAGE, seed=seed,
-        arm="baseline", granularity="episode",
-    )
+
+    extra = {
+        "granularity": "episode",
+        "seed_partition": "confirmatory",
+        "cell": "W4 Fri -- threshold calibration",
+        "threading": torch_threading(),
+    }
+    with RunLogger.start(config, root=attempt / "records", extra=extra) as logger:
+        ensemble = train_ensemble(
+            unit, pools, config.train, stage=THRESHOLD_STAGE, seed=seed,
+            arm="baseline", granularity="episode", logger=logger,
+        )
+
     obs = torch.as_tensor(pools.evaluation.obs)
     action = torch.as_tensor(pools.evaluation.action)
     next_obs = torch.as_tensor(pools.evaluation.next_obs)
     move = torch.isin(action, torch.as_tensor(MOVEMENT_ACTIONS))
-
     members = ensemble.member_predictions(obs[move], action[move])
     targets = ensemble.members[0].targets(next_obs[move])[0]
+    # No mask exists yet -- this calibration is what defines one (D-061, C-010).
     scale = ScaledEvaluation.from_pool(
         members, targets, n_transitions=unit.n_transitions, seed=seed
     ).scale
-    errors = normalised_error(members.mean(dim=0), targets, scale)
-    return StratumErrors(
+    errors = normalised_error(members.mean(dim=0), targets, scale).detach().numpy()
+    if not np.all(np.isfinite(errors)):
+        raise ValueError(
+            f"non-finite errors in cell {unit.layout}/{unit.causal_attribute} seed "
+            f"{seed}. This invalidates the whole attempt; cells are not replaced "
+            "selectively (Sol)"
+        )
+    return ReferenceCell(
         layout=unit.layout, causal_attribute=unit.causal_attribute, seed=seed,
-        errors=errors.detach().numpy(), run_id=config.run_id,
-        config_id=config.config_id, unit_id=config.unit_id,
+        errors=errors, run_id=config.run_id, config_id=config.config_id,
+        unit_id=config.unit_id, n_members=config.train.ensemble_size,
     )
 
 
-def balance(cells: list[StratumErrors], *, n_per_stratum: int | None = None,
-            rng: np.random.Generator | None = None) -> tuple[np.ndarray, int]:
-    """Equal transitions per stratum, so no configuration dominates (D-035).
-
-    Pooling raw errors would weight each stratum by how many transitions it
-    happened to produce, which makes the threshold a function of the design's
-    incidental composition rather than of the error distribution. Strata are
-    subsampled to a common count instead, without replacement.
-    """
-    if not cells:
-        raise ValueError("no reference cells; there is nothing to balance")
-    by_stratum: dict[tuple[str, str], list[np.ndarray]] = {}
-    for c in cells:
-        by_stratum.setdefault((c.layout, c.causal_attribute), []).append(c.errors)
-    pooled = {k: np.concatenate(v) for k, v in by_stratum.items()}
-
-    available = min(len(v) for v in pooled.values())
-    n = available if n_per_stratum is None else int(n_per_stratum)
-    if n <= 0:
-        raise ValueError(f"n_per_stratum must be positive, got {n}")
-    if n > available:
-        short = sorted(k for k, v in pooled.items() if len(v) < n)
-        raise ValueError(
-            f"n_per_stratum={n} exceeds the {available} transitions available in "
-            f"stratum(a) {short}. Sampling with replacement, or letting the short "
-            "stratum contribute everything it has, would silently unbalance the "
-            "pool the threshold is defined on (D-035)"
-        )
-    rng = rng or np.random.default_rng(0)
-    drawn = [
-        pooled[k][rng.choice(len(pooled[k]), size=n, replace=False)]
-        for k in sorted(pooled)
-    ]
-    return np.concatenate(drawn), n
-
-
-def calibrate(
-    *,
-    percentile: float,
-    seeds,
-    n_per_stratum: int | None = None,
-    units: tuple[UnitSpec, ...] | None = None,
-    score_fn=None,
-    allow_dirty: bool = False,
-    rng: np.random.Generator | None = None,
-) -> ThresholdCalibration:
+def calibrate(out_dir: str | Path, *, attempt: str = "attempt-001") -> ThresholdCalibration:
     """Calibrate the failure threshold. **Returns evidence; freezes nothing.**
 
-    Args:
-        percentile: REQUIRED, in (0, 100). P§10.1 fixes the threshold at a
-            percentile of the reference error distribution but does not name it,
-            and D-035 lists it among the things W4 Friday freezes deliberately.
-            There is no default on purpose.
-        seeds: confirmatory seeds only (D-034), enforced.
-        score_fn: how one reference cell is scored. Defaults to the real training
-            path. A test may substitute a synthetic scorer to exercise the
-            balancing, refusal and percentile logic **without spending compute** --
-            the calibration itself is never run that way.
+    Takes no argument that can change the number. The reference set, the seeds,
+    the balancing rule, the RNG, the percentile and its method are frozen
+    constants; `out_dir` says where to write and `attempt` names the directory.
+    There is no `units`, no `score_fn`, no `allow_dirty`, no `rng` and no
+    `n_per_stratum` -- Sol refused the previous version for exactly those.
+
+    Promoting the returned number to a constant remains a deliberate human act
+    under a Change Record (D-035). This function never edits `constants.py`.
     """
-    if percentile is None:
-        raise ValueError("percentile is required")
-    if not 0.0 < float(percentile) < 100.0:
-        raise ValueError(
-            f"percentile must lie in (0, 100), got {percentile!r}. It is a "
-            "percentile of the reference error distribution (P§10.1), not a "
-            "fraction and not an error value"
-        )
-    seeds = _require_confirmatory(seeds)
+    target = assert_may_attempt(Path(out_dir), attempt=attempt)
 
     git = git_state()
-    if git.dirty and not allow_dirty:
+    if git.dirty:
         raise ValueError(
             f"the working tree is dirty at commit {git.commit[:7]}. This threshold is "
             "frozen permanently and every failure set in the thesis descends from it, "
-            "so it must name one reproducible code state. Commit or stash first."
+            "so it must name one reproducible code state. There is deliberately no "
+            "override: evidence that does not record its own ineligibility is worse "
+            "than no evidence."
         )
 
-    units = units or reference_units()
-    score = score_fn or score_reference_cell
-    cells = [score(unit, seed=seed) for unit in units for seed in seeds]
+    _pin_threading(THRESHOLD_THREADS, THRESHOLD_INTEROP_THREADS)
+    threading = torch_threading()
+    if (threading["num_threads"] != THRESHOLD_THREADS
+            or threading["num_interop_threads"] != THRESHOLD_INTEROP_THREADS):
+        raise ValueError(
+            f"threading is {threading}, not the pinned "
+            f"{THRESHOLD_THREADS}/{THRESHOLD_INTEROP_THREADS}. Thread count changes "
+            "the reduction order (D-076), so an attempt cannot be produced under a "
+            "configuration it did not choose"
+        )
 
-    pooled, n = balance(cells, n_per_stratum=n_per_stratum, rng=rng)
-    threshold = float(np.percentile(pooled, float(percentile)))
-    strata = tuple(sorted({(c.layout, c.causal_attribute) for c in cells}))
-    return ThresholdCalibration(
-        threshold=threshold,
-        percentile=float(percentile),
-        n_per_stratum=n,
-        strata=strata,
-        seeds=seeds,
-        n_total=int(pooled.shape[0]),
-        commit=git.commit,
-        cells=tuple(
-            {"layout": c.layout, "causal_attribute": c.causal_attribute,
-             "seed": c.seed, "n_transitions": len(c), "run_id": c.run_id,
-             "config_id": c.config_id, "unit_id": c.unit_id}
-            for c in cells
-        ),
+    target.mkdir(parents=True)
+    (target / "arrays").mkdir()
+
+    cells: list[ReferenceCell] = []
+    for unit in reference_units():
+        for seed in THRESHOLD_SEEDS:
+            cells.append(score_reference_cell(unit, seed=seed, attempt=target))
+
+    if len(cells) != REQUIRED_CELLS:
+        raise ValueError(
+            f"{len(cells)} reference cells, not the required {REQUIRED_CELLS} "
+            f"({len(reference_strata())} strata x {len(THRESHOLD_SEEDS)} seeds). "
+            "The grid is exact: a missing or duplicated cell changes which errors "
+            "the percentile is taken over"
+        )
+    seen = {(c.layout, c.causal_attribute, c.seed) for c in cells}
+    if len(seen) != REQUIRED_CELLS:
+        raise ValueError("duplicate (stratum, seed) cells; the grid must be exact")
+
+    # Store every cell's errors as an immutable artefact, digested, so the
+    # threshold can be recomputed by someone who was not there.
+    records = []
+    pooled: dict[tuple[str, str], list[np.ndarray]] = {}
+    for cell in cells:
+        name = f"{cell.layout}-{cell.causal_attribute}-s{cell.seed}.npy"
+        path = target / "arrays" / name
+        np.save(path, cell.errors)
+        records.append({
+            "layout": cell.layout, "causal_attribute": cell.causal_attribute,
+            "seed": cell.seed, "n_transitions": len(cell),
+            "run_id": cell.run_id, "config_id": cell.config_id,
+            "unit_id": cell.unit_id, "n_members": cell.n_members,
+            "errors_file": f"arrays/{name}", "errors_digest": _sha256_file(path),
+            "run_record_digest": _sha256_file(target / "records" / cell.run_id / "run.json"),
+            "member_record_digest": _sha256_file(target / "records" / cell.run_id / "metrics.jsonl"),
+        })
+        pooled.setdefault(cell.stratum, []).append(cell.errors)
+
+    arrays = {k: np.concatenate(v) for k, v in pooled.items()}
+    threshold, selected, per_stratum = _threshold_from_arrays(arrays)
+
+    calibration = ThresholdCalibration(
+        threshold=threshold, percentile=THRESHOLD_PERCENTILE,
+        percentile_method=PERCENTILE_METHOD, n_per_stratum=per_stratum,
+        n_total=per_stratum * len(arrays), strata=tuple(sorted(arrays)),
+        seeds=THRESHOLD_SEEDS, commit=git.commit, threading=threading,
+        cells=tuple(records), selected_indices=selected,
     )
+    (target / "threshold_calibration.json").write_text(
+        json.dumps(calibration.as_row(), indent=2), encoding="utf-8"
+    )
+    return calibration
 
 
-def write_evidence(calibration: ThresholdCalibration, out_dir: str | Path) -> Path:
-    """Write the calibration evidence once. Never overwrites, never edits constants."""
-    out = Path(out_dir)
-    out.mkdir(parents=True, exist_ok=True)
-    path = out / "threshold_calibration.json"
-    if path.exists():
-        raise FileExistsError(
-            f"{path} already exists. The threshold is calibrated once (P§10.1); a "
-            "second calibration overwriting the first is how a 'fixed' number "
-            "becomes a tuned one"
+def recompute_threshold(attempt_dir: str | Path) -> float:
+    """Reproduce the threshold from the stored artefacts alone.
+
+    Sol required this: a number that cannot be recomputed by someone who was not
+    there is a claim, not evidence. This reads the saved error arrays, verifies
+    each against its recorded digest, replays the frozen balancing with the
+    recorded selection, and returns the percentile.
+    """
+    attempt = Path(attempt_dir)
+    row = json.loads((attempt / "threshold_calibration.json").read_text(encoding="utf-8"))
+    if len(row["cells"]) != row["required_cells"]:
+        raise ValueError(
+            f"{len(row['cells'])} cells stored but {row['required_cells']} required"
         )
-    path.write_text(json.dumps(calibration.as_row(), indent=2), encoding="utf-8")
-    return path
+
+    pooled: dict[str, list[np.ndarray]] = {}
+    for cell in row["cells"]:
+        path = attempt / cell["errors_file"]
+        digest = _sha256_file(path)
+        if digest != cell["errors_digest"]:
+            raise ValueError(
+                f"{cell['errors_file']} has digest {digest[:12]} but the attempt "
+                f"records {cell['errors_digest'][:12]}. The stored errors are not "
+                "the ones the threshold was taken over"
+            )
+        key = f"{cell['layout']}|{cell['causal_attribute']}"
+        pooled.setdefault(key, []).append(np.load(path))
+
+    drawn = []
+    for key in sorted(pooled):
+        idx = np.asarray(row["selected_indices"][key], dtype=int)
+        drawn.append(np.concatenate(pooled[key])[idx])
+    value = float(np.percentile(np.concatenate(drawn), row["percentile"],
+                                method=row["percentile_method"]))
+    if not np.isclose(value, row["threshold"], rtol=0, atol=1e-12):
+        raise ValueError(
+            f"recomputed {value!r} but the attempt records {row['threshold']!r}. "
+            "The stored artefacts do not reproduce the number they attest"
+        )
+    return value
+
+
+def write_attempt_producer():
+    """The only function that can produce a writable calibration.
+
+    Exists so a test can assert that fact behaviourally rather than by grepping
+    source, which any docstring mention would defeat. If a second producer is
+    ever added, this stops being true and the test that reads it should fail.
+    """
+    return calibrate

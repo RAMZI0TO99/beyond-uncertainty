@@ -97,6 +97,7 @@ STAGE_SEEDS: dict[str, int | None] = {
     "repair_validation": K.SEEDS_REPAIR_VALIDATION,
     "exp3_repairs": K.SEEDS_SWEEP,
     "ablation": K.SEEDS_ABLATION,
+    "threshold_calibration": K.SEEDS_THRESHOLD,
     "pilot": None,  # exploratory; no seed policy, never enters a claim
 }
 STAGES = tuple(STAGE_SEEDS)
