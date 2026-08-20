@@ -1344,3 +1344,25 @@ Admissible under the corrected D-085: statistical-only **k ∈ [1, 10]**, full r
 **Data seen:** none. **Compute: zero. NOT EXECUTED.**
 **Plan ref:** P§10.1, P§7.5, S§W4 Fri, D-034, D-035, D-061, D-076, C-007, C-010.
 **Reviewed by Sol:** **not yet — this is the revised runner Sol asked to see before execution.**
+
+### D-098 · 2026-08-20 · GATE 1 — signed off as **FAIL**, and why that is not a pivot
+**Decision:** Gate 1 is signed off ahead of its 2026-09-19 date, on Sol's ruling. **Verdict: FAIL**, on condition 4.
+
+| # | condition | verdict |
+|---|---|---|
+| 1 | Reliability gate passed, rung recorded | **PASS** — rung 0, certified `ca545ed` |
+| 2 | Compute within budget | **PASS**, contingent on one model per repaired arm (D-087) |
+| 3 | Permutation null calibrated | **PASS** — after D-094; 5–7/200 against an admissible [1, 10], full rule 0/200, at every pairing strength |
+| 4 | MDE resolves five points | **FAIL** — 18–22 points, and optimistic |
+
+**Condition 3 was repaired during this session and condition 4 still fails.** Sol was explicit that Gate 1 must **not** later be renamed a pass on the strength of the calibration fix: the MDE failure is independent of it. Recorded here in those terms so a reset cannot quietly re-read the verdict.
+
+**Why this is not the condition-1 pivot.** The reliability gate passed and H1's machinery works. What failed is the design's **power** to resolve a five-point difference in H3 — a sample-size limit that no engineering removes. The plan's pivot clause fires on condition 1 failing at every rung, which did not happen.
+
+**What continues.** The unchanged **300-unit design**, under an explicit recorded power limitation: H3 can detect only comparatively large effects and may be **inconclusive around ±5 points**; equivalence is never claimed where the final interval cannot resolve that band; **Direction C is an authorised outcome**. Sol's recommendation, adopted: continue rather than manufacture a pass by moving the margin or expanding scope. Expansion to the 1,500–2,000 held-out units five points would need is refused as incompatible with registered scope and budget.
+
+**Still owed before any exact MDE is reported:** the simulation must use the same final group-level inference H3 will use, with its null size validated against .05 under Monte-Carlo uncertainty. Gated on *reporting*, not on the gate — H3's final test is not settled, and building the simulation around a test that does not exist yet would repeat the error one layer along.
+**Tests:** 760 passing, 2 skipped.
+**Data seen:** none.
+**Plan ref:** P§4.2, P§10.7, P§14.3, S§W5 Sat. Records Sol's Gate 1 ruling; rests on D-074, D-078, D-087, D-089, D-094.
+**Reviewed by Sol:** **the verdict is Sol's.**

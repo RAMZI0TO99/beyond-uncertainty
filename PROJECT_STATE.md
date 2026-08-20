@@ -43,7 +43,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
 | **Current week / day** | **Sol ruled on deltas 39–42: PARTIAL ACCEPTANCE, and `25fd2c2` is explicitly NOT certified** (D-089). Certified base remains **`ca545ed`**. Sol's entire required closeout is **built** (D-085 … D-090): paired permutation with its criterion frozen first, one model per repaired arm, seed-specific masks, evidence contract v2 with v1 grandfathered, the rulings filed, and the **W4 Friday threshold runner built and NOT executed**. **Two rulings now block everything**: the acceptance model's conservatism, and W4 Friday's percentile plus reference-model definition. Week 1 Monday was 2026-08-17 — roughly **three** weeks ahead of calendar (DEV-002) |
-| **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
+| **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `ca545ed`** — Sol certified the stored W4 Tuesday result on 2026-08-18. The chain: `9c0d89d` (Week 3 implementation, frozen) → `7dbcd32` (docs) → `a84cf6c` (W4 Mon trend test) → `2efad258` (W4 Tue gate + evidence contract) → `ca545ed` (the stored result). Three intermediate commits were reviewed and explicitly **not** certified; `2efad258` subsumes them. **Set `BASE=ca545ed` for the next bundle** (D-043, D-067, D-075) |
 | **Tests** | **672 passing, 2 skipped, 1 xfailed** (the two GPU tests skip where no device exists). **The xfail is deliberate and load-bearing**: D-085's frozen calibration criterion is *not* met, and it is marked `xfail(strict=True)` so the open failure stays visible in the suite rather than being loosened away. If it ever passes, the suite says so |
@@ -292,6 +292,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-095** | 2026-08-20 | Sol's consumer-side repair refusals, and the reserve predeclaration guards | Sol's items |
 | **D-096** | 2026-08-20 | C-008 closed — one fit, both products; single-model arms have no disagreement | Deliverable |
 | **D-097** | 2026-08-20 | **CHANGE RECORD** — `threshold_calibration` stage; runner rebuilt; balancing limit found | **For Sol** |
+| **D-098** | 2026-08-20 | **GATE 1 — FAIL**, signed off on Sol's ruling; not a pivot | **Sol's verdict** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -343,7 +344,41 @@ Format: `Week n Day | what was skipped or substituted | why | goes in methodolog
 
 A gate is signed off in writing, with the verdict and the evidence behind it, on the day it falls. **Slip is absorbed by catch-up days, never by moving a gate.**
 
-### Gate 1 — Week 5 Saturday, 2026-09-19 — *not yet reached*
+### Gate 1 — signed off 2026-08-20, ahead of its 2026-09-19 date — **VERDICT: FAIL**
+
+**Sol's ruling on deltas 43–44, recorded here so it cannot be softened by a reset.**
+
+| # | condition | verdict |
+|---|---|---|
+| 1 | Reliability gate passed, rung recorded | **PASS** — rung 0, certified at `ca545ed` (D-074, D-075) |
+| 2 | Compute estimate within budget | **PASS** — *contingent* on one model per repaired arm (D-087). At the old default the design cost 14,885 fits against ~8,700, i.e. 1.71× |
+| 3 | Permutation null shows the test is calibrated | **PASS** — after the D-094 Change Record. 200 permutations, statistical-only 5–7/200 against an admissible [1, 10]; full rule 0/200. Calibrated at **every** pairing strength tested |
+| 4 | MDE resolves a 5-point difference on `min(N₀, N₁)` | **FAIL** — 18–22 points at the scheduled held-out counts, and those numbers are *optimistic* (D-078, D-082, D-089) |
+
+**Gate 1 FAILS on condition 4, and would fail regardless of condition 3.** Sol was
+explicit that this must not later be renamed a pass now that the permutation
+calibration is repaired: the MDE failure is independent of it.
+
+**What Sol ruled, and what happens next.** Do **not** expand to the 1,500–2,000
+held-out units that clearing five points would need — that is incompatible with
+the registered scope and budget. **Preserve the 300-unit design.** Record that H3
+can detect only comparatively large effects and may be **inconclusive around ±5
+points**, and never claim equivalence the final interval cannot resolve.
+**Direction C is an authorised thesis outcome.** The project continues on the
+unchanged design under an explicit, recorded power limitation — rather than
+manufacturing a pass by moving the margin or expanding scope.
+
+**This is not the pivot of condition 1.** The reliability gate passed; H1's
+machinery works. What failed is the design's power to resolve a five-point
+difference in H3, which is a sample-size limit no engineering fixes.
+
+**The exact 18–22 table is uncertified and explicitly optimistic** (D-089): it
+uses a Wald `1.96 × SE` rule where D-044 registers a group-bootstrap percentile,
+and its measured null rejection is 6.1–9.2%. Before any *exact* MDE is reported,
+the simulation must use the same final group-level inference H3 will use, with
+its null size validated against .05 under Monte-Carlo uncertainty.
+
+### Gate 1 — original criteria, as written at the start
 Four conditions, all must hold:
 1. Reliability gate passed with some estimator, **and the rung recorded** (rung 0 = default ensemble). If passed only at rung 3 or 4, H1 is recorded as **falsified for ensembles** and all downstream results are reported as a secondary path about that estimator.
 2. Measured compute estimate within budget (timing harness, W4 Fri, against the ≈120 GPU-h trigger).
@@ -397,7 +432,7 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **30 archived, 1 kept here** — Week 3's six close entries were archived when it was certified and frozen at `9c0d89d` (D-067). Nothing is condensed; the archive is complete.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **34 archived, 1 kept here** — Week 3's six close entries were archived when it was certified and frozen at `9c0d89d` (D-067). Nothing is condensed; the archive is complete.
 
 *(W3 certification through the W4 Tuesday gate rounds — the trend test, Sol's two blockers, and the evidence contract — moved to `PROJECT_STATE_ARCHIVE.md` when this file passed its 500-line paste cap. Six entries, 2026-08-17 to 2026-08-18; the decisions they produced are D-068 … D-072 and remain indexed in §3.)*
 
@@ -408,53 +443,7 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **30 archived, 1 kept
 **Why:** consistency with every other interval in the project — repair acceptance is a 95% CI excluding zero (P§7.3), and the H1 trend test is a 95% interval (D-068). A one-sided test would shrink the MDE by about 11% and change no conclusion.
 **Goes in methodology:** **yes.** It is an assumption the reported MDE depends on, and the MDE is a Gate 1 condition. Stated rather than absorbed silently.
 
-### 2026-08-18 (W4 Thu) · C-006 built, and the MDE does not clear five points · Claude
-
-**Did:** built **C-006**, the W5 minimum-detectable-effect simulation (D-078), to D-044's specification — actual group sizes and class membership, group-preserving held-out draws, unit weights, paired predictions, within-group correlation, and the balanced-accuracy **difference** with a group-bootstrap interval. No `n_eff()`: D-044 ruled that naming one invites the misuse that produced the first wrong number, so the analytic boundaries live only in the tests, as validation.
-
-**Both of D-044's validations pass.** ICC = 0 matches the independent-units analytic; ICC = 1 matches the unit-weighted boundary, and a test asserts that boundary is **75.00 / 72.58** recomputed from the live design matrix, so a design change fails loudly instead of leaving stale power claims. The bootstrap interval is separately checked for calibration, and the false-positive rate at zero effect is under 10%.
-
-**Corrected my own misreading:** D-044's "D = 0 / D = 1" are the **classes**, not design effects. Class 0 is 150 units in 125 groups (Σm² = 300 → 75.00); class 1 is 150 in 115 (Σm² = 310 → 72.58). **No group spans both classes**, so a group-preserving partition is automatically class-preserving — which C-005's splitter may rely on.
-
-**⚠ The result: the design does not clear the five-point margin, and not by a little.** At the scheduled held-out counts the MDE at 80% power is **18–22 points**. Sample size is the driver, not correlation: even at **ICC = 0** it is 18 points, so the conclusion does not rest on the parameter least knowable before data. Checked against hand arithmetic — 19.8 analytic against 19.0 simulated at 40 per class; 9.8 against 11.0 at 300 held out.
-
-**Every lever tested, none rescues it.** Pairing is the largest (19.0 → 11.5 at 0.9 → 8.0 at 0.99); baseline accuracy helps slightly; holding out **all 300** units gives 10.5 unpaired and 6.0 paired. Clearing five points conservatively needs **~1,500–2,000 held-out units** against the 60–80 scheduled — roughly a twenty-fold gap.
-
-**Not acted on.** P§14.3's remedy is configuration count — never seeds — but that is a scope and compute decision for the student and Sol, interacting with the 8,197-fit budget and the 120 GPU-hour trigger. Two things need adversarial review before anyone acts: whether the simulated estimand is the one H3's test will use, and whether comparing an MDE against an *equivalence* margin is the right comparison at all. **DEV-008** records that α is not in the plan and that 0.05 two-sided is my stated assumption.
-
-**Numbers:** tests 566 → **581 passing**, 2 skipped. No compute; this reads the design matrix, not run records. This file passed its 500-line cap, so six closed W4-gate entries moved to the archive.
-
-**Next:** **stop.** Sol must answer before W4 Friday (C-010, delta 40) and before anything is decided about the MDE (delta 41). Both are queued.
-
-### 2026-08-18 (W5 Tue/Wed, early) · The acceptance test and its permutation null · Claude
-
-**Did:** built `src/bu/stats/acceptance.py` — the repair acceptance test (P§7.3, S§W5 Tue) and the permutation null calibrating it (S§W5 Wed), both validated on **synthetic data with a known truth**, which is what the schedule's "done when" asks for. No run records, no compute, nothing frozen, and no Sol ruling needed: P§7.3 specifies the test and §2 already carries it (D-079).
-
-**Three conditions, each shown able to refuse alone.** A 35% simulated reduction is accepted and recovered to within 5 points. A **5% reduction over 3,200 transitions — statistically unmissable — is refused**, which is what the 20% practical floor is for. A repair in the wrong direction is refused on direction.
-
-**The permutation moves whole runs, never transitions.** P§7.3 is explicit that permuting across episodes or transitions destroys the dependence structure; the unit is the (seed, arm) block, and a test asserts no run is ever split.
-
-**The measured result, and why the headline number is the wrong one to quote.** False-positive rate **0 of 200** on null data. But counting only the two *statistical* conditions the permuted rate is **5.5% against a nominal 5%** — that is the number establishing the model's interval is correctly sized under the real dependence structure. The 20% floor adds conservatism on top. Quoting 0% alone would credit the model with calibration the floor was supplying: the same shape as D-042's bound-reported-as-a-measurement.
-
-**Replaced a flaky test of my own rather than loosening it.** Asserting the two-condition rate lay strictly above 0 at 60 permutations needs luck (0.95⁶⁰ ≈ 4.6% see zero) and duly failed. It now checks the property directly — the model's SE must match the permutation spread within a factor of two.
-
-**Gate 1 now stands at three of four:** reliability gate **passed** and certified; compute **within budget** (450 CPU fits, zero GPU-hours against a ~120-hour trigger); permutation null **calibrated**; **MDE does not clear five points** — the one needing Sol.
-
-**Numbers:** tests 581 → **597 passing**, 2 skipped. No compute.
-
-**Next:** W5 Mon's three repair functions and W5 Fri's figure script are the remaining unblocked cells. Everything else waits on deltas 39–42.
-
-### 2026-08-18 (W5 Mon, recovered) · A repair path found uncommitted · Claude
-
-**Did:** found `src/bu/experiments/repair.py` and `tests/test_repair.py` **untracked** at session start — a previous session's W5 Monday repair path, never committed (DEV-005 class). Reviewed it to standard rather than trusting it: read both in full, ran all 22 tests, probed it end-to-end on a real four-arm training run (10× data repair → 74.8% reduction, correctly accepted). Touches nothing frozen, writes no records. Committed (D-080).
-
-**Caught my own error.** First claimed pytest had been counting its 22 tests all along; verified false (removing the files drops the suite to 597, restoring gives 619), so deltas 39–42's figures never included them. Corrected D-080 in place — undelivered, unseen by Sol — and added a reconciliation note to the delta file so its frozen "597" prose matches the 619 the bundle now runs.
-
-### 2026-08-18 (W5 Fri) · Every figure from logs, one command · Claude
-
-**Did:** built `make_figures.py` (D-081) — `python -m bu.experiments.make_figures` regenerates every figure from the immutable attempts, no compute. Produces the two W3 curves and a new certified W4 gate trend (three curves peaking at N=250, no error bars per D-075), and **fails loudly** on a missing log. 619 → **626 passing**.
-
-**Where things now stand.** Everything through W5 that needs no Sol ruling is done: Mon (recovered), Tue, Wed, Fri. **Gate 1 at three of four.** The delta prose channel is at its cap (≈377/400) with deltas 39–42 undelivered, so D-080 and D-081 ride the complete diff since `ca545ed` and the ledger rather than new delta blocks. **Genuinely out of unblocked work now** — W4 Fri (freezes a §2 constant), the MDE decision, C-003, C-005/7/8 all wait on Sol.
+*(W4 Thursday's MDE and the W5 Mon/Tue/Wed/Fri cells — four entries, 2026-08-18 — were archived on 2026-08-20 when Gate 1 was signed off, which supersedes them. They produced D-078 … D-081, all indexed in §3.)*
 
 ### 2026-08-20 (W5 closeout) · Sol's rulings actioned, and a null that was hiding a defect · Claude
 
