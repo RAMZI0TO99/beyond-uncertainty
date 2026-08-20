@@ -121,7 +121,7 @@ These are the preregistered quantities. They are fixed **before** data collectio
 | Seeds — threshold calibration | **5** — added under D-097, Sol-authorised, before any data | S§W4 Fri, D-097 |
 | Labelled configuration-conditions | ≥ **300**, ≥ **60** held out | P§10.7 |
 | Statistical unit | The **configuration-condition** — throughout | P§10.7 |
-| Failure threshold | Calibrated W4 Fri on a reference model, then **frozen permanently** | S§W4, P§10.1 |
+| Failure threshold | **Calibrated 2026-08-20: `0.610702633857727`** (95th pct, `linear`, strict `>`). **EVIDENCE, NOT YET FROZEN** — promotion into `constants.py` is a D-035 Change Record awaiting Sol (D-103) | S§W4, P§10.1 |
 | Compute escalation trigger | ≈ **120 GPU-hours** | P§14.3 |
 | Balanced-accuracy weighting | **unit** — equal weight per configuration-condition; group-bootstrap intervals | D-044 |
 | Confirmatory seed base | **1000** — every seed below it is pilot data, permanently excluded | D-034 |
@@ -277,6 +277,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-100** | 2026-08-20 | Sol's delta-45 corrections; D-094's theoretical claim narrowed | Sol's items |
 | **D-101** | 2026-08-20 | Sol's delta-46 closeout — a stage hole in my own guard, reproduced then fixed | Sol's finding |
 | **D-102** | 2026-08-20 | Fail-closed on non-finite errors — a seed could vanish while n_seeds said 20 | Sol's finding |
+| **D-103** | 2026-08-20 | **W4 FRIDAY EXECUTED** — threshold 0.610703, evidence only, not frozen | **Result** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 

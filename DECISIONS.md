@@ -1463,3 +1463,35 @@ Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own e
 **Data seen:** none.
 **Plan ref:** P§7.3. Implements Sol's delta-47 ruling; corrects D-094's `_frame`.
 **Reviewed by Sol:** **not yet.**
+
+### D-103 · 2026-08-20 · W4 FRIDAY EXECUTED — the failure threshold is calibrated
+**Decision:** Sol authorised one run from the accepted base. It ran once, into `attempt-001`, and will not be rerun.
+
+**THE NUMBER: `0.610702633857727`** at the 95th percentile (`method="linear"`) of the balanced reference error distribution. A transition is a failure when its registered normalised error is **strictly greater** than this.
+
+**It is NOT frozen.** Sol was explicit: running the calibration produces *evidence*, and promoting the number into `constants.py` is a separate **D-035 Change Record** after review. Nothing in `constants.py` was touched.
+
+**Preconditions verified before execution**, because the run gets exactly one attempt: `HEAD` was `93dc296` — bit-identical to the commit Sol accepted — the tree was clean, and the branch was in sync. The frozen specification was printed and checked against Sol's ruling field by field. A **single cell was first run end-to-end in a temp directory** to validate the newly registered `threshold_calibration` stage, which had never executed; only its wall time was read, never its errors, since inspecting the error distribution beforehand would have been pre-inspecting the threshold.
+
+**The run.** 45 cells — nine strata × seeds 1000–1004 — 225 fits at n=5,000, **4.3 minutes** on CPU at 4/4 threads.
+
+| check | result |
+|---|---|
+| cells recorded | **45 / 45 required**, all `(stratum, seed)` unique |
+| error arrays / run-record dirs | 45 / 45 |
+| members per cell | **5** on every cell (ensemble mean, as ruled) |
+| balanced pool | 9 × **4,103** = **36,927** |
+| **recomputation from artefacts alone** | **`0.610702633857727` — bit-identical** |
+| `threshold_calibration.json` | `310a44839be2b933…` |
+| digest-of-array-digests | `01b390cb8aef41ca…` |
+
+**A correction to my own D-099 audit.** I estimated ~4% of reference data would be discarded to the smallest stratum, from six probed cells. The actual figure is **1.28%** (37,406 transitions → 36,927). Pooling five seeds per stratum evens the counts out, which six single cells could not show. The audit's *direction* was right and its magnitude was overstated; the underlying point — that the discard is real and bounded by the smallest stratum — stands.
+
+**A sanity check, not a criterion.** Applying the rule to the **unbalanced** reference pool gives **1,879 of 37,406 = 5.02%** failures. The balanced pool is 5% by construction, so agreement to two decimal places says the strata are not wildly heterogeneous in the upper tail — which bears on D-097's finding (a), though it does not retire it.
+
+**No rerun.** The threshold has now been inspected, so Sol's rule applies: a re-attempt is possible only through the invalidation protocol, which requires declaring `attempt-001` invalid **with a stated reason, before** its threshold was read — impossible now, and correctly so.
+**Tests:** 811 passing, 2 skipped, 0 xfailed.
+**Data seen:** **yes — this is the first registered evidence the project has produced.** Reference-model errors only; no experimental condition, no hypothesis touched.
+**Compute:** 225 CPU fits, 4.3 min. Running total 675 CPU fits, 0 GPU-hours.
+**Plan ref:** P§10.1, S§W4 Fri, D-035, D-097. Sol's authorisation on delta 48.
+**Reviewed by Sol:** **not yet — this is the post-run evidence Sol asked for, and the D-035 promotion Change Record is Sol's to authorise.**
