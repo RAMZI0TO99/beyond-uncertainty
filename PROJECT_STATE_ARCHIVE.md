@@ -3760,3 +3760,49 @@ scrolling to find a section boundary; "paste `DELTA_TO_SOL.md`" does not.
 **Did:** built `make_figures.py` (D-081) — `python -m bu.experiments.make_figures` regenerates every figure from the immutable attempts, no compute. Produces the two W3 curves and a new certified W4 gate trend (three curves peaking at N=250, no error bars per D-075), and **fails loudly** on a missing log. 619 → **626 passing**.
 
 **Where things now stand.** Everything through W5 that needs no Sol ruling is done: Mon (recovered), Tue, Wed, Fri. **Gate 1 at three of four.** The delta prose channel is at its cap (≈377/400) with deltas 39–42 undelivered, so D-080 and D-081 ride the complete diff since `ca545ed` and the ledger rather than new delta blocks. **Genuinely out of unblocked work now** — W4 Fri (freezes a §2 constant), the MDE decision, C-003, C-005/7/8 all wait on Sol.
+
+## Archived from PROJECT_STATE.md §7 on 2026-08-20 — the three W5 closeout sessions
+
+*Moved when the file passed its 500-line cap. Three entries, 2026-08-20: Sol's rulings on deltas 39–42 actioned and the conservatism finding (D-085 … D-090), C-008 and C-003 (D-091, D-092), and C-007 reaching repair acceptance (D-093). All are superseded by the later same-day entries but nothing is condensed.*
+
+### 2026-08-20 (W5 closeout) · Sol's rulings actioned, and a null that was hiding a defect · Claude
+
+**Sol returned PARTIAL ACCEPTANCE on deltas 39–42 and did NOT certify `25fd2c2`.** The certified base remains **`ca545ed`**. Delivery integrity checked both ways first: the delta and bundle SHA-256s Sol quoted match the bytes on disk exactly, so Sol reviewed what was shipped. Every finding was verified before anything changed, and all held — two were **worse** than stated.
+
+**Did, in Sol's required order** (D-085 … D-090):
+1. **Froze the calibration criterion before writing the corrected null** (D-085), so its provenance is history rather than a claim. Admissible counts computed in advance: statistical-only **k ∈ [4, 16]** of 200, full rule **k ∈ [0, 3]**.
+2. **Paired within-seed permutation** (D-086). The withdrawn global shuffle corrupted **48.4%** of seeds (48.72% analytic) and **every** permutation broke at least one seed — the 0/200 and 5.5% figures were never measurements of the registered design.
+3. **One model per repaired arm**, **seed-specific failure masks** (D-087).
+4. **Evidence contract v2** — threading required and cross-checked, **v1 grandfathered** so certified `attempt-001` is untouched (D-088).
+5. **Sol's rulings filed**, Gate 1's standing recorded (D-089).
+6. **W4 Friday threshold runner built and NOT executed** (D-090), returned for the pre-execution review Sol asked for.
+
+**THE FINDING — two errors were cancelling.** The corrected null exposed that the registered P§7.3 model has **no transition-level pairing term** while the comparison is paired transition-by-transition, so its SE is **1.51×** the true paired null spread and the test is **conservative**. The broken permutation had been hiding this exactly: breaking the pairing inflated the null's spread by **1.46×**, cancelling the over-wide SE to a reassuring ratio of **1.03** that passed its bound comfortably. Statistical-only rate **0/200, CI [0.000%, 1.828%]** — D-085 requires it to contain 5%. **Not fixed:** the acceptance model is a §2 frozen constant, so it is a Change Record and Sol's ruling. Marked `xfail(strict=True)` so the failure stays visible, with the 1.51× pinned by a test. Measured on synthetic data whose generator pairs the arms almost perfectly — the **direction** is established, the **magnitude on real data** is not.
+
+**Also found:** the runner **recorded** interop threads but never **pinned** them (D-088); and repaired arms at the default K=5 would cost **8,360 fits against 1,672 budgeted**, taking the design to **14,885 vs ~8,700 — 1.71× budget**, which is the Gate 1 compute condition Sol had just marked PASS (D-087).
+
+**A provenance note.** `config.py`, `gate.py` and `tests/test_audit_regressions.py` were found **modified mid-session** — after this session's last edit and last green run — implementing Sol's items 4 and 6. **I did not author them** and `list_sessions` showed no other session. They left the suite **red at 24 failures** (v2 required a `threading` field nothing emitted). I verified them by test rather than by reading, completed the production emitter, the interop pinning and the whole v2 refusal suite, and the tree is green again. Recorded because unattributed edits in a working tree are the DEV-005 class of hazard.
+
+**Tests:** 627 → **672 passing**, 2 skipped, **1 xfailed** (D-085's unmet criterion, deliberately visible). **Compute: zero.** No fit spent, no attempt re-run, no data seen.
+
+**Next:** deliver delta 43 with one clean bundle against `ca545ed`. Two questions must reach Sol — the acceptance model's conservatism, and W4 Friday's percentile and reference-model definition. **W4 Friday still must not execute.**
+
+### 2026-08-20 (W5 closeout, continued) · C-008 and C-003, the last unblocked work · Claude
+
+**Cleared the two open items that needed no ruling**, so that everything now waiting is genuinely waiting on Sol.
+
+**C-008 — the confirmatory runner** (D-091). Sol raised this at `2875e60`'s certification and named it again in the delta-42 ruling as a precondition for any repair-validation evidence. The bypass `train_ensemble` used to **confess in its own docstring** — `bootstrap_episodes()` + `train(train_index=…)` — is closed at the **resampling site**, with `seed` now a *required* argument there: a caller cannot resample without declaring whose seed it is. That candid docstring is why the hole was findable at all. The change immediately caught real misuse: `tests/test_ensemble.py` had been exercising transition and initialisation-only bootstraps on **seed 1000, a confirmatory seed**, and nothing had objected. The runner has **no `granularity` parameter at all** — a parameter accepting one value invites a caller to pass another. A test caught `metric_schema_version` missing from the emitted record, which would have left a confirmatory run unverifiable by the evidence contract.
+
+**C-003 — the reserve draw order** (D-092), committed as `reserve_order.json`: **231 units, 120 of intended class 0 and 111 of class 1.** The obvious derivation was wrong and would have been silently wrong: `select_sweep(k)` is a strict **superset** of `select_sweep(k−1)` but is **not prefix-stable**, so reading a draw order off list position produces a plausible, deterministic, incorrect commitment. The order comes from the **set difference at each step**, which is stable; admitted units alternate intended class, giving a balanced per-class order. `next_reserve_units(intended_class, n)` takes a class and a count **and nothing else**, so D-031's "without inspecting critic performance" is a property of the signature rather than a rule to remember, and over-drawing is refused because extending a reserve after seeing a shortfall is choosing rather than drawing.
+
+**Tests:** 672 → **705 passing**, 2 skipped, 1 xfailed. **Compute: zero** beyond one tiny synthetic fit in a temp directory — no registered run, no logged result, no data seen.
+
+**There is now no unblocked work left.** W4 Friday, the Gate 1 verdict, repair validation and anything built on the reserve order all wait on Sol.
+
+### 2026-08-20 (W5 closeout, C-007) · The seed policy reaches repair acceptance · Claude
+
+**C-007's widest remaining hole closed** (D-093). Repair acceptance had **no** confirmatory guard, so the repair path could produce registered repair-validation evidence on development seeds — and repair acceptance is where every label in the thesis is created. Guarded at **both** layers: `evaluate_arm` before the fit, and `acceptance_inputs` where the label actually comes into existence, since evaluations can be constructed without the producer. Tied to the **stage**, not a boolean: a probe must label itself `pilot` rather than exempt itself, because D-077 already had to close two opt-outs that existed for exactly that reason.
+
+**Provenance correction.** The student reports that **an earlier session was interrupted**, which is the likely source of the three files found modified mid-session and recorded as unexplained in the previous entry and in delta 43. Recorded as *reported*, not verified — `list_sessions` returns nothing even including archived sessions. The classification is unchanged and sharpened: an interrupted session leaving uncommitted work is exactly the DEV-005 / D-080 pattern.
+
+**Tests:** 705 → **709 passing**, 2 skipped, 1 xfailed. **Compute: zero.** Still no unblocked work left.

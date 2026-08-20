@@ -450,3 +450,50 @@ def test_the_exact_frozen_set_is_accepted():
     base, rep, masks = registered_set(scale)
     out = acceptance_inputs(base, rep, failure_masks=masks)
     assert sorted(set(out["seed"])) == list(REGISTERED_SEEDS)
+
+
+# --- confirmatory evidence is not automatically repair evidence (delta 46) ---
+
+
+@pytest.mark.parametrize("stage, n_seeds", [
+    ("exp1", 5),
+    ("threshold_calibration", 5),
+    ("exp2a", 5),
+    ("config_sweep", 3),
+])
+def test_another_registered_stage_cannot_create_a_repair_label(stage, n_seeds):
+    """Sol, delta 46: an otherwise-valid registered input must be refused BY NAME.
+
+    Measured before the fix: a five-seed `exp1` set and a five-seed
+    `threshold_calibration` set each produced 400 rows of repair-label input.
+    They carry a registered stage and the right confirmatory seeds for that
+    stage, so every other clause was satisfied -- while the repair protocol had
+    never been run at all.
+    """
+    scale = object()
+    seeds = [K.CONFIRMATORY_SEED_BASE + i for i in range(n_seeds)]
+    base = [fake("baseline", s, scale=scale, stage=stage) for s in seeds]
+    rep = [fake("data_repair", s, scale=scale, stage=stage) for s in seeds]
+    masks = {s: np.ones(40, dtype=bool) for s in seeds}
+    with pytest.raises(ValueError, match="cannot create a repair label"):
+        acceptance_inputs(base, rep, failure_masks=masks)
+
+
+def test_only_the_repair_stage_and_the_pilot_stage_are_reachable():
+    """pilot stays available for diagnostics that create no registered label."""
+    from bu.config import STAGES
+    from bu.experiments.repair import EXPLORATORY_STAGE, REPAIR_STAGE
+
+    scale = object()
+    out = acceptance_inputs([fake("baseline", 0, scale=scale)],
+                            [fake("data_repair", 0, scale=scale)])
+    assert len(out["errors"]) == 80          # pilot: diagnostic, no label
+    assert {REPAIR_STAGE, EXPLORATORY_STAGE} < set(STAGES)
+
+
+def test_acceptance_test_has_no_fallback_parameter():
+    """Sol, delta 46: a dead result-changing-looking option is worse than none."""
+    import inspect
+    from bu.stats.acceptance import acceptance_test
+
+    assert "allow_fallback" not in inspect.signature(acceptance_test).parameters

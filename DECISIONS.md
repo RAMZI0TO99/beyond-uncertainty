@@ -1414,3 +1414,29 @@ Admissible under the corrected D-085: statistical-only **k ∈ [1, 10]**, full r
 **Data seen:** none.
 **Plan ref:** P§7.3, P§7.5, P§10.1, D-034, D-042, D-044, D-071, D-076, C-007, C-008. Corrects D-094 and D-097; implements Sol's delta-45 ruling.
 **Reviewed by Sol:** the corrections are Sol's; **this implementation pass is not yet reviewed.**
+
+### D-101 · 2026-08-20 · Sol's delta-46 closeout patch — and a hole I had left in my own guard
+**Decision:** Sol accepted most of the correction pass and named one **material** remaining hole plus four narrow items. All done.
+
+**THE HOLE, REPRODUCED BEFORE FIXING.** `_validate_registered_consumption` treated every stage other than `pilot` as registered, then derived the required seeds from *that stage's own* count. Measured:
+
+| stage | seeds | result |
+|---|---|---|
+| `exp1` | 1000–1004 | **created a label — 400 rows** |
+| `threshold_calibration` | 1000–1004 | **created a label — 400 rows** |
+
+Both carry a registered stage and the correct confirmatory seeds *for that stage*, so every other clause — masks, ensemble size, pairing, single repair type — was satisfied, while the repair protocol had never been run. **Confirmatory evidence is not repair-acceptance evidence.** This is the same shape as the defect it was written to close, one level up: I generalised "registered" when the rule needed to name **one** stage. Label creation now requires `stage == REPAIR_STAGE` **and** the frozen 20 seeds; `pilot` remains for diagnostics that create no registered label; every other stage is refused **by name**, with tests over `exp1`, `threshold_calibration`, `exp2a` and `config_sweep`.
+
+**The fallback API removed entirely.** `allow_fallback` survived on `acceptance_test` after D-100 removed the fallback it named, defaulting to `True` and ignored. A dead option that still looks result-changing is worse than no option, and worse again when named after an analysis route that was explicitly withdrawn. Gone, along with the unused `warnings` import.
+
+**Wording finished.** "the fixed effect for repair condition" → "the equal-seed mean paired difference"; `acceptance_test`'s docstring now describes the registered analysis rather than the old variance-component model; the permutation docs say "the seed-level t interval". The one surviving description of the old model is explicitly marked **superseded history**, which Sol allows.
+
+**Threshold record validation finished.** `recompute_threshold` additionally checks `evidence_contract_version`, `metric_schema_version`, the recorded strata, `n_per_stratum`, `n_total`, the complete balancing-rule field, reference `confound_rate` and `statistic`, and **each cell's recorded transition count against its loaded array length**. Nine refusal tests, one per field. These are record-integrity checks; the threshold algorithm is unchanged.
+
+**The consolidated delta cleaned.** It carried a stale "QUESTION 2" about balancing while also stating the balancing ruling was settled — a document that says a thing is resolved and asks for it to be resolved again. Removed; both balancing findings are recorded as findings, not questions.
+
+**Settled and not revisited:** Gate 1 = FAIL, the paired seed-cluster analysis, and the balancing rule.
+**Tests:** 786 → **801 passing**, 2 skipped, 0 xfailed.
+**Data seen:** none.
+**Plan ref:** P§7.2, P§7.3, P§10.1, D-034, D-071. Implements Sol's delta-46 ruling; corrects D-095 and D-100.
+**Reviewed by Sol:** **not yet — this is the final closeout patch Sol asked for.**

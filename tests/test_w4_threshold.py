@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 
 from bu import constants as K
+from bu.stats.gate import EVIDENCE_CONTRACT_VERSION, METRIC_SCHEMA_VERSION
 from bu.experiments import w4_threshold as T
 
 
@@ -267,9 +268,17 @@ def fake_attempt(tmp_path, n=40):
         "percentile_method": T.PERCENTILE_METHOD, "required_cells": T.REQUIRED_CELLS,
         "seeds": list(T.THRESHOLD_SEEDS),
         "failure_rule": "error > threshold (strict)",
-        "balance": {"rng_seed": T.BALANCE_RNG_SEED},
+        "evidence_contract_version": EVIDENCE_CONTRACT_VERSION,
+        "metric_schema_version": METRIC_SCHEMA_VERSION,
+        "strata": [list(s) for s in sorted(T.reference_strata())],
+        "n_per_stratum": per, "n_total": per * len(arrays),
+        "balance": {"rng_seed": T.BALANCE_RNG_SEED,
+                    "rule": "pool each stratum's seeds, take the minimum available "
+                            "stratum count, subsample without replacement"},
         "reference": {"stage": T.THRESHOLD_STAGE, "size": T.REFERENCE_SIZE,
-                      "family": T.REFERENCE_FAMILY, "ensemble_size": 5},
+                      "family": T.REFERENCE_FAMILY, "ensemble_size": 5,
+                      "confound_rate": T.REFERENCE_CONFOUND_RATE,
+                      "statistic": "ensemble-mean normalised movement error"},
         "threading": {"num_threads": T.THRESHOLD_THREADS,
                       "num_interop_threads": T.THRESHOLD_INTEROP_THREADS},
         "cells": cells, "selected_indices": selected,
@@ -402,4 +411,25 @@ def test_recompute_refuses_unpinned_threading(tmp_path):
     row["threading"]["num_interop_threads"] = 8
     (attempt / "threshold_calibration.json").write_text(json.dumps(row), encoding="utf-8")
     with pytest.raises(ValueError, match="not the pinned"):
+        T.recompute_threshold(attempt)
+
+
+@pytest.mark.parametrize("mutate, match", [
+    (lambda r: r.__setitem__("evidence_contract_version", 1), "evidence contract version"),
+    (lambda r: r.__setitem__("metric_schema_version", 99), "metric schema version"),
+    (lambda r: r.__setitem__("strata", [["uniform", "shape"]]), "recorded strata"),
+    (lambda r: r.__setitem__("n_per_stratum", 3), "n_per_stratum"),
+    (lambda r: r.__setitem__("n_total", 3), "n_total"),
+    (lambda r: r["balance"].__setitem__("rule", "take the biggest"), "balancing rule"),
+    (lambda r: r["reference"].__setitem__("confound_rate", 0.5), "reference confound_rate"),
+    (lambda r: r["reference"].__setitem__("statistic", "single-model error"), "reference statistic"),
+    (lambda r: r["cells"][0].__setitem__("n_transitions", 999), "does not describe the array"),
+])
+def test_recompute_validates_the_whole_record(tmp_path, mutate, match):
+    """Record-integrity checks: every field the number depends on, compared."""
+    attempt = fake_attempt(tmp_path)
+    row = json.loads((attempt / "threshold_calibration.json").read_text())
+    mutate(row)
+    (attempt / "threshold_calibration.json").write_text(json.dumps(row), encoding="utf-8")
+    with pytest.raises(ValueError, match=match):
         T.recompute_threshold(attempt)

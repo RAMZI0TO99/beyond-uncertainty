@@ -478,17 +478,35 @@ def recompute_threshold(attempt_dir: str | Path) -> float:
                 f"is {want!r}. The number was not taken under the registered rule"
             )
 
+    expect("evidence_contract_version", EVIDENCE_CONTRACT_VERSION, "evidence contract version")
+    expect("metric_schema_version", METRIC_SCHEMA_VERSION, "metric schema version")
     expect("percentile", THRESHOLD_PERCENTILE, "percentile")
     expect("percentile_method", PERCENTILE_METHOD, "percentile method")
     expect("required_cells", REQUIRED_CELLS, "required cell count")
     expect("seeds", list(THRESHOLD_SEEDS), "seed set")
     expect("failure_rule", "error > threshold (strict)", "failure rule")
-    if row.get("balance", {}).get("rng_seed") != BALANCE_RNG_SEED:
+    balance = row.get("balance", {})
+    if balance.get("rng_seed") != BALANCE_RNG_SEED:
         raise ValueError("the attempt records a different balancing RNG seed")
+    if balance.get("rule") != (
+        "pool each stratum's seeds, take the minimum available "
+        "stratum count, subsample without replacement"
+    ):
+        raise ValueError(
+            f"the attempt records balancing rule {balance.get('rule')!r}, which is "
+            "not the frozen one. The rule and its RNG seed together determine which "
+            "transitions the percentile was taken over"
+        )
+    if [tuple(s) for s in row.get("strata", [])] != sorted(reference_strata()):
+        raise ValueError(
+            "the recorded strata are not the nine registered ones in canonical order"
+        )
     ref = row.get("reference", {})
     for key, want in (("stage", THRESHOLD_STAGE), ("size", REFERENCE_SIZE),
                       ("family", REFERENCE_FAMILY),
-                      ("ensemble_size", K.DEFAULT_ENSEMBLE_SIZE)):
+                      ("ensemble_size", K.DEFAULT_ENSEMBLE_SIZE),
+                      ("confound_rate", REFERENCE_CONFOUND_RATE),
+                      ("statistic", "ensemble-mean normalised movement error")):
         if ref.get(key) != want:
             raise ValueError(
                 f"reference {key}: attempt records {ref.get(key)!r}, frozen is {want!r}"
@@ -538,12 +556,28 @@ def recompute_threshold(attempt_dir: str | Path) -> float:
                 raise ValueError(
                     f"{cell['run_id']}/{name} does not match its recorded digest"
                 )
-        pooled.setdefault((cell["layout"], cell["causal_attribute"]), []).append(
-            np.load(path)
-        )
+        errors = np.load(path)
+        if errors.shape != (cell["n_transitions"],):
+            raise ValueError(
+                f"{cell['errors_file']} holds {errors.shape[0]} transitions but the "
+                f"attempt records {cell['n_transitions']}. The cell's own count does "
+                "not describe the array the threshold was taken over"
+            )
+        pooled.setdefault((cell["layout"], cell["causal_attribute"]), []).append(errors)
 
     arrays = {k: np.concatenate(v) for k, v in pooled.items()}
-    value, selected, _ = _threshold_from_arrays(arrays)
+    value, selected, per_stratum = _threshold_from_arrays(arrays)
+
+    if row.get("n_per_stratum") != per_stratum:
+        raise ValueError(
+            f"the attempt records n_per_stratum={row.get('n_per_stratum')!r} but the "
+            f"stored arrays give {per_stratum}"
+        )
+    if row.get("n_total") != per_stratum * len(arrays):
+        raise ValueError(
+            f"the attempt records n_total={row.get('n_total')!r} but the stored "
+            f"arrays give {per_stratum * len(arrays)}"
+        )
 
     recorded = {k: list(v) for k, v in row["selected_indices"].items()}
     if {k: list(v) for k, v in selected.items()} != recorded:

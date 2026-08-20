@@ -7,7 +7,7 @@ with the noise it is meant to control.
 
 **Three conditions, all required** (P§7.3, and frozen in §2 of PROJECT_STATE):
 
-1. the fixed effect for repair condition is **negative** — error reduced;
+1. the **equal-seed mean paired difference** is **negative** — error reduced;
 2. its **95% confidence interval excludes zero**;
 3. the estimated reduction exceeds the **minimum practical effect**, fixed
    before data collection at **20% relative** (`K.MIN_PRACTICAL_EFFECT`).
@@ -43,7 +43,6 @@ unit from seeds to episodes on the strength of the observed data.
 
 from __future__ import annotations
 
-import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -74,7 +73,7 @@ class AcceptanceResult:
     """A repair's verdict, with everything needed to report it honestly."""
 
     #: The **equal-seed mean paired difference**, repaired minus baseline. Not a
-    #: fixed effect from a mixed model (D-100) -- there is no model being fitted.
+    #: a fixed effect from a mixed model (D-100) -- nothing is being fitted.
     effect: float
     ci_low: float
     ci_high: float
@@ -219,21 +218,25 @@ def _verdict(effect, ci_low, ci_high, unrepaired_mean) -> tuple[bool, float, str
 
 
 def acceptance_test(
-    errors, repair, seed, episode, transition, *, allow_fallback: bool = True
+    errors, repair, seed, episode, transition
 ) -> AcceptanceResult:
     """Run the registered acceptance test on per-transition error (P§7.3).
 
     **Change Record, 2026-08-20 (D-094), authorised by Sol.** The model now
-    carries a **transition-within-episode** variance component. The registered
-    v1.2 model had random intercepts for seed and episode-within-seed only,
-    while the comparison is paired transition-by-transition on the same failure
-    set — so the difficulty shared between the two arms on one transition
-    cancels in the contrast but was still being counted as residual variance.
-    Measured: the interval came out **1.51×** the true paired null spread, and
-    the test was conservative. Sol authorised the change rather than accepting it
-    as a power limitation, on the grounds that repair acceptance **creates the
-    thesis labels**: an over-wide interval converts genuine repairs into
-    ambiguous or undiagnosed units and so alters H2's and H3's population.
+    takes the pairing first. For each matched transition, the repaired minus
+    baseline error; those differences averaged within each seed; the seeds as
+    replication units; a t interval on ``n_seeds - 1`` degrees of freedom.
+
+    *Superseded history, kept because the reason still matters:* the registered
+    v1.2 analysis was a mixed model with random intercepts for seed and
+    episode-within-seed and no transition-level term, while the comparison is
+    paired transition-by-transition on the same failure set — so the difficulty
+    shared between the two arms cancels in the contrast but was still counted as
+    residual variance. Measured, its interval was **1.51×** the true paired null
+    spread. Sol authorised the change rather than accepting the conservatism,
+    because repair acceptance **creates the thesis labels**: an over-wide
+    interval converts genuine repairs into ambiguous or undiagnosed units and so
+    alters H2's and H3's population.
 
     Args:
         errors: per-transition error, unrepaired and repaired rows together.
@@ -244,12 +247,11 @@ def acceptance_test(
             not optional: it is what identifies the two arms' rows as the *same*
             transition, and an absent pairing key would silently restore the
             over-wide interval this Change Record exists to remove.
-        allow_fallback: **retained only to refuse it.** There is no fallback in
-            registered acceptance any more (D-100): the analysis has no optimiser
-            that can fail, and switching the replication unit to episodes because
-            of the observed data would be choosing the inference after seeing it.
-            Passing ``False`` is accepted and means what it says; passing ``True``
-            is accepted and changes nothing.
+
+    There is deliberately **no** ``allow_fallback`` parameter. It was removed
+    once the fallback was (D-101): a dead option that still looks
+    result-changing is worse than no option, and worse still when it is named
+    after an analysis route that was explicitly withdrawn.
     """
     data = _frame(errors, repair, seed, episode, transition)
     unrepaired_mean = equal_seed_baseline_mean(data)
@@ -260,7 +262,7 @@ def acceptance_test(
         unrepaired_mean=unrepaired_mean,
     )
 
-    return _paired_seed_cluster(data, counts, unrepaired_mean, allow_fallback)
+    return _paired_seed_cluster(data, counts, unrepaired_mean)
 
 
 def equal_seed_baseline_mean(data: pd.DataFrame) -> float:
@@ -291,7 +293,7 @@ def paired_differences(data: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def _paired_seed_cluster(data, counts, unrepaired_mean, allow_fallback) -> AcceptanceResult:
+def _paired_seed_cluster(data, counts, unrepaired_mean) -> AcceptanceResult:
     """The registered acceptance analysis (P§7.3 as amended by D-094, D-100).
 
     **The estimand, stated.** For each matched transition, the repaired minus
@@ -380,7 +382,7 @@ class PermutationNull:
 
     **Two rates, because they answer different questions** (Sol, delta 42). The
     *statistical-only* rate uses conditions 1–2 and is the one that establishes
-    the mixed model's interval is correctly sized under the real dependence
+    the seed-level t interval is correctly sized under the real dependence
     structure. The *full* rate adds the 20% practical floor, which supplies
     conservatism on top. Reporting the full rate alone credits the model with a
     calibration the floor was providing.
@@ -559,7 +561,7 @@ def permutation_null(
                     None if contains else
                     f"the statistical-only interval "
                     f"[{stat_ci[0]:.3%}, {stat_ci[1]:.3%}] does not contain "
-                    f"{nominal:.0%}, so the mixed model's interval is the wrong size",
+                    f"{nominal:.0%}, so the seed-level interval is the wrong size",
                     None if within else
                     f"the full rule's upper bound {full_ci[1]:.3%} exceeds "
                     f"{nominal:.0%}",

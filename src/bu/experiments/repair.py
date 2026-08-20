@@ -301,6 +301,16 @@ def _validate_registered_consumption(baseline, repaired, failure_masks) -> None:
             "comparison would let a probe supply half of a label"
         )
     stage = stages.pop()
+    if stage not in (REPAIR_STAGE, EXPLORATORY_STAGE):
+        raise ValueError(
+            f"stage {stage!r} cannot create a repair label. Only {REPAIR_STAGE!r} "
+            f"does that, and {EXPLORATORY_STAGE!r} is available for diagnostics that "
+            "create none. Confirmatory evidence is not automatically "
+            "repair-acceptance evidence: an `exp1` or `threshold_calibration` fit "
+            "carries a registered stage and confirmatory seeds, and would otherwise "
+            "have satisfied every other clause here while never having run the "
+            "repair protocol at all (Sol, delta 46)"
+        )
     registered = stage != EXPLORATORY_STAGE
 
     if registered and failure_masks is None:

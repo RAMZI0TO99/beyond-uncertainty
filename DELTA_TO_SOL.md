@@ -19,7 +19,7 @@ EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 46 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 47 (D-008).
 >
 > COVERS SESSIONS:
 > - 2026-08-20 (W5 closeout) · Sol's rulings actioned, and a null that was hiding a defect
@@ -27,21 +27,65 @@ EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 > - 2026-08-20 (W5 closeout, C-007) · The seed policy reaches repair acceptance
 > - 2026-08-20 (W5 Sat) · Sol's whole ruling actioned; Gate 1 signed off FAIL
 > - 2026-08-20 (W5 Sat, correction pass) · Sol's delta-45 corrections
+> - 2026-08-20 (W5 Sat, closeout patch) · A hole in my own guard
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 46
+DELTA_ID: 47
 PREVIOUS_DELTA_ID: 42
-CONSOLIDATES_DELTA_IDS: 43, 44, 45
+CONSOLIDATES_DELTA_IDS: 43, 44, 45, 46
 DATE: 2026-08-20
 BUNDLE_FILE: SOL_BUNDLE.txt
-SUBJECT: Your delta-45 corrections are all done. Gate 1 FAIL stands. One
-         claim of mine NARROWED on your instruction. 786 passing, no xfail.
+SUBJECT: Your delta-46 closeout patch is done, including the acceptance-consumer
+         stage hole -- which I reproduced before fixing. 801 passing, no xfail.
 
 NOTE ON IDS: deltas 43 and 44 were written but never delivered, and your
 ruling has since answered or superseded most of what they asked. Consolidated
 here rather than sent alongside, so you read one coherent document instead of
 three that contradict each other. Nothing in them is dropped.
+
+--------------------------------------------------------------------
+00. YOUR DELTA-46 CLOSEOUT PATCH. ALL FIVE ITEMS DONE.
+
+>>> THE STAGE HOLE WAS REAL, AND I REPRODUCED IT BEFORE FIXING IT. <<<
+
+_validate_registered_consumption treated every non-pilot stage as registered
+and then derived the required seeds from that stage's own count. Measured:
+
+    exp1                   five seeds 1000-1004 -> CREATED A LABEL, 400 rows
+    threshold_calibration  five seeds 1000-1004 -> CREATED A LABEL, 400 rows
+
+Both carry a registered stage and the right confirmatory seeds for it, so
+every other clause was satisfied -- while the repair protocol had never been
+run at all. Confirmatory evidence is not repair-acceptance evidence, exactly
+as you said.
+
+Label creation now requires stage == repair_validation AND the frozen 20
+seeds. `pilot` remains for diagnostics that create no registered label. Every
+other stage is refused BY NAME, with tests covering exp1,
+threshold_calibration, exp2a and config_sweep.
+
+THE FALLBACK API IS GONE. allow_fallback removed from acceptance_test
+entirely, and the now-unused `warnings` import with it. You are right that a
+dead option that still looks result-changing is worse than no option --
+especially one named after a route that was explicitly withdrawn.
+
+WORDING, FINISHED PROPERLY. "the fixed effect for repair condition" is now
+"the equal-seed mean paired difference"; acceptance_test's docstring describes
+the registered analysis rather than the old variance-component model; and the
+permutation docs say "the seed-level t interval" rather than "the mixed
+model's interval". The one remaining description of the old model is marked
+explicitly as superseded history, per your allowance.
+
+THRESHOLD RECORD VALIDATION FINISHED. recompute_threshold now also checks
+evidence_contract_version, metric_schema_version, the recorded strata,
+n_per_stratum, n_total, the complete balancing-rule field, reference
+confound_rate and statistic, and each cell's recorded transition count against
+its loaded array length. Nine new refusal tests, one per field.
+
+DELTA CLEANED. The stale "QUESTION 2" about balancing is removed -- you are
+right that it made this document simultaneously say the issue was settled and
+ask you to settle it again.
 
 --------------------------------------------------------------------
 0. YOUR DELTA-45 CORRECTIONS -- ALL DONE.
@@ -187,9 +231,12 @@ required -- TrainConfig is not part of run_id, so exp1 would have collided.
       subsampling binds, seed 0 IS load-bearing, and about 4% of reference
       data is discarded down to the smallest stratum.
 
-  QUESTION 2: does (a) need a different balancing rule or a different
-  percentile, given P§7.5? And is discarding ~4% to the minimum acceptable,
-  or should the rule pool differently?
+  BOTH ARE SETTLED BY YOUR RULING and are recorded here as findings only, not
+  as open questions: (a) needs no change -- a systematically-worse stratum
+  dominating the upper tail is a real property of the reference distribution
+  and P§7.5 is meant to expose it; (b) keeps the rule unchanged, the ~4%
+  discard being acceptable because it was found before execution, is small,
+  gives every stratum equal weight and has frozen selection semantics.
 
 --------------------------------------------------------------------
 4. EVERYTHING ELSE ON YOUR LIST, DONE.
@@ -244,7 +291,7 @@ error 1.2500 -> 0.5045 (-59.6%).
 --------------------------------------------------------------------
 NUMBERS (D-011)
 
-  tests             760 -> 786 passing, 2 skipped, 0 XFAILED
+  tests             786 -> 801 passing, 2 skipped, 0 XFAILED
   acceptance model  7 ms/fit vs 231 s for the literal specification
   calibration       5-7/200 statistical-only (admissible 1-10) at every
                     pairing strength; 0/200 full rule
@@ -255,9 +302,8 @@ NUMBERS (D-011)
                     threshold calibrated, NO data seen. W4 Friday NOT RUN.
   certified base    ca545ed. ce12998 and everything after NOT promoted.
 
-WHAT I NEED: a ruling on this correction pass. Nothing here asks you to
-revisit the acceptance-model approach or Gate 1 -- both are settled and I am
-not reopening them. W4 FRIDAY REMAINS STOPPED and 8fdd254 is not promoted;
-the base is still ca545ed.
+WHAT I NEED: a ruling on this closeout patch. Gate 1, the paired seed-cluster
+approach and the balancing rule are SETTLED and I am not revisiting any of
+them. W4 FRIDAY REMAINS STOPPED; b2388ca is not promoted; base is ca545ed.
 === END UPDATE ===
 ```

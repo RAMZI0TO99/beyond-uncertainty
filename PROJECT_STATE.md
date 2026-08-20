@@ -275,6 +275,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-098** | 2026-08-20 | **GATE 1 — FAIL**, signed off on Sol's ruling; not a pivot | **Sol's verdict** |
 | **D-099** | 2026-08-20 | Audit of W4/W5 — probed; two findings on the threshold's balancing rule | **Audit** |
 | **D-100** | 2026-08-20 | Sol's delta-45 corrections; D-094's theoretical claim narrowed | Sol's items |
+| **D-101** | 2026-08-20 | Sol's delta-46 closeout — a stage hole in my own guard, reproduced then fixed | Sol's finding |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -414,7 +415,7 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **34 archived, 1 kept here** — Week 3's six close entries were archived when it was certified and frozen at `9c0d89d` (D-067). Nothing is condensed; the archive is complete.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **37 archived, 1 kept here** — Week 3's six close entries were archived when it was certified and frozen at `9c0d89d` (D-067). Nothing is condensed; the archive is complete.
 
 *(W3 certification through the W4 Tuesday gate rounds — the trend test, Sol's two blockers, and the evidence contract — moved to `PROJECT_STATE_ARCHIVE.md` when this file passed its 500-line paste cap. Six entries, 2026-08-17 to 2026-08-18; the decisions they produced are D-068 … D-072 and remain indexed in §3.)*
 
@@ -427,47 +428,7 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **34 archived, 1 kept
 
 *(W4 Thursday's MDE and the W5 Mon/Tue/Wed/Fri cells — four entries, 2026-08-18 — were archived on 2026-08-20 when Gate 1 was signed off, which supersedes them. They produced D-078 … D-081, all indexed in §3.)*
 
-### 2026-08-20 (W5 closeout) · Sol's rulings actioned, and a null that was hiding a defect · Claude
-
-**Sol returned PARTIAL ACCEPTANCE on deltas 39–42 and did NOT certify `25fd2c2`.** The certified base remains **`ca545ed`**. Delivery integrity checked both ways first: the delta and bundle SHA-256s Sol quoted match the bytes on disk exactly, so Sol reviewed what was shipped. Every finding was verified before anything changed, and all held — two were **worse** than stated.
-
-**Did, in Sol's required order** (D-085 … D-090):
-1. **Froze the calibration criterion before writing the corrected null** (D-085), so its provenance is history rather than a claim. Admissible counts computed in advance: statistical-only **k ∈ [4, 16]** of 200, full rule **k ∈ [0, 3]**.
-2. **Paired within-seed permutation** (D-086). The withdrawn global shuffle corrupted **48.4%** of seeds (48.72% analytic) and **every** permutation broke at least one seed — the 0/200 and 5.5% figures were never measurements of the registered design.
-3. **One model per repaired arm**, **seed-specific failure masks** (D-087).
-4. **Evidence contract v2** — threading required and cross-checked, **v1 grandfathered** so certified `attempt-001` is untouched (D-088).
-5. **Sol's rulings filed**, Gate 1's standing recorded (D-089).
-6. **W4 Friday threshold runner built and NOT executed** (D-090), returned for the pre-execution review Sol asked for.
-
-**THE FINDING — two errors were cancelling.** The corrected null exposed that the registered P§7.3 model has **no transition-level pairing term** while the comparison is paired transition-by-transition, so its SE is **1.51×** the true paired null spread and the test is **conservative**. The broken permutation had been hiding this exactly: breaking the pairing inflated the null's spread by **1.46×**, cancelling the over-wide SE to a reassuring ratio of **1.03** that passed its bound comfortably. Statistical-only rate **0/200, CI [0.000%, 1.828%]** — D-085 requires it to contain 5%. **Not fixed:** the acceptance model is a §2 frozen constant, so it is a Change Record and Sol's ruling. Marked `xfail(strict=True)` so the failure stays visible, with the 1.51× pinned by a test. Measured on synthetic data whose generator pairs the arms almost perfectly — the **direction** is established, the **magnitude on real data** is not.
-
-**Also found:** the runner **recorded** interop threads but never **pinned** them (D-088); and repaired arms at the default K=5 would cost **8,360 fits against 1,672 budgeted**, taking the design to **14,885 vs ~8,700 — 1.71× budget**, which is the Gate 1 compute condition Sol had just marked PASS (D-087).
-
-**A provenance note.** `config.py`, `gate.py` and `tests/test_audit_regressions.py` were found **modified mid-session** — after this session's last edit and last green run — implementing Sol's items 4 and 6. **I did not author them** and `list_sessions` showed no other session. They left the suite **red at 24 failures** (v2 required a `threading` field nothing emitted). I verified them by test rather than by reading, completed the production emitter, the interop pinning and the whole v2 refusal suite, and the tree is green again. Recorded because unattributed edits in a working tree are the DEV-005 class of hazard.
-
-**Tests:** 627 → **672 passing**, 2 skipped, **1 xfailed** (D-085's unmet criterion, deliberately visible). **Compute: zero.** No fit spent, no attempt re-run, no data seen.
-
-**Next:** deliver delta 43 with one clean bundle against `ca545ed`. Two questions must reach Sol — the acceptance model's conservatism, and W4 Friday's percentile and reference-model definition. **W4 Friday still must not execute.**
-
-### 2026-08-20 (W5 closeout, continued) · C-008 and C-003, the last unblocked work · Claude
-
-**Cleared the two open items that needed no ruling**, so that everything now waiting is genuinely waiting on Sol.
-
-**C-008 — the confirmatory runner** (D-091). Sol raised this at `2875e60`'s certification and named it again in the delta-42 ruling as a precondition for any repair-validation evidence. The bypass `train_ensemble` used to **confess in its own docstring** — `bootstrap_episodes()` + `train(train_index=…)` — is closed at the **resampling site**, with `seed` now a *required* argument there: a caller cannot resample without declaring whose seed it is. That candid docstring is why the hole was findable at all. The change immediately caught real misuse: `tests/test_ensemble.py` had been exercising transition and initialisation-only bootstraps on **seed 1000, a confirmatory seed**, and nothing had objected. The runner has **no `granularity` parameter at all** — a parameter accepting one value invites a caller to pass another. A test caught `metric_schema_version` missing from the emitted record, which would have left a confirmatory run unverifiable by the evidence contract.
-
-**C-003 — the reserve draw order** (D-092), committed as `reserve_order.json`: **231 units, 120 of intended class 0 and 111 of class 1.** The obvious derivation was wrong and would have been silently wrong: `select_sweep(k)` is a strict **superset** of `select_sweep(k−1)` but is **not prefix-stable**, so reading a draw order off list position produces a plausible, deterministic, incorrect commitment. The order comes from the **set difference at each step**, which is stable; admitted units alternate intended class, giving a balanced per-class order. `next_reserve_units(intended_class, n)` takes a class and a count **and nothing else**, so D-031's "without inspecting critic performance" is a property of the signature rather than a rule to remember, and over-drawing is refused because extending a reserve after seeing a shortfall is choosing rather than drawing.
-
-**Tests:** 672 → **705 passing**, 2 skipped, 1 xfailed. **Compute: zero** beyond one tiny synthetic fit in a temp directory — no registered run, no logged result, no data seen.
-
-**There is now no unblocked work left.** W4 Friday, the Gate 1 verdict, repair validation and anything built on the reserve order all wait on Sol.
-
-### 2026-08-20 (W5 closeout, C-007) · The seed policy reaches repair acceptance · Claude
-
-**C-007's widest remaining hole closed** (D-093). Repair acceptance had **no** confirmatory guard, so the repair path could produce registered repair-validation evidence on development seeds — and repair acceptance is where every label in the thesis is created. Guarded at **both** layers: `evaluate_arm` before the fit, and `acceptance_inputs` where the label actually comes into existence, since evaluations can be constructed without the producer. Tied to the **stage**, not a boolean: a probe must label itself `pilot` rather than exempt itself, because D-077 already had to close two opt-outs that existed for exactly that reason.
-
-**Provenance correction.** The student reports that **an earlier session was interrupted**, which is the likely source of the three files found modified mid-session and recorded as unexplained in the previous entry and in delta 43. Recorded as *reported*, not verified — `list_sessions` returns nothing even including archived sessions. The classification is unchanged and sharpened: an interrupted session leaving uncommitted work is exactly the DEV-005 / D-080 pattern.
-
-**Tests:** 705 → **709 passing**, 2 skipped, 1 xfailed. **Compute: zero.** Still no unblocked work left.
+*(Three W5 closeout sessions of 2026-08-20 — Sol's deltas 39–42 actioned, C-008 and C-003, and C-007 at repair acceptance — were archived the same day when this file passed its cap. They produced D-085 … D-093, all indexed in §3.)*
 
 ### 2026-08-20 (W5 Sat) · Sol's whole ruling actioned; Gate 1 signed off FAIL · Claude
 
@@ -496,3 +457,13 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **34 archived, 1 kept
 **C-008's last two exposures closed**: `allow_dirty` and caller-chosen thread counts are gone, threading frozen at 4/4 inside the runner. **Threshold**: attempt names frozen to `attempt-NNN` so no permitted name escapes prior-attempt discovery; `INVALID` must state a reason; and `recompute_threshold` no longer reads the frozen spec out of the file it is checking — it compares every constant against the code, verifies run and member digests, and **reconstructs** the deterministic selection rather than reusing the recorded one.
 
 **Rerun as required:** all four pairing-strength calibrations still calibrated. **Tests:** 760 → **786 passing**, 2 skipped, **0 xfailed**. **W4 Friday remains stopped.**
+
+### 2026-08-20 (W5 Sat, closeout patch) · A hole in my own guard · Claude
+
+**Sol's delta-46 closeout, all five items** (D-101). One was material and it was **my** defect, in the guard I had written two passes earlier to close exactly this class of thing.
+
+`_validate_registered_consumption` treated every non-`pilot` stage as registered and derived the required seeds from that stage's own count. Reproduced before fixing: a five-seed **`exp1`** set and a five-seed **`threshold_calibration`** set each **created a repair label, 400 rows**. Both carry a registered stage and the right confirmatory seeds *for that stage*, so every other clause passed — while the repair protocol had never been run. I had generalised "registered" where the rule needed to name **one** stage. Label creation now requires `repair_validation` **and** the frozen 20 seeds; every other stage is refused by name.
+
+Also: `allow_fallback` removed entirely (it survived the fallback it was named after, defaulting to True and ignored); the wording cleanup finished, with the one surviving description of the old model marked as superseded history; `recompute_threshold` extended to nine further record-integrity fields including each cell's transition count against its array length; and the stale balancing question removed from the delta, which had been saying the issue was settled and asking Sol to settle it.
+
+**Tests:** 786 → **801 passing**, 2 skipped, 0 xfailed. **Gate 1 FAIL, the seed-cluster analysis and the balancing rule are settled and not revisited. W4 Friday remains stopped.**
