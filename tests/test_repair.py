@@ -99,7 +99,8 @@ def test_a_repaired_arm_without_a_scale_is_refused(arm):
 # --- assembling the paired arrays ------------------------------------------
 
 
-def fake(arm, seed, *, n=40, scale=object(), episode=None, step=None, stage=None):
+def fake(arm, seed, *, n=40, scale=object(), episode=None, step=None, stage=None,
+         ensemble_size=1):
     """A synthetic evaluation.
 
     `stage` defaults to the exploratory one because these ARE fakes, not
@@ -115,7 +116,7 @@ def fake(arm, seed, *, n=40, scale=object(), episode=None, step=None, stage=None
     return ArmEvaluation(
         arm=arm, seed=seed, error=np.linspace(1.0, 2.0, n), episode=episode,
         step=step, scale=scale, config_id="c", run_id="r", n_train=100,
-        stage=stage or EXPLORATORY_STAGE,
+        stage=stage or EXPLORATORY_STAGE, ensemble_size=ensemble_size,
     )
 
 
@@ -344,10 +345,12 @@ def test_the_label_is_refused_where_it_would_be_BUILT_not_only_where_it_was_run(
     from bu.experiments.repair import REPAIR_STAGE
 
     scale = object()
+    mask = np.ones(40, dtype=bool)
     with pytest.raises(ValueError, match="development data on a registered stage"):
         acceptance_inputs(
             [fake("baseline", 0, scale=scale, stage=REPAIR_STAGE)],
             [fake("data_repair", 0, scale=scale, stage=REPAIR_STAGE)],
+            failure_masks={0: mask},
         )
 
 
@@ -360,5 +363,72 @@ def test_confirmatory_seeds_on_a_registered_stage_are_accepted():
     out = acceptance_inputs(
         [fake("baseline", s, scale=scale, stage=REPAIR_STAGE)],
         [fake("data_repair", s, scale=scale, stage=REPAIR_STAGE)],
+        failure_masks={s: np.ones(40, dtype=bool)},
     )
     assert len(out["errors"]) == 80
+
+
+# --- consumer-side refusals (Sol's ruling on delta 44) ----------------------
+
+
+def test_whole_pool_scoring_is_refused_on_a_registered_stage():
+    """Sol found this hole in one of MY OWN tests.
+
+    `failure_masks=None` scores the whole evaluation pool, which is a diagnostic.
+    P§7.2 step 4 evaluates every repair on the RECORDED FAILURE SET, so on a
+    registered stage the mapping is mandatory. `None` survives only for pilot.
+    """
+    scale = object()
+    s = K.CONFIRMATORY_SEED_BASE
+    with pytest.raises(ValueError, match="registered but no failure_masks"):
+        acceptance_inputs(
+            [fake("baseline", s, scale=scale, stage=REPAIR_STAGE)],
+            [fake("data_repair", s, scale=scale, stage=REPAIR_STAGE)],
+        )
+
+
+def test_whole_pool_scoring_is_still_available_for_a_probe():
+    """The diagnostic must remain usable where it is honestly labelled."""
+    scale = object()
+    out = acceptance_inputs([fake("baseline", 0, scale=scale)],
+                            [fake("data_repair", 0, scale=scale)])
+    assert len(out["errors"]) == 80
+
+
+def test_a_repaired_evaluation_attesting_an_ensemble_is_refused():
+    """The producer enforces K=1; an ArmEvaluation can be built without it."""
+    scale = object()
+    s = K.CONFIRMATORY_SEED_BASE
+    with pytest.raises(ValueError, match="attest an ensemble size other than 1"):
+        acceptance_inputs(
+            [fake("baseline", s, scale=scale, stage=REPAIR_STAGE)],
+            [fake("data_repair", s, scale=scale, stage=REPAIR_STAGE, ensemble_size=5)],
+            failure_masks={s: np.ones(40, dtype=bool)},
+        )
+
+
+def test_mixed_stages_are_refused():
+    """One acceptance test is one obligation; a probe may not supply half a label."""
+    scale = object()
+    s = K.CONFIRMATORY_SEED_BASE
+    with pytest.raises(ValueError, match="mixed stages"):
+        acceptance_inputs(
+            [fake("baseline", s, scale=scale, stage=REPAIR_STAGE)],
+            [fake("data_repair", s, scale=scale)],
+            failure_masks={s: np.ones(40, dtype=bool)},
+        )
+
+
+def test_two_repair_types_in_one_call_are_refused():
+    """Different repairs are different interventions; pooling reports a treatment
+    nobody applied."""
+    scale = object()
+    s0, s1 = K.CONFIRMATORY_SEED_BASE, K.CONFIRMATORY_SEED_BASE + 1
+    with pytest.raises(ValueError, match="Exactly one repair type per"):
+        acceptance_inputs(
+            [fake("baseline", s0, scale=scale, stage=REPAIR_STAGE),
+             fake("baseline", s1, scale=scale, stage=REPAIR_STAGE)],
+            [fake("data_repair", s0, scale=scale, stage=REPAIR_STAGE),
+             fake("feature_repair", s1, scale=scale, stage=REPAIR_STAGE)],
+            failure_masks={s0: np.ones(40, dtype=bool), s1: np.ones(40, dtype=bool)},
+        )

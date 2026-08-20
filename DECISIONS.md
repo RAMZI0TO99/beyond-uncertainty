@@ -1290,3 +1290,22 @@ Admissible under the corrected D-085: statistical-only **k ∈ [1, 10]**, full r
 **Data seen:** none. Synthetic throughout.
 **Plan ref:** P§7.3, §2. Amends D-079, resolves D-086, implements Sol's authorised Change Record.
 **Reviewed by Sol:** the Change Record is Sol's; **the degeneracy finding and the departure from the literal form are new and need a ruling.**
+
+### D-095 · 2026-08-20 · Sol's consumer-side refusals, and the reserve guards
+**Decision:** Two of Sol's delta-44 items, both of the same shape: a rule enforced only at the producer is one the consumer can be handed around.
+
+**Repair acceptance — the consumer now refuses what the producer guards.** `ArmEvaluation`s can be constructed directly, so `acceptance_inputs` never saw the guards `evaluate_arm` applies. Four refusals added, each a route by which registered evidence could have been assembled from material that never satisfied the rule it claims:
+- **`failure_masks=None` is refused on a registered stage.** Whole-pool scoring is a diagnostic; P§7.2 step 4 evaluates every repair on the **recorded failure set**. `None` survives only for `pilot`. **Sol found this hole inside one of my own tests** — `test_confirmatory_seeds_on_a_registered_stage_are_accepted` was exercising exactly the bypass, which is what a test written to demonstrate a guard looks like when it demonstrates the gap instead.
+- **Attested `ensemble_size != 1` on a repaired evaluation is refused**, checked here as well as at the fit.
+- **Mixed stages are refused**: one acceptance test is one obligation, and a probe may not supply half a label.
+- **Two repair types in one call are refused**: different repairs are different interventions, and pooling them reports an effect for a treatment nobody applied.
+
+**The reserve — the guards that make it a predeclaration rather than a file.**
+- **Negative counts refused.** Measured, and Sol was right: `next_reserve_units(0, -1)` returned **119 of 120** units, because a negative list index is silently almost-everything. Zero remains a legitimate draw.
+- **Classes restricted to exactly `{0, 1}`**; non-integer classes and counts refused by type.
+- **The loaded JSON is validated** on schema, registered sweep, count, uniqueness, class keys and — the load-bearing one — that the per-class orders **partition** the whole order, so a shortfall cannot be filled from a unit the predeclaration never named.
+- **The reviewed file's full SHA-256 is frozen in code** (`PREDECLARED_DIGEST`). Without it, editing `reserve_order.json` silently redefines a commitment made in advance: the file would still load, still be self-consistent, and still be called the predeclared order. Changing it now requires changing a constant in a commit, which is visible in a diff.
+**Tests:** 720 → **745 passing**, 2 skipped.
+**Data seen:** none.
+**Plan ref:** P§7.2, P§14.2, D-031, D-034. Sol's ruling on delta 44.
+**Reviewed by Sol:** the items are Sol's; the implementations are not yet reviewed.

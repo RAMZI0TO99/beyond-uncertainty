@@ -231,6 +231,7 @@ def acceptance_inputs(
         )
     if not baseline:
         raise ValueError("no evaluations; there is nothing to compare")
+    _validate_registered_consumption(baseline, repaired, failure_masks)
     exploratory = sorted({
         e.seed for e in list(baseline) + list(repaired)
         if e.stage != EXPLORATORY_STAGE and not is_confirmatory(e.seed)
@@ -291,6 +292,60 @@ def acceptance_inputs(
         "episode": np.concatenate(episodes),
         "transition": np.concatenate(steps),
     }
+
+
+def _validate_registered_consumption(baseline, repaired, failure_masks) -> None:
+    """Refuse, at the CONSUMER, everything the producer's guards can be handed around.
+
+    Sol's ruling on delta 44: the producer-side rules are accepted, but a caller
+    can construct `ArmEvaluation`s directly and reach label creation without ever
+    passing through `evaluate_arm`. Each clause below is a route by which
+    registered evidence could otherwise be assembled out of material that never
+    satisfied the rule it claims to.
+    """
+    everything = list(baseline) + list(repaired)
+    stages = {e.stage for e in everything}
+    if len(stages) != 1:
+        raise ValueError(
+            f"the evaluations carry mixed stages {sorted(stages)}. One acceptance "
+            "test is one obligation; mixing an exploratory arm into a registered "
+            "comparison would let a probe supply half of a label"
+        )
+    stage = stages.pop()
+    registered = stage != EXPLORATORY_STAGE
+
+    if registered and failure_masks is None:
+        raise ValueError(
+            f"stage {stage!r} is registered but no failure_masks were given. "
+            "Scoring the WHOLE evaluation pool is a diagnostic, not the registered "
+            "acceptance comparison: P§7.2 step 4 evaluates every repair on the "
+            "recorded failure set. `None` is available only on the "
+            f"{EXPLORATORY_STAGE!r} stage"
+        )
+
+    arms = {e.arm for e in repaired}
+    if len(arms) != 1:
+        raise ValueError(
+            f"the repaired list carries {sorted(arms)}. Exactly one repair type per "
+            "call: different repairs are different interventions and pooling them "
+            "would report an effect for a treatment nobody applied"
+        )
+    if "baseline" in arms:
+        raise ValueError("the repaired list carries a baseline arm")
+
+    bad_k = sorted({
+        (e.arm, e.seed, e.ensemble_size) for e in repaired
+        if e.ensemble_size != REPAIR_ENSEMBLE_SIZE
+    })
+    if bad_k:
+        raise ValueError(
+            f"repaired evaluation(s) {bad_k} attest an ensemble size other than "
+            f"{REPAIR_ENSEMBLE_SIZE}. P§14.2 budgets one model per repaired arm and "
+            "the 8,197-fit total is taken at that rate; an evaluation built from a "
+            "five-member ensemble is a different intervention from the budgeted one. "
+            "Checked here as well as at the fit, because an ArmEvaluation can be "
+            "constructed without going through evaluate_arm"
+        )
 
 
 def _validated_masks(failure_masks, baseline) -> dict[int, np.ndarray]:

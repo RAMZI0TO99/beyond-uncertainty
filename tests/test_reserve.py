@@ -127,3 +127,109 @@ def test_a_selection_that_removed_units_would_be_refused(monkeypatch):
     monkeypatch.setattr(R, "select_sweep", shrinking)
     with pytest.raises(RuntimeError, match="removed"):
         R.incremental_draw_order(R.REGISTERED_SWEEP, R.REGISTERED_SWEEP + 2)
+
+
+# --- the guards Sol required before any draw (delta 44) ---------------------
+
+
+def test_a_negative_count_is_refused_rather_than_slicing_the_reserve():
+    """Measured: next_reserve_units(0, -1) returned 119 of 120 units.
+
+    A list slice with a negative index is silently almost-everything. Asking for
+    -1 unit and receiving the entire reserve minus one is the worst possible
+    reading of an out-of-range request.
+    """
+    with pytest.raises(ValueError, match="must not be negative"):
+        R.next_reserve_units(0, -1)
+
+
+@pytest.mark.parametrize("bad", [2, -1, 7])
+def test_a_class_outside_the_two_intended_ones_is_refused(bad):
+    with pytest.raises(ValueError, match="not one of"):
+        R.next_reserve_units(bad, 1)
+
+
+@pytest.mark.parametrize("bad", [1.5, "3", None, True])
+def test_a_non_integer_count_is_refused(bad):
+    with pytest.raises(TypeError):
+        R.next_reserve_units(0, bad)
+
+
+@pytest.mark.parametrize("bad", [1.0, "0", None])
+def test_a_non_integer_class_is_refused(bad):
+    with pytest.raises(TypeError):
+        R.next_reserve_units(bad, 1)
+
+
+def test_zero_is_a_legitimate_draw():
+    """Refusing negatives must not also refuse the empty draw."""
+    assert R.next_reserve_units(0, 0) == ()
+
+
+def test_an_edited_predeclaration_is_refused_by_digest(tmp_path, monkeypatch):
+    """THE guard that makes this a predeclaration rather than a file.
+
+    Without it, editing the JSON silently redefines a commitment made in
+    advance: the file would still load, still be self-consistent, and still be
+    called the predeclared order.
+    """
+    import json
+
+    order = R.load_reserve_order()
+    order["draw_order_all"][0] = "tampered0000"
+    forged = tmp_path / "reserve_order.json"
+    forged.write_text(json.dumps(order, indent=2), encoding="utf-8")
+    monkeypatch.setattr(R, "PREDECLARATION", forged)
+    with pytest.raises(ValueError, match="not the same document"):
+        R.load_reserve_order()
+
+
+def test_the_frozen_digest_matches_the_committed_file():
+    """If this fails, either the file changed or the constant was not updated."""
+    import hashlib
+
+    actual = hashlib.sha256(R.PREDECLARATION.read_bytes()).hexdigest()
+    assert actual == R.PREDECLARED_DIGEST
+
+
+@pytest.mark.parametrize("mutate, match", [
+    (lambda o: o.pop("n_reserve"), "missing field"),
+    (lambda o: o.__setitem__("registered_sweep", 999), "different point"),
+    (lambda o: o.__setitem__("n_reserve", 7), "n_reserve says"),
+    # n_reserve is bumped too, so the DUPLICATE clause is what fires rather
+    # than the count clause -- otherwise this would pass without ever
+    # reaching the check it names.
+    (lambda o: (o["draw_order_all"].append(o["draw_order_all"][0]),
+                o.__setitem__("n_reserve", o["n_reserve"] + 1)), "duplicate"),
+    (lambda o: o["draw_order_by_intended_class"].__setitem__("2", []), "keyed"),
+])
+def test_a_structurally_invalid_predeclaration_is_refused(tmp_path, monkeypatch, mutate, match):
+    """Schema, counts, uniqueness, partition and sweep, each checked."""
+    import json
+
+    order = R.load_reserve_order()
+    mutate(order)
+    forged = tmp_path / "reserve_order.json"
+    forged.write_text(json.dumps(order, indent=2), encoding="utf-8")
+    monkeypatch.setattr(R, "PREDECLARATION", forged)
+    monkeypatch.setattr(
+        R, "PREDECLARED_DIGEST",
+        __import__("hashlib").sha256(forged.read_bytes()).hexdigest(),
+    )
+    with pytest.raises(ValueError, match=match):
+        R.load_reserve_order()
+
+
+def test_a_class_order_that_does_not_partition_the_whole_is_refused(tmp_path, monkeypatch):
+    """A shortfall must not be fillable from a unit the predeclaration never named."""
+    import hashlib, json
+
+    order = R.load_reserve_order()
+    order["draw_order_by_intended_class"]["0"] = order["draw_order_by_intended_class"]["0"][:-1]
+    forged = tmp_path / "reserve_order.json"
+    forged.write_text(json.dumps(order, indent=2), encoding="utf-8")
+    monkeypatch.setattr(R, "PREDECLARATION", forged)
+    monkeypatch.setattr(R, "PREDECLARED_DIGEST",
+                        hashlib.sha256(forged.read_bytes()).hexdigest())
+    with pytest.raises(ValueError, match="do not partition"):
+        R.load_reserve_order()
