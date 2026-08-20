@@ -1210,3 +1210,35 @@ Sol's recommendation, adopted: **continue with the unchanged design and an expli
 **Data seen:** none. **Compute: zero.** Not executed.
 **Plan ref:** P§10.1, S§W4 Fri, D-034, D-035, D-061, C-007, C-010.
 **Reviewed by Sol:** **not yet — this is the pre-execution review Sol asked for.**
+
+### D-091 · 2026-08-20 · C-008 — the confirmatory runner, and the bypass it was asked to close
+**Decision:** Built `src/bu/experiments/confirmatory.py`. Sol raised C-008 at the certification of `2875e60`; it has blocked confirmatory execution and repair validation since, and Sol's delta-42 ruling named it again as a precondition for any repair-validation evidence.
+
+**The bypass is closed at the resampling site, not at the entry point.** `train_ensemble` guarded the granularity rule, and its own docstring said honestly that this was "a guard on THIS entry point, not proof that every confirmatory path is closed: `bootstrap_episodes()` plus `train(train_index=...)` still bypasses it." That candour is why it was findable. The rule now lives inside `bootstrap_episodes`, which every resampling path must go through, and **`seed` is a required argument** there — a caller cannot resample without declaring whose seed it is, which is what makes the rule unroutable-around rather than merely stated. The entry-point guard is kept as the earlier, better-situated refusal.
+
+**The change found real misuse in the existing suite.** `tests/test_ensemble.py` exercised `granularity="transition"` and `"none"` on **seed 1000 — a confirmatory seed** — and nothing objected, because the guard sat one layer away. Those are labelled development sensitivities (D-054); the tests now declare development seeds, which is what they always meant.
+
+**What the runner owns**, each structural or refused rather than requested: episode bootstrap only — **there is no `granularity` parameter at all**, since a parameter accepting one value invites a caller to pass another and reads as a knob; confirmatory seeds only, refused *before* any fit because a development fit that reaches an analysis has already spent its compute and already carries its identity; registered stage and arm, with `pilot` refused outright; matching pools via `assert_pools_match`; and complete run records carrying the canonical `Config`, derived identities, granularity actually used, evaluation-pool digest (of **contents**, not of a label), normalisation, `metric_schema_version` read from the gate rather than self-attested, and threading for contract v2.
+
+**A test caught a real omission during the build**: `metric_schema_version` was absent from the emitted record, so the evidence contract could not have verified a confirmatory run. Added.
+
+The runner decides nothing. It fits, scores and records; verdicts are `bu.stats` and labels are the repair path. A runner that also judged would be where a rule could quietly relax to make a number appear.
+**Tests:** 693 passing, 2 skipped, 1 xfailed (19 new).
+**Data seen:** none. One tiny synthetic fit in a temp directory; no registered run, no logged result.
+**Plan ref:** D-053, D-054, D-056, D-057, D-061, D-072, C-007, C-008.
+**Reviewed by Sol:** **not yet.**
+
+### D-092 · 2026-08-20 · C-003 — the reserve draw order, predeclared before it is needed
+**Decision:** Predeclared the D-031 reserve draw order and committed it as `reserve_order.json`. **231 reserve units — 120 of intended class 0, 111 of class 1** — beyond the registered 225-unit sweep.
+
+**Why a predeclaration at all.** D-031 keeps the design balanced 150/150 on *intended* class and refuses to over-sample against expected differential exclusion, because expected exclusion is a guess and over-sampling from a guess is the unreported degree of freedom P§10.6 exists to prevent. The contingency is a reserve whose **order is fixed in advance**, so a Gate 2 shortfall is filled by a rule written before anyone knew which class survived. Drawing after seeing which class survived is not a contingency; it is a choice.
+
+**The derivation, and a property that had to be measured rather than assumed.** The obvious reading — "the reserve is the continuation of `select_sweep`'s returned order" — is **wrong, and silently so**. Measured: `select_sweep(k)` is a strict **superset** of `select_sweep(k−1)`, adding exactly one unit and removing none at every step; but it is **not prefix-stable** — the returned *order* changes between calls, so `select_sweep(k)[:225] ≠ select_sweep(225)`. Reading a draw order off list position would therefore have produced a plausible, deterministic, and wrong commitment. The order is defined instead by the **set difference at each step**, which is stable. Measured further: admitted units **alternate intended class**, so splitting the sequence by class yields a balanced per-class order — which is what D-031 needs, since a shortfall is always in one class and the other's excess cannot repair it.
+
+**Made structural, not promised.** `next_reserve_units(intended_class, n)` takes a class and a count **and nothing else** — there is no parameter through which critic performance, repair-verified labels or observed class survival could reach it, so "without inspecting critic performance" is a property of the signature. Over-drawing past the predeclared depth is **refused**, because extending the reserve after seeing a shortfall is choosing rather than drawing. The order is **read from the committed file, never recomputed**: a predeclaration regenerated on demand would let a later change to `select_sweep` silently rewrite a commitment made in advance. A cheap prefix test detects exactly that drift and says the predeclaration stands.
+
+**Nothing may be built on this order until Sol rules** — that is what makes it a predeclaration (C-003).
+**Tests:** 705 passing, 2 skipped, 1 xfailed (12 new).
+**Data seen:** none. The design matrix only.
+**Plan ref:** P§10.4, P§10.6, P§10.7, P§7.4. Implements D-031's outstanding item.
+**Reviewed by Sol:** **not yet — this is a predeclaration and goes to Sol before anything is built on it.**

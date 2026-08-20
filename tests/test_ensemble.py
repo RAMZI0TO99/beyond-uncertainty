@@ -14,6 +14,8 @@ across members so their errors can be compared at all.
 from __future__ import annotations
 
 import numpy as np
+
+from bu import constants as K
 import pytest
 import torch
 
@@ -36,9 +38,19 @@ def _pools(unit):
     return collect_pools(unit, stage="exp1", seed=1000)
 
 
-def _boot(unit, pools, member=0, **kw):
+def _boot(unit, pools, member=0, seed=1000, **kw):
+    """Resample the training pool.
+
+    `seed` is explicit because `bootstrap_episodes` now enforces D-053 at the
+    resampling site: the transition and initialisation-only schemes are
+    DEVELOPMENT sensitivities (D-054), so a test exercising them must say so with
+    a development seed rather than borrowing the confirmatory default. Before
+    C-008 these tests ran non-episode granularity on seed 1000 and nothing
+    objected, which is precisely the hole that guard closes.
+    """
     return bootstrap_episodes(
-        pools.train, stream(unit, "exp1", "bootstrap", 1000, member=member), **kw
+        pools.train, stream(unit, "exp1", "bootstrap", seed, member=member),
+        seed=seed, **kw
     )
 
 
@@ -192,7 +204,9 @@ def test_transition_bootstrap_retains_nearly_every_episode():
     pools = _pools(unit)
     total = len(episode_indices(pools.train))
 
-    by_transition = _boot(unit, pools, granularity="transition")
+    # Development seed: this scheme is a labelled secondary sensitivity and
+    # is refused on confirmatory seeds (D-053, enforced by C-008).
+    by_transition = _boot(unit, pools, seed=0, granularity="transition")
     by_episode = _boot(unit, pools, granularity="episode")
     assert len(np.unique(pools.train.episode[by_transition])) > 0.9 * total
     assert len(np.unique(pools.train.episode[by_episode])) < 0.8 * total
@@ -203,7 +217,7 @@ def test_an_initialisation_only_ensemble_uses_the_whole_pool():
     resampling rather than blurring the two."""
     unit = _unit()
     pools = _pools(unit)
-    index = _boot(unit, pools, granularity="none")
+    index = _boot(unit, pools, seed=0, granularity="none")
     assert np.array_equal(index, np.arange(len(pools.train)))
 
 
@@ -211,7 +225,7 @@ def test_an_unknown_granularity_is_rejected():
     unit = _unit()
     pools = _pools(unit)
     with pytest.raises(ValueError, match="unknown bootstrap granularity"):
-        _boot(unit, pools, granularity="weekly")
+        _boot(unit, pools, seed=0, granularity="weekly")
 
 
 def test_the_bootstrap_ratio_is_respected():
@@ -222,3 +236,31 @@ def test_the_bootstrap_ratio_is_respected():
     assert len(np.unique(pools.train.episode[half])) < total
     with pytest.raises(ValueError, match="ratio must be positive"):
         _boot(unit, pools, ratio=0.0)
+
+
+def test_the_confirmatory_rule_is_enforced_where_resampling_HAPPENS():
+    """C-008 closes the bypass `train_ensemble`'s docstring used to confess.
+
+    The rule used to live only at the `train_ensemble` entry point, so
+    `bootstrap_episodes()` + `train(train_index=...)` walked around it. It now
+    lives at the resampling site, which every path must go through. Asserted on
+    the low-level function directly -- testing it via `train_ensemble` would
+    only re-test the outer guard and prove nothing about the hole.
+    """
+    unit = _unit()
+    pools = _pools(unit)
+    for bad in ("transition", "none"):
+        with pytest.raises(ValueError, match="on confirmatory seed"):
+            _boot(unit, pools, seed=K.CONFIRMATORY_SEED_BASE, granularity=bad)
+    # ...and the development path is untouched.
+    assert len(_boot(unit, pools, seed=0, granularity="transition")) > 0
+
+
+def test_bootstrap_episodes_cannot_be_called_without_declaring_a_seed():
+    """Required, not defaulted: an omitted seed would silently reopen the hole."""
+    unit = _unit()
+    pools = _pools(unit)
+    with pytest.raises(TypeError):
+        bootstrap_episodes(pools.train,
+                           stream(unit, "exp1", "bootstrap", 0, member=0),
+                           granularity="transition")

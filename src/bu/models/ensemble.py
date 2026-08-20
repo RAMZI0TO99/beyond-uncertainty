@@ -244,10 +244,22 @@ def bootstrap_episodes(
     dataset: TransitionDataset,
     rng: np.random.Generator,
     *,
+    seed: int,
     granularity: Granularity = "episode",
     ratio: float = 1.0,
 ) -> np.ndarray:
     """Transition indices for one member's resample of the **training** pool.
+
+    **The confirmatory rule lives here, not only at `train_ensemble`.** It used
+    to sit at that entry point alone, which left `bootstrap_episodes()` plus
+    `train(train_index=...)` as a way around it -- and the docstring there said
+    so honestly rather than claiming a closure it did not have. The guard has
+    moved to where the resampling actually happens, so there is no path that
+    resamples a confirmatory pool without passing it (C-008, D-053, D-056).
+
+    `seed` is **required** for that reason: a caller cannot resample without
+    declaring whose seed it is, which is what makes the rule unroutable-around
+    rather than merely stated.
 
     Args:
         granularity: ``"episode"`` draws whole episodes with replacement -- a
@@ -260,6 +272,15 @@ def bootstrap_episodes(
     """
     if ratio <= 0:
         raise ValueError(f"bootstrap ratio must be positive, got {ratio}")
+    if granularity != "episode" and is_confirmatory(seed):
+        raise ValueError(
+            f"granularity={granularity!r} on confirmatory seed {seed}. Episode "
+            "block bootstrap is the fixed primary method for H1 and H2 (D-053). "
+            "The other schemes are development diagnostics from the W3 Friday "
+            "pilot, are not in the 8,197-fit plan (D-054), and are not part of "
+            "Config or run identity -- so a non-primary confirmatory fit would "
+            "occupy the same recorded identity as the primary one."
+        )
 
     if granularity == "transition":
         n = max(1, int(round(len(dataset) * ratio)))
@@ -437,10 +458,10 @@ def train_ensemble(
             "and are not in the 8,197-fit plan (D-054). They are also not part "
             "of Config or run identity, so a non-primary confirmatory fit would "
             "occupy the same recorded identity as the primary one.\n\n"
-            "Note this is a guard on THIS entry point, not proof that every "
-            "confirmatory path is closed: bootstrap_episodes() plus "
-            "train(train_index=...) still bypasses it. The confirmatory runner "
-            "must own the rule when it exists (D-056)."
+            "Kept as the earlier, better-situated refusal. The rule itself now "
+            "lives in bootstrap_episodes(), which every resampling path must go "
+            "through, so this is defence in depth rather than the only guard "
+            "(C-008)."
         )
 
     members: list[WorldModel] = []
@@ -450,6 +471,7 @@ def train_ensemble(
         index = bootstrap_episodes(
             pools.train,
             stream(unit, stage, "bootstrap", seed, member=k),
+            seed=seed,
             granularity=granularity,
             ratio=config.bootstrap_ratio,
         )

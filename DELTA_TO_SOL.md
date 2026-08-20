@@ -23,10 +23,11 @@ EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 43 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 43 and 44, two accumulated (D-008).
 >
 > COVERS SESSIONS:
 > - 2026-08-20 (W5 closeout) · Sol's rulings actioned, and a null that was hiding a defect
+> - 2026-08-20 (W5 closeout, continued) · C-008 and C-003, the last unblocked work
 
 ```
 === UPDATE FOR SOL ===
@@ -272,5 +273,113 @@ GATE 1
 WHAT I NEED FROM YOU: question 1 (the model's conservatism) and questions
 2a/2b (the percentile and the reference-model definition). Nothing else is
 blocked. W4 Friday is built and stopped.
+=== END UPDATE ===
+```
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 44
+PREVIOUS_DELTA_ID: 43
+DATE: 2026-08-20
+BUNDLE_FILE: SOL_BUNDLE.txt
+SUBJECT: C-008 and C-003 done -- the last work that needed no ruling from you.
+         Everything now waits on you. Two derivations were wrong in ways that
+         would have been silent.
+
+--------------------------------------------------------------------
+C-008 -- THE CONFIRMATORY RUNNER. THE BYPASS IS CLOSED AT THE RESAMPLING SITE.
+
+You raised this at 2875e60's certification and named it again in your delta-42
+ruling as a precondition for any repair-validation evidence. It is built:
+src/bu/experiments/confirmatory.py.
+
+THE BYPASS WAS FINDABLE BECAUSE THE CODE CONFESSED IT. train_ensemble's guard
+said, in its own error message: "this is a guard on THIS entry point, not proof
+that every confirmatory path is closed: bootstrap_episodes() plus
+train(train_index=...) still bypasses it." That candour is the only reason it
+was still visible. The rule now lives INSIDE bootstrap_episodes, which every
+resampling path must go through, and SEED IS A REQUIRED ARGUMENT there -- a
+caller cannot resample without declaring whose seed it is. The entry-point guard
+stays as the earlier, better-situated refusal.
+
+IT IMMEDIATELY CAUGHT REAL MISUSE IN MY OWN SUITE. tests/test_ensemble.py had
+been running granularity="transition" and "none" on SEED 1000 -- a CONFIRMATORY
+seed -- and nothing objected, because the guard sat one layer away from where
+the resampling happened. Those are labelled development sensitivities (D-054);
+the tests now declare development seeds, which is what they always meant.
+
+The runner owns your five rules structurally, not by request:
+  - episode bootstrap only -- there is NO granularity parameter at all. A
+    parameter that accepts one value invites a caller to pass another and reads
+    as a knob
+  - confirmatory seeds only, refused BEFORE any fit: a development fit that
+    reaches an analysis has already spent its compute and already carries its
+    identity
+  - registered stage and arm; "pilot" refused outright
+  - matching pools via assert_pools_match
+  - complete run records: canonical Config, derived identities, the granularity
+    ACTUALLY used, evaluation-pool digest of CONTENTS not of a label,
+    normalisation, metric_schema_version read from the gate rather than
+    self-attested, threading for contract v2
+
+A test caught metric_schema_version missing from the emitted record while I was
+building it -- a confirmatory run would have been unverifiable by the very
+contract we spent four rounds building.
+
+The runner decides nothing. It fits, scores and records.
+
+--------------------------------------------------------------------
+C-003 -- THE RESERVE ORDER, PREDECLARED. AND THE OBVIOUS DERIVATION WAS WRONG.
+
+reserve_order.json, committed: 231 reserve units, 120 of intended class 0 and
+111 of class 1, beyond the registered 225-unit sweep.
+
+I nearly wrote the wrong thing. The obvious reading is "the reserve is the
+continuation of select_sweep's returned order". MEASURED, THAT IS WRONG AND
+WOULD HAVE BEEN SILENTLY WRONG:
+
+  select_sweep(k) IS a strict superset of select_sweep(k-1) -- exactly one unit
+                     added, none removed, at every step measured
+  select_sweep(k) IS NOT prefix-stable -- the returned ORDER changes between
+                     calls, so select_sweep(k)[:225] != select_sweep(225)
+
+So reading a draw order off list position yields a plausible, deterministic and
+incorrect commitment -- and being a predeclaration, nobody would ever have had
+cause to recheck it. The order is defined instead by the SET DIFFERENCE at each
+step, which is stable. Measured further: admitted units ALTERNATE intended
+class, so splitting by class gives a balanced per-class draw order -- which is
+what D-031 needs, since a shortfall is always in one class and the other's
+excess cannot repair it.
+
+MADE STRUCTURAL RATHER THAN PROMISED:
+  next_reserve_units(intended_class, n) takes a class and a count AND NOTHING
+  ELSE. There is no parameter through which critic performance, repair-verified
+  labels or observed class survival could reach it, so your "without inspecting
+  critic performance" is a property of the signature.
+  Over-drawing past the predeclared depth is REFUSED: extending a reserve after
+  seeing a shortfall is choosing, not drawing.
+  The order is READ from the committed file, never recomputed -- a
+  predeclaration regenerated on demand lets a later change to select_sweep
+  silently rewrite a commitment made in advance. A cheap prefix test detects
+  exactly that drift and says the predeclaration stands rather than quietly
+  adopting the new order.
+
+THIS IS A PREDECLARATION, so nothing is built on it and nothing will be until
+you have ruled.
+
+--------------------------------------------------------------------
+NUMBERS (D-011)
+
+  tests             672 -> 705 passing, 2 skipped, 1 xfailed
+                    (+19 confirmatory, +12 reserve, +2 bypass regressions)
+  reserve depth     231 units: 120 intended class 0, 111 class 1
+  compute           ZERO beyond one tiny synthetic fit in a temp directory.
+                    No registered run, no logged result, no data seen.
+  certified base    ca545ed, unchanged.
+
+THERE IS NOW NO UNBLOCKED WORK LEFT. Waiting on you: W4 Friday's percentile and
+reference-model definition (delta 43), the acceptance model's conservatism
+(delta 43), the Gate 1 verdict behind it, repair validation, and anything built
+on the reserve order above.
 === END UPDATE ===
 ```
