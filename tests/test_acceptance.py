@@ -603,3 +603,63 @@ def test_the_result_language_is_not_a_mixed_model_claim():
     assert "equal-seed mean paired difference" in text
     assert "fixed effect" not in text
     assert "mixedlm" not in text and result.method == "paired_seed_cluster"
+
+
+# --- non-finite input, refused at the boundary (Sol, delta 47) --------------
+#
+# Measured BEFORE this guard, on a clean 20-seed 35%-repair input:
+#   an entire seed of NaN  -> effect and interval both moved, n_seeds still 20
+#   37 scattered NaN rows  -> n_transitions still reported 3,200
+#   +inf and -inf          -> both silently absorbed to the SAME finite answer
+# pandas drops non-finite observations while pivoting and grouping, so the
+# registered seed-set guard passes and the replication set shrinks afterwards.
+
+
+@pytest.mark.parametrize("arm, label", [(0, "baseline"), (1, "repaired")])
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+def test_non_finite_errors_are_refused_on_either_arm(arm, label, value):
+    e, r, s, ep, tr = synthetic(reduction=0.35, rng=np.random.default_rng(0))
+    e = e.copy()
+    e[np.flatnonzero(r == arm)[:5]] = value
+    with pytest.raises(ValueError, match="NaN and .* infinite error value"):
+        acceptance_test(e, r, s, ep, tr)
+
+
+def test_a_whole_non_finite_seed_is_refused_rather_than_shrinking_the_interval():
+    """The case that mattered: it changed the answer and still reported 20 seeds."""
+    e, r, s, ep, tr = synthetic(reduction=0.35, rng=np.random.default_rng(0))
+    e = e.copy()
+    e[s == 7] = np.nan
+    with pytest.raises(ValueError, match="label-creation boundary"):
+        acceptance_test(e, r, s, ep, tr)
+
+
+def test_the_refusal_names_both_kinds_of_non_finite():
+    e, r, s, ep, tr = synthetic(reduction=0.35, rng=np.random.default_rng(0))
+    e = e.copy()
+    e[0] = np.nan
+    e[1] = np.inf
+    with pytest.raises(ValueError) as excinfo:
+        acceptance_test(e, r, s, ep, tr)
+    assert "1 NaN" in str(excinfo.value) and "1 infinite" in str(excinfo.value)
+
+
+def test_the_paired_differences_preserve_every_validated_pair():
+    """The row count must survive the pivot, not be aggregated down."""
+    from bu.stats import acceptance as A
+
+    data = A._frame(*synthetic(reduction=0.0, rng=np.random.default_rng(1)))
+    paired = A.paired_differences(data)
+    assert len(paired) == data["pair"].nunique() == len(data) // 2
+
+
+def test_the_seed_set_survives_the_transformation():
+    """A statistical transformation must not reduce the registered replication set."""
+    e, r, s, ep, tr = synthetic(reduction=0.35, rng=np.random.default_rng(0))
+    result = acceptance_test(e, r, s, ep, tr)
+    assert result.n_seeds == len(set(s)) == 20
+    # The degrees of freedom the interval was actually formed on.
+    from scipy import stats
+    half = (result.ci_high - result.ci_low) / 2
+    se = half / stats.t.ppf(0.975, result.n_seeds - 1)
+    assert np.isfinite(se) and se > 0

@@ -73,7 +73,7 @@ class AcceptanceResult:
     """A repair's verdict, with everything needed to report it honestly."""
 
     #: The **equal-seed mean paired difference**, repaired minus baseline. Not a
-    #: a fixed effect from a mixed model (D-100) -- nothing is being fitted.
+    #: fixed effect from a mixed model (D-100) -- nothing is being fitted.
     effect: float
     ci_low: float
     ci_high: float
@@ -140,6 +140,19 @@ def _frame(errors, repair, seed, episode, transition) -> pd.DataFrame:
         )
     if not len(errors):
         raise ValueError("no transitions; a mean over nothing is nan")
+    if not np.all(np.isfinite(errors)):
+        n_nan = int(np.isnan(errors).sum())
+        n_inf = int(np.isinf(errors).sum())
+        raise ValueError(
+            f"{n_nan} NaN and {n_inf} infinite error value(s). Refused at the "
+            "label-creation boundary rather than carried: pandas drops non-finite "
+            "observations during pivoting and grouping, so a registered input can "
+            "pass the 20-seed guard and then lose transitions -- or a whole seed -- "
+            "inside the statistical transformation, while the result still reports "
+            "20 seeds. Measured before this guard: an entire seed of NaN changed "
+            "the effect and the interval and reported n_seeds=20 regardless, and "
+            "+inf and -inf were both silently absorbed to the same finite answer"
+        )
     if set(np.unique(repair)) - {0, 1, True, False}:
         raise ValueError(
             f"repair must be a 0/1 indicator, got values {np.unique(repair)}"
@@ -286,10 +299,17 @@ def paired_differences(data: pd.DataFrame) -> pd.DataFrame:
     cancels here, before any averaging. That cancellation IS the Change Record
     (D-094); the old model charged the shared difficulty to residual variance.
     """
-    wide = data.pivot_table(
-        index=["seed", "episode", "pair"], columns="repair", values="error"
-    )
+    # `pivot`, not `pivot_table`: pairing uniqueness is validated in `_frame`, so
+    # there is nothing to aggregate -- and an aggregating pivot would quietly
+    # average away a duplicate pair instead of raising on it (Sol, delta 47).
+    wide = data.pivot(index=["seed", "episode", "pair"], columns="repair", values="error")
     out = (wide[1.0] - wide[0.0]).rename("difference").reset_index()
+    expected = data["pair"].nunique()
+    if len(out) != expected:
+        raise AssertionError(
+            f"{len(out)} paired differences from {expected} validated pairs; the "
+            "pivot changed the number of rows"
+        )
     return out
 
 
@@ -325,6 +345,24 @@ def _paired_seed_cluster(data, counts, unrepaired_mean) -> AcceptanceResult:
     paired = paired_differences(data)
     per_seed = paired.groupby("seed")["difference"].mean()
     n = int(per_seed.size)
+
+    # A statistical transformation must never silently reduce the registered
+    # replication set (Sol, delta 47). Non-finite input is already refused in
+    # `_frame`; this catches any other route by which a seed could vanish
+    # between the input and the interval.
+    input_seeds = set(data["seed"].unique())
+    if set(per_seed.index) != input_seeds:
+        lost = sorted(input_seeds - set(per_seed.index))
+        raise AssertionError(
+            f"seed(s) {lost} present in the input but absent after grouping. The "
+            "interval would have been formed on fewer seeds than the result reports"
+        )
+    if not np.all(np.isfinite(per_seed.to_numpy())):
+        bad = sorted(per_seed.index[~np.isfinite(per_seed.to_numpy())])
+        raise AssertionError(
+            f"seed mean(s) for {bad} are not finite; the interval cannot be formed "
+            "on them and dropping them would reduce the degrees of freedom silently"
+        )
 
     def refuse(reason: str) -> AcceptanceResult:
         return AcceptanceResult(

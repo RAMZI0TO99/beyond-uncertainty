@@ -276,6 +276,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-099** | 2026-08-20 | Audit of W4/W5 — probed; two findings on the threshold's balancing rule | **Audit** |
 | **D-100** | 2026-08-20 | Sol's delta-45 corrections; D-094's theoretical claim narrowed | Sol's items |
 | **D-101** | 2026-08-20 | Sol's delta-46 closeout — a stage hole in my own guard, reproduced then fixed | Sol's finding |
+| **D-102** | 2026-08-20 | Fail-closed on non-finite errors — a seed could vanish while n_seeds said 20 | Sol's finding |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -467,3 +468,11 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **37 archived, 1 kept
 Also: `allow_fallback` removed entirely (it survived the fallback it was named after, defaulting to True and ignored); the wording cleanup finished, with the one surviving description of the old model marked as superseded history; `recompute_threshold` extended to nine further record-integrity fields including each cell's transition count against its array length; and the stale balancing question removed from the delta, which had been saying the issue was settled and asking Sol to settle it.
 
 **Tests:** 786 → **801 passing**, 2 skipped, 0 xfailed. **Gate 1 FAIL, the seed-cluster analysis and the balancing rule are settled and not revisited. W4 Friday remains stopped.**
+
+### 2026-08-20 (W5 Sat, micro-closeout) · A seed could vanish and the result still said twenty · Claude
+
+**Sol's delta-47 guard** (D-102), reproduced before fixing. `_frame` accepted non-finite errors and pandas drops them while pivoting and grouping — so a registered input could clear the 20-seed guard and then lose transitions, or a whole seed, inside the transformation. Measured: one seed of NaN moved the effect (−0.035383 against a clean −0.035657) and the interval, while `n_seeds` **still reported 20**; 37 scattered NaNs left `n_transitions` reporting 3,200. Worse than Sol stated: **+inf and −inf were both absorbed to the same finite answer**, so an upstream sign error would have been invisible.
+
+Guarded at three layers — `_frame` refuses non-finite input outright, `paired_differences` uses `pivot` rather than `pivot_table` and asserts the row count against the validated pair count, and the seed means are checked to match the input seed set exactly. Ten tests. Also fixed a doubled word of my own that spanned a line break.
+
+**Tests:** 801 → **811 passing**, 2 skipped, 0 xfailed. **W4 Friday remains stopped.**

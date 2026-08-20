@@ -19,7 +19,7 @@ EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 47 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 48 (D-008).
 >
 > COVERS SESSIONS:
 > - 2026-08-20 (W5 closeout) · Sol's rulings actioned, and a null that was hiding a defect
@@ -28,21 +28,62 @@ EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 > - 2026-08-20 (W5 Sat) · Sol's whole ruling actioned; Gate 1 signed off FAIL
 > - 2026-08-20 (W5 Sat, correction pass) · Sol's delta-45 corrections
 > - 2026-08-20 (W5 Sat, closeout patch) · A hole in my own guard
+> - 2026-08-20 (W5 Sat, micro-closeout) · A seed could vanish and the result still said twenty
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 47
+DELTA_ID: 48
 PREVIOUS_DELTA_ID: 42
-CONSOLIDATES_DELTA_IDS: 43, 44, 45, 46
+CONSOLIDATES_DELTA_IDS: 43, 44, 45, 46, 47
 DATE: 2026-08-20
 BUNDLE_FILE: SOL_BUNDLE.txt
-SUBJECT: Your delta-46 closeout patch is done, including the acceptance-consumer
-         stage hole -- which I reproduced before fixing. 801 passing, no xfail.
+SUBJECT: Your delta-47 non-finite guard is in, reproduced first -- and one part
+         was worse than you stated. 811 passing, no xfail.
 
 NOTE ON IDS: deltas 43 and 44 were written but never delivered, and your
 ruling has since answered or superseded most of what they asked. Consolidated
 here rather than sent alongside, so you read one coherent document instead of
 three that contradict each other. Nothing in them is dropped.
+
+--------------------------------------------------------------------
+000. YOUR DELTA-47 NON-FINITE GUARD. REPRODUCED FIRST.
+
+You were right, and one part is worse than you stated. Measured on a clean
+20-seed 35%-repair input, BEFORE the guard:
+
+  one entire seed set to NaN   effect -0.035383 vs a clean -0.035657,
+                               interval half-width 0.003725 vs 0.003568,
+                               and n_seeds STILL REPORTED 20
+  37 scattered NaN rows        n_transitions STILL REPORTED 3,200
+  +inf AND -inf                BOTH silently absorbed to the SAME finite
+                               answer -- neither the clean value nor an error
+
+That last one is the part you did not state: the two infinities are
+INDISTINGUISHABLE in the output, so a sign error in an upstream error
+computation would have been invisible. And the interval could have been formed
+on nineteen seeds while the result claimed twenty -- at the boundary where
+every repair label in the thesis is created.
+
+THREE GUARDS, AT THREE LAYERS:
+  _frame               refuses any non-finite error outright, naming the NaN
+                       and infinite counts separately
+  paired_differences   uses pivot() rather than pivot_table() as you preferred
+                       -- pairing uniqueness is already validated so there is
+                       nothing to aggregate, and an aggregating pivot would
+                       quietly average away a duplicate pair instead of raising
+                       -- and asserts the row count equals the validated pair
+                       count
+  _paired_seed_cluster asserts the post-grouping seed set EXACTLY equals the
+                       input seed set and that every seed mean is finite, so
+                       any other route by which a seed could vanish between
+                       input and interval also fails closed
+
+Ten tests: NaN and both infinities on each arm independently, a whole
+non-finite seed, a refusal naming both kinds, pair-count preservation through
+the pivot, and the seed set surviving the transformation.
+
+The "a a fixed effect" typo was mine, and it spanned a line break -- which is
+why it survived a grep for the phrase. Fixed.
 
 --------------------------------------------------------------------
 00. YOUR DELTA-46 CLOSEOUT PATCH. ALL FIVE ITEMS DONE.
@@ -291,7 +332,7 @@ error 1.2500 -> 0.5045 (-59.6%).
 --------------------------------------------------------------------
 NUMBERS (D-011)
 
-  tests             786 -> 801 passing, 2 skipped, 0 XFAILED
+  tests             801 -> 811 passing, 2 skipped, 0 XFAILED
   acceptance model  7 ms/fit vs 231 s for the literal specification
   calibration       5-7/200 statistical-only (admissible 1-10) at every
                     pairing strength; 0/200 full rule
@@ -302,8 +343,9 @@ NUMBERS (D-011)
                     threshold calibrated, NO data seen. W4 Friday NOT RUN.
   certified base    ca545ed. ce12998 and everything after NOT promoted.
 
-WHAT I NEED: a ruling on this closeout patch. Gate 1, the paired seed-cluster
-approach and the balancing rule are SETTLED and I am not revisiting any of
-them. W4 FRIDAY REMAINS STOPPED; b2388ca is not promoted; base is ca545ed.
+WHAT I NEED: a ruling on this guard. Gate 1, the paired seed-cluster approach,
+the balancing rule, the threshold runner and the confirmatory runner are all
+SETTLED and I am not revisiting any of them. W4 FRIDAY REMAINS STOPPED;
+46f71d5 is not promoted; base is ca545ed.
 === END UPDATE ===
 ```

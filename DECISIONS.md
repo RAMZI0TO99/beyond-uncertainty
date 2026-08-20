@@ -1440,3 +1440,26 @@ Both carry a registered stage and the correct confirmatory seeds *for that stage
 **Data seen:** none.
 **Plan ref:** P§7.2, P§7.3, P§10.1, D-034, D-071. Implements Sol's delta-46 ruling; corrects D-095 and D-100.
 **Reviewed by Sol:** **not yet — this is the final closeout patch Sol asked for.**
+
+### D-102 · 2026-08-20 · The fail-closed guard on non-finite errors, reproduced first
+**Decision:** Sol's delta-47 micro-closeout. One narrow numerical-input guard; no statistical or balancing ruling reopened.
+
+**REPRODUCED BEFORE FIXING, and one part was worse than reported.** `_frame` accepted non-finite errors, and pandas drops them during `pivot_table` and `groupby().mean()`. So a registered input could pass the 20-seed guard and then lose transitions — or an entire seed — inside the statistical transformation. Measured on a clean 20-seed 35%-repair input:
+
+| input | result |
+|---|---|
+| one entire seed set to NaN | effect **−0.035383** vs a clean **−0.035657**, interval half-width **0.003725** vs **0.003568**, and `n_seeds` **still reported 20** |
+| 37 scattered NaN rows | `n_transitions` **still reported 3,200** |
+| `+inf` and `−inf` | **both silently absorbed to the same finite answer**, neither the clean value nor an error |
+
+The last one is the part Sol did not state: the two infinities are indistinguishable in the output, so a sign error in an upstream error computation would have been invisible. The interval could have been formed on nineteen seeds while the result claimed twenty — at the boundary where every repair label in the thesis is created.
+
+**Three guards, at three layers.** `_frame` refuses any non-finite error outright, naming the NaN and infinite counts separately. `paired_differences` uses `pivot` rather than `pivot_table` — pairing uniqueness is already validated, so there is nothing to aggregate, and an aggregating pivot would quietly average away a duplicate pair instead of raising on it — and asserts the row count equals the validated pair count. `_paired_seed_cluster` then asserts the post-grouping seed set **exactly equals** the input seed set and that every seed mean is finite, so any other route by which a seed could vanish between input and interval also fails closed.
+
+**Ten tests**, covering NaN and both infinities on each arm independently, a whole non-finite seed, a refusal naming both kinds, pair-count preservation through the pivot, and the seed set surviving the transformation.
+
+Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own earlier wording edit and spanning a line break, which is why it survived a grep for the phrase.
+**Tests:** 801 → **811 passing**, 2 skipped, 0 xfailed.
+**Data seen:** none.
+**Plan ref:** P§7.3. Implements Sol's delta-47 ruling; corrects D-094's `_frame`.
+**Reviewed by Sol:** **not yet.**
