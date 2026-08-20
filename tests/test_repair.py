@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 import torch
 
+from bu import constants as K
 from bu.config import Arm, UnitSpec
 from bu.env.collect import collect_pools
 from bu.experiments.repair import (
@@ -92,20 +93,29 @@ def test_feature_repair_really_does_widen_the_encoding():
 def test_a_repaired_arm_without_a_scale_is_refused(arm):
     """D-061: a repaired arm scored in its own units is the defect that ruling closed."""
     with pytest.raises(ValueError, match="was given no scale"):
-        evaluate_arm(UNIT, arm=arm, seed=0)
+        evaluate_arm(UNIT, arm=arm, seed=K.CONFIRMATORY_SEED_BASE)
 
 
 # --- assembling the paired arrays ------------------------------------------
 
 
-def fake(arm, seed, *, n=40, scale=object(), episode=None, step=None):
-    from bu.experiments.repair import ArmEvaluation
+def fake(arm, seed, *, n=40, scale=object(), episode=None, step=None, stage=None):
+    """A synthetic evaluation.
+
+    `stage` defaults to the exploratory one because these ARE fakes, not
+    registered evidence -- and since C-007 the repair path refuses development
+    seeds on a registered stage. Labelling the fixture honestly keeps these
+    mechanics tests about masks and pairing, and leaves the seed policy to the
+    tests written for it below.
+    """
+    from bu.experiments.repair import ArmEvaluation, EXPLORATORY_STAGE
 
     episode = np.arange(n) // 10 if episode is None else episode
     step = np.arange(n) % 10 if step is None else step
     return ArmEvaluation(
         arm=arm, seed=seed, error=np.linspace(1.0, 2.0, n), episode=episode,
         step=step, scale=scale, config_id="c", run_id="r", n_train=100,
+        stage=stage or EXPLORATORY_STAGE,
     )
 
 
@@ -267,7 +277,7 @@ def test_a_repaired_arm_refuses_an_ensemble():
 
     unit = canonical_units()[0]
     with pytest.raises(ValueError, match="budgets 1 model per repaired arm"):
-        evaluate_arm(unit, arm="data_repair", seed=0,
+        evaluate_arm(unit, arm="data_repair", seed=K.CONFIRMATORY_SEED_BASE,
                      train=TrainConfig(ensemble_size=5), scale=object())
 
 
@@ -290,3 +300,65 @@ def test_the_budget_is_taken_at_one_model_per_repair():
     repaired = [f for f in plan if f.arm != "baseline"]
     assert repaired, "no repaired arms in the plan; this test would be vacuous"
     assert all(f.members == REPAIR_ENSEMBLE_SIZE for f in repaired)
+
+
+# --- C-007: the confirmatory guard at the repair-acceptance call site --------
+
+
+def test_a_registered_repair_run_refuses_a_development_seed():
+    """D-034 excludes development seeds from repair acceptance permanently.
+
+    Refused before the fit: a development repair fit that reaches a label has
+    already spent its compute and already carries the identity.
+    """
+    from bu.experiments.repair import evaluate_arm
+    from bu.experiments.enumerate_units import canonical_units
+
+    with pytest.raises(ValueError, match="development data but stage is"):
+        evaluate_arm(canonical_units()[0], arm="baseline", seed=0)
+
+
+def test_a_probe_must_call_itself_a_pilot_rather_than_flip_a_flag():
+    """The policy is tied to the STAGE, not to a boolean a caller can pass.
+
+    D-077 had to close two opt-outs that existed because a caller could say
+    "not this time". A stage already declares which obligation a run discharges,
+    so an exploratory run is labelled rather than exempted -- and it is then
+    visibly not registered evidence.
+    """
+    import inspect
+    from bu.experiments.repair import evaluate_arm
+
+    params = inspect.signature(evaluate_arm).parameters
+    assert "require_confirmatory" not in params
+    assert "allow_development" not in params
+
+
+def test_the_label_is_refused_where_it_would_be_BUILT_not_only_where_it_was_run():
+    """Two layers, because evaluations can be constructed without evaluate_arm.
+
+    `acceptance_inputs` is where a repair label actually comes into existence,
+    so the guard is there as well as at the fit. A check only at the producer
+    would be one the consumer could be handed around.
+    """
+    from bu.experiments.repair import REPAIR_STAGE
+
+    scale = object()
+    with pytest.raises(ValueError, match="development data on a registered stage"):
+        acceptance_inputs(
+            [fake("baseline", 0, scale=scale, stage=REPAIR_STAGE)],
+            [fake("data_repair", 0, scale=scale, stage=REPAIR_STAGE)],
+        )
+
+
+def test_confirmatory_seeds_on_a_registered_stage_are_accepted():
+    """The guard must not refuse the thing it exists to protect."""
+    from bu.experiments.repair import REPAIR_STAGE
+
+    scale = object()
+    s = K.CONFIRMATORY_SEED_BASE
+    out = acceptance_inputs(
+        [fake("baseline", s, scale=scale, stage=REPAIR_STAGE)],
+        [fake("data_repair", s, scale=scale, stage=REPAIR_STAGE)],
+    )
+    assert len(out["errors"]) == 80

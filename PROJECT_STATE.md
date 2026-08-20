@@ -286,6 +286,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-090** | 2026-08-20 | The W4 Friday threshold runner — built, not executed, two choices left open | **For Sol** |
 | **D-091** | 2026-08-20 | C-008 — the confirmatory runner, and the bypass it was asked to close | Deliverable |
 | **D-092** | 2026-08-20 | C-003 — the reserve draw order, predeclared before it is needed | **Predeclaration** |
+| **D-093** | 2026-08-20 | C-007 at the repair-acceptance call site; provenance note corrected | Sol's item |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -380,7 +381,7 @@ Two conditions:
 | C-004 | File the dynamic-target decision; correct the baseline accounting; mark inspected data as pilot; implement named streams; regenerate the Sol bundle | Sol, 2026-08-16 (delta 11) | **Done** → D-032 … D-036 |
 | C-005 | Grouped dataset partitioning for the critic splitter — a comparison group never spans a split | Sol, 2026-08-16 (delta 12) | **Open** — key and report built (D-039); splitter is W6/W11 |
 | ~~C-006~~ | Week 5 MDE simulation: reproduce the **actual paired balanced-accuracy estimator** — real group sizes and class membership, group-preserving partitions, unit weights, paired critic-vs-baseline predictions, ICC grid — and validate against the analytic result at ICC = 0 **and** ICC = 1 | Sol, 2026-08-16 (deltas 12–14) | **Done** → D-078. Both validations pass. **The MDE does not clear five points** — 18–22 pp at the scheduled held-out counts. Awaiting Sol (delta 41) |
-| C-007 | Pass `require_confirmatory=True` in threshold calibration, repair acceptance and every critic loader as each is built | Sol, 2026-08-16 (delta 12) | **Open** — guard built (D-040); call sites are W4–W11 |
+| C-007 | Pass `require_confirmatory=True` in threshold calibration, repair acceptance and every critic loader as each is built | Sol, 2026-08-16 (delta 12) | **Threshold calibration (D-090) and repair acceptance (D-093) done**; critic loaders remain, W6–W11. Tied to the *stage*, never a boolean — a probe labels itself `pilot` rather than exempting itself |
 | ~~C-008~~ | **Build the confirmatory runner**, which must own: episode bootstrap only, registered configuration and arm, matching pools and run identity, confirmatory seed policy, complete run records. `bootstrap_episodes()` + `train(train_index=…)` still bypasses the `train_ensemble` guard | Sol, 2026-08-16 (cert of 2875e60) | **Done** → D-091. The rule moved into `bootstrap_episodes`, where `seed` is now required, so the bypass is closed at the resampling site rather than one layer away. No `granularity` parameter on the runner at all |
 | C-009 | Runner hardening: reject `source_unit is None` in `assert_pools_match()` rather than ignoring it, and check each dataset's `stream_version` against the run's | Sol, 2026-08-16 | **Done** → D-077. Both were opt-outs, and adding them broke no test — nothing had exercised either path |
 | C-011 | ~~**One immutable attempt directory per rung.**~~ `ensemble_size` and `bootstrap_ratio` are non-identity, so a rung-1 run has the *same* `run_id` as the rung-0 run it replaces and `write_run_record` will refuse to overwrite it. Fail-closed and correct, but it must be settled before Wednesday rather than found as a `FileExistsError` mid-run | Claude, 2026-08-18 (D-071) | **Done** → D-072, at the finer granularity Sol ruled: one directory per **rung-spec hash**, `runs/w4_gate/rung-NN-<hash>/attempt-NNN/` |
@@ -483,3 +484,11 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **30 archived, 1 kept
 **Tests:** 672 → **705 passing**, 2 skipped, 1 xfailed. **Compute: zero** beyond one tiny synthetic fit in a temp directory — no registered run, no logged result, no data seen.
 
 **There is now no unblocked work left.** W4 Friday, the Gate 1 verdict, repair validation and anything built on the reserve order all wait on Sol.
+
+### 2026-08-20 (W5 closeout, C-007) · The seed policy reaches repair acceptance · Claude
+
+**C-007's widest remaining hole closed** (D-093). Repair acceptance had **no** confirmatory guard, so the repair path could produce registered repair-validation evidence on development seeds — and repair acceptance is where every label in the thesis is created. Guarded at **both** layers: `evaluate_arm` before the fit, and `acceptance_inputs` where the label actually comes into existence, since evaluations can be constructed without the producer. Tied to the **stage**, not a boolean: a probe must label itself `pilot` rather than exempt itself, because D-077 already had to close two opt-outs that existed for exactly that reason.
+
+**Provenance correction.** The student reports that **an earlier session was interrupted**, which is the likely source of the three files found modified mid-session and recorded as unexplained in the previous entry and in delta 43. Recorded as *reported*, not verified — `list_sessions` returns nothing even including archived sessions. The classification is unchanged and sharpened: an interrupted session leaving uncommitted work is exactly the DEV-005 / D-080 pattern.
+
+**Tests:** 705 → **709 passing**, 2 skipped, 1 xfailed. **Compute: zero.** Still no unblocked work left.

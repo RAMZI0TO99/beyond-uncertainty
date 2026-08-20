@@ -1242,3 +1242,16 @@ The runner decides nothing. It fits, scores and records; verdicts are `bu.stats`
 **Data seen:** none. The design matrix only.
 **Plan ref:** P§10.4, P§10.6, P§10.7, P§7.4. Implements D-031's outstanding item.
 **Reviewed by Sol:** **not yet — this is a predeclaration and goes to Sol before anything is built on it.**
+
+### D-093 · 2026-08-20 · C-007 at the repair-acceptance call site, and a correction to D-091's provenance note
+**Decision (part 1) — the guard.** C-007 requires `require_confirmatory` at threshold calibration, repair acceptance and every critic loader. Threshold calibration got it in D-090; **repair acceptance had none at all**, so the repair path could produce registered repair-validation evidence on development seeds. D-034 excludes those permanently, and repair acceptance is where every label in the thesis is created — so this was the widest remaining hole in the seed policy.
+
+**Tied to the stage, not to a flag.** There is no `require_confirmatory` or `allow_development` parameter, and a test asserts their absence. A stage already declares which obligation a run discharges (D-012), so an exploratory probe must **label itself `pilot`** rather than exempt itself from a rule. D-077 had to close two opt-outs that existed precisely because a caller could say "not this time"; a boolean here would have been a third.
+
+**Guarded at both layers.** `evaluate_arm` refuses before the fit — a development repair fit that reaches a label has already spent its compute and already carries the identity. `acceptance_inputs` refuses again, because that is where a label actually comes into existence and `ArmEvaluation`s can be constructed without going through `evaluate_arm`. A check only at the producer is one the consumer can be handed around, which is the D-071 … D-073 shape.
+
+**Decision (part 2) — correcting the provenance note.** D-091's session entry and delta 43 record three files (`config.py`, `gate.py`, `tests/test_audit_regressions.py`) as modified mid-session by an author neither this session nor any other **visible** one, and flag it as unexplained. The student has since reported that **an earlier session was interrupted**, which is the likely source. This is recorded as *reported*, not verified: `list_sessions` returns nothing even including archived sessions, so nothing available to me confirms it independently. The classification is unchanged and in fact sharpened — an interrupted session leaving uncommitted work in the tree is **exactly** the DEV-005 / D-080 pattern, which is why the tree state is now checked at session start rather than assumed.
+**Tests:** 705 → **709 passing**, 2 skipped, 1 xfailed.
+**Data seen:** none.
+**Plan ref:** D-034, D-012, D-077, C-007. Corrects the provenance note in D-091 and delta 43.
+**Reviewed by Sol:** **not yet.**

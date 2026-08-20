@@ -2,17 +2,13 @@
 
 **This file is what the student pastes to Sol.** Nothing else.
 
-It accumulates until delivered (D-008) and is only then replaced. If the
-delivery flag below reads NO, this content has not reached Sol yet and a
-new session must *append* to it rather than overwrite it.
-
-Deltas 1–7 and 10–42 are in `PROJECT_STATE_ARCHIVE.md`. Deltas 8 and 9 never
-existed as delivered blocks — the protocol failure recorded as DEV-005.
+It accumulates until delivered (D-008) and is only then replaced; if the flag
+below reads NO, **append**, never overwrite. Deltas 1–7 and 10–42 are in
+`PROJECT_STATE_ARCHIVE.md`; 8 and 9 never existed as delivered blocks (DEV-005).
 
 **Send BOTH files, delta first.** The bundle is **always `SOL_BUNDLE.txt`**, and
 its header names the delta it belongs to — check that line matches before
-sending (D-066). `BASE` stays **`ca545ed`**: Sol reviewed `25fd2c2` and
-explicitly did **not** certify it, so it is not a base.
+sending (D-066). `BASE` stays **`ca545ed`** — Sol did not certify `25fd2c2`.
 
 ```bash
 EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
@@ -28,6 +24,7 @@ EXCLUDE="runs/ PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 > COVERS SESSIONS:
 > - 2026-08-20 (W5 closeout) · Sol's rulings actioned, and a null that was hiding a defect
 > - 2026-08-20 (W5 closeout, continued) · C-008 and C-003, the last unblocked work
+> - 2026-08-20 (W5 closeout, C-007) · The seed policy reaches repair acceptance
 
 ```
 === UPDATE FOR SOL ===
@@ -370,12 +367,30 @@ you have ruled.
 --------------------------------------------------------------------
 NUMBERS (D-011)
 
-  tests             672 -> 705 passing, 2 skipped, 1 xfailed
+  tests             672 -> 709 passing, 2 skipped, 1 xfailed
                     (+19 confirmatory, +12 reserve, +2 bypass regressions)
   reserve depth     231 units: 120 intended class 0, 111 class 1
   compute           ZERO beyond one tiny synthetic fit in a temp directory.
                     No registered run, no logged result, no data seen.
   certified base    ca545ed, unchanged.
+
+--------------------------------------------------------------------
+C-007 AT REPAIR ACCEPTANCE -- THE WIDEST HOLE LEFT IN THE SEED POLICY.
+
+Repair acceptance had NO confirmatory guard, so the repair path could produce
+registered repair-validation evidence on DEVELOPMENT seeds -- and that is where
+every label in the thesis is created. Guarded at BOTH layers: evaluate_arm
+before the fit, and acceptance_inputs where the label comes into existence,
+since ArmEvaluations can be built without the producer and a check only at the
+producer is one the consumer can be handed around. Tied to the STAGE, not a
+boolean: a probe labels itself "pilot" rather than exempting itself. You closed
+two opt-outs in C-009 for that reason; a flag here would have been a third.
+
+CORRECTION TO DELTA 43's PROVENANCE NOTE. The student reports an EARLIER
+INTERRUPTED SESSION as the likely source of the three files I reported as
+modified by no visible author. Recorded as REPORTED, not verified -- session
+listing returns nothing even including archived. Classification unchanged and
+sharper: that is exactly the DEV-005 / D-080 pattern.
 
 THERE IS NOW NO UNBLOCKED WORK LEFT. Waiting on you: W4 Friday's percentile and
 reference-model definition (delta 43), the acceptance model's conservatism

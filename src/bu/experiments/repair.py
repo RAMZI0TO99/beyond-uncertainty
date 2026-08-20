@@ -45,9 +45,19 @@ from ..env.collect import collect_pools
 from ..models.ensemble import assert_pools_match, train_ensemble
 from ..models.uncertainty import NormalisationScale, ScaledEvaluation, normalised_error
 from ..models.world_model import MOVEMENT_ACTIONS
+from ..streams import is_confirmatory
 
 #: The stage repair validation runs under, at the 20 seeds §2 freezes.
 REPAIR_STAGE = "repair_validation"
+
+#: The only stage on which this path may use development seeds. C-007 requires
+#: the confirmatory guard at the repair-acceptance call site, and D-034 excludes
+#: development seeds from repair acceptance permanently. Tying the policy to the
+#: STAGE rather than to a boolean keeps it out of a caller's hands: a stage
+#: already declares which obligation a run discharges (D-012), so a smoke probe
+#: must call itself a pilot rather than flip a flag on registered evidence. The
+#: opt-out shape is what D-077 had to close twice.
+EXPLORATORY_STAGE = "pilot"
 
 #: **One model per repaired arm** (P§14.2, and `Fit.members` in the enumerator).
 #: A baseline trains the registered ensemble because H1 and H2 need disagreement
@@ -94,6 +104,9 @@ class ArmEvaluation:
     config_id: str
     run_id: str
     n_train: int
+    #: Which obligation produced this evaluation. Carried so `acceptance_inputs`
+    #: can refuse to build a label out of exploratory runs (C-007).
+    stage: str = REPAIR_STAGE
     #: Attested, not assumed: P§14.2 budgets one model per repaired arm, so the
     #: number actually fitted travels with the evaluation that used it.
     ensemble_size: int = 1
@@ -119,6 +132,15 @@ def evaluate_arm(
             baseline arm itself, which is where the scale is created. A repaired
             arm scored in its own units is the D-061 defect (see `ScaledEvaluation`).
     """
+    if stage != EXPLORATORY_STAGE and not is_confirmatory(seed):
+        raise ValueError(
+            f"seed {seed} is development data but stage is {stage!r}. D-034 excludes "
+            "every seed below CONFIRMATORY_SEED_BASE from repair acceptance "
+            "permanently, and repair acceptance is where every label in the thesis "
+            f"comes from (C-007). Use a confirmatory seed, or declare the run "
+            f"{EXPLORATORY_STAGE!r} if it is a probe -- a probe that calls itself "
+            "registered evidence is the failure this guard exists for"
+        )
     if arm != "baseline" and scale is None:
         raise ValueError(
             f"arm {arm!r} was given no scale. The normalising scale is measured once "
@@ -171,7 +193,7 @@ def evaluate_arm(
         arm=arm, seed=seed, error=error.detach().numpy(),
         episode=pools.evaluation.episode[keep], step=pools.evaluation.step[keep],
         scale=scale, config_id=config.config_id, run_id=config.run_id,
-        n_train=len(pools.train), ensemble_size=train.ensemble_size,
+        n_train=len(pools.train), ensemble_size=train.ensemble_size, stage=stage,
     )
 
 
@@ -209,6 +231,17 @@ def acceptance_inputs(
         )
     if not baseline:
         raise ValueError("no evaluations; there is nothing to compare")
+    exploratory = sorted({
+        e.seed for e in list(baseline) + list(repaired)
+        if e.stage != EXPLORATORY_STAGE and not is_confirmatory(e.seed)
+    })
+    if exploratory:
+        raise ValueError(
+            f"seed(s) {exploratory} are development data on a registered stage. The "
+            "acceptance test is where a repair label is created, and D-034 excludes "
+            "development seeds from it permanently (C-007). Refused at the point the "
+            "label would be built, not only where the fit was run"
+        )
     masks = _validated_masks(failure_masks, baseline)
 
     errors, arms, seeds, episodes = [], [], [], []
