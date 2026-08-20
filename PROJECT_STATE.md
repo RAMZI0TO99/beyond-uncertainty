@@ -477,3 +477,19 @@ Also: `allow_fallback` removed entirely (it survived the fallback it was named a
 Guarded at three layers — `_frame` refuses non-finite input outright, `paired_differences` uses `pivot` rather than `pivot_table` and asserts the row count against the validated pair count, and the seed means are checked to match the input seed set exactly. Ten tests. Also fixed a doubled word of my own that spanned a line break.
 
 **Tests:** 801 → **811 passing**, 2 skipped, 0 xfailed. **W4 Friday remains stopped.**
+
+### 2026-08-20 (W4 Fri) · THE THRESHOLD IS CALIBRATED · Claude
+
+**Sol authorised one run from the accepted base. It ran once, into `attempt-001`, and will not be rerun** (D-103).
+
+**`0.610702633857727`** — 95th percentile, `method="linear"`, failure is **strictly greater**. **NOT FROZEN**: `constants.py` is untouched and promotion is a separate D-035 Change Record after Sol reviews the evidence.
+
+**Preconditions checked before executing**, because there is exactly one attempt: `HEAD` bit-identical to Sol's accepted `93dc296`, tree clean, branch in sync, frozen spec verified field by field. One cell was first run in a temp directory to validate the newly registered `threshold_calibration` stage — **wall time read, errors never**, since inspecting the distribution beforehand would have been pre-inspecting the threshold.
+
+45 cells, 225 fits at n=5,000, **4.3 min**. All 45 unique, all K=5, balanced pool 9 × 4,103 = 36,927. **Recomputation from the stored artefacts alone is bit-identical.**
+
+**A correction to my own D-099 audit:** I estimated ~4% of reference data discarded to the smallest stratum, from six probed cells. Actual is **1.28%** — pooling five seeds per stratum evens the counts out, which six single cells could not show.
+
+**And a near-miss worth recording.** The evidence was **silently untracked**: `runs/*` is ignored with per-experiment exceptions and `runs/w4_threshold` had none, so the first version of the commit shipped **two** files while its own message claimed 136. Caught by checking the commit rather than trusting it. Had it gone out, the bundle would have carried digests with no files — the D-041 shape exactly, and `.gitignore`'s own comment warns about this class while nothing enforces it.
+
+**Tests:** 811 passing, 2 skipped. **Compute:** 225 CPU fits (675 total), 0 GPU-hours. **First registered evidence the project has produced.**
