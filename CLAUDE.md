@@ -109,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 672 passing, 2 skipped, 1 XFAILED
+.venv/bin/python -m pytest -q                      # 819 passing, 2 skipped, 0 xfailed
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -283,50 +283,51 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ## Where the project stands
 
-*Last session: 2026-08-20 (W5 closeout). Week 1 Monday is 2026-08-17, so the
-project is running roughly three weeks ahead of its own calendar (DEV-002).*
+*Last session: 2026-08-20. Week 1 Monday is 2026-08-17, so by the calendar it
+is only **Week 1 Thursday** — the project is running about **3.6 weeks ahead**
+(DEV-002). Gate 2's date is 2026-10-24.*
 
-**Weeks 1–3 complete, audited, CERTIFIED and frozen** (D-067). **W4 Monday,
-Tuesday and its stored result are all certified.** Twenty-one Sol reviews actioned.
+**Weeks 1–5 are complete.** Weeks 1–3 certified and frozen at `9c0d89d`. W4 Mon
+and Tue certified. **W4 Friday has EXECUTED** and **Gate 1 is signed off**.
 
-**Certified base: `ca545ed`.** Sol reviewed `25fd2c2` and **explicitly did not
-certify it** (D-089), so the base did not move. Use `BASE=ca545ed`.
+**START HERE — the one thing that gates everything.**
 
-**START HERE.** Deltas 39–42 **were delivered** and Sol returned **PARTIAL
-ACCEPTANCE**. `DELTA_TO_SOL.md` now holds **delta 43, undelivered**, covering
-this session. Ask whether Sol has replied before doing anything else.
+**The failure threshold is calibrated: `0.610702633857727`** (D-103) — 95th
+percentile, `method="linear"`, failure is **strictly greater**. It ran once,
+into `runs/w4_threshold/attempt-001`, recomputes bit-identically from its
+artefacts, and **will not be rerun**: the threshold has been inspected, so Sol's
+invalidation protocol can no longer be satisfied.
 
-**Sol's entire required closeout is BUILT** (D-085 … D-090): the paired
-within-seed permutation with its criterion frozen *first*, one model per repaired
-arm, seed-specific failure masks, evidence contract v2 with v1 grandfathered, the
-rulings filed, and the **W4 Friday threshold runner built and NOT executed**.
+**IT IS NOT FROZEN.** `constants.py` is untouched. Promoting it is a **D-035
+Change Record that only Sol can authorise**, and it is what `DELTA_TO_SOL.md`
+(delta 49, undelivered) asks for. **Every failure set, every repair label, and
+therefore H2 and H3 all descend from that number — do not build on it until it
+is frozen.** Ask whether Sol has replied before anything else.
 
-**Two rulings block everything, and there is no unblocked work behind them:**
+**Sol accepted `93dc296` as the reviewed execution base.** The bundle base is
+still `ca545ed`; it moves only when Sol certifies.
 
-- **The acceptance model's conservatism** (D-086). The corrected permutation
-  showed the registered P§7.3 model has **no transition-level pairing term**, so
-  its SE is **1.51×** the true paired null spread and the test is *conservative*.
-  Fixing it changes a **§2 frozen constant** — a Change Record and Sol's call.
-- **W4 Friday's percentile and its "well-fit reference model" definition**
-  (D-090). Neither is named by P§10.1 or S§W4, and D-035 lists the percentile
-  among the six things Friday freezes **permanently**. The runner refuses to
-  invent either. **W4 Friday must not execute before Sol answers.**
+**Gate 1 = FAIL** (D-098), on the five-point MDE. Reliability PASS, compute PASS,
+permutation calibration PASS (repaired by the D-094 Change Record). Sol was
+explicit this must **never** be renamed a pass now that calibration works — the
+MDE failure is independent. It is **not** the condition-1 pivot: H1's machinery
+works; what failed is power. The unchanged **300-unit design continues** under a
+recorded power limitation, with **Direction C authorised**.
 
-**Gate 1 stands at two of four**: reliability PASS (certified), compute PASS
-(contingent on the K=1 repair fix), permutation calibration **FAILING**, MDE
-**FAIL** — Sol's ruling, not pending. Sol's recommendation, adopted: continue
-with the unchanged 300-unit design and an explicit power limitation rather than
-manufacture a pass by expanding scope or moving the margin. **Direction C is an
-authorised thesis outcome.**
+**Two §2 constants changed this session, both Sol-authorised and both before any
+data was seen:** the acceptance test is now an **equal-seed mean paired
+difference with a t interval on `n_seeds − 1` df, no fallback, failing closed**
+(D-094, D-100); and a distinct **`threshold_calibration` stage** with five seeds
+exists (D-097).
 
-**Zero compute this session.** No fit spent, no attempt re-run, no data seen.
+**Audit coverage is now complete** except `w3_pilot.py`, deliberately (D-105).
+`stats/gate.py` was the last real gap — review-covered but probe-uncovered — and
+the certified W4 Tuesday evidence was re-verified after this session's changes.
 
-**A provenance hazard worth knowing about.** Three files were found modified
-mid-session, implementing part of Sol's closeout, authored by neither this
-session nor any other visible one, and they left the suite red. They were
-verified by test and completed. If you meet unexplained modifications in the
-tree, treat them as the DEV-005 class: verify by probe, never by reading, and
-say so rather than absorbing them silently.
+**Scope discipline.** Q-004 governs the 3.6-week lead: it goes to review,
+understanding, documentation and prose — **never scope**. C-005 (the critic
+splitter) and all Week 6 work stay untouched even though technically unblocked.
+Sol named the failure mode as verification lag, and we are already deep in it.
 
 ### ⚠ The biggest open thing: Gate 1 is at risk (D-078)
 

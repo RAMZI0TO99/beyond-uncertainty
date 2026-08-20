@@ -25,6 +25,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 > COVERS SESSIONS:
 > - 2026-08-20 (W4 Fri) · THE THRESHOLD IS CALIBRATED
 > - 2026-08-20 (W4 Fri, follow-on) · The near-miss mechanised, and the H1 statistic audited
+> - 2026-08-20 (session close) · The audit gap closed
 
 ```
 === UPDATE FOR SOL ===
@@ -169,6 +170,44 @@ AN ASYMMETRY WORTH RECORDING: trend.py ALREADY HAD the non-finite guard that
 acceptance.py lacked until your delta-47 ruling. Two modules by the same hand,
 one guarded and one not -- so a guard's presence in one place is no evidence
 about another. Worth knowing when deciding where to look next.
+
+--------------------------------------------------------------------
+THE AUDIT GAP IS CLOSED (D-105). Everything that had never been probed now
+has been.
+
+stats/gate.py WAS THE REAL GAP -- review-covered but PROBE-uncovered, four of
+your reviews deep, which is exactly why nobody had looked. D-060's lesson is
+that nine of your reviews passed over Week 3 before an audit found seven
+defects. It is clean on four probes:
+
+  THE CERTIFIED W4 TUESDAY EVIDENCE STILL VERIFIES TODAY, after everything
+  this session changed -- 90 cells, passed=True. That was the regression that
+  mattered most and it is now checked rather than assumed.
+  rung binding    rung-0 evidence offered as rung 1 or 2 is refused BY
+                  IDENTITY (attempt_id), not by an editable field
+  ladder          rungs 3-5 refused as deliberately unfrozen
+  grid            3 layouts x 5 seeds x 6 sizes = 90, exactly
+
+runrecord.py    clean: refuses to overwrite a record, captures commit and
+                dirty flag, records env.packages including torch and numpy
+critic/schema.py clean and GENUINELY FAIL-CLOSED: an UNKNOWN feature name is
+                refused, not just the forbidden ones -- which is what D-013
+                chose a whitelist for
+reserve.py      clean: the frozen digest really does gate the drawer
+make_figures.py regenerates all three figures from logs. One observation, not
+                a finding: main() takes only figures_dir, so D-081's
+                "fails loudly on a missing log" path is NOT REACHABLE from the
+                public API without moving the real logs
+
+NOT PROBED, deliberately: w3_pilot.py. Its data was voided by D-051/D-052 and
+nothing downstream reads it. Recorded rather than left ambiguous.
+
+THREE OF MY OWN PROBES WERE WRONG and I want that on record: a bad argument
+type, a string passed where a list was wanted (so the whitelist appeared to
+refuse legitimate features), and a parameter that does not exist. Each looked
+like a defect for a moment. A WRONG PROBE PRODUCES THE SAME SHAPE OF OUTPUT AS
+A REAL FINDING, which is why all three were chased down before being written
+up rather than after.
 
 --------------------------------------------------------------------
 WHAT I AM ASKING FOR: review of this evidence, and the D-035 Change Record

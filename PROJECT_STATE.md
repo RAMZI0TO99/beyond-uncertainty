@@ -42,12 +42,12 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-20 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Sol ruled on deltas 39–42: PARTIAL ACCEPTANCE, and `25fd2c2` is explicitly NOT certified** (D-089). Certified base remains **`ca545ed`**. Sol's entire required closeout is **built** (D-085 … D-090): paired permutation with its criterion frozen first, one model per repaired arm, seed-specific masks, evidence contract v2 with v1 grandfathered, the rulings filed, and the **W4 Friday threshold runner built and NOT executed**. **Two rulings now block everything**: the acceptance model's conservatism, and W4 Friday's percentile plus reference-model definition. Week 1 Monday was 2026-08-17 — roughly **three** weeks ahead of calendar (DEV-002) |
+| **Current week / day** | **W4 Friday EXECUTED — the failure threshold is calibrated at `0.610702633857727`** (D-103), evidence only and **not frozen**: promotion is a D-035 Change Record awaiting Sol. **Gate 1 signed off FAIL** on the five-point MDE (D-098). Sol accepted **`93dc296` as the reviewed execution base**; the bundle base is still `ca545ed`. Weeks 1–5 are complete. **Everything downstream waits on the threshold promotion.** Week 1 Monday was 2026-08-17 — roughly **3.6 weeks** ahead of calendar (DEV-002) |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `ca545ed`** — Sol certified the stored W4 Tuesday result on 2026-08-18. The chain: `9c0d89d` (Week 3 implementation, frozen) → `7dbcd32` (docs) → `a84cf6c` (W4 Mon trend test) → `2efad258` (W4 Tue gate + evidence contract) → `ca545ed` (the stored result). Three intermediate commits were reviewed and explicitly **not** certified; `2efad258` subsumes them. **Set `BASE=ca545ed` for the next bundle** (D-043, D-067, D-075) |
-| **Tests** | **672 passing, 2 skipped, 1 xfailed** (the two GPU tests skip where no device exists). **The xfail is deliberate and load-bearing**: D-085's frozen calibration criterion is *not* met, and it is marked `xfail(strict=True)` so the open failure stays visible in the suite rather than being loosened away. If it ever passes, the suite says so |
-| **Compute used** | **0 GPU-hours** · first real spend: **450 CPU fits in 4 m 52 s** (W4 Tue rung 0) of ~110–145 budgeted (trigger ≈ 120, P§14.3). Every fit so far ran on **CPU**. Two sub-second GPU tests now run in the suite (~68 MiB) to cover the CUDA RNG fork and seeding — the student's other workload has finished and the card is at ~0.9/16 GB |
+| **Tests** | **819 passing, 2 skipped, 0 xfailed** (the two GPU tests skip where no device exists). Includes the protocol suite, the evidence-tracking check added after D-103's near-miss, and the D-102 non-finite guards |
+| **Compute used** | **0 GPU-hours.** 675 CPU fits total: 450 (W4 Tue rung 0) + 225 (W4 Fri threshold calibration, 4.3 min at 4/4 threads) |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
 **Hypothesis status**
@@ -279,6 +279,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-102** | 2026-08-20 | Fail-closed on non-finite errors — a seed could vanish while n_seeds said 20 | Sol's finding |
 | **D-103** | 2026-08-20 | **W4 FRIDAY EXECUTED** — threshold 0.610703, evidence only, not frozen | **Result** |
 | **D-104** | 2026-08-20 | Tracked-evidence check mechanised; `trend.py` audited clean | **Audit** |
+| **D-105** | 2026-08-20 | Audit of the unaudited — `gate.py` and four others clean; three probe errors of mine | **Audit** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -462,3 +463,15 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **41 archived, 1 kept
 **An asymmetry worth carrying:** `trend.py` already had the non-finite guard `acceptance.py` lacked until D-102. Two modules by the same hand, one guarded and one not — so a guard's presence in one place is no evidence about another.
 
 **Tests:** 811 → **819 passing**, 2 skipped, 0 xfailed.
+
+### 2026-08-20 (session close) · The audit gap closed · Claude
+
+**Audited the modules that had never been probed** (D-105). `stats/gate.py` was the real gap: **review-covered but probe-uncovered**, four Sol reviews deep, which is precisely why nobody had looked — D-060's lesson is that nine reviews passed over Week 3 before an audit found seven defects.
+
+All clean. The **certified W4 Tuesday evidence still verifies today** after everything this session changed (90 cells, passes) — the regression that mattered most, now checked rather than assumed. Rung binding is enforced through `attempt_id`, not an editable field; rungs 3–5 refused as unfrozen; the 3×5×6 grid exact. `runrecord.py` refuses overwrite and records git state plus `env.packages`. `critic/schema.py` is genuinely fail-closed — an **unknown** feature name is refused, which is what D-013 chose a whitelist for. `reserve.py`'s frozen digest really does gate the drawer.
+
+**`w3_pilot.py` deliberately not probed**: its data was voided by D-051/D-052, nothing downstream reads it. Recorded rather than left ambiguous.
+
+**Three of my own probes were wrong** — a bad argument type, a string passed where a list was wanted (so a whitelist appeared to refuse everything), and a parameter that does not exist. Each looked like a defect for a moment. A wrong probe produces the same shape of output as a real finding, which is why all three were chased down before being written up.
+
+**Tests:** 819 passing, 2 skipped, 0 xfailed. **No code changed — this entry is measurement.**

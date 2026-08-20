@@ -1518,3 +1518,28 @@ Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own e
 **Data seen:** none beyond D-103's already-recorded calibration.
 **Plan ref:** D-041, D-068, D-075, D-102, D-103, Q-004.
 **Reviewed by Sol:** **not yet.**
+
+### D-105 · 2026-08-20 · Audit of the previously unaudited modules — clean, and three probe errors of my own
+**Decision:** Closed the audit gap named in D-104. These modules had never been probed, and `gate.py` in particular had been **review-covered but probe-uncovered** — four Sol reviews, which is exactly why nobody had looked. D-060's lesson is that nine Sol reviews passed over Week 3 before an audit found seven defects.
+
+**`stats/gate.py` — clean on four probes.**
+- **The certified W4 Tuesday evidence still verifies today**, after everything this session changed: 90 cells, `passed=True`. That was the regression that mattered most, and it is now checked rather than assumed.
+- **Rung binding is enforced through `attempt_id`**: rung-0 evidence offered as rung 1 or rung 2 is refused by identity, not by a field comparison that could be edited.
+- **Rungs 3–5 are refused** as deliberately unfrozen (D-071).
+- **The grid is exact**: 3 layouts × 5 seeds × 6 sizes = 90, no more and no fewer.
+
+**`runrecord.py` — clean.** Refuses to overwrite an existing record (`FileExistsError`), captures git commit and dirty flag, and records package versions under `env.packages` including torch and numpy.
+
+**`critic/schema.py` — clean and genuinely fail-closed.** With correct usage, allowed features pass and both forbidden fields (`unit_id`, `family`) and **unknown** names are refused. Refusing an unknown name is the *correct* behaviour for a whitelist and is what D-013 chose over a blacklist: a feature nobody registered cannot reach X by being unanticipated.
+
+**`experiments/reserve.py` — clean.** The frozen digest genuinely gates the drawer: substituting a wrong `PREDECLARED_DIGEST` makes `next_reserve_units` refuse.
+
+**`experiments/make_figures.py` — regenerates all three figures from logs**, as D-081 claims. One observation, not a finding: `main()` takes only `figures_dir`, so the run root is fixed and D-081's "fails loudly on a missing log" path is **not reachable from the public API** without moving the real logs. The behaviour is presumably right; it is simply not exercisable as written.
+
+**Not probed:** `experiments/w3_pilot.py`. It produced development-only pilot data that D-051/D-052 already voided, nothing downstream reads it, and its figures regenerate through `make_figures`. Recorded as a deliberate omission rather than left ambiguous.
+
+**THREE OF MY OWN PROBES WERE WRONG, and that is worth recording.** I called `recompute()` with the wrong argument type; I passed `assert_no_forbidden_columns` a **string** instead of a list, so it iterated characters and appeared to refuse everything including legitimate features; and I tried to point `make_figures.main()` at an empty run root through a parameter it does not have, so it ran against the real logs and I briefly read the result as a finding. Each looked like a defect for a moment. **A probe that is wrong produces exactly the same shape of output as a defect**, which is why every one of these was chased down before being written up rather than after — and it is the reverse of D-047, where I trusted a reading I had not checked.
+**Tests:** 819 passing, 2 skipped, 0 xfailed. No code changed — this is measurement.
+**Data seen:** none beyond D-103's recorded calibration.
+**Plan ref:** D-013, D-060, D-071, D-081, D-104.
+**Reviewed by Sol:** **not yet.**
