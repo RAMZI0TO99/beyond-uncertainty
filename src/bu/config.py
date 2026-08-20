@@ -119,6 +119,12 @@ FEATURES = ("shape", "colour", "position")
 LAYOUTS = ("uniform", "clustered", "sparse")
 
 
+#: Every confound rate the frozen design uses, as the exact literals the grid
+#: declares them with. Derived rather than redeclared: a second copy could drift
+#: from the constants it is meant to mirror.
+CONFOUND_GRID = frozenset(K.CONFOUND_LEVELS_2A) | frozenset(K.CONFOUND_LEVELS_SWEEP)
+
+
 @dataclass(frozen=True)
 class UnitSpec:
     """The configuration-condition: environment axes plus the manipulation.
@@ -168,6 +174,30 @@ class UnitSpec:
         object.__setattr__(
             self, "withheld_features", tuple(sorted(set(self.withheld_features)))
         )
+
+        if self.confound_rate not in CONFOUND_GRID:
+            # `confound_rate` is the ONLY float in the identity, and unlike the
+            # tuple fields it is embedded raw rather than canonicalised. Measured
+            # (D-083): `0.1 + 0.2` is `0.30000000000000004` and mints a DIFFERENT
+            # `unit_id` than `0.3`. Identity is currently stable only because the
+            # frozen grid always supplies the same literals -- which is an
+            # accident of the call sites, not a guarantee (the D-038 shape).
+            #
+            # Quantising in canonicalisation is the consistent fix, but it moves
+            # every golden `unit_id` and so needs an IDENTITY_VERSION bump and a
+            # Change Record. Sol ruled against bumping identity for a latent
+            # risk and asked for this guard instead: refuse any rate that is not
+            # bit-exactly a member of the frozen grid, so a computed or
+            # round-tripped rate fails loudly at construction rather than
+            # silently forking a unit.
+            raise ValueError(
+                f"confound_rate {self.confound_rate!r} is not an exact member of the "
+                f"frozen grid {sorted(CONFOUND_GRID)}. It is the only float in the "
+                "unit identity, so a computed value such as 0.1 + 0.2 mints a "
+                "phantom distinct unit. Use the literal from constants, or change "
+                "the grid under a Change Record (D-083)"
+            )
+
 
 
 #: The registered statistical identity of a configuration-condition. A change to

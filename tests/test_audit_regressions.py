@@ -130,8 +130,12 @@ def test_a_repeated_withheld_feature_is_not_a_new_unit():
 
 
 def test_canonicalisation_happens_at_construction():
-    u = UnitSpec(confound_rate=1, grid_size=8.0, withheld_features=("shape", "colour"))
+    # `confound_rate=0` rather than `1`: an int still exercises the int -> float
+    # coercion this test is about, and 0.0 is a member of the frozen grid, which
+    # the D-083 guard now requires. 1.0 never was a design value.
+    u = UnitSpec(confound_rate=0, grid_size=8.0, withheld_features=("shape", "colour"))
     assert isinstance(u.confound_rate, float)
+    assert u.confound_rate == 0.0
     assert isinstance(u.grid_size, int)
     assert u.withheld_features == ("colour", "shape")
 
@@ -224,3 +228,26 @@ def test_arms_still_share_a_unit_after_canonicalisation():
     unit = UnitSpec(family="missing_feature", withheld_features=("shape",))
     ids = {Config(unit=unit, arm=Arm(k)).unit_id for k in ("baseline", "data_repair", "feature_repair")}
     assert len(ids) == 1
+
+
+# --- D-083's latent float-identity risk, now guarded at construction ------
+
+
+def test_a_computed_confound_rate_is_refused_rather_than_forking_a_unit():
+    """The measured D-083 risk: `0.1 + 0.2` is not `0.3` and mints a new unit.
+
+    Sol ruled against bumping IDENTITY_VERSION for a latent risk and asked for a
+    construction-time guard instead, so this is the check that keeps identity
+    stable by REFUSING the off-grid value rather than by quantising it.
+    """
+    assert 0.1 + 0.2 != 0.3, "the premise of this test no longer holds"
+    with pytest.raises(ValueError, match="not an exact member of the frozen grid"):
+        UnitSpec(confound_rate=0.1 + 0.2)
+
+
+def test_every_grid_literal_is_accepted():
+    """The guard must not refuse the design's own values."""
+    from bu import constants as K
+
+    for rate in set(K.CONFOUND_LEVELS_2A) | set(K.CONFOUND_LEVELS_SWEEP):
+        assert UnitSpec(confound_rate=rate).confound_rate == rate

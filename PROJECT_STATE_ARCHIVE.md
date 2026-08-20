@@ -3642,3 +3642,69 @@ scrolling to find a section boundary; "paste `DELTA_TO_SOL.md`" does not.
 **Numbers:** tests 507 → **532 passing**, 2 skipped. A 10-fit smoke run took **3.5 s** on CPU and reproduced the W3 pilot's uniform/N=100/seed-0 disagreement of **0.685593** exactly, so the full 450-fit rung 0 is minutes on CPU rather than the hour previously estimated. **Zero GPU-hours**; no gate cell executed; the smoke run went to a scratch directory, never to `runs/`.
 
 **Next:** Sol reviews delta 36 — the runner, the manifest code, the gate changes and the tests. **No Tuesday compute until it is certified.** Then the student's device answer, then gate day 1.
+
+## Archived from PROJECT_STATE.md §7 on 2026-08-20 — the W4 Tuesday gate and its closeout
+
+*Moved when the file passed its 500-line paste cap. W4 Tuesday is certified at `ca545ed` and closed; the decisions these produced are D-071 … D-077 and remain indexed in §3. Nothing is condensed.*
+
+### 2026-08-18 (W4 Tue prep, round 3) · The closeout, and an accepted architecture · Claude
+
+**Did:** Sol **accepted the architecture** — canonical `Config` reconstruction as the source of identity, complete `TrainConfig` freezing, granularity attested outside `Config`, run and member records at the execution boundary, source-row binding, evaluation-pool consistency, content-derived attempt identity, runner and verdict separated. `4e92fda` accepted in design, not certified, because six fields the contract advertised were never actually compared (D-073). All six verified before fixing.
+
+**The one that mattered most:** the run record carries **five** training-time attestations and only `granularity` was checked — so a manifest could borrow an honest run record while changing the evaluation pool it claimed to evaluate on, or the experimental obligation the run discharged. All five now cross-checked, missing ones fail closed. The others: manifest version and frozen rung spec were required but never compared; normalisation was checked for constancy across sizes but never against the row it was supposedly computed under; the attempt identity hashed only run records, which are written *before* training, so two evidence sets with copied start records and different outputs shared an id; declared counts and the metric schema version were unverified, the latter reusing `config.SCHEMA_VERSION` for a schema that evolves independently; and `run()` recorded a dirty tree, ran all 450 fits, and only then had the verdict refused.
+
+**Sol's answers to my two open questions, both rulings against more machinery.** Per-transition exports are not needed to authorise the gate, and weight digests are not either — a checkpoint digest proves a file did not change, not that it was trained under the declared configuration. The trust model protects against accidental substitution, stale evidence, mixed executions and post-run mutation, **not** a malicious author fabricating every layer consistently. That gap is now written down as deliberate rather than left as my open worry. `EVIDENCE_CONTRACT_VERSION` also left `constants.py`: schema versions must stay evolvable, which is the opposite of a preregistered quantity.
+
+**One test of mine was a tautology.** `assert X is not Y or True` cannot fail — the D-055 failure mode, in the very delta where I described avoiding it. Replaced with the property: move the gate's schema version and watch the refusal move with it.
+
+**Numbers:** tests 532 → **548 passing**, 2 skipped. Zero GPU-hours; no gate cell executed.
+
+**Next:** delta 37 is the micro-closeout. **If Sol passes it, rung-0 compute begins immediately, on CPU** — Sol has said so explicitly, and the measured runtime makes the GPU unnecessary.
+
+### 2026-08-18 (W4 Tue) · Rung 0 passes · Claude
+
+**Did:** Sol **certified `2efad258`** as the W4 Tuesday gate implementation and evidence contract — subsuming the three uncertified intermediates — and authorised rung-0 execution on CPU at the registered defaults. Confirmed the tree clean at that exact commit, ran it without `allow_dirty`, and **rung 0 PASSES on all three configurations** (D-074). Per Sol's instruction the ladder **stops**: rungs 1 and 2 are not run.
+
+**Verdict:** rho = **−0.9429** for uniform, clustered and sparse alike; intervals [−0.9429, −0.9429], [−0.9429, −0.8286], [−0.9429, −0.9429]. 90 ensembles / **450 fits in 4 m 52 s** on CPU. `recompute()` reproduced the serialised verdict exactly; the suite is green after the run at 548 passing.
+
+**The three rhos are identical because Spearman reads ranks**, and all three mean curves share one rank pattern — falling except a peak at N=250. −0.9429 is one adjacent transposition from perfect reversal, which is that peak costing one of fifteen inversions, exactly as D-069 measured at three seeds.
+
+**The interval, said properly.** Two of three are a single point and that is **not** zero uncertainty: the exact bootstrap is discrete with 2–3 atoms over 3,125 resamples, and uniform and sparse are degenerate only just — second atoms at **1.63%** and **2.14%** against a 2.5% quantile threshold, so sparse is 0.36 pp from its upper bound moving. The verdict is robust to all of it (every atom is far below zero); the reported width is not a precision claim.
+
+**The N=250 peak reproduces in 14 of 15 seed-configuration curves.** The exception, clustered seed 4, peaks at N=500 with N=250 below N=100 — kept and reported, not smoothed. Disagreement is not monotone in dataset size; the gate passes because one inversion is tolerated. This is a reliability result about the estimator, not H1's verdict.
+
+**Two housekeeping fixes.** The verdict was first written *into* the attempt directory, mutating evidence after its manifest; it now sits beside it and the attempt re-verifies unchanged. And the full attempt — manifest, rows, 90 run records, 450 metric streams, 1.2 MB — is now tracked in git, widening the pilot's manifest-only exception, because the contract's trust boundary is those digests and untracked they cannot be checked from a fresh clone.
+
+**A correction:** I told Sol rung 0 would be "minutes", then corrected that to ~50 minutes from the pilot's rate. It was 4 m 52 s — the first estimate was right and the correction was wrong. The pilot is ~10× slower per fit because it also writes per-transition exports, activation reports and figures. I scaled a rate without asking what it was a rate of.
+
+**Next:** delta 38 carries the verdict for review. Then **W4 Fri**, threshold calibration — **C-010 must be finished first**.
+
+### 2026-08-18 (W4 Tue closeout) · The result certified, and three rulings filed · Claude
+
+**Did:** Sol **certified the rung-0 result** and `ca545ed` as the stored Week 4 Tuesday result, now the review base. The gate passes at rung 0 on all three predeclared configurations independently; the ladder is correctly stopped. Three rulings filed as D-075, all adopted, none requiring code.
+
+**Ruling 1 — the intervals stay exactly as registered, and never travel alone.** Widening or replacing them after seeing their discreteness is what preregistration exists to prevent. But `[−0.9429, −0.9429]` must never appear without its explanation, and Sol supplied the wording for the results text — quoted verbatim in D-075 so it survives a reset. The atom/mass table is **necessary for honest interpretation**, not optional colour. The conclusion is unchanged: every atom is strictly negative, so the pass does not depend on which one holds the 97.5th percentile.
+
+**Ruling 2 — clustered seed 4 is not to be investigated.** No integrity failure was found, the paired procedure already includes the seed, and the gate passes with it in. Looking now would be post-result exploration and could invite a model change on one development curve. Recorded descriptively and left to W10's untouched confirmatory seeds.
+
+**Ruling 3 — tracking the 1.2 MB of evidence is correct**, because the verifier depends on the run records and member streams; digests without files leave a fresh checkout able to read every claim and verify none. Keeping `runs/` out of bundle diffs is acceptable given the omission is explicit and the files are in the certified commit. No checkpoints, no per-transition exports for this gate.
+
+**Also accepted:** moving the verdict beside the attempt, and the runtime correction — report 4 m 52 s and state that the W3 pilot is not a comparable per-fit workload.
+
+**Numbers:** unchanged. 548 passing, 2 skipped. Zero GPU-hours. The 450 CPU fits of W4 Tue remain the only compute spent.
+
+**Next:** **W4 Fri**, threshold calibration — **C-010 must be finished first**, since it is the first cell that can violate the D-061 scale rule. W4 Wed and Thu are free because the ladder stopped; per Q-004 that gain goes to review and prose, never to scope.
+
+### 2026-08-18 (W4 Wed) · C-010 and C-009 built, and a reproducibility variable nobody had recorded · Claude
+
+**Did:** built **C-010** (D-076) and **C-009** (D-077), the two remaining obligations that needed no ruling first. Neither required a new scientific decision — D-061 and Sol's 2026-08-16 item already specified both.
+
+**C-010.** `ScaledEvaluation` is the call site D-064 said the rule needed. `from_pool` **takes no mask**, so the scale is built before the object is capable of receiving one; `masked()` reuses that identical object and there is no parameter to override it. One test asserts the invariant is *load-bearing* — the registered masked ratio and a subset-scaled one must differ, because if both choices gave the same answer the rule would be doing no work. `select_attempt()` refuses to guess between attempts: there is no "latest", since a second attempt exists precisely because something was wrong with the first.
+
+**The finding, from probing rather than review.** Proving the runner refactor numerically neutral reproduced N=100 exactly and N=250 **not** — a 0.19% move in mean disagreement. The refactor was not the cause: **thread count** was. The certified run used 8 threads, the comparison 4, and reduction order differs. Re-running at 8 reproduced both cells exactly. **Nothing recorded the thread count**, so the certified attempt was reproducible only by someone who already knew how it had been invoked — a gap in a contract whose whole purpose is that a verdict be checkable by someone who was not there. Now recorded, **additively**: making it required would invalidate the certified `attempt-001`, and that is Sol's call, not mine.
+
+**C-009.** Both of Sol's items were **opt-outs**: `source_unit` was checked only `if not None`, so a dataset that never recorded its origin skipped the one clause catching a borrowed pool; `stream_version` was never compared at all, though D-052 bumped it *because the pools themselves changed*. Adding both refusals broke **no existing test** — nothing in 563 tests exercised either path.
+
+**Numbers:** tests 548 → **565 passing**, 2 skipped. Zero GPU-hours; the reproducibility probe cost 15 CPU fits in a scratch directory. The certified W4 Tue evidence still verifies, and a regression now asserts it will keep doing so.
+
+**Next:** **W4 Friday is blocked on Sol** reviewing C-010 (delta 40) — it is the first cell where a mask exists, so it is the first that can violate D-061. **C-006**, the W5 MDE simulation, remains buildable without a ruling: D-044 specifies it fully. **C-003** (predeclaring the D-031 reserve draw order) is a predeclaration and must reach Sol first.

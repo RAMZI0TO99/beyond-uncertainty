@@ -130,14 +130,48 @@ def torch_threading() -> dict:
     the certified attempt was reproducible only by someone who already knew how
     it had been invoked.
 
-    Recorded **additively**: it is not in `REQUIRED_RUN_FIELDS`, because making
-    it required would invalidate the already-certified attempt-001, and that is
-    Sol's call rather than mine.
+    Sol has now ruled (delta 40). Threading is **required** from evidence
+    contract v2 onward and cross-checked between the manifest and every run
+    record; contract v1 is grandfathered so the certified attempt-001, which
+    predates the field, stays verifiable exactly as written and is neither
+    invalidated nor re-run. So this is no longer additive metadata -- under v2 an
+    attempt without it is refused.
     """
     return {
         "num_threads": torch.get_num_threads(),
         "num_interop_threads": torch.get_num_interop_threads(),
     }
+
+
+def _pin_threading(threads: int, interop_threads: int) -> None:
+    """Pin BOTH thread counts before any fit, and refuse if one cannot be pinned.
+
+    D-076 found that thread count is not numerically neutral -- four threads
+    instead of eight moved a certified cell by 0.19%, because the reduction order
+    differs. Recording the value is not enough on its own: an attempt whose
+    threading was merely *observed* rather than *set* records whatever the
+    process happened to inherit, which is the same unreproducibility one layer
+    along. Sol's ruling is that the runner pins them before fitting.
+
+    `set_num_interop_threads` raises once the interop pool has been initialised,
+    which happens on the first parallel op. When that occurs we do NOT shrug and
+    continue: we compare what is actually in force against what was asked, and
+    refuse if they differ. An unpinned interop count silently reintroduces
+    exactly the variable this exists to remove.
+    """
+    torch.set_num_threads(threads)
+    try:
+        torch.set_num_interop_threads(interop_threads)
+    except RuntimeError:
+        in_force = torch.get_num_interop_threads()
+        if in_force != interop_threads:
+            raise ValueError(
+                f"interop threads could not be pinned to {interop_threads}: the pool "
+                f"is already initialised at {in_force}. Thread count changes the "
+                "reduction order (D-076), so an attempt cannot be produced under a "
+                "threading configuration it did not choose. Run the gate in a fresh "
+                "process."
+            ) from None
 
 
 def run_cell(
@@ -182,8 +216,7 @@ def run_cell(
         "rung_spec_hash": spec.spec_hash,
         "evaluation_pool_digest": digest,
         "cell": CELL,
-        # Not attested against by the gate: additive until Sol rules on whether
-        # reproducibility metadata becomes a required contract field (D-076).
+        # Attested and cross-checked from contract v2 (D-076, Sol delta 40).
         "threading": torch_threading(),
     }
     with RunLogger.start(config, root=attempt / "records", extra=extra) as logger:
@@ -245,6 +278,10 @@ def run_cell(
         "evaluation_pool_digest": digest,
         "normalisation": evaluation.scale.as_row(),
         "metric_schema_version": METRIC_SCHEMA_VERSION,
+        # Required from contract v2. Present on all three of manifest, run entry
+        # and run record precisely so the gate can cross-check them against each
+        # other -- one attempt is one threading configuration (D-076, Sol delta 40).
+        "threading": torch_threading(),
         "mean_disagreement": summary.as_row()["mean_disagreement"],
         # row_index / row_digest are filled once rows.json is ordered.
         "row_index": -1,
@@ -260,6 +297,7 @@ def write_manifest(
     cells: list[CellResult],
     git,
     artifacts: list[dict],
+    threading: dict | None = None,
 ) -> dict:
     """The evidence contract, written once. Never reopened (D-062)."""
     from ..runrecord import package_versions
@@ -303,7 +341,11 @@ def write_manifest(
         "dirty": git.dirty,
         "branch": git.branch,
         "packages": package_versions(),
-        "threading": torch_threading(),
+        # Defaults to the live configuration, which is the pinned one in the
+        # runner because `_pin_threading` ran before any fit. Explicit here so a
+        # caller states what it pinned rather than re-reading a global that
+        # something else could have changed in between.
+        "threading": threading or torch_threading(),
         "n_runs": len(cells),
         "n_member_records": n_members,
         "runs": [c.run for c in cells],
@@ -324,6 +366,7 @@ def run(
     sizes: tuple[int, ...] = K.DATA_SIZES,
     hidden_size: int = 256,
     threads: int = 4,
+    interop_threads: int = 4,
     out_dir: str | Path | None = None,
     verbose: bool = True,
     allow_dirty: bool = False,
@@ -335,7 +378,7 @@ def run(
     the resulting evidence is then correctly **refused** by the gate, which
     requires the exact grid.
     """
-    torch.set_num_threads(threads)
+    _pin_threading(threads, interop_threads)
     spec = RungSpec.for_rung(rung)
     # Captured before anything is written: reading git state afterwards would
     # report the tree dirty because of this attempt's own output (D-062).

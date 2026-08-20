@@ -387,7 +387,22 @@ def _gate_from_curves(
 #: rather than read optimistically: an older manifest is missing exactly the
 #: fields that make a verdict checkable (D-072). These are compatibility
 #: versions, deliberately not preregistered constants (D-073).
-EVIDENCE_CONTRACT_VERSION = 1
+EVIDENCE_CONTRACT_VERSION = 2
+
+#: Versions this gate can read. **v1 is grandfathered on purpose.** The
+#: certified `attempt-001` was produced under v1, which had no threading field,
+#: and Sol ruled explicitly against invalidating or re-running it -- so v1
+#: evidence stays verifiable exactly as written, and only v2 evidence is held to
+#: the new requirement. Refusing v1 outright would have destroyed a certified
+#: result to enforce a rule made after it.
+SUPPORTED_CONTRACT_VERSIONS: tuple[int, ...] = (1, 2)
+
+#: The threading fields v2 requires. Both, not just the intra-op count: they are
+#: separate knobs and either can change a reduction order.
+THREADING_FIELDS: tuple[str, ...] = ("num_threads", "num_interop_threads")
+
+#: The first contract version that requires threading provenance.
+THREADING_CONTRACT_VERSION = 2
 
 #: The manifest layout. Bumped when fields move; separate from the contract
 #: version because the contract can tighten without the layout changing.
@@ -542,12 +557,12 @@ class GateEvidence:
 
     def verify(self, spec: RungSpec) -> None:
         """Refuse anything that is not authorised gate evidence. Every clause fails closed."""
-        if self.contract_version != EVIDENCE_CONTRACT_VERSION:
+        if self.contract_version not in SUPPORTED_CONTRACT_VERSIONS:
             raise ValueError(
                 f"evidence declares contract version {self.contract_version}; this "
-                f"gate reads version {EVIDENCE_CONTRACT_VERSION}. An unrecognised "
-                "version is refused rather than read optimistically -- an older "
-                "manifest is missing exactly the fields that make a verdict "
+                f"gate reads versions {list(SUPPORTED_CONTRACT_VERSIONS)}. An "
+                "unrecognised version is refused rather than read optimistically -- "
+                "an older manifest is missing exactly the fields that make a verdict "
                 "checkable (D-072)"
             )
         if not self.cells:
@@ -801,11 +816,13 @@ class GateEvidence:
                 "verdict cannot be checked against (D-072)"
             )
         version = manifest["evidence_contract_version"]
-        if version != EVIDENCE_CONTRACT_VERSION:
+        if version not in SUPPORTED_CONTRACT_VERSIONS:
             raise ValueError(
                 f"{attempt_dir} declares evidence contract version {version}; this gate "
-                f"reads version {EVIDENCE_CONTRACT_VERSION}"
+                f"reads versions {list(SUPPORTED_CONTRACT_VERSIONS)}"
             )
+        if version >= THREADING_CONTRACT_VERSION:
+            cls._verify_threading_declared(attempt_dir, manifest.get("threading"), "manifest")
         if manifest["dirty"]:
             raise ValueError(
                 f"{attempt_dir} was produced from a dirty tree (commit "
@@ -864,7 +881,10 @@ class GateEvidence:
         rows = json.loads(rows_path.read_text())
         cells = []
         for run in manifest["runs"]:
-            missing = [f for f in REQUIRED_RUN_FIELDS if f not in run]
+            required = REQUIRED_RUN_FIELDS + (
+                ("threading",) if version >= THREADING_CONTRACT_VERSION else ()
+            )
+            missing = [f for f in required if f not in run]
             if missing:
                 raise ValueError(
                     f"run {run.get('run_id', '<unnamed>')} in {attempt_dir} is missing "
@@ -874,6 +894,8 @@ class GateEvidence:
                 )
             cls._verify_bound_row(attempt_dir, run, rows)
             cls._verify_run_record(attempt_dir, run, spec)
+            if version >= THREADING_CONTRACT_VERSION:
+                cls._verify_threading_matches(attempt_dir, run, manifest["threading"])
             cells.append(
                 EvidenceCell(
                     layout=run["layout"], seed=run["seed"], size=run["n_transitions"],
@@ -953,6 +975,67 @@ class GateEvidence:
                     f"manifest recorded {art['sha256'][:12]}.... The artefact changed "
                     "after the manifest was written, so the evidence is not what the "
                     "record describes (D-062)"
+                )
+
+    @staticmethod
+    def _verify_threading_declared(attempt_dir: Path, threading, where: str) -> None:
+        """Under v2 the threading configuration must be present and complete.
+
+        Thread count is **not** numerically neutral: re-running a certified cell
+        at four threads instead of eight reproduced N=100 exactly and moved
+        N=250's mean disagreement by 0.19%, because reduction order differs
+        (D-076). Under v1 nothing recorded it, so the certified attempt was
+        reproducible only by someone who already knew how it had been invoked --
+        in a contract whose entire purpose is that a verdict be checkable by
+        someone who was not there.
+        """
+        if not isinstance(threading, Mapping):
+            raise ValueError(
+                f"{attempt_dir}: the {where} declares evidence contract version "
+                f"{THREADING_CONTRACT_VERSION} or later but carries no threading "
+                "record. Under v2 threading provenance is required, not additive"
+            )
+        absent = [f for f in THREADING_FIELDS if threading.get(f) is None]
+        if absent:
+            raise ValueError(
+                f"{attempt_dir}: the {where}'s threading record is missing {absent}. "
+                "Both the intra-op and the inter-op count are required -- they are "
+                "separate knobs and either can change a reduction order"
+            )
+
+    @classmethod
+    def _verify_threading_matches(
+        cls, attempt_dir: Path, run: Mapping, manifest_threading: Mapping
+    ) -> None:
+        """The manifest, the run entry and the run record must agree, all three.
+
+        Checking the manifest against itself is what D-071 refused: a
+        self-consistent flattened manifest passed while a 90-entry fabrication
+        also would have. So the run record written at training time is the
+        authority, and the manifest is checked against it.
+        """
+        cls._verify_threading_declared(attempt_dir, run.get("threading"), f"run {run['run_id']}")
+        for field in THREADING_FIELDS:
+            if run["threading"][field] != manifest_threading[field]:
+                raise ValueError(
+                    f"{attempt_dir}: run {run['run_id']} declares {field}="
+                    f"{run['threading'][field]} but the manifest declares "
+                    f"{manifest_threading[field]}. One attempt is one threading "
+                    "configuration; a mixed attempt is not reproducible from either"
+                )
+        record_path = attempt_dir / "records" / run["run_id"] / "run.json"
+        record = json.loads(record_path.read_text())
+        recorded = (record.get("extra") or {}).get("threading")
+        cls._verify_threading_declared(
+            attempt_dir, recorded, f"run record {run['run_id']}"
+        )
+        for field in THREADING_FIELDS:
+            if recorded[field] != manifest_threading[field]:
+                raise ValueError(
+                    f"{attempt_dir}: run record {run['run_id']} was written with "
+                    f"{field}={recorded[field]} but the manifest claims "
+                    f"{manifest_threading[field]}. The record written at training "
+                    "time is the authority; the manifest is a summary of it"
                 )
 
     @staticmethod

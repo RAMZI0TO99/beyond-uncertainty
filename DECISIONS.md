@@ -1075,3 +1075,138 @@ Clearing five points on the conservative (unpaired) assumption needs on the orde
 **Data seen:** none.
 **Plan ref:** P§10.2, D-047, D-060.
 **Reviewed by Sol:** not yet — the whole audit (D-082 … D-084) rides the diff since `ca545ed`.
+
+### D-085 · 2026-08-20 · The permutation null's calibration criterion, frozen before the corrected null exists
+**Decision:** Sol refused the W5 Wednesday permutation null (ruling on delta 42) and required a paired within-seed relabelling plus a calibration criterion stated as an interval rather than a point estimate. Sol's words: *"Freeze before rerunning."* This entry is that freeze. It is filed **before** the corrected permutation is implemented, so its provenance is git history rather than a claim made afterwards — the same discipline D-068 applied to the H1 trend test.
+
+**Why the old figures are withdrawn, and it is not a close call.** `permutation_null` drew `rng.permutation(labels)` over a flat array of run labels, preserving only the **total** number of repaired runs. It did not preserve the matched design. Measured on the registered 20-seed shape: **48.4%** of seeds lose their one-baseline/one-repaired structure in a typical permutation, against **48.72%** analytic (`2·20·20/(40·39)`), and — stronger than Sol's statement — **100% of permutations corrupt at least one seed**. There is no clean draw. The reported 0/200 full-rule rate and 5.5% statistical-only rate were therefore never measurements of the registered design, and both are **withdrawn as Gate evidence**.
+
+**The corrected null.** Independently for each seed and condition, either retain or swap the baseline/repaired labels. Every transition in a run moves together; every seed retains exactly one baseline and one repaired run. Comparisons involving different repair types are permuted separately against baseline.
+
+**THE FROZEN CRITERION — 200 permutations, exact (Clopper–Pearson) 95% binomial intervals, both rates reported.**
+
+| rate | rule | admissible count, n = 200 |
+|---|---|---|
+| statistical-only (conditions 1–2) | its 95% CP interval must **contain** 0.05 | **k ∈ [4, 16]** — 2.000%–8.000% |
+| full three-condition (1–3) | its 95% CP **upper bound** must not exceed 0.05 | **k ∈ [0, 3]** — ≤ 1.500% |
+
+The admissible counts are computed here, in advance, precisely so that the verdict is decided by an integer and cannot be argued into existence after the rerun. Calibration is **not** the raw point estimate being ≤ .05 — that was the error in the withdrawn reporting, which credited the mixed model with a calibration the 20% practical floor was supplying (the D-042 shape: a bound reported as a measurement).
+
+**Gate 1's permutation condition is PENDING until this is rerun against this criterion**, and stays pending if either rule fails.
+**Tests:** unchanged at this commit — no code changed. This is a preregistration.
+**Data seen:** none.
+**Plan ref:** P§7.3, S§W5 Wed. Corrects D-079. Sol's ruling on delta 42.
+**Reviewed by Sol:** the criterion is Sol's, filed here verbatim in effect; the corrected implementation and its rerun go in the next bundle.
+
+### D-086 · 2026-08-20 · The corrected permutation null, and the defect it had been hiding
+**Decision:** Implemented Sol's paired within-seed relabelling (ruling on delta 42) against the criterion frozen in D-085. The correction did not merely tighten a number — it exposed a defect in the registered acceptance model that the broken null had been concealing.
+
+**The corrected null.** Independently per seed, retain or swap that seed's two labels. Every transition in a run moves together and every seed keeps exactly one baseline and one repaired run. `permutation_null` refuses a seed missing an arm and refuses more than two labels (different repair types are permuted separately against baseline).
+
+**Why the old tests could not have caught this.** `test_the_permutation_moves_whole_runs_never_transitions` **never called `permutation_null`**. It reimplemented the global permutation inline and asserted on its own copy, so it could not fail on the real function — and it enshrined the defective mechanism as the tested behaviour. The regressions now monkeypatch the consumer and assert on the label vectors the real function actually emits. This is the fourth instance of D-055/D-057's shape.
+
+**THE FINDING — the registered model is CONSERVATIVE under transition pairing, and two errors were cancelling.** Measured on the registered synthetic generator:
+
+| null | spread | model SE / spread |
+|---|---|---|
+| withdrawn global permutation | 0.000418 | **1.03** — looked perfectly calibrated |
+| corrected paired swap | 0.000286 | **1.51** |
+
+Breaking the pairing inflated the null's spread by **1.46×**, almost exactly cancelling the model's **1.51×** over-wide SE. The old check therefore reported "the model's SE matches the permutation spread", passed its `0.5 < ratio < 2.0` bound comfortably, and read as evidence. Two independent errors producing a reassuring number is the D-042 shape at one remove.
+
+**Statistical-only rate: 0/200, exact CI [0.000%, 1.828%]** — D-085 requires that interval to *contain* 5%. It does not. **Gate 1's permutation condition therefore remains failing**, now for a understood reason rather than an artefact.
+
+**Cause is specification, not code.** P§7.3 registers random intercepts for seed and episode-within-seed and **no transition-level pairing term**, while the comparison is paired transition-by-transition on the same failure set — so shared per-transition difficulty cancels in the contrast but is still counted as residual variance. The effect scales monotonically with pairing strength (SE/spread 1.51 / 1.20 / 0.95 / 0.89 at pairing 1.0 / 0.9 / 0.5 / 0.0), so it is not a one-seed quirk.
+
+**Not fixed, deliberately.** The acceptance model is a **§2 frozen constant**. Adding a pairing term is a Change Record and Sol's ruling. The criterion test is marked `xfail(strict=True)` so the failure is visible in the suite rather than papered over, and a second test pins the 1.51× relationship so it cannot drift silently in either direction.
+
+**The honest limit.** This is measured on synthetic null data whose generator pairs the arms almost perfectly. Real repair-validation data does not exist yet (blocked on C-008 and D-087's fixes) and real pairing will be weaker. The **direction** is established; the **magnitude on real data** is not. Do not quote 1.51× as a property of the real design.
+**Tests:** 632 passing, 2 skipped, 1 xfailed after this item.
+**Data seen:** none. Synthetic throughout.
+**Plan ref:** P§7.3, S§W5 Wed. Withdraws D-079's 0/200 and 5.5% figures. Implements D-085.
+**Reviewed by Sol:** the correction is Sol's; **the conservatism finding is new and needs a ruling.**
+
+### D-087 · 2026-08-20 · Sol's two repair blockers — one model per repaired arm, and seed-specific failure masks
+**Decision:** Both blockers on the recovered repair path (D-080) verified before being actioned, and both were worse than a reading of the code suggests.
+
+**Blocker 1 — repaired arms must fit ONE model, and it is a Gate 1 condition.** `evaluate_arm` defaulted to `TrainConfig()` → `ensemble_size=5`, while the enumerator's `Fit.members` explicitly returns 1 for repaired arms. On the canonical 300-unit design that is **1,672 budgeted repair fits against 8,360 actual**, taking the total from **8,197 to 14,885** against P§14.2's ~8,700 — **1.71× budget**. Sol marked *Compute budget: PASS* in the same ruling; that PASS holds **only** at one model per repaired arm, so this fix is what preserves it rather than a cost tidy-up. Repaired arms now fail closed unless `ensemble_size == 1`, the default differs by arm on purpose, `ensemble_size` is attested on every `ArmEvaluation`, and a test ties the enumerator to the repair path so the budget and the code cannot drift apart.
+
+**Blocker 2 — the single cross-seed mask was silent, and here is why.** `acceptance_inputs` took one `failure_mask` and applied it to every seed. Measured across seeds: the evaluation pool's transition count is identical (**1,000**) and the episode ids are identical, but **`obs` and `action` are not**. So the length check passed for every seed while the mask selected *different transitions* in each, with nothing raised — a check that passes because it tests length rather than identity. The failure set is also defined by thresholding the *baseline model's* error, which differs by seed regardless. The API is now `seed -> mask`, refusing missing, extra, wrongly sized and empty masks, and refusing a bare array **by type** so the old broadcast cannot return.
+**Tests:** 639 passing, 2 skipped, 1 xfailed after this item.
+**Data seen:** none.
+**Plan ref:** P§7.2 step 4, P§14.2, P§7.3. Corrects D-080. Sol's ruling on the recovered repair path.
+**Reviewed by Sol:** both blockers Sol's; the 1.71×-budget consequence is newly quantified here.
+
+### D-088 · 2026-08-20 · Evidence contract v2 — threading required, v1 grandfathered, and a pinning gap
+**Decision:** Implemented Sol's threading ruling (delta 40). `EVIDENCE_CONTRACT_VERSION = 2`; `SUPPORTED_CONTRACT_VERSIONS = (1, 2)`. v2 requires **both** `num_threads` and `num_interop_threads`, present on the manifest, on every run entry and in every run record, cross-checked against each other, with the record written **at training time** treated as the authority. **v1 is grandfathered**: the certified `attempt-001` predates the field, and Sol ruled against invalidating or re-running it, so v1 evidence stays verifiable exactly as written.
+
+**A gap found while completing it: the runner recorded interop threads but never pinned them.** `torch.set_num_threads` ran before fitting; `set_num_interop_threads` was never called, so the interop count was whatever the process inherited. Recording a value the process merely inherited is not pinning it — it reintroduces the very variable D-076 exists to remove, one layer along. `_pin_threading` now sets both before any fit and, because `set_num_interop_threads` raises once the pool is up, **refuses** rather than shrugging when the value in force differs from the one requested. `write_manifest` takes an explicit `threading` argument so a caller states what it pinned instead of re-reading a global.
+
+**Why the tests matter more than the constant.** A version bump that nothing refuses is decoration. The suite now covers both halves Sol named: v1 evidence without threading still produces a verdict, and v2 evidence is refused when threading is absent from the manifest, absent from a run entry, incomplete in either field, inconsistent between manifest and run, or inconsistent between manifest and the run record written at training time.
+**Tests:** 650 passing, 2 skipped, 1 xfailed.
+**Data seen:** none. No attempt re-run; the certified attempt-001 is untouched.
+**Plan ref:** D-072, D-073, D-076. Sol's ruling on delta 40.
+**Reviewed by Sol:** the ruling is Sol's; the interop pinning gap is new.
+
+### D-089 · 2026-08-20 · Sol's rulings on deltas 39–42, filed — and Gate 1's standing
+**Decision:** Sol returned **PARTIAL ACCEPTANCE** on the delivered pair and explicitly **did not certify `25fd2c2`**. The certified base remains **`ca545ed`**. Delivery integrity was checked both ways: the delta and bundle SHA-256s Sol quoted match the bytes on disk exactly, so Sol reviewed what was shipped.
+
+**Accepted.** Delta 39 as filing/closeout, with no further W4 Tuesday execution authorised. C-010's `ScaledEvaluation` shape, C-009's two refusals, and `select_attempt()` refusing ambiguity. The `re_formula="1"` seed-intercept restoration (D-082), with the CI-neutrality claim accepted as adequately bounded. The figure-regeneration command, with one reporting boundary.
+
+**Refused.** The permutation null (→ D-085, D-086) and the exact MDE table.
+
+**THE MDE CONDITION IS *FAIL*, NOT PENDING AND NOT PASS.** Sol's ruling, recorded so a reset cannot soften it:
+- **Do not** raise the project to 1,500–2,000 held-out units; that expansion is incompatible with the registered scope and budget. **Preserve the 300-unit design.**
+- The **18–22 table is uncertified and explicitly optimistic**, retained only as a diagnostic. `simulate()` uses a Wald `1.96 × bootstrap SE` rule where D-044 registers a group-bootstrap percentile interval, and the measured null rejection of 6.1–9.2% confirms anti-conservatism. The test asserting `power < 0.10` is **not** an α = .05 calibration test.
+- "MDE versus five-point margin" is meaningful **only as a necessary sensitivity check**. The quantities share units, so an MDE above five points means the study cannot resolve that region — but it is **not** an equivalence test, and MDE ≤ 5 would not by itself establish adequate equivalence or superiority power.
+- The 300 units are classified by **intended construction class**, while H3 ultimately uses **repair-verified labels with ambiguous and undiagnosed units excluded**. The current design is therefore an **upper-bound power scenario**; usable class counts may be smaller. (Confirmed in code: `mde.py` uses `_intended_class`.)
+- **Record that H3 can detect only comparatively large effects and may be inconclusive around ±5 points. Do not claim equivalence if the final interval cannot resolve that band. Direction C is an authorised thesis outcome.**
+- Before any *exact* MDE is reported, the simulation must use the same final group-level inference H3 will use, with its null size validated against .05 under Monte-Carlo uncertainty. **Gated on reporting, not on the closeout** — H3's final test is not settled, so this is not attempted here.
+
+Sol's recommendation, adopted: **continue with the unchanged design and an explicit power limitation, rather than manufacture a Gate 1 pass by expanding scope or moving the margin.**
+
+**The 74.8% smoke reduction is struck as repair-efficacy evidence.** It used five-member repaired ensembles on a non-registered execution path (both now closed by D-087). It is a code smoke test only and must not be cited. No repair-validation evidence may execute until D-087's fixes are in place **and** C-008 supplies the confirmatory runner and complete records.
+
+**Reporting boundary on the figures.** The W4 mean-curve figure is **descriptive** and must not substitute for the registered rho interval. Wherever the W4 result is reported, D-075's discreteness explanation and the atom/mass table travel with it.
+
+**`confound_rate`: no `IDENTITY_VERSION` bump.** Current frozen literals are stable and changing identity now would fork existing evidence. A construction-time assertion that rates are exact members of the frozen grid is the remedy; arbitrary computed rates, if ever introduced, are handled under a planned identity-version change. Implemented as `CONFOUND_GRID`.
+
+**Streams, comparison identities and detached-head gradient isolation require no further action** from this bundle (D-083, D-084 accepted).
+
+**GATE 1 AS IT NOW STANDS**
+
+| condition | status |
+|---|---|
+| reliability gate | **PASS**, certified |
+| compute within budget | **PASS** — contingent on D-087's one-model-per-repaired-arm fix |
+| permutation calibration | **FAILING** — D-085's criterion unmet, cause understood (D-086) |
+| MDE clears five points | **FAIL** — Sol's ruling, not pending |
+
+**Required before the next certification** (Sol's list): the paired permutation and its calibration reporting; one model per repaired arm; seed-specific masks; threading required under v2 with v1 grandfathered; the MDE recorded FAIL and its table uncertified; and the W4 Friday threshold runner **built but not executed**, returned for pre-execution review. Then **one clean bundle against `ca545ed`**.
+**Tests:** 650 passing, 2 skipped, 1 xfailed.
+**Data seen:** none.
+**Plan ref:** P§4.2, P§7.2, P§7.3, P§10.7, P§14.2, P§14.3, D-044, D-075, D-076.
+**Reviewed by Sol:** this entry *is* Sol's ruling, filed.
+
+### D-090 · 2026-08-20 · The W4 Friday threshold runner — built, not executed, with two choices left open
+**Decision:** Built `src/bu/experiments/w4_threshold.py` per Sol's instruction to implement the irreversible cell and return it for **pre-execution review**. Nothing has been calibrated and no fit has been spent. 22 tests, all of which substitute a synthetic scorer — the suite exercises every refusal without training a model.
+
+**Read from the plan rather than from memory.** P§10.1: *"A transition counts as a failure when prediction error exceeds a threshold set at a fixed percentile of the error distribution measured on a well-fit reference model in the same environment. The threshold is set once… and is not tuned afterwards."* S§W4 Fri adds only "write the percentile threshold to a constants file that is never edited again". D-035 fixes the rest: one global threshold, a balanced reference pool over the preregistered strata, and it lists **the percentile** among the six things W4 Friday freezes.
+
+**What the runner enforces.**
+- **The percentile is a required argument with no default.** Neither document names a value, so a default would make the most consequential choice in the module silently, in code — the precise unreported degree of freedom P§10.1 exists to prevent.
+- **Confirmatory seeds only** — C-007 at this call site, not a comment about it. D-034 excludes development seeds permanently, and a threshold frozen forever must not carry pilot noise.
+- **Balanced over all nine (layout × causal_attribute) strata**, subsampled without replacement to a common count; a short stratum is refused rather than allowed to under-contribute. Tested on the property itself: a stratum of 10,000 extreme values cannot drag the median once balanced.
+- **It does not write `constants.py`.** It returns evidence. Promoting the number is a Change Record under D-035.
+- **Refuses a dirty tree**, forced in the test rather than depending on the tree the suite happens to meet.
+- Reuses the registered `exp1` stage rather than minting a stage identity, and builds the scale with `ScaledEvaluation.from_pool`, which takes no mask — here the mask does not merely not-yet-apply, it does not yet **exist**, because this calibration is what defines it (D-061, C-010).
+
+**TWO THINGS DELIBERATELY NOT DECIDED, both for Sol before execution.**
+1. **The percentile value.** Undetermined by P§10.1 and S§W4; listed by D-035 as a W4 Friday freeze. Not chosen here.
+2. **What counts as a "well-fit reference model".** The module reads it as the fully-observed estimation family at the largest registered size (5,000), balanced per D-035. That is a *reading* of P§10.1's phrase, not a quotation, and it determines the reference error distribution the percentile is taken over.
+
+**A limit recorded rather than implied.** A fraction-shaped typo (0.9 for 90) is a valid percentile and no validation can distinguish it from an intentional choice; a test documents this instead of being named after a refusal it does not perform (D-055). The mitigation is that the percentile is a reviewed, frozen decision — not that code catches it.
+**Tests:** 672 passing, 2 skipped, 1 xfailed.
+**Data seen:** none. **Compute: zero.** Not executed.
+**Plan ref:** P§10.1, S§W4 Fri, D-034, D-035, D-061, C-007, C-010.
+**Reviewed by Sol:** **not yet — this is the pre-execution review Sol asked for.**

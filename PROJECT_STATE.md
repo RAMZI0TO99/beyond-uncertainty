@@ -39,14 +39,14 @@ This is the shared working file for the project. It is written by Claude, review
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-18 |
+| **Last updated** | 2026-08-20 |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Weeks 1–3 CERTIFIED and frozen at `9c0d89d`** (D-067); documentation continuation certified at `7dbcd32`. **W4 Mon CERTIFIED at `a84cf6c`**. **`2efad258` CERTIFIED** as the W4 Tuesday gate implementation and evidence contract, subsuming three uncertified intermediates (D-071 … D-073). **W4 Tue is DONE and the result is CERTIFIED at `ca545ed`** — rung 0 PASSES on all three configurations (D-074, D-075), 450 fits in 4 m 52 s on CPU. Ladder stopped; rungs 1 and 2 are not to be run. Twenty Sol reviews actioned. **C-006, C-009, C-010, C-011 built; W5 Mon (recovered, D-080), Tue/Wed (D-079) and Fri (D-081) done.** **Three of Gate 1's four conditions are settled** — only the MDE's verdict is open. **Next: W4 Fri**, threshold calibration — blocked on Sol reviewing C-010 (delta 40). **Gate 1 is at risk: the MDE does not clear five points** (D-078). Week 1 Monday was 2026-08-17 — roughly **three** weeks ahead of calendar (DEV-002) |
+| **Current week / day** | **Sol ruled on deltas 39–42: PARTIAL ACCEPTANCE, and `25fd2c2` is explicitly NOT certified** (D-089). Certified base remains **`ca545ed`**. Sol's entire required closeout is **built** (D-085 … D-090): paired permutation with its criterion frozen first, one model per repaired arm, seed-specific masks, evidence contract v2 with v1 grandfathered, the rulings filed, and the **W4 Friday threshold runner built and NOT executed**. **Two rulings now block everything**: the acceptance model's conservatism, and W4 Friday's percentile plus reference-model definition. Week 1 Monday was 2026-08-17 — roughly **three** weeks ahead of calendar (DEV-002) |
 | **Next gate** | **Gate 1**, Week 5 Saturday = **2026-09-19** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `ca545ed`** — Sol certified the stored W4 Tuesday result on 2026-08-18. The chain: `9c0d89d` (Week 3 implementation, frozen) → `7dbcd32` (docs) → `a84cf6c` (W4 Mon trend test) → `2efad258` (W4 Tue gate + evidence contract) → `ca545ed` (the stored result). Three intermediate commits were reviewed and explicitly **not** certified; `2efad258` subsumes them. **Set `BASE=ca545ed` for the next bundle** (D-043, D-067, D-075) |
-| **Tests** | **627 passing, 2 skipped** (the two GPU tests run only where a device exists; on this machine they skip and are declared unverified). Includes golden `unit_id` values, the Experiment 2A aliasing property, D-030's stream pairing, gradient isolation between the heads, and — new — that MC-dropout samples actually **vary** and that a second pilot run cannot touch the first one's evidence |
+| **Tests** | **672 passing, 2 skipped, 1 xfailed** (the two GPU tests skip where no device exists). **The xfail is deliberate and load-bearing**: D-085's frozen calibration criterion is *not* met, and it is marked `xfail(strict=True)` so the open failure stays visible in the suite rather than being loosened away. If it ever passes, the suite says so |
 | **Compute used** | **0 GPU-hours** · first real spend: **450 CPU fits in 4 m 52 s** (W4 Tue rung 0) of ~110–145 budgeted (trigger ≈ 120, P§14.3). Every fit so far ran on **CPU**. Two sub-second GPU tests now run in the suite (~68 MiB) to cover the CUDA RNG fork and seeding — the student's other workload has finished and the card is at ~0.9/16 GB |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -79,23 +79,38 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and in the decisions below.
 6. **W4 Tue — DONE. Rung 0 PASSES** (D-074). All three configurations, on the certified commit with a clean tree: **rho = −0.9429** for every one, intervals [−0.9429, −0.9429] (uniform), [−0.9429, −0.8286] (clustered), [−0.9429, −0.9429] (sparse). 90 ensembles / 450 fits in **4 m 52 s** on CPU; `recompute()` exact; suite green after. Per Sol the ladder **stops here** — rungs 1 and 2 are not run. **Read the interval correctly:** the exact bootstrap is discrete with 2–3 atoms, and uniform and sparse are degenerate only just (second atom at 1.63% and 2.14% against a 2.5% threshold). The *verdict* is unaffected — every atom is far below zero — but the width is not a precision claim. **The N=250 peak reproduces in 14 of 15 curves**; clustered seed 4 peaks at N=500 instead. Disagreement is **not** monotone in dataset size; the test passes because Spearman tolerates one inversion.
 7. **W4 Fri — NEXT, and blocked on Sol.** Threshold calibration is the first cell where a failure mask exists, so the first that can violate the D-061 scale rule. **C-010 is now built** (D-076) — `ScaledEvaluation.from_pool` takes no mask, so the scale precedes any mask structurally — but Sol has not reviewed it (delta 40), and W4 Friday **permanently freezes a §2 constant**. Wednesday and Thursday went to C-006, C-009 and C-010; per Q-004 the gain from the stopped ladder goes to review and obligations, **never** to scope.
 
-**⚠ GATE 1 IS AT RISK, and this is the most consequential open item** (D-078). The
-W5 MDE simulation is built and both of D-044's validations pass — but the answer
-is that the design **does not clear the five-point margin**: 18–22 points at the
-scheduled held-out counts, against a 5-point requirement. **Sample size is the
-driver, not correlation** — even at ICC = 0 it is 18 points, so the conclusion
-does not rest on the least knowable parameter. Every lever was tested: pairing
-(19.0 → 11.5 → 8.0 as it rises to 0.99), baseline accuracy, and even holding out
-all 300 units (10.5 unpaired, 6.0 paired). Clearing five points conservatively
-needs on the order of **1,500–2,000 held-out units** against the 60–80 scheduled.
-P§14.3's remedy is **configuration count — never seeds**. **Not acted on:** that
-is a scope and compute decision for the student and Sol, and the framing itself
-(an MDE compared against an *equivalence* margin) needs adversarial review first.
-Found in Week 4 rather than Week 15, which is what S§W5 says the exercise is for.
-The D-082 audit found the power test **anti-conservative** (type-I error
-0.06–0.09 vs 0.05), so the reported MDEs are optimistic and the true design is
-even less powerful — the risk is real, and which inference procedure to use joins
-the delta-41 questions.
+**⚠ GATE 1 — TWO CONDITIONS ARE NOT MET, AND ONE IS A *FAIL* RATHER THAN A RISK.**
+
+| condition | status |
+|---|---|
+| reliability gate | **PASS**, certified (D-074, D-075) |
+| compute within budget | **PASS** — *contingent* on D-087's one-model-per-repaired-arm fix. At the old default the design cost **14,885 fits against ~8,700 — 1.71× budget** |
+| permutation calibration | **FAILING** — D-085's criterion unmet; cause understood (D-086) |
+| MDE clears five points | **FAIL** — Sol's ruling, not pending and not at risk (D-089) |
+
+**The MDE is settled and must not be re-litigated by a reset.** Sol ruled: preserve
+the 300-unit design, do **not** expand to 1,500–2,000 held-out units, and treat
+the 18–22 table as **uncertified and explicitly optimistic** (it uses a Wald
+`1.96 × SE` rule where D-044 registers a group-bootstrap percentile, and measured
+null rejection is 6.1–9.2%). "MDE vs the five-point margin" is a **necessary
+sensitivity check only** — it is not an equivalence test. The 300 units are
+classified by **intended** construction class while H3 uses **repair-verified**
+labels with exclusions, so this is an **upper-bound** power scenario. Record that
+H3 detects only comparatively large effects and may be inconclusive around ±5;
+never claim equivalence the interval cannot resolve. **Direction C is an
+authorised outcome.** Continue with the unchanged design and an explicit power
+limitation — do not manufacture a pass by expanding scope or moving the margin.
+
+**The permutation condition failed for a reason worth carrying** (D-086). The
+registered P§7.3 model has **no transition-level pairing term** while the
+comparison is paired transition-by-transition, so its SE is **1.51×** the true
+paired null spread and the test is **conservative**. The withdrawn global
+permutation had been hiding this precisely: it inflated the null's spread by
+**1.46×**, cancelling the over-wide SE into a reassuring **1.03** that passed its
+bound. **Two errors cancelling into a number that read as evidence.** Not fixed —
+the acceptance model is a §2 frozen constant, so it is a Change Record and Sol's
+call. Measured on synthetic data with near-perfect pairing: the **direction** is
+established, the **magnitude on real data is not**.
 
 **Two things the thesis must carry, recorded now because a reset loses them** (D-075):
 - **Never print a zero-width interval bare.** `[−0.9429, −0.9429]` reflects **quantile discreteness, not zero sampling uncertainty** — the bootstrap distribution has only 2–3 distinct values because Spearman over six sizes has highly discrete support. Sol's sentence for the results text is quoted verbatim in D-075, and the atom/mass table must travel with it.
@@ -263,6 +278,12 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-082** | 2026-08-18 | Audit of unreviewed stats — MDE power test anti-conservative (report); acceptance seed intercept missing (fixed) | **Audit** |
 | **D-083** | 2026-08-18 | Audit continued — streams and identities sound; latent confound_rate float-identity risk | **Audit** |
 | **D-084** | 2026-08-18 | Audit closeout — detached head verified exact; scope and verdict (foundations sound) | **Audit** |
+| **D-085** | 2026-08-20 | The permutation null's calibration criterion, frozen before the corrected null exists | Sol's ruling |
+| **D-086** | 2026-08-20 | The corrected permutation null, and the defect it had been hiding | **Finding** |
+| **D-087** | 2026-08-20 | Sol's two repair blockers — one model per repaired arm, seed-specific masks | Sol's blockers |
+| **D-088** | 2026-08-20 | Evidence contract v2 — threading required, v1 grandfathered, and a pinning gap | Sol's ruling |
+| **D-089** | 2026-08-20 | Sol's rulings on deltas 39–42 filed — MDE is FAIL; `ca545ed` stays the base | **Sol's verdict** |
+| **D-090** | 2026-08-20 | The W4 Friday threshold runner — built, not executed, two choices left open | **For Sol** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -368,71 +389,11 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **20 archived, 1 kept here** — Week 3's six close entries were archived when it was certified and frozen at `9c0d89d` (D-067). Nothing is condensed; the archive is complete.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **30 archived, 1 kept here** — Week 3's six close entries were archived when it was certified and frozen at `9c0d89d` (D-067). Nothing is condensed; the archive is complete.
 
 *(W3 certification through the W4 Tuesday gate rounds — the trend test, Sol's two blockers, and the evidence contract — moved to `PROJECT_STATE_ARCHIVE.md` when this file passed its 500-line paste cap. Six entries, 2026-08-17 to 2026-08-18; the decisions they produced are D-068 … D-072 and remain indexed in §3.)*
 
-### 2026-08-18 (W4 Tue prep, round 3) · The closeout, and an accepted architecture · Claude
-
-**Did:** Sol **accepted the architecture** — canonical `Config` reconstruction as the source of identity, complete `TrainConfig` freezing, granularity attested outside `Config`, run and member records at the execution boundary, source-row binding, evaluation-pool consistency, content-derived attempt identity, runner and verdict separated. `4e92fda` accepted in design, not certified, because six fields the contract advertised were never actually compared (D-073). All six verified before fixing.
-
-**The one that mattered most:** the run record carries **five** training-time attestations and only `granularity` was checked — so a manifest could borrow an honest run record while changing the evaluation pool it claimed to evaluate on, or the experimental obligation the run discharged. All five now cross-checked, missing ones fail closed. The others: manifest version and frozen rung spec were required but never compared; normalisation was checked for constancy across sizes but never against the row it was supposedly computed under; the attempt identity hashed only run records, which are written *before* training, so two evidence sets with copied start records and different outputs shared an id; declared counts and the metric schema version were unverified, the latter reusing `config.SCHEMA_VERSION` for a schema that evolves independently; and `run()` recorded a dirty tree, ran all 450 fits, and only then had the verdict refused.
-
-**Sol's answers to my two open questions, both rulings against more machinery.** Per-transition exports are not needed to authorise the gate, and weight digests are not either — a checkpoint digest proves a file did not change, not that it was trained under the declared configuration. The trust model protects against accidental substitution, stale evidence, mixed executions and post-run mutation, **not** a malicious author fabricating every layer consistently. That gap is now written down as deliberate rather than left as my open worry. `EVIDENCE_CONTRACT_VERSION` also left `constants.py`: schema versions must stay evolvable, which is the opposite of a preregistered quantity.
-
-**One test of mine was a tautology.** `assert X is not Y or True` cannot fail — the D-055 failure mode, in the very delta where I described avoiding it. Replaced with the property: move the gate's schema version and watch the refusal move with it.
-
-**Numbers:** tests 532 → **548 passing**, 2 skipped. Zero GPU-hours; no gate cell executed.
-
-**Next:** delta 37 is the micro-closeout. **If Sol passes it, rung-0 compute begins immediately, on CPU** — Sol has said so explicitly, and the measured runtime makes the GPU unnecessary.
-
-### 2026-08-18 (W4 Tue) · Rung 0 passes · Claude
-
-**Did:** Sol **certified `2efad258`** as the W4 Tuesday gate implementation and evidence contract — subsuming the three uncertified intermediates — and authorised rung-0 execution on CPU at the registered defaults. Confirmed the tree clean at that exact commit, ran it without `allow_dirty`, and **rung 0 PASSES on all three configurations** (D-074). Per Sol's instruction the ladder **stops**: rungs 1 and 2 are not run.
-
-**Verdict:** rho = **−0.9429** for uniform, clustered and sparse alike; intervals [−0.9429, −0.9429], [−0.9429, −0.8286], [−0.9429, −0.9429]. 90 ensembles / **450 fits in 4 m 52 s** on CPU. `recompute()` reproduced the serialised verdict exactly; the suite is green after the run at 548 passing.
-
-**The three rhos are identical because Spearman reads ranks**, and all three mean curves share one rank pattern — falling except a peak at N=250. −0.9429 is one adjacent transposition from perfect reversal, which is that peak costing one of fifteen inversions, exactly as D-069 measured at three seeds.
-
-**The interval, said properly.** Two of three are a single point and that is **not** zero uncertainty: the exact bootstrap is discrete with 2–3 atoms over 3,125 resamples, and uniform and sparse are degenerate only just — second atoms at **1.63%** and **2.14%** against a 2.5% quantile threshold, so sparse is 0.36 pp from its upper bound moving. The verdict is robust to all of it (every atom is far below zero); the reported width is not a precision claim.
-
-**The N=250 peak reproduces in 14 of 15 seed-configuration curves.** The exception, clustered seed 4, peaks at N=500 with N=250 below N=100 — kept and reported, not smoothed. Disagreement is not monotone in dataset size; the gate passes because one inversion is tolerated. This is a reliability result about the estimator, not H1's verdict.
-
-**Two housekeeping fixes.** The verdict was first written *into* the attempt directory, mutating evidence after its manifest; it now sits beside it and the attempt re-verifies unchanged. And the full attempt — manifest, rows, 90 run records, 450 metric streams, 1.2 MB — is now tracked in git, widening the pilot's manifest-only exception, because the contract's trust boundary is those digests and untracked they cannot be checked from a fresh clone.
-
-**A correction:** I told Sol rung 0 would be "minutes", then corrected that to ~50 minutes from the pilot's rate. It was 4 m 52 s — the first estimate was right and the correction was wrong. The pilot is ~10× slower per fit because it also writes per-transition exports, activation reports and figures. I scaled a rate without asking what it was a rate of.
-
-**Next:** delta 38 carries the verdict for review. Then **W4 Fri**, threshold calibration — **C-010 must be finished first**.
-
-### 2026-08-18 (W4 Tue closeout) · The result certified, and three rulings filed · Claude
-
-**Did:** Sol **certified the rung-0 result** and `ca545ed` as the stored Week 4 Tuesday result, now the review base. The gate passes at rung 0 on all three predeclared configurations independently; the ladder is correctly stopped. Three rulings filed as D-075, all adopted, none requiring code.
-
-**Ruling 1 — the intervals stay exactly as registered, and never travel alone.** Widening or replacing them after seeing their discreteness is what preregistration exists to prevent. But `[−0.9429, −0.9429]` must never appear without its explanation, and Sol supplied the wording for the results text — quoted verbatim in D-075 so it survives a reset. The atom/mass table is **necessary for honest interpretation**, not optional colour. The conclusion is unchanged: every atom is strictly negative, so the pass does not depend on which one holds the 97.5th percentile.
-
-**Ruling 2 — clustered seed 4 is not to be investigated.** No integrity failure was found, the paired procedure already includes the seed, and the gate passes with it in. Looking now would be post-result exploration and could invite a model change on one development curve. Recorded descriptively and left to W10's untouched confirmatory seeds.
-
-**Ruling 3 — tracking the 1.2 MB of evidence is correct**, because the verifier depends on the run records and member streams; digests without files leave a fresh checkout able to read every claim and verify none. Keeping `runs/` out of bundle diffs is acceptable given the omission is explicit and the files are in the certified commit. No checkpoints, no per-transition exports for this gate.
-
-**Also accepted:** moving the verdict beside the attempt, and the runtime correction — report 4 m 52 s and state that the W3 pilot is not a comparable per-fit workload.
-
-**Numbers:** unchanged. 548 passing, 2 skipped. Zero GPU-hours. The 450 CPU fits of W4 Tue remain the only compute spent.
-
-**Next:** **W4 Fri**, threshold calibration — **C-010 must be finished first**, since it is the first cell that can violate the D-061 scale rule. W4 Wed and Thu are free because the ladder stopped; per Q-004 that gain goes to review and prose, never to scope.
-
-### 2026-08-18 (W4 Wed) · C-010 and C-009 built, and a reproducibility variable nobody had recorded · Claude
-
-**Did:** built **C-010** (D-076) and **C-009** (D-077), the two remaining obligations that needed no ruling first. Neither required a new scientific decision — D-061 and Sol's 2026-08-16 item already specified both.
-
-**C-010.** `ScaledEvaluation` is the call site D-064 said the rule needed. `from_pool` **takes no mask**, so the scale is built before the object is capable of receiving one; `masked()` reuses that identical object and there is no parameter to override it. One test asserts the invariant is *load-bearing* — the registered masked ratio and a subset-scaled one must differ, because if both choices gave the same answer the rule would be doing no work. `select_attempt()` refuses to guess between attempts: there is no "latest", since a second attempt exists precisely because something was wrong with the first.
-
-**The finding, from probing rather than review.** Proving the runner refactor numerically neutral reproduced N=100 exactly and N=250 **not** — a 0.19% move in mean disagreement. The refactor was not the cause: **thread count** was. The certified run used 8 threads, the comparison 4, and reduction order differs. Re-running at 8 reproduced both cells exactly. **Nothing recorded the thread count**, so the certified attempt was reproducible only by someone who already knew how it had been invoked — a gap in a contract whose whole purpose is that a verdict be checkable by someone who was not there. Now recorded, **additively**: making it required would invalidate the certified `attempt-001`, and that is Sol's call, not mine.
-
-**C-009.** Both of Sol's items were **opt-outs**: `source_unit` was checked only `if not None`, so a dataset that never recorded its origin skipped the one clause catching a borrowed pool; `stream_version` was never compared at all, though D-052 bumped it *because the pools themselves changed*. Adding both refusals broke **no existing test** — nothing in 563 tests exercised either path.
-
-**Numbers:** tests 548 → **565 passing**, 2 skipped. Zero GPU-hours; the reproducibility probe cost 15 CPU fits in a scratch directory. The certified W4 Tue evidence still verifies, and a regression now asserts it will keep doing so.
-
-**Next:** **W4 Friday is blocked on Sol** reviewing C-010 (delta 40) — it is the first cell where a mask exists, so it is the first that can violate D-061. **C-006**, the W5 MDE simulation, remains buildable without a ruling: D-044 specifies it fully. **C-003** (predeclaring the D-031 reserve draw order) is a predeclaration and must reach Sol first.
+*(The W4 Tuesday gate result, its certification closeout, and the W4 Wednesday obligations — four entries, 2026-08-18 — were archived on 2026-08-20 for the same reason. They produced D-071 … D-077, all indexed in §3. W4 Tuesday is certified at `ca545ed`.)*
 
 ### DEV-008 · 2026-08-18 · The MDE simulation's significance level is not in the plan
 **Deviation:** P§10.7 fixes power at eighty percent but does not state a significance level. The C-006 simulation uses **α = 0.05, two-sided**.
@@ -486,3 +447,25 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **20 archived, 1 kept
 **Did:** built `make_figures.py` (D-081) — `python -m bu.experiments.make_figures` regenerates every figure from the immutable attempts, no compute. Produces the two W3 curves and a new certified W4 gate trend (three curves peaking at N=250, no error bars per D-075), and **fails loudly** on a missing log. 619 → **626 passing**.
 
 **Where things now stand.** Everything through W5 that needs no Sol ruling is done: Mon (recovered), Tue, Wed, Fri. **Gate 1 at three of four.** The delta prose channel is at its cap (≈377/400) with deltas 39–42 undelivered, so D-080 and D-081 ride the complete diff since `ca545ed` and the ledger rather than new delta blocks. **Genuinely out of unblocked work now** — W4 Fri (freezes a §2 constant), the MDE decision, C-003, C-005/7/8 all wait on Sol.
+
+### 2026-08-20 (W5 closeout) · Sol's rulings actioned, and a null that was hiding a defect · Claude
+
+**Sol returned PARTIAL ACCEPTANCE on deltas 39–42 and did NOT certify `25fd2c2`.** The certified base remains **`ca545ed`**. Delivery integrity checked both ways first: the delta and bundle SHA-256s Sol quoted match the bytes on disk exactly, so Sol reviewed what was shipped. Every finding was verified before anything changed, and all held — two were **worse** than stated.
+
+**Did, in Sol's required order** (D-085 … D-090):
+1. **Froze the calibration criterion before writing the corrected null** (D-085), so its provenance is history rather than a claim. Admissible counts computed in advance: statistical-only **k ∈ [4, 16]** of 200, full rule **k ∈ [0, 3]**.
+2. **Paired within-seed permutation** (D-086). The withdrawn global shuffle corrupted **48.4%** of seeds (48.72% analytic) and **every** permutation broke at least one seed — the 0/200 and 5.5% figures were never measurements of the registered design.
+3. **One model per repaired arm**, **seed-specific failure masks** (D-087).
+4. **Evidence contract v2** — threading required and cross-checked, **v1 grandfathered** so certified `attempt-001` is untouched (D-088).
+5. **Sol's rulings filed**, Gate 1's standing recorded (D-089).
+6. **W4 Friday threshold runner built and NOT executed** (D-090), returned for the pre-execution review Sol asked for.
+
+**THE FINDING — two errors were cancelling.** The corrected null exposed that the registered P§7.3 model has **no transition-level pairing term** while the comparison is paired transition-by-transition, so its SE is **1.51×** the true paired null spread and the test is **conservative**. The broken permutation had been hiding this exactly: breaking the pairing inflated the null's spread by **1.46×**, cancelling the over-wide SE to a reassuring ratio of **1.03** that passed its bound comfortably. Statistical-only rate **0/200, CI [0.000%, 1.828%]** — D-085 requires it to contain 5%. **Not fixed:** the acceptance model is a §2 frozen constant, so it is a Change Record and Sol's ruling. Marked `xfail(strict=True)` so the failure stays visible, with the 1.51× pinned by a test. Measured on synthetic data whose generator pairs the arms almost perfectly — the **direction** is established, the **magnitude on real data** is not.
+
+**Also found:** the runner **recorded** interop threads but never **pinned** them (D-088); and repaired arms at the default K=5 would cost **8,360 fits against 1,672 budgeted**, taking the design to **14,885 vs ~8,700 — 1.71× budget**, which is the Gate 1 compute condition Sol had just marked PASS (D-087).
+
+**A provenance note.** `config.py`, `gate.py` and `tests/test_audit_regressions.py` were found **modified mid-session** — after this session's last edit and last green run — implementing Sol's items 4 and 6. **I did not author them** and `list_sessions` showed no other session. They left the suite **red at 24 failures** (v2 required a `threading` field nothing emitted). I verified them by test rather than by reading, completed the production emitter, the interop pinning and the whole v2 refusal suite, and the tree is green again. Recorded because unattributed edits in a working tree are the DEV-005 class of hazard.
+
+**Tests:** 627 → **672 passing**, 2 skipped, **1 xfailed** (D-085's unmet criterion, deliberately visible). **Compute: zero.** No fit spent, no attempt re-run, no data seen.
+
+**Next:** deliver delta 43 with one clean bundle against `ca545ed`. Two questions must reach Sol — the acceptance model's conservatism, and W4 Friday's percentile and reference-model definition. **W4 Friday still must not execute.**

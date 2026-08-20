@@ -33,6 +33,7 @@ that to be true, and all three are verified rather than assumed:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import numpy as np
@@ -47,6 +48,16 @@ from ..models.world_model import MOVEMENT_ACTIONS
 
 #: The stage repair validation runs under, at the 20 seeds §2 freezes.
 REPAIR_STAGE = "repair_validation"
+
+#: **One model per repaired arm** (P§14.2, and `Fit.members` in the enumerator).
+#: A baseline trains the registered ensemble because H1 and H2 need disagreement
+#: across members; a repair needs none, because P§7.3 compares per-transition
+#: error before and after. This is not a tuning choice -- the frozen compute
+#: accounting is taken at one model per repaired arm, so running the registered
+#: K here would cost 8,360 repair fits against the 1,672 budgeted and push the
+#: design to 14,885 fits against P§14.2's ~8,700, i.e. 1.71x budget. Sol's
+#: ruling on the recovered repair path: repaired arms must fail closed.
+REPAIR_ENSEMBLE_SIZE = 1
 
 
 def applicable_arms(unit: UnitSpec) -> tuple[str, ...]:
@@ -83,6 +94,9 @@ class ArmEvaluation:
     config_id: str
     run_id: str
     n_train: int
+    #: Attested, not assumed: P§14.2 budgets one model per repaired arm, so the
+    #: number actually fitted travels with the evaluation that used it.
+    ensemble_size: int = 1
 
     def __len__(self) -> int:
         return int(self.error.shape[0])
@@ -113,11 +127,25 @@ def evaluate_arm(
             "arm scored in its own units is exactly the defect that ruling closed"
         )
 
+    if train is None:
+        # The default differs by arm ON PURPOSE. `TrainConfig()` carries the
+        # registered ensemble size, which is right for a baseline and five times
+        # the budgeted cost for a repair.
+        train = TrainConfig(ensemble_size=REPAIR_ENSEMBLE_SIZE) if arm != "baseline" else TrainConfig()
+    if arm != "baseline" and train.ensemble_size != REPAIR_ENSEMBLE_SIZE:
+        raise ValueError(
+            f"repaired arm {arm!r} was given ensemble_size={train.ensemble_size}; "
+            f"P§14.2 budgets {REPAIR_ENSEMBLE_SIZE} model per repaired arm and the "
+            "8,197-fit total is taken at that rate. Running the registered ensemble "
+            "here understates repair cost fivefold and evaluates a different "
+            "intervention from the budgeted one. The baseline arm keeps its ensemble"
+        )
+
     effective = Arm(arm).resolve(unit)
     pools = collect_pools(unit, stage=stage, seed=seed, arm=arm)
     assert_pools_match(pools, unit=unit, arm=arm, stage=stage, seed=seed)
 
-    config = Config(unit=unit, arm=Arm(arm), seed=seed, stage=stage, train=train or TrainConfig())
+    config = Config(unit=unit, arm=Arm(arm), seed=seed, stage=stage, train=train)
     ensemble = train_ensemble(
         unit, pools, config.train, stage=stage, seed=seed, arm=arm,
         granularity=granularity,
@@ -143,7 +171,7 @@ def evaluate_arm(
         arm=arm, seed=seed, error=error.detach().numpy(),
         episode=pools.evaluation.episode[keep], step=pools.evaluation.step[keep],
         scale=scale, config_id=config.config_id, run_id=config.run_id,
-        n_train=len(pools.train),
+        n_train=len(pools.train), ensemble_size=train.ensemble_size,
     )
 
 
@@ -151,15 +179,28 @@ def acceptance_inputs(
     baseline: list[ArmEvaluation],
     repaired: list[ArmEvaluation],
     *,
-    failure_mask: np.ndarray | None = None,
+    failure_masks: Mapping[int, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
     """Assemble the paired arrays `acceptance_test` consumes.
 
+    **The failure set is per seed, and that is not a convenience.** The recorded
+    failure set is defined by thresholding the *baseline model's* error, and the
+    baseline model differs by seed -- so the set of failing transitions differs
+    by seed too. The evaluation pool itself also differs: measured across seeds,
+    the transition count is identical (1,000) and the episode ids are identical,
+    but `obs` and `action` are **not**. A single cross-seed mask therefore passed
+    every length check while selecting different transitions in each seed, with
+    nothing raised. That is the shape this project keeps meeting -- a check that
+    passes because it tests length rather than identity (Sol's ruling on the
+    recovered repair path; D-055, D-057).
+
     Args:
-        failure_mask: boolean over the movement evaluation pool — **the recorded
-            failure set**, identical for both arms (P§7.2 step 4). ``None`` scores
-            the whole pool, which is a diagnostic and **not** the registered
-            acceptance comparison.
+        failure_masks: ``seed -> boolean mask`` over that seed's movement
+            evaluation pool — **the recorded failure set**, identical for both
+            arms of that seed (P§7.2 step 4). Every seed present must have one:
+            missing, extra, wrongly sized and empty masks are all refused.
+            ``None`` scores the whole pool, which is a diagnostic and **not** the
+            registered acceptance comparison.
     """
     if len(baseline) != len(repaired):
         raise ValueError(
@@ -168,6 +209,7 @@ def acceptance_inputs(
         )
     if not baseline:
         raise ValueError("no evaluations; there is nothing to compare")
+    masks = _validated_masks(failure_masks, baseline)
 
     errors, arms, seeds, episodes = [], [], [], []
     for base, rep in zip(
@@ -198,7 +240,7 @@ def acceptance_inputs(
                 "requires one scale, measured on the baseline's full movement pool "
                 "before any mask, reused verbatim"
             )
-        mask = _validated_mask(failure_mask, len(base), base.seed)
+        mask = masks[base.seed]
         for source, flag in ((base, 0), (rep, 1)):
             errors.append(source.error[mask])
             arms.append(np.full(int(mask.sum()), flag))
@@ -210,6 +252,38 @@ def acceptance_inputs(
         "seed": np.concatenate(seeds),
         "episode": np.concatenate(episodes),
     }
+
+
+def _validated_masks(failure_masks, baseline) -> dict[int, np.ndarray]:
+    """One mask per seed, checked against that seed's own pool.
+
+    Refuses missing and extra seeds explicitly. An extra key is not harmless
+    slack: it means the caller built masks against a seed set that is not the
+    one being scored, and the mask it *did* supply for the scored seeds was
+    probably built the same way.
+    """
+    seeds = [e.seed for e in baseline]
+    if failure_masks is None:
+        return {e.seed: np.ones(len(e), dtype=bool) for e in baseline}
+    if not isinstance(failure_masks, Mapping):
+        raise TypeError(
+            f"failure_masks must be a seed -> mask mapping, got {type(failure_masks).__name__}. "
+            "A single array applied to every seed scores a different transition set in "
+            "each one while passing every length check"
+        )
+    missing = sorted(set(seeds) - set(failure_masks))
+    extra = sorted(set(failure_masks) - set(seeds))
+    if missing:
+        raise ValueError(
+            f"no failure mask for seed(s) {missing}. Every seed being scored needs its "
+            "own recorded failure set; there is no default and no fallback to the whole pool"
+        )
+    if extra:
+        raise ValueError(
+            f"failure masks supplied for seed(s) {extra}, which are not being scored. "
+            "The masks were built against a different seed set than the evaluations"
+        )
+    return {e.seed: _validated_mask(failure_masks[e.seed], len(e), e.seed) for e in baseline}
 
 
 def _validated_mask(failure_mask, n, seed) -> np.ndarray:

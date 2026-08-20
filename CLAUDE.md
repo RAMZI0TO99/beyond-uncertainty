@@ -109,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 627 passing, 2 skipped
+.venv/bin/python -m pytest -q                      # 672 passing, 2 skipped, 1 XFAILED
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -283,56 +283,50 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ## Where the project stands
 
-*Last session: 2026-08-18 (W4 Thu). Week 1 Monday is 2026-08-17, so the project
-is running roughly three weeks ahead of its own calendar (DEV-002).*
+*Last session: 2026-08-20 (W5 closeout). Week 1 Monday is 2026-08-17, so the
+project is running roughly three weeks ahead of its own calendar (DEV-002).*
 
 **Weeks 1–3 complete, audited, CERTIFIED and frozen** (D-067). **W4 Monday,
-Tuesday and its stored result are all certified.** Twenty Sol reviews actioned.
+Tuesday and its stored result are all certified.** Twenty-one Sol reviews actioned.
 
-**Certified bases, in one chain:** `9c0d89d` (Week 3 implementation, frozen) →
-`7dbcd32` (docs) → `a84cf6c` (W4 Mon trend test) → `2efad258` (W4 Tue gate and
-evidence contract) → **`ca545ed` (the stored W4 Tue result — use
-`BASE=ca545ed`)**. Three intermediate commits were reviewed and explicitly
-**not** certified; `2efad258` subsumes them.
+**Certified base: `ca545ed`.** Sol reviewed `25fd2c2` and **explicitly did not
+certify it** (D-089), so the base did not move. Use `BASE=ca545ed`.
 
-**START HERE.** `DELTA_TO_SOL.md` holds **deltas 39–42 — four accumulated,
-undelivered** — plus a reconciliation note and two later decisions (D-080,
-D-081) that ride the **complete git diff since `ca545ed`** rather than their own
-delta blocks, because the delta prose channel is at its 400-line cap. The
-student runs out of Sol credit for days at a time, so deltas accumulate; that is
-what the channel is for (D-008). **The bundle is the ground truth Sol reviews —
-the full diff carries everything, the delta blocks narrate the highlights.** Ask
-whether Sol has replied before doing anything else. **Two questions must be
-answered before more work:**
+**START HERE.** Deltas 39–42 **were delivered** and Sol returned **PARTIAL
+ACCEPTANCE**. `DELTA_TO_SOL.md` now holds **delta 43, undelivered**, covering
+this session. Ask whether Sol has replied before doing anything else.
 
-- **delta 40** — C-010's masked call site (built, `ScaledEvaluation`). **W4
-  Friday must not run before Sol reviews it**; Friday is the first cell where a
-  mask exists, so the first that can violate D-061. Delta 40 also asks whether
-  threading metadata becomes a **required** contract field, which would
-  invalidate the certified `attempt-001`.
-- **delta 41** — **the MDE does not clear the five-point margin.** See below.
-  Nothing about configuration count should be decided before Sol rules.
+**Sol's entire required closeout is BUILT** (D-085 … D-090): the paired
+within-seed permutation with its criterion frozen *first*, one model per repaired
+arm, seed-specific failure masks, evidence contract v2 with v1 grandfathered, the
+rulings filed, and the **W4 Friday threshold runner built and NOT executed**.
 
-**Weeks 1–5 that need no ruling are DONE.** W5 Mon (the repair path, *recovered*
-from a prior session's uncommitted work — D-080), W5 Tue/Wed (acceptance test +
-permutation null, D-079), and W5 Fri (`make_figures.py`, every figure from logs,
-D-081). **Gate 1 stands at three of four conditions**: reliability gate passed
-and certified, compute within budget, permutation null calibrated — only the MDE
-verdict is open, and it is the one Sol must settle. There is **no unblocked work
-left**; everything remaining waits on Sol or on the W4 Friday threshold.
+**Two rulings block everything, and there is no unblocked work behind them:**
 
-**An audit of the unreviewed and foundational code ran** (D-082 … D-084),
-probing behaviour rather than reading. It found: the acceptance test silently
-dropped the seed random intercept P§7.3 requires — a bug in this session's own
-code, now **fixed** with a regression test (CI-neutral, no result moved); the
-MDE power test is **anti-conservative** (type-I 0.06–0.09), so the reported MDEs
-are optimistic and Gate-1-at-risk is if anything strengthened — held for Sol as
-part of the delta-41 ruling; and a **latent** risk that `confound_rate` is an
-unquantised float identity field (fixing needs an `IDENTITY_VERSION` bump, so
-Sol's call). Streams, identities and the detached auxiliary head verified clean.
-The audit has **no §7 log entry** — the delta channel was at its cap — so it
-lives in the ledger (D-082 … D-084) and rides the diff. **`acceptance.py` was
-changed after D-079; D-079 is not its final state.**
+- **The acceptance model's conservatism** (D-086). The corrected permutation
+  showed the registered P§7.3 model has **no transition-level pairing term**, so
+  its SE is **1.51×** the true paired null spread and the test is *conservative*.
+  Fixing it changes a **§2 frozen constant** — a Change Record and Sol's call.
+- **W4 Friday's percentile and its "well-fit reference model" definition**
+  (D-090). Neither is named by P§10.1 or S§W4, and D-035 lists the percentile
+  among the six things Friday freezes **permanently**. The runner refuses to
+  invent either. **W4 Friday must not execute before Sol answers.**
+
+**Gate 1 stands at two of four**: reliability PASS (certified), compute PASS
+(contingent on the K=1 repair fix), permutation calibration **FAILING**, MDE
+**FAIL** — Sol's ruling, not pending. Sol's recommendation, adopted: continue
+with the unchanged 300-unit design and an explicit power limitation rather than
+manufacture a pass by expanding scope or moving the margin. **Direction C is an
+authorised thesis outcome.**
+
+**Zero compute this session.** No fit spent, no attempt re-run, no data seen.
+
+**A provenance hazard worth knowing about.** Three files were found modified
+mid-session, implementing part of Sol's closeout, authored by neither this
+session nor any other visible one, and they left the suite red. They were
+verified by test and completed. If you meet unexplained modifications in the
+tree, treat them as the DEV-005 class: verify by probe, never by reading, and
+say so rather than absorbing them silently.
 
 ### ⚠ The biggest open thing: Gate 1 is at risk (D-078)
 

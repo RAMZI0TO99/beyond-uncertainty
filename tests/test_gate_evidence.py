@@ -34,13 +34,17 @@ CLEAN = GitState(commit="a" * 40, dirty=False, branch="main")
 # Falls monotonically in N, so a well-formed attempt PASSES and the refusal
 # tests are refusing something that would otherwise have been a verdict.
 FALLING = {n: 0.9 - 0.1 * i for i, n in enumerate(SIZES)}
+#: Contract v2 requires threading provenance on the manifest, on every run entry
+#: and in every run record, and cross-checks the three against each other.
+THREADING = {"num_threads": 8, "num_interop_threads": 4}
 
 
 def build_attempt(tmp_path, *, spec=None, name="attempt-001", layouts=GATE_LAYOUTS,
                   seeds=GATE_SEEDS, sizes=SIZES, pool_per_size=False,
-                  disagreement=None, train=None):
+                  disagreement=None, train=None, threading=None):
     """A complete, well-formed attempt directory. Trains nothing."""
     spec = spec or RungSpec.for_rung(0)
+    threading = THREADING if threading is None else threading
     attempt = tmp_path / name
     attempt.mkdir(parents=True)
     cells = []
@@ -56,6 +60,7 @@ def build_attempt(tmp_path, *, spec=None, name="attempt-001", layouts=GATE_LAYOU
                     "granularity": spec.granularity, "rung": spec.rung,
                     "rung_spec_hash": spec.spec_hash,
                     "evaluation_pool_digest": pool, "cell": CELL,
+                    "threading": threading,
                 }
                 with RunLogger.start(config, root=attempt / "records", extra=extra) as log:
                     for k in range(spec.ensemble_size):
@@ -81,10 +86,12 @@ def build_attempt(tmp_path, *, spec=None, name="attempt-001", layouts=GATE_LAYOU
                     "evaluation_pool_digest": pool,
                     "normalisation": scale,
                     "metric_schema_version": METRIC_SCHEMA_VERSION,
+                    "threading": threading,
                     "mean_disagreement": value,
                     "row_index": -1, "row_digest": "",
                 }))
-    write_manifest(attempt, spec=spec, cells=cells, git=CLEAN, artifacts=[])
+    write_manifest(attempt, spec=spec, cells=cells, git=CLEAN, artifacts=[],
+                   threading=threading)
     return attempt
 
 
@@ -589,3 +596,100 @@ def test_the_certified_rung_zero_attempt_still_verifies():
     assert evidence.commit == "2efad258af7638b2657c44bb80a7e753743cfa03"
     for name in GATE_LAYOUTS:
         assert result.per_configuration[name].rho == pytest.approx(-0.9429, abs=5e-5)
+
+
+# --- contract v2: threading provenance (D-076, Sol's ruling on delta 40) -----
+#
+# Sol required BOTH halves, and each is a separate way to get this wrong. If v2
+# did not actually refuse, the requirement would be decoration; if v1 did not
+# still verify, the rule made after attempt-001 would have destroyed a certified
+# result retroactively -- which Sol ruled against explicitly.
+
+
+def test_v1_evidence_still_verifies_without_threading(attempt):
+    """Grandfathering. attempt-001 predates the field and must stay verifiable.
+
+    Sol: do not invalidate or rerun the certified attempt. This is that ruling
+    made mechanical rather than promised in a comment.
+    """
+    def strip(m):
+        m["evidence_contract_version"] = 1
+        m.pop("threading", None)
+        for run in m["runs"]:
+            run.pop("threading", None)
+    edit_manifest(attempt, strip)
+    verdict = reliability_gate(GateEvidence.from_attempt(attempt), rung=0)
+    assert verdict.passed
+
+
+def test_v2_evidence_without_a_manifest_threading_record_is_refused(attempt):
+    edit_manifest(attempt, lambda m: m.pop("threading"))
+    with pytest.raises(ValueError, match="carries no threading record"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_v2_evidence_without_a_per_run_threading_record_is_refused(attempt):
+    edit_manifest(attempt, lambda m: m["runs"][7].pop("threading"))
+    with pytest.raises(ValueError, match="threading"):
+        GateEvidence.from_attempt(attempt)
+
+
+@pytest.mark.parametrize("field", ["num_threads", "num_interop_threads"])
+def test_an_incomplete_threading_record_is_refused(attempt, field):
+    """Both counts, not just the intra-op one: either can change reduction order."""
+    def drop(m):
+        m["threading"] = {k: v for k, v in m["threading"].items() if k != field}
+    edit_manifest(attempt, drop)
+    with pytest.raises(ValueError, match="missing"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_a_run_disagreeing_with_the_manifest_on_threading_is_refused(attempt):
+    """One attempt is ONE threading configuration, or its cells are not comparable."""
+    def tamper(m):
+        m["runs"][3]["threading"] = {"num_threads": 1, "num_interop_threads": 1}
+    edit_manifest(attempt, tamper)
+    with pytest.raises(ValueError, match="threading"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_a_run_record_disagreeing_with_the_manifest_on_threading_is_refused(attempt):
+    """The record written AT TRAINING TIME is the one that cannot be back-filled.
+
+    A manifest is assembled afterwards and can say anything; the run record was
+    written by the process that did the fitting. Cross-checking the two is what
+    makes the threading claim evidence rather than an assertion (D-072's shape).
+    """
+    manifest = json.loads((attempt / "manifest.json").read_text())
+    run_id = manifest["runs"][2]["run_id"]
+    path = attempt / "records" / run_id / "run.json"
+    record = json.loads(path.read_text())
+    record["extra"]["threading"] = {"num_threads": 99, "num_interop_threads": 99}
+    path.write_text(json.dumps(record, indent=2))
+    # Re-digest so the tampering is caught by the threading clause rather than
+    # by the digest clause -- otherwise this test would pass without ever
+    # reaching the check it names.
+    def redigest(m):
+        m["runs"][2]["run_record_digest"] = _digest(path)
+    edit_manifest(attempt, redigest)
+    with pytest.raises(ValueError, match=r"was written with num_threads=99"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_the_runner_pins_both_thread_counts_before_fitting():
+    """Recording a value the process merely inherited is not pinning it."""
+    import torch
+    from bu.experiments.w4_gate import _pin_threading
+
+    _pin_threading(2, torch.get_num_interop_threads())
+    assert torch.get_num_threads() == 2
+
+
+def test_an_unpinnable_interop_count_is_refused_not_shrugged_off():
+    """If the pool is already up at a different value, that is a real refusal."""
+    import torch
+    from bu.experiments.w4_gate import _pin_threading
+
+    current = torch.get_num_interop_threads()
+    with pytest.raises(ValueError, match="could not be pinned"):
+        _pin_threading(2, current + 7)

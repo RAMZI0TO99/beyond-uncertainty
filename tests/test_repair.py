@@ -168,7 +168,8 @@ def test_the_failure_mask_selects_the_same_set_on_both_arms():
     mask = np.zeros(40, dtype=bool)
     mask[:12] = True
     out = acceptance_inputs([fake("baseline", 0, scale=scale)],
-                            [fake("data_repair", 0, scale=scale)], failure_mask=mask)
+                            [fake("data_repair", 0, scale=scale)],
+                            failure_masks={0: mask})
     assert len(out["errors"]) == 24
     assert (out["repair"] == 0).sum() == (out["repair"] == 1).sum() == 12
 
@@ -185,7 +186,8 @@ def test_a_bad_failure_mask_is_refused(mask, match):
     scale = object()
     with pytest.raises(ValueError, match=match):
         acceptance_inputs([fake("baseline", 0, scale=scale)],
-                          [fake("data_repair", 0, scale=scale)], failure_mask=mask)
+                          [fake("data_repair", 0, scale=scale)],
+                          failure_masks={0: mask})
 
 
 def test_no_mask_is_the_whole_pool_and_is_not_the_registered_comparison():
@@ -194,3 +196,97 @@ def test_no_mask_is_the_whole_pool_and_is_not_the_registered_comparison():
     out = acceptance_inputs([fake("baseline", 0, scale=scale)],
                             [fake("data_repair", 0, scale=scale)])
     assert len(out["errors"]) == 80
+
+
+# --- seed-specific failure masks (Sol's ruling on the recovered repair path) --
+
+
+def test_each_seed_gets_its_own_failure_mask():
+    """Different seeds may fail on different transitions, and must be able to."""
+    scale = object()
+    m0 = np.zeros(40, dtype=bool); m0[:12] = True
+    m1 = np.zeros(40, dtype=bool); m1[20:26] = True
+    out = acceptance_inputs(
+        [fake("baseline", 0, scale=scale), fake("baseline", 1, scale=scale)],
+        [fake("data_repair", 0, scale=scale), fake("data_repair", 1, scale=scale)],
+        failure_masks={0: m0, 1: m1},
+    )
+    # 12 failing transitions at seed 0 and 6 at seed 1, each scored on both arms.
+    assert len(out["errors"]) == (12 + 6) * 2
+    assert (out["seed"] == 0).sum() == 24
+    assert (out["seed"] == 1).sum() == 12
+
+
+def test_a_missing_seed_mask_is_refused():
+    scale = object()
+    mask = np.ones(40, dtype=bool)
+    with pytest.raises(ValueError, match=r"no failure mask for seed\(s\) \[1\]"):
+        acceptance_inputs(
+            [fake("baseline", 0, scale=scale), fake("baseline", 1, scale=scale)],
+            [fake("data_repair", 0, scale=scale), fake("data_repair", 1, scale=scale)],
+            failure_masks={0: mask},
+        )
+
+
+def test_an_extra_seed_mask_is_refused():
+    """Not harmless slack: the masks were built against a different seed set."""
+    scale = object()
+    mask = np.ones(40, dtype=bool)
+    with pytest.raises(ValueError, match=r"seed\(s\) \[7\], which are not being scored"):
+        acceptance_inputs(
+            [fake("baseline", 0, scale=scale)],
+            [fake("data_repair", 0, scale=scale)],
+            failure_masks={0: mask, 7: mask},
+        )
+
+
+def test_a_bare_array_is_refused_rather_than_broadcast():
+    """The withdrawn API took one array and applied it to every seed.
+
+    It passed every length check while selecting a different transition set in
+    each seed, because pools are the same LENGTH across seeds but not the same
+    transitions. Refusing the type is what makes that unrepeatable.
+    """
+    scale = object()
+    with pytest.raises(TypeError, match="seed -> mask mapping"):
+        acceptance_inputs(
+            [fake("baseline", 0, scale=scale)],
+            [fake("data_repair", 0, scale=scale)],
+            failure_masks=np.ones(40, dtype=bool),
+        )
+
+
+# --- one model per repaired arm (P§14.2) ------------------------------------
+
+
+def test_a_repaired_arm_refuses_an_ensemble():
+    """P§14.2 budgets ONE model per repaired arm; running K is a different study."""
+    from bu.config import TrainConfig
+    from bu.experiments.repair import evaluate_arm
+    from bu.experiments.enumerate_units import canonical_units
+
+    unit = canonical_units()[0]
+    with pytest.raises(ValueError, match="budgets 1 model per repaired arm"):
+        evaluate_arm(unit, arm="data_repair", seed=0,
+                     train=TrainConfig(ensemble_size=5), scale=object())
+
+
+def test_the_repaired_default_is_one_model_and_the_baseline_default_is_not():
+    """The default differs by arm on purpose, and the difference is the budget."""
+    from bu.config import TrainConfig
+    from bu.experiments.repair import REPAIR_ENSEMBLE_SIZE
+    from bu import constants as K
+
+    assert REPAIR_ENSEMBLE_SIZE == 1
+    assert TrainConfig().ensemble_size == K.DEFAULT_ENSEMBLE_SIZE != REPAIR_ENSEMBLE_SIZE
+
+
+def test_the_budget_is_taken_at_one_model_per_repair():
+    """The enumerator and the repair path must agree, or the estimate is fiction."""
+    from bu.experiments.enumerate_units import execution_plan
+    from bu.experiments.repair import REPAIR_ENSEMBLE_SIZE
+
+    plan = execution_plan()
+    repaired = [f for f in plan if f.arm != "baseline"]
+    assert repaired, "no repaired arms in the plan; this test would be vacuous"
+    assert all(f.members == REPAIR_ENSEMBLE_SIZE for f in repaired)

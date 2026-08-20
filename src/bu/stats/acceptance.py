@@ -40,6 +40,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from scipy.stats import beta
 
 from .. import constants as K
 
@@ -266,36 +267,111 @@ def _episode_mean_fallback(data, counts, unrepaired_mean) -> AcceptanceResult:
     )
 
 
+def clopper_pearson(k: int, n: int, confidence: float = CONFIDENCE) -> tuple[float, float]:
+    """Exact binomial interval for ``k`` acceptances in ``n`` permutations.
+
+    Sol's ruling on delta 42: calibration must **not** be defined as the raw
+    point estimate landing under nominal. At 200 permutations a point estimate
+    carries roughly ±3 points of Monte-Carlo noise, so "0% observed" and "5.5%
+    observed" are both consistent with a correctly sized test — and reading
+    either as a measurement is the D-042 shape, a bound reported as a number.
+    """
+    alpha = 1 - confidence
+    low = 0.0 if k == 0 else float(beta.ppf(alpha / 2, k, n - k + 1))
+    high = 1.0 if k == n else float(beta.ppf(1 - alpha / 2, k + 1, n - k))
+    return low, high
+
+
 @dataclass(frozen=True)
 class PermutationNull:
-    """How often the acceptance test accepts when the labels carry no information."""
+    """How often the acceptance test accepts when the labels carry no information.
 
-    false_positive_rate: float
+    **Two rates, because they answer different questions** (Sol, delta 42). The
+    *statistical-only* rate uses conditions 1–2 and is the one that establishes
+    the mixed model's interval is correctly sized under the real dependence
+    structure. The *full* rate adds the 20% practical floor, which supplies
+    conservatism on top. Reporting the full rate alone credits the model with a
+    calibration the floor was providing.
+    """
+
     n_permutations: int
-    n_accepted: int
+    #: Conditions 1-2 only: negative effect with a 95% interval excluding zero.
+    n_accepted_statistical: int
+    statistical_rate: float
+    statistical_ci: tuple[float, float]
+    #: All three registered conditions, the floor included.
+    n_accepted_full: int
+    full_rate: float
+    full_ci: tuple[float, float]
     nominal: float
+    #: D-085's frozen criterion, both parts.
+    statistical_contains_nominal: bool
+    full_upper_within_nominal: bool
     calibrated: bool
     reason: str
-    #: The permuted effects, so the null's shape is inspectable rather than
-    #: summarised into a single rate.
-    effects: tuple[float, ...]
+    effects: tuple[float, ...] = ()
 
     def as_row(self) -> dict:
         return {
-            "false_positive_rate": self.false_positive_rate,
             "n_permutations": self.n_permutations,
-            "n_accepted": self.n_accepted,
+            "n_accepted_statistical": self.n_accepted_statistical,
+            "statistical_rate": self.statistical_rate,
+            "statistical_ci_low": self.statistical_ci[0],
+            "statistical_ci_high": self.statistical_ci[1],
+            "n_accepted_full": self.n_accepted_full,
+            "full_rate": self.full_rate,
+            "full_ci_low": self.full_ci[0],
+            "full_ci_high": self.full_ci[1],
             "nominal": self.nominal,
+            "statistical_contains_nominal": self.statistical_contains_nominal,
+            "full_upper_within_nominal": self.full_upper_within_nominal,
             "calibrated": self.calibrated,
             "reason": self.reason,
         }
 
     def summary(self) -> str:
         return (
-            f"PERMUTATION NULL: {self.false_positive_rate:.3%} acceptance over "
-            f"{self.n_permutations} permutations "
-            f"({'CALIBRATED' if self.calibrated else 'ABOVE NOMINAL'})\n  {self.reason}"
+            f"PERMUTATION NULL over {self.n_permutations} paired relabellings "
+            f"({'CALIBRATED' if self.calibrated else 'NOT CALIBRATED'})\n"
+            f"  statistical only (conditions 1-2): "
+            f"{self.n_accepted_statistical}/{self.n_permutations} = "
+            f"{self.statistical_rate:.3%}, exact 95% CI "
+            f"[{self.statistical_ci[0]:.3%}, {self.statistical_ci[1]:.3%}] "
+            f"-- must CONTAIN {self.nominal:.0%}: "
+            f"{'yes' if self.statistical_contains_nominal else 'NO'}\n"
+            f"  full three conditions:             "
+            f"{self.n_accepted_full}/{self.n_permutations} = {self.full_rate:.3%}, "
+            f"exact 95% CI [{self.full_ci[0]:.3%}, {self.full_ci[1]:.3%}] "
+            f"-- upper must NOT EXCEED {self.nominal:.0%}: "
+            f"{'yes' if self.full_upper_within_nominal else 'NO'}\n"
+            f"  {self.reason}"
         )
+
+
+def _validate_matched_design(seeds: np.ndarray, repair: np.ndarray) -> np.ndarray:
+    """Every seed must carry exactly one baseline run and one repaired run.
+
+    The permutation is only a null for the design that was actually run. A seed
+    missing an arm cannot be relabelled without inventing or destroying a run,
+    so it is refused rather than silently carried.
+    """
+    labels = np.unique(repair)
+    if not np.array_equal(labels, np.array([0, 1])):
+        raise ValueError(
+            f"repair must carry exactly the two labels 0 and 1, got {labels.tolist()}. "
+            "Comparisons involving different repair types are permuted separately "
+            "against baseline, one call each (Sol, delta 42)"
+        )
+    unique_seeds = np.unique(seeds)
+    for s in unique_seeds:
+        present = np.unique(repair[seeds == s])
+        if not np.array_equal(present, np.array([0, 1])):
+            raise ValueError(
+                f"seed {s} carries repair labels {present.tolist()}, not both arms. "
+                "The acceptance test is paired within seed, so the null must permute "
+                "within seed, and a seed with one arm has nothing to swap"
+            )
+    return unique_seeds
 
 
 def permutation_null(
@@ -308,65 +384,88 @@ def permutation_null(
     nominal: float = 1 - CONFIDENCE,
     rng: np.random.Generator | None = None,
 ) -> PermutationNull:
-    """Run the acceptance test on permuted repair labels (P§7.3, S§W5 Wed).
+    """Run the acceptance test on paired within-seed relabellings (S§W5 Wed).
 
-    **Where the permutation happens is the whole point.** P§7.3: labels are
-    permuted "at the level of the repair assignment within condition, never
-    across episodes or transitions, which would destroy the dependence
-    structure". A transition-level shuffle would break the within-episode and
-    within-seed correlation the model exists to account for, and the resulting
-    null would be far too narrow — the test would look better calibrated than it
-    is, which is the opposite of what a calibration check is for.
+    **The null must preserve the matched design, not merely the run boundaries.**
+    The first implementation permuted labels globally across all (seed, arm)
+    runs, preserving only the total number of repaired runs. That keeps every
+    run intact -- necessary, and what P§7.3 says about never permuting across
+    episodes or transitions -- but it is not sufficient: measured on the
+    registered 20-seed shape, **48.4%** of seeds came out with two baseline or
+    two repaired labels, against 48.72% analytic, and **every** permutation
+    corrupted at least one seed. A null drawn from a design the study never ran
+    cannot calibrate the test that ran (Sol's ruling on delta 42; D-085).
 
-    So the unit of permutation is the **run**: every transition belonging to one
-    (seed, arm) block moves together, and the number of repaired runs is
-    preserved. That leaves the seed and episode structure exactly as observed
-    and destroys only the association between the label and the outcome.
+    So the operation is: independently for each seed, **retain or swap** that
+    seed's two labels. Every transition in a run moves together, and every seed
+    keeps exactly one baseline and one repaired run.
 
     Args:
-        n_permutations: how many relabellings to draw.
-        nominal: the rate the test is allowed to accept at. Defaults to
-            ``1 - CONFIDENCE`` = 0.05. Note the acceptance rule is *three*
-            conditions, not one, so a well-behaved test should land **below**
-            this rather than at it.
+        n_permutations: how many relabellings to draw. The frozen criterion in
+            D-085 is stated at 200.
+        nominal: the size the test is meant to have. Defaults to
+            ``1 - CONFIDENCE`` = 0.05.
     """
     rng = rng or np.random.default_rng(0)
     data = _frame(errors, repair, seed, episode)
-    # A run is one (seed, arm) block. Transitions never move between runs.
-    run_key = list(zip(data["seed"], data["repair"]))
-    runs = sorted(set(run_key), key=repr)
-    labels = np.array([r[1] for r in runs])
-    index = {run: i for i, run in enumerate(runs)}
-    positions = np.array([index[k] for k in run_key])
+    seeds = data["seed"].to_numpy()
+    labels = data["repair"].to_numpy()
+    unique_seeds = _validate_matched_design(seeds, labels)
 
-    accepted, effects = 0, []
+    # Row -> index of its seed, so a per-seed decision applies to every
+    # transition of both that seed's runs at once.
+    seed_position = {s: i for i, s in enumerate(unique_seeds)}
+    row_seed = np.array([seed_position[s] for s in seeds])
+    scoped_episode = [e.split("::", 1)[1] for e in data["episode"]]
+    error_values = data["error"].to_numpy()
+
+    stat_accepted, full_accepted, effects = 0, 0, []
     for _ in range(n_permutations):
-        permuted_runs = rng.permutation(labels)
-        result = acceptance_test(
-            data["error"].to_numpy(),
-            permuted_runs[positions],
-            data["seed"].to_numpy(),
-            [e.split("::", 1)[1] for e in data["episode"]],
-        )
+        swap = rng.random(len(unique_seeds)) < 0.5
+        permuted = np.where(swap[row_seed], 1 - labels, labels)
+        result = acceptance_test(error_values, permuted, seeds, scoped_episode)
         effects.append(result.effect)
-        accepted += bool(result.passed)
+        # Conditions 1-2 alone, read off the same fitted interval the full rule
+        # uses -- not a second fit, so the two rates cannot disagree by method.
+        if result.effect < 0 and result.ci_high < 0:
+            stat_accepted += 1
+        full_accepted += bool(result.passed)
 
-    rate = accepted / n_permutations
-    calibrated = rate <= nominal
+    stat_rate = stat_accepted / n_permutations
+    full_rate = full_accepted / n_permutations
+    stat_ci = clopper_pearson(stat_accepted, n_permutations)
+    full_ci = clopper_pearson(full_accepted, n_permutations)
+
+    contains = stat_ci[0] <= nominal <= stat_ci[1]
+    within = full_ci[1] <= nominal
+    calibrated = contains and within
     return PermutationNull(
-        false_positive_rate=rate,
         n_permutations=n_permutations,
-        n_accepted=accepted,
+        n_accepted_statistical=stat_accepted,
+        statistical_rate=stat_rate,
+        statistical_ci=stat_ci,
+        n_accepted_full=full_accepted,
+        full_rate=full_rate,
+        full_ci=full_ci,
         nominal=nominal,
+        statistical_contains_nominal=contains,
+        full_upper_within_nominal=within,
         calibrated=calibrated,
         reason=(
-            f"{accepted} of {n_permutations} permuted relabellings were accepted, "
-            f"a rate of {rate:.3%} against a nominal {nominal:.1%}. "
-            + (
-                "The test is calibrated on this data."
-                if calibrated
-                else "ABOVE NOMINAL: the acceptance test is anti-conservative here "
-                "and must be revised before it decides a repair (S§W5 Wed)."
+            "Calibrated: the statistical-only interval covers nominal and the "
+            "full rule's upper bound stays within it (D-085)."
+            if calibrated
+            else "NOT CALIBRATED against D-085: "
+            + "; ".join(
+                filter(None, [
+                    None if contains else
+                    f"the statistical-only interval "
+                    f"[{stat_ci[0]:.3%}, {stat_ci[1]:.3%}] does not contain "
+                    f"{nominal:.0%}, so the mixed model's interval is the wrong size",
+                    None if within else
+                    f"the full rule's upper bound {full_ci[1]:.3%} exceeds "
+                    f"{nominal:.0%}",
+                ])
             )
         ),
         effects=tuple(float(e) for e in effects),
