@@ -39,14 +39,14 @@ This is the shared working file for the project. It is written by Claude, review
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-22 |
+| **Last updated** | 2026-08-22 (second session) |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **Sol reviewed delta 49 and WITHHELD the D-035 promotion** (D-106) — not a rejection: the run was found consistent with the authorised specification on every field, and promotion is withheld **solely because the artefact bytes were never delivered**. The bundle declared `DIFF EXCLUDES: runs/`, so Sol received 136 filenames with truncated digests and no contents — the D-041 shape through a third route. Evidence now delivered as `SOL_THRESHOLD_EVIDENCE.tar.gz`, built from the commit object and proved to recompute the threshold from its own bytes. The threshold `0.610702633857727` remains **evidence only**; `constants.py` untouched. **Gate 1 signed off FAIL** on the five-point MDE (D-098). Weeks 1–5 complete. Week 1 Monday was 2026-08-17, so by the calendar it is **Week 1 Saturday** — the project runs about **4 weeks** ahead (DEV-002) |
+| **Current week / day** | **THE FAILURE THRESHOLD IS PERMANENTLY FROZEN** — `FAILURE_THRESHOLD = 0.610702633857727` is in `constants.py` under the Sol-authorised D-035 Change Record (D-107). Sol verified the delivered archive itself: every one of the 135 artefact digests, the deterministic selection at RNG seed 0, and a binary-identical NumPy recomputation. Failure is **strictly greater**; **two calibration transitions sit exactly at the value**, so the boundary decides real labels. `ScaledEvaluation.failure_mask()` is the registered construction and **takes no threshold**. **Sol requires certification of this closeout before any downstream failure set or repair label is built** — nothing downstream has been started. **Gate 1 remains a signed FAIL** on the five-point MDE (D-098). Weeks 1–5 complete; by the calendar it is **Week 1 Saturday**, about **4 weeks** ahead (DEV-002) |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `ca545ed`** — Sol certified the stored W4 Tuesday result on 2026-08-18. The chain: `9c0d89d` (Week 3 implementation, frozen) → `7dbcd32` (docs) → `a84cf6c` (W4 Mon trend test) → `2efad258` (W4 Tue gate + evidence contract) → `ca545ed` (the stored result). Three intermediate commits were reviewed and explicitly **not** certified; `2efad258` subsumes them. **Set `BASE=ca545ed` for the next bundle** (D-043, D-067, D-075) |
-| **Tests** | **819 passing, 2 skipped, 0 xfailed**. The two skips are *not* both GPU: one needs two CUDA devices, the other (`test_infrastructure.py:168`) is vacuous by design — no field is currently excluded from statistical identity. Corrected 2026-08-22; §1 had called them "the two GPU tests". Includes the protocol suite, the evidence-tracking check added after D-103's near-miss, and the D-102 non-finite guards |
+| **Tests** | **830 passing, 2 skipped, 0 xfailed** (11 new pin the frozen threshold). The two skips are *not* both GPU: one needs two CUDA devices, the other (`test_infrastructure.py:168`) is vacuous by design — no field is currently excluded from statistical identity. Corrected 2026-08-22; §1 had called them "the two GPU tests". Includes the protocol suite, the evidence-tracking check added after D-103's near-miss, and the D-102 non-finite guards |
 | **Compute used** | **0 GPU-hours**, and none added this session. 675 CPU fits total: 450 (W4 Tue rung 0) + 225 (W4 Fri threshold calibration, 4.3 min at 4/4 threads) |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 
@@ -98,7 +98,7 @@ group-level inference with its null size validated against .05.
 
 **No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **D-047's open item is closed** by D-063: the real loop never closed the gap at any size or member, Sol ruled against a second trunk, and the detached head is now a **non-decisional diagnostic** — barred from the trunk, from early stopping and checkpoint selection, from the failure set, from repair labels and from the critic's residual.
 
-**Blocked on: Sol, and nothing else.** There is **no unblocked in-scope work left.** The one live item is the **D-035 promotion of the failure threshold**, which Sol withheld on 2026-08-22 solely for want of the artefact bytes (D-106); the archive is built and verified, so the next move is delivery, not implementation. Everything downstream — every failure set, every repair label, and therefore H2 and H3 — descends from that number and must not be built on until it is frozen. Also waiting on Sol: **repair validation** (C-008 and D-087 are done) and anything built on the **predeclared reserve order** (D-092), which is a predeclaration and so goes to Sol before use. Correctly out of scope: **MC-dropout rung 3**, deliberately unfrozen and needing an architectural decision because `WorldModel` has no dropout, and **critic splitting** (C-005), which is W6/W11 work. **W4 Friday and the Gate 1 verdict are no longer open** — they were still listed here as waiting until this line was corrected on 2026-08-22.
+**Blocked on: Sol's certification of the promotion closeout.** Sol's ruling was explicit: *apply only the narrow D-035 patch, run the suite, and send its closeout bundle for certification **before** building downstream failure sets or repair labels.* That is delta 51, and it is the gate on everything — every failure set, every repair label, and therefore H2 and H3 descend from this number. **Nothing downstream has been started.** Also waiting on Sol: **repair validation** (C-008 and D-087 done) and anything built on the **predeclared reserve order** (D-092). Correctly out of scope: **MC-dropout rung 3**, deliberately unfrozen, and **critic splitting** (C-005), which is W6/W11 work.
 
 **Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split conditionally, and DEV-005 was a hit against that condition. Sol weighed it on 2026-08-16 and **kept the split**, on the grounds that the mechanised protocol tests improve the arrangement more than reassigning implementation would. The watch stays live: consequential design decisions go into a delta **and get delivered** before dependent code is built on them, and Claude flags any decision it believes meets that bar at the moment of making it. D-030 is the current test of that — decided, filed, and deliberately left unbuilt.
 
@@ -121,7 +121,7 @@ These are the preregistered quantities. They are fixed **before** data collectio
 | Seeds — threshold calibration | **5** — added under D-097, Sol-authorised, before any data | S§W4 Fri, D-097 |
 | Labelled configuration-conditions | ≥ **300**, ≥ **60** held out | P§10.7 |
 | Statistical unit | The **configuration-condition** — throughout | P§10.7 |
-| Failure threshold | **Calibrated 2026-08-20: `0.610702633857727`** (95th pct, `linear`, strict `>`). **EVIDENCE, NOT YET FROZEN** — promotion into `constants.py` is a D-035 Change Record **withheld by Sol on 2026-08-22** for want of the artefact bytes, not for any fault in the run; archive delivered (D-103, D-106) | S§W4, P§10.1 |
+| Failure threshold | **`0.610702633857727` — PERMANENTLY FROZEN** in `constants.py` on 2026-08-22 under the D-035 Change Record, Sol-authorised after it independently re-verified every digest and recomputed the value to a binary-identical float (D-107). 95th pct, `linear`, failure is **strictly greater** — two calibration transitions sit exactly at the value, so the strict boundary decides real labels. Ensemble-mean normalised movement error, K=5, n=5,000 reference models, nine strata × seeds 1000–1004, equal-stratum subsampling at RNG seed 0 (36,927 of 37,406). **Never recalibrated** | S§W4, P§10.1, D-103, D-107 |
 | Compute escalation trigger | ≈ **120 GPU-hours** | P§14.3 |
 | Balanced-accuracy weighting | **unit** — equal weight per configuration-condition; group-bootstrap intervals | D-044 |
 | Confirmatory seed base | **1000** — every seed below it is pilot data, permanently excluded | D-034 |
@@ -281,6 +281,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-104** | 2026-08-20 | Tracked-evidence check mechanised; `trend.py` audited clean | **Audit** |
 | **D-105** | 2026-08-20 | Audit of the unaudited — `gate.py` and four others clean; three probe errors of mine | **Audit** |
 | **D-106** | 2026-08-22 | Sol withheld D-035 — the bundle carried digests, not bytes; evidence delivered as an archive | **Sol's verdict** |
+| **D-107** | 2026-08-22 | **CHANGE RECORD — the failure threshold is permanently frozen** at `0.610702633857727` | **Sol-authorised** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -420,7 +421,7 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **41 archived, 1 kept here** — Week 3's six close entries were archived when it was certified and frozen at `9c0d89d` (D-067). Nothing is condensed; the archive is complete.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **44 archived, the newest kept here**. Nothing is condensed or summarised — the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
 
 *(W3 certification through the W4 Tuesday gate rounds — the trend test, Sol's two blockers, and the evidence contract — moved to `PROJECT_STATE_ARCHIVE.md` when this file passed its 500-line paste cap. Six entries, 2026-08-17 to 2026-08-18; the decisions they produced are D-068 … D-072 and remain indexed in §3.)*
 
@@ -437,45 +438,10 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **41 archived, 1 kept
 
 *(Four Sol correction rounds of 2026-08-20 — deltas 43–47 actioned, Gate 1 signed FAIL, the acceptance Change Record and the non-finite guard — were archived the same day when this file passed its cap. They produced D-094 … D-102, all indexed in §3.)*
 
-### 2026-08-20 (W4 Fri) · THE THRESHOLD IS CALIBRATED · Claude
-
-**Sol authorised one run from the accepted base. It ran once, into `attempt-001`, and will not be rerun** (D-103).
-
-**`0.610702633857727`** — 95th percentile, `method="linear"`, failure is **strictly greater**. **NOT FROZEN**: `constants.py` is untouched and promotion is a separate D-035 Change Record after Sol reviews the evidence.
-
-**Preconditions checked before executing**, because there is exactly one attempt: `HEAD` bit-identical to Sol's accepted `93dc296`, tree clean, branch in sync, frozen spec verified field by field. One cell was first run in a temp directory to validate the newly registered `threshold_calibration` stage — **wall time read, errors never**, since inspecting the distribution beforehand would have been pre-inspecting the threshold.
-
-45 cells, 225 fits at n=5,000, **4.3 min**. All 45 unique, all K=5, balanced pool 9 × 4,103 = 36,927. **Recomputation from the stored artefacts alone is bit-identical.**
-
-**A correction to my own D-099 audit:** I estimated ~4% of reference data discarded to the smallest stratum, from six probed cells. Actual is **1.28%** — pooling five seeds per stratum evens the counts out, which six single cells could not show.
-
-**And a near-miss worth recording.** The evidence was **silently untracked**: `runs/*` is ignored with per-experiment exceptions and `runs/w4_threshold` had none, so the first version of the commit shipped **two** files while its own message claimed 136. Caught by checking the commit rather than trusting it. Had it gone out, the bundle would have carried digests with no files — the D-041 shape exactly, and `.gitignore`'s own comment warns about this class while nothing enforces it.
-
-**Tests:** 811 passing, 2 skipped. **Compute:** 225 CPU fits (675 total), 0 GPU-hours. **First registered evidence the project has produced.**
-
-### 2026-08-20 (W4 Fri, follow-on) · The near-miss mechanised, and the H1 statistic audited · Claude
-
-**Work taken while delta 49 is with Sol.** Q-004 governs the lead — review, understanding and documentation, **never scope** — so C-005 and Week 6 are untouched.
-
-**D-103's near-miss is now a test** (D-104). The property is narrow on purpose: not "everything under `runs/` is tracked" — D-075 deliberately tracks only the W3 pilot's manifest and rows — but *every file whose digest a tracked record attests, and which a verifier reads back, must itself be tracked*. **Shown to fail**: `git rm --cached` on one error array made it fail by name; restoring made it pass.
-
-**`stats/trend.py` audited by probing — clean.** It is THE H1 statistic, shared by the certified W4 gate and the future W10 verdict, so a defect moves a registered endpoint. Ties agree with `scipy` exactly; the exact bootstrap is genuinely exhaustive (27 at 3 seeds, 3,125 at 5); the reading rule is right in all three directions; non-finite curves refused and degenerate ones fail closed.
-
-**An asymmetry worth carrying:** `trend.py` already had the non-finite guard `acceptance.py` lacked until D-102. Two modules by the same hand, one guarded and one not — so a guard's presence in one place is no evidence about another.
-
-**Tests:** 811 → **819 passing**, 2 skipped, 0 xfailed.
-
-### 2026-08-20 (session close) · The audit gap closed · Claude
-
-**Audited the modules that had never been probed** (D-105). `stats/gate.py` was the real gap: **review-covered but probe-uncovered**, four Sol reviews deep, which is precisely why nobody had looked — D-060's lesson is that nine reviews passed over Week 3 before an audit found seven defects.
-
-All clean. The **certified W4 Tuesday evidence still verifies today** after everything this session changed (90 cells, passes) — the regression that mattered most, now checked rather than assumed. Rung binding is enforced through `attempt_id`, not an editable field; rungs 3–5 refused as unfrozen; the 3×5×6 grid exact. `runrecord.py` refuses overwrite and records git state plus `env.packages`. `critic/schema.py` is genuinely fail-closed — an **unknown** feature name is refused, which is what D-013 chose a whitelist for. `reserve.py`'s frozen digest really does gate the drawer.
-
-**`w3_pilot.py` deliberately not probed**: its data was voided by D-051/D-052, nothing downstream reads it. Recorded rather than left ambiguous.
-
-**Three of my own probes were wrong** — a bad argument type, a string passed where a list was wanted (so a whitelist appeared to refuse everything), and a parameter that does not exist. Each looked like a defect for a moment. A wrong probe produces the same shape of output as a real finding, which is why all three were chased down before being written up.
-
-**Tests:** 819 passing, 2 skipped, 0 xfailed. **No code changed — this entry is measurement.**
+*(W4 Friday's threshold calibration, the near-miss mechanisation and the audit-gap closeout —
+three entries, 2026-08-20 — were archived on 2026-08-22 when this file reached its 500-line
+paste cap. They produced D-103 … D-105, all indexed in §3, and were delivered to Sol as
+delta 49. The threshold they calibrated is now frozen; see D-107.)*
 
 ### 2026-08-22 (delta-49 review) · Sol withheld D-035 — the bundle carried digests, not bytes · Claude
 
@@ -494,3 +460,23 @@ All clean. The **certified W4 Tuesday evidence still verifies today** after ever
 **Also corrected: stale text in the two files a reset Claude reads first.** §1 still said "Next actions — Week 3", still listed W4 Friday as "NEXT, and blocked on Sol" two sessions after it ran, and still named the Gate 1 verdict as waiting. `CLAUDE.md` still opened its "Next, in order" with deltas 39–42, all answered on 2026-08-20. None of this is caught mechanically — the protocol suite checks §1's *structure*, never whether its prose is true.
 
 **Tests:** 819 passing, 2 skipped, 0 xfailed. **No rerun, no new compute** — 675 CPU fits total, 0 GPU-hours.
+
+### 2026-08-22 (D-035 promotion) · The failure threshold is permanently frozen · Claude
+
+**Sol authorised the promotion** after verifying the delivered archive itself rather than accepting the report: paths confined to the attempt, no symlinks, exactly 136 files, **all 45 array digests, all 45 run-record digests and all 45 member-record digests**, every run record's commit / stage / family / confound / observability / n / layout / attribute / K / threading, the deterministic selection reconstructed at RNG seed 0, and a **binary-identical** NumPy recomputation. Its independently computed array-composite matches D-106's reconstructed definition.
+
+**`FAILURE_THRESHOLD = 0.610702633857727` is now in `constants.py`**, exact and unrounded, **permanently frozen** (D-107). The most irreversible act in the project so far.
+
+**The strict boundary decides real labels — measured, not assumed. Two transitions in the calibration pool sit exactly at the value.** Under `>` they are not failures; under `>=` they would be.
+
+**`ScaledEvaluation.failure_mask()` takes no threshold.** Sol required no caller-selectable override, and the reasoning is C-010's exactly (D-076): `from_pool` takes no mask so the scale cannot be subset-derived; this takes no threshold so the failure set cannot be re-cut. It scores the **ensemble mean prediction** — what the calibration measured — not the mean of member errors.
+
+**Verified against the evidence:** the constant recovers the stored balanced pool's 95th percentile exactly; 1,846/36,927 = **4.9991%** failures; Sol's unbalanced check **1,879/37,406** reproduces.
+
+**The tests were proved falsifiable by mutation**, each catching exactly one defect: rounding the constant, relaxing `>` to `>=`, and adding a `threshold=` override. **Two weak checks of my own were caught this way and fixed before they shipped.** The first boundary test asserted `errors > t` on a tensor the test built — Python's operator, not the implementation — and now runs through the real constructor on a fixture whose error is *exactly* the threshold, with an assertion that it stays exact so it cannot go vacuous. Then the new §2/code agreement check searched the **whole file**, where the value appears five times, so §2 could read `0.6107` and still pass; it is now scoped to §2 alone and shown to fail.
+
+**A process failure worth recording.** Proving falsifiability the first time, I restored mutated files with `git checkout` while the promotion patch was still **uncommitted**, and destroyed it. Retyped in full; nothing lost. **`git checkout` restores to the last commit, not to the state you were in** — mutate against committed work or a copy.
+
+**Scope held.** Narrow patch only. **No failure set, no repair label, nothing downstream** — Sol requires certification of this closeout first. Gate 1's signed FAIL stands.
+
+**Tests:** 819 → **830 passing**, 2 skipped, 0 xfailed. **No rerun, no new compute** — 675 CPU fits, 0 GPU-hours.

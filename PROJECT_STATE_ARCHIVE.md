@@ -3856,3 +3856,43 @@ Also: `allow_fallback` removed entirely (it survived the fallback it was named a
 Guarded at three layers — `_frame` refuses non-finite input outright, `paired_differences` uses `pivot` rather than `pivot_table` and asserts the row count against the validated pair count, and the seed means are checked to match the input seed set exactly. Ten tests. Also fixed a doubled word of my own that spanned a line break.
 
 **Tests:** 801 → **811 passing**, 2 skipped, 0 xfailed. **W4 Friday remains stopped.**
+
+### 2026-08-20 (W4 Fri) · THE THRESHOLD IS CALIBRATED · Claude
+
+**Sol authorised one run from the accepted base. It ran once, into `attempt-001`, and will not be rerun** (D-103).
+
+**`0.610702633857727`** — 95th percentile, `method="linear"`, failure is **strictly greater**. **NOT FROZEN**: `constants.py` is untouched and promotion is a separate D-035 Change Record after Sol reviews the evidence.
+
+**Preconditions checked before executing**, because there is exactly one attempt: `HEAD` bit-identical to Sol's accepted `93dc296`, tree clean, branch in sync, frozen spec verified field by field. One cell was first run in a temp directory to validate the newly registered `threshold_calibration` stage — **wall time read, errors never**, since inspecting the distribution beforehand would have been pre-inspecting the threshold.
+
+45 cells, 225 fits at n=5,000, **4.3 min**. All 45 unique, all K=5, balanced pool 9 × 4,103 = 36,927. **Recomputation from the stored artefacts alone is bit-identical.**
+
+**A correction to my own D-099 audit:** I estimated ~4% of reference data discarded to the smallest stratum, from six probed cells. Actual is **1.28%** — pooling five seeds per stratum evens the counts out, which six single cells could not show.
+
+**And a near-miss worth recording.** The evidence was **silently untracked**: `runs/*` is ignored with per-experiment exceptions and `runs/w4_threshold` had none, so the first version of the commit shipped **two** files while its own message claimed 136. Caught by checking the commit rather than trusting it. Had it gone out, the bundle would have carried digests with no files — the D-041 shape exactly, and `.gitignore`'s own comment warns about this class while nothing enforces it.
+
+**Tests:** 811 passing, 2 skipped. **Compute:** 225 CPU fits (675 total), 0 GPU-hours. **First registered evidence the project has produced.**
+
+### 2026-08-20 (W4 Fri, follow-on) · The near-miss mechanised, and the H1 statistic audited · Claude
+
+**Work taken while delta 49 is with Sol.** Q-004 governs the lead — review, understanding and documentation, **never scope** — so C-005 and Week 6 are untouched.
+
+**D-103's near-miss is now a test** (D-104). The property is narrow on purpose: not "everything under `runs/` is tracked" — D-075 deliberately tracks only the W3 pilot's manifest and rows — but *every file whose digest a tracked record attests, and which a verifier reads back, must itself be tracked*. **Shown to fail**: `git rm --cached` on one error array made it fail by name; restoring made it pass.
+
+**`stats/trend.py` audited by probing — clean.** It is THE H1 statistic, shared by the certified W4 gate and the future W10 verdict, so a defect moves a registered endpoint. Ties agree with `scipy` exactly; the exact bootstrap is genuinely exhaustive (27 at 3 seeds, 3,125 at 5); the reading rule is right in all three directions; non-finite curves refused and degenerate ones fail closed.
+
+**An asymmetry worth carrying:** `trend.py` already had the non-finite guard `acceptance.py` lacked until D-102. Two modules by the same hand, one guarded and one not — so a guard's presence in one place is no evidence about another.
+
+**Tests:** 811 → **819 passing**, 2 skipped, 0 xfailed.
+
+### 2026-08-20 (session close) · The audit gap closed · Claude
+
+**Audited the modules that had never been probed** (D-105). `stats/gate.py` was the real gap: **review-covered but probe-uncovered**, four Sol reviews deep, which is precisely why nobody had looked — D-060's lesson is that nine reviews passed over Week 3 before an audit found seven defects.
+
+All clean. The **certified W4 Tuesday evidence still verifies today** after everything this session changed (90 cells, passes) — the regression that mattered most, now checked rather than assumed. Rung binding is enforced through `attempt_id`, not an editable field; rungs 3–5 refused as unfrozen; the 3×5×6 grid exact. `runrecord.py` refuses overwrite and records git state plus `env.packages`. `critic/schema.py` is genuinely fail-closed — an **unknown** feature name is refused, which is what D-013 chose a whitelist for. `reserve.py`'s frozen digest really does gate the drawer.
+
+**`w3_pilot.py` deliberately not probed**: its data was voided by D-051/D-052, nothing downstream reads it. Recorded rather than left ambiguous.
+
+**Three of my own probes were wrong** — a bad argument type, a string passed where a list was wanted (so a whitelist appeared to refuse everything), and a parameter that does not exist. Each looked like a defect for a moment. A wrong probe produces the same shape of output as a real finding, which is why all three were chased down before being written up.
+
+**Tests:** 819 passing, 2 skipped, 0 xfailed. **No code changed — this entry is measurement.**

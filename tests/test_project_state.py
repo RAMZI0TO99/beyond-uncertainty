@@ -181,6 +181,19 @@ def test_frozen_constants_match_the_code(text: str):
     for needle, what in checks.items():
         assert needle in text, f"§2 does not state the code's {what} ({needle})"
 
+    # The threshold every failure set and repair label descends from (D-107),
+    # checked against §2 ALONE rather than the whole file. The first version of
+    # this searched `text` like the checks above and was VACUOUS: the value
+    # appears five times in this file, so §2's row could be rounded to `0.6107`
+    # and the assertion still passed. That is the shape D-071 and D-105 keep
+    # finding -- a check that passes because what it checks is elsewhere.
+    section = text[text.index("## 2. Frozen constants"):text.index("## 3. Decisions ledger")]
+    assert f"`{K.FAILURE_THRESHOLD!r}`" in section, (
+        f"§2 must state the failure threshold at FULL precision "
+        f"({K.FAILURE_THRESHOLD!r}). A rounded copy of a permanently frozen "
+        "quantity misdescribes the preregistration"
+    )
+
 
 def test_open_questions_have_a_status(text: str):
     rows = re.findall(r"^\| (Q-\d{3}) \|(.*)$", text, re.M)

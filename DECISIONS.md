@@ -1574,3 +1574,34 @@ Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own e
 **Data seen:** none beyond D-103's recorded calibration. No new compute; 675 CPU fits total, 0 GPU-hours.
 **Plan ref:** D-008, D-035, D-036, D-041, D-066, D-103, D-104. Sol's review of delta 49.
 **Reviewed by Sol:** **not yet — delta 50 carries the closeout.**
+
+### D-107 · 2026-08-22 · **CHANGE RECORD** — the failure threshold is permanently frozen
+**Decision:** Sol **authorised** the D-035 promotion. `FAILURE_THRESHOLD = 0.610702633857727` is now in `src/bu/constants.py`, exact and unrounded, and is **permanently frozen**. This is the most irreversible act in the project so far and it discharges the obligation D-035 opened on 2026-08-16.
+
+**Sol verified the evidence independently rather than accepting the report.** It extracted the delivered archive and confirmed: paths confined to the attempt directory, no symlinks or traversal entries, exactly 136 files, the calibration record's sha256, **all 45 array digests, all 45 run-record digests and all 45 member-record digests**, 45 unique cell identities, and every run record's commit / clean tree / stage / family / confound / observability / n / layout / attribute / K / member count / threading. It reconstructed the deterministic selection at RNG seed 0, confirmed all arrays finite and correctly shaped, and recomputed the percentile in NumPy to a **binary-identical** float. The array-composite digest it computed independently matches the definition reconstructed in D-106.
+
+**The registered definition, in full.** A transition is a failure when its error is **strictly greater** than the threshold. The estimand: ensemble-mean normalised movement error at K=5; fully observed n=5,000 reference models with no confound; nine layout × causal-attribute strata at seeds 1000–1004; equal stratum weighting by deterministic minimum-count subsampling without replacement at RNG seed 0 (9 × 4,103 = 36,927 of 37,406); 95th percentile, NumPy `method="linear"`.
+
+**The strict boundary is not academic — measured.** **Two transitions in the calibration pool sit exactly at the threshold.** Under `>` they are not failures; under `>=` they would be. A boundary that quietly relaxed would move real labels, which is why Sol required it preserved and why the regression test drives it through the real constructor rather than through a bare comparison in the test.
+
+**`ScaledEvaluation.failure_mask()` is the registered construction, and it takes no threshold.** Sol required no caller-selectable override. The reasoning is C-010's exactly (D-076): `from_pool` takes no mask so the scale cannot be subset-derived; `failure_mask` takes no threshold so the failure set cannot be re-cut. *A value a caller can pass is a degree of freedom somebody eventually uses.* It scores the **ensemble mean prediction**, which is what the calibration measured — not the mean of the members' errors, which is a different number.
+
+**Verified against the evidence, not asserted:**
+
+| check | result |
+|---|---|
+| constant, bit pattern | `0.610702633857727`, `0x1.38ae040000000p-1` — unrounded |
+| 95th pct of the stored balanced pool | **equals the constant exactly** |
+| balanced pool | 36,927 = 9 × 4,103; **1,846 failures = 4.9991%** |
+| unbalanced sanity check | **1,879 / 37,406**, reproducing Sol's 5.0232583% |
+| transitions exactly at the boundary | **2** |
+
+**The tests were proved falsifiable by mutation, each catching exactly one defect:** rounding the constant fails the exactness test; changing `>` to `>=` fails the boundary test; adding a `threshold=` override fails the no-override test. **Asking whether an assertion could fail is the discipline D-055 and D-073 exist for, and it caught a weak test of my own here** — the first boundary test asserted `errors > t` on a tensor the test itself built, which exercises Python's comparison operator and would pass whatever `failure_mask` did. Replaced with a fixture whose error is *exactly* the threshold after the real scale and error computation, plus an assertion that the fixture is still exact so it cannot go vacuous.
+
+**A process failure worth recording.** While first proving falsifiability I mutated `constants.py` and `uncertainty.py` and restored them with `git checkout` — but both edits were **uncommitted**, so the restore reverted to HEAD and destroyed the promotion patch. Nothing was lost that could not be retyped, and the suite would have caught a silent partial restore, but the lesson is plain: **`git checkout` restores to the last commit, not to the state you were in.** Mutation-test against committed work, or against a copy. Re-done the second time from backup copies, with the tree confirmed clean afterwards.
+
+**Scope held.** Sol asked for the narrow promotion patch only, run the suite, and certify before building downstream. **No failure set, no repair label and no downstream analysis was built.** Gate 1's signed FAIL, the seed-cluster analysis and every prior scope ruling are untouched. No rerun; the attempt is final.
+**Tests:** **830 passing** (11 new), 2 skipped, 0 xfailed.
+**Data seen:** none beyond D-103's recorded calibration. No new compute; 675 CPU fits total, 0 GPU-hours.
+**Plan ref:** P§10.1, S§W4 Fri, D-035, D-076, D-097, D-103, D-106. Sol's ruling on delta 50.
+**Reviewed by Sol:** **authorisation given; the closeout bundle awaits certification.**

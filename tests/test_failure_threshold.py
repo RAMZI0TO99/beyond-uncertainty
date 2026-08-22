@@ -60,13 +60,38 @@ def test_a_transition_exactly_at_the_threshold_is_not_a_failure():
     assert not (K.FAILURE_THRESHOLD > K.FAILURE_THRESHOLD)
 
 
-def test_the_boundary_is_strict_on_both_sides():
+def test_the_boundary_is_strict_through_the_real_mask_constructor():
+    """Driven through `failure_mask()`, not through a bare `>` in the test.
+
+    An earlier version of this asserted `errors > t` on a tensor the test built
+    itself, which tests Python's comparison operator and would pass no matter
+    what `failure_mask` did. That is the shape D-055 and D-057 were written
+    about. Here the pool is constructed so that one transition's error is
+    **exactly** the threshold after the real scale and error computation, and
+    the assertion runs on the mask the registered constructor returns — so
+    changing `>` to `>=` in the implementation fails this test.
+
+    The pool is `[-1, 1, -1, 1]`, whose population std is exactly 1.0, so the
+    normalising scale is exactly 1 and the error is exactly the offset. The
+    offsets are one-ULP-scale rather than literal `nextafter` neighbours: a
+    single ULP at 0.61 is lost when the value round-trips through a target of
+    magnitude 1, which is a property of the arithmetic and not of the rule.
+    """
     t = K.FAILURE_THRESHOLD
-    below = np.nextafter(t, 0.0)
-    above = np.nextafter(t, 1.0)
-    errors = torch.tensor([below, t, above], dtype=torch.float64)
-    failures = errors > t
-    assert failures.tolist() == [False, False, True], (
+    eps = 1e-12
+    targets = torch.tensor([[-1.0], [1.0], [-1.0], [1.0]], dtype=torch.float64)
+    offsets = torch.tensor([t, t + eps, t - eps, 0.0], dtype=torch.float64)
+    predictions = targets + offsets.unsqueeze(1)
+    ev = ScaledEvaluation.from_pool(
+        predictions.unsqueeze(0).repeat(5, 1, 1), targets, n_transitions=4, seed=0
+    )
+
+    assert ev.scale.vector.item() == 1.0, "fixture broken: the scale is not 1"
+    assert ev.ensemble_mean_error()[0].item() == t, (
+        "fixture broken: the first transition's error is no longer EXACTLY the "
+        "threshold, so this test would no longer exercise the boundary at all"
+    )
+    assert ev.failure_mask().tolist() == [False, True, False, False], (
         "the failure rule must be strictly greater: at exact equality the "
         "transition is not a failure"
     )

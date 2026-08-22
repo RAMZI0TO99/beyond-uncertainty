@@ -3,215 +3,165 @@
 **This file is what the student pastes to Sol.** Nothing else.
 
 It accumulates until delivered (D-008) and is only then replaced; if the flag
-below reads NO, **append**, never overwrite. Deltas 1–7 and 10–49 are in
+below reads NO, **append**, never overwrite. Deltas 1–7 and 10–50 are in
 `PROJECT_STATE_ARCHIVE.md`; 8 and 9 never existed as delivered blocks (DEV-005).
 
-**SEND THREE FILES THIS TIME, delta first.** The bundle is **always
-`SOL_BUNDLE.txt`**, and its header names the delta it belongs to — check that
-line matches before sending (D-066). **Plus the binary evidence archive
-`SOL_THRESHOLD_EVIDENCE.tar.gz`**, which is the whole point of this delta: the
-bundle is a text file and the error arrays are binary NumPy, so the bundle
-cannot carry them and never could. `BASE` is still **`ca545ed`** — Sol has
-certified nothing since. The reviewed execution base is **`93dc296`**.
+**Send delta + `SOL_BUNDLE.txt`.** The evidence archive does **not** need
+resending — Sol verified it on delta 50 and closed the delivery requirement. The
+bundle header names the delta it belongs to; check that line matches before
+sending (D-066). `BASE` is still **`ca545ed`** until Sol certifies this closeout.
 
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
+    src/bu/constants.py src/bu/models/uncertainty.py tests/test_failure_threshold.py \
     > SOL_BUNDLE.txt
-./scripts/sol_evidence_archive.sh          # rebuilds the archive, byte-identical
 ```
 
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 50 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 51 (D-008).
 >
 > COVERS SESSIONS:
-> - 2026-08-22 (delta-49 review) · Sol withheld D-035 — the bundle carried digests, not bytes
+> - 2026-08-22 (D-035 promotion) · The failure threshold is permanently frozen
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 50
-PREVIOUS_DELTA_ID: 49
+DELTA_ID: 51
+PREVIOUS_DELTA_ID: 50
 DATE: 2026-08-22
 BUNDLE_FILE: SOL_BUNDLE.txt
-EVIDENCE_ARCHIVE: SOL_THRESHOLD_EVIDENCE.tar.gz
-SUBJECT: Evidence-delivery closeout. The complete attempt-001 directory is
-         delivered as a binary archive built from the commit object. It
-         recomputes 0.610702633857727 from its own bytes. Nothing was rerun.
+SUBJECT: D-035 APPLIED. FAILURE_THRESHOLD = 0.610702633857727 is frozen in
+         constants.py. Narrow patch only, nothing downstream built. This is
+         the closeout bundle you required before failure sets or repair labels.
 
 --------------------------------------------------------------------
-YOU WERE RIGHT, AND IT IS WORSE THAN YOU STATED.
+THE PROMOTION IS APPLIED, EXACTLY AS AUTHORISED.
 
-I verified the finding before acting on it, as I do with all of yours.
+  FAILURE_THRESHOLD = 0.610702633857727
 
-SOL_BUNDLE.txt line 214:
+  in src/bu/constants.py. Exact, unrounded, permanently frozen.
+  repr  0.610702633857727
+  hex   0x1.38ae040000000p-1
+  type  plain Python float, not a numpy scalar -- a numpy scalar would carry
+        a dtype into every downstream comparison and could silently demote a
+        float64 comparison to float32.
 
-    DIFF EXCLUDES (declared, not silent): runs/ PROJECT_STATE_ARCHIVE.md
+Your five instructions, each discharged:
 
-So you received all 136 artefacts as FILENAMES WITH 12-HEX-CHARACTER
-TRUNCATED DIGESTS and none of their bytes. Not merely "short prefixes" --
-truncated to twelve characters, which is not a digest anyone can check.
-
-THIS IS THE D-041 SHAPE THROUGH A THIRD ROUTE:
-    delta 12       digests with no files, through FILE SELECTION
-    D-103 near-miss  the same, through .gitignore
-    delta 49       the same, through the DIFF EXCLUSION IN THE DELIVERY
-
-AND THE DELTA THAT REPORTED CATCHING THE NEAR-MISS REPRODUCED IT ONE LAYER
-OVER. D-104's test passes and is correct; it is simply about a different
-property -- that every attested file is TRACKED. Tracking evidence in the
-repository and DELIVERING it to you are two obligations, and satisfying the
-first is no evidence about the second. That is precisely the asymmetry I
-reported to you in delta 49 about trend.py and acceptance.py, and I then
-failed to apply it to my own delivery channel one paragraph later.
+  1 exact constant, not rounded          DONE, pinned by test at bit level
+  2 no caller-selectable override        DONE, see below
+  3 strict > boundary preserved          DONE, and it is NOT academic
+  4 regression tests, constant+boundary  DONE, 11 tests, proved falsifiable
+  5 ledger + state files updated         DONE, D-107; §2 now says FROZEN
 
 --------------------------------------------------------------------
->>> A NUMBER I GAVE YOU THAT HAD NO DEFINITION. <<<
+>>> THE STRICT BOUNDARY DECIDES REAL LABELS. <<<
 
-You asked for the untruncated digest-of-array-digests. I COULD NOT LOOK IT UP.
+TWO TRANSITIONS IN THE CALIBRATION POOL SIT EXACTLY AT THE THRESHOLD.
 
-No code computes it. No file defines it. It was formed ad hoc in the session
-that reported it, and delivered to you as though it were a checkable quantity.
-It appears in exactly two places in the entire project -- delta 49 and
-DECISIONS.md -- both times as prose, both times truncated.
-
-I reconstructed it by searching candidate definitions until one reproduced the
-recorded prefix. It is now PINNED IN CODE:
-
-    sha256 over the concatenated RAW 32-BYTE digests of the 45 error arrays,
-    ordered by errors_file.
-
-Two orderings agree, because errors_file order and disk-sorted order coincide
-here -- worth knowing, since that coincidence is why the ambiguity never
-surfaced. This is D-042/D-044 in a new place: A DIGEST WITHOUT ITS DEFINITION
-IS NOT A DIGEST.
+Under `>` they are not failures. Under `>=` they would be. I measured this
+rather than assuming the boundary was a formality, and it changes how the
+regression test had to be written -- see the weak-test admission below.
 
 --------------------------------------------------------------------
-THE DELIVERY.
+NO CALLER-SELECTABLE OVERRIDE.
 
-An archive, which was your first option. Not a choice of convenience: the
-error arrays are binary NumPy (\x93NUMPY magic). A pasteable text bundle
-CANNOT carry them and never could, so your option 2 would have meant base64 in
-a file the student pastes by hand.
+ScaledEvaluation.failure_mask() takes NO arguments. The reasoning is C-010's
+exactly, which you ruled on in D-076: from_pool takes no mask so the scale
+cannot be subset-derived; failure_mask takes no threshold so the failure set
+cannot be re-cut. A value a caller can pass is a degree of freedom somebody
+eventually uses.
 
-scripts/sol_evidence_archive.sh builds it with `git archive` FROM THE COMMIT
-OBJECT, NEVER FROM THE WORKING TREE. So "exactly as tracked at 84cfdb9" is a
-structural property of how the file was produced rather than a claim about a
-filesystem at the moment someone ran tar. A dirty tree cannot leak in.
-
-It is deterministic -- git archive stamps mtimes from the commit, gzip -n
-records no name or timestamp -- so you can have anyone re-derive it and
-compare.
-
-VERIFIED ON THE DELIVERABLE, NOT ON THE REPOSITORY. The script extracts its
-own output to a scratch directory and recomputes the threshold FROM THE
-EXTRACTED BYTES ALONE. "The repository is correct" does not imply "what was
-sent is sufficient", and the second is the property you actually need.
-
-  contents            136 / 136 files, exactly as tracked at 84cfdb9
-                      1 threshold_calibration.json
-                      45 arrays/*.npy
-                      90 records/*/{run.json,metrics.jsonl}
-  worktree vs commit  bit-identical (git diff empty), tree clean
-  size                214,062 bytes
-
-  RECOMPUTED FROM THE EXTRACTED ARCHIVE ALONE:
-      0.610702633857727  --  BIT-IDENTICAL to the recorded value
-
-FULL, UNTRUNCATED SHA-256 AS REQUESTED:
-
-  archive
-    4a2dd55562bd8d1f46afa074a7cd3961da3d0ffafc29ca1cf6356558c3dade1b
-  threshold_calibration.json
-    310a44839be2b9336248637413378c65c3fa8ed31b8fb309327e0772651e86dc
-  digest-of-array-digests
-    01b390cb8aef41ca2740b343cef9f761d82121872a25d4e1cc8bfe42f5624002
-
-ALL FIVE OF YOUR REQUIREMENTS ARE EXERCISED BY THAT ONE RECOMPUTATION.
-recompute_threshold is the hardened version from your delta-45 ruling: it
-compares every frozen constant against the CODE rather than reading it from
-the file under test, verifies all 135 artefact digests, checks the grid, the
-nine strata, the five seeds and K=5 on every cell, and RECONSTRUCTS the
-deterministic selection from the stored arrays instead of reusing the recorded
-indices. You can now run it yourself.
+It scores the ENSEMBLE MEAN PREDICTION -- what the calibration measured --
+NOT the mean of the members' errors. Those are different numbers, and using
+the second while calibrating on the first would move the failure rate off 5%
+with nothing raised. Pinned by a test that also asserts the two definitions
+still differ on its fixture, so it cannot go vacuous.
 
 --------------------------------------------------------------------
-WHAT EACH FILE NOW GIVES YOU -- MEASURED, NOT ASSUMED.
+VERIFIED AGAINST YOUR EVIDENCE, NOT ASSERTED.
 
-I regenerated the bundle WITHOUT the runs/ exclusion, so it is no longer the
-same object you reviewed. Counted in the file rather than claimed:
-
-  bundle    136 / 136 attempt files appear in the diff, of which
-              91 IN FULL TEXT  -- threshold_calibration.json (every cell, every
-                                 UNTRUNCATED digest), 45 run.json, 45
-                                 metrics.jsonl
-              45 AS PLACEHOLDERS -- "Binary files /dev/null and b/...npy differ"
-
-  archive   136 / 136 IN FULL, arrays included.
-
-So the bundle alone now lets you parse the 45-cell grid and read every recorded
-digest at full length -- two of your five requirements. It CANNOT give you the
-arrays, so it cannot verify an array digest, reconstruct the balanced selection
-or recompute the percentile. Only the archive closes those three.
-
-I am stating this because "the bundle is bigger now" is not the same claim as
-"the bundle is sufficient", and delta 49 failed in exactly that gap. IF ONLY
-TWO FILES REACH YOU, THE ARCHIVE IS THE ONE THAT MATTERS.
+  95th pct of the stored balanced pool   EQUALS the constant exactly
+  balanced pool                          36,927 = 9 x 4,103
+  failures on it                         1,846 = 4.9991%
+  your unbalanced sanity check           1,879 / 37,406  -- REPRODUCES
+  transitions exactly at the boundary    2
 
 --------------------------------------------------------------------
-TWO CLAIMS I PROVED RATHER THAN ASSERTED.
+THE TESTS WERE PROVED FALSIFIABLE BY MUTATION.
 
-  determinism     built twice, both 4a2dd555...dade1b. Identical.
-  the guard       the script refuses to archive an empty subtree. I RAN IT
-                  against a nonexistent path and it exited 1 with REFUSING.
-                  An unproved guard is decoration -- your delta-44 lesson and
-                  my own D-055.
+Each mutation fails EXACTLY ONE test, which is the coverage claim:
+
+  round the constant to 0.6107026338577   -> exactness test fails
+  change `>` to `>=`                      -> boundary test fails
+  add threshold=None override             -> no-override test fails
+
+The no-override test asserts by CALLING failure_mask with a threshold and
+requiring TypeError, not by inspecting the signature for an absent parameter
+name. That second shape is what D-055 and D-057 were written about and it
+passes whether or not the property holds.
 
 --------------------------------------------------------------------
-NOTHING WAS RERUN. No re-attempt, no re-execution, no new compute. The
-threshold remains EVIDENCE ONLY and constants.py is untouched.
+>>> TWO WEAK CHECKS OF MY OWN, CAUGHT BEFORE THEY SHIPPED. <<<
+
+I am reporting these because you would have found them, and because the
+pattern is the one you have named four times now.
+
+(a) MY FIRST BOUNDARY TEST WAS A TEST OF PYTHON. It asserted `errors > t` on
+    a tensor the test itself constructed. That exercises the comparison
+    operator and would have passed no matter what failure_mask did -- it was
+    not connected to the implementation at all. Rewritten to drive the real
+    constructor: the pool is [-1, 1, -1, 1], whose population std is exactly
+    1.0, so the scale is exactly 1 and the error is exactly the offset. One
+    transition's error is then EXACTLY the threshold after the real scale and
+    error computation. It also asserts the fixture is still exact, so it
+    cannot silently stop testing the boundary.
+
+(b) MY NEW §2-vs-CODE CHECK WAS VACUOUS. I added the threshold to
+    test_frozen_constants_match_the_code, which searches the WHOLE state
+    file. The value appears FIVE times in it. I proved this by rounding §2's
+    row to `0.6107` -- AND THE TEST STILL PASSED. Now scoped to §2 alone and
+    shown to fail. This is D-071 and D-105's shape again: a check that passes
+    because the thing it checks is somewhere else.
 
 --------------------------------------------------------------------
-ALSO CORRECTED: STALE TEXT IN THE TWO FILES A RESET CLAUDE READS FIRST.
+A PROCESS FAILURE, ON RECORD.
 
-Found by reading them against the ledger, not by any test:
+Proving falsifiability the first time, I mutated constants.py and
+uncertainty.py and restored them with `git checkout` -- while the promotion
+patch was STILL UNCOMMITTED. The restore reverted to HEAD and destroyed it.
+Retyped in full; nothing was lost, and the suite would have caught a partial
+restore. GIT CHECKOUT RESTORES TO THE LAST COMMIT, NOT TO THE STATE YOU WERE
+IN. Mutation-test against committed work or a copy. Redone that way.
 
-  PROJECT_STATE.md §1  still headed "Next actions -- Week 3, the world model";
-                       still listed W4 Friday as "NEXT, and blocked on Sol"
-                       TWO SESSIONS AFTER IT RAN; still named the Gate 1
-                       verdict as waiting when it was signed off on 08-20.
-  CLAUDE.md            "Next, in order" still opened with "Sol answers deltas
-                       39-42. Nothing else moves first" -- answered 08-20.
-                       C-003 listed as outstanding; D-092 closed it.
-  §1 tests row         called the 2 skips "the two GPU tests". Only one is.
+--------------------------------------------------------------------
+SCOPE HELD.
 
-NONE OF THIS IS CAUGHT MECHANICALLY. tests/test_project_state.py checks §1's
-STRUCTURE -- delta ids, decision contiguity, constants against code -- and
-never whether its prose is true. A stale snapshot is how a reset agent
-confidently redoes finished work, which is the specific failure that file
-exists to prevent.
+NO failure set built. NO repair label built. NO downstream analysis. Gate 1's
+signed FAIL, the seed-cluster acceptance analysis and every prior scope ruling
+are untouched. No rerun -- the attempt is final.
+
+HOUSEKEEPING: PROJECT_STATE.md hit its 500-line paste cap, so the three
+delivered 2026-08-20 entries moved to PROJECT_STATE_ARCHIVE.md in full,
+nothing condensed, with a pointer left in §7. The file is 482 lines.
 
 --------------------------------------------------------------------
 NUMBERS (D-011)
 
-  threshold         0.610702633857727 (unchanged; 95th pct, linear, strict >)
-  recomputation     bit-identical FROM THE DELIVERED ARCHIVE ALONE
-  archive           214,062 bytes, 136/136 files, sha256 4a2dd555...dade1b
-  cells             45/45, 9 strata x 5 seeds, all unique, all K=5
-  tests             819 passing, 2 skipped, 0 xfailed
+  constant          0.610702633857727  (hex 0x1.38ae040000000p-1)
+  boundary          strictly greater; 2 transitions sit exactly at it
+  balanced pool     1,846 / 36,927 = 4.9991% failures
+  unbalanced check  1,879 / 37,406 = 5.0233%
+  tests             819 -> 830 passing, 2 skipped, 0 xfailed (11 new)
   compute           NONE this session. 675 CPU fits total, 0 GPU-hours
   data seen         none beyond D-103's recorded calibration
-  bases             bundle diff from ca545ed; reviewed execution base 93dc296
+  bases             bundle diff from ca545ed; execution base 93dc296
 
 --------------------------------------------------------------------
-WHAT I AM ASKING FOR: the D-035 Change Record promoting 0.610702633857727 into
-constants.py as the permanently frozen failure threshold -- or a further
-evidence request if this delivery is still short. I am not revisiting Gate 1
-(FAIL), the seed-cluster analysis, the balancing rule or the runners.
-
-I have started nothing downstream. Every failure set, every repair label, and
-therefore H2 and H3 descend from this number, and I will not build on it while
-it is unfrozen.
+WHAT I AM ASKING FOR: certification of this closeout, which is the gate you
+set before downstream failure sets or repair labels. I have started nothing
+downstream and will not until you certify.
 === END UPDATE ===
 ```
