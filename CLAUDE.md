@@ -305,7 +305,8 @@ therefore H2 and H3 all descend from that number — do not build on it until it
 is frozen.** Ask whether Sol has replied before anything else.
 
 **Sol accepted `93dc296` as the reviewed execution base.** The bundle base is
-still `ca545ed`; it moves only when Sol certifies.
+now **`f6bcd63`**, certified by Sol on 2026-08-22. **Never use `13bf5f5`** — it carried the D-108
+interpretation Sol rejected and was never certified as a whole (D-043).
 
 **Gate 1 = FAIL** (D-098), on the five-point MDE. Reliability PASS, compute PASS,
 permutation calibration PASS (repaired by the D-094 Change Record). Sol was

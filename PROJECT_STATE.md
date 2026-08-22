@@ -45,7 +45,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Current week / day** | **D-107 is CERTIFIED — the failure threshold `0.610702633857727` is frozen and final.** Sol confirmed the exact float, the strict boundary, ensemble-mean scoring and the absence of any override. **D-108's numbers are accepted and its causal reading is WITHDRAWN** (D-109): layout-conditioned prevalence heterogeneity is real (**8.77% / 4.68% / 1.58%**, a 5.53× spread), but a bound on *mean* raw error cannot explain an *upper-tail* probability, and it is **not** P§7.5 leakage — `layout` is already forbidden from critic X. Sol registered a six-point layout analysis rule (§2, D-109) and the narrow correction is applied. **Gate 1 remains a signed FAIL** (D-098). Weeks 1–5 complete; calendar **Week 1 Saturday**, ~**4 weeks** ahead (DEV-002) |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
-| **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `ca545ed`** — Sol certified the stored W4 Tuesday result on 2026-08-18. The chain: `9c0d89d` (Week 3 implementation, frozen) → `7dbcd32` (docs) → `a84cf6c` (W4 Mon trend test) → `2efad258` (W4 Tue gate + evidence contract) → `ca545ed` (the stored result). Three intermediate commits were reviewed and explicitly **not** certified; `2efad258` subsumes them. **Set `BASE=ca545ed` for the next bundle** (D-043, D-067, D-075) |
+| **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `f6bcd63`** — Sol certified the D-109 correction commit on 2026-08-22 and named it the next review base. **Set `BASE=f6bcd63`.** Sol was explicit that **`13bf5f5` must not be used**: it carried the D-108 interpretation Sol rejected, so it was never certified as a whole — D-043's rule exactly. The chain of certified bases: `9c0d89d` (Week 3, frozen) → `ca545ed` (W4 Tue stored result, 2026-08-18) → **`f6bcd63`** (D-107 promotion + D-109 correction, 2026-08-22) |
 | **Tests** | **830 passing, 2 skipped, 0 xfailed** (11 new pin the frozen threshold). The two skips are *not* both GPU: one needs two CUDA devices, the other (`test_infrastructure.py:168`) is vacuous by design — no field is currently excluded from statistical identity. Corrected 2026-08-22; §1 had called them "the two GPU tests". Includes the protocol suite, the evidence-tracking check added after D-103's near-miss, and the D-102 non-finite guards |
 | **Compute used** | **0 GPU-hours**, and none added this session. 675 CPU fits total: 450 (W4 Tue rung 0) + 225 (W4 Fri threshold calibration, 4.3 min at 4/4 threads) |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
@@ -98,7 +98,7 @@ group-level inference with its null size validated against .05.
 
 **No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **D-047's open item is closed** by D-063: the real loop never closed the gap at any size or member, Sol ruled against a second trunk, and the detached head is now a **non-decisional diagnostic** — barred from the trunk, from early stopping and checkpoint selection, from the failure set, from repair labels and from the critic's residual.
 
-**Blocked on Sol: one thing, and it is narrow.** Sol paused downstream failure sets **only until the D-108 correction is recorded** — recorded as D-109, and delta 52 delivers it. Two questions ride with it: the **bundle base** (Sol certified D-107 at `13bf5f5` but challenged D-108 at the same commit, and D-043 says a challenged commit is not a certified base, so `BASE` stays **`ca545ed`** until Sol names it), and whether the **append-only ledger correction** pattern is what Sol wants. **Neither blocks work.** Downstream failure sets are **Week 6 execution**, which Q-004 keeps untouched while the project runs ~4 weeks ahead — the lead goes to review, understanding, documentation and prose. That is where the current work is: the mandated methodology sections are now drafted (D-110). Also waiting on Sol: **repair validation** and anything built on the **predeclared reserve order** (D-092).
+**The D-108 blocker is DISCHARGED.** Sol certified D-109 and ruled that failure-set construction is **no longer blocked by D-108** — subject to the project's other existing gates, which still stand: **repair validation** and **reserve consumption** (D-092). And Q-004 independently keeps **Week 6 execution untouched** while the project runs ~4 weeks ahead, so the lead continues to go to review, understanding, documentation and prose. **Nothing downstream has been started.** The one open item is delta 53: Sol asked for **three prose corrections** to D-110 before the current head is certified, and they are applied (D-111). The threshold is unchanged and permanently final.
 
 **Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split conditionally, and DEV-005 was a hit against that condition. Sol weighed it on 2026-08-16 and **kept the split**, on the grounds that the mechanised protocol tests improve the arrangement more than reassigning implementation would. The watch stays live: consequential design decisions go into a delta **and get delivered** before dependent code is built on them, and Claude flags any decision it believes meets that bar at the moment of making it. D-030 is the current test of that — decided, filed, and deliberately left unbuilt.
 
@@ -286,6 +286,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-108** | 2026-08-22 | **FINDING** — failure prevalence is 5.5× heterogeneous across layouts, and mostly normalisation | **For Sol** |
 | **D-109** | 2026-08-22 | **Correction to D-108** — prevalence heterogeneity stands, causal reading withdrawn; D-107 **CERTIFIED**; the layout analysis rule | **Sol's ruling** |
 | **D-110** | 2026-08-22 | The mandated methodology prose drafted; DEV-007's "grid-normalised" is wrong | Deliverable |
+| **D-111** | 2026-08-22 | Sol's three prose corrections; **D-109 CERTIFIED**, D-108 blocker closed, base → `f6bcd63` | **Sol's ruling** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -425,7 +426,7 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **47 archived, the newest kept here**. Nothing is condensed or summarised — the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **48 archived, the newest kept here**. Nothing is condensed or summarised — the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
 
 *(W3 certification through the W4 Tuesday gate rounds — the trend test, Sol's two blockers, and the evidence contract — moved to `PROJECT_STATE_ARCHIVE.md` when this file passed its 500-line paste cap. Six entries, 2026-08-17 to 2026-08-18; the decisions they produced are D-068 … D-072 and remain indexed in §3.)*
 
@@ -459,23 +460,9 @@ itself is in §2 and in `src/bu/constants.py`.)*
 archived on 2026-08-22. It produced D-108, whose causal interpretation was later
 WITHDRAWN by D-109 on Sol's ruling. Read D-109 before D-108.)*
 
-### 2026-08-22 (delta-51 ruling) · Certified, and a claim withdrawn · Claude
-
-**D-107 is CERTIFIED.** Sol confirmed the exact float and hex, strict `>`, equality as non-failure, ensemble-mean scoring, no caller-selectable threshold, the scale built before any mask. **The threshold is final — never recalibrate, round, per-layout, or override it.**
-
-**D-108's numbers are accepted; its interpretation is withdrawn** (D-109). Sol's correction, verified before applying: **the probe bounds the layout-averaged cell-mean raw-error norm, and prevalence is an upper-tail probability.** Overlapping bounds on *means* cannot say why *tails* differ. Four claims withdrawn — "does not mean one thing", "mostly the normalisation", "the label is mostly the per-pool scale", and the P§7.5 leakage framing. **The last was wrong on the code**: `layout` is already in `FORBIDDEN_FIELDS`, so it cannot reach critic X.
-
-**What stands, in the wording that now travels with it:** *under the frozen per-evaluation-pool normalisation, failure prevalence differs materially by layout in the calibration evidence — layout-conditioned base-rate heterogeneity and a measurement-invariance limitation. The aggregate mean-error bounds do not identify how much of the tail difference is normalisation versus the error distributions.*
-
-**Verifying Sol's arithmetic found an estimand error of mine.** Sol's figures reproduce from neither pooled rows nor the balanced selection — they reproduce to **3×10⁻¹¹** from the **unweighted mean of the 15 per-cell rates**. D-108's table had mixed both aggregations without naming either. **D-044, exactly.** Both are now reported and labelled; the ratios barely move (1.8735 pooled-row vs **1.872846** cell-mean).
-
-**And the collapsed scale column was hiding the truth.** D-108 printed one scalar per layout (0.2018 / 0.2226 / 0.2475), which looked cleanly separated. As honest **per-dimension ranges**, clustered [0.19210, 0.21764] and uniform [0.20808, 0.23779] **overlap**. Sol also caught that the committed probe never printed that column at all — a published number not reproducible from the artefact offered to reproduce it.
-
-**Sol registered a six-point layout analysis rule** (§2 and D-109): endpoints unchanged; prevalence reported by layout, causal attribute and seed; layout-stratified H2/H3 as **secondary robustness only**; layout stays experimenter-only metadata; leave-one-layout-out may be preregistered as a secondary stress test.
-
-**Corrections applied:** probe rewritten to claim only what it supports and to reproduce every column it prints; the `test_the_unbalanced_sanity_check_still_reproduces` docstring corrected, since it still carried the invalid homogeneity inference.
-
-**Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits, no threshold change** — 675 CPU fits, 0 GPU-hours.
+*(The delta-51 ruling session — D-107 certified and D-108's causal reading withdrawn —
+was archived on 2026-08-22 once Sol certified the correction. It produced D-109, which
+is the correction of record for D-108 and is indexed in §3.)*
 
 ### 2026-08-22 (methodology prose) · The mandated sections, and a wrong word in the deviation log · Claude
 
@@ -490,3 +477,21 @@ WITHDRAWN by D-109 on Sol's ruling. Read D-109 before D-108.)*
 **And a claim of mine narrowed before it shipped.** I wrote that the five NumPy quantile methods "differ by up to a factor of two on short vectors" — generalising from D-099's single probe vector (1.8× there, but only 9.00–10.00 on a smooth ten-point vector). Both are now given, and the point is stated as version-independence rather than gap size. **The same failure mode as D-108, caught one step earlier.**
 
 **Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits** — 675 CPU fits, 0 GPU-hours.
+
+### 2026-08-22 (delta-52 ruling) · Three narrowings, and the blocker closed · Claude
+
+**D-109 CERTIFIED. The D-108 blocker is DISCHARGED** — failure-set construction is no longer blocked by it, *subject to the project's other gates*, which Sol was explicit still stand: **repair validation** and **reserve consumption**. Sol reconfirmed both prevalence estimands to six figures and accepted the cell-mean/pooled-row distinction as correctly identified and labelled. The threshold is unchanged and permanently final.
+
+**Three prose corrections to D-110, all verified before applying, all correct** (D-111).
+
+1. **Layout and threshold selection.** I wrote layout *"plays no part in threshold selection."* **Literally false**, and one grep away: `reference_strata()`'s docstring says the pool balances over *"(layout, causal_attribute) strata."* Layout **is** a preregistered balancing stratum. I was reaching for a claim about future discretion and wrote one that denied a fact about the past.
+2. **The MDE simulation.** My section called it *"a simulation of the actual H3 estimator … with a group-bootstrap interval"* and then said, four sentences later, that it uses a Wald rule *where the registered analysis uses a group-bootstrap percentile*. **Both cannot be true.** A self-contradiction inside one section is worse than either half alone, because the reader resolves it in whichever direction flatters the result.
+3. **"Sample size drives this, not correlation"** — contradicted by its own next sentence, which reports pairing at 0.99 reaching eight points. Now: sample size is the **principal** limitation **across the tested dependence assumptions**. The 1,500–2,000 figure is labelled a **rough diagnostic extrapolation**, not a computed requirement.
+
+**All three are the same move: a defensible claim stated one degree stronger than the evidence carries** — as with D-108's causal attribution and D-110's quantile generalisation. Every correction is a *narrowing*, never a retraction, which is exactly why it is easy to miss while writing.
+
+**The append-only convention is ratified.** Sol: keep D-108 as historical evidence of what was claimed, D-109 as the correction of record, do not rewrite history, and keep current summaries pointing at D-109. Settled, and it applies to DEV-007 → D-110 too.
+
+**The certified base is now `f6bcd63`** (§1, `CLAUDE.md`). **`13bf5f5` must never be used** — it carried the rejected D-108 interpretation and was never certified as a whole. D-043 in the concrete.
+
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **Prose only** — no source, no fits, no threshold work.

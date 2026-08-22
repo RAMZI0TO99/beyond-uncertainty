@@ -504,26 +504,30 @@ Prevalence is reported by layout, causal attribute and seed alongside the pooled
 result; layout-stratified H2 and H3 results are reported as **secondary
 robustness diagnostics** and never redefine the failure set or replace the
 primary weighting. Layout remains experimenter-only metadata: it is excluded
-from the critic's inputs by the frozen feature whitelist, and it plays no part in
-threshold selection, label construction, or any reweighting chosen after seeing
-results.
+from the critic's inputs by the frozen feature whitelist. Layout does not
+determine a layout-specific threshold and will not be used for later retuning,
+label overrides, or post-hoc reweighting. Its only role in the frozen calibration
+was as a preregistered balancing stratum for the single global threshold.
 
 ## What this design can and cannot detect *(Gate 1, D-078/D-089/D-098)*
 
 Gate 1 asked four questions and the design **failed** the fourth, which is
 recorded here rather than softened. The reliability gate passed, the compute
 estimate is within budget, and the repair-acceptance test is calibrated against
-its permutation null. But a simulation of the actual H3 estimator — unit-weighted
-balanced accuracy over correlated comparison groups, paired, with a
-group-bootstrap interval — puts the minimum detectable difference at **18 to 22
-percentage points** at the scheduled held-out counts, against a registered
-equivalence margin of ±5.
+its permutation null. But a diagnostic simulation of the scheduled
+unit-weighted, paired H3 comparison, using a provisional Wald/normal rejection
+approximation rather than the final H3 inference, produced optimistic
+minimum-detectable differences of **18–22 percentage points** at the scheduled
+held-out counts, against a registered equivalence margin of ±5.
 
-Sample size drives this, not correlation: at zero intra-cluster correlation the
-figure is still 18 points. Every available lever was tested. Pairing at
-correlation 0.99 reaches 8.0; holding out all 300 units reaches 6.0. Clearing
-five points would need on the order of 1,500–2,000 held-out units against the
-60–80 scheduled, and that expansion is incompatible with the registered scope.
+Sample size remains the principal limitation across the tested dependence
+assumptions. Zero intra-cluster correlation still gives an 18-point diagnostic
+MDE; extremely strong pairing improves it to eight points, but neither the
+scheduled sample nor any tested dependence assumption resolves five points.
+Holding out all 300 units reaches six. A rough diagnostic extrapolation puts the
+requirement on the order of 1,500–2,000 held-out units against the 60–80
+scheduled — an approximate figure rather than a computed sample-size
+requirement — and that expansion is incompatible with the registered scope.
 
 The design therefore continues unchanged, under an explicit power limitation:
 **H3 can detect only comparatively large differences and may be inconclusive

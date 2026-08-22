@@ -3954,3 +3954,21 @@ All clean. The **certified W4 Tuesday evidence still verifies today** after ever
 **Not actionable by me.** The threshold is frozen and must not be recalibrated, so this cannot be fixed by changing it. The remedy is Sol's ruling, and it belongs **before** any failure set or repair label exists — which is exactly where the project sits.
 
 **Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits** — 675 CPU fits total, 0 GPU-hours.
+
+### 2026-08-22 (delta-51 ruling) · Certified, and a claim withdrawn · Claude
+
+**D-107 is CERTIFIED.** Sol confirmed the exact float and hex, strict `>`, equality as non-failure, ensemble-mean scoring, no caller-selectable threshold, the scale built before any mask. **The threshold is final — never recalibrate, round, per-layout, or override it.**
+
+**D-108's numbers are accepted; its interpretation is withdrawn** (D-109). Sol's correction, verified before applying: **the probe bounds the layout-averaged cell-mean raw-error norm, and prevalence is an upper-tail probability.** Overlapping bounds on *means* cannot say why *tails* differ. Four claims withdrawn — "does not mean one thing", "mostly the normalisation", "the label is mostly the per-pool scale", and the P§7.5 leakage framing. **The last was wrong on the code**: `layout` is already in `FORBIDDEN_FIELDS`, so it cannot reach critic X.
+
+**What stands, in the wording that now travels with it:** *under the frozen per-evaluation-pool normalisation, failure prevalence differs materially by layout in the calibration evidence — layout-conditioned base-rate heterogeneity and a measurement-invariance limitation. The aggregate mean-error bounds do not identify how much of the tail difference is normalisation versus the error distributions.*
+
+**Verifying Sol's arithmetic found an estimand error of mine.** Sol's figures reproduce from neither pooled rows nor the balanced selection — they reproduce to **3×10⁻¹¹** from the **unweighted mean of the 15 per-cell rates**. D-108's table had mixed both aggregations without naming either. **D-044, exactly.** Both are now reported and labelled; the ratios barely move (1.8735 pooled-row vs **1.872846** cell-mean).
+
+**And the collapsed scale column was hiding the truth.** D-108 printed one scalar per layout (0.2018 / 0.2226 / 0.2475), which looked cleanly separated. As honest **per-dimension ranges**, clustered [0.19210, 0.21764] and uniform [0.20808, 0.23779] **overlap**. Sol also caught that the committed probe never printed that column at all — a published number not reproducible from the artefact offered to reproduce it.
+
+**Sol registered a six-point layout analysis rule** (§2 and D-109): endpoints unchanged; prevalence reported by layout, causal attribute and seed; layout-stratified H2/H3 as **secondary robustness only**; layout stays experimenter-only metadata; leave-one-layout-out may be preregistered as a secondary stress test.
+
+**Corrections applied:** probe rewritten to claim only what it supports and to reproduce every column it prints; the `test_the_unbalanced_sanity_check_still_reproduces` docstring corrected, since it still carried the invalid homogeneity inference.
+
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits, no threshold change** — 675 CPU fits, 0 GPU-hours.

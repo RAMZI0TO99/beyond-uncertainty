@@ -1697,3 +1697,24 @@ Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own e
 **Data seen:** none beyond already-recorded evidence.
 **Plan ref:** P§7.5, P§8.2.1, P§10.2, P§10.3, DEV-006, DEV-007, D-019, D-032, D-061, D-074, D-075, D-099, D-107, D-109.
 **Reviewed by Sol:** **not yet.**
+
+### D-111 · 2026-08-22 · Sol's three prose corrections to D-110; D-109 certified and the D-108 blocker discharged; the base moves to `f6bcd63`
+**Decision:** Sol **certified D-109**, **discharged the D-108 methodological blocker**, and named **`f6bcd63`** the certified review base. D-110's methodology prose was found substantively sound but **not certified** pending three sentence corrections, all three verified before applying and all three correct.
+
+**Correction 1 — layout and threshold selection.** I wrote that layout *"plays no part in threshold selection"*. **Literally false**, and checkable in one grep: `reference_strata()`'s own docstring reads *"the nine (layout, causal_attribute) strata the calibration pool balances over."* Layout **is** a preregistered balancing stratum of the frozen calibration. Sol's replacement adopted verbatim: layout does not determine a layout-specific threshold and will not be used for later retuning, label overrides or post-hoc reweighting; its only role in the frozen calibration was as a preregistered balancing stratum for the single global threshold. **The claim I was reaching for was about future discretion; what I wrote denied a fact about the past.**
+
+**Correction 2 — the MDE simulation is not the final H3 estimator, and my draft said both.** The section opened by calling it *"a simulation of the actual H3 estimator … with a group-bootstrap interval"* and then, four sentences later, correctly said it uses a Wald rule *where the registered analysis uses a group-bootstrap percentile*. Both cannot be true, and the second is the accurate one (D-089). A self-contradiction inside one section is worse than either statement alone, because a reader resolves it in whichever direction flatters the result. Replaced with Sol's wording: a **diagnostic** simulation of the scheduled unit-weighted, paired comparison, using a **provisional Wald/normal rejection approximation rather than the final H3 inference**. The prohibition on reporting an exact MDE before the simulation uses the final inference and validates its null size is preserved.
+
+**Correction 3 — an absolute claim contradicted by its own next sentence.** *"Sample size drives this, not correlation"* was immediately followed by *"pairing at correlation 0.99 reaches 8.0"*. Replaced with Sol's wording: sample size remains the **principal** limitation **across the tested dependence assumptions**; ICC = 0 still gives 18 points, extremely strong pairing improves it to eight, and neither the scheduled sample nor any tested dependence assumption resolves five. The **1,500–2,000** figure is now labelled a **rough diagnostic extrapolation**, not a computed sample-size requirement.
+
+**The pattern across all three is one thing:** a defensible claim stated one degree stronger than the evidence carries. It is the same move as D-108's causal attribution and D-110's quantile generalisation — the third and fourth instances this session. In each case the correction is a *narrowing*, never a retraction, which is precisely why it is easy to miss when writing.
+
+**Certifications and the base.** D-109 **PASS**; Sol independently reconfirmed both prevalence estimands to six figures and accepted the cell-mean/pooled-row distinction as correctly identified and labelled. The **D-108 blocker is CLOSED** and failure-set construction is no longer blocked by it — *subject to the project's other existing gates*, which Sol was explicit still stand: **repair validation** and **reserve consumption**. The threshold is unchanged and permanently final.
+
+**The append-only convention is ratified.** Sol: retain D-108 as historical evidence of what was originally claimed, with D-109 as the explicit correction of record; **do not rewrite the historical entry**; current summaries must keep pointing readers to D-109. They do. This settles the question raised in delta 52 and applies equally to DEV-007 → D-110.
+
+**Base moved to `f6bcd63`** in §1 and `CLAUDE.md`. **`13bf5f5` must never be used**: it contained the rejected D-108 interpretation and was never certified as a whole — D-043 in the concrete. Historical references to `ca545ed` in the ledger, §5 and the archive are left untouched, being accurate statements about when they were written.
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **Prose only** — no source, no fits, no threshold work, no downstream decision.
+**Data seen:** none.
+**Plan ref:** P§10.7, P§14.3, D-043, D-089, D-098, D-108, D-109, D-110. Sol's ruling on delta 52.
+**Reviewed by Sol:** **D-109 certified and the base named by Sol; these corrections await delta 53.**
