@@ -25,6 +25,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 >
 > COVERS SESSIONS:
 > - 2026-08-22 (D-035 promotion) · The failure threshold is permanently frozen
+> - 2026-08-22 (post-promotion probe) · One threshold, nine prevalences
 
 ```
 === UPDATE FOR SOL ===
@@ -163,5 +164,101 @@ NUMBERS (D-011)
 WHAT I AM ASKING FOR: certification of this closeout, which is the gate you
 set before downstream failure sets or repair labels. I have started nothing
 downstream and will not until you certify.
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+APPENDED AFTER THE ABOVE (D-008: this delta was still undelivered).
+
+TAKEN WHILE THE CLOSEOUT IS WITH YOU, under Q-004 -- review and understanding,
+NEVER scope. No code changed. Nothing downstream built.
+
+>>> A FINDING THAT NEEDS YOUR RULING BEFORE ANY FAILURE SET EXISTS. <<<
+
+THE ONE GLOBAL THRESHOLD DOES NOT MEAN ONE THING.
+
+D-035 rules out family-specific thresholds because they would "make the failure
+set partly a function of the construction label -- which is the leakage P§7.5
+forbids". Its justification is that balancing makes one threshold defensible
+"ONCE D-032 HAS FIXED THE ERROR TO ONE SCALE".
+
+So I asked whether the error is on one scale. IT IS NOT. D-061 fixes the
+normalising scale to each EVALUATION POOL, and every unit has its own. Those
+two rules had never been checked against each other.
+
+MEASURED, NO TRAINING AND NO FITS. targets() is a pure slice of next_obs, so
+the scale is a std over the environment alone. Nine strata x five seeds, the
+exact cells the threshold was calibrated on:
+
+                scale     failure rate      raw error (BOUNDED)
+  clustered    0.2018        8.77%          [0.05737, 0.06032]
+  uniform      0.2226        4.68%          [0.05704, 0.05929]
+  sparse       0.2475        1.58%          [0.05318, 0.05495]
+
+  scale spread across strata      33-36%, ORDERED SYSTEMATICALLY BY LAYOUT
+  failure-rate spread             5.53x   (behind a pooled 5%)
+  RAW error spread                1.09x
+
+A smaller scale inflates the normalised error, so prevalence is ordered
+inversely to the scale. The pooled 5% hides a 5.5-fold difference.
+
+IT IS MOSTLY THE NORMALISATION, NOT DIFFICULTY. The raw error is BOUNDED, not
+approximated: normalised = ||delta / (s_x, s_y)||, so ||delta|| lies exactly in
+[normalised * min(s), normalised * max(s)].
+
+  CLUSTERED vs UNIFORM -- the decisive pair. Their raw-error intervals OVERLAP.
+  Clustered's raw error is AT MOST +5.7% above uniform's and could be -3.2%
+  BELOW it. Its failure rate is 1.87x.
+
+WHY IT MATTERS: the failure set is what H2 is defined over and what H3's critic
+must predict. Layout -- a registered design factor -- enters the label through
+the scale. That is the leakage D-035 excludes, arriving through a different
+door.
+
+--------------------------------------------------------------------
+A CORRECTION I OWE YOU, ON DELTA 49.
+
+I wrote that the unbalanced pool giving 5.02% against 5% by construction meant
+"the strata are not wildly heterogeneous in the upper tail".
+
+THAT INFERENCE IS INVALID. Balancing discards only 1.28% of rows, so the two
+pools are very nearly the SAME POOL -- the agreement is arithmetic, not
+evidence. A pooled rate carries no information about per-stratum dispersion.
+The strata ARE wildly heterogeneous: 5.53x. I hedged it at the time ("not
+treating it as evidence either way"), which limits the damage but does not make
+the reasoning sound.
+
+--------------------------------------------------------------------
+CAUGHT IN MY OWN PROBE, BEFORE THE NUMBER LEFT THE MACHINE.
+
+The first version used mean(scale) and described the two dimensions as agreeing
+to ~1%. They differ by up to ~5%. Replaced the point estimate with the exact
+interval. D-042's lesson applied in time rather than after -- which is the only
+reason the clustered-vs-uniform claim above is stated as an overlap rather than
+as a spurious precise ratio.
+
+--------------------------------------------------------------------
+RELATED TO, BUT NOT THE SAME AS, WHAT YOU ALREADY HOLD.
+
+D-097 finding (a) and D-099 raise that balancing caps ROW COUNT, NOT TAIL
+INFLUENCE, so a systematically-worst stratum can set the threshold's VALUE.
+This is the downstream consequence and a different claim: GIVEN the value, the
+resulting PREVALENCE is 5.5x heterogeneous and mostly an artefact of per-pool
+normalisation.
+
+--------------------------------------------------------------------
+I HAVE NOT ACTED ON IT, AND CANNOT.
+
+The threshold is frozen and must not be recalibrated, so this cannot be fixed by
+changing it. Whether the remedy is a recorded methodological limitation, layout
+carried as a covariate, a stratified analysis, or something else is YOUR ruling.
+It belongs BEFORE any failure set or repair label is built, which is exactly
+where the project now sits -- so this is a second thing blocking, alongside the
+certification.
+
+  reproduce   scripts/probe_threshold_heterogeneity.py  (committed, no fits)
+  tests       830 passing, 2 skipped, 0 xfailed
+  compute     NONE. 675 CPU fits total, 0 GPU-hours
+  data seen   D-103's recorded reference errors, plus evaluation-pool target
+              statistics. No experimental condition, no hypothesis.
 === END UPDATE ===
 ```

@@ -3896,3 +3896,21 @@ All clean. The **certified W4 Tuesday evidence still verifies today** after ever
 **Three of my own probes were wrong** — a bad argument type, a string passed where a list was wanted (so a whitelist appeared to refuse everything), and a parameter that does not exist. Each looked like a defect for a moment. A wrong probe produces the same shape of output as a real finding, which is why all three were chased down before being written up.
 
 **Tests:** 819 passing, 2 skipped, 0 xfailed. **No code changed — this entry is measurement.**
+
+### 2026-08-22 (delta-49 review) · Sol withheld D-035 — the bundle carried digests, not bytes · Claude
+
+**Sol did not reject the run.** It found the reported execution consistent with the authorised specification on every field — `93dc296`, one attempt, 45 unique cells, nine strata × five seeds, K=5, 4/4 threading, 36,927 balanced transitions, the threshold itself, constants untouched, no rerun — and accepted the D-099 → **1.28%** correction, the tracking test and the audits. **Promotion was withheld for one reason: the artefact contents were never delivered** (D-106).
+
+**Verified before acting, and it is worse than Sol stated.** `SOL_BUNDLE.txt:214` declares `DIFF EXCLUDES: runs/`. So the bundle listed all 136 artefacts with **12-hex truncated digests and no bytes**. Sol could not parse the grid, check a digest, reconstruct the selection, or recompute anything.
+
+**The D-041 shape through a third route.** Delta 12 shipped digests-without-files via *file selection*; D-103's near-miss via *`.gitignore`*; this via the *diff exclusion in the delivery*. **The delta that reported catching the near-miss reproduced it one layer over.** D-104's test passes and is simply about a different property. **Tracking evidence and delivering it are two obligations, and the first is no evidence about the second** — the same asymmetry D-104 itself recorded about guards in `trend.py` and `acceptance.py`.
+
+**A number reported with no definition.** `digest-of-array-digests` was given to Sol as `01b390cb8aef41ca…`. **No code computed it and no file defined it.** Asked for the untruncated value, I could not look it up — it was reconstructed by searching candidate definitions, and is now pinned in the script: sha256 over the concatenated **raw 32-byte** array digests ordered by `errors_file`. **A digest without its definition is not a digest** (D-042/D-044, in a new place).
+
+**Delivered as an archive, because the arrays are binary NumPy** and a pasteable bundle cannot carry them. `scripts/sol_evidence_archive.sh` builds from the **commit object, never the working tree**, so "exactly as tracked at `84cfdb9`" is structural. **Verified on the deliverable:** it extracts its own output and recomputes the threshold **from the extracted bytes alone** — `0.610702633857727`, bit-identical — because the repository being correct does not imply that what was sent is sufficient. Determinism was **proved by rebuilding**, and the empty-subtree guard **proved by firing**, rather than asserted.
+
+`archive 4a2dd555…dade1b` · `json 310a4483…651e86dc` · `arrays 01b390cb…f5624002` · 214,062 bytes · 136/136 files.
+
+**Also corrected: stale text in the two files a reset Claude reads first.** §1 still said "Next actions — Week 3", still listed W4 Friday as "NEXT, and blocked on Sol" two sessions after it ran, and still named the Gate 1 verdict as waiting. `CLAUDE.md` still opened its "Next, in order" with deltas 39–42, all answered on 2026-08-20. None of this is caught mechanically — the protocol suite checks §1's *structure*, never whether its prose is true.
+
+**Tests:** 819 passing, 2 skipped, 0 xfailed. **No rerun, no new compute** — 675 CPU fits total, 0 GPU-hours.

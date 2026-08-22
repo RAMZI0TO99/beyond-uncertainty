@@ -42,7 +42,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-22 (second session) |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **THE FAILURE THRESHOLD IS PERMANENTLY FROZEN** — `FAILURE_THRESHOLD = 0.610702633857727` is in `constants.py` under the Sol-authorised D-035 Change Record (D-107). Sol verified the delivered archive itself: every one of the 135 artefact digests, the deterministic selection at RNG seed 0, and a binary-identical NumPy recomputation. Failure is **strictly greater**; **two calibration transitions sit exactly at the value**, so the boundary decides real labels. `ScaledEvaluation.failure_mask()` is the registered construction and **takes no threshold**. **Sol requires certification of this closeout before any downstream failure set or repair label is built** — nothing downstream has been started. **Gate 1 remains a signed FAIL** on the five-point MDE (D-098). Weeks 1–5 complete; by the calendar it is **Week 1 Saturday**, about **4 weeks** ahead (DEV-002) |
+| **Current week / day** | **The failure threshold is PERMANENTLY FROZEN** — `FAILURE_THRESHOLD = 0.610702633857727` in `constants.py` under the Sol-authorised D-035 Change Record (D-107), after Sol independently re-verified all 135 digests and recomputed the value bit-identically. **Then a probe found the threshold does not mean one thing** (D-108): prevalence is **5.53× heterogeneous** across layouts while raw error spans **1.09×** — the label is mostly the per-pool scale, which is the leakage D-035 excludes arriving through a different door. **Two things now need Sol**: certification of the closeout, and a ruling on D-108 — both **before** any failure set exists. **Gate 1 remains a signed FAIL** (D-098). Weeks 1–5 complete; calendar **Week 1 Saturday**, ~**4 weeks** ahead (DEV-002) |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `ca545ed`** — Sol certified the stored W4 Tuesday result on 2026-08-18. The chain: `9c0d89d` (Week 3 implementation, frozen) → `7dbcd32` (docs) → `a84cf6c` (W4 Mon trend test) → `2efad258` (W4 Tue gate + evidence contract) → `ca545ed` (the stored result). Three intermediate commits were reviewed and explicitly **not** certified; `2efad258` subsumes them. **Set `BASE=ca545ed` for the next bundle** (D-043, D-067, D-075) |
@@ -98,7 +98,7 @@ group-level inference with its null size validated against .05.
 
 **No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **D-047's open item is closed** by D-063: the real loop never closed the gap at any size or member, Sol ruled against a second trunk, and the detached head is now a **non-decisional diagnostic** — barred from the trunk, from early stopping and checkpoint selection, from the failure set, from repair labels and from the critic's residual.
 
-**Blocked on: Sol's certification of the promotion closeout.** Sol's ruling was explicit: *apply only the narrow D-035 patch, run the suite, and send its closeout bundle for certification **before** building downstream failure sets or repair labels.* That is delta 51, and it is the gate on everything — every failure set, every repair label, and therefore H2 and H3 descend from this number. **Nothing downstream has been started.** Also waiting on Sol: **repair validation** (C-008 and D-087 done) and anything built on the **predeclared reserve order** (D-092). Correctly out of scope: **MC-dropout rung 3**, deliberately unfrozen, and **critic splitting** (C-005), which is W6/W11 work.
+**Blocked on Sol, on TWO things now.** (1) **Certification of the D-107 promotion closeout** — Sol's ruling was *apply only the narrow patch, run the suite, and send its closeout bundle for certification **before** building downstream failure sets or repair labels.* (2) **A ruling on D-108**: failure prevalence is **5.53× heterogeneous** across layouts (1.58% → 8.77% behind a pooled 5%) and the raw error spans only **1.09×**, so the label is mostly set by the per-pool normalising scale rather than by model quality. The threshold is frozen and cannot be recalibrated, so the remedy is a methodological decision only Sol can take — and it belongs **before** a failure set exists, which is where the project sits. **Nothing downstream has been started.** Also waiting: **repair validation** (C-008, D-087 done) and anything built on the **predeclared reserve order** (D-092). Out of scope by Q-004: **critic splitting** (C-005) and all Week 6 work.
 
 **Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split conditionally, and DEV-005 was a hit against that condition. Sol weighed it on 2026-08-16 and **kept the split**, on the grounds that the mechanised protocol tests improve the arrangement more than reassigning implementation would. The watch stays live: consequential design decisions go into a delta **and get delivered** before dependent code is built on them, and Claude flags any decision it believes meets that bar at the moment of making it. D-030 is the current test of that — decided, filed, and deliberately left unbuilt.
 
@@ -282,6 +282,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-105** | 2026-08-20 | Audit of the unaudited — `gate.py` and four others clean; three probe errors of mine | **Audit** |
 | **D-106** | 2026-08-22 | Sol withheld D-035 — the bundle carried digests, not bytes; evidence delivered as an archive | **Sol's verdict** |
 | **D-107** | 2026-08-22 | **CHANGE RECORD — the failure threshold is permanently frozen** at `0.610702633857727` | **Sol-authorised** |
+| **D-108** | 2026-08-22 | **FINDING** — failure prevalence is 5.5× heterogeneous across layouts, and mostly normalisation | **For Sol** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -421,7 +422,7 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **44 archived, the newest kept here**. Nothing is condensed or summarised — the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **45 archived, the newest kept here**. Nothing is condensed or summarised — the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
 
 *(W3 certification through the W4 Tuesday gate rounds — the trend test, Sol's two blockers, and the evidence contract — moved to `PROJECT_STATE_ARCHIVE.md` when this file passed its 500-line paste cap. Six entries, 2026-08-17 to 2026-08-18; the decisions they produced are D-068 … D-072 and remain indexed in §3.)*
 
@@ -443,23 +444,9 @@ three entries, 2026-08-20 — were archived on 2026-08-22 when this file reached
 paste cap. They produced D-103 … D-105, all indexed in §3, and were delivered to Sol as
 delta 49. The threshold they calibrated is now frozen; see D-107.)*
 
-### 2026-08-22 (delta-49 review) · Sol withheld D-035 — the bundle carried digests, not bytes · Claude
-
-**Sol did not reject the run.** It found the reported execution consistent with the authorised specification on every field — `93dc296`, one attempt, 45 unique cells, nine strata × five seeds, K=5, 4/4 threading, 36,927 balanced transitions, the threshold itself, constants untouched, no rerun — and accepted the D-099 → **1.28%** correction, the tracking test and the audits. **Promotion was withheld for one reason: the artefact contents were never delivered** (D-106).
-
-**Verified before acting, and it is worse than Sol stated.** `SOL_BUNDLE.txt:214` declares `DIFF EXCLUDES: runs/`. So the bundle listed all 136 artefacts with **12-hex truncated digests and no bytes**. Sol could not parse the grid, check a digest, reconstruct the selection, or recompute anything.
-
-**The D-041 shape through a third route.** Delta 12 shipped digests-without-files via *file selection*; D-103's near-miss via *`.gitignore`*; this via the *diff exclusion in the delivery*. **The delta that reported catching the near-miss reproduced it one layer over.** D-104's test passes and is simply about a different property. **Tracking evidence and delivering it are two obligations, and the first is no evidence about the second** — the same asymmetry D-104 itself recorded about guards in `trend.py` and `acceptance.py`.
-
-**A number reported with no definition.** `digest-of-array-digests` was given to Sol as `01b390cb8aef41ca…`. **No code computed it and no file defined it.** Asked for the untruncated value, I could not look it up — it was reconstructed by searching candidate definitions, and is now pinned in the script: sha256 over the concatenated **raw 32-byte** array digests ordered by `errors_file`. **A digest without its definition is not a digest** (D-042/D-044, in a new place).
-
-**Delivered as an archive, because the arrays are binary NumPy** and a pasteable bundle cannot carry them. `scripts/sol_evidence_archive.sh` builds from the **commit object, never the working tree**, so "exactly as tracked at `84cfdb9`" is structural. **Verified on the deliverable:** it extracts its own output and recomputes the threshold **from the extracted bytes alone** — `0.610702633857727`, bit-identical — because the repository being correct does not imply that what was sent is sufficient. Determinism was **proved by rebuilding**, and the empty-subtree guard **proved by firing**, rather than asserted.
-
-`archive 4a2dd555…dade1b` · `json 310a4483…651e86dc` · `arrays 01b390cb…f5624002` · 214,062 bytes · 136/136 files.
-
-**Also corrected: stale text in the two files a reset Claude reads first.** §1 still said "Next actions — Week 3", still listed W4 Friday as "NEXT, and blocked on Sol" two sessions after it ran, and still named the Gate 1 verdict as waiting. `CLAUDE.md` still opened its "Next, in order" with deltas 39–42, all answered on 2026-08-20. None of this is caught mechanically — the protocol suite checks §1's *structure*, never whether its prose is true.
-
-**Tests:** 819 passing, 2 skipped, 0 xfailed. **No rerun, no new compute** — 675 CPU fits total, 0 GPU-hours.
+*(The delta-49 review session — Sol withholding D-035 because the bundle carried
+digests without bytes — was archived on 2026-08-22 once delta 50 was delivered and
+the evidence requirement closed. It produced D-106, indexed in §3.)*
 
 ### 2026-08-22 (D-035 promotion) · The failure threshold is permanently frozen · Claude
 
@@ -480,3 +467,23 @@ delta 49. The threshold they calibrated is now frozen; see D-107.)*
 **Scope held.** Narrow patch only. **No failure set, no repair label, nothing downstream** — Sol requires certification of this closeout first. Gate 1's signed FAIL stands.
 
 **Tests:** 819 → **830 passing**, 2 skipped, 0 xfailed. **No rerun, no new compute** — 675 CPU fits, 0 GPU-hours.
+
+### 2026-08-22 (post-promotion probe) · One threshold, nine prevalences · Claude
+
+**Work taken while the D-107 closeout is with Sol**, under Q-004: review and understanding, **never scope**. No code changed, nothing downstream built.
+
+**The question nobody had asked.** D-035 justifies one global threshold on the grounds that balancing makes it defensible *"once D-032 has fixed the error to one scale"* — but D-061 fixes the scale to each **evaluation pool**, and every unit has its own. The two rules had never been checked against each other.
+
+**Measured with no training** (`targets()` is a pure slice, so the scale is a std over the environment): the scale spans **33–36%** across the nine calibration strata, **ordered systematically by layout** — clustered 0.2018 < uniform 0.2226 < sparse 0.2475. A smaller scale inflates the normalised error, so failure prevalence is ordered inversely: **1.58% sparse, 4.68% uniform, 8.77% clustered — a 5.53× spread** behind the pooled 5%.
+
+**Mostly the normalisation, not difficulty.** The raw error is **bounded, not approximated**: clustered and uniform raw-error intervals **overlap** ([0.05737, 0.06032] against [0.05704, 0.05929]) while their failure rates differ **1.87×**. Across all three layouts raw error spans **1.09×** and prevalence spans **5.53×**.
+
+**Why it matters:** the failure set is what H2 is defined over and what H3's critic must predict. Layout — a registered design factor — enters the label through the scale. That is the leakage D-035 excludes, arriving through a different door.
+
+**A correction I owe Sol.** Delta 49 said the unbalanced/balanced agreement (5.02% vs 5%) meant *"the strata are not wildly heterogeneous in the upper tail."* **Invalid** — balancing discards only 1.28% of rows, so the two pools are nearly identical and a pooled rate cannot speak to per-stratum dispersion. They are heterogeneous, 5.53×.
+
+**Caught in my own probe first:** the initial version used `mean(scale)` and called the two dimensions equal to ~1%; they differ by up to ~5%. Replaced with the exact interval before the number left the machine — D-042's lesson applied in time rather than after.
+
+**Not actionable by me.** The threshold is frozen and must not be recalibrated, so this cannot be fixed by changing it. The remedy is Sol's ruling, and it belongs **before** any failure set or repair label exists — which is exactly where the project sits.
+
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits** — 675 CPU fits total, 0 GPU-hours.
