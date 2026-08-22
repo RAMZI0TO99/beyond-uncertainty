@@ -25,6 +25,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=f6bcd63 ./scripts/sol_bundle.sh \
 > - 2026-08-22 (delta-52 ruling) · Three narrowings, and the blocker closed
 > - 2026-08-22 (methodology closeout) · The last mandated section
 > - 2026-08-22 (schedule check) · Weeks 4 and 5 are not complete
+> - 2026-08-22 (W4 Fri, part two) · The timing harness, eight sessions late
 
 ```
 === UPDATE FOR SOL ===
@@ -262,5 +263,117 @@ RESERVE-CONSUMPTION area you still have gated.
 
 ASKING: how you want both handled, and whether Gate 1's compute condition should
 be re-assessed against a measured extrapolation rather than a fit count.
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+APPENDED (D-008: still undelivered).
+
+>>> FROM THE STUDENT, IN THEIR OWN WORDS: THEY WANT WEEKS 4 AND 5 FINISHED. <<<
+
+That is a direct instruction to me and I am passing it to you unedited. They
+are not asking whether the gaps matter; they want them closed. So I have closed
+the one that was mine to close and I need your rulings to close the rest.
+
+--------------------------------------------------------------------
+W4 FRIDAY'S TIMING HARNESS IS BUILT AND RUN (D-114).
+
+I did not ask permission first, and here is my reasoning -- challenge it if you
+disagree. It reads WALL TIME AND NOTHING ELSE, at stage="pilot" which carries no
+seed policy and can never enter a claim, writing no registered evidence. That is
+exactly the discipline D-103 used when it timed one cell before the threshold
+run and you accepted it then. MEASURING is mine; RE-ADJUDICATING A SIGNED GATE
+IS YOURS, and I have not done the second.
+
+  configuration                          extrapolated      vs 120-h trigger
+  CPU, 4 threads (the certified config)      6.40 h      0.053x   19x headroom
+  CPU, 24 threads                            8.72 h      0.073x   14x headroom
+  CUDA (RTX 4080 SUPER)                      7.92 h      0.066x   15x headroom
+
+FEWER THREADS IS FASTER AND THE GPU BARELY HELPS. The model is a small MLP, so
+synchronisation and launch overhead dominate. THE DESIGN IS EFFECTIVELY
+CPU-BOUND AND THE GPU IS NOT THE RESOURCE THE BUDGET IS DENOMINATED IN.
+
+Gate 1 condition 2 was signed on a FIT COUNT. The condition names GPU-HOURS.
+Measured, the design is inside budget BY 14-19x, and the direction holds in
+every configuration. The schedule's premise -- "sits at the edge of the budget
+with no meaningful headroom" -- was written about the PLAN'S SPECIFICATION and
+is NOT TRUE OF THE IMPLEMENTED SYSTEM, which substituted a scripted policy for
+PPO (DEV-001) and uses a small MLP on a gridworld.
+
+--------------------------------------------------------------------
+>>> A CONSEQUENCE I AM NOT ACTING ON, BECAUSE IT IS YOURS. <<<
+
+You refused expansion toward the 1,500-2,000 held-out units the five-point MDE
+would need, as "incompatible with the registered scope AND BUDGET" (D-089).
+
+THE BUDGET HALF OF THAT IS NOW MEASURABLY NOT BINDING. A design 5-6x larger
+extrapolates to roughly 32-52 hours, still comfortably under the 120-hour
+trigger.
+
+I WANT TO BE PRECISE ABOUT WHAT THIS DOES AND DOES NOT SHOW, because you have
+corrected me five times this session for exactly this kind of overreach:
+
+  it DOES        remove one of the two grounds you stated
+  it does NOT    make expansion advisable
+  it does NOT    touch scope, the twenty-week calendar, the student's ~14 h/week,
+                 or the cost of generating 5-6x the data
+  it does NOT    change Gate 1's FAIL, which stands either way
+
+Whether the scope half still binds on its own is your ruling, not mine, and I
+have started nothing on it. But the student has now said they want W4/W5 closed,
+and this measurement is a real input to that question, so I am putting it in
+front of you rather than filing it.
+
+--------------------------------------------------------------------
+THE ACCOUNTING WAS WRONG FIRST, AND IT WAS D-033'S ERROR EXACTLY.
+
+My first design_fits_by_size summed obligations() directly: 6,750 baseline fits
+against the design's 6,375. THAT IS THE 375 PHANTOM FITS, the same repair-
+validation unit counted at twenty-five seeds when the twenty contain the five.
+At the same time it charged one fit per repair OBLIGATION instead of per seed,
+undercounting the repair side. Two errors, opposite directions, in a function
+whose only job is counting.
+
+Rebuilt on execution_plan -- already deduplicated by fit identity and
+stage-aware -- it reproduces 8,047 non-ablation fits exactly. A SECOND
+IMPLEMENTATION OF A NUMBER THE PROJECT HAS ALREADY BEEN WRONG ABOUT IS NOT A
+SHORTCUT, IT IS THE BUG. tests/test_w4_timing.py pins it and I showed it failing
+on a deliberate off-by-one.
+
+WHAT THE NUMBER IS NOT: training time only; collection measured per condition
+(0.04 s at n=100 to 1.4 s at n=50,000) but not multiplied in; measured on THIS
+machine, not Kaggle. The extrapolation is PER TRAINING SIZE, never one scaled
+rate -- which matters here, because data repair trains at 50,000 where a fit
+costs 20.5 s against 1.4 s at 5,000.
+
+--------------------------------------------------------------------
+WHAT IS STILL OPEN TO FINISH W4 AND W5. I NEED THREE THINGS.
+
+1. GATE 1 CONDITION 2. Do you want it re-assessed against the measured
+   extrapolation rather than the fit count? The verdict does not change -- it
+   passes either way -- but the RECORDED BASIS is currently a proxy for the
+   quantity the condition names.
+
+2. W5 FRIDAY'S CLASS-BALANCE PROCEDURE. Still unbuilt, and I have not started
+   it, because it sits inside the reserve-consumption area you have gated. To
+   build it I need:
+     - is the per-unit TRACE CAP a preregistered quantity (§2) or an
+       implementation choice? If preregistered, what value, and it must be
+       fixed before any labelled data exists;
+     - does it require C-005's grouped splitter to exist first? D-039 says a
+       comparison group must never span a split, and this procedure balances
+       "within each split", so the two look coupled -- but you have C-005 as
+       W6/W11 work;
+     - may it be built and tested on synthetic inputs now, the way the MDE
+       simulation was, given no labelled units exist yet?
+
+3. Q-004 AND WEEK 6. Unchanged from my last delta and now more pointed, since
+   the student wants the weeks closed: does Q-004 still hold Week 6 execution
+   now that Phase A is complete and the threshold is final?
+
+  tests      830 -> 835 passing, 2 skipped, 0 xfailed
+  compute    timing runs only, pilot stage, ~25 min. Registered compute
+             unchanged at 675 CPU fits, 0 GPU-hours.
+  data seen  NONE. Wall time only; every timing run discarded its ensemble.
 === END UPDATE ===
 ```

@@ -42,7 +42,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-22 (second session) |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **WEEKS 4 AND 5 ARE NOT COMPLETE** (D-113) — §1 claimed they were, carried forward unverified for many sessions. Checked against the schedule document: **W4 Friday's timing harness was never built** (the cell has two tasks; only the threshold was done) and **Gate 1's compute condition was signed PASS on a fit count, not the GPU-hour extrapolation it names**; **W5 Friday's labelled-unit class-balance procedure and trace cap have no implementation**, and S§W11 Mon assumes it exists; and the acceptance-model change had no §4 deviation, now **DEV-009**. The threshold `0.610702633857727` is frozen, **CERTIFIED** and final (D-107/D-109); the certified base is **`f6bcd63`**. **Gate 1 remains a signed FAIL** (D-098). Calendar **Week 1 Saturday**, ~4 weeks ahead (DEV-002) |
+| **Current week / day** | **W4 Friday is now COMPLETE** — its missing timing harness is built and run (D-114): the design costs **6.40 h** at the certified 4-thread config, **14–19× inside** the 120-hour trigger across every configuration, against a Gate 1 condition that was signed on a *fit count*. **The student has asked for Weeks 4 and 5 to be finished**, and that is in delta 53. **W5 Friday's class-balance procedure is still unbuilt** — it needs Sol's ruling on the trace cap, on whether C-005's grouped splitter must come first, and on the reserve-consumption gate. DEV-009 recorded the acceptance-model deviation. Threshold `0.610702633857727` frozen and **CERTIFIED**; base **`f6bcd63`**; **Gate 1 remains a signed FAIL** (D-098). Calendar **Week 1 Saturday**, ~4 weeks ahead (DEV-002) |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `f6bcd63`** — Sol certified the D-109 correction commit on 2026-08-22 and named it the next review base. **Set `BASE=f6bcd63`.** Sol was explicit that **`13bf5f5` must not be used**: it carried the D-108 interpretation Sol rejected, so it was never certified as a whole — D-043's rule exactly. The chain of certified bases: `9c0d89d` (Week 3, frozen) → `ca545ed` (W4 Tue stored result, 2026-08-18) → **`f6bcd63`** (D-107 promotion + D-109 correction, 2026-08-22) |
@@ -98,7 +98,7 @@ group-level inference with its null size validated against .05.
 
 **No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **D-047's open item is closed** by D-063: the real loop never closed the gap at any size or member, Sol ruled against a second trunk, and the detached head is now a **non-decisional diagnostic** — barred from the trunk, from early stopping and checkpoint selection, from the failure set, from repair labels and from the critic's residual.
 
-**Blocked on Sol, on the two W4/W5 gaps.** The D-108 blocker is **discharged** and failure-set construction is unblocked with respect to it — but **Weeks 4 and 5 are not actually finished** (D-113), and both gaps are Sol's to rule on rather than mine to close. **(1) The W4 Friday timing harness** would **re-open a signed Gate 1 condition** and would be the project's first GPU compute; a CUDA device is present, so the measurement is available, but reopening a signed gate is Sol's call. **(2) The W5 Friday class-balance procedure** sits inside the **reserve-consumption** area Sol still has gated. Sol's other named gates — **repair validation** and **reserve consumption** — stand. Q-004 independently keeps **Week 6 execution untouched**. **Nothing downstream has been started.**
+**Blocked on Sol, on three things — and the student wants W4/W5 closed.** **(1) Gate 1 condition 2's recorded basis.** It was signed on a fit count; the condition names GPU-hours. The verdict passes either way, but re-adjudicating a signed gate is Sol's. **(2) W5 Friday's class-balance procedure**, unbuilt: is the per-unit trace cap a preregistered §2 quantity, does it require C-005's grouped splitter first (D-039 says a group may never span a split, and this balances *within* splits), and may it be built on synthetic inputs now as the MDE simulation was? **(3) Q-004 and Week 6** — does it still hold Week 6 execution now Phase A is complete? **A consequence Sol must weigh:** the refusal to expand the design cited scope **and budget**; the budget half is now measurably not binding (a 5–6× design is ~32–52 h against a 120-hour trigger). That removes one of two grounds and **nothing more** — scope, the calendar and the data-generation cost are untouched, and Gate 1's FAIL stands either way. **Nothing downstream started.**
 
 **Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split conditionally, and DEV-005 was a hit against that condition. Sol weighed it on 2026-08-16 and **kept the split**, on the grounds that the mechanised protocol tests improve the arrangement more than reassigning implementation would. The watch stays live: consequential design decisions go into a delta **and get delivered** before dependent code is built on them, and Claude flags any decision it believes meets that bar at the moment of making it. D-030 is the current test of that — decided, filed, and deliberately left unbuilt.
 
@@ -289,6 +289,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-111** | 2026-08-22 | Sol's three prose corrections; **D-109 CERTIFIED**, D-108 blocker closed, base → `f6bcd63` | **Sol's ruling** |
 | **D-112** | 2026-08-22 | The last §4-mandated methodology section; the 300-vs-375 arithmetic checked in code | Deliverable |
 | **D-113** | 2026-08-22 | **FINDING** — W4/W5 are NOT complete: no timing harness, no class-balance code, a missing deviation | **For Sol** |
+| **D-114** | 2026-08-22 | W4 Fri's timing harness built and run — **6–9 h, not 110–145 GPU-h**; 14–19× headroom | **Result — for Sol** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -434,67 +435,33 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **51 archived, the newest kept here**. Nothing is condensed or summarised — the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md` — **52 archived, the newest kept here**. Nothing is condensed or summarised: the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
 
-*(W3 certification through the W4 Tuesday gate rounds — the trend test, Sol's two blockers, and the evidence contract — moved to `PROJECT_STATE_ARCHIVE.md` when this file passed its 500-line paste cap. Six entries, 2026-08-17 to 2026-08-18; the decisions they produced are D-068 … D-072 and remain indexed in §3.)*
+*(Archived in order, all of them because this file kept reaching its 500-line paste cap, none of them because they stopped mattering: the W3 certification and W4 Tuesday gate rounds → D-068 … D-077; W4 Thursday's MDE and the W5 Mon–Fri cells → D-078 … D-081; the W5 closeout and Sol correction rounds of 2026-08-20 → D-082 … D-102 and the Gate 1 FAIL; W4 Friday's threshold calibration → D-103 … D-105, delivered as delta 49; then the 2026-08-22 sessions in sequence — the delta-49 review → D-106, the D-035 promotion → D-107, the post-promotion probe → D-108, the delta-51 ruling → D-109, the methodology prose → D-110, the delta-52 ruling → D-111, the methodology closeout → D-112, and the schedule check → D-113 with DEV-009.*
 
-*(The W4 Tuesday gate result, its certification closeout, and the W4 Wednesday obligations — four entries, 2026-08-18 — were archived on 2026-08-20 for the same reason. They produced D-071 … D-077, all indexed in §3. W4 Tuesday is certified at `ca545ed`.)*
+***Read D-109 before D-108** — it is the correction of record and D-108's causal reading is withdrawn. The threshold D-103 calibrated is now frozen and certified; see D-107.)*
 
 ### DEV-008 · 2026-08-18 · The MDE simulation's significance level is not in the plan
 **Deviation:** P§10.7 fixes power at eighty percent but does not state a significance level. The C-006 simulation uses **α = 0.05, two-sided**.
 **Why:** consistency with every other interval in the project — repair acceptance is a 95% CI excluding zero (P§7.3), and the H1 trend test is a 95% interval (D-068). A one-sided test would shrink the MDE by about 11% and change no conclusion.
 **Goes in methodology:** **yes.** It is an assumption the reported MDE depends on, and the MDE is a Gate 1 condition. Stated rather than absorbed silently.
 
-*(W4 Thursday's MDE and the W5 Mon/Tue/Wed/Fri cells — four entries, 2026-08-18 — were archived on 2026-08-20 when Gate 1 was signed off, which supersedes them. They produced D-078 … D-081, all indexed in §3.)*
+### 2026-08-22 (W4 Fri, part two) · The timing harness, eight sessions late · Claude
 
-*(Three W5 closeout sessions of 2026-08-20 — Sol's deltas 39–42 actioned, C-008 and C-003, and C-007 at repair acceptance — were archived the same day when this file passed its cap. They produced D-085 … D-093, all indexed in §3.)*
+**Built and ran the missing half of W4 Friday** (D-114). Wall time only, `stage="pilot"`, nothing registered written — the discipline D-103 used and Sol accepted.
 
-*(Four Sol correction rounds of 2026-08-20 — deltas 43–47 actioned, Gate 1 signed FAIL, the acceptance Change Record and the non-finite guard — were archived the same day when this file passed its cap. They produced D-094 … D-102, all indexed in §3.)*
+| configuration | extrapolated training time | vs the 120-hour trigger |
+|---|---|---|
+| CPU, **4 threads** (the certified config) | **6.40 h** | 0.053× — **19× headroom** |
+| CPU, 24 threads | 8.72 h | 14× |
+| CUDA (RTX 4080 SUPER) | 7.92 h | 15× |
 
-*(W4 Friday's threshold calibration, the near-miss mechanisation and the audit-gap closeout —
-three entries, 2026-08-20 — were archived on 2026-08-22 when this file reached its 500-line
-paste cap. They produced D-103 … D-105, all indexed in §3, and were delivered to Sol as
-delta 49. The threshold they calibrated is now frozen; see D-107.)*
+**Fewer threads is faster and the GPU barely helps** — the model is a small MLP, so synchronisation and launch overhead dominate. **The design is effectively CPU-bound and the GPU is not the resource the budget is denominated in.**
 
-*(The delta-49 review session — Sol withholding D-035 because the bundle carried
-digests without bytes — was archived on 2026-08-22 once delta 50 was delivered and
-the evidence requirement closed. It produced D-106, indexed in §3.)*
+**Gate 1's condition 2 was signed on a fit count; the condition names GPU-hours.** Measured, the design is inside budget **by 14–19×**, and the direction holds across every configuration. The schedule's premise — *"sits at the edge of the budget with no meaningful headroom"* — was written about the plan's specification and **is not true of the implemented system** (scripted policy, small MLP, gridworld).
 
-*(The D-035 promotion session — freezing the threshold in `constants.py` — was archived
-on 2026-08-22 once Sol CERTIFIED it. It produced D-107, indexed in §3, and the constant
-itself is in §2 and in `src/bu/constants.py`.)*
+**A consequence that is Sol's to rule on.** Sol refused expansion toward the 1,500–2,000 units the five-point MDE needs as *"incompatible with the registered scope **and budget**"*. **The budget half is now measurably not binding** — a 5–6× design extrapolates to ~32–52 h, still under 120. **This does not make expansion advisable**: scope, the twenty-week calendar, ~14 h/week and data-generation cost are all untouched, and Gate 1's FAIL stands regardless. It removes one of two stated grounds.
 
-*(The post-promotion probe session — which raised the layout-prevalence finding — was
-archived on 2026-08-22. It produced D-108, whose causal interpretation was later
-WITHDRAWN by D-109 on Sol's ruling. Read D-109 before D-108.)*
+**The accounting was wrong first, and it was D-033's error.** Summing `obligations()` gave **6,750** baseline fits against **6,375** — **exactly the 375 phantom fits** — while also charging one fit per repair *obligation* instead of per seed. Rebuilt on `execution_plan`, it reproduces 8,047 exactly. A second implementation of a number the project has already been wrong about is not a shortcut, it is the bug. Pinned by a test shown to fail.
 
-*(The delta-51 ruling session — D-107 certified and D-108's causal reading withdrawn —
-was archived on 2026-08-22 once Sol certified the correction. It produced D-109, which
-is the correction of record for D-108 and is indexed in §3.)*
-
-*(The methodology-prose session — six mandated sections drafted, and DEV-007's
-"grid-normalised" found wrong — was archived on 2026-08-22. It produced D-110, whose
-three overstated sentences were then corrected by D-111 on Sol's ruling.)*
-
-*(The delta-52 ruling session — Sol's three prose narrowings, D-109 certified, the D-108
-blocker discharged and the base moved to `f6bcd63` — was archived on 2026-08-22. It
-produced D-111, indexed in §3.)*
-
-*(The methodology-closeout session — the last §4-mandated section, on why the Experiment 2A
-conditions are not extra units — was archived on 2026-08-22. It produced D-112.)*
-
-### 2026-08-22 (schedule check) · Weeks 4 and 5 are not complete · Claude
-
-**§1 has claimed "Weeks 1–5 are complete" for many sessions. Checked against the schedule document rather than the ledger, it is wrong** (D-113).
-
-**W4 Friday is half done, and the missing half is a Gate 1 condition.** The cell specifies the threshold calibration **and** a *"timing harness: measure one full condition end to end and extrapolate total GPU-hours against the ~120-hour estimate."* **No harness exists.** Gate 1's condition 2 was signed **PASS** on *"14,885 fits against ~8,700, i.e. 1.71×"* — **a fit count, not GPU-hours**, and the conversion is exactly what the harness would have measured. **Zero GPU-hours have ever been spent.** The schedule is explicit that this is *"a gate, not a formality — the design sits at the edge of the budget with no meaningful headroom"* (110–145 GPU-h against a ~120 trigger). A CUDA device is present; the measurement was simply never taken.
-
-**W5 Friday is half done.** The figure script exists (D-081); the *"class-balance procedure in code at the labelled-unit level … plus a fixed cap of traces per selected unit"* does not. The only `balance` in `src/bu` is `_balanced_accuracy`, which is the metric. D-031/D-092 cover **intended**-class balance and the reserve order — related, but not balance at the **labelled**-unit level within each split. **S§W11 Mon assumes this procedure exists.**
-
-**A deviation that was never written**, now **DEV-009**: S§W5 Tue specifies a statsmodels **MixedLM** with an episode-mean fallback; the implemented test is an equal-seed paired difference with a t interval and no fallback (D-094/D-100). Sol-authorised before data, and in §2 and the ledger — but absent from §4, and "mixed-effects" appeared **zero times** in this file.
-
-**Why it stayed invisible:** each gap sits beside something done well and reported at length. The threshold is the most-reviewed artefact in the project and shares a cell with the harness nobody built; the acceptance change survived four Sol rounds and two Change Records without anyone asking where its deviation record was. **The ledger tracks decisions, not cells.** Nothing checks schedule coverage, and §1's summary was true of the *intent* and never re-checked.
-
-**Written: DEV-009**, a recording obligation and mine. **Not done: the timing harness** — it re-opens a signed gate condition and would be the first GPU compute — **and the class-balance procedure**, which is inside Sol's gated reserve-consumption area. Both go to Sol.
-
-**Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits.**
+**Tests:** 830 → **835 passing**, 2 skipped. **No registered fits**; timing runs only.

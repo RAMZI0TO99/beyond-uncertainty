@@ -1750,3 +1750,29 @@ Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own e
 **Data seen:** none.
 **Plan ref:** S§W4 Fri, S§W5 Tue, S§W5 Fri, S§W11 Mon, P§14.2, P§14.3, D-031, D-081, D-092, D-094, D-098, D-100.
 **Reviewed by Sol:** **not yet — delta 53 carries it.**
+
+### D-114 · 2026-08-22 · W4 Friday's timing harness, built and run — the design costs **~6–9 hours**, not 110–145 GPU-hours
+**Decision:** Built and ran the missing half of S§W4 Fri (D-113). **It reads wall time and nothing else** — no errors, no disagreement, no predictions — at `stage="pilot"`, which carries no seed policy and can never enter a claim. **No registered evidence was written.** This is the discipline D-103 used when it timed one cell before the threshold run, and Sol accepted it then.
+
+**The measurement.** Per-fit time measured at every training size the design actually uses, then weighted by the design's real obligation structure:
+
+| configuration | extrapolated training time | against the 120-hour trigger |
+|---|---|---|
+| CPU, **4 threads** (the certified config, D-076) | **6.40 h** | 0.053× — **19× headroom** |
+| CPU, 24 threads | 8.72 h | 0.073× — 14× headroom |
+| CUDA (RTX 4080 SUPER) | 7.92 h | 0.066× — 15× headroom |
+
+**Fewer threads is faster**, which is counter-intuitive until you notice the model is a small MLP: synchronisation overhead dominates, and the GPU barely helps for the same reason (7.92 h against 6.40 h on four CPU threads). **The design is effectively CPU-bound and the GPU is not the resource the budget is denominated in.**
+
+**Gate 1's condition 2 was signed PASS on a fit count** — 14,885 against ~8,700 at the old default, i.e. 1.71×. That reasoning is about *counts*; the condition names *GPU-hours*. Measured, the answer is not merely "within budget" but **within by a factor of 14–19**, and the direction does not depend on the configuration. The schedule's stated premise — *"the design sits at the edge of the budget with no meaningful headroom"* — was written about the plan's specification and **is not true of the implemented system**, which substituted a scripted policy for PPO (DEV-001) and uses a small MLP on a gridworld.
+
+**A consequence that is Sol's, not mine.** Sol refused expansion toward the 1,500–2,000 held-out units the five-point MDE would need, on the grounds that it is *"incompatible with the registered scope **and budget**"* (D-089). **The budget half of that reasoning is now measurably not binding**: a design 5–6× larger extrapolates to roughly **32–52 hours**, still comfortably under the 120-hour trigger. **This does not make expansion advisable** — the scope, the twenty-week calendar, the student's ~14 h/week and the data-generation cost are all untouched by this measurement, and Gate 1's FAIL stands either way. It removes one of two stated grounds, and which grounds still bind is Sol's ruling.
+
+**What the number is and is not.** It is **training time only**, on **this machine**, not on Kaggle, which the schedule names as the execution host. Collection is measured and reported per condition (0.04 s at n=100 to 1.4 s at n=50,000) and is small, but it is not multiplied into the total. The extrapolation is **per training size**, never a single scaled rate — scaling one rate without asking what it is a rate *of* is the documented way to turn a right number into a wrong one, and here it would matter a great deal, since data repair trains at 50,000 where a fit costs **20.5 s** against **1.4 s** at 5,000.
+
+**>>> The accounting was wrong first, in both directions, and it was the D-033 error.** The initial `design_fits_by_size` summed `obligations()` directly and produced **6,750** baseline fits against the design's **6,375** — **exactly the 375 phantom fits D-033 is about**, a repair-validation unit's baseline counted at twenty-five seeds when the twenty contain the five. Simultaneously it charged one fit per repair *obligation* rather than per seed, undercounting the repair side. Rebuilt on `execution_plan`, which is already deduplicated by fit identity and stage-aware, it reproduces the design's 8,047 non-ablation fits exactly. **A second implementation of a number the project has already been wrong about once is not a shortcut, it is the bug.** `tests/test_w4_timing.py` pins it and was shown to fail on a deliberate off-by-one.
+**Tests:** 830 → **835 passing**, 2 skipped, 0 xfailed.
+**Data seen:** **none.** Wall time only; every timing run discarded its ensemble and wrote nothing.
+**Compute:** timing runs only, in `pilot` stage, ~25 min total. The registered 675 CPU fits are unchanged; 0 GPU-hours of registered compute.
+**Plan ref:** S§W4 Fri, P§14.2, P§14.3, D-033, D-076, D-089, D-098, D-103, D-113.
+**Reviewed by Sol:** **not yet — delta 53 carries it, and the consequence for D-089 is explicitly Sol's to rule on.**

@@ -4012,3 +4012,19 @@ All clean. The **certified W4 Tuesday evidence still verifies today** after ever
 **The arithmetic was checked in code, not quoted from the ledger.** `canonical_units()` = **75**, of which `experiment_2a_units()` = **20**; `sweep_candidates()` is the full matrix **minus** the canonical ids, so the 225 sweep draws cannot collide; `design_units()` = **300**, with **300 distinct** ids and the canonical set a subset. Double-counting would give **375** against a registered 300 — the concrete size of the inflation D-007 prevents, and every interval on that count would be too narrow.
 
 **Tests:** 830 passing, 2 skipped, 0 xfailed. **Prose only** — no source, no fits.
+
+### 2026-08-22 (schedule check) · Weeks 4 and 5 are not complete · Claude
+
+**§1 has claimed "Weeks 1–5 are complete" for many sessions. Checked against the schedule document rather than the ledger, it is wrong** (D-113).
+
+**W4 Friday is half done, and the missing half is a Gate 1 condition.** The cell specifies the threshold calibration **and** a *"timing harness: measure one full condition end to end and extrapolate total GPU-hours against the ~120-hour estimate."* **No harness exists.** Gate 1's condition 2 was signed **PASS** on *"14,885 fits against ~8,700, i.e. 1.71×"* — **a fit count, not GPU-hours**, and the conversion is exactly what the harness would have measured. **Zero GPU-hours have ever been spent.** The schedule is explicit that this is *"a gate, not a formality — the design sits at the edge of the budget with no meaningful headroom"* (110–145 GPU-h against a ~120 trigger). A CUDA device is present; the measurement was simply never taken.
+
+**W5 Friday is half done.** The figure script exists (D-081); the *"class-balance procedure in code at the labelled-unit level … plus a fixed cap of traces per selected unit"* does not. The only `balance` in `src/bu` is `_balanced_accuracy`, which is the metric. D-031/D-092 cover **intended**-class balance and the reserve order — related, but not balance at the **labelled**-unit level within each split. **S§W11 Mon assumes this procedure exists.**
+
+**A deviation that was never written**, now **DEV-009**: S§W5 Tue specifies a statsmodels **MixedLM** with an episode-mean fallback; the implemented test is an equal-seed paired difference with a t interval and no fallback (D-094/D-100). Sol-authorised before data, and in §2 and the ledger — but absent from §4, and "mixed-effects" appeared **zero times** in this file.
+
+**Why it stayed invisible:** each gap sits beside something done well and reported at length. The threshold is the most-reviewed artefact in the project and shares a cell with the harness nobody built; the acceptance change survived four Sol rounds and two Change Records without anyone asking where its deviation record was. **The ledger tracks decisions, not cells.** Nothing checks schedule coverage, and §1's summary was true of the *intent* and never re-checked.
+
+**Written: DEV-009**, a recording obligation and mine. **Not done: the timing harness** — it re-opens a signed gate condition and would be the first GPU compute — **and the class-balance procedure**, which is inside Sol's gated reserve-consumption area. Both go to Sol.
+
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits.**
