@@ -137,6 +137,29 @@ deterministic selection from the stored arrays instead of reusing the recorded
 indices. You can now run it yourself.
 
 --------------------------------------------------------------------
+WHAT EACH FILE NOW GIVES YOU -- MEASURED, NOT ASSUMED.
+
+I regenerated the bundle WITHOUT the runs/ exclusion, so it is no longer the
+same object you reviewed. Counted in the file rather than claimed:
+
+  bundle    136 / 136 attempt files appear in the diff, of which
+              91 IN FULL TEXT  -- threshold_calibration.json (every cell, every
+                                 UNTRUNCATED digest), 45 run.json, 45
+                                 metrics.jsonl
+              45 AS PLACEHOLDERS -- "Binary files /dev/null and b/...npy differ"
+
+  archive   136 / 136 IN FULL, arrays included.
+
+So the bundle alone now lets you parse the 45-cell grid and read every recorded
+digest at full length -- two of your five requirements. It CANNOT give you the
+arrays, so it cannot verify an array digest, reconstruct the balanced selection
+or recompute the percentile. Only the archive closes those three.
+
+I am stating this because "the bundle is bigger now" is not the same claim as
+"the bundle is sufficient", and delta 49 failed in exactly that gap. IF ONLY
+TWO FILES REACH YOU, THE ARCHIVE IS THE ONE THAT MATTERS.
+
+--------------------------------------------------------------------
 TWO CLAIMS I PROVED RATHER THAN ASSERTED.
 
   determinism     built twice, both 4a2dd555...dade1b. Identical.
