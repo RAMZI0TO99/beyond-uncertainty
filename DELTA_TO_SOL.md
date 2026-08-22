@@ -24,6 +24,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=f6bcd63 ./scripts/sol_bundle.sh \
 > COVERS SESSIONS:
 > - 2026-08-22 (delta-52 ruling) · Three narrowings, and the blocker closed
 > - 2026-08-22 (methodology closeout) · The last mandated section
+> - 2026-08-22 (schedule check) · Weeks 4 and 5 are not complete
 
 ```
 === UPDATE FOR SOL ===
@@ -175,5 +176,91 @@ for the student to rewrite (D-019).
   tests     830 passing, 2 skipped, 0 xfailed
   compute   NONE. 675 CPU fits total, 0 GPU-hours
   changed   docs/method_draft.md, DECISIONS.md, PROJECT_STATE.md. No source.
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+APPENDED (D-008: still undelivered).
+
+>>> WEEKS 4 AND 5 ARE NOT COMPLETE. §1 HAS BEEN WRONG FOR SESSIONS. <<<
+
+I checked "Weeks 1-5 are complete" against the SCHEDULE DOCUMENT instead of
+against the ledger's memory of it. Three things are outstanding and one sits
+under a condition you have already signed (D-113).
+
+1. W4 FRIDAY IS HALF DONE, AND THE MISSING HALF IS A GATE 1 CONDITION.
+
+   S§W4 Fri has TWO tasks. The threshold calibration -- done, certified. And:
+
+       "Timing harness: measure one full condition end to end and extrapolate
+        total GPU-hours against the ~120-hour estimate."
+
+   NO TIMING HARNESS EXISTS. The only artefact is the constant
+   COMPUTE_ESCALATION_TRIGGER_GPU_HOURS = 120.
+
+   GATE 1 CONDITION 2 WAS SIGNED **PASS** ANYWAY, on this basis (§5):
+       "At the old default the design cost 14,885 fits against ~8,700, 1.71x."
+
+   THAT IS A FIT COUNT, NOT GPU-HOURS. The conversion between them is precisely
+   what the harness was specified to measure. ZERO GPU-HOURS HAVE EVER BEEN
+   SPENT -- every fit to date is CPU. The schedule is unusually blunt that this
+   is not a formality: budget 110-145 GPU-h against a ~120 trigger, and "the
+   Week 4 timing harness is a gate, not a formality -- as specified, the design
+   sits at the edge of the budget with no meaningful headroom."
+
+   A CUDA device IS present (RTX 4080 SUPER), so the measurement is available.
+   It has simply never been taken. A COMPUTE CONDITION PASSED ON A PROXY FOR THE
+   QUANTITY IT NAMES.
+
+2. W5 FRIDAY IS HALF DONE. The figure script exists. The other task --
+
+       "fix the class-balance procedure in code at the labelled-unit level:
+        equal numbers of labelled configuration-conditions per class within each
+        split, then a fixed cap of traces drawn per selected unit"
+
+   -- HAS NO IMPLEMENTATION. The only `balance` in src/bu is _balanced_accuracy
+   in mde.py, which is the METRIC, not the sampling procedure. D-031 and D-092
+   cover INTENDED-class balance and the reserve draw order: related, but this is
+   balance at the LABELLED-unit level, WITHIN EACH SPLIT, plus a trace cap.
+   S§W11 Mon explicitly assumes it exists -- "using the Week 5 procedure".
+
+3. A DEVIATION THAT WAS NEVER WRITTEN, now DEV-009. S§W5 Tue specifies a
+   statsmodels MIXEDLM with random intercepts for seed and episode-within-seed
+   AND an episode-mean fallback. What we run is an equal-seed mean paired
+   difference with a t interval and NO fallback (D-094, D-100). You authorised
+   it before data was seen and it is in §2 and the ledger -- but NOT in §4, and
+   "mixed-effects" appeared ZERO times in PROJECT_STATE.md. A registered
+   analysis method replaced by a different one, absent from the deviation log,
+   is the silent override the rule forbids.
+
+--------------------------------------------------------------------
+WHY THIS STAYED INVISIBLE, WHICH I THINK MATTERS MORE THAN THE ITEMS.
+
+Every one of these sits BESIDE something done well and reported at length. The
+threshold calibration is the most heavily reviewed artefact in this project and
+it SHARES A CELL with the harness nobody built. The acceptance change went
+through four of your review rounds and two Change Records, and none of them --
+mine or yours -- asked where its deviation record was.
+
+THE LEDGER TRACKS DECISIONS. IT DOES NOT TRACK CELLS. Nothing in the protocol
+suite checks schedule coverage, and §1's "Weeks 1-5 are complete" was true of
+the INTENT and was carried forward unverified for many sessions. That is a
+different failure from the ones you have been catching in me: not an overstated
+claim, but an UNCHECKED one.
+
+--------------------------------------------------------------------
+WHAT I DID AND DID NOT DO.
+
+DEV-009 is WRITTEN -- a missing deviation record is a recording obligation and
+mine to discharge.
+
+I did NOT build or run the timing harness. It would RE-OPEN A SIGNED GATE 1
+CONDITION, which is yours to reopen, and it would be this project's first GPU
+compute.
+
+I did NOT build the class-balance procedure. It sits inside the
+RESERVE-CONSUMPTION area you still have gated.
+
+ASKING: how you want both handled, and whether Gate 1's compute condition should
+be re-assessed against a measured extrapolation rather than a fit count.
 === END UPDATE ===
 ```

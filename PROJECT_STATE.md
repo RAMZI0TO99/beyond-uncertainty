@@ -42,7 +42,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-22 (second session) |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **D-107 is CERTIFIED — the failure threshold `0.610702633857727` is frozen and final.** Sol confirmed the exact float, the strict boundary, ensemble-mean scoring and the absence of any override. **D-108's numbers are accepted and its causal reading is WITHDRAWN** (D-109): layout-conditioned prevalence heterogeneity is real (**8.77% / 4.68% / 1.58%**, a 5.53× spread), but a bound on *mean* raw error cannot explain an *upper-tail* probability, and it is **not** P§7.5 leakage — `layout` is already forbidden from critic X. Sol registered a six-point layout analysis rule (§2, D-109) and the narrow correction is applied. **Gate 1 remains a signed FAIL** (D-098). Weeks 1–5 complete; calendar **Week 1 Saturday**, ~**4 weeks** ahead (DEV-002) |
+| **Current week / day** | **WEEKS 4 AND 5 ARE NOT COMPLETE** (D-113) — §1 claimed they were, carried forward unverified for many sessions. Checked against the schedule document: **W4 Friday's timing harness was never built** (the cell has two tasks; only the threshold was done) and **Gate 1's compute condition was signed PASS on a fit count, not the GPU-hour extrapolation it names**; **W5 Friday's labelled-unit class-balance procedure and trace cap have no implementation**, and S§W11 Mon assumes it exists; and the acceptance-model change had no §4 deviation, now **DEV-009**. The threshold `0.610702633857727` is frozen, **CERTIFIED** and final (D-107/D-109); the certified base is **`f6bcd63`**. **Gate 1 remains a signed FAIL** (D-098). Calendar **Week 1 Saturday**, ~4 weeks ahead (DEV-002) |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `f6bcd63`** — Sol certified the D-109 correction commit on 2026-08-22 and named it the next review base. **Set `BASE=f6bcd63`.** Sol was explicit that **`13bf5f5` must not be used**: it carried the D-108 interpretation Sol rejected, so it was never certified as a whole — D-043's rule exactly. The chain of certified bases: `9c0d89d` (Week 3, frozen) → `ca545ed` (W4 Tue stored result, 2026-08-18) → **`f6bcd63`** (D-107 promotion + D-109 correction, 2026-08-22) |
@@ -98,7 +98,7 @@ group-level inference with its null size validated against .05.
 
 **No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **D-047's open item is closed** by D-063: the real loop never closed the gap at any size or member, Sol ruled against a second trunk, and the detached head is now a **non-decisional diagnostic** — barred from the trunk, from early stopping and checkpoint selection, from the failure set, from repair labels and from the critic's residual.
 
-**The D-108 blocker is DISCHARGED.** Sol certified D-109 and ruled that failure-set construction is **no longer blocked by D-108** — subject to the project's other existing gates, which still stand: **repair validation** and **reserve consumption** (D-092). And Q-004 independently keeps **Week 6 execution untouched** while the project runs ~4 weeks ahead, so the lead continues to go to review, understanding, documentation and prose. **Nothing downstream has been started.** The one open item is delta 53: Sol asked for **three prose corrections** to D-110 before the current head is certified, and they are applied (D-111). The threshold is unchanged and permanently final.
+**Blocked on Sol, on the two W4/W5 gaps.** The D-108 blocker is **discharged** and failure-set construction is unblocked with respect to it — but **Weeks 4 and 5 are not actually finished** (D-113), and both gaps are Sol's to rule on rather than mine to close. **(1) The W4 Friday timing harness** would **re-open a signed Gate 1 condition** and would be the project's first GPU compute; a CUDA device is present, so the measurement is available, but reopening a signed gate is Sol's call. **(2) The W5 Friday class-balance procedure** sits inside the **reserve-consumption** area Sol still has gated. Sol's other named gates — **repair validation** and **reserve consumption** — stand. Q-004 independently keeps **Week 6 execution untouched**. **Nothing downstream has been started.**
 
 **Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split conditionally, and DEV-005 was a hit against that condition. Sol weighed it on 2026-08-16 and **kept the split**, on the grounds that the mechanised protocol tests improve the arrangement more than reassigning implementation would. The watch stays live: consequential design decisions go into a delta **and get delivered** before dependent code is built on them, and Claude flags any decision it believes meets that bar at the moment of making it. D-030 is the current test of that — decided, filed, and deliberately left unbuilt.
 
@@ -288,6 +288,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-110** | 2026-08-22 | The mandated methodology prose drafted; DEV-007's "grid-normalised" is wrong | Deliverable |
 | **D-111** | 2026-08-22 | Sol's three prose corrections; **D-109 CERTIFIED**, D-108 blocker closed, base → `f6bcd63` | **Sol's ruling** |
 | **D-112** | 2026-08-22 | The last §4-mandated methodology section; the 300-vs-375 arithmetic checked in code | Deliverable |
+| **D-113** | 2026-08-22 | **FINDING** — W4/W5 are NOT complete: no timing harness, no class-balance code, a missing deviation | **For Sol** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -327,6 +328,12 @@ Format: `Week n Day | what was skipped or substituted | why | goes in methodolog
 **Deviation:** P§10.2's primary metric — held-out one-step prediction error, `E_t = ||s_{t+1} − f_θ(s_t, a_t)||` — is computed on the **next agent position only**, over **movement-action transitions only**, grid-normalised. Activation error is reported separately as a secondary metric; static components never enter the score.
 **Why:** the plan leaves the dimension set of that norm unspecified, and averaging over all of them dilutes the manipulated mechanism ~15-fold and rescales it between families as the observation width changes with withholding. See D-032 for the measurements.
 **Goes in methodology:** **yes** — it defines what every reported error number in the thesis means.
+
+### DEV-009 · 2026-08-20 · The repair-acceptance test is not the schedule's mixed-effects model
+**Deviation:** S§W5 Tue specifies a **mixed-effects acceptance test (statsmodels MixedLM)** — per-transition error, fixed effect for repair, random intercepts for seed and for episode within seed, **with an episode-mean fallback** when the nested fit is unstable. The implemented test is an **equal-seed mean paired difference with a t interval on `n_seeds − 1` degrees of freedom, and no fallback**: it fails closed rather than degrading to a second method (D-094, narrowed by D-100).
+**Why:** the literal specification was found **degenerate** — the model as written could not charge for the pairing the design creates, and a fallback that silently substitutes a different estimator makes the reported method a function of numerical luck. Sol authorised the change as a §2 Change Record **before any data was seen**, which is the only circumstance in which a preregistered analysis choice may move.
+**Why it is recorded here as well as in §2 and the ledger:** §4 is where plan and schedule conflicts go, and this one was live in §2's constants table and in D-094 but never written as a deviation. The rule is that the plan wins on design and disagreements are recorded, never silently overridden — an analysis method that differs from the registered one and appears nowhere in the deviation log is exactly the silent override the rule forbids.
+**Goes in methodology:** **yes** — it defines how every repair-acceptance verdict in the thesis is reached, and Gate 1's permutation-calibration condition was assessed against it.
 
 ### DEV-003 · 2026-08-15 · venv created with `--system-site-packages`
 **Deviation:** the virtual environment reuses the system torch/numpy/scipy/pandas rather than installing isolated copies.
@@ -427,7 +434,7 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **49 archived, the newest kept here**. Nothing is condensed or summarised — the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **51 archived, the newest kept here**. Nothing is condensed or summarised — the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
 
 *(W3 certification through the W4 Tuesday gate rounds — the trend test, Sol's two blockers, and the evidence contract — moved to `PROJECT_STATE_ARCHIVE.md` when this file passed its 500-line paste cap. Six entries, 2026-08-17 to 2026-08-18; the decisions they produced are D-068 … D-072 and remain indexed in §3.)*
 
@@ -469,28 +476,25 @@ is the correction of record for D-108 and is indexed in §3.)*
 "grid-normalised" found wrong — was archived on 2026-08-22. It produced D-110, whose
 three overstated sentences were then corrected by D-111 on Sol's ruling.)*
 
-### 2026-08-22 (delta-52 ruling) · Three narrowings, and the blocker closed · Claude
+*(The delta-52 ruling session — Sol's three prose narrowings, D-109 certified, the D-108
+blocker discharged and the base moved to `f6bcd63` — was archived on 2026-08-22. It
+produced D-111, indexed in §3.)*
 
-**D-109 CERTIFIED. The D-108 blocker is DISCHARGED** — failure-set construction is no longer blocked by it, *subject to the project's other gates*, which Sol was explicit still stand: **repair validation** and **reserve consumption**. Sol reconfirmed both prevalence estimands to six figures and accepted the cell-mean/pooled-row distinction as correctly identified and labelled. The threshold is unchanged and permanently final.
+*(The methodology-closeout session — the last §4-mandated section, on why the Experiment 2A
+conditions are not extra units — was archived on 2026-08-22. It produced D-112.)*
 
-**Three prose corrections to D-110, all verified before applying, all correct** (D-111).
+### 2026-08-22 (schedule check) · Weeks 4 and 5 are not complete · Claude
 
-1. **Layout and threshold selection.** I wrote layout *"plays no part in threshold selection."* **Literally false**, and one grep away: `reference_strata()`'s docstring says the pool balances over *"(layout, causal_attribute) strata."* Layout **is** a preregistered balancing stratum. I was reaching for a claim about future discretion and wrote one that denied a fact about the past.
-2. **The MDE simulation.** My section called it *"a simulation of the actual H3 estimator … with a group-bootstrap interval"* and then said, four sentences later, that it uses a Wald rule *where the registered analysis uses a group-bootstrap percentile*. **Both cannot be true.** A self-contradiction inside one section is worse than either half alone, because the reader resolves it in whichever direction flatters the result.
-3. **"Sample size drives this, not correlation"** — contradicted by its own next sentence, which reports pairing at 0.99 reaching eight points. Now: sample size is the **principal** limitation **across the tested dependence assumptions**. The 1,500–2,000 figure is labelled a **rough diagnostic extrapolation**, not a computed requirement.
+**§1 has claimed "Weeks 1–5 are complete" for many sessions. Checked against the schedule document rather than the ledger, it is wrong** (D-113).
 
-**All three are the same move: a defensible claim stated one degree stronger than the evidence carries** — as with D-108's causal attribution and D-110's quantile generalisation. Every correction is a *narrowing*, never a retraction, which is exactly why it is easy to miss while writing.
+**W4 Friday is half done, and the missing half is a Gate 1 condition.** The cell specifies the threshold calibration **and** a *"timing harness: measure one full condition end to end and extrapolate total GPU-hours against the ~120-hour estimate."* **No harness exists.** Gate 1's condition 2 was signed **PASS** on *"14,885 fits against ~8,700, i.e. 1.71×"* — **a fit count, not GPU-hours**, and the conversion is exactly what the harness would have measured. **Zero GPU-hours have ever been spent.** The schedule is explicit that this is *"a gate, not a formality — the design sits at the edge of the budget with no meaningful headroom"* (110–145 GPU-h against a ~120 trigger). A CUDA device is present; the measurement was simply never taken.
 
-**The append-only convention is ratified.** Sol: keep D-108 as historical evidence of what was claimed, D-109 as the correction of record, do not rewrite history, and keep current summaries pointing at D-109. Settled, and it applies to DEV-007 → D-110 too.
+**W5 Friday is half done.** The figure script exists (D-081); the *"class-balance procedure in code at the labelled-unit level … plus a fixed cap of traces per selected unit"* does not. The only `balance` in `src/bu` is `_balanced_accuracy`, which is the metric. D-031/D-092 cover **intended**-class balance and the reserve order — related, but not balance at the **labelled**-unit level within each split. **S§W11 Mon assumes this procedure exists.**
 
-**The certified base is now `f6bcd63`** (§1, `CLAUDE.md`). **`13bf5f5` must never be used** — it carried the rejected D-108 interpretation and was never certified as a whole. D-043 in the concrete.
+**A deviation that was never written**, now **DEV-009**: S§W5 Tue specifies a statsmodels **MixedLM** with an episode-mean fallback; the implemented test is an equal-seed paired difference with a t interval and no fallback (D-094/D-100). Sol-authorised before data, and in §2 and the ledger — but absent from §4, and "mixed-effects" appeared **zero times** in this file.
 
-**Tests:** 830 passing, 2 skipped, 0 xfailed. **Prose only** — no source, no fits, no threshold work.
+**Why it stayed invisible:** each gap sits beside something done well and reported at length. The threshold is the most-reviewed artefact in the project and shares a cell with the harness nobody built; the acceptance change survived four Sol rounds and two Change Records without anyone asking where its deviation record was. **The ledger tracks decisions, not cells.** Nothing checks schedule coverage, and §1's summary was true of the *intent* and never re-checked.
 
-### 2026-08-22 (methodology closeout) · The last mandated section · Claude
+**Written: DEV-009**, a recording obligation and mine. **Not done: the timing harness** — it re-opens a signed gate condition and would be the first GPU compute — **and the class-balance procedure**, which is inside Sol's gated reserve-consumption area. Both go to Sol.
 
-**§4's mandated methodology list is now discharged as far as events allow** (D-112). The Week 2 decision on whether the Experiment 2A conditions are drawn from the sweep or additional to it (D-007) was the only one of the five with no prose. The reliability-gate rung, the PPO substitution and DEV-006/DEV-007 are covered; the remaining two — a repair-budget or configuration-count reduction, and a cut experiment — **have not happened**, so there is nothing to write yet.
-
-**The arithmetic was checked in code, not quoted from the ledger.** `canonical_units()` = **75**, of which `experiment_2a_units()` = **20**; `sweep_candidates()` is the full matrix **minus** the canonical ids, so the 225 sweep draws cannot collide; `design_units()` = **300**, with **300 distinct** ids and the canonical set a subset. Double-counting would give **375** against a registered 300 — the concrete size of the inflation D-007 prevents, and every interval on that count would be too narrow.
-
-**Tests:** 830 passing, 2 skipped, 0 xfailed. **Prose only** — no source, no fits.
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits.**

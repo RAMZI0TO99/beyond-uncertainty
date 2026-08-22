@@ -3986,3 +3986,29 @@ All clean. The **certified W4 Tuesday evidence still verifies today** after ever
 **And a claim of mine narrowed before it shipped.** I wrote that the five NumPy quantile methods "differ by up to a factor of two on short vectors" — generalising from D-099's single probe vector (1.8× there, but only 9.00–10.00 on a smooth ten-point vector). Both are now given, and the point is stated as version-independence rather than gap size. **The same failure mode as D-108, caught one step earlier.**
 
 **Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits** — 675 CPU fits, 0 GPU-hours.
+
+### 2026-08-22 (delta-52 ruling) · Three narrowings, and the blocker closed · Claude
+
+**D-109 CERTIFIED. The D-108 blocker is DISCHARGED** — failure-set construction is no longer blocked by it, *subject to the project's other gates*, which Sol was explicit still stand: **repair validation** and **reserve consumption**. Sol reconfirmed both prevalence estimands to six figures and accepted the cell-mean/pooled-row distinction as correctly identified and labelled. The threshold is unchanged and permanently final.
+
+**Three prose corrections to D-110, all verified before applying, all correct** (D-111).
+
+1. **Layout and threshold selection.** I wrote layout *"plays no part in threshold selection."* **Literally false**, and one grep away: `reference_strata()`'s docstring says the pool balances over *"(layout, causal_attribute) strata."* Layout **is** a preregistered balancing stratum. I was reaching for a claim about future discretion and wrote one that denied a fact about the past.
+2. **The MDE simulation.** My section called it *"a simulation of the actual H3 estimator … with a group-bootstrap interval"* and then said, four sentences later, that it uses a Wald rule *where the registered analysis uses a group-bootstrap percentile*. **Both cannot be true.** A self-contradiction inside one section is worse than either half alone, because the reader resolves it in whichever direction flatters the result.
+3. **"Sample size drives this, not correlation"** — contradicted by its own next sentence, which reports pairing at 0.99 reaching eight points. Now: sample size is the **principal** limitation **across the tested dependence assumptions**. The 1,500–2,000 figure is labelled a **rough diagnostic extrapolation**, not a computed requirement.
+
+**All three are the same move: a defensible claim stated one degree stronger than the evidence carries** — as with D-108's causal attribution and D-110's quantile generalisation. Every correction is a *narrowing*, never a retraction, which is exactly why it is easy to miss while writing.
+
+**The append-only convention is ratified.** Sol: keep D-108 as historical evidence of what was claimed, D-109 as the correction of record, do not rewrite history, and keep current summaries pointing at D-109. Settled, and it applies to DEV-007 → D-110 too.
+
+**The certified base is now `f6bcd63`** (§1, `CLAUDE.md`). **`13bf5f5` must never be used** — it carried the rejected D-108 interpretation and was never certified as a whole. D-043 in the concrete.
+
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **Prose only** — no source, no fits, no threshold work.
+
+### 2026-08-22 (methodology closeout) · The last mandated section · Claude
+
+**§4's mandated methodology list is now discharged as far as events allow** (D-112). The Week 2 decision on whether the Experiment 2A conditions are drawn from the sweep or additional to it (D-007) was the only one of the five with no prose. The reliability-gate rung, the PPO substitution and DEV-006/DEV-007 are covered; the remaining two — a repair-budget or configuration-count reduction, and a cut experiment — **have not happened**, so there is nothing to write yet.
+
+**The arithmetic was checked in code, not quoted from the ledger.** `canonical_units()` = **75**, of which `experiment_2a_units()` = **20**; `sweep_candidates()` is the full matrix **minus** the canonical ids, so the 225 sweep draws cannot collide; `design_units()` = **300**, with **300 distinct** ids and the canonical set a subset. Double-counting would give **375** against a registered 300 — the concrete size of the inflation D-007 prevents, and every interval on that count would be too narrow.
+
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **Prose only** — no source, no fits.
