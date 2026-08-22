@@ -3934,3 +3934,23 @@ All clean. The **certified W4 Tuesday evidence still verifies today** after ever
 **Scope held.** Narrow patch only. **No failure set, no repair label, nothing downstream** — Sol requires certification of this closeout first. Gate 1's signed FAIL stands.
 
 **Tests:** 819 → **830 passing**, 2 skipped, 0 xfailed. **No rerun, no new compute** — 675 CPU fits, 0 GPU-hours.
+
+### 2026-08-22 (post-promotion probe) · One threshold, nine prevalences · Claude
+
+**Work taken while the D-107 closeout is with Sol**, under Q-004: review and understanding, **never scope**. No code changed, nothing downstream built.
+
+**The question nobody had asked.** D-035 justifies one global threshold on the grounds that balancing makes it defensible *"once D-032 has fixed the error to one scale"* — but D-061 fixes the scale to each **evaluation pool**, and every unit has its own. The two rules had never been checked against each other.
+
+**Measured with no training** (`targets()` is a pure slice, so the scale is a std over the environment): the scale spans **33–36%** across the nine calibration strata, **ordered systematically by layout** — clustered 0.2018 < uniform 0.2226 < sparse 0.2475. A smaller scale inflates the normalised error, so failure prevalence is ordered inversely: **1.58% sparse, 4.68% uniform, 8.77% clustered — a 5.53× spread** behind the pooled 5%.
+
+**Mostly the normalisation, not difficulty.** The raw error is **bounded, not approximated**: clustered and uniform raw-error intervals **overlap** ([0.05737, 0.06032] against [0.05704, 0.05929]) while their failure rates differ **1.87×**. Across all three layouts raw error spans **1.09×** and prevalence spans **5.53×**.
+
+**Why it matters:** the failure set is what H2 is defined over and what H3's critic must predict. Layout — a registered design factor — enters the label through the scale. That is the leakage D-035 excludes, arriving through a different door.
+
+**A correction I owe Sol.** Delta 49 said the unbalanced/balanced agreement (5.02% vs 5%) meant *"the strata are not wildly heterogeneous in the upper tail."* **Invalid** — balancing discards only 1.28% of rows, so the two pools are nearly identical and a pooled rate cannot speak to per-stratum dispersion. They are heterogeneous, 5.53×.
+
+**Caught in my own probe first:** the initial version used `mean(scale)` and called the two dimensions equal to ~1%; they differ by up to ~5%. Replaced with the exact interval before the number left the machine — D-042's lesson applied in time rather than after.
+
+**Not actionable by me.** The threshold is frozen and must not be recalibrated, so this cannot be fixed by changing it. The remedy is Sol's ruling, and it belongs **before** any failure set or repair label exists — which is exactly where the project sits.
+
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits** — 675 CPU fits total, 0 GPU-hours.

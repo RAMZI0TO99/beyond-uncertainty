@@ -98,7 +98,7 @@ group-level inference with its null size validated against .05.
 
 **No open questions.** Q-011 closed by D-053 (episode bootstrap primary). Q-010 closed by D-047: the auxiliary head is detached, both losses are action-conditional, and three unrecorded result-affecting knobs are gone. Position loss improved 0.002242 → 0.000931 at the same budget. **D-047's open item is closed** by D-063: the real loop never closed the gap at any size or member, Sol ruled against a second trunk, and the detached head is now a **non-decisional diagnostic** — barred from the trunk, from early stopping and checkpoint selection, from the failure set, from repair labels and from the critic's residual.
 
-**Blocked on Sol: one thing, and it is narrow.** Sol paused downstream failure sets **only until the D-108 correction is recorded** — it is now recorded (D-109) and delta 52 delivers it. Sol's words: *make one narrow documentation/probe correction commit, rerun the relevant checks, and deliver the delta.* **One open question rides with it:** the bundle base. Sol certified D-107 at **`13bf5f5`** but rejected D-108's interpretation at that same commit, and D-043's lesson is that a commit Sol challenged is not a certified base — so `BASE` stays **`ca545ed`** until Sol names the new one rather than my inferring it. Also waiting: **repair validation** (C-008, D-087 done) and anything built on the **predeclared reserve order** (D-092). Out of scope by Q-004: **critic splitting** (C-005) and all Week 6 work.
+**Blocked on Sol: one thing, and it is narrow.** Sol paused downstream failure sets **only until the D-108 correction is recorded** — recorded as D-109, and delta 52 delivers it. Two questions ride with it: the **bundle base** (Sol certified D-107 at `13bf5f5` but challenged D-108 at the same commit, and D-043 says a challenged commit is not a certified base, so `BASE` stays **`ca545ed`** until Sol names it), and whether the **append-only ledger correction** pattern is what Sol wants. **Neither blocks work.** Downstream failure sets are **Week 6 execution**, which Q-004 keeps untouched while the project runs ~4 weeks ahead — the lead goes to review, understanding, documentation and prose. That is where the current work is: the mandated methodology sections are now drafted (D-110). Also waiting on Sol: **repair validation** and anything built on the **predeclared reserve order** (D-092).
 
 **Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split conditionally, and DEV-005 was a hit against that condition. Sol weighed it on 2026-08-16 and **kept the split**, on the grounds that the mechanised protocol tests improve the arrangement more than reassigning implementation would. The watch stays live: consequential design decisions go into a delta **and get delivered** before dependent code is built on them, and Claude flags any decision it believes meets that bar at the moment of making it. D-030 is the current test of that — decided, filed, and deliberately left unbuilt.
 
@@ -285,6 +285,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-107** | 2026-08-22 | **CHANGE RECORD — the failure threshold is permanently frozen** at `0.610702633857727` | **Sol-authorised** |
 | **D-108** | 2026-08-22 | **FINDING** — failure prevalence is 5.5× heterogeneous across layouts, and mostly normalisation | **For Sol** |
 | **D-109** | 2026-08-22 | **Correction to D-108** — prevalence heterogeneity stands, causal reading withdrawn; D-107 **CERTIFIED**; the layout analysis rule | **Sol's ruling** |
+| **D-110** | 2026-08-22 | The mandated methodology prose drafted; DEV-007's "grid-normalised" is wrong | Deliverable |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -424,7 +425,7 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **46 archived, the newest kept here**. Nothing is condensed or summarised — the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **47 archived, the newest kept here**. Nothing is condensed or summarised — the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
 
 *(W3 certification through the W4 Tuesday gate rounds — the trend test, Sol's two blockers, and the evidence contract — moved to `PROJECT_STATE_ARCHIVE.md` when this file passed its 500-line paste cap. Six entries, 2026-08-17 to 2026-08-18; the decisions they produced are D-068 … D-072 and remain indexed in §3.)*
 
@@ -454,25 +455,9 @@ the evidence requirement closed. It produced D-106, indexed in §3.)*
 on 2026-08-22 once Sol CERTIFIED it. It produced D-107, indexed in §3, and the constant
 itself is in §2 and in `src/bu/constants.py`.)*
 
-### 2026-08-22 (post-promotion probe) · One threshold, nine prevalences · Claude
-
-**Work taken while the D-107 closeout is with Sol**, under Q-004: review and understanding, **never scope**. No code changed, nothing downstream built.
-
-**The question nobody had asked.** D-035 justifies one global threshold on the grounds that balancing makes it defensible *"once D-032 has fixed the error to one scale"* — but D-061 fixes the scale to each **evaluation pool**, and every unit has its own. The two rules had never been checked against each other.
-
-**Measured with no training** (`targets()` is a pure slice, so the scale is a std over the environment): the scale spans **33–36%** across the nine calibration strata, **ordered systematically by layout** — clustered 0.2018 < uniform 0.2226 < sparse 0.2475. A smaller scale inflates the normalised error, so failure prevalence is ordered inversely: **1.58% sparse, 4.68% uniform, 8.77% clustered — a 5.53× spread** behind the pooled 5%.
-
-**Mostly the normalisation, not difficulty.** The raw error is **bounded, not approximated**: clustered and uniform raw-error intervals **overlap** ([0.05737, 0.06032] against [0.05704, 0.05929]) while their failure rates differ **1.87×**. Across all three layouts raw error spans **1.09×** and prevalence spans **5.53×**.
-
-**Why it matters:** the failure set is what H2 is defined over and what H3's critic must predict. Layout — a registered design factor — enters the label through the scale. That is the leakage D-035 excludes, arriving through a different door.
-
-**A correction I owe Sol.** Delta 49 said the unbalanced/balanced agreement (5.02% vs 5%) meant *"the strata are not wildly heterogeneous in the upper tail."* **Invalid** — balancing discards only 1.28% of rows, so the two pools are nearly identical and a pooled rate cannot speak to per-stratum dispersion. They are heterogeneous, 5.53×.
-
-**Caught in my own probe first:** the initial version used `mean(scale)` and called the two dimensions equal to ~1%; they differ by up to ~5%. Replaced with the exact interval before the number left the machine — D-042's lesson applied in time rather than after.
-
-**Not actionable by me.** The threshold is frozen and must not be recalibrated, so this cannot be fixed by changing it. The remedy is Sol's ruling, and it belongs **before** any failure set or repair label exists — which is exactly where the project sits.
-
-**Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits** — 675 CPU fits total, 0 GPU-hours.
+*(The post-promotion probe session — which raised the layout-prevalence finding — was
+archived on 2026-08-22. It produced D-108, whose causal interpretation was later
+WITHDRAWN by D-109 on Sol's ruling. Read D-109 before D-108.)*
 
 ### 2026-08-22 (delta-51 ruling) · Certified, and a claim withdrawn · Claude
 
@@ -491,3 +476,17 @@ itself is in §2 and in `src/bu/constants.py`.)*
 **Corrections applied:** probe rewritten to claim only what it supports and to reproduce every column it prints; the `test_the_unbalanced_sanity_check_still_reproduces` docstring corrected, since it still carried the invalid homogeneity inference.
 
 **Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits, no threshold change** — 675 CPU fits, 0 GPU-hours.
+
+### 2026-08-22 (methodology prose) · The mandated sections, and a wrong word in the deviation log · Claude
+
+**Q-004 work while delta 52 is with Sol** — documentation and prose, never scope. No code behaviour changed, nothing downstream built, no new fits.
+
+**§4 requires five things in the methodology and one had no prose at all: the reliability-gate rung reached.** DEV-006 and DEV-007, both marked *goes in methodology: yes*, had none either. Six sections drafted into `docs/method_draft.md`: the primary error metric, position-causal conditions, the rung-0 gate result, the frozen threshold, the layout-prevalence limitation, and what the design can and cannot detect.
+
+**The atom/mass table was recomputed from the certified evidence rather than retyped** — D-075 requires it to travel with any W4 result, so a transcription slip would reach the thesis. All 3,125 resamples per configuration, enumerated from `runs/w4_gate/`, reproduce D-074 exactly. Sol's discreteness sentence sits verbatim beside it.
+
+**A wrong word in the deviation log, caught before it became a thesis claim.** DEV-007 calls the primary error **"grid-normalised"**. It is not: `per_dimension_scale` returns the per-dimension **standard deviation** of the evaluation pool's targets (D-061). That would have misdescribed the units every reported number is in — and the distinction is exactly the one D-061 exists for, since the scale is a **vector** and does not cancel in the H2 ratio. DEV-007 is not edited (§4 is append-only); D-110 is the correction of record.
+
+**And a claim of mine narrowed before it shipped.** I wrote that the five NumPy quantile methods "differ by up to a factor of two on short vectors" — generalising from D-099's single probe vector (1.8× there, but only 9.00–10.00 on a smooth ten-point vector). Both are now given, and the point is stated as version-independence rather than gap size. **The same failure mode as D-108, caught one step earlier.**
+
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits** — 675 CPU fits, 0 GPU-hours.

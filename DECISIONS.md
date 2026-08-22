@@ -1680,3 +1680,20 @@ Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own e
 **Data seen:** none beyond D-103's recorded calibration.
 **Plan ref:** P§7.5, P§10.1, D-035, D-042, D-044, D-061, D-107, D-108. Sol's ruling on delta 51.
 **Reviewed by Sol:** **this entry is Sol's ruling, filed; the correction itself awaits delta 52.**
+
+### D-110 · 2026-08-22 · The mandated methodology prose, drafted — and a deviation-log wording that would have reached the thesis
+**Decision:** Drafted the methodology sections the schedule **requires** and that had no prose, under Q-004's rule that the ~4-week calendar lead goes to review, understanding, documentation and prose and **never** to scope. No code behaviour changed, no downstream failure set built, no new fits.
+
+**§4 names five things that must appear in the methodology.** The PPO substitution was already drafted; **the reliability-gate rung reached was not**, and neither were DEV-006 or DEV-007, both marked *goes in methodology: **yes***. Six sections added to `docs/method_draft.md`: the primary error metric and what it excludes; why position-causal conditions are not canonical Experiment 2A; the reliability gate and rung 0; the frozen failure threshold; the layout-prevalence limitation; and what the design can and cannot detect.
+
+**The atom/mass table was recomputed from the certified evidence, not retyped.** D-075 requires it to travel with any W4 result, so a transcription error would propagate into the thesis. Enumerating all 3,125 resamples per configuration from `runs/w4_gate/` reproduces D-074's table exactly — uniform 98.37/1.63, clustered 81.86/17.82/0.32, sparse 97.86/2.14. Sol's discreteness sentence is quoted verbatim beside it.
+
+**A defect in the deviation log that would have reached the thesis.** DEV-007 describes the primary error as **"grid-normalised"**. It is not. `per_dimension_scale` returns `targets.std(dim=0)` — the per-dimension standard deviation of the evaluation pool's targets (D-061), floored. Writing "grid-normalised" into the methodology would have misdescribed the metric every reported number is measured in, and the distinction is load-bearing precisely because that scale is a **vector** and therefore does not cancel in the H2 ratio, which is the whole subject of D-061. The draft states the implementation and flags the deviation log's wording as loose. **DEV-007 itself is not edited** — §4 is append-only — so this entry is the correction of record.
+
+**A claim of my own, narrowed before it shipped.** I first wrote that the five NumPy quantile methods "differ by up to a factor of two on short vectors". That generalises from D-099's single probe vector (5.0, 7.0, 7.8, 9.0, 9.0 — a 1.8× spread). Checked on a smooth ten-point vector the same five methods span only 9.00 to 10.00. The draft now gives both and makes the actual point, which is version-independence rather than the size of any particular gap. **Same failure mode as D-108's, caught one step earlier**: a real measurement generalised past what it measured.
+
+**Prose is scaffolding, not final** (D-019): drafted by Claude for the student to rewrite.
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits** — 675 CPU fits, 0 GPU-hours.
+**Data seen:** none beyond already-recorded evidence.
+**Plan ref:** P§7.5, P§8.2.1, P§10.2, P§10.3, DEV-006, DEV-007, D-019, D-032, D-061, D-074, D-075, D-099, D-107, D-109.
+**Reviewed by Sol:** **not yet.**

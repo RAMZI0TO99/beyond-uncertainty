@@ -23,6 +23,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 >
 > COVERS SESSIONS:
 > - 2026-08-22 (delta-51 ruling) · Certified, and a claim withdrawn
+> - 2026-08-22 (methodology prose) · The mandated sections, and a wrong word in the deviation log
 
 ```
 === UPDATE FOR SOL ===
@@ -161,5 +162,79 @@ NUMBERS (D-011)
 WHAT I AM ASKING FOR: confirmation that the correction is what you wanted, and
 the bundle base. Downstream failure sets are paused on exactly this and I have
 started none of it.
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+APPENDED (D-008: still undelivered).
+
+WHY I DID NOT STOP AND WAIT. Your pause was "only until the narrow D-108
+correction is recorded" -- it is recorded. But downstream failure sets are WEEK
+6 EXECUTION, and Q-004 keeps the ~4-week lead on review, understanding,
+documentation and prose, NEVER scope. So I did the documentation the schedule
+mandates. No code behaviour changed. Nothing downstream built. No new fits.
+
+--------------------------------------------------------------------
+THE MANDATED METHODOLOGY PROSE (D-110).
+
+§4 names five things that MUST appear in the methodology. The PPO substitution
+was drafted long ago. THE RELIABILITY-GATE RUNG REACHED WAS NOT -- nor were
+DEV-006 or DEV-007, both marked "goes in methodology: YES". Six sections now
+drafted: the primary error metric; why position-causal conditions are not
+canonical 2A; the rung-0 gate result; the frozen threshold; the layout
+prevalence limitation in YOUR wording; and what the design can and cannot
+detect, including Gate 1's FAIL and the power limitation stated plainly.
+
+THE ATOM/MASS TABLE WAS RECOMPUTED, NOT RETYPED. D-075 requires it to travel
+with any W4 result, so a transcription slip would land in the thesis.
+Enumerating all 3,125 resamples per configuration from runs/w4_gate/ reproduces
+D-074 EXACTLY: uniform 98.37/1.63, clustered 81.86/17.82/0.32, sparse
+97.86/2.14. Your discreteness sentence is quoted verbatim beside it.
+
+--------------------------------------------------------------------
+>>> A WRONG WORD IN THE DEVIATION LOG THAT WOULD HAVE REACHED THE THESIS. <<<
+
+DEV-007 describes the primary error as "GRID-NORMALISED".
+
+IT IS NOT. per_dimension_scale returns targets.std(dim=0) -- the per-dimension
+STANDARD DEVIATION of the evaluation pool's targets (D-061), floored. Not the
+grid extent.
+
+Writing that into the methodology would have misdescribed the units EVERY
+reported number in this thesis is measured in. And the distinction is
+load-bearing for exactly the reason D-061 exists: the scale is a VECTOR, so it
+does not cancel in the H2 ratio. A reader told "grid-normalised" would
+reasonably assume a scalar that does cancel.
+
+The draft states what the implementation does and flags the deviation log's
+wording as loose. DEV-007 ITSELF IS NOT EDITED -- §4 is append-only -- so D-110
+is the correction of record. This is the second append-only correction this
+session; if you want a different convention, say so and I will apply it once
+rather than accumulate pointers.
+
+--------------------------------------------------------------------
+AND ONE OF MY OWN CLAIMS, NARROWED BEFORE IT SHIPPED.
+
+I wrote that the five NumPy quantile methods "differ by up to a factor of two on
+short vectors". That generalises from D-099's SINGLE probe vector (5.0, 7.0,
+7.8, 9.0, 9.0 -- 1.8x). Checked on a smooth ten-point vector they span only 9.00
+to 10.00. Both now given, and the point restated as version-independence rather
+than gap size.
+
+THE SAME FAILURE MODE AS D-108, CAUGHT ONE STEP EARLIER: a real measurement
+generalised past what it measured. I mention it because you have now corrected
+me twice on this exact move, and the useful signal is that checking a
+quantitative claim against a second case takes about a minute.
+
+--------------------------------------------------------------------
+NUMBERS (D-011)
+
+  files changed   docs/method_draft.md (+~200 lines of draft prose),
+                  DECISIONS.md, PROJECT_STATE.md. No source, no tests.
+  atom table      recomputed from certified evidence, matches D-074 exactly
+  tests           830 passing, 2 skipped, 0 xfailed
+  compute         NONE. 675 CPU fits total, 0 GPU-hours
+  data seen       none beyond already-recorded evidence
+
+Prose is scaffolding for the student to rewrite (D-019), not final text.
 === END UPDATE ===
 ```

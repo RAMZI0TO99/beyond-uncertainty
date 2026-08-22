@@ -326,3 +326,212 @@ reported above: the pilot scores the whole movement pool, so the pool scale and
 the scored-set scale coincide there, and a complete rerun reproduces every
 figure in the table exactly. It takes effect from Week 4 Friday, when a failure
 mask first exists.
+
+---
+
+## What the error is, and what it is not *(DEV-007, D-032 — mandated in the methodology)*
+
+Plan §10.2 defines the primary metric as held-out one-step prediction error,
+`E_t = ||s_{t+1} − f_θ(s_t, a_t)||`, and leaves the dimension set of that norm
+unspecified. The omission matters more than it looks. The observation is a
+factored vector in which most components — object shapes, colours, positions —
+are static across a transition and are reproduced by a deterministic
+passthrough. Averaging the norm over all of them dilutes the manipulated
+mechanism roughly fifteen-fold, and worse, it rescales the metric *between*
+experimental families: withholding a feature changes the observation width, so
+the same model quality yields a different number depending on which condition
+it was measured in.
+
+The error is therefore computed on the **next agent position only, over
+movement-action transitions only**, each dimension divided by the fixed scale
+described above — the per-dimension standard deviation of the evaluation pool's
+targets, not the grid extent. (The deviation log records this as
+"grid-normalised", which is loose: the implementation measures a standard
+deviation, and the distinction matters because that scale is a *vector* and does
+not cancel in the H2 ratio.) Activation accuracy is
+reported separately as a secondary metric, and static components never enter the
+score. This is a deviation from a literal reading of the plan, recorded as such,
+and it defines what every error number in this thesis means.
+
+Two consequences are worth stating because they are easy to miss. Blocked
+movement transitions carry **1.67×** the position error of free moves, so
+layouts that block more are harder in a way unrelated to the manipulation. And
+the `interact` action is deterministic and perfectly predictable in every
+canonical condition — zero aliased successors — but becomes aliased when
+position is withheld, which is a second mechanism by which withholding position
+differs in kind from withholding an attribute.
+
+## Why position-causal conditions are not canonical Experiment 2A *(DEV-006, D-026 — mandated)*
+
+Experiment 2A withholds the feature that causes the dynamics, so the true
+function leaves the hypothesis class. The five canonical configurations cover
+**shape and colour only**. Position-causal conditions are run, but in the
+three-seed configuration sweep as a declared robustness configuration rather
+than as canonical 2A conditions.
+
+The reason is that withholding position is not the same manipulation. It removes
+object *occupancy* rather than an attribute of a visible object. Measured:
+withholding position leaves **37.5%** of (observation, action) keys aliased,
+against **10.0%** for shape and colour, in a key space **26× smaller**. That is a
+different structural failure from the one Plan §8.2.1 describes, and pooling the
+two would let a qualitatively different mechanism drive an Experiment 2A result.
+This bounds what the Experiment 2A finding is a finding *about*, so the
+measurement belongs beside the claim.
+
+## The reliability gate, and the rung it passed at *(Schedule W4 Tue, D-074/D-075 — mandated)*
+
+Before any hypothesis is tested, the estimator must be shown capable of tracking
+estimation failure at all. The gate asks a narrow question: on well-specified
+conditions, where more data genuinely is the repair, does ensemble disagreement
+*fall* as the dataset grows? If it does not at any rung of the estimator ladder,
+H1 is recorded as falsified for ensembles and the thesis becomes a
+characterisation study — a decision made here, in Month 1, rather than in
+Month 4.
+
+The test is Spearman's rho between mean pairwise disagreement and the six
+registered dataset sizes, with an exact paired seed-block bootstrap interval
+enumerated over all resamples rather than sampled. It passes only if the
+**whole** 95% interval lies below zero. The rule was frozen before it saw data.
+
+**The gate passed at rung 0** — the default five-member ensemble, episode-level
+block bootstrap at ratio 1.0 — on all three predeclared configurations
+independently, so the ladder stopped there and rungs 1 and 2 were never run.
+Ninety ensembles, 450 fits, four minutes fifty-two seconds on CPU.
+
+| configuration | rho | 95% interval |
+|---|---|---|
+| uniform | −0.9429 | [−0.9429, −0.9429] |
+| clustered | −0.9429 | [−0.9429, −0.8286] |
+| sparse | −0.9429 | [−0.9429, −0.9429] |
+
+The three coefficients are identical because Spearman reads ranks only and all
+three mean curves carry the same rank pattern. −0.9429 is exactly one adjacent
+transposition away from perfect reversal.
+
+**On the zero-width intervals.** Two of the three are a single point, and that
+must not be read as zero uncertainty:
+
+> Exact paired seed-block bootstrap percentile intervals were computed over all
+> 3,125 resamples. Because Spearman correlation over six dataset sizes has
+> highly discrete support, the bootstrap distributions contained only two or
+> three distinct values. A zero-width percentile interval therefore reflects
+> quantile discreteness, not zero sampling uncertainty.
+
+The supporting structure, which must accompany that sentence rather than be
+omitted as detail:
+
+| configuration | −0.9429 | −0.8286 | −0.7714 | distinct values |
+|---|---|---|---|---|
+| uniform | 98.37% | 1.63% | — | 2 |
+| clustered | 81.86% | 17.82% | 0.32% | 3 |
+| sparse | 97.86% | 2.14% | — | 2 |
+
+Uniform and sparse are degenerate only just: their second atoms sit at 1.63% and
+2.14% against a 2.5% quantile threshold, so sparse is within 0.36 percentage
+points of its upper bound moving to −0.8286. The **verdict** does not depend on
+this — every atom in every configuration is far below zero, so the registered
+rule passes under any of them — but the reported *width* does, and a reader
+taking the interval as a precision claim would be misled. The intervals are
+reported exactly as the frozen procedure produced them; widening them after
+seeing their discreteness is precisely what preregistration exists to prevent.
+
+**Disagreement is not monotone in dataset size.** In **14 of the 15**
+seed-configuration curves it peaks at N=250 rather than falling throughout. The
+exception is clustered seed 4, which peaks at N=500 with N=250 falling below
+N=100. That curve is reported as observed — not smoothed, not rerun, not
+supplemented with extra seeds — because investigating one development curve
+after seeing it is post-result exploration. The gate passes because Spearman
+tolerates exactly one inversion; substantive confirmation is left to the
+untouched confirmatory seeds. This is a reliability result about the
+*estimator*, not a test of H1.
+
+## The failure threshold *(Schedule W4 Fri, D-103/D-107)*
+
+A transition counts as a failure when its error exceeds one **global** threshold,
+calibrated once and then frozen permanently. One threshold across all families —
+never one per family or per withheld-feature schema — because family-specific
+percentiles would mechanically normalise away genuine differences in failure
+prevalence and would make the failure set partly a function of the construction
+label, which is the leakage Plan §7.5 forbids arriving through the threshold
+rather than through a feature column.
+
+Calibration used well-fitted, fully observed reference models at n = 5,000, one
+per stratum across the nine (layout, causal attribute) combinations, at five
+seeds each: 45 cells, 225 fits, 4.3 minutes. The strata were balanced by
+deterministic minimum-count subsampling without replacement, retaining
+9 × 4,103 = **36,927** of 37,406 movement transitions (1.28% discarded to the
+smallest stratum). The threshold is the **95th percentile** of the resulting
+balanced error distribution, taken with an explicitly named quantile
+method rather than a library default. How much that matters depends on the
+vector: on one short probe vector the five NumPy methods returned 5.0, 7.0, 7.8,
+9.0 and 9.0 — a spread of 1.8× — while on a smooth ten-point vector they span
+only 9.00 to 10.00. The point is not the size of any particular gap but that a
+permanently frozen constant must not inherit a library default that could change
+between versions.
+
+    FAILURE_THRESHOLD = 0.610702633857727
+
+A transition fails when its error is **strictly greater** than this value; at
+exact equality it does not fail. That is part of the definition rather than a
+convention, and it is not academic — two transitions in the calibration pool
+itself sit exactly at the value. The calibration ran once, into an immutable
+attempt directory, and is never repeated: the threshold has been inspected, so
+no later re-attempt could satisfy the invalidation protocol.
+
+## A limitation: failure prevalence is not uniform across layouts *(D-108/D-109)*
+
+The normalising scale is fixed to each evaluation pool, and evaluation pools
+differ by layout. Under the frozen normalisation, failure prevalence in the
+calibration evidence differs materially by layout:
+
+| layout | prevalence |
+|---|---|
+| clustered | 8.77% |
+| uniform | 4.68% |
+| sparse | 1.58% |
+
+a 5.53-fold spread behind a pooled rate of 5%. Stated at the limit of what the
+evidence supports: *this establishes layout-conditioned base-rate heterogeneity
+and raises a measurement-invariance limitation. The available aggregate
+mean-error bounds do not identify how much of the tail difference is caused by
+normalisation versus by differences in the underlying error distributions.*
+Prevalence is an upper-tail probability, and bounds on mean error cannot explain
+tail behaviour.
+
+Nothing about the registered analysis changes in response. The failure
+definition, the threshold, the scale rule and the primary endpoints stand.
+Prevalence is reported by layout, causal attribute and seed alongside the pooled
+result; layout-stratified H2 and H3 results are reported as **secondary
+robustness diagnostics** and never redefine the failure set or replace the
+primary weighting. Layout remains experimenter-only metadata: it is excluded
+from the critic's inputs by the frozen feature whitelist, and it plays no part in
+threshold selection, label construction, or any reweighting chosen after seeing
+results.
+
+## What this design can and cannot detect *(Gate 1, D-078/D-089/D-098)*
+
+Gate 1 asked four questions and the design **failed** the fourth, which is
+recorded here rather than softened. The reliability gate passed, the compute
+estimate is within budget, and the repair-acceptance test is calibrated against
+its permutation null. But a simulation of the actual H3 estimator — unit-weighted
+balanced accuracy over correlated comparison groups, paired, with a
+group-bootstrap interval — puts the minimum detectable difference at **18 to 22
+percentage points** at the scheduled held-out counts, against a registered
+equivalence margin of ±5.
+
+Sample size drives this, not correlation: at zero intra-cluster correlation the
+figure is still 18 points. Every available lever was tested. Pairing at
+correlation 0.99 reaches 8.0; holding out all 300 units reaches 6.0. Clearing
+five points would need on the order of 1,500–2,000 held-out units against the
+60–80 scheduled, and that expansion is incompatible with the registered scope.
+
+The design therefore continues unchanged, under an explicit power limitation:
+**H3 can detect only comparatively large differences and may be inconclusive
+around ±5 points.** No equivalence claim will be made that the final interval
+cannot resolve. The 18–22 figure is itself reported as a diagnostic rather than
+an exact result, because the simulation's rejection rule is anti-conservative —
+it uses a Wald interval where the registered analysis uses a group-bootstrap
+percentile, with measured null rejection of 6.1–9.2% against a nominal 5% — so
+the true minimum detectable difference is if anything *larger*. A study that
+reports what it cannot resolve is a complete study; one that discovers the limit
+after the fact is not.
