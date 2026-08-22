@@ -71,6 +71,39 @@ SEEDS_ABLATION = 5
 #: **No data had been seen when this was added.**
 SEEDS_THRESHOLD = 5
 
+#: THE FAILURE THRESHOLD. Calibrated once, promoted under the D-035 Change
+#: Record, and **permanently frozen** (D-107). Sol authorised the promotion on
+#: 2026-08-22 after independently extracting the delivered evidence archive,
+#: verifying all 135 artefact digests, reconstructing the deterministic
+#: selection, and recomputing this value with NumPy to a bit-identical result.
+#:
+#: A transition is a **failure** when its error is **STRICTLY GREATER** than
+#: this value. The strict boundary is part of the registered definition, not a
+#: convention: at equality the transition is *not* a failure. This is not
+#: academic -- two transitions in the calibration pool sit exactly here.
+#:
+#: The estimand -- because a number without one is not a number (D-042, D-044):
+#:
+#:   * ensemble-mean normalised movement error, K=5;
+#:   * fully observed n=5,000 reference models, no confound;
+#:   * nine layout x causal-attribute strata, seeds 1000-1004;
+#:   * equal stratum weighting by deterministic minimum-count subsampling
+#:     without replacement at RNG seed 0 -- 9 x 4,103 = 36,927 of 37,406;
+#:   * 95th percentile, NumPy method="linear".
+#:
+#: Evidence: execution commit 93dc29628ae798031acc74811dc0214ee2bc08cd;
+#: immutable attempt runs/w4_threshold/attempt-001;
+#: archive       sha256 4a2dd55562bd8d1f46afa074a7cd3961da3d0ffafc29ca1cf6356558c3dade1b
+#: record        sha256 310a44839be2b9336248637413378c65c3fa8ed31b8fb309327e0772651e86dc
+#: array digests sha256 01b390cb8aef41ca2740b343cef9f761d82121872a25d4e1cc8bfe42f5624002
+#:
+#: **Never recalibrate.** The attempt is final and the threshold has been
+#: inspected, so Sol's invalidation protocol -- which requires declaring an
+#: attempt invalid *before* its threshold is read -- can no longer be satisfied.
+#: Every failure set, every repair label, and therefore H2 and H3 descend from
+#: this single number.
+FAILURE_THRESHOLD = 0.610702633857727
+
 #: Confirmatory runs start here; every seed below it is development/pilot data
 #: and is permanently excluded from confirmatory runs, failure-threshold
 #: calibration, repair acceptance, and critic training or evaluation (D-034).

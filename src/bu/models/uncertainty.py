@@ -502,6 +502,43 @@ class ScaledEvaluation:
             scale=self.scale,
         )
 
+    def ensemble_mean_error(self) -> torch.Tensor:
+        """Per-transition error over the whole pool, in the pool's scale.
+
+        **This is the quantity the threshold was calibrated on**, computed the
+        same way W4 Friday computed it: the ensemble *mean prediction* scored
+        against the targets, not the mean of the members' errors. Those are
+        different numbers, and calibrating on one while masking with the other
+        would shift the failure set silently — the failure rate would simply not
+        be 5% any more, with nothing raised.
+        """
+        return normalised_error(self.members.mean(dim=0), self.targets, self.scale)
+
+    def failure_mask(self) -> torch.Tensor:
+        """The **registered** failure set: error strictly greater than the frozen
+        threshold (D-107, promoted under D-035).
+
+        **It takes no threshold, and there is deliberately no override.** Sol's
+        promotion ruling required that registered failure-mask construction
+        consume the constant with no caller-selectable alternative, for the same
+        reason ``from_pool`` takes no mask (C-010, D-076): a value a caller can
+        pass is a degree of freedom somebody eventually uses. The threshold was
+        calibrated once, on a reference model, and every failure set and repair
+        label in the thesis descends from it. If you want a different cut, you
+        do not want the registered failure set.
+
+        **Strictly greater** is part of the definition, not a convention. At
+        exact equality the transition is *not* a failure, and two transitions in
+        the calibration pool itself sit exactly there.
+
+        Returns:
+            boolean ``(n_pool,)``, ready for :meth:`masked`. It may select
+            nothing — on a model that never exceeds the threshold — and
+            :meth:`masked` refuses an empty mask rather than returning a nan
+            summary, which is the correct fail-closed behaviour and not a bug.
+        """
+        return self.ensemble_mean_error() > K.FAILURE_THRESHOLD
+
     def masked(self, mask: torch.Tensor) -> UncertaintySummary:
         """Summarise a subset — the failure set — **in the pool's scale** (D-061).
 
