@@ -4092,3 +4092,17 @@ All clean. The **certified W4 Tuesday evidence still verifies today** after ever
 **Nothing here revises Gate 1**, still **FAIL**, and nothing revives expansion: D-115 fixed that arithmetic, and at **18.75×–33.3×** it is **130–232 wall-hours** — firmer now that ablations and collection are counted.
 
 **Tests:** 848 → **855 passing**, 2 skipped. **No registered fits**; pilot timing only, ~35 min.
+
+### 2026-08-22 (W4/W5 audit) · Six findings in code that was specified, tested, and never probed · Claude
+
+**Audited this session's new code by probing it** — `critic/balance.py` and the rebuilt `w4_timing.py` had been specified point by point by Sol and covered by 23 passing tests of mine, and **never probed**. That is exactly the condition D-105 found `gate.py` in, four Sol reviews deep.
+
+**The balancer failed open on the case Gate 2 exists to detect.** With one class absent from a split, `m = min(n₀, n₁) = 0`, and it **returned an empty evaluation set and raised nothing**. Not hypothetical: Gate 2's second condition is whether the surviving per-class unit count still clears the MDE requirement, and D-089 records that usable class counts may shrink once ambiguous and undiagnosed units are excluded. **Every comparable place in this project fails closed** — `masked()` refuses an empty mask, `acceptance` refuses non-finite errors, `trend` refuses non-finite curves. This was the one that did not. Also: **string labels were silently undecidable** (numpy integers, checked, are fine), and a **duplicate `unit_id` merged two units into one** under the registered unit-weighted estimand.
+
+**The timing record could not be audited by machine.** JSON has no integer keys, so `fits_by_size` round-tripped as **strings** and feeding a stored record back into `extrapolate()` raised. **The numbers were right** — coerced, they reproduce bit-identically — but "auditable without trusting copied prose" is not satisfied by a record only a human can re-derive by hand. `recompute_totals()` is now the timing analogue of `recompute_threshold`. And **`_rate`'s fallback was optimistic while its docstring claimed to be conservative**: unreachable today, which is precisely why it would have survived until the design grew a larger size.
+
+**Certified artefacts re-verified after every change** — W4 Tuesday's gate still passes (90 cells), W4 Friday's threshold still recomputes to the frozen constant exactly.
+
+**Not one finding was a coding error in the ordinary sense.** Each was a guard that was absent, a claim that did not match behaviour, or evidence that could not be re-derived — the same class D-099 and D-105 found, and the reason this project audits *after* reviewing rather than instead of it.
+
+**Tests:** 855 → **863 passing**, 2 skipped. **No fits, no reserve, no real labels.**

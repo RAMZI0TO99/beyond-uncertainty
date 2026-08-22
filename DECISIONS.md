@@ -1842,3 +1842,37 @@ Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own e
 **Data seen:** none. Synthetic units and stored records only; no fits, no reserve, no real labels.
 **Plan ref:** D-015, D-021, D-044, D-060, D-089, D-099, D-102, D-105, D-115, D-116.
 **Reviewed by Sol:** **not yet — delta 54 carries it.**
+
+### D-118 · 2026-08-22 · Sol's delta-54 closeout — six balancer boundary fixes, the cross-unit verdict removed, and timing provenance repaired
+**Decision:** All seven of Sol's findings **reproduced before being fixed**. Every one was a *boundary* defect: the algorithms were right and the public input surface let silent design violations through.
+
+**The balancer's six fail-open paths.**
+- **Invalid labels were caught only when they emptied a class.** A split holding a valid `0`, a valid `1` and a string `"0"` balanced happily and reported the string as **undecidable** — a type slip vanishing into a category that exists for an entirely different reason. My own guard, added one review earlier, only fired at `m == 0`, so the all-string fixture passed and the *mixed* one never existed. Labels are now validated up front. **Booleans are refused**: `True == 1` and `bool` subclasses `int`, so a boolean would silently become a hypothesis-class label unless rejected before the integer check.
+- **`unit_id` uniqueness was checked only within a split**, so one content-hashed unit could sit in train *and* held-out under different comparison-group ids — and the group guard, keyed on the group, passed. That is training and evaluating on the same configuration. Now globally unique before any split is processed.
+- **The frozen cap was caller-overridable**: both public functions took `cap=`, so 1, 51 or 500 were all accepted against a frozen 50. Parameter removed — *a frozen constant callers can replace is not frozen*, the same reasoning as `failure_mask` taking no threshold.
+- **An unrecognised split name was silently dropped.** `held-out` for `held_out` disappeared whenever the requested splits balanced without it. Units not looked at are the quietest possible data loss.
+- **`balance_split()` bypassed the cross-split group guard** although it is public and is what the tests call. It now runs the global guards over *all* supplied units before filtering.
+- **Duplicate eligible trace ids defeated "without replacement".** Sampling draws distinct *positions*, so ids `(4, 4, 9)` could select trace 4 twice — sampling with replacement wearing the wrong name. Refused. The manifest now also maps each selected unit to its comparison group, because a bare set of group names does not show the mapping and the mapping is what D-039 is about.
+
+**The cross-unit verdict is gone.** The record said its units were **local wall-hours** and the program then printed a ratio against the 120 **GPU-hour** trigger — and a test of mine asserted `conservative < trigger_gpu_hours`. **That is a cross-unit comparison turned into a PASS**, in the one harness that exists *because* a compute condition was already adjudicated on a proxy for its own quantity. The trigger is retained as registered-plan metadata under a renamed field; `comparison_status` reads **"not adjudicable across hosts"**; no ratio is printed and no verdict is drawn. The bare field name is gone too, because it invites the comparison Sol refused.
+
+**Provenance is repaired, and the defect was real.** attempt-002 recorded `commit f0ac645` with `tree_clean: false` — and `f0ac645` **predates the rebuild**, which landed in `e3e9411`. The executed harness could not be recovered from its own record, and tracking the JSON afterwards does not repair that. Provenance is now captured **before** the run; **a dirty source tree is refused outright** (proved by dirtying the tree and watching it refuse); a SHA-256 is written beside the record.
+
+**attempt-003, from a clean committed tree at `1a28647`** — the commit that contains the corrected harness:
+
+| | |
+|---|---|
+| median / maximum | **5.715904170861654 / 6.913811402539251 local wall-hours** |
+| recomputed through `recompute_totals` | **bit-identical** |
+| `source_tree_clean_before_run` | **true** |
+| sha256 beside the record | matches |
+| reconciliation (median basis) | **1.0684** — measured above the median prediction, below the maximum |
+
+Timings differ slightly from attempt-002, as Sol said they would; that is timing variation, not disagreement. attempt-002 is retained and marked superseded **for provenance, not arithmetic** — Sol reproduced its numbers independently.
+
+**A separate W5 gap, found while answering "did we finish W4 and W5" and not yet reported.** S§W5 Thursday's *Done when* is *"MDE table; configuration count set from it, **with the exclusion-rate assumption stated**."* The table exists and the count was decided — preserve 300 — but **no exclusion-rate assumption is stated anywhere.** It appears three times in the ledger purely as a forward promise: D-018's *"inflated by the observed exclusion rate"*, D-031's *"Week 5 inflates the raw count using the pilot exclusion rate the schedule requires"*. **And S§W6 Monday is scheduled to check batch 1 "against the Week 5 assumption"**, which therefore has nothing to compare to. The honest reading is that the operative assumption is **no inflation was applied**, so any exclusion pushes usable units directly below 150/150 and the predeclared reserve (D-092) is the remedy — but that is a preregistered quantity and it is Sol's to ratify, not mine to invent.
+**Tests:** 863 → **873 passing**, 2 skipped, 0 xfailed.
+**Data seen:** none. Synthetic units, wall time, and stored records only.
+**Compute:** pilot-stage timing, authorised. Registered compute unchanged: 675 CPU fits.
+**Plan ref:** S§W4 Fri, S§W5 Thu, S§W6 Mon, D-018, D-031, D-039, D-044, D-092, D-115, D-116, D-117, DEV-011. Sol's ruling on delta 54.
+**Reviewed by Sol:** **not yet — delta 55 carries the closeout.**

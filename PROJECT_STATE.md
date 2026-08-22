@@ -42,7 +42,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-22 (second session) |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **W4 COMPLETE, W5 built, and both audited** (D-117). Probing the new code found **six findings, all fixed** — the balancer **returned an empty evaluation set and raised nothing** when a split had no units of one class, which Gate 2's second condition makes a live risk; a duplicate `unit_id` merged two units into one under the unit-weighted estimand; and the timing record **could not be re-derived through the project's own function** because JSON turned its integer keys into strings. Numbers unchanged: timing **6.95 local wall-hours** conservative vs a 120-hour trigger (DEV-011 — wall-hours, not GPU-hours). **Certified artefacts re-verified**: W4 Tue gate passes, W4 Fri threshold recomputes exactly. **Gate 1 remains FAIL**; expansion still refused (18.75×–33.3×). Base **`51907c6`**; Q-004 holds Week 6 |
+| **Current week / day** | **W4 AND W5 REMAIN OPEN**, on Sol's ruling, pending certification of one narrow closeout — now delivered as delta 55 (D-118). Sol accepted the expansion correction, the frozen critic constants, D-112, DEV-009 and the D-117 audit fixes, but **withheld certification of the timing (D-116) and the balancer**. Both blockers are closed: the **six balancer boundary fail-open paths** are fixed, the **local-wall-hour vs GPU-hour PASS comparison is removed** (`comparison_status: not adjudicable across hosts`), and **timing provenance is repaired** — attempt-003 ran from a clean tree at `1a28647`, recomputes bit-identically at **5.7159 / 6.9138 local wall-hours**, and carries a sha256. **A new W5 gap is reported**: S§W5 Thu requires the **exclusion-rate assumption stated** and none exists, though S§W6 Mon is scheduled to check against it. **Gate 1 FAIL**, no expansion, Q-004 bars Week 6, base **`51907c6`** |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `51907c6`** — Sol certified the corrected methodology prose on 2026-08-22 and named it the next review base. **Set `BASE=51907c6`.** Later commits are **not** certified: D-114's timing evidence was withheld. Never use `13bf5f5`. Chain: `9c0d89d` → `ca545ed` → `f6bcd63` → **`51907c6`** |
@@ -294,6 +294,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-115** | 2026-08-22 | **CHANGE RECORD** — trace cap 50 / balance seed 0; W5 balancer built; **my 5–6× expansion claim was false** | **Sol-authorised** |
 | **D-116** | 2026-08-22 | W4 timing rebuilt to Sol's six requirements — **6.95 local wall-hours**, reconciled; **W4 COMPLETE** | **Result** |
 | **D-117** | 2026-08-22 | **Audit** of the unprobed W4/W5 code — six findings, all fixed; empty-split balancer failed open | **Audit** |
+| **D-118** | 2026-08-22 | Sol's delta-54 closeout — balancer boundary, cross-unit verdict removed, timing provenance repaired | **Sol's items** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -451,7 +452,7 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md` — **56 archived, the newest kept here**. Nothing is condensed or summarised: the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md` — **57 archived, the newest kept here**. Nothing is condensed or summarised: the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
 
 *(Archived in order, all of them because this file kept reaching its 500-line paste cap, none of them because they stopped mattering: the W3 certification and W4 Tuesday gate rounds → D-068 … D-077; W4 Thursday's MDE and the W5 Mon–Fri cells → D-078 … D-081; the W5 closeout and Sol correction rounds of 2026-08-20 → D-082 … D-102 and the Gate 1 FAIL; W4 Friday's threshold calibration → D-103 … D-105, delivered as delta 49; then the 2026-08-22 sessions in sequence — the delta-49 review → D-106, the D-035 promotion → D-107, the post-promotion probe → D-108, the delta-51 ruling → D-109, the methodology prose → D-110, the delta-52 ruling → D-111, the methodology closeout → D-112, and the schedule check → D-113 with DEV-009.*
 
@@ -470,16 +471,20 @@ D-115 before either.)*
 W5 balancer, and the correction of my false expansion arithmetic) and the W4 timing
 rebuild (D-116). Both are superseded in detail by the audit entry below, not in fact.)*
 
-### 2026-08-22 (W4/W5 audit) · Six findings in code that was specified, tested, and never probed · Claude
+*(The W4/W5 audit session (D-117) was archived on 2026-08-22. Its six findings were
+accepted by Sol; the entry below closes the further boundary defects Sol found in the
+same code.)*
 
-**Audited this session's new code by probing it** — `critic/balance.py` and the rebuilt `w4_timing.py` had been specified point by point by Sol and covered by 23 passing tests of mine, and **never probed**. That is exactly the condition D-105 found `gate.py` in, four Sol reviews deep.
+### 2026-08-22 (delta-54 closeout) · Boundary integrity and evidence provenance · Claude
 
-**The balancer failed open on the case Gate 2 exists to detect.** With one class absent from a split, `m = min(n₀, n₁) = 0`, and it **returned an empty evaluation set and raised nothing**. Not hypothetical: Gate 2's second condition is whether the surviving per-class unit count still clears the MDE requirement, and D-089 records that usable class counts may shrink once ambiguous and undiagnosed units are excluded. **Every comparable place in this project fails closed** — `masked()` refuses an empty mask, `acceptance` refuses non-finite errors, `trend` refuses non-finite curves. This was the one that did not. Also: **string labels were silently undecidable** (numpy integers, checked, are fine), and a **duplicate `unit_id` merged two units into one** under the registered unit-weighted estimand.
+**Sol withheld certification of the timing and the balancer, and W4/W5 stay OPEN until this closeout is certified.** All seven findings reproduced before being fixed. Every one was a **boundary** defect — both algorithms were right; the public input surface let silent design violations through.
 
-**The timing record could not be audited by machine.** JSON has no integer keys, so `fits_by_size` round-tripped as **strings** and feeding a stored record back into `extrapolate()` raised. **The numbers were right** — coerced, they reproduce bit-identically — but "auditable without trusting copied prose" is not satisfied by a record only a human can re-derive by hand. `recompute_totals()` is now the timing analogue of `recompute_threshold`. And **`_rate`'s fallback was optimistic while its docstring claimed to be conservative**: unreachable today, which is precisely why it would have survived until the design grew a larger size.
+**The balancer's six fail-open paths.** Invalid labels were caught **only when they emptied a class**, so a split with a valid `0`, a valid `1` and a string `"0"` balanced happily and filed the string as *undecidable* — my own guard from one review earlier fired only at `m == 0`, so the all-string fixture passed and the **mixed** one never existed. **Booleans refused** (`True == 1`, and `bool` subclasses `int`). `unit_id` uniqueness was **per-split**, so one content-hashed unit could sit in train *and* held-out under different group ids — training and evaluating on the same configuration. The **frozen cap was caller-overridable**. An **unrecognised split name was silently dropped**. **`balance_split()` bypassed the cross-split group guard** although it is public and is what the tests call. **Duplicate trace ids defeated "without replacement"** — sampling draws distinct *positions*, so `(4, 4, 9)` could select trace 4 twice.
 
-**Certified artefacts re-verified after every change** — W4 Tuesday's gate still passes (90 cells), W4 Friday's threshold still recomputes to the frozen constant exactly.
+**The cross-unit verdict is gone.** The record said *local wall-hours* and the program printed a ratio against a **GPU-hour** trigger — and a test of mine asserted it as a PASS. In the one harness that exists *because* a compute condition was adjudicated on a proxy for its own quantity. `comparison_status` now reads **"not adjudicable across hosts"**; the bare field name is gone too, because it invites the comparison.
 
-**Not one finding was a coding error in the ordinary sense.** Each was a guard that was absent, a claim that did not match behaviour, or evidence that could not be re-derived — the same class D-099 and D-105 found, and the reason this project audits *after* reviewing rather than instead of it.
+**Provenance repaired, and the defect was real.** attempt-002 named `f0ac645` with `tree_clean: false`, and `f0ac645` **predates** the rebuild in `e3e9411`. Provenance is now captured **before** the run, a dirty tree is **refused** (proved by dirtying one), and a sha256 sits beside the record. **attempt-003** ran from a clean tree at `1a28647`: **5.715904170861654 / 6.913811402539251** local wall-hours, **recomputing bit-identically**, reconciliation **1.0684**.
 
-**Tests:** 855 → **863 passing**, 2 skipped. **No fits, no reserve, no real labels.**
+**And a new W5 gap, found while checking whether the weeks were finished.** S§W5 Thu requires *"configuration count set from it, **with the exclusion-rate assumption stated**"*. No exclusion rate is stated anywhere — it appears three times only as a forward promise — **and S§W6 Mon is scheduled to check batch 1 against it.** Sol's to ratify.
+
+**Tests:** 863 → **873 passing**, 2 skipped. **No fits, no reserve, no labels.**
