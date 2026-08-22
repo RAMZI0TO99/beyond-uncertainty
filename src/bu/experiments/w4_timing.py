@@ -180,8 +180,24 @@ def design_accounting() -> dict:
 
 
 def _rate(bench: dict[int, SizeBenchmark], size: int, how: str, kind: str) -> float:
-    """Nearest measured size at or above `size` — conservative, never below."""
-    at_or_above = [s for s in sorted(bench) if s >= size] or [max(bench)]
+    """Nearest measured size **at or above** ``size`` — conservative, never below.
+
+    **Refuses rather than falling back.** The first version ended
+    ``or [max(bench)]``, so a size larger than anything measured was charged at
+    the *largest measured* rate — which is **optimistic, not conservative**, and
+    flatly contradicted this docstring. It was unreachable in the real design,
+    where every size the plan uses is measured, and that is exactly why it would
+    have survived: an unreachable branch whose comment is wrong stays wrong until
+    the day the design grows a larger size, and then under-charges silently.
+    """
+    at_or_above = [s for s in sorted(bench) if s >= size]
+    if not at_or_above:
+        raise ValueError(
+            f"no benchmark at or above n={size:,}; the largest measured is "
+            f"n={max(bench):,}. Charging it at a smaller size's rate would "
+            "understate the budget, and this harness exists because a compute "
+            "condition was already signed off on an optimistic proxy"
+        )
     b = bench[at_or_above[0]]
     return b.per_fit(how) if kind == "fit" else b.per_collection(how)
 
@@ -274,6 +290,52 @@ def reconcile(observed: dict, bench: dict[int, SizeBenchmark], how: str,
         "measured_s": observed["measured_s"],
         "ratio_measured_over_predicted": observed["measured_s"] / predicted if predicted else None,
     }
+
+
+def load_record(path: str | Path) -> dict:
+    """Read a persisted timing record with its integer size keys restored.
+
+    **JSON has no integer keys.** `accounting.fits_by_size` and
+    `collections_by_size` round-trip as *strings*, so feeding a stored record
+    straight back into :func:`extrapolate` raises ``TypeError`` on ``s >= size``.
+    The stored numbers are correct — re-derived through this loader they
+    reproduce bit-identically — but Sol's requirement is that a Gate 1 result be
+    **auditable without trusting copied prose**, and a record that cannot be fed
+    back through the project's own function is not that. This is the loader.
+    """
+    target = Path(path)
+    if target.is_dir():
+        target = target / "timing.json"   # `recompute_threshold` takes an attempt
+    if not target.exists():               # directory; accept either, like it does
+        raise FileNotFoundError(f"no timing record at {target}")
+    record = json.loads(target.read_text())
+    acct = record["accounting"]
+    for field_name in ("fits_by_size", "collections_by_size"):
+        acct[field_name] = {int(k): v for k, v in acct[field_name].items()}
+    return record
+
+
+def benchmarks_from_record(record: dict) -> dict[int, SizeBenchmark]:
+    """Rebuild the per-size benchmarks from a record's raw observations."""
+    out: dict[int, SizeBenchmark] = {}
+    for row in record["raw_by_size"]:
+        b = SizeBenchmark(n_transitions=row["n_transitions"], members=row["members"])
+        b.train_reps_s = list(row["train_reps_s"])
+        b.collect_reps_s = list(row["collect_reps_s"])
+        out[b.n_transitions] = b
+    return out
+
+
+def recompute_totals(path: str | Path) -> dict[str, float]:
+    """Reproduce a stored record's headline totals from its own raw observations.
+
+    The timing analogue of ``recompute_threshold``: it trusts the raw
+    repetitions and recomputes everything derived from them.
+    """
+    record = load_record(path)
+    bench = benchmarks_from_record(record)
+    return {how: extrapolate(bench, record["accounting"], how)["total_hours"]
+            for how in ("median", "max")}
 
 
 def _git(*args: str) -> str:

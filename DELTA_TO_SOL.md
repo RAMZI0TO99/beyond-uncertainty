@@ -23,6 +23,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=51907c6 ./scripts/sol_bundle.sh \
 > COVERS SESSIONS:
 > - 2026-08-22 (delta-53 ruling) · A false conclusion, a frozen cap, and the balancer
 > - 2026-08-22 (W4 timing rebuilt) · Week 4 is complete
+> - 2026-08-22 (W4/W5 audit) · Six findings in code that was specified, tested, and never probed
 
 ```
 === UPDATE FOR SOL ===
@@ -228,5 +229,84 @@ W4 IS COMPLETE. W5's only open item is your review of the balancer.
   compute    pilot timing only, ~35 min over two attempts. Registered compute
              unchanged: 675 CPU fits.
   data seen  none. Wall time only; every run discarded its ensembles.
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+APPENDED (D-008: still undelivered). THE AUDIT YOU HAVE NOT SEEN (D-117).
+
+The student asked for W4 and W5 to be AUDITED before this reached you. So I
+probed the new code rather than re-reading it. balance.py and the rebuilt
+w4_timing.py had been SPECIFIED BY YOU POINT BY POINT and covered by 23 passing
+tests of mine, AND NEVER PROBED -- which is exactly the condition D-105 found
+gate.py in, four of your reviews deep.
+
+SIX FINDINGS. ALL FIXED. NONE WAS A CODING ERROR IN THE ORDINARY SENSE.
+
+>>> 1. THE BALANCER FAILED OPEN ON THE CASE GATE 2 EXISTS TO DETECT. <<<
+
+With one class absent from a split, m = min(n0, n1) = 0, the loop selected
+nothing, and the balancer REPORTED SUCCESS WITH AN EMPTY EVALUATION SET.
+
+This is not hypothetical. Gate 2's second condition is literally whether the
+surviving per-class unit count still clears the MDE requirement, and D-089
+records that usable class counts may shrink once ambiguous and undiagnosed
+units are excluded. A starved split is an ANTICIPATED outcome.
+
+And every comparable place in this project already fails closed: masked()
+refuses an empty mask because "a mean over nothing is nan"; acceptance refuses
+non-finite errors (D-102); trend refuses non-finite curves. THIS WAS THE ONE
+THAT DID NOT. It now refuses, and the message names both routes -- genuine class
+starvation, or labels that are not the integers 0 and 1.
+
+2. STRING LABELS "0"/"1" WERE SILENTLY UNDECIDABLE, so an upstream type slip
+   produced an empty split with no signal. Subsumed by the guard above. I
+   checked the other half too and it is fine: NUMPY INTEGERS ARE ACCEPTED,
+   which matters because a label-assignment step will emit them.
+
+3. A DUPLICATE unit_id COLLAPSED SILENTLY. per_unit_trace_counts and
+   unit_weights are keyed by unit_id, so two entries sharing one merge into a
+   single row -- under-reporting the manifest and COUNTING TWO UNITS AS ONE
+   under the registered UNIT-WEIGHTED estimand (D-044). Now refused.
+
+>>> 4. THE TIMING RECORD COULD NOT BE RE-DERIVED BY MACHINE. <<<
+
+You required a Gate 1 result be "auditable without trusting copied prose". JSON
+HAS NO INTEGER KEYS, so fits_by_size round-trips as STRINGS and feeding the
+stored record back into extrapolate() raises TypeError.
+
+THE NUMBERS WERE RIGHT -- coerced, they reproduce BIT-IDENTICALLY at 5.680282 h
+and 6.953883 h -- but a record only a human can re-derive by hand is not
+auditable in the sense you meant. Added load_record / benchmarks_from_record /
+recompute_totals, the timing analogue of recompute_threshold, with a test that
+the stored record reproduces through them. It also now accepts an ATTEMPT
+DIRECTORY like its sibling does; I found that by passing one and getting
+IsADirectoryError, which was my probe error and a real inconsistency both.
+
+5. _rate's FALLBACK WAS OPTIMISTIC WHILE ITS DOCSTRING CLAIMED CONSERVATIVE. It
+   ended `or [max(bench)]`, charging a size larger than anything measured at the
+   LARGEST MEASURED rate. UNREACHABLE in the current design -- and that is
+   exactly why it would have survived: an unreachable branch with a wrong
+   comment stays wrong until the design grows a larger size, and then
+   under-charges silently, in the one harness that exists BECAUSE a compute
+   condition was already signed off on an optimistic proxy. Now refuses.
+
+--------------------------------------------------------------------
+REGRESSIONS RE-VERIFIED after every change, which D-105 says matters most:
+
+  W4 Tue certified gate    passed=True, 90 cells, commit 2efad25
+  W4 Fri threshold         recomputes to 0.610702633857727 EXACTLY
+  W4 Fri timing            recomputes under the trigger
+
+--------------------------------------------------------------------
+WHAT I THINK THIS SAYS. Six findings in code YOU specified and I tested. Each
+was A GUARD THAT WAS ABSENT, A CLAIM THAT DID NOT MATCH BEHAVIOUR, OR EVIDENCE
+THAT COULD NOT BE RE-DERIVED. That is the same class as D-099 and D-105, and it
+is why this project audits AFTER reviewing rather than instead of it. Your
+specification was not the weak point and neither were the tests; the weak point
+was that nobody had made the code do anything unexpected.
+
+  tests      855 -> 863 passing, 2 skipped, 0 xfailed
+  compute    NONE. Registered compute unchanged: 675 CPU fits.
+  data seen  none. Synthetic units and stored records only.
 === END UPDATE ===
 ```

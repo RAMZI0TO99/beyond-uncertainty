@@ -4058,3 +4058,37 @@ All clean. The **certified W4 Tuesday evidence still verifies today** after ever
 **What D-114 changes and what it does not.** Sol refused on two grounds, *scope **and** budget*. The budget ground is measurably not binding — 6.40 h measured, ~32–52 h for a 5–6× design, against a 120-hour trigger — and the schedule's pre-emption *"it costs Kaggle time, not your time"* is **confirmed**, not refuted. **The scope ground is untouched**: the twenty-week calendar, ~14 h/week, and generating 5–6× the data are unaffected, and 1,500–2,000 held-out units is a ~twenty-fold gap that is fairly read as a different study. **Sol's to re-rule; nothing acted on.**
 
 **Tests:** 835 passing, 2 skipped. **No fits.**
+
+### 2026-08-22 (delta-53 ruling) · A false conclusion, a frozen cap, and the balancer · Claude
+
+**Sol certified D-111** (base → **`51907c6`**), **accepted D-113**, **withheld D-114**, and **authorised the W5 balancer**.
+
+**>>> My expansion conclusion was arithmetically false, and it inverted an answer rather than merely overstating one.** I read the MDE's 1,500–2,000 as *total* units and got a 5–6× design; they are **held-out** units. Against 60–80 held out of 300, expansion is **18.75×–33.3×** — **120 h at best, ~213 h at worst**, against a 120-hour trigger, before collection, ablations, orchestration and host differences. **The budget ground stands; both of Sol's grounds hold; no expansion is authorised.** Verified before accepting. D-042's shape at its purest — *a number without its estimand*, where "units" named two different populations. DEV-010's text is corrected in place.
+
+**D-114 is not certified, and every objection lands.** The harness times **one baseline ensemble at one seed**, not one full condition through its seeds and repairs; it **subtracts ablations**, which stay in the budget until a reduction is actually decided, and omits collection and orchestration; it **persists nothing**, so the numbers are prose to trust rather than evidence to audit — the delta-49 failure in a new place; **one observation per size**; and local CPU/RTX numbers **are not Kaggle GPU-hours**. **W4 Friday timing is OPEN.**
+
+**Frozen on Sol's authorisation, before any labelled data exists:** `CRITIC_TRACE_CAP_PER_UNIT = 50`, `CRITIC_BALANCE_SEED = 0`. **The cap is a maximum, not an eligibility threshold** — a unit with fewer than 50 eligible traces is kept whole, never excluded and never resampled up.
+
+**The W5 balancer is built** on synthetic inputs (`src/bu/critic/balance.py`): per-split independence, undecidables excluded first, `m = min(n₀,n₁)` per split, deterministic `blake2b` selection, capped draws without replacement, zero-trace units refused, X/y/groups separate, a manifest, the D-039 cross-split group assertion, and `unit_weights()` holding the unit-weighted estimand.
+
+**>>> My determinism test was vacuous, and only mutation testing found it.** It spawns interpreters under two `PYTHONHASHSEED` values to prove the selection does not depend on Python's randomised `hash()` — and swapping `blake2b` for `hash()` **did not fail it**. The fixture had 6 units per class, so `m = 6`, **every unit was selected**, and ordering could not matter. Rewritten 12-against-3 so 9 are excluded, with in-fixture assertions that it selects selectively at all. It fails on the mutation now. **A fixture that selects everything tests nothing** — D-055's shape, reached through the data instead of the assertion.
+
+**Also done:** DEV-009's methodology section, and D-112's arithmetic corrected to Sol's wording (375 is *sweep-plus-all-canonical*; duplicating only the 20 2A units gives **320**).
+
+**Tests:** 835 → **848 passing**, 2 skipped. **No fits, no reserve consumed, no real labels.**
+
+### 2026-08-22 (W4 timing rebuilt) · Week 4 is complete · Claude
+
+**Sol's authorisation was explicit** — *"you are authorised to complete W4 timing with pilot-only compute"* — so this did not wait. The host question had one branch available: no Kaggle access here, which is the case Sol said to record as a deviation. **DEV-011** now records that every fit this project has ever run has run locally, and that the plan's Kaggle T4 has never been used.
+
+**All six requirements met** (D-116): 8,197 fits **including the 150 ablations**; 2,947 collection events counted per condition; warm-up plus 3 repetitions with every raw observation kept; median **and** maximum, with **the verdict on the maximum**; one representative condition — the largest repair-validation unit, 20 seeds, baseline ensemble plus 10× data-repair arm, **120 fits over 40 conditions** — run end to end; evidence persisted **and tracked**; host stated honestly.
+
+**6.95 local wall-hours** conservative (5.68 median) against the 120-hour trigger, **0.058×**. The reconciliation is the load-bearing part: the full condition **measured 489.2 s** against **455.8 s** predicted (median) and **573.0 s** (max) — measured sits 7% above the median and **below** the maximum, so the conservative basis is conservative in fact.
+
+**>>> The reconciliation caught a defect in itself.** attempt-001 reported measured/predicted = **0.03**. `reconcile()` had filtered on `n_transitions == 5000`, matching **every** unit at that size — 1,464 plan entries against the 40 that ran, **37.9×**. Corrected, re-derived from attempt-001's own raw data: **1.028**. attempt-001 kept with a `SUPERSEDED.md`, because attempts are immutable and this is the clearest proof in the project that an end-to-end check does what a microbenchmark cannot do on itself.
+
+**>>> And the evidence was silently untracked — the third time.** `runs/*` swallowed `runs/w4_timing/` exactly as it swallowed `runs/w4_threshold/` (D-103) and as file selection swallowed delta 12's artefacts (D-041). Caught by running `git check-ignore` before committing instead of trusting the commit. **Three occurrences, three mechanisms, one shape.**
+
+**Nothing here revises Gate 1**, still **FAIL**, and nothing revives expansion: D-115 fixed that arithmetic, and at **18.75×–33.3×** it is **130–232 wall-hours** — firmer now that ablations and collection are counted.
+
+**Tests:** 848 → **855 passing**, 2 skipped. **No registered fits**; pilot timing only, ~35 min.

@@ -120,6 +120,17 @@ def balance_split(
 ) -> tuple[BalancedSplit, dict]:
     """Balance one split. Returns the selection and its manifest."""
     in_split = [u for u in units if u.split == split]
+    ids = [u.unit_id for u in in_split]
+    if len(set(ids)) != len(ids):
+        dupes = sorted({i for i in ids if ids.count(i) > 1})
+        raise ValueError(
+            f"duplicate unit_id(s) in split {split!r}: {dupes[:5]}. "
+            "`per_unit_trace_counts` and `unit_weights` are keyed by unit_id, so "
+            "duplicates silently collapse into one entry -- which under-reports "
+            "the manifest and merges two units into one for the UNIT-WEIGHTED "
+            "estimand (D-044). `unit_id` is a content hash, so a duplicate means "
+            "the same configuration was supplied twice"
+        )
     excluded_undecidable = [u.unit_id for u in in_split if not _decidable(u)]
     decidable = [u for u in in_split if _decidable(u)]
 
@@ -136,6 +147,19 @@ def balance_split(
         HYPOTHESIS_CLASS: [u for u in decidable if u.label == HYPOTHESIS_CLASS],
     }
     m = min(len(by_class[ESTIMATION]), len(by_class[HYPOTHESIS_CLASS]))
+    if m == 0:
+        raise ValueError(
+            f"split {split!r} balances to ZERO units per class: "
+            f"{len(by_class[ESTIMATION])} with label {ESTIMATION} and "
+            f"{len(by_class[HYPOTHESIS_CLASS])} with label {HYPOTHESIS_CLASS}, "
+            f"from {len(in_split)} unit(s) of which {len(excluded_undecidable)} "
+            "were ambiguous or undiagnosed. An empty evaluation set is returned "
+            "by a balancer that ran perfectly, so nothing downstream would raise "
+            "-- it would simply score nothing. Two ways to arrive here: a split "
+            "genuinely starved of one class (Gate 2's second condition exists for "
+            "exactly that), or labels that are not the integers 0 and 1 -- a "
+            "string '0' is not ESTIMATION and is silently undecidable"
+        )
 
     selection = BalancedSplit(split=split)
     chosen: dict[int, list[str]] = {}

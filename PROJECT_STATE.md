@@ -42,7 +42,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-22 (second session) |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **WEEK 4 IS COMPLETE AND WEEK 5 HAS ONE ITEM LEFT WITH SOL.** W4 Friday's timing is rebuilt to Sol's six requirements (D-116): **8,197 fits including ablations**, 2,947 collection events, warm-up + 3 reps, median **and** max, a full 120-fit condition run end to end and **reconciled to 7%**, evidence persisted and tracked, host stated honestly. **6.95 local wall-hours** on the conservative basis against a 120-hour trigger. **These are local wall-hours, not GPU-hours** (DEV-011 — the plan names Kaggle T4 and nothing has ever run there). W5's balancer is built on synthetic inputs (D-115). **Gate 1 remains FAIL**; expansion remains refused — it is **18.75×–33.3×**, i.e. 130–232 wall-hours. Base **`51907c6`**; Q-004 still holds Week 6 |
+| **Current week / day** | **W4 COMPLETE, W5 built, and both audited** (D-117). Probing the new code found **six findings, all fixed** — the balancer **returned an empty evaluation set and raised nothing** when a split had no units of one class, which Gate 2's second condition makes a live risk; a duplicate `unit_id` merged two units into one under the unit-weighted estimand; and the timing record **could not be re-derived through the project's own function** because JSON turned its integer keys into strings. Numbers unchanged: timing **6.95 local wall-hours** conservative vs a 120-hour trigger (DEV-011 — wall-hours, not GPU-hours). **Certified artefacts re-verified**: W4 Tue gate passes, W4 Fri threshold recomputes exactly. **Gate 1 remains FAIL**; expansion still refused (18.75×–33.3×). Base **`51907c6`**; Q-004 holds Week 6 |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `51907c6`** — Sol certified the corrected methodology prose on 2026-08-22 and named it the next review base. **Set `BASE=51907c6`.** Later commits are **not** certified: D-114's timing evidence was withheld. Never use `13bf5f5`. Chain: `9c0d89d` → `ca545ed` → `f6bcd63` → **`51907c6`** |
@@ -293,6 +293,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-114** | 2026-08-22 | W4 Fri's timing harness built and run — **6–9 h, not 110–145 GPU-h**; 14–19× headroom | **Result — for Sol** |
 | **D-115** | 2026-08-22 | **CHANGE RECORD** — trace cap 50 / balance seed 0; W5 balancer built; **my 5–6× expansion claim was false** | **Sol-authorised** |
 | **D-116** | 2026-08-22 | W4 timing rebuilt to Sol's six requirements — **6.95 local wall-hours**, reconciled; **W4 COMPLETE** | **Result** |
+| **D-117** | 2026-08-22 | **Audit** of the unprobed W4/W5 code — six findings, all fixed; empty-split balancer failed open | **Audit** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -450,7 +451,7 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md` — **54 archived, the newest kept here**. Nothing is condensed or summarised: the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md` — **56 archived, the newest kept here**. Nothing is condensed or summarised: the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
 
 *(Archived in order, all of them because this file kept reaching its 500-line paste cap, none of them because they stopped mattering: the W3 certification and W4 Tuesday gate rounds → D-068 … D-077; W4 Thursday's MDE and the W5 Mon–Fri cells → D-078 … D-081; the W5 closeout and Sol correction rounds of 2026-08-20 → D-082 … D-102 and the Gate 1 FAIL; W4 Friday's threshold calibration → D-103 … D-105, delivered as delta 49; then the 2026-08-22 sessions in sequence — the delta-49 review → D-106, the D-035 promotion → D-107, the post-promotion probe → D-108, the delta-51 ruling → D-109, the methodology prose → D-110, the delta-52 ruling → D-111, the methodology closeout → D-112, and the schedule check → D-113 with DEV-009.*
 
@@ -465,36 +466,20 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md` — **54 archived, the
 see D-115) and the W4 closeout (DEV-010, whose expansion claim D-115 corrects). Read
 D-115 before either.)*
 
-### 2026-08-22 (delta-53 ruling) · A false conclusion, a frozen cap, and the balancer · Claude
+*(Two 2026-08-22 sessions archived: the delta-53 ruling (D-115 — the frozen trace cap, the
+W5 balancer, and the correction of my false expansion arithmetic) and the W4 timing
+rebuild (D-116). Both are superseded in detail by the audit entry below, not in fact.)*
 
-**Sol certified D-111** (base → **`51907c6`**), **accepted D-113**, **withheld D-114**, and **authorised the W5 balancer**.
+### 2026-08-22 (W4/W5 audit) · Six findings in code that was specified, tested, and never probed · Claude
 
-**>>> My expansion conclusion was arithmetically false, and it inverted an answer rather than merely overstating one.** I read the MDE's 1,500–2,000 as *total* units and got a 5–6× design; they are **held-out** units. Against 60–80 held out of 300, expansion is **18.75×–33.3×** — **120 h at best, ~213 h at worst**, against a 120-hour trigger, before collection, ablations, orchestration and host differences. **The budget ground stands; both of Sol's grounds hold; no expansion is authorised.** Verified before accepting. D-042's shape at its purest — *a number without its estimand*, where "units" named two different populations. DEV-010's text is corrected in place.
+**Audited this session's new code by probing it** — `critic/balance.py` and the rebuilt `w4_timing.py` had been specified point by point by Sol and covered by 23 passing tests of mine, and **never probed**. That is exactly the condition D-105 found `gate.py` in, four Sol reviews deep.
 
-**D-114 is not certified, and every objection lands.** The harness times **one baseline ensemble at one seed**, not one full condition through its seeds and repairs; it **subtracts ablations**, which stay in the budget until a reduction is actually decided, and omits collection and orchestration; it **persists nothing**, so the numbers are prose to trust rather than evidence to audit — the delta-49 failure in a new place; **one observation per size**; and local CPU/RTX numbers **are not Kaggle GPU-hours**. **W4 Friday timing is OPEN.**
+**The balancer failed open on the case Gate 2 exists to detect.** With one class absent from a split, `m = min(n₀, n₁) = 0`, and it **returned an empty evaluation set and raised nothing**. Not hypothetical: Gate 2's second condition is whether the surviving per-class unit count still clears the MDE requirement, and D-089 records that usable class counts may shrink once ambiguous and undiagnosed units are excluded. **Every comparable place in this project fails closed** — `masked()` refuses an empty mask, `acceptance` refuses non-finite errors, `trend` refuses non-finite curves. This was the one that did not. Also: **string labels were silently undecidable** (numpy integers, checked, are fine), and a **duplicate `unit_id` merged two units into one** under the registered unit-weighted estimand.
 
-**Frozen on Sol's authorisation, before any labelled data exists:** `CRITIC_TRACE_CAP_PER_UNIT = 50`, `CRITIC_BALANCE_SEED = 0`. **The cap is a maximum, not an eligibility threshold** — a unit with fewer than 50 eligible traces is kept whole, never excluded and never resampled up.
+**The timing record could not be audited by machine.** JSON has no integer keys, so `fits_by_size` round-tripped as **strings** and feeding a stored record back into `extrapolate()` raised. **The numbers were right** — coerced, they reproduce bit-identically — but "auditable without trusting copied prose" is not satisfied by a record only a human can re-derive by hand. `recompute_totals()` is now the timing analogue of `recompute_threshold`. And **`_rate`'s fallback was optimistic while its docstring claimed to be conservative**: unreachable today, which is precisely why it would have survived until the design grew a larger size.
 
-**The W5 balancer is built** on synthetic inputs (`src/bu/critic/balance.py`): per-split independence, undecidables excluded first, `m = min(n₀,n₁)` per split, deterministic `blake2b` selection, capped draws without replacement, zero-trace units refused, X/y/groups separate, a manifest, the D-039 cross-split group assertion, and `unit_weights()` holding the unit-weighted estimand.
+**Certified artefacts re-verified after every change** — W4 Tuesday's gate still passes (90 cells), W4 Friday's threshold still recomputes to the frozen constant exactly.
 
-**>>> My determinism test was vacuous, and only mutation testing found it.** It spawns interpreters under two `PYTHONHASHSEED` values to prove the selection does not depend on Python's randomised `hash()` — and swapping `blake2b` for `hash()` **did not fail it**. The fixture had 6 units per class, so `m = 6`, **every unit was selected**, and ordering could not matter. Rewritten 12-against-3 so 9 are excluded, with in-fixture assertions that it selects selectively at all. It fails on the mutation now. **A fixture that selects everything tests nothing** — D-055's shape, reached through the data instead of the assertion.
+**Not one finding was a coding error in the ordinary sense.** Each was a guard that was absent, a claim that did not match behaviour, or evidence that could not be re-derived — the same class D-099 and D-105 found, and the reason this project audits *after* reviewing rather than instead of it.
 
-**Also done:** DEV-009's methodology section, and D-112's arithmetic corrected to Sol's wording (375 is *sweep-plus-all-canonical*; duplicating only the 20 2A units gives **320**).
-
-**Tests:** 835 → **848 passing**, 2 skipped. **No fits, no reserve consumed, no real labels.**
-
-### 2026-08-22 (W4 timing rebuilt) · Week 4 is complete · Claude
-
-**Sol's authorisation was explicit** — *"you are authorised to complete W4 timing with pilot-only compute"* — so this did not wait. The host question had one branch available: no Kaggle access here, which is the case Sol said to record as a deviation. **DEV-011** now records that every fit this project has ever run has run locally, and that the plan's Kaggle T4 has never been used.
-
-**All six requirements met** (D-116): 8,197 fits **including the 150 ablations**; 2,947 collection events counted per condition; warm-up plus 3 repetitions with every raw observation kept; median **and** maximum, with **the verdict on the maximum**; one representative condition — the largest repair-validation unit, 20 seeds, baseline ensemble plus 10× data-repair arm, **120 fits over 40 conditions** — run end to end; evidence persisted **and tracked**; host stated honestly.
-
-**6.95 local wall-hours** conservative (5.68 median) against the 120-hour trigger, **0.058×**. The reconciliation is the load-bearing part: the full condition **measured 489.2 s** against **455.8 s** predicted (median) and **573.0 s** (max) — measured sits 7% above the median and **below** the maximum, so the conservative basis is conservative in fact.
-
-**>>> The reconciliation caught a defect in itself.** attempt-001 reported measured/predicted = **0.03**. `reconcile()` had filtered on `n_transitions == 5000`, matching **every** unit at that size — 1,464 plan entries against the 40 that ran, **37.9×**. Corrected, re-derived from attempt-001's own raw data: **1.028**. attempt-001 kept with a `SUPERSEDED.md`, because attempts are immutable and this is the clearest proof in the project that an end-to-end check does what a microbenchmark cannot do on itself.
-
-**>>> And the evidence was silently untracked — the third time.** `runs/*` swallowed `runs/w4_timing/` exactly as it swallowed `runs/w4_threshold/` (D-103) and as file selection swallowed delta 12's artefacts (D-041). Caught by running `git check-ignore` before committing instead of trusting the commit. **Three occurrences, three mechanisms, one shape.**
-
-**Nothing here revises Gate 1**, still **FAIL**, and nothing revives expansion: D-115 fixed that arithmetic, and at **18.75×–33.3×** it is **130–232 wall-hours** — firmer now that ablations and collection are counted.
-
-**Tests:** 848 → **855 passing**, 2 skipped. **No registered fits**; pilot timing only, ~35 min.
+**Tests:** 855 → **863 passing**, 2 skipped. **No fits, no reserve, no real labels.**

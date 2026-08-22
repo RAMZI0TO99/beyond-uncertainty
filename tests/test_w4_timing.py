@@ -156,3 +156,45 @@ def test_the_conservative_total_is_the_one_under_the_trigger():
     assert conservative < rec["trigger_gpu_hours"], (
         "the conservative estimate is not under the escalation trigger"
     )
+
+
+# --- audit findings (D-117) --------------------------------------------------
+
+
+def test_a_size_above_every_benchmark_is_refused_not_discounted():
+    """AUDIT: `_rate` ended `or [max(bench)]`, charging an unmeasured LARGER size
+    at the largest MEASURED rate — optimistic, while its docstring claimed to be
+    conservative. Unreachable in the current design, which is exactly why it
+    would have survived until the design grew a larger size."""
+    from bu.experiments.w4_timing import _rate
+    bench = _flat_bench([100])
+    with pytest.raises(ValueError, match="no benchmark at or above"):
+        _rate(bench, 999_999, "median", "fit")
+
+
+def test_the_stored_record_recomputes_through_the_projects_own_function():
+    """AUDIT: JSON has no integer keys, so `fits_by_size` round-tripped as
+    STRINGS and feeding a stored record back into `extrapolate` raised
+    TypeError. The numbers were right; the record was not auditable without
+    hand-coercing it, which is not what "auditable" means."""
+    from bu.experiments.w4_timing import recompute_totals
+    if not ATTEMPT.exists():
+        pytest.skip("timing evidence not present in this checkout")
+    stored = json.loads(ATTEMPT.read_text())["extrapolation"]
+    got = recompute_totals(ATTEMPT)
+    for how in ("median", "max"):
+        assert got[how] == stored[how]["total_hours"], (
+            f"{how}: recomputed {got[how]} against stored {stored[how]['total_hours']}"
+        )
+
+
+def test_load_record_restores_integer_size_keys():
+    from bu.experiments.w4_timing import load_record
+    if not ATTEMPT.exists():
+        pytest.skip("timing evidence not present in this checkout")
+    raw = json.loads(ATTEMPT.read_text())
+    assert all(isinstance(k, str) for k in raw["accounting"]["fits_by_size"]), (
+        "the raw JSON no longer has string keys, so this test guards nothing"
+    )
+    loaded = load_record(ATTEMPT)
+    assert all(isinstance(k, int) for k in loaded["accounting"]["fits_by_size"])
