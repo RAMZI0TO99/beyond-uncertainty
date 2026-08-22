@@ -400,20 +400,30 @@ invalidate the certified attempt, which is Sol's call (delta 40).
 
 ### Next, in order
 
-1. **Sol answers deltas 39–42.** Nothing else moves first — there is no
-   unblocked work left, so this is not a soft blocker.
-2. **W4 Fri** — threshold calibration. Blocked on delta 40. It **permanently
-   freezes** a §2 constant, so it is the most irreversible act so far. C-010
-   (`ScaledEvaluation`) is built and is what it would run on.
-3. **W5 Sat — Gate 1** — write the verdict. Three of four conditions are met;
-   the fourth (MDE clears five points) is **failing**, and what to do about it
-   is exactly delta 41's question. The verdict cannot be written until Sol
-   rules on the MDE framing.
-4. **C-003** — predeclare the D-031 reserve draw order. A predeclaration, so it
-   goes to Sol before anything is built on it.
-5. **C-005 / C-007 / C-008** — grouped critic splitter, the confirmatory-guard
-   call sites, the confirmatory runner. W6–W11 or blocked. C-006, C-009, C-010,
-   C-011 are **done** (D-078, D-077, D-076, D-072).
+*Rewritten 2026-08-22. The previous version was stale in a way nothing catches:
+it still opened with "Sol answers deltas 39–42" (answered 2026-08-20), still
+called W4 Friday blocked (it executed), still asked for the Gate 1 verdict (it
+is signed off FAIL), and still listed C-003 as open (D-092 closed it). If you
+are reading this and the ledger disagrees, **the ledger wins** — check
+`DECISIONS.md` for the highest D-number before trusting any list here.*
+
+1. **Sol rules on the D-035 promotion.** Delta 50 carries the evidence-delivery
+   closeout Sol required. **Nothing else moves** — every failure set, every
+   repair label, and therefore H2 and H3 descend from
+   `0.610702633857727`, and it is unfrozen until Sol authorises the Change
+   Record. Do not build on it.
+2. **Confirm all three files reached Sol** — delta, `SOL_BUNDLE.txt`, **and**
+   `SOL_THRESHOLD_EVIDENCE.tar.gz`. The archive is the entire point of delta 50:
+   Sol withheld promotion because delta 49 shipped digests without bytes. A
+   bundle alone repeats the failure exactly.
+3. **If Sol authorises** — write the D-035 Change Record, promote the number
+   into `constants.py`, bump nothing else, and only then does repair validation
+   unblock.
+4. **C-005 / C-007** — the grouped critic splitter and the remaining
+   confirmatory-guard call sites in the critic loaders. **W6–W11 work, and
+   Q-004 forbids pulling it forward** into the ~4-week calendar lead. C-003,
+   C-006, C-008, C-009, C-010, C-011 are **done** (D-092, D-078, D-096, D-077,
+   D-076, D-072).
 
 ### What exists in Week 3
 
@@ -439,14 +449,16 @@ invalidate the certified attempt, which is Sol's call (delta 40).
 
 ### Open, and what each blocks
 
-- **Deltas 39–41 are with Sol** and two must be answered before more work: the
-  masked call site (blocks W4 Fri) and the MDE (blocks any decision about
-  configuration count). A third question rides along — whether threading
-  metadata becomes a **required** contract field, which would invalidate the
-  certified `attempt-001` and mean regenerating it.
-- **W4 Friday freezes a §2 constant permanently.** The failure threshold is
-  calibrated once on a reference model and never revised. Treat it as the most
-  irreversible act in the project so far.
+- **Delta 50 is with Sol** and carries the only live blocker: the **D-035
+  promotion of the failure threshold**. Sol withheld it on 2026-08-22 — *not*
+  for any fault in the run, which it found consistent with the authorised
+  specification on every field, but because delta 49 delivered **digests with no
+  bytes**. Deltas 39–48 are all answered (D-089, D-100, D-101, D-102, D-106).
+- **W4 Friday has run** (D-103) and **will not be rerun** — the threshold has
+  been inspected, so Sol's invalidation protocol can no longer be satisfied. The
+  number is calibrated but **not frozen**: promotion into `constants.py` is the
+  outstanding D-035 Change Record. Freezing it remains the most irreversible act
+  in the project so far.
 - **Numbers taken before D-051/D-052 are void.** D-020's coverage evidence and
   the Q-011 disagreement measurements were both taken under the non-stationary
   policy and the derived split. Re-measure; do not quote them.
@@ -470,12 +482,10 @@ invalidate the certified attempt, which is Sol's call (delta 40).
   repair efficacy may need reading on the **activation** task, not position
   alone. Tentative — a whole-pool smoke test with no threshold — but check it
   when real repair validation runs (P§7.3, the failure set needs W4 Friday).
-- **C-003** — predeclare the D-031 reserve draw order. A predeclaration, so it
-  goes to Sol *before* anything is built on it.
-- **C-005 / C-007 / C-008** — grouped critic splitter, `require_confirmatory=True`
-  at each analysis call site, and the confirmatory runner. None is W4 work.
-  **C-006 and C-009 are done** (D-078, D-077); **C-010 and C-011** are done
-  (D-076, D-072).
+- **C-005 / C-007** — the grouped critic splitter and the remaining
+  confirmatory-guard call sites in the critic loaders. W6–W11 work. Everything
+  else on the obligation list is **done**: C-003 (D-092), C-006 (D-078), C-008
+  (D-096), C-009 (D-077), C-010 (D-076), C-011 (D-072).
 
 Still blocked by Sol, correctly: confirmatory collection, critic splitting, and
 W5 MDE *approval* — the simulation exists now, but what to do about its answer

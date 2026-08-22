@@ -1543,3 +1543,34 @@ Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own e
 **Data seen:** none beyond D-103's recorded calibration.
 **Plan ref:** D-013, D-060, D-071, D-081, D-104.
 **Reviewed by Sol:** **not yet.**
+
+### D-106 · 2026-08-22 · Sol withheld the D-035 promotion — tracking evidence is not delivering it
+**Decision:** Sol reviewed delta 49 and **withheld** the D-035 promotion. It did not reject or invalidate the run: the reported execution was found consistent with the authorised specification on every field — execution commit `93dc296`, one attempt, 45 unique cells, nine strata × five seeds, K=5 throughout, 4/4 threading, 36,927 balanced transitions, threshold `0.610702633857727`, constants untouched, no rerun. The D-099 → 1.28% correction was accepted, as were the evidence-tracking test and the audits. **Promotion was withheld solely because the artefact contents were omitted from the delivered material.**
+
+**The finding, verified before acting on it, and it is sharper than Sol stated.** `SOL_BUNDLE.txt` line 214 declares `DIFF EXCLUDES (declared, not silent): runs/ PROJECT_STATE_ARCHIVE.md`. The bundle therefore lists all 136 threshold artefacts — with **12-hex-character truncated digests** — and carries **none of their bytes**. Sol received filenames and digest prefixes and could not parse the 45-cell grid, verify any digest, reconstruct the balanced selection, recompute the percentile, or confirm the threshold.
+
+**This is the D-041 shape arriving through a third route.** Delta 12 shipped digests with no files through *file selection*; D-103's near-miss was the same thing through *`.gitignore`*; this is the same thing through the *diff exclusion in the delivery itself*. **The delta that reported catching the near-miss reproduced it one layer over.** D-104 mechanised the tracking half — every file whose digest a tracked record attests must itself be tracked — and that test passes, correctly, and is simply about a different property. **Tracking evidence in the repository and delivering it to the reviewer are two different obligations, and satisfying the first says nothing about the second.**
+
+**A number I had reported with no recorded definition.** Delta 49 gave `digest-of-array-digests` as `01b390cb8aef41ca…`. **No code computes it and no file defines it** — it was formed ad hoc in the session that reported it. Sol asked for the untruncated value, which I could not simply look up. Reconstructed by search over candidate definitions and now pinned in `scripts/sol_evidence_archive.sh`: **sha256 over the concatenated raw 32-byte digests of the 45 error arrays, ordered by `errors_file`**. Two orderings agree because `errors_file` order and disk-sorted order coincide. This is the D-042/D-044 lesson in a new place — **a digest without its definition is not a digest**, and it was delivered to a reviewer as though it were one.
+
+**The delivery, and why it is an archive rather than a bundle.** The error arrays are binary NumPy (`\x93NUMPY`); a pasteable text bundle cannot carry them. Sol offered an archive as its first option and this is it. `scripts/sol_evidence_archive.sh` builds it with **`git archive` from the commit object, never from the working tree**, so *"exactly as tracked at `84cfdb9`"* is a structural property of how the file was produced rather than a claim about a filesystem at some moment — a dirty tree cannot leak in. It is deterministic (`git archive` stamps mtimes from the commit; `gzip -n` records no name or timestamp), so anyone with the repository can re-derive a byte-identical file.
+
+**Verified on the deliverable, not on the repository.** The script extracts its own output to a scratch directory and recomputes the threshold **from the extracted bytes alone** — because "the repository is correct" does not imply "what was sent is sufficient", and the latter is the property Sol actually needs. `recompute_threshold` checks all 135 artefact digests, compares every frozen constant against the code rather than the file, verifies the grid and the strata and the seeds, and reconstructs the deterministic selection, so all five of Sol's listed requirements are exercised by that one call.
+
+| check | result |
+|---|---|
+| worktree vs commit `84cfdb9` | **bit-identical**, all 136 files, tree clean |
+| archive built from | commit object at `84cfdb98…`, 136/136 files extracted |
+| archive size | 214,062 bytes |
+| **threshold from the extracted archive alone** | **`0.610702633857727` — bit-identical** |
+| archive sha256 | `4a2dd55562bd8d1f46afa074a7cd3961da3d0ffafc29ca1cf6356558c3dade1b` |
+| `threshold_calibration.json` sha256 | `310a44839be2b9336248637413378c65c3fa8ed31b8fb309327e0772651e86dc` |
+| digest-of-array-digests sha256 | `01b390cb8aef41ca2740b343cef9f761d82121872a25d4e1cc8bfe42f5624002` |
+| rebuilt twice | **identical digest** — determinism proved, not asserted |
+| empty-subtree guard | **fires** (`REFUSING`, exit 1), proved by running it |
+
+**No rerun, and none requested.** The threshold stands as evidence only; `constants.py` remains untouched.
+**Tests:** 819 passing, 2 skipped, 0 xfailed.
+**Data seen:** none beyond D-103's recorded calibration. No new compute; 675 CPU fits total, 0 GPU-hours.
+**Plan ref:** D-008, D-035, D-036, D-041, D-066, D-103, D-104. Sol's review of delta 49.
+**Reviewed by Sol:** **not yet — delta 50 carries the closeout.**
