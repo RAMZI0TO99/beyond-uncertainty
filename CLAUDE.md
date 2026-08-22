@@ -283,52 +283,56 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ## Where the project stands
 
-*Last session: 2026-08-20. Week 1 Monday is 2026-08-17, so by the calendar it
-is only **Week 1 Thursday** — the project is running about **3.6 weeks ahead**
-(DEV-002). Gate 2's date is 2026-10-24.*
+*Last session: **2026-08-22**. Week 1 Monday was 2026-08-17, so by the calendar
+it is **Week 1 Saturday** — the project runs roughly **4 weeks ahead** (DEV-002).
+Gate 2's date is 2026-10-24, and gates never move.*
 
-**Weeks 1–5 are complete.** Weeks 1–3 certified and frozen at `9c0d89d`. W4 Mon
-and Tue certified. **W4 Friday has EXECUTED** and **Gate 1 is signed off**.
+**START HERE — read this before touching anything.**
 
-**START HERE — the one thing that gates everything.**
+**Weeks 1–3 are certified and frozen at `9c0d89d`. W4 Monday and Tuesday are
+certified. WEEKS 4 AND 5 ARE *NOT* COMPLETE** — they are **built** but **OPEN**
+on Sol's explicit ruling, pending certification of the delta-55 closeout.
 
-**The failure threshold is calibrated: `0.610702633857727`** (D-103) — 95th
-percentile, `method="linear"`, failure is **strictly greater**. It ran once,
-into `runs/w4_threshold/attempt-001`, recomputes bit-identically from its
-artefacts, and **will not be rerun**: the threshold has been inspected, so Sol's
-invalidation protocol can no longer be satisfied.
+**Do not write anywhere that W4/W5 are finished until Sol certifies.** That
+claim was already made prematurely once: §1 carried *"Weeks 1–5 are complete"*
+for many sessions until D-113 checked the schedule's own *Done when* column and
+found W4 Friday's timing harness and W5 Friday's balancer had never been built,
+and that the acceptance-model change had no deviation record. **The ledger tracks
+decisions; it does not track cells.** Nothing checks schedule coverage.
 
-**IT IS NOT FROZEN.** `constants.py` is untouched. Promoting it is a **D-035
-Change Record that only Sol can authorise**, and it is what `DELTA_TO_SOL.md`
-(delta 49, undelivered) asks for. **Every failure set, every repair label, and
-therefore H2 and H3 all descend from that number — do not build on it until it
-is frozen.** Ask whether Sol has replied before anything else.
+**The failure threshold is FROZEN and CERTIFIED:**
+`FAILURE_THRESHOLD = 0.610702633857727` in `src/bu/constants.py` (D-107,
+certified by D-109). 95th percentile, `method="linear"`, failure is **strictly
+greater** — and two calibration transitions sit exactly at the value, so the
+strict boundary decides real labels. **Never recalibrate, round, make it
+per-layout, or add a caller override.** `ScaledEvaluation.failure_mask()` is the
+registered construction and takes no threshold.
 
-**Sol accepted `93dc296` as the reviewed execution base.** The bundle base is
-now **`f6bcd63`**, certified by Sol on 2026-08-22. **Never use `13bf5f5`** — it carried the D-108
-interpretation Sol rejected and was never certified as a whole (D-043).
+**Everything is with Sol; nothing is unblocked.** Delta 55 is undelivered and
+carries: six balancer boundary fixes, the removal of a local-wall-hour vs
+GPU-hour PASS comparison, a clean-source timing attempt with recoverable
+provenance, and a newly found W5 gap — S§W5 Thursday requires an
+**exclusion-rate assumption** that has never been stated, though S§W6 Monday is
+scheduled to check against it.
 
 **Gate 1 = FAIL** (D-098), on the five-point MDE. Reliability PASS, compute PASS,
-permutation calibration PASS (repaired by the D-094 Change Record). Sol was
-explicit this must **never** be renamed a pass now that calibration works — the
-MDE failure is independent. It is **not** the condition-1 pivot: H1's machinery
-works; what failed is power. The unchanged **300-unit design continues** under a
-recorded power limitation, with **Direction C authorised**.
+permutation calibration PASS. Sol was explicit this must **never** be renamed a
+pass — the MDE failure is independent. It is **not** the condition-1 pivot:
+H1's machinery works; what failed is power. The unchanged **300-unit design
+continues** under a recorded power limitation, with **Direction C authorised**.
 
-**Two §2 constants changed this session, both Sol-authorised and both before any
-data was seen:** the acceptance test is now an **equal-seed mean paired
-difference with a t interval on `n_seeds − 1` df, no fallback, failing closed**
-(D-094, D-100); and a distinct **`threshold_calibration` stage** with five seeds
-exists (D-097).
+**Expansion is refused, and the arithmetic matters.** Clearing five points needs
+**1,500–2,000 HELD-OUT** units — not total. Against 60–80 held out of 300 that
+is **5,625–10,000 total units, 18.75×–33.3×**, i.e. **130–232 local wall-hours**
+against a 120-hour trigger. I once wrote "5–6×" by comparing held-out units to
+the total design and used it to argue Sol's budget ground away; it was false
+(D-115). **Both of Sol's grounds stand.**
 
-**Audit coverage is now complete** except `w3_pilot.py`, deliberately (D-105).
-`stats/gate.py` was the last real gap — review-covered but probe-uncovered — and
-the certified W4 Tuesday evidence was re-verified after this session's changes.
-
-**Scope discipline.** Q-004 governs the 3.6-week lead: it goes to review,
-understanding, documentation and prose — **never scope**. C-005 (the critic
-splitter) and all Week 6 work stay untouched even though technically unblocked.
-Sol named the failure mode as verification lag, and we are already deep in it.
+**Compute is measured, and is local.** The design costs **5.72 / 6.91 local
+wall-hours** (median / conservative maximum) — **not GPU-hours**. The plan names
+a Kaggle T4 and **nothing has ever run there** (DEV-011). Local wall-hours and
+GPU-hours are different units and **must never be compared as a PASS**; the
+record says `comparison_status: not adjudicable across hosts`.
 
 ### ⚠ The biggest open thing: Gate 1 is at risk (D-078)
 
@@ -401,30 +405,37 @@ invalidate the certified attempt, which is Sol's call (delta 40).
 
 ### Next, in order
 
-*Rewritten 2026-08-22. The previous version was stale in a way nothing catches:
-it still opened with "Sol answers deltas 39–42" (answered 2026-08-20), still
-called W4 Friday blocked (it executed), still asked for the Gate 1 verdict (it
-is signed off FAIL), and still listed C-003 as open (D-092 closed it). If you
-are reading this and the ledger disagrees, **the ledger wins** — check
-`DECISIONS.md` for the highest D-number before trusting any list here.*
+*Rewritten 2026-08-22 at session end. **This list has now gone stale three
+times** — it has twice described work as blocked that had already run. Nothing
+mechanical catches that, because the protocol suite checks §1's structure and
+never its truth. **So read it as a dated snapshot, not as state.** If the ledger
+disagrees, the ledger wins: check the highest D-number in `DECISIONS.md` and the
+newest §7 entry in `PROJECT_STATE.md` before trusting anything here.*
 
-1. **Sol rules on the D-035 promotion.** Delta 50 carries the evidence-delivery
-   closeout Sol required. **Nothing else moves** — every failure set, every
-   repair label, and therefore H2 and H3 descend from
-   `0.610702633857727`, and it is unfrozen until Sol authorises the Change
-   Record. Do not build on it.
-2. **Confirm all three files reached Sol** — delta, `SOL_BUNDLE.txt`, **and**
-   `SOL_THRESHOLD_EVIDENCE.tar.gz`. The archive is the entire point of delta 50:
-   Sol withheld promotion because delta 49 shipped digests without bytes. A
-   bundle alone repeats the failure exactly.
-3. **If Sol authorises** — write the D-035 Change Record, promote the number
-   into `constants.py`, bump nothing else, and only then does repair validation
-   unblock.
-4. **C-005 / C-007** — the grouped critic splitter and the remaining
-   confirmatory-guard call sites in the critic loaders. **W6–W11 work, and
-   Q-004 forbids pulling it forward** into the ~4-week calendar lead. C-003,
-   C-006, C-008, C-009, C-010, C-011 are **done** (D-092, D-078, D-096, D-077,
-   D-076, D-072).
+**As of 2026-08-22, everything is with Sol and nothing is unblocked.**
+
+1. **Sol's reply to delta 55 is the only thing that moves.** It is expected
+   2026-08-23. Delta 55 is **undelivered** — the flag in `DELTA_TO_SOL.md` reads
+   NO — and the student has it plus `SOL_BUNDLE.txt`. **Check whether it was
+   actually delivered before doing anything**, and if Sol's ruling has arrived,
+   file it before touching code.
+2. **W4 and W5 are OPEN**, on Sol's explicit ruling, pending certification of
+   the delta-55 closeout. Both weeks are *built*; neither is *certified*. Do not
+   write anywhere that they are finished until Sol says so — that claim has
+   already been made prematurely once (D-113).
+3. **If Sol certifies:** W4/W5 close, and the base moves to whatever commit Sol
+   names. Do not infer the base — D-043 exists because a challenged commit was
+   nearly used as one.
+4. **If Sol rules on the exclusion-rate assumption** (delta 55's last item):
+   record it, because **S§W6 Monday is scheduled to check batch 1 against it**
+   and it does not exist yet.
+5. **Week 6 execution stays closed.** Q-004 was re-ruled on 2026-08-22 and still
+   bars it. Finishing missed W4/W5 obligations is authorised; starting Week 6 is
+   not. C-005 and C-007 remain W6–W11 work. C-003, C-006, C-008 … C-011 are done.
+
+**Do not, without a fresh Sol ruling:** recalibrate the threshold, expand the
+design, consume reserve units, generate repair labels, or run anything on real
+labelled data. The balancer is synthetic-inputs-only until C-005 exists.
 
 ### What exists in Week 3
 
