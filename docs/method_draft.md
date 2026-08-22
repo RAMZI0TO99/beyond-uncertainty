@@ -539,3 +539,37 @@ percentile, with measured null rejection of 6.1–9.2% against a nominal 5% — 
 the true minimum detectable difference is if anything *larger*. A study that
 reports what it cannot resolve is a complete study; one that discovers the limit
 after the fact is not.
+
+## One unit, several roles: why the Experiment 2A conditions are not extra units *(Schedule W2 Wed, D-007 — mandated)*
+
+Experiment 2A varies the confound rate at four non-zero levels, and the same
+configuration-conditions also appear in the broader configuration sweep. The
+schedule requires a recorded decision on whether these are the *same* units run
+more intensively, or *additional* units. They are the same units.
+
+The reason is that a configuration-condition must have exactly one identity. If
+a unit were counted once as an Experiment 2A condition and again as a sweep
+condition, the effective sample size behind every confidence interval would be
+inflated by the duplication — the two entries are not independent observations,
+they are the same environment specification written down twice. Counting them
+separately would give 375 units where the design registers 300, and every
+interval computed on that count would be too narrow.
+
+Running them at a higher seed count is the correct expression of their extra
+importance: additional repeated measurements strengthen the estimate *for those
+units* without manufacturing new labels. Seed count is therefore a property of a
+unit's **role** — five seeds for a unit entering an H1 or H2 claim, three for a
+sweep-only unit, twenty for canonical repair validation — rather than a property
+of a separate run list. Where one unit carries several roles, the roles share one
+set of fits; they do not each commission their own.
+
+This is enforced structurally rather than by convention. The unit identifier is a
+content hash of the preregistered configuration fields, so two descriptions of
+the same configuration collide by construction and cannot be distinguished by
+naming. The enumerator deduplicates on it, and the sweep draws only from the
+matrix *minus* the canonical units. The arithmetic closes: 75 canonical
+configuration-conditions — of which 20 are the Experiment 2A conditions — plus
+225 drawn for the sweep, giving exactly 300 distinct units, which is the
+registered target. The plan's own run-count table agrees, which is the check that
+matters: had the 2A conditions been additional, the plan's budget and its stated
+target would not have reconciled.

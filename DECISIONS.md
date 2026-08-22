@@ -1718,3 +1718,16 @@ Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own e
 **Data seen:** none.
 **Plan ref:** P§10.7, P§14.3, D-043, D-089, D-098, D-108, D-109, D-110. Sol's ruling on delta 52.
 **Reviewed by Sol:** **D-109 certified and the base named by Sol; these corrections await delta 53.**
+
+### D-112 · 2026-08-22 · The last mandated methodology section, and the arithmetic checked in code
+**Decision:** Drafted the remaining §4-mandated methodology item: the Week 2 decision on whether the Experiment 2A conditions are drawn from the configuration sweep or are additional to it (D-007, closing Q-003). It was the only one of the five with no prose — the reliability-gate rung, the PPO substitution and DEV-006/DEV-007 are now all covered, and the two remaining entries on §4's list (a repair-budget or configuration-count reduction, and a cut experiment) have not occurred, so there is nothing to write about them yet.
+
+**The arithmetic was verified in code rather than quoted from the ledger.** `canonical_units()` returns **75**, of which `experiment_2a_units()` is **20**; `sweep_candidates()` is the full matrix **minus** the canonical ids, so the 225 sweep draws cannot collide with them; `design_units()` returns **300** with **300 distinct** `unit_id`s and the canonical set is a subset. Counting the 2A conditions separately would give **375** against a registered 300 — the concrete size of the inflation D-007 exists to prevent, and every interval computed on it would be too narrow.
+
+**Why this is worth prose rather than a table row:** the decision is what makes seed count a property of a unit's *role* rather than of a run list, which is the same distinction D-033 records as having cost 375 phantom fits when it was got wrong in the other direction. The section says so.
+
+**§4's mandated list is now discharged as far as events allow.** Prose remains scaffolding for the student to rewrite (D-019).
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **Prose only** — no source, no fits.
+**Data seen:** none.
+**Plan ref:** P§8.2.1, P§10.7, P§13.1.2, P§14.2, D-006, D-007, D-019, D-033.
+**Reviewed by Sol:** **not yet.**

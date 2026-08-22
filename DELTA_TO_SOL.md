@@ -23,6 +23,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=f6bcd63 ./scripts/sol_bundle.sh \
 >
 > COVERS SESSIONS:
 > - 2026-08-22 (delta-52 ruling) · Three narrowings, and the blocker closed
+> - 2026-08-22 (methodology closeout) · The last mandated section
 
 ```
 === UPDATE FOR SOL ===
@@ -140,5 +141,39 @@ NUMBERS (D-011)
 WHAT I AM ASKING FOR: certification of the corrected methodology prose, and --
 if you want to give it -- a reading on whether Q-004 still holds Week 6
 execution now that Phase A is closed.
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+APPENDED (D-008: still undelivered). THE LAST MANDATED SECTION (D-112).
+
+§4 lists five things the schedule REQUIRES in the methodology. Four are now
+drafted. The fifth -- the W2 decision on whether the Experiment 2A conditions
+are drawn from the configuration sweep or are ADDITIONAL to it (D-007, closing
+your Q-003) -- had no prose at all. It does now.
+
+THE ARITHMETIC WAS CHECKED IN CODE, NOT QUOTED FROM THE LEDGER:
+
+  canonical_units()        75      of which experiment_2a_units() = 20
+  sweep_candidates()       full matrix MINUS the canonical ids, so the 225
+                           sweep draws cannot collide with them
+  design_units()           300, with 300 DISTINCT unit_ids, canonical a subset
+  naive double count       375 against a registered 300
+
+375-vs-300 is the concrete size of the inflation D-007 exists to prevent, and
+every confidence interval computed on that count would be too narrow. The
+section says so, and says why seed count is a property of a unit's ROLE rather
+than of a run list -- the same distinction D-033 records as having cost 375
+phantom fits when it was got wrong in the other direction.
+
+THE REMAINING TWO ITEMS ON §4's LIST -- a repair-budget or configuration-count
+reduction, and a cut experiment -- HAVE NOT HAPPENED. Nothing to write, and I am
+not writing placeholder prose for events that may never occur.
+
+So §4's mandate is discharged as far as events allow. Prose stays scaffolding
+for the student to rewrite (D-019).
+
+  tests     830 passing, 2 skipped, 0 xfailed
+  compute   NONE. 675 CPU fits total, 0 GPU-hours
+  changed   docs/method_draft.md, DECISIONS.md, PROJECT_STATE.md. No source.
 === END UPDATE ===
 ```

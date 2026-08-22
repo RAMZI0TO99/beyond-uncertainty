@@ -287,6 +287,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-109** | 2026-08-22 | **Correction to D-108** — prevalence heterogeneity stands, causal reading withdrawn; D-107 **CERTIFIED**; the layout analysis rule | **Sol's ruling** |
 | **D-110** | 2026-08-22 | The mandated methodology prose drafted; DEV-007's "grid-normalised" is wrong | Deliverable |
 | **D-111** | 2026-08-22 | Sol's three prose corrections; **D-109 CERTIFIED**, D-108 blocker closed, base → `f6bcd63` | **Sol's ruling** |
+| **D-112** | 2026-08-22 | The last §4-mandated methodology section; the 300-vs-375 arithmetic checked in code | Deliverable |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -426,7 +427,7 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **48 archived, the newest kept here**. Nothing is condensed or summarised — the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
+Entries before this one are in `PROJECT_STATE_ARCHIVE.md`; **49 archived, the newest kept here**. Nothing is condensed or summarised — the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
 
 *(W3 certification through the W4 Tuesday gate rounds — the trend test, Sol's two blockers, and the evidence contract — moved to `PROJECT_STATE_ARCHIVE.md` when this file passed its 500-line paste cap. Six entries, 2026-08-17 to 2026-08-18; the decisions they produced are D-068 … D-072 and remain indexed in §3.)*
 
@@ -464,19 +465,9 @@ WITHDRAWN by D-109 on Sol's ruling. Read D-109 before D-108.)*
 was archived on 2026-08-22 once Sol certified the correction. It produced D-109, which
 is the correction of record for D-108 and is indexed in §3.)*
 
-### 2026-08-22 (methodology prose) · The mandated sections, and a wrong word in the deviation log · Claude
-
-**Q-004 work while delta 52 is with Sol** — documentation and prose, never scope. No code behaviour changed, nothing downstream built, no new fits.
-
-**§4 requires five things in the methodology and one had no prose at all: the reliability-gate rung reached.** DEV-006 and DEV-007, both marked *goes in methodology: yes*, had none either. Six sections drafted into `docs/method_draft.md`: the primary error metric, position-causal conditions, the rung-0 gate result, the frozen threshold, the layout-prevalence limitation, and what the design can and cannot detect.
-
-**The atom/mass table was recomputed from the certified evidence rather than retyped** — D-075 requires it to travel with any W4 result, so a transcription slip would reach the thesis. All 3,125 resamples per configuration, enumerated from `runs/w4_gate/`, reproduce D-074 exactly. Sol's discreteness sentence sits verbatim beside it.
-
-**A wrong word in the deviation log, caught before it became a thesis claim.** DEV-007 calls the primary error **"grid-normalised"**. It is not: `per_dimension_scale` returns the per-dimension **standard deviation** of the evaluation pool's targets (D-061). That would have misdescribed the units every reported number is in — and the distinction is exactly the one D-061 exists for, since the scale is a **vector** and does not cancel in the H2 ratio. DEV-007 is not edited (§4 is append-only); D-110 is the correction of record.
-
-**And a claim of mine narrowed before it shipped.** I wrote that the five NumPy quantile methods "differ by up to a factor of two on short vectors" — generalising from D-099's single probe vector (1.8× there, but only 9.00–10.00 on a smooth ten-point vector). Both are now given, and the point is stated as version-independence rather than gap size. **The same failure mode as D-108, caught one step earlier.**
-
-**Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits** — 675 CPU fits, 0 GPU-hours.
+*(The methodology-prose session — six mandated sections drafted, and DEV-007's
+"grid-normalised" found wrong — was archived on 2026-08-22. It produced D-110, whose
+three overstated sentences were then corrected by D-111 on Sol's ruling.)*
 
 ### 2026-08-22 (delta-52 ruling) · Three narrowings, and the blocker closed · Claude
 
@@ -495,3 +486,11 @@ is the correction of record for D-108 and is indexed in §3.)*
 **The certified base is now `f6bcd63`** (§1, `CLAUDE.md`). **`13bf5f5` must never be used** — it carried the rejected D-108 interpretation and was never certified as a whole. D-043 in the concrete.
 
 **Tests:** 830 passing, 2 skipped, 0 xfailed. **Prose only** — no source, no fits, no threshold work.
+
+### 2026-08-22 (methodology closeout) · The last mandated section · Claude
+
+**§4's mandated methodology list is now discharged as far as events allow** (D-112). The Week 2 decision on whether the Experiment 2A conditions are drawn from the sweep or additional to it (D-007) was the only one of the five with no prose. The reliability-gate rung, the PPO substitution and DEV-006/DEV-007 are covered; the remaining two — a repair-budget or configuration-count reduction, and a cut experiment — **have not happened**, so there is nothing to write yet.
+
+**The arithmetic was checked in code, not quoted from the ledger.** `canonical_units()` = **75**, of which `experiment_2a_units()` = **20**; `sweep_candidates()` is the full matrix **minus** the canonical ids, so the 225 sweep draws cannot collide; `design_units()` = **300**, with **300 distinct** ids and the canonical set a subset. Double-counting would give **375** against a registered 300 — the concrete size of the inflation D-007 prevents, and every interval on that count would be too narrow.
+
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **Prose only** — no source, no fits.
