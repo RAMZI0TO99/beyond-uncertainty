@@ -1638,3 +1638,45 @@ Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own e
 **Data seen:** reference-model errors already recorded by D-103, plus evaluation-pool target statistics. No experimental condition, no hypothesis.
 **Plan ref:** P§7.5, P§10.1, D-032, D-035, D-061, D-097, D-099, D-103, D-107.
 **Reviewed by Sol:** **not yet — delta 51 carries it.**
+
+### D-109 · 2026-08-22 · Correction to D-108 — the numbers stand, the interpretation is withdrawn; and the analysis rule Sol registered
+**Decision:** Sol **certified D-107** and **accepted D-108's measured core**, but **rejected its causal interpretation**. Every correction was verified before being applied, per the standing rule, and all four hold.
+
+**Ruling 1 — D-107 is CERTIFIED.** `FAILURE_THRESHOLD = 0.610702633857727`, hex `0x1.38ae040000000p-1`, is confirmed the exact authorised float. Sol confirmed strict `>`, equality as non-failure, ensemble-mean scoring, no caller-selectable threshold, the scale constructed before any mask, and the value frozen in `constants.py`. **Never recalibrate it, round it, replace it with per-layout thresholds, or add an override.**
+
+**Ruling 2 — the finding is real; my reasoning was not.** Sol independently recomputed the prevalences and they match. **My over-reach:** the probe bounds the *layout-averaged cell-mean raw-error norm*. **Prevalence is an upper-tail probability.** Overlapping bounds on **means** cannot determine why **tails** differ, so they cannot show the spread is "mostly normalisation". This is the D-042/D-044 failure in a new form — not a coding error but a quantity used to support a claim it cannot reach.
+
+**Withdrawn, and not to be restated:**
+- *"the one global threshold does not mean one thing"*
+- *"it is mostly the normalisation, not difficulty"*
+- *"the label is mostly the per-pool scale"*
+- *"this is P§7.5 leakage arriving through another door"*
+
+**The last was simply wrong on the code.** P§7.5 concerns construction metadata reaching critic input **X**, and `layout` is already in `FORBIDDEN_FIELDS` in `critic/schema.py` — verified. A registered outcome having different prevalence across an environmental factor is not feature leakage.
+
+**The defensible statement, adopted verbatim as the wording that travels with this result:** *Under the frozen per-evaluation-pool normalisation, failure prevalence differs materially by layout in the calibration evidence. This establishes layout-conditioned base-rate heterogeneity and raises a measurement-invariance limitation. The present aggregate mean-error bounds do not identify how much of the tail difference is caused by normalisation versus differences in the error distributions.*
+
+**An estimand discrepancy I found while verifying Sol's arithmetic.** Sol's figures did not reproduce from pooled rows (off by ~4×10⁻⁵) or from the balanced selection. They reproduce to **3×10⁻¹¹** from the **unweighted mean of the 15 per-cell rates**. D-108's own table mixed the two aggregations across its probes without naming either. Both are legitimate; they are **different quantities**, and this is exactly D-044 again. The probe now reports **both, labelled**, and the ratios are materially unchanged (1.8735 pooled-row against **1.872846** cell-mean).
+
+| layout | scale range across its 15 cells | prevalence (cell-mean) | prevalence (pooled-row) |
+|---|---|---|---|
+| clustered | [0.19210, 0.21764] | **8.7688%** | 8.7651% |
+| uniform | [0.20808, 0.23779] | **4.6821%** | 4.6784% |
+| sparse | [0.23788, 0.26162] | **1.5845%** | 1.5828% |
+
+**A second thing the correction exposed.** D-108 printed a single collapsed scale per layout (0.2018 / 0.2226 / 0.2475), which made the layouts look cleanly separated. Reported honestly as **per-dimension ranges**, clustered and uniform **overlap**. The scale is a vector — which is *why* D-061 exists — and collapsing it to one number is where the withdrawn claim got its spurious precision. Sol also caught that the committed probe never printed that column at all, so a published number was not reproducible from the artefact offered to reproduce it.
+
+**THE REGISTERED ANALYSIS RULE (Sol's, recorded before any downstream work):**
+1. The registered failure definition, threshold, scale rule and primary endpoints are **unchanged**.
+2. Report failure prevalence **by layout, causal attribute and seed**, alongside the pooled result.
+3. Layout-stratified **H2** estimates are a **secondary robustness diagnostic**. Do not redefine the failure set or silently replace the registered primary weighting.
+4. For **H3**, report balanced accuracy and confusion behaviour overall **and** separately by layout, as secondary robustness.
+5. **Layout remains experimenter-only metadata.** It must not enter critic X, threshold selection, label-construction overrides, or post-hoc reweighting chosen from results.
+6. A **leave-one-layout-out** analysis may be **preregistered now** as a secondary stress test, but must not replace the primary group-aware H3 comparison.
+
+**Corrections applied:** the probe rewritten to state only the supported conclusion, to name both prevalence estimands, to label the raw-error figure as *a bound on the layout-averaged cell-mean raw norm*, and to print the per-dimension scale range it actually computes; and `test_the_unbalanced_sanity_check_still_reproduces`'s docstring corrected — it had repeated the invalid homogeneity inference that D-108 itself withdrew.
+**D-108 is not edited**, because §3 is append-only (D-014). This entry is the correction of record, in the pattern of D-042 → D-044 and D-058 → D-059.
+**Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits** — 675 CPU fits, 0 GPU-hours.
+**Data seen:** none beyond D-103's recorded calibration.
+**Plan ref:** P§7.5, P§10.1, D-035, D-042, D-044, D-061, D-107, D-108. Sol's ruling on delta 51.
+**Reviewed by Sol:** **this entry is Sol's ruling, filed; the correction itself awaits delta 52.**

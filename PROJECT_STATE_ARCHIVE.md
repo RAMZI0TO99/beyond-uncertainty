@@ -3914,3 +3914,23 @@ All clean. The **certified W4 Tuesday evidence still verifies today** after ever
 **Also corrected: stale text in the two files a reset Claude reads first.** §1 still said "Next actions — Week 3", still listed W4 Friday as "NEXT, and blocked on Sol" two sessions after it ran, and still named the Gate 1 verdict as waiting. `CLAUDE.md` still opened its "Next, in order" with deltas 39–42, all answered on 2026-08-20. None of this is caught mechanically — the protocol suite checks §1's *structure*, never whether its prose is true.
 
 **Tests:** 819 passing, 2 skipped, 0 xfailed. **No rerun, no new compute** — 675 CPU fits total, 0 GPU-hours.
+
+### 2026-08-22 (D-035 promotion) · The failure threshold is permanently frozen · Claude
+
+**Sol authorised the promotion** after verifying the delivered archive itself rather than accepting the report: paths confined to the attempt, no symlinks, exactly 136 files, **all 45 array digests, all 45 run-record digests and all 45 member-record digests**, every run record's commit / stage / family / confound / observability / n / layout / attribute / K / threading, the deterministic selection reconstructed at RNG seed 0, and a **binary-identical** NumPy recomputation. Its independently computed array-composite matches D-106's reconstructed definition.
+
+**`FAILURE_THRESHOLD = 0.610702633857727` is now in `constants.py`**, exact and unrounded, **permanently frozen** (D-107). The most irreversible act in the project so far.
+
+**The strict boundary decides real labels — measured, not assumed. Two transitions in the calibration pool sit exactly at the value.** Under `>` they are not failures; under `>=` they would be.
+
+**`ScaledEvaluation.failure_mask()` takes no threshold.** Sol required no caller-selectable override, and the reasoning is C-010's exactly (D-076): `from_pool` takes no mask so the scale cannot be subset-derived; this takes no threshold so the failure set cannot be re-cut. It scores the **ensemble mean prediction** — what the calibration measured — not the mean of member errors.
+
+**Verified against the evidence:** the constant recovers the stored balanced pool's 95th percentile exactly; 1,846/36,927 = **4.9991%** failures; Sol's unbalanced check **1,879/37,406** reproduces.
+
+**The tests were proved falsifiable by mutation**, each catching exactly one defect: rounding the constant, relaxing `>` to `>=`, and adding a `threshold=` override. **Two weak checks of my own were caught this way and fixed before they shipped.** The first boundary test asserted `errors > t` on a tensor the test built — Python's operator, not the implementation — and now runs through the real constructor on a fixture whose error is *exactly* the threshold, with an assertion that it stays exact so it cannot go vacuous. Then the new §2/code agreement check searched the **whole file**, where the value appears five times, so §2 could read `0.6107` and still pass; it is now scoped to §2 alone and shown to fail.
+
+**A process failure worth recording.** Proving falsifiability the first time, I restored mutated files with `git checkout` while the promotion patch was still **uncommitted**, and destroyed it. Retyped in full; nothing lost. **`git checkout` restores to the last commit, not to the state you were in** — mutate against committed work or a copy.
+
+**Scope held.** Narrow patch only. **No failure set, no repair label, nothing downstream** — Sol requires certification of this closeout first. Gate 1's signed FAIL stands.
+
+**Tests:** 819 → **830 passing**, 2 skipped, 0 xfailed. **No rerun, no new compute** — 675 CPU fits, 0 GPU-hours.

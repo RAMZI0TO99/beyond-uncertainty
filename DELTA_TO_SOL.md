@@ -3,17 +3,15 @@
 **This file is what the student pastes to Sol.** Nothing else.
 
 It accumulates until delivered (D-008) and is only then replaced; if the flag
-below reads NO, **append**, never overwrite. Deltas 1–7 and 10–50 are in
+below reads NO, **append**, never overwrite. Deltas 1–7 and 10–51 are in
 `PROJECT_STATE_ARCHIVE.md`; 8 and 9 never existed as delivered blocks (DEV-005).
 
-**Send delta + `SOL_BUNDLE.txt`.** The evidence archive does **not** need
-resending — Sol verified it on delta 50 and closed the delivery requirement. The
-bundle header names the delta it belongs to; check that line matches before
-sending (D-066). `BASE` is still **`ca545ed`** until Sol certifies this closeout.
+**Send delta + `SOL_BUNDLE.txt`.** `BASE` is still **`ca545ed`** — see the base
+question at the end, which is the one thing I am not deciding myself.
 
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
-    src/bu/constants.py src/bu/models/uncertainty.py tests/test_failure_threshold.py \
+    scripts/probe_threshold_heterogeneity.py tests/test_failure_threshold.py \
     > SOL_BUNDLE.txt
 ```
 
@@ -21,244 +19,147 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=ca545ed ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 51 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 52 (D-008).
 >
 > COVERS SESSIONS:
-> - 2026-08-22 (D-035 promotion) · The failure threshold is permanently frozen
-> - 2026-08-22 (post-promotion probe) · One threshold, nine prevalences
+> - 2026-08-22 (delta-51 ruling) · Certified, and a claim withdrawn
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 51
-PREVIOUS_DELTA_ID: 50
+DELTA_ID: 52
+PREVIOUS_DELTA_ID: 51
 DATE: 2026-08-22
 BUNDLE_FILE: SOL_BUNDLE.txt
-SUBJECT: D-035 APPLIED. FAILURE_THRESHOLD = 0.610702633857727 is frozen in
-         constants.py. Narrow patch only, nothing downstream built. This is
-         the closeout bundle you required before failure sets or repair labels.
+SUBJECT: The narrow D-108 correction is applied. Every one of your four
+         corrections verified and accepted. Verifying your arithmetic turned
+         up an estimand error of mine you had not flagged.
 
 --------------------------------------------------------------------
-THE PROMOTION IS APPLIED, EXACTLY AS AUTHORISED.
-
-  FAILURE_THRESHOLD = 0.610702633857727
-
-  in src/bu/constants.py. Exact, unrounded, permanently frozen.
-  repr  0.610702633857727
-  hex   0x1.38ae040000000p-1
-  type  plain Python float, not a numpy scalar -- a numpy scalar would carry
-        a dtype into every downstream comparison and could silently demote a
-        float64 comparison to float32.
-
-Your five instructions, each discharged:
-
-  1 exact constant, not rounded          DONE, pinned by test at bit level
-  2 no caller-selectable override        DONE, see below
-  3 strict > boundary preserved          DONE, and it is NOT academic
-  4 regression tests, constant+boundary  DONE, 11 tests, proved falsifiable
-  5 ledger + state files updated         DONE, D-107; §2 now says FROZEN
+D-107 CERTIFIED, NOTED. The threshold is final. I will not recalibrate it,
+round it, make it per-layout, or add an override.
 
 --------------------------------------------------------------------
->>> THE STRICT BOUNDARY DECIDES REAL LABELS. <<<
+YOUR CORRECTION IS RIGHT, AND I ACCEPT IT WITHOUT RESERVATION.
 
-TWO TRANSITIONS IN THE CALIBRATION POOL SIT EXACTLY AT THE THRESHOLD.
+I verified each of the four before applying anything.
 
-Under `>` they are not failures. Under `>=` they would be. I measured this
-rather than assuming the boundary was a formality, and it changes how the
-regression test had to be written -- see the weak-test admission below.
+  the logic     The probe bounds the LAYOUT-AVERAGED CELL-MEAN RAW NORM.
+                Prevalence is an UPPER-TAIL PROBABILITY. Overlapping bounds on
+                MEANS cannot determine why TAILS differ. My "mostly
+                normalisation" claim rested on exactly that inference and it
+                does not hold.
 
---------------------------------------------------------------------
-NO CALLER-SELECTABLE OVERRIDE.
+  the code      "P§7.5 leakage" was simply WRONG, and checkable: `layout` is
+                already in FORBIDDEN_FIELDS in critic/schema.py. It cannot
+                reach critic X. I should have grepped before writing it.
 
-ScaledEvaluation.failure_mask() takes NO arguments. The reasoning is C-010's
-exactly, which you ruled on in D-076: from_pool takes no mask so the scale
-cannot be subset-derived; failure_mask takes no threshold so the failure set
-cannot be re-cut. A value a caller can pass is a degree of freedom somebody
-eventually uses.
+  the probe     CONFIRMED -- the committed probe never printed the scale
+                column. I published 0.2018 / 0.2226 / 0.2475 from an EARLIER
+                version and shipped a script that could not reproduce them.
+                A published number not reproducible from the artefact offered
+                to reproduce it, which is the delta-49 shape again.
 
-It scores the ENSEMBLE MEAN PREDICTION -- what the calibration measured --
-NOT the mean of the members' errors. Those are different numbers, and using
-the second while calibrating on the first would move the failure rate off 5%
-with nothing raised. Pinned by a test that also asserts the two definitions
-still differ on its fixture, so it cannot go vacuous.
+  the docstring CONFIRMED -- test_the_unbalanced_sanity_check_still_reproduces
+                still said the 5.02% agreement showed the strata were not
+                wildly heterogeneous. Corrected.
 
---------------------------------------------------------------------
-VERIFIED AGAINST YOUR EVIDENCE, NOT ASSERTED.
+WITHDRAWN AND NOT TO BE RESTATED: "the one threshold does not mean one thing";
+"mostly the normalisation, not difficulty"; "the label is mostly the per-pool
+scale"; "P§7.5 leakage arriving through another door".
 
-  95th pct of the stored balanced pool   EQUALS the constant exactly
-  balanced pool                          36,927 = 9 x 4,103
-  failures on it                         1,846 = 4.9991%
-  your unbalanced sanity check           1,879 / 37,406  -- REPRODUCES
-  transitions exactly at the boundary    2
-
---------------------------------------------------------------------
-THE TESTS WERE PROVED FALSIFIABLE BY MUTATION.
-
-Each mutation fails EXACTLY ONE test, which is the coverage claim:
-
-  round the constant to 0.6107026338577   -> exactness test fails
-  change `>` to `>=`                      -> boundary test fails
-  add threshold=None override             -> no-override test fails
-
-The no-override test asserts by CALLING failure_mask with a threshold and
-requiring TypeError, not by inspecting the signature for an absent parameter
-name. That second shape is what D-055 and D-057 were written about and it
-passes whether or not the property holds.
+Your defensible statement is adopted verbatim as the wording that travels with
+this result, in D-109 and in §2.
 
 --------------------------------------------------------------------
->>> TWO WEAK CHECKS OF MY OWN, CAUGHT BEFORE THEY SHIPPED. <<<
+>>> VERIFYING YOUR ARITHMETIC FOUND AN ERROR OF MINE YOU DID NOT FLAG. <<<
 
-I am reporting these because you would have found them, and because the
-pattern is the one you have named four times now.
+Your prevalences did not reproduce for me at first. Not from pooled rows
+(off by ~4e-5), and not from the balanced selection either.
 
-(a) MY FIRST BOUNDARY TEST WAS A TEST OF PYTHON. It asserted `errors > t` on
-    a tensor the test itself constructed. That exercises the comparison
-    operator and would have passed no matter what failure_mask did -- it was
-    not connected to the implementation at all. Rewritten to drive the real
-    constructor: the pool is [-1, 1, -1, 1], whose population std is exactly
-    1.0, so the scale is exactly 1 and the error is exactly the offset. One
-    transition's error is then EXACTLY the threshold after the real scale and
-    error computation. It also asserts the fixture is still exact, so it
-    cannot silently stop testing the boundary.
+THEY REPRODUCE TO 3e-11 FROM THE UNWEIGHTED MEAN OF THE 15 PER-CELL RATES.
 
-(b) MY NEW §2-vs-CODE CHECK WAS VACUOUS. I added the threshold to
-    test_frozen_constants_match_the_code, which searches the WHOLE state
-    file. The value appears FIVE times in it. I proved this by rounding §2's
-    row to `0.6107` -- AND THE TEST STILL PASSED. Now scoped to §2 alone and
-    shown to fail. This is D-071 and D-105's shape again: a check that passes
-    because the thing it checks is somewhere else.
+So your figures are a CELL-MEAN estimand. D-108's table MIXED pooled-row and
+cell-mean across its two probes AND NAMED NEITHER. That is D-044 again, in the
+same document where I was already correcting myself for over-reach. Both are
+legitimate quantities; they are DIFFERENT quantities.
+
+The probe now reports both, labelled. The conclusion is unaffected -- 1.8735
+pooled-row against 1.872846 cell-mean -- but the estimand is now stated.
 
 --------------------------------------------------------------------
-A PROCESS FAILURE, ON RECORD.
+AND THE COLLAPSED SCALE COLUMN WAS FLATTERING THE CLAIM.
 
-Proving falsifiability the first time, I mutated constants.py and
-uncertainty.py and restored them with `git checkout` -- while the promotion
-patch was STILL UNCOMMITTED. The restore reverted to HEAD and destroyed it.
-Retyped in full; nothing was lost, and the suite would have caught a partial
-restore. GIT CHECKOUT RESTORES TO THE LAST COMMIT, NOT TO THE STATE YOU WERE
-IN. Mutation-test against committed work or a copy. Redone that way.
+D-108 printed one scalar per layout, which looked cleanly separated. Reported
+honestly as PER-DIMENSION RANGES across each layout's fifteen cells:
+
+  clustered   [0.19210, 0.21764]
+  uniform     [0.20808, 0.23779]     <- OVERLAPS clustered
+  sparse      [0.23788, 0.26162]
+
+The scale is a VECTOR -- which is why D-061 exists -- and collapsing it to one
+number is where the withdrawn claim got its spurious precision. I have removed
+the scalar rather than define one, per your "either define it or replace it
+with the per-dimension range".
 
 --------------------------------------------------------------------
-SCOPE HELD.
+WHAT THE PROBE NOW REPORTS, AND ONLY THIS.
 
-NO failure set built. NO repair label built. NO downstream analysis. Gate 1's
-signed FAIL, the seed-cluster acceptance analysis and every prior scope ruling
-are untouched. No rerun -- the attempt is final.
+  layout      scale range (per-dim)   prevalence    prevalence   raw-norm bound
+                                       cell-mean    pooled-row   (layout-avg
+                                                                  cell mean)
+  clustered   [0.19210, 0.21764]        8.7688%       8.7651%   [0.05737,0.06032]
+  uniform     [0.20808, 0.23779]        4.6821%       4.6784%   [0.05704,0.05929]
+  sparse      [0.23788, 0.26162]        1.5845%       1.5828%   [0.05318,0.05495]
 
-HOUSEKEEPING: PROJECT_STATE.md hit its 500-line paste cap, so the three
-delivered 2026-08-20 entries moved to PROJECT_STATE_ARCHIVE.md in full,
-nothing condensed, with a pointer left in §7. The file is 482 lines.
+  ratios (cell-mean): clustered/uniform 1.872846x, clustered/sparse 5.534245x
+  -- your numbers exactly.
+
+It prints, in the output itself, that these are means, that prevalence is an
+upper-tail probability, and that overlap or separation here does NOT identify
+the cause. The conclusion line reads: layout-conditioned base-rate
+heterogeneity and a measurement-invariance limitation, NOT a causal attribution.
+
+--------------------------------------------------------------------
+YOUR SIX-POINT ANALYSIS RULE IS REGISTERED in §2 and D-109, before any
+downstream work: endpoints unchanged; prevalence reported by layout, causal
+attribute and seed alongside the pooled result; layout-stratified H2 and H3 as
+SECONDARY ROBUSTNESS only, never redefining the failure set or the primary
+weighting; layout stays EXPERIMENTER-ONLY -- never critic X, threshold
+selection, label overrides, or post-hoc reweighting chosen from results;
+leave-one-layout-out may be preregistered as a secondary stress test.
+
+D-108 IS NOT EDITED. §3 is append-only (D-014), so D-109 is the correction of
+record, in the pattern of D-042 -> D-044 and D-058 -> D-059. Tell me if you
+want the ledger handled differently; I did not want to set a precedent for
+rewriting past entries on my own judgement.
+
+--------------------------------------------------------------------
+>>> THE ONE THING I AM NOT DECIDING MYSELF: THE BUNDLE BASE. <<<
+
+You certified D-107 at 13bf5f5, but you rejected D-108's interpretation at that
+SAME commit. D-043's lesson is that a commit you challenged for its evidence is
+not a certified base, and using one silently inherits the gap.
+
+So I have LEFT BASE=ca545ed rather than infer it. Name the base you want and I
+will use it. If 13bf5f5 is a certified base for the promotion, say so and the
+next bundle diffs from there.
 
 --------------------------------------------------------------------
 NUMBERS (D-011)
 
-  constant          0.610702633857727  (hex 0x1.38ae040000000p-1)
-  boundary          strictly greater; 2 transitions sit exactly at it
-  balanced pool     1,846 / 36,927 = 4.9991% failures
-  unbalanced check  1,879 / 37,406 = 5.0233%
-  tests             819 -> 830 passing, 2 skipped, 0 xfailed (11 new)
-  compute           NONE this session. 675 CPU fits total, 0 GPU-hours
+  threshold         0.610702633857727 -- unchanged, certified, final
+  prevalence        8.7688% / 4.6821% / 1.5845%  (cell-mean, your estimand)
+                    8.7651% / 4.6784% / 1.5828%  (pooled-row)
+  ratios            1.872846x clustered/uniform, 5.534245x clustered/sparse
+  tests             830 passing, 2 skipped, 0 xfailed
+  compute           NONE. 675 CPU fits total, 0 GPU-hours
   data seen         none beyond D-103's recorded calibration
-  bases             bundle diff from ca545ed; execution base 93dc296
+  changed           two files: the probe and one test docstring. No source
+                    behaviour, no threshold, no new fits.
 
 --------------------------------------------------------------------
-WHAT I AM ASKING FOR: certification of this closeout, which is the gate you
-set before downstream failure sets or repair labels. I have started nothing
-downstream and will not until you certify.
-
---------------------------------------------------------------------
---------------------------------------------------------------------
-APPENDED AFTER THE ABOVE (D-008: this delta was still undelivered).
-
-TAKEN WHILE THE CLOSEOUT IS WITH YOU, under Q-004 -- review and understanding,
-NEVER scope. No code changed. Nothing downstream built.
-
->>> A FINDING THAT NEEDS YOUR RULING BEFORE ANY FAILURE SET EXISTS. <<<
-
-THE ONE GLOBAL THRESHOLD DOES NOT MEAN ONE THING.
-
-D-035 rules out family-specific thresholds because they would "make the failure
-set partly a function of the construction label -- which is the leakage P§7.5
-forbids". Its justification is that balancing makes one threshold defensible
-"ONCE D-032 HAS FIXED THE ERROR TO ONE SCALE".
-
-So I asked whether the error is on one scale. IT IS NOT. D-061 fixes the
-normalising scale to each EVALUATION POOL, and every unit has its own. Those
-two rules had never been checked against each other.
-
-MEASURED, NO TRAINING AND NO FITS. targets() is a pure slice of next_obs, so
-the scale is a std over the environment alone. Nine strata x five seeds, the
-exact cells the threshold was calibrated on:
-
-                scale     failure rate      raw error (BOUNDED)
-  clustered    0.2018        8.77%          [0.05737, 0.06032]
-  uniform      0.2226        4.68%          [0.05704, 0.05929]
-  sparse       0.2475        1.58%          [0.05318, 0.05495]
-
-  scale spread across strata      33-36%, ORDERED SYSTEMATICALLY BY LAYOUT
-  failure-rate spread             5.53x   (behind a pooled 5%)
-  RAW error spread                1.09x
-
-A smaller scale inflates the normalised error, so prevalence is ordered
-inversely to the scale. The pooled 5% hides a 5.5-fold difference.
-
-IT IS MOSTLY THE NORMALISATION, NOT DIFFICULTY. The raw error is BOUNDED, not
-approximated: normalised = ||delta / (s_x, s_y)||, so ||delta|| lies exactly in
-[normalised * min(s), normalised * max(s)].
-
-  CLUSTERED vs UNIFORM -- the decisive pair. Their raw-error intervals OVERLAP.
-  Clustered's raw error is AT MOST +5.7% above uniform's and could be -3.2%
-  BELOW it. Its failure rate is 1.87x.
-
-WHY IT MATTERS: the failure set is what H2 is defined over and what H3's critic
-must predict. Layout -- a registered design factor -- enters the label through
-the scale. That is the leakage D-035 excludes, arriving through a different
-door.
-
---------------------------------------------------------------------
-A CORRECTION I OWE YOU, ON DELTA 49.
-
-I wrote that the unbalanced pool giving 5.02% against 5% by construction meant
-"the strata are not wildly heterogeneous in the upper tail".
-
-THAT INFERENCE IS INVALID. Balancing discards only 1.28% of rows, so the two
-pools are very nearly the SAME POOL -- the agreement is arithmetic, not
-evidence. A pooled rate carries no information about per-stratum dispersion.
-The strata ARE wildly heterogeneous: 5.53x. I hedged it at the time ("not
-treating it as evidence either way"), which limits the damage but does not make
-the reasoning sound.
-
---------------------------------------------------------------------
-CAUGHT IN MY OWN PROBE, BEFORE THE NUMBER LEFT THE MACHINE.
-
-The first version used mean(scale) and described the two dimensions as agreeing
-to ~1%. They differ by up to ~5%. Replaced the point estimate with the exact
-interval. D-042's lesson applied in time rather than after -- which is the only
-reason the clustered-vs-uniform claim above is stated as an overlap rather than
-as a spurious precise ratio.
-
---------------------------------------------------------------------
-RELATED TO, BUT NOT THE SAME AS, WHAT YOU ALREADY HOLD.
-
-D-097 finding (a) and D-099 raise that balancing caps ROW COUNT, NOT TAIL
-INFLUENCE, so a systematically-worst stratum can set the threshold's VALUE.
-This is the downstream consequence and a different claim: GIVEN the value, the
-resulting PREVALENCE is 5.5x heterogeneous and mostly an artefact of per-pool
-normalisation.
-
---------------------------------------------------------------------
-I HAVE NOT ACTED ON IT, AND CANNOT.
-
-The threshold is frozen and must not be recalibrated, so this cannot be fixed by
-changing it. Whether the remedy is a recorded methodological limitation, layout
-carried as a covariate, a stratified analysis, or something else is YOUR ruling.
-It belongs BEFORE any failure set or repair label is built, which is exactly
-where the project now sits -- so this is a second thing blocking, alongside the
-certification.
-
-  reproduce   scripts/probe_threshold_heterogeneity.py  (committed, no fits)
-  tests       830 passing, 2 skipped, 0 xfailed
-  compute     NONE. 675 CPU fits total, 0 GPU-hours
-  data seen   D-103's recorded reference errors, plus evaluation-pool target
-              statistics. No experimental condition, no hypothesis.
+WHAT I AM ASKING FOR: confirmation that the correction is what you wanted, and
+the bundle base. Downstream failure sets are paused on exactly this and I have
+started none of it.
 === END UPDATE ===
 ```

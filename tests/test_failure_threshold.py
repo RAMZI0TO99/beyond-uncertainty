@@ -155,8 +155,16 @@ def test_the_constant_reproduces_the_calibration_evidence():
 def test_the_unbalanced_sanity_check_still_reproduces():
     """Sol's independently computed 1,879 / 37,406 = 5.0232583%.
 
-    A sanity check, not a criterion (D-103) -- it says the strata are not wildly
-    heterogeneous in the upper tail. Pinned because Sol computed it separately.
+    **An arithmetic sanity check only, and NOT evidence about stratum
+    homogeneity** (corrected under D-109 on Sol's ruling). An earlier version of
+    this docstring said the agreement showed "the strata are not wildly
+    heterogeneous in the upper tail". It shows nothing of the kind: balancing
+    discards just 1.28% of rows, so the balanced and unbalanced pools are very
+    nearly the same pool and their agreement is arithmetic. Per-layout
+    prevalence in this same evidence differs by 5.53x (D-108).
+
+    What it does check is that the frozen constant still cuts the recorded
+    reference pool where it did. Pinned because Sol computed it separately.
     """
     if not ATTEMPT.exists():
         pytest.skip("calibration evidence not present in this checkout")
