@@ -4028,3 +4028,33 @@ All clean. The **certified W4 Tuesday evidence still verifies today** after ever
 **Written: DEV-009**, a recording obligation and mine. **Not done: the timing harness** — it re-opens a signed gate condition and would be the first GPU compute — **and the class-balance procedure**, which is inside Sol's gated reserve-consumption area. Both go to Sol.
 
 **Tests:** 830 passing, 2 skipped, 0 xfailed. **No new fits.**
+
+### 2026-08-22 (W4 Fri, part two) · The timing harness, eight sessions late · Claude
+
+**Built and ran the missing half of W4 Friday** (D-114). Wall time only, `stage="pilot"`, nothing registered written — the discipline D-103 used and Sol accepted.
+
+| configuration | extrapolated training time | vs the 120-hour trigger |
+|---|---|---|
+| CPU, **4 threads** (the certified config) | **6.40 h** | 0.053× — **19× headroom** |
+| CPU, 24 threads | 8.72 h | 14× |
+| CUDA (RTX 4080 SUPER) | 7.92 h | 15× |
+
+**Fewer threads is faster and the GPU barely helps** — the model is a small MLP, so synchronisation and launch overhead dominate. **The design is effectively CPU-bound and the GPU is not the resource the budget is denominated in.**
+
+**Gate 1's condition 2 was signed on a fit count; the condition names GPU-hours.** Measured, the design is inside budget **by 14–19×**, and the direction holds across every configuration. The schedule's premise — *"sits at the edge of the budget with no meaningful headroom"* — was written about the plan's specification and **is not true of the implemented system** (scripted policy, small MLP, gridworld).
+
+**A consequence that is Sol's to rule on.** Sol refused expansion toward the 1,500–2,000 units the five-point MDE needs as *"incompatible with the registered scope **and budget**"*. **The budget half is now measurably not binding** — a 5–6× design extrapolates to ~32–52 h, still under 120. **This does not make expansion advisable**: scope, the twenty-week calendar, ~14 h/week and data-generation cost are all untouched, and Gate 1's FAIL stands regardless. It removes one of two stated grounds.
+
+**The accounting was wrong first, and it was D-033's error.** Summing `obligations()` gave **6,750** baseline fits against **6,375** — **exactly the 375 phantom fits** — while also charging one fit per repair *obligation* instead of per seed. Rebuilt on `execution_plan`, it reproduces 8,047 exactly. A second implementation of a number the project has already been wrong about is not a shortcut, it is the bug. Pinned by a test shown to fail.
+
+**Tests:** 830 → **835 passing**, 2 skipped. **No registered fits**; timing runs only.
+
+### 2026-08-22 (W4 closeout) · Week 4 is complete, and a departure nobody logged · Claude
+
+**Week 4 verified cell by cell against the schedule's *Done when* column** — the column I truncated when first reading it, and where W4 Friday's second task was hiding. Mon ✓, Tue ✓ (verdict **and rung**, rung 0, certified), Wed and Thu correctly **not run** (conditional on a failure that did not happen), **Fri ✓** (threshold frozen *and* measured estimate compared against the trigger, D-107 + D-114), Sat ✓ (875 words). The Week 4 focus note's *"record the rung even when the gate passes immediately"* is satisfied in the ledger, §2, §5 and the prose. **W5 remains open on one cell**: Friday's class-balance procedure.
+
+**Checking W4 turned up a W5 departure that was never logged.** S§W5's focus note says of our exact situation: *"If the MDE does not clear five percentage points, **raise the configuration count now**. It costs Kaggle time, not your time."* The MDE does not clear five points; the count was not raised; **and that appears nowhere in §4** — the deviation log the methodology draws from. D-078 quoted the instruction and D-089 records Sol's refusal, but declining an explicit scheduled remedy was never written as a deviation. Now **DEV-010**.
+
+**What D-114 changes and what it does not.** Sol refused on two grounds, *scope **and** budget*. The budget ground is measurably not binding — 6.40 h measured, ~32–52 h for a 5–6× design, against a 120-hour trigger — and the schedule's pre-emption *"it costs Kaggle time, not your time"* is **confirmed**, not refuted. **The scope ground is untouched**: the twenty-week calendar, ~14 h/week, and generating 5–6× the data are unaffected, and 1,500–2,000 held-out units is a ~twenty-fold gap that is fairly read as a different study. **Sol's to re-rule; nothing acted on.**
+
+**Tests:** 835 passing, 2 skipped. **No fits.**

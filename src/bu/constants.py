@@ -118,6 +118,23 @@ FAILURE_THRESHOLD = 0.610702633857727
 #: construction.
 CONFIRMATORY_SEED_BASE = 1000
 
+#: The critic evaluation set's per-unit trace cap and its balancing seed
+#: (D-115), frozen on Sol's authorisation **before any labelled data exists** --
+#: which is the only circumstance in which they may be set at all.
+#:
+#: The cap is a **MAXIMUM, NOT AN ELIGIBILITY THRESHOLD.** A cleanly labelled
+#: unit with fewer than 50 eligible traces stays in, with all of its traces.
+#: It is never excluded for being small and never resampled with replacement to
+#: reach 50 -- either would silently make unit inclusion a function of trace
+#: count, which is not a registered criterion.
+CRITIC_TRACE_CAP_PER_UNIT = 50
+
+#: The balancing draw is deterministic. Selection uses a stable hash over
+#: (seed, split, label, unit_id) -- never Python's `hash()`, which is
+#: process-randomised by PYTHONHASHSEED and would make the evaluation set
+#: irreproducible across runs while looking perfectly deterministic within one.
+CRITIC_BALANCE_SEED = 0
+
 #: How balanced accuracy weights the registered statistical unit (D-044).
 #: "unit" gives every configuration-condition equal weight, which is what Plan
 #: §10.4's unit-level balancing implies; "cluster" would give every comparison

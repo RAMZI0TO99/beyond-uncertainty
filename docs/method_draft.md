@@ -540,6 +540,37 @@ the true minimum detectable difference is if anything *larger*. A study that
 reports what it cannot resolve is a complete study; one that discovers the limit
 after the fact is not.
 
+## The repair-acceptance test, and why it is not the registered mixed model *(DEV-009, D-094/D-100 — mandated)*
+
+The schedule specifies the acceptance test as a mixed-effects model — per-transition
+error, a fixed effect for the repair, random intercepts for seed and for episode
+within seed — with an episode-mean fallback for when the nested fit is unstable.
+The implemented test is neither of those. It is an **equal-seed mean paired
+difference with a t interval on `n_seeds − 1` degrees of freedom, and no
+fallback**.
+
+The change was made because the literal specification was found **degenerate**
+for this design. Every repair is evaluated on the *same recorded failure set* as
+its unrepaired baseline, at the same seeds, so the comparison is paired
+per transition within seed by construction. A model with random intercepts for
+seed and episode does not charge for that pairing — it treats the two arms as
+exchangeable draws sharing a grouping structure, which discards exactly the
+dependence the design creates on purpose. The paired difference uses it directly.
+
+Removing the fallback matters more than replacing the model. A fallback that
+substitutes a different estimator when the primary one fails to converge makes
+the reported method a function of numerical luck: two conditions could be
+analysed by two different tests, and nothing in the output would say which. The
+implemented test **fails closed** instead — if the paired arrays cannot be
+assembled, or any per-seed error is non-finite, it raises rather than degrading
+to a second method.
+
+Both changes were authorised as amendments to the preregistration **before any
+data was seen**, which is the only circumstance in which a registered analysis
+choice may move. The acceptance criteria themselves are untouched: a negative
+effect, a 95% interval excluding zero, and at least a 20% relative reduction in
+mean per-transition error, all three required.
+
 ## One unit, several roles: why the Experiment 2A conditions are not extra units *(Schedule W2 Wed, D-007 — mandated)*
 
 Experiment 2A varies the confound rate at four non-zero levels, and the same
@@ -551,9 +582,12 @@ The reason is that a configuration-condition must have exactly one identity. If
 a unit were counted once as an Experiment 2A condition and again as a sweep
 condition, the effective sample size behind every confidence interval would be
 inflated by the duplication — the two entries are not independent observations,
-they are the same environment specification written down twice. Counting them
-separately would give 375 units where the design registers 300, and every
-interval computed on that count would be too narrow.
+they are the same environment specification written down twice. The registered design contains 75
+canonical units, including 20 Experiment 2A units, plus 225 non-canonical sweep
+units, for 300 distinct units. Treating the entire 300-unit sweep as additional
+to all 75 canonical units would produce the erroneous total of 375; duplicating
+only the 20 Experiment 2A units would produce 320. Either way, every interval
+computed on the inflated count would be too narrow.
 
 Running them at a higher seed count is the correct expression of their extra
 importance: additional repeated measurements strengthen the estimate *for those
