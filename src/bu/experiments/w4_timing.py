@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import hashlib
 import json
 import platform
 import statistics
@@ -342,11 +343,18 @@ def _git(*args: str) -> str:
     return subprocess.run(["git", *args], capture_output=True, text=True).stdout.strip()
 
 
-def build_record(bench, acct, device, threads, full, recon) -> dict:
+def build_record(bench, acct, device, threads, full, recon,
+                 *, source_commit: str, source_tree_clean_before_run: bool) -> dict:
     return {
         "schema_version": TIMING_SCHEMA_VERSION,
-        "commit": _git("rev-parse", "HEAD"),
-        "tree_clean": _git("status", "--porcelain") == "",
+        # Captured BEFORE the run, not after. attempt-002 recorded a commit that
+        # predated the harness it executed, with tree_clean false -- so the code
+        # that produced it could not be recovered from its own record (Sol,
+        # delta 54). Tracking the JSON afterwards does not repair provenance.
+        "source_commit": source_commit,
+        "source_tree_clean_before_run": source_tree_clean_before_run,
+        "commit": source_commit,
+        "tree_clean": source_tree_clean_before_run,
         "execution_host": {
             "described_by_plan_as": "Kaggle T4",
             "actual": "local workstation (DEV-011)",
@@ -369,8 +377,14 @@ def build_record(bench, acct, device, threads, full, recon) -> dict:
         },
         "full_condition": full,
         "reconciliation": {"median": recon["median"], "max": recon["max"]},
-        "trigger_gpu_hours": K.COMPUTE_ESCALATION_TRIGGER_GPU_HOURS,
-        "verdict_basis": "max (conservative), local wall-hours",
+        # Registered-plan metadata, NOT a threshold this record is tested against.
+        "registered_trigger_gpu_hours": K.COMPUTE_ESCALATION_TRIGGER_GPU_HOURS,
+        "comparison_status": "not adjudicable across hosts",
+        "local_estimate_wall_hours": {
+            "median": extrapolate(bench, acct, "median")["total_hours"],
+            "max": extrapolate(bench, acct, "max")["total_hours"],
+        },
+        "verdict_basis": "max (conservative), LOCAL WALL-HOURS; no cross-unit verdict",
     }
 
 
@@ -380,11 +394,27 @@ def main() -> None:
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--reps", type=int, default=MIN_REPETITIONS)
+    ap.add_argument("--allow-dirty", action="store_true",
+                    help="permit a dirty source tree; the record is then NOT "
+                         "deliverable evidence")
     ap.add_argument("--condition-seeds", type=int, default=None,
                     help="limit the full-condition run to the first N seeds")
     args = ap.parse_args()
 
     torch.set_num_threads(args.threads)
+
+    # Provenance is captured BEFORE anything runs, and a dirty source tree is
+    # refused outright: a timing record whose commit does not identify the
+    # harness that produced it is not evidence, whatever is tracked afterwards.
+    source_commit = _git("rev-parse", "HEAD")
+    source_clean = _git("status", "--porcelain") == ""
+    if not source_clean and not args.allow_dirty:
+        raise SystemExit(
+            "REFUSING: the source tree is dirty, so this record could not "
+            "identify the code that produced it. Commit first, then run. "
+            "(--allow-dirty for throwaway experiments that will not be delivered.)"
+        )
+
     acct = design_accounting()
     sizes = sorted(acct["fits_by_size"])
 
@@ -417,19 +447,31 @@ def main() -> None:
 
     for how in ("median", "max"):
         e = extrapolate(bench, acct, how)
-        print(f"\n  {how.upper():6} total {e['total_hours']:.2f} local wall-hours "
-              f"(train {e['training_s']/3600:.2f} h + collect {e['collection_s']/3600:.2f} h)"
-              f"  vs {K.COMPUTE_ESCALATION_TRIGGER_GPU_HOURS} h trigger -> "
-              f"{e['total_hours']/K.COMPUTE_ESCALATION_TRIGGER_GPU_HOURS:.3f}x")
+        print(f"\n  {how.upper():6} total {e['total_hours']:.2f} LOCAL WALL-HOURS "
+              f"(train {e['training_s']/3600:.2f} h + collect {e['collection_s']/3600:.2f} h)")
+    print(f"\n  registered trigger: {K.COMPUTE_ESCALATION_TRIGGER_GPU_HOURS} GPU-hours "
+          f"(plan metadata, Kaggle T4)")
+    print("  COMPARISON STATUS: NOT ADJUDICABLE ACROSS HOSTS. No ratio is printed and")
+    print("  no verdict is drawn: local CPU wall-hours and Kaggle GPU-hours are")
+    print("  different units, and the prose already concedes it (DEV-011). Turning")
+    print("  that concession into a PASS would be the thing this harness exists to")
+    print("  stop -- a compute condition adjudicated on a proxy for its own quantity.")
 
-    record = build_record(bench, acct, args.device, args.threads, full, recon)
+    record = build_record(bench, acct, args.device, args.threads, full, recon,
+                          source_commit=source_commit,
+                          source_tree_clean_before_run=source_clean)
     out = Path(args.attempt)
     out.mkdir(parents=True, exist_ok=True)
     path = out / "timing.json"
     if path.exists():
         raise FileExistsError(f"{path} exists; attempts are immutable")
-    path.write_text(json.dumps(record, indent=2, sort_keys=True, default=str))
+    payload = json.dumps(record, indent=2, sort_keys=True, default=str)
+    path.write_text(payload)
+    digest = hashlib.sha256(payload.encode()).hexdigest()
+    (out / "timing.json.sha256").write_text(digest + "\n")
     print(f"\nevidence written: {path}")
+    print(f"  source_commit {source_commit}  clean_before_run {source_clean}")
+    print(f"  sha256        {digest}")
 
 
 if __name__ == "__main__":

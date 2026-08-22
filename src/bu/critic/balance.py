@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
+from numbers import Integral
 from typing import Iterable, Mapping, Sequence
 
 import numpy as np
@@ -88,8 +89,87 @@ def _trace_rng(unit_id: str, split: str) -> np.random.Generator:
     return np.random.default_rng(seed)
 
 
+def validate_labels(units: Iterable[LabelledUnit]) -> None:
+    """Every label must be a recognised value. Nothing is silently undecidable.
+
+    **Sol, delta 54:** invalid labels were caught only when they emptied a class.
+    A split holding a valid ``0``, a valid ``1`` and a string ``"0"`` balanced
+    happily while reporting the string as *undecidable* — so a type slip in one
+    unit vanished into a category that exists for a different reason.
+
+    Valid: integer ``0``/``1`` including NumPy integers, or ``"ambiguous"`` /
+    ``"undiagnosed"``. **Booleans are refused**: ``True == 1`` in Python, so a
+    boolean would silently become a hypothesis-class label, and ``bool`` is a
+    subclass of ``int`` so it must be rejected *before* the integer check.
+    """
+    for u in units:
+        if isinstance(u.label, bool):
+            raise ValueError(
+                f"unit {u.unit_id!r} has boolean label {u.label!r}. `True == 1` "
+                "in Python, so this would silently become a hypothesis-class "
+                "label. Use the integers 0 and 1"
+            )
+        if isinstance(u.label, Integral) and int(u.label) in (ESTIMATION, HYPOTHESIS_CLASS):
+            continue
+        if u.label in UNDECIDABLE:
+            continue
+        raise ValueError(
+            f"unit {u.unit_id!r} has label {u.label!r} ({type(u.label).__name__}). "
+            f"Valid labels are the integers {ESTIMATION} and {HYPOTHESIS_CLASS}, "
+            f"or {' / '.join(UNDECIDABLE)}. A string '0' is NOT the integer 0 and "
+            "must not be quietly treated as undecidable"
+        )
+
+
+def assert_unit_ids_are_globally_unique(units: Iterable[LabelledUnit]) -> None:
+    """One statistical unit may never appear in two splits.
+
+    **Sol, delta 54:** uniqueness was checked only *within* each split, so the
+    same content-hashed unit could sit in train and held-out under different
+    comparison-group ids — and the group guard, which keys on the group, passed.
+    ``unit_id`` is a content hash: the same id IS the same configuration.
+    """
+    seen: dict[str, str] = {}
+    for u in units:
+        if u.unit_id in seen and seen[u.unit_id] != u.split:
+            raise ValueError(
+                f"unit {u.unit_id!r} appears in both {seen[u.unit_id]!r} and "
+                f"{u.split!r}. `unit_id` is a content hash, so this is one "
+                "statistical unit in two splits — training and evaluating on the "
+                "same configuration, whatever comparison-group metadata says"
+            )
+        if u.unit_id in seen:
+            raise ValueError(
+                f"duplicate unit_id {u.unit_id!r} within split {u.split!r}. "
+                "`per_unit_trace_counts` and `unit_weights` are keyed by "
+                "unit_id, so duplicates collapse into one row and count two "
+                "units as one under the UNIT-weighted estimand (D-044)"
+            )
+        seen[u.unit_id] = u.split
+
+
+def validate_splits(units: Iterable[LabelledUnit], splits: Sequence[str]) -> None:
+    """Every unit must belong to exactly one requested, recognised split.
+
+    **Sol, delta 54:** a typo — ``held-out`` for ``held_out`` — silently
+    disappeared, because the requested splits balanced fine without it. Units
+    that are simply not looked at are the quietest possible data loss.
+    """
+    if len(set(splits)) != len(splits):
+        raise ValueError(f"duplicate split names requested: {list(splits)}")
+    requested = set(splits)
+    stray = sorted({u.split for u in units} - requested)
+    if stray:
+        raise ValueError(
+            f"unit(s) carry split(s) {stray} which were not requested "
+            f"{sorted(requested)}. Every supplied unit must be accounted for; a "
+            "mis-spelled split name would otherwise be dropped in silence"
+        )
+
+
 def _decidable(unit: LabelledUnit) -> bool:
-    return unit.label not in UNDECIDABLE and unit.label in (ESTIMATION, HYPOTHESIS_CLASS)
+    return (not isinstance(unit.label, bool) and isinstance(unit.label, Integral)
+            and int(unit.label) in (ESTIMATION, HYPOTHESIS_CLASS))
 
 
 def assert_groups_do_not_span_splits(units: Iterable[LabelledUnit]) -> None:
@@ -116,21 +196,31 @@ def balance_split(
     units: Sequence[LabelledUnit],
     *,
     split: str,
-    cap: int = K.CRITIC_TRACE_CAP_PER_UNIT,
 ) -> tuple[BalancedSplit, dict]:
-    """Balance one split. Returns the selection and its manifest."""
+    """Balance one split. Returns the selection and its manifest.
+
+    **There is no `cap` parameter.** It used to default to the frozen constant
+    and accept anything, so a caller could pass 1, 51 or 500 — *a frozen constant
+    callers can replace is not frozen* (Sol, delta 54). Same reasoning as
+    ``ScaledEvaluation.failure_mask`` taking no threshold.
+
+    **Runs the global guards over ALL supplied units before filtering**, not just
+    the ones in this split: this is a public entry point, and the cross-split
+    checks are meaningless if the single-split helper skips them.
+    """
+    cap = K.CRITIC_TRACE_CAP_PER_UNIT
+    validate_labels(units)
+    assert_unit_ids_are_globally_unique(units)
+    assert_groups_do_not_span_splits(units)
     in_split = [u for u in units if u.split == split]
-    ids = [u.unit_id for u in in_split]
-    if len(set(ids)) != len(ids):
-        dupes = sorted({i for i in ids if ids.count(i) > 1})
-        raise ValueError(
-            f"duplicate unit_id(s) in split {split!r}: {dupes[:5]}. "
-            "`per_unit_trace_counts` and `unit_weights` are keyed by unit_id, so "
-            "duplicates silently collapse into one entry -- which under-reports "
-            "the manifest and merges two units into one for the UNIT-WEIGHTED "
-            "estimand (D-044). `unit_id` is a content hash, so a duplicate means "
-            "the same configuration was supplied twice"
-        )
+    for u in in_split:
+        if len(set(u.eligible_traces)) != len(u.eligible_traces):
+            raise ValueError(
+                f"unit {u.unit_id!r} lists duplicate eligible trace ids. Sampling "
+                "draws distinct POSITIONS without replacement, so duplicates in "
+                "the id list can still select the same trace twice — which is "
+                "sampling with replacement wearing the wrong name (Sol, delta 54)"
+            )
     excluded_undecidable = [u.unit_id for u in in_split if not _decidable(u)]
     decidable = [u for u in in_split if _decidable(u)]
 
@@ -199,6 +289,13 @@ def balance_split(
         "units_below_cap": sorted(k for k, v in per_unit_counts.items() if v < cap),
         "comparison_groups": sorted({u.comparison_group_id for u in units
                                      if u.unit_id in per_unit_counts}),
+        # Which selected unit sits in which group. A bare set of group names does
+        # not show the mapping, and the mapping is what D-039 is about.
+        "unit_to_comparison_group": {
+            u.unit_id: u.comparison_group_id
+            for u in sorted(in_split, key=lambda x: x.unit_id)
+            if u.unit_id in per_unit_counts
+        },
         "n_traces": len(selection.X_trace_ids),
     }
     return selection, manifest
@@ -208,13 +305,18 @@ def balance(
     units: Sequence[LabelledUnit],
     *,
     splits: Sequence[str] = ("train", "validation", "held_out"),
-    cap: int = K.CRITIC_TRACE_CAP_PER_UNIT,
 ) -> tuple[dict[str, BalancedSplit], dict[str, dict]]:
-    """Balance every split independently, after the cross-split group check."""
+    """Balance every split independently, after the global input checks.
+
+    No `cap` parameter, for the reason given on :func:`balance_split`.
+    """
+    validate_labels(units)
+    assert_unit_ids_are_globally_unique(units)
+    validate_splits(units, splits)
     assert_groups_do_not_span_splits(units)
     selections, manifests = {}, {}
     for split in splits:
-        selections[split], manifests[split] = balance_split(units, split=split, cap=cap)
+        selections[split], manifests[split] = balance_split(units, split=split)
     return selections, manifests
 
 

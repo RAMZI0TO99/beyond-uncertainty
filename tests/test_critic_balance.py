@@ -193,11 +193,94 @@ def test_all_undecidable_units_also_fail_closed():
         balance_split([unit("a", "ambiguous"), unit("b", "undiagnosed")], split="train")
 
 
-def test_string_labels_do_not_silently_empty_the_set():
-    """AUDIT: '0' is not ESTIMATION, so string labels were silently undecidable
-    and the whole split came back empty with no signal."""
-    with pytest.raises(ValueError, match="ZERO units per class"):
+def test_string_labels_are_refused_outright():
+    with pytest.raises(ValueError, match=r"has label '0'"):
         balance_split([unit("a", "0"), unit("b", "1")], split="train")
+
+
+def test_a_MIXED_fixture_catches_one_bad_label_among_valid_ones():
+    """Sol, delta 54: the all-string fixture was not enough.
+
+    The earlier guard only fired when invalid labels EMPTIED a class. A split
+    holding a valid 0, a valid 1 and a single string "0" balanced happily and
+    reported the string as *undecidable* — a type slip vanishing into a category
+    that exists for an entirely different reason. This is that fixture.
+    """
+    with pytest.raises(ValueError, match=r"has label '0'"):
+        balance_split(
+            [unit("a", ESTIMATION), unit("b", HYPOTHESIS_CLASS), unit("c", "0")],
+            split="train")
+
+
+def test_boolean_labels_are_refused():
+    """`True == 1`, and `bool` subclasses `int`, so a boolean would silently
+    become a hypothesis-class label unless rejected first."""
+    with pytest.raises(ValueError, match="boolean label"):
+        balance_split([unit("a", True), unit("b", False)], split="train")
+
+
+def test_one_unit_may_not_appear_in_two_splits():
+    """Checked only WITHIN a split before, so the same content-hashed unit could
+    sit in train and held-out under different group ids and pass every guard."""
+    from bu.critic.balance import balance
+    with pytest.raises(ValueError, match="appears in both"):
+        balance([unit("same", ESTIMATION, "train", group="g1"),
+                 unit("o", HYPOTHESIS_CLASS, "train", group="g2"),
+                 unit("same", ESTIMATION, "held_out", group="g3"),
+                 unit("p", HYPOTHESIS_CLASS, "held_out", group="g4")],
+                splits=("train", "held_out"))
+
+
+def test_an_unrecognised_split_name_is_refused_not_dropped():
+    """A typo — `held-out` for `held_out` — used to disappear silently."""
+    from bu.critic.balance import balance
+    with pytest.raises(ValueError, match="not requested"):
+        balance([unit("a", ESTIMATION, "held-out"), unit("b", HYPOTHESIS_CLASS, "held-out"),
+                 unit("x", ESTIMATION), unit("y", HYPOTHESIS_CLASS)], splits=("train",))
+
+
+def test_duplicate_split_names_are_refused():
+    from bu.critic.balance import balance
+    with pytest.raises(ValueError, match="duplicate split names"):
+        balance([unit("a", ESTIMATION), unit("b", HYPOTHESIS_CLASS)],
+                splits=("train", "train"))
+
+
+def test_balance_split_runs_the_cross_split_group_guard_itself():
+    """It is a public entry point; the guard used to run only from `balance()`."""
+    with pytest.raises(ValueError, match="spans splits"):
+        balance_split([unit("a", ESTIMATION, "train", group="sh"),
+                       unit("b", HYPOTHESIS_CLASS, "held_out", group="sh"),
+                       unit("c", HYPOTHESIS_CLASS, "train", group="z")], split="train")
+
+
+def test_duplicate_eligible_trace_ids_are_refused():
+    """Sampling draws distinct POSITIONS, so ids (4, 4, 9) could select trace 4
+    twice — sampling with replacement wearing the wrong name."""
+    with pytest.raises(ValueError, match="duplicate eligible trace"):
+        balance_split([LabelledUnit("a", ESTIMATION, "train", "g-a", (4, 4, 9)),
+                       LabelledUnit("b", HYPOTHESIS_CLASS, "train", "g-b", (1, 2, 3))],
+                      split="train")
+
+
+def test_the_frozen_cap_cannot_be_overridden_by_a_caller():
+    """It defaulted to the constant and accepted anything. A frozen constant a
+    caller can replace is not frozen."""
+    import inspect
+    from bu.critic.balance import balance
+    assert "cap" not in inspect.signature(balance_split).parameters
+    assert "cap" not in inspect.signature(balance).parameters
+    with pytest.raises(TypeError):
+        balance_split([unit("a", ESTIMATION), unit("b", HYPOTHESIS_CLASS)],
+                      split="train", cap=500)
+
+
+def test_the_manifest_maps_each_selected_unit_to_its_comparison_group():
+    """A bare set of group names does not show the mapping, and the mapping is
+    what D-039 is about."""
+    sel, man = balance_split([unit("a", ESTIMATION, group="ga"),
+                              unit("b", HYPOTHESIS_CLASS, group="gb")], split="train")
+    assert man["unit_to_comparison_group"] == {"a": "ga", "b": "gb"}
 
 
 def test_numpy_integer_labels_are_accepted():

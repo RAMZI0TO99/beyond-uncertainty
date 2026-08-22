@@ -25,7 +25,14 @@ from bu.experiments.w4_timing import (
     representative_condition,
 )
 
-ATTEMPT = pathlib.Path("runs/w4_timing/attempt-002/timing.json")
+def _latest_attempt() -> pathlib.Path | None:
+    """The newest delivered timing attempt. attempt-002 is superseded: its record
+    names a commit that predates the harness it ran, with a dirty tree."""
+    found = sorted(pathlib.Path("runs/w4_timing").glob("attempt-*/timing.json"))
+    return found[-1] if found else None
+
+
+ATTEMPT = _latest_attempt() or pathlib.Path("runs/w4_timing/attempt-999/timing.json")
 
 
 # --- the accounting ---------------------------------------------------------
@@ -147,15 +154,29 @@ def test_the_stored_attempt_reconciles_and_is_honestly_labelled():
         assert len(row["train_reps_s"]) >= MIN_REPETITIONS
 
 
-def test_the_conservative_total_is_the_one_under_the_trigger():
+def test_no_cross_unit_verdict_is_drawn_against_the_gpu_hour_trigger():
+    """Sol, delta 54: the record says its units are LOCAL WALL-HOURS and the
+    program then asserted them under a GPU-hour trigger.
+
+    An earlier version of this test asserted `conservative < trigger_gpu_hours`.
+    That is a **cross-unit comparison turned into a PASS**, in the one harness
+    that exists because a compute condition was already adjudicated on a proxy
+    for the quantity it names. The trigger stays as registered-plan metadata; no
+    ratio and no verdict are derived from it.
+    """
     if not ATTEMPT.exists():
         pytest.skip("timing evidence not present in this checkout")
     rec = json.loads(ATTEMPT.read_text())
-    conservative = rec["extrapolation"]["max"]["total_hours"]
-    assert conservative >= rec["extrapolation"]["median"]["total_hours"]
-    assert conservative < rec["trigger_gpu_hours"], (
-        "the conservative estimate is not under the escalation trigger"
+    if "comparison_status" not in rec:
+        pytest.skip("superseded attempt predates the cross-unit fix")
+    assert rec["comparison_status"] == "not adjudicable across hosts"
+    assert "registered_trigger_gpu_hours" in rec
+    assert "trigger_gpu_hours" not in rec, (
+        "the bare field name invites exactly the comparison Sol refused"
     )
+    conservative = rec["local_estimate_wall_hours"]["max"]
+    assert conservative >= rec["local_estimate_wall_hours"]["median"]
+
 
 
 # --- audit findings (D-117) --------------------------------------------------
@@ -198,3 +219,22 @@ def test_load_record_restores_integer_size_keys():
     )
     loaded = load_record(ATTEMPT)
     assert all(isinstance(k, int) for k in loaded["accounting"]["fits_by_size"])
+
+
+def test_the_delivered_attempt_identifies_the_code_that_produced_it():
+    """Sol, delta 54: attempt-002 recorded commit f0ac645 with tree_clean=false,
+    and f0ac645 PREDATES the harness rebuild. The executed code could not be
+    recovered from the record, and tracking the JSON afterwards does not repair
+    source provenance."""
+    if not ATTEMPT.exists():
+        pytest.skip("timing evidence not present in this checkout")
+    rec = json.loads(ATTEMPT.read_text())
+    if "source_commit" not in rec:
+        pytest.skip("superseded attempt predates provenance capture")
+    assert rec["source_tree_clean_before_run"] is True, (
+        "the delivered attempt ran from a dirty tree, so the harness that "
+        "produced it cannot be recovered from its own record"
+    )
+    assert len(rec["source_commit"]) == 40
+    digest = ATTEMPT.parent / "timing.json.sha256"
+    assert digest.exists(), "no digest beside the record"
