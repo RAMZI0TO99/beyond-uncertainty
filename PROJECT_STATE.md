@@ -42,7 +42,7 @@ This is the shared working file for the project. It is written by Claude, review
 | **Last updated** | 2026-08-22 (second session) |
 | **Updated by** | Claude |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | **W4 Friday timing is OPEN again** — Sol withheld D-114: the harness is a per-size microbenchmark, not one full condition end to end; it subtracts ablations and omits collection; it persists no auditable evidence; one observation per size; and local CPU/RTX numbers may not be called Kaggle GPU-hours. **My expansion claim was arithmetically FALSE** (D-115) — 1,500–2,000 are **held-out** units, so expansion is **18.75×–33.3×**, i.e. 120–213 h; **both of Sol's grounds stand and no expansion is authorised**. **W5's balancer is BUILT** on synthetic inputs with `CRITIC_TRACE_CAP_PER_UNIT=50` and `CRITIC_BALANCE_SEED=0` frozen (D-115). Base **`51907c6`**. **Gate 1 remains FAIL**; Q-004 still holds Week 6. Calendar **Week 1 Saturday**, ~4 weeks ahead |
+| **Current week / day** | **WEEK 4 IS COMPLETE AND WEEK 5 HAS ONE ITEM LEFT WITH SOL.** W4 Friday's timing is rebuilt to Sol's six requirements (D-116): **8,197 fits including ablations**, 2,947 collection events, warm-up + 3 reps, median **and** max, a full 120-fit condition run end to end and **reconciled to 7%**, evidence persisted and tracked, host stated honestly. **6.95 local wall-hours** on the conservative basis against a 120-hour trigger. **These are local wall-hours, not GPU-hours** (DEV-011 — the plan names Kaggle T4 and nothing has ever run there). W5's balancer is built on synthetic inputs (D-115). **Gate 1 remains FAIL**; expansion remains refused — it is **18.75×–33.3×**, i.e. 130–232 wall-hours. Base **`51907c6`**; Q-004 still holds Week 6 |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | `main` — HEAD at the end of §7's latest entry, tree **clean**. **Certified base: `51907c6`** — Sol certified the corrected methodology prose on 2026-08-22 and named it the next review base. **Set `BASE=51907c6`.** Later commits are **not** certified: D-114's timing evidence was withheld. Never use `13bf5f5`. Chain: `9c0d89d` → `ca545ed` → `f6bcd63` → **`51907c6`** |
@@ -292,6 +292,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-113** | 2026-08-22 | **FINDING** — W4/W5 are NOT complete: no timing harness, no class-balance code, a missing deviation | **For Sol** |
 | **D-114** | 2026-08-22 | W4 Fri's timing harness built and run — **6–9 h, not 110–145 GPU-h**; 14–19× headroom | **Result — for Sol** |
 | **D-115** | 2026-08-22 | **CHANGE RECORD** — trace cap 50 / balance seed 0; W5 balancer built; **my 5–6× expansion claim was false** | **Sol-authorised** |
+| **D-116** | 2026-08-22 | W4 timing rebuilt to Sol's six requirements — **6.95 local wall-hours**, reconciled; **W4 COMPLETE** | **Result** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -343,6 +344,12 @@ Format: `Week n Day | what was skipped or substituted | why | goes in methodolog
 **Why:** Sol's ruling, on two stated grounds — expansion is *"incompatible with the registered scope **and budget**"*. The scale is the reason the schedule's ordinary remedy does not fit: clearing five points needs on the order of **1,500–2,000 held-out units** against the 60–80 scheduled, roughly a **twenty-fold** gap in held-out count. That is not "raise the configuration count", it is a different study.
 **CORRECTED 2026-08-22 (D-115) — the claim this entry first made was arithmetically wrong.** It said D-114's timing measurement removed the *budget* ground, on the basis that expansion meant a **5–6×** design. **It does not.** The MDE needs 1,500–2,000 **held-out** units, not total units; against 60–80 held out of 300, preserving the split fraction needs **5,625–10,000 total units, i.e. 18.75×–33.3×**. At the fastest measured rate that is **120 h at best and ~213 h at worst** against a 120-hour trigger — before collection, ablations, orchestration and host differences, all of which the timing evidence still omits. **The budget ground stands, both of Sol's grounds hold, and no expansion is authorised.** The error was reading "units" as one population when it named two — D-042's shape, and worse than the overstatements before it because it inverted the answer rather than exaggerating it.
 **Goes in methodology:** **yes.** A reader must be able to see that the design's power shortfall was identified in Week 4, that the schedule prescribed a remedy, and that the remedy was declined deliberately with reasons — not overlooked. §4's mandate already names configuration-count changes as methodology material; declining an instructed one belongs there for the same reason.
+
+### DEV-011 · 2026-08-22 · The execution host is a local workstation, not Kaggle
+**Deviation:** the schedule's compute model is built on **Kaggle** — *"it runs on Kaggle while you are at work… batch runs are started in the long block and collected in short ones"* — and the budget is denominated in **GPU-hours** against a ~120-hour escalation trigger, with a **Kaggle T4** as the implied device. **Every fit this project has ever run has run on a local workstation**, and no Kaggle job has ever been submitted. The 675 registered CPU fits, the W4 Tuesday gate, the W4 Friday threshold calibration and the timing measurements were all local.
+**Why it is recorded now:** Sol's ruling on delta 53 made it unavoidable. Local CPU and RTX 4080 measurements **cannot be reported as Kaggle GPU-hours**, and Sol gave two routes: measure on the intended T4, or record a deviation making the local machine the actual execution route and report **local wall-hours**. The second is the honest description of what has already happened for every fit to date, so it is recorded rather than treated as a choice still open. Until a Kaggle run exists, **every timing figure in this project is local wall-hours on four CPU threads**, and the comparison against a GPU-hour trigger is a comparison across hosts — informative about order of magnitude, not like-for-like.
+**What it does not do:** it does not relax the trigger, and it does not make the budget question settled. A host that is faster or slower than a T4 changes the number; the deviation exists so that nobody reads a local wall-hour figure as if it had been measured where the plan said it would be.
+**Goes in methodology:** **yes** — the reproducibility section must say where the results were produced, and any compute claim inherits the host it was measured on.
 
 ### DEV-003 · 2026-08-15 · venv created with `--system-site-packages`
 **Deviation:** the virtual environment reuses the system torch/numpy/scipy/pandas rather than installing isolated copies.
@@ -475,3 +482,19 @@ D-115 before either.)*
 **Also done:** DEV-009's methodology section, and D-112's arithmetic corrected to Sol's wording (375 is *sweep-plus-all-canonical*; duplicating only the 20 2A units gives **320**).
 
 **Tests:** 835 → **848 passing**, 2 skipped. **No fits, no reserve consumed, no real labels.**
+
+### 2026-08-22 (W4 timing rebuilt) · Week 4 is complete · Claude
+
+**Sol's authorisation was explicit** — *"you are authorised to complete W4 timing with pilot-only compute"* — so this did not wait. The host question had one branch available: no Kaggle access here, which is the case Sol said to record as a deviation. **DEV-011** now records that every fit this project has ever run has run locally, and that the plan's Kaggle T4 has never been used.
+
+**All six requirements met** (D-116): 8,197 fits **including the 150 ablations**; 2,947 collection events counted per condition; warm-up plus 3 repetitions with every raw observation kept; median **and** maximum, with **the verdict on the maximum**; one representative condition — the largest repair-validation unit, 20 seeds, baseline ensemble plus 10× data-repair arm, **120 fits over 40 conditions** — run end to end; evidence persisted **and tracked**; host stated honestly.
+
+**6.95 local wall-hours** conservative (5.68 median) against the 120-hour trigger, **0.058×**. The reconciliation is the load-bearing part: the full condition **measured 489.2 s** against **455.8 s** predicted (median) and **573.0 s** (max) — measured sits 7% above the median and **below** the maximum, so the conservative basis is conservative in fact.
+
+**>>> The reconciliation caught a defect in itself.** attempt-001 reported measured/predicted = **0.03**. `reconcile()` had filtered on `n_transitions == 5000`, matching **every** unit at that size — 1,464 plan entries against the 40 that ran, **37.9×**. Corrected, re-derived from attempt-001's own raw data: **1.028**. attempt-001 kept with a `SUPERSEDED.md`, because attempts are immutable and this is the clearest proof in the project that an end-to-end check does what a microbenchmark cannot do on itself.
+
+**>>> And the evidence was silently untracked — the third time.** `runs/*` swallowed `runs/w4_timing/` exactly as it swallowed `runs/w4_threshold/` (D-103) and as file selection swallowed delta 12's artefacts (D-041). Caught by running `git check-ignore` before committing instead of trusting the commit. **Three occurrences, three mechanisms, one shape.**
+
+**Nothing here revises Gate 1**, still **FAIL**, and nothing revives expansion: D-115 fixed that arithmetic, and at **18.75×–33.3×** it is **130–232 wall-hours** — firmer now that ablations and collection are counted.
+
+**Tests:** 848 → **855 passing**, 2 skipped. **No registered fits**; pilot timing only, ~35 min.

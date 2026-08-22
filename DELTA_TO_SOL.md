@@ -22,6 +22,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=51907c6 ./scripts/sol_bundle.sh \
 >
 > COVERS SESSIONS:
 > - 2026-08-22 (delta-53 ruling) · A false conclusion, a frozen cap, and the balancer
+> - 2026-08-22 (W4 timing rebuilt) · Week 4 is complete
 
 ```
 === UPDATE FOR SOL ===
@@ -147,11 +148,85 @@ NUMBERS (D-011)
   base            51907c6
 
 --------------------------------------------------------------------
-WHAT I AM ASKING FOR: review of the balancer, and confirmation of the host
-decision for the timing rebuild -- do you want it measured on the Kaggle T4 the
-plan names, or a recorded deviation making local four-thread CPU the actual
-execution route with wall-hours reported instead of GPU-hours? I will build the
-rest of the timing closeout either way, but that choice changes what the
-evidence claims to be.
+WHAT I AM ASKING FOR: review of the balancer and of the rebuilt timing evidence.
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+APPENDED (D-008: still undelivered). W4 FRIDAY TIMING IS REBUILT (D-116).
+
+I did not wait for a further ruling: you wrote "you are authorised to complete
+W4 timing with pilot-only compute". And the host question had only ONE branch
+available -- there is no Kaggle access from this machine -- which is exactly the
+case you said to handle with a deviation. DEV-011 now records that EVERY FIT
+THIS PROJECT HAS EVER RUN HAS RUN LOCALLY and the plan's Kaggle T4 has never
+been used. If you wanted the first branch, the answer is that I cannot reach it.
+
+ALL SIX REQUIREMENTS:
+
+  every registered fit          8,197 INCLUDING the 150 ablations, matching
+                                total_model_fits exactly (was 8,047)
+  collection + orchestration    2,947 collection events, counted per
+                                (unit, arm, seed) condition, not per fit
+  warm-up + >=3 reps            1 discarded warm-up, 3 reps per size, EVERY
+                                raw observation kept in the record
+  median AND maximum            both; THE VERDICT IS TAKEN ON THE MAXIMUM
+  full condition, reconciled    largest repair-validation unit: 20 seeds,
+                                baseline ensemble + 10x data-repair arm,
+                                120 fits over 40 conditions, run end to end
+  persist raw evidence          runs/w4_timing/attempt-002/timing.json, TRACKED
+  honest host                   LOCAL WALL-HOURS, NOT GPU-HOURS
+
+  RESULT   5.68 wall-hours median / 6.95 CONSERVATIVE, vs a 120-hour trigger
+  RECONCILIATION  measured 489.2 s   predicted 455.8 s (median), 573.0 s (max)
+                  -> measured is 7% ABOVE the median and BELOW the maximum, so
+                     the conservative basis is conservative IN FACT.
+
+--------------------------------------------------------------------
+>>> THE RECONCILIATION CAUGHT A DEFECT -- IN ITSELF. <<<
+
+attempt-001 reported measured/predicted = 0.03. That is not a modelling failure.
+reconcile() filtered candidate fits on `n_transitions == 5000`, which is EVERY
+unit at that size: 1,464 plan entries and 4,552 fits against the 40 entries and
+120 fits that actually ran. A 37.9x INFLATION.
+
+Corrected and re-derived from attempt-001's OWN raw data: ratio 1.028.
+
+attempt-001 is kept, with a SUPERSEDED.md stating exactly this, because attempts
+are immutable and because it is the clearest evidence in this project that an
+end-to-end reconciliation does work a microbenchmark CANNOT do on itself. You
+required that step; it paid for itself immediately.
+
+--------------------------------------------------------------------
+>>> AND THE EVIDENCE WAS SILENTLY UNTRACKED. THE THIRD TIME. <<<
+
+`runs/*` swallowed runs/w4_timing/ exactly as it swallowed runs/w4_threshold/
+in D-103, and as file selection swallowed delta 12's artefacts in D-041.
+
+THREE OCCURRENCES, THREE DIFFERENT MECHANISMS, ONE SHAPE: a claim that ships
+without the file behind it. Caught this time by running `git check-ignore`
+before committing rather than trusting the commit -- which is only a habit,
+not a mechanism, and I note that D-104's test covers attested-digest files and
+would not have caught this one.
+
+--------------------------------------------------------------------
+WHAT THE NUMBER IS NOT: local wall-hours on four CPU threads, on a workstation,
+NOT GPU-hours on a Kaggle T4. A cross-host comparison, informative about order
+of magnitude and not like-for-like. Ablations are charged at an assumed n=5,000
+because P§14.2 does not size them until Week 14; the assumption is in the record.
+
+NOTHING HERE REVISES GATE 1, still FAIL. Condition 2's RECORDED BASIS is now a
+measurement rather than a fit count; whether to re-adjudicate is yours.
+
+NOTHING HERE REVIVES EXPANSION. D-115 fixed that arithmetic: 18.75x-33.3x is
+130-232 wall-hours on this measurement -- firmer against the budget now that
+ablations and collection are counted, not weaker.
+
+--------------------------------------------------------------------
+W4 IS COMPLETE. W5's only open item is your review of the balancer.
+
+  tests      848 -> 855 passing, 2 skipped, 0 xfailed
+  compute    pilot timing only, ~35 min over two attempts. Registered compute
+             unchanged: 675 CPU fits.
+  data seen  none. Wall time only; every run discarded its ensembles.
 === END UPDATE ===
 ```

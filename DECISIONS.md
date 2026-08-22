@@ -1791,3 +1791,33 @@ Also corrected: a doubled word, "Not a / a fixed effect", introduced by my own e
 **Data seen:** none. The balancer has been exercised on fabricated units only; no reserve consumed, no real labelled dataset assembled.
 **Plan ref:** P§10.4, P§13.5.1, S§W5 Fri, D-010, D-031, D-039, D-042, D-044, D-089, D-113, D-114. Sol's ruling on delta 53.
 **Reviewed by Sol:** **the constants and the balancer spec are Sol's; the implementation awaits delta 54.**
+
+### D-116 · 2026-08-22 · W4 Friday's timing evidence, rebuilt to Sol's six requirements — and W4 is complete
+**Decision:** Rebuilt the timing harness after Sol refused D-114. Every objection was correct and every one is now addressed. **Sol's authorisation was explicit** — *"you are authorised to complete W4 timing with pilot-only compute"* — so this did not wait for a further ruling. The host question had only one branch available: there is no Kaggle access from here, which is precisely the case Sol said to handle with a deviation, now **DEV-011**.
+
+| Sol's requirement | how it is met |
+|---|---|
+| every registered fit, **including ablations** | **8,197**, matching `total_model_fits` exactly; ablations charged at n=5,000 with the assumption recorded |
+| collection and repeated end-to-end costs | **2,947** collection events, counted per *(unit, arm, seed)* condition, not per fit |
+| warm-up and ≥3 repetitions | one discarded warm-up, then **3** reps per size; every raw observation kept |
+| median **and** maximum | both reported; **the verdict is taken on the maximum** |
+| one representative condition end to end, reconciled | the largest repair-validation unit — **20 seeds, baseline ensemble + 10× data-repair arm, 120 fits over 40 conditions** |
+| persist the raw evidence | `runs/w4_timing/attempt-002/timing.json`, tracked |
+| state the host honestly | **local wall-hours, not GPU-hours** (DEV-011) |
+
+**The result.** **5.68 local wall-hours** on the median basis, **6.95** on the conservative maximum — the figure the verdict rests on — against the 120-hour escalation trigger, i.e. **0.058×**. The reconciliation is the part that matters: the full condition **measured 489.2 s** against **455.8 s** predicted bottom-up (median) and **573.0 s** (max). Measured lands **7% above the median prediction and below the maximum**, so the conservative basis is conservative in fact and not merely by name.
+
+**>>> The reconciliation earned its place by catching a defect — in itself.** attempt-001 reported measured/predicted = **0.03**. That was not a modelling failure: `reconcile()` filtered candidate fits on `n_transitions == 5000`, which is *every* unit at that size — **1,464 plan entries and 4,552 fits against the 40 entries and 120 fits that actually ran, a 37.9× inflation**. Re-derived from attempt-001's own raw data with the filter corrected, the ratio is **1.028**. attempt-001 is kept with a `SUPERSEDED.md` explaining exactly this, because attempts are immutable and because it is the clearest evidence in the project that an end-to-end reconciliation does work a microbenchmark cannot do on itself.
+
+**>>> And the evidence was silently untracked, for the third time.** `runs/*` swallowed `runs/w4_timing/` exactly as it swallowed `runs/w4_threshold/` in D-103 and as file selection swallowed delta 12's artefacts in D-041. Caught by checking `git check-ignore` before committing rather than trusting the commit. **Three occurrences, three different mechanisms, one shape**: a claim that ships without the file behind it. Rules added matching the gate's and the threshold's.
+
+**What the number is not.** It is **local wall-hours on four CPU threads**, on a workstation, not GPU-hours on the Kaggle T4 the plan names — a comparison across hosts, informative about order of magnitude and not like-for-like. Ablations are charged at an assumed size because Plan §14.2 does not size them until Week 14. Nothing here revises **Gate 1**, whose verdict remains **FAIL**; condition 2's *recorded basis* is now a measurement rather than a fit count, and whether to re-adjudicate it is Sol's.
+
+**Nothing here touches the expansion question.** D-115 corrected that: expansion is **18.75×–33.3×**, i.e. **130–232 local wall-hours** on this measurement, so the budget ground stands and is if anything firmer now that ablations and collection are included.
+
+**Week 4 is complete** — Mon through Sat, verified against the schedule's *Done when* column, with Friday's second task finally discharged.
+**Tests:** 848 → **855 passing**, 2 skipped, 0 xfailed.
+**Data seen:** none. Wall time only; every timing run discarded its ensembles and wrote no run record.
+**Compute:** pilot-stage timing only, ~35 min across two attempts. Registered compute unchanged: 675 CPU fits.
+**Plan ref:** S§W4 Fri, P§14.2, P§14.3, D-033, D-041, D-103, D-113, D-114, D-115, DEV-011. Sol's ruling on delta 53.
+**Reviewed by Sol:** **not yet — delta 54 carries it.**

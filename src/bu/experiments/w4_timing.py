@@ -1,214 +1,373 @@
-"""The Week 4 Friday timing harness (S§W4 Fri) — measure, then extrapolate.
+"""The Week 4 Friday timing harness (S§W4 Fri), rebuilt to Sol's requirements.
 
-**Why this exists, late.** W4 Friday has *two* tasks. The threshold calibration
-was done and certified; this one — *"measure one full condition end to end and
-extrapolate total GPU-hours against the ~120-hour estimate"* — was never built,
-and Gate 1's compute condition was nevertheless signed **PASS** on a *fit count*
-(14,885 against ~8,700). A fit count is not GPU-hours, and the conversion is
-exactly what this measures (D-113).
+**Why it was rebuilt.** The first version (D-114) was refused certification, and
+every objection was right: it timed one baseline ensemble at one seed rather
+than a full condition; it **subtracted ablations**, which stay in the budget
+until a reduction is actually decided; it omitted collection; it took **one**
+observation per size and reported it to two decimals; it **persisted nothing**,
+so its numbers were prose to be trusted rather than evidence to be audited; and
+it called local CPU and RTX 4080 measurements "GPU-hours" when the plan names a
+Kaggle T4 as the host.
 
-The schedule is blunt that this is not a formality: the budget is **110–145
-GPU-hours against a ~120 trigger**, and *"the Week 4 timing harness is a gate,
-not a formality — as specified, the design sits at the edge of the budget with
-no meaningful headroom."*
+This version:
 
-**It reads wall time and nothing else.** No errors, no disagreement, no
-predictions are inspected — the same discipline D-103 used when it timed one
-cell before the threshold run. Everything runs at `stage="pilot"`, which carries
-no seed policy and can never enter a claim, into a scratch directory. **No
-registered evidence is written and no result is produced.**
+* includes **every registered fit, ablations included** (8,197, not 8,047);
+* includes **collection**, which is paid once per (unit, arm, seed) condition —
+  2,947 of them — not once per fit;
+* takes a **warm-up plus at least three repetitions** per size, keeps every raw
+  observation, and reports **median and maximum**;
+* runs **one representative registered condition end to end through its whole
+  seed and repair obligation** and reconciles that against the bottom-up
+  extrapolation, which is the check the microbenchmark cannot perform on itself;
+* **persists an immutable record** with commit, tree state, host, versions,
+  device and threads, every raw repetition, the accounting, and the derivation;
+* **states the execution host honestly**. The plan names Kaggle T4. Everything
+  this project has ever run has run locally, so the number below is **local
+  wall-hours, not GPU-hours**, and DEV-011 records that the local four-thread
+  CPU is the actual execution route.
 
-**It does not extrapolate from one rate.** Per-fit cost varies strongly with the
-training size, and data repair trains at ``DATA_REPAIR_MULTIPLIER`` × the base.
-Scaling a single measured rate is the documented way to turn a right number into
-a wrong one, so this measures a rate *per training size* and then weights those
-rates by the design's actual obligation structure, resolving each repair arm to
-the size it really trains at.
+**The verdict is taken on the conservative summary** — the maximum observed —
+not on the median and not on a single run.
 
-Run:  .venv/bin/python -m bu.experiments.w4_timing
+Still true, and still the reason this is not one scaled rate: per-fit cost varies
+by more than an order of magnitude across the registered sizes, and data repair
+trains at ``DATA_REPAIR_MULTIPLIER`` × its base, so 50,000 appears in the design
+even though the largest *registered* size is 5,000.
+
+Run:  .venv/bin/python -m bu.experiments.w4_timing --attempt runs/w4_timing/attempt-001
 """
 
 from __future__ import annotations
 
 import argparse
 import collections
-import tempfile
+import json
+import platform
+import statistics
+import subprocess
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from .. import constants as K
-from ..config import Arm, Config, TrainConfig, UnitSpec
+from ..config import Arm, TrainConfig, UnitSpec
 from ..env.collect import collect_pools
 from ..models.ensemble import train_ensemble
-from .enumerate_units import design_units, execution_plan, total_model_fits
+from ..runrecord import package_versions
+from .enumerate_units import (
+    design_units, execution_plan, repair_obligations, total_model_fits,
+)
 
-#: Never a registered stage. Timing runs must not be able to enter a claim.
+#: Never a registered stage. A timing run must not be able to enter a claim.
 TIMING_STAGE = "pilot"
+#: Bumped if the record's fields or their meaning change.
+TIMING_SCHEMA_VERSION = 1
+#: Discarded runs before timing begins, so allocator and cache warm-up is not
+#: charged to the first size measured.
+WARMUP_RUNS = 1
+#: Sol's floor. More is better; fewer is not a measurement.
+MIN_REPETITIONS = 3
+#: Ablations are a Plan §14.2 line item that is not sized until Week 14. They
+#: are charged at the dominant registered size and the assumption is recorded
+#: rather than hidden; the sensitivity is reported alongside.
+ABLATION_ASSUMED_SIZE = 5_000
 
 
-@dataclass(frozen=True)
-class Measurement:
-    """Wall time for one full condition, broken into its phases."""
+@dataclass
+class SizeBenchmark:
+    """Every raw observation at one training size. Nothing is averaged away."""
 
     n_transitions: int
-    device: str
-    collect_s: float
-    train_s: float
-    members: int
+    train_reps_s: list[float] = field(default_factory=list)
+    collect_reps_s: list[float] = field(default_factory=list)
+    members: int = K.DEFAULT_ENSEMBLE_SIZE
 
-    @property
-    def total_s(self) -> float:
-        return self.collect_s + self.train_s
+    def per_fit(self, how: str) -> float:
+        f = statistics.median if how == "median" else max
+        return f(self.train_reps_s) / self.members
 
-    @property
-    def per_fit_s(self) -> float:
-        """Training only, per member — the quantity the design multiplies."""
-        return self.train_s / self.members
+    def per_collection(self, how: str) -> float:
+        f = statistics.median if how == "median" else max
+        return f(self.collect_reps_s)
 
-    @property
-    def collect_per_condition_s(self) -> float:
-        """Collection is paid once per condition, not once per member."""
-        return self.collect_s
-
-
-def time_condition(unit: UnitSpec, *, seed: int, device: str) -> Measurement:
-    """One condition end to end: collect the pools, then fit the ensemble.
-
-    Only ``time.perf_counter`` is read. The ensemble is discarded.
-    """
-    torch.manual_seed(0)
-    train_cfg = TrainConfig()
-
-    t0 = time.perf_counter()
-    pools = collect_pools(unit, stage=TIMING_STAGE, seed=seed, arm="baseline")
-    t1 = time.perf_counter()
-
-    with torch.device(device):
-        ensemble = train_ensemble(
-            unit, pools, train_cfg, stage=TIMING_STAGE, seed=seed,
-            arm="baseline", granularity="episode", logger=None,
-        )
-    if device == "cuda":
-        torch.cuda.synchronize()
-    t2 = time.perf_counter()
-
-    members = len(ensemble.members)
-    del ensemble
-    return Measurement(
-        n_transitions=unit.n_transitions, device=device,
-        collect_s=t1 - t0, train_s=t2 - t1, members=members,
-    )
+    def as_record(self) -> dict:
+        return {
+            "n_transitions": self.n_transitions,
+            "members": self.members,
+            "train_reps_s": self.train_reps_s,
+            "collect_reps_s": self.collect_reps_s,
+            "train_median_s": statistics.median(self.train_reps_s),
+            "train_max_s": max(self.train_reps_s),
+            "per_fit_median_s": self.per_fit("median"),
+            "per_fit_max_s": self.per_fit("max"),
+            "per_collection_median_s": self.per_collection("median"),
+            "per_collection_max_s": self.per_collection("max"),
+        }
 
 
 def _reference_unit(n_transitions: int) -> UnitSpec:
-    """A canonical, fully observed unit at the given training size."""
     return UnitSpec(
         family="estimation", layout="uniform", causal_attribute="shape",
         confound_rate=0.0, n_transitions=n_transitions, withheld_features=(),
     )
 
 
-def design_fits_by_size() -> collections.Counter:
-    """Every fit the registered design owes, keyed by the size it TRAINS at.
-
-    **Built on ``execution_plan``, not on ``obligations``, and that is the whole
-    point.** The first version of this function summed obligations directly and
-    got 6,750 baseline fits against the design's 6,375 — **the exact 375 phantom
-    fits of D-033**, because a repair-validation unit's baseline was counted at
-    twenty-five seeds when the twenty contain the five. It also charged one fit
-    per repair *obligation* instead of per seed, undercounting the repair side.
-    Two errors in opposite directions, in a function whose only job is counting.
-
-    ``execution_plan`` is already deduplicated by fit identity and stage-aware,
-    and ``total_model_fits`` reproduces Plan §14.2's split from it. Re-deriving
-    that arithmetic here would be a second implementation of a number the
-    project has already been wrong about once.
-
-    Repair arms are resolved through :class:`Arm`, so data repair is counted at
-    its ``DATA_REPAIR_MULTIPLIER`` budget rather than at the base size.
-    """
-    fits: collections.Counter = collections.Counter()
-    for fit in execution_plan(design_units()):
-        effective = Arm(fit.arm).resolve(fit.unit)
-        fits[effective.n_transitions] += fit.members
-    return fits
+def _time_once(unit: UnitSpec, *, seed: int, device: str) -> tuple[float, float]:
+    """(collect_s, train_s) for one condition. Reads the clock and nothing else."""
+    torch.manual_seed(0)
+    t0 = time.perf_counter()
+    pools = collect_pools(unit, stage=TIMING_STAGE, seed=seed, arm="baseline")
+    t1 = time.perf_counter()
+    with torch.device(device):
+        ensemble = train_ensemble(
+            unit, pools, TrainConfig(), stage=TIMING_STAGE, seed=seed,
+            arm="baseline", granularity="episode", logger=None,
+        )
+    if device == "cuda":
+        torch.cuda.synchronize()
+    t2 = time.perf_counter()
+    del ensemble, pools
+    return t1 - t0, t2 - t1
 
 
-def extrapolate(rates: dict[int, float], fits: collections.Counter) -> dict[int, float]:
-    """Seconds per size, using the nearest measured size at or above each one.
-
-    A size with no measurement is charged at the closest measured size that is
-    at least as large, which is conservative rather than optimistic.
-    """
-    out: dict[int, float] = {}
-    measured = sorted(rates)
-    for size, count in fits.items():
-        at_or_above = [m for m in measured if m >= size] or [measured[-1]]
-        out[size] = count * rates[at_or_above[0]]
+def benchmark_sizes(sizes, *, device: str, reps: int) -> dict[int, SizeBenchmark]:
+    """Warm up once, then take `reps` observations at each size."""
+    if reps < MIN_REPETITIONS:
+        raise ValueError(f"{reps} repetitions; Sol's floor is {MIN_REPETITIONS}")
+    for _ in range(WARMUP_RUNS):
+        _time_once(_reference_unit(min(sizes)), seed=0, device=device)
+    out: dict[int, SizeBenchmark] = {}
+    for size in sizes:
+        b = SizeBenchmark(n_transitions=size)
+        for rep in range(reps):
+            c, t = _time_once(_reference_unit(size), seed=rep, device=device)
+            b.collect_reps_s.append(c)
+            b.train_reps_s.append(t)
+        out[size] = b
     return out
 
 
+def design_accounting() -> dict:
+    """Fits and collection events the registered design owes, by training size.
+
+    Built on ``execution_plan`` (deduplicated by fit identity, stage-aware), not
+    on ``obligations`` — the first version re-derived it and reproduced D-033's
+    375 phantom fits. **Ablations are included**, charged at
+    ``ABLATION_ASSUMED_SIZE`` with the assumption recorded.
+    """
+    plan = execution_plan(design_units())
+    fits: collections.Counter = collections.Counter()
+    collections_by_size: collections.Counter = collections.Counter()
+    for fit in plan:
+        size = Arm(fit.arm).resolve(fit.unit).n_transitions
+        fits[size] += fit.members
+        collections_by_size[size] += 1
+    reference = total_model_fits(design_units())
+    fits[ABLATION_ASSUMED_SIZE] += reference["ablations"]
+    return {
+        "fits_by_size": dict(sorted(fits.items())),
+        "collections_by_size": dict(sorted(collections_by_size.items())),
+        "total_fits": sum(fits.values()),
+        "total_collections": sum(collections_by_size.values()),
+        "ablations_included": True,
+        "ablations": reference["ablations"],
+        "ablation_assumed_size": ABLATION_ASSUMED_SIZE,
+        "plan_total_model_fits": reference,
+    }
+
+
+def _rate(bench: dict[int, SizeBenchmark], size: int, how: str, kind: str) -> float:
+    """Nearest measured size at or above `size` — conservative, never below."""
+    at_or_above = [s for s in sorted(bench) if s >= size] or [max(bench)]
+    b = bench[at_or_above[0]]
+    return b.per_fit(how) if kind == "fit" else b.per_collection(how)
+
+
+def extrapolate(bench: dict[int, SizeBenchmark], acct: dict, how: str) -> dict:
+    """Total wall seconds for the whole design, training AND collection."""
+    train = sum(n * _rate(bench, s, how, "fit") for s, n in acct["fits_by_size"].items())
+    coll = sum(n * _rate(bench, s, how, "collection")
+               for s, n in acct["collections_by_size"].items())
+    return {
+        "summary": how,
+        "training_s": train,
+        "collection_s": coll,
+        "total_s": train + coll,
+        "total_hours": (train + coll) / 3600,
+    }
+
+
+def representative_condition() -> UnitSpec:
+    """The largest repair-validation unit: 20 seeds, a baseline ensemble and a
+    10x data-repair arm. It is the dominant registered size and the only shape
+    that exercises seeds and repairs together."""
+    ro = [o for o in repair_obligations(design_units()) if o.stage == "repair_validation"]
+    return max((o.unit for o in ro), key=lambda u: u.n_transitions)
+
+
+def run_full_condition(unit: UnitSpec, *, device: str, seeds: int | None = None) -> dict:
+    """One registered condition END TO END through its whole seed/repair obligation.
+
+    This is the check the per-size benchmark cannot perform on itself: it
+    measures the real orchestration — every seed, every arm, collection included
+    — so the bottom-up extrapolation can be reconciled against something that
+    actually ran.
+    """
+    plan = [f for f in execution_plan(design_units()) if f.unit == unit]
+    if seeds is not None:
+        keep = sorted({f.seed for f in plan})[:seeds]
+        plan = [f for f in plan if f.seed in keep]
+
+    t0 = time.perf_counter()
+    fits = 0
+    for fit in plan:
+        effective = Arm(fit.arm).resolve(fit.unit)
+        pools = collect_pools(fit.unit, stage=TIMING_STAGE, seed=fit.seed, arm=fit.arm)
+        with torch.device(device):
+            cfg = TrainConfig(ensemble_size=fit.members)
+            ens = train_ensemble(
+                fit.unit, pools, cfg, stage=TIMING_STAGE, seed=fit.seed,
+                arm=fit.arm, granularity="episode", logger=None,
+            )
+        if device == "cuda":
+            torch.cuda.synchronize()
+        fits += len(ens.members)
+        del ens, pools
+    elapsed = time.perf_counter() - t0
+    return {
+        "unit_n_transitions": unit.n_transitions,
+        "arms": sorted({f.arm for f in plan}),
+        "seeds_run": sorted({f.seed for f in plan}),
+        "conditions": len(plan),
+        "fits": fits,
+        "measured_s": elapsed,
+        "sizes_trained_at": sorted({Arm(f.arm).resolve(f.unit).n_transitions for f in plan}),
+    }
+
+
+def reconcile(observed: dict, bench: dict[int, SizeBenchmark], how: str,
+              *, unit: UnitSpec) -> dict:
+    """Predict the full-condition run bottom-up and compare with what it took.
+
+    **Filters on the unit itself, not on its size.** The first version matched
+    ``f.unit.n_transitions == 5000``, which is every unit at that size — 1,464
+    plan entries and 4,552 fits against the 40 entries and 120 fits that
+    actually ran, a **37.9x** inflation that showed up as a measured/predicted
+    ratio of 0.03. The reconciliation caught it, which is what it is for; it
+    simply caught a defect in itself rather than in the extrapolation.
+    """
+    plan = [f for f in execution_plan(design_units())
+            if f.unit == unit
+            and f.seed in set(observed["seeds_run"])
+            and f.arm in set(observed["arms"])]
+    predicted = 0.0
+    for fit in plan:
+        size = Arm(fit.arm).resolve(fit.unit).n_transitions
+        predicted += fit.members * _rate(bench, size, how, "fit")
+        predicted += _rate(bench, size, how, "collection")
+    return {
+        "summary": how,
+        "predicted_s": predicted,
+        "measured_s": observed["measured_s"],
+        "ratio_measured_over_predicted": observed["measured_s"] / predicted if predicted else None,
+    }
+
+
+def _git(*args: str) -> str:
+    return subprocess.run(["git", *args], capture_output=True, text=True).stdout.strip()
+
+
+def build_record(bench, acct, device, threads, full, recon) -> dict:
+    return {
+        "schema_version": TIMING_SCHEMA_VERSION,
+        "commit": _git("rev-parse", "HEAD"),
+        "tree_clean": _git("status", "--porcelain") == "",
+        "execution_host": {
+            "described_by_plan_as": "Kaggle T4",
+            "actual": "local workstation (DEV-011)",
+            "platform": platform.platform(),
+            "processor": platform.processor() or platform.machine(),
+            "device": device,
+            "torch_threads": threads,
+            "cuda_device": torch.cuda.get_device_name(0) if device == "cuda" else None,
+            "units": "LOCAL WALL-HOURS, not GPU-hours",
+        },
+        "packages": package_versions(),
+        "stage": TIMING_STAGE,
+        "warmup_runs": WARMUP_RUNS,
+        "repetitions": len(next(iter(bench.values())).train_reps_s),
+        "raw_by_size": [b.as_record() for _, b in sorted(bench.items())],
+        "accounting": acct,
+        "extrapolation": {
+            "median": extrapolate(bench, acct, "median"),
+            "max": extrapolate(bench, acct, "max"),
+        },
+        "full_condition": full,
+        "reconciliation": {"median": recon["median"], "max": recon["max"]},
+        "trigger_gpu_hours": K.COMPUTE_ESCALATION_TRIGGER_GPU_HOURS,
+        "verdict_basis": "max (conservative), local wall-hours",
+    }
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--device", default=None,
-                        help="cpu, cuda, or omit to measure both where available")
-    parser.add_argument("--threads", type=int, default=None,
-                        help="torch intra-op threads. The certified W4 runs used "
-                             "4 (D-076); the machine default is much higher, and "
-                             "timing is NOT thread-neutral even though the "
-                             "numerics question D-076 raised is separate.")
-    args = parser.parse_args()
-    if args.threads:
-        torch.set_num_threads(args.threads)
-        torch.set_num_interop_threads(args.threads) if hasattr(
-            torch, "set_num_interop_threads") else None
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--attempt", default="runs/w4_timing/attempt-001")
+    ap.add_argument("--device", default="cpu")
+    ap.add_argument("--threads", type=int, default=4)
+    ap.add_argument("--reps", type=int, default=MIN_REPETITIONS)
+    ap.add_argument("--condition-seeds", type=int, default=None,
+                    help="limit the full-condition run to the first N seeds")
+    args = ap.parse_args()
 
-    devices = [args.device] if args.device else (
-        ["cpu", "cuda"] if torch.cuda.is_available() else ["cpu"]
-    )
-    fits = design_fits_by_size()
-    sizes = sorted(fits)
-    total_fits = sum(fits.values())
+    torch.set_num_threads(args.threads)
+    acct = design_accounting()
+    sizes = sorted(acct["fits_by_size"])
 
-    print("W4 FRIDAY TIMING HARNESS (S§W4 Fri, built late — D-113)")
-    print("Wall time only. stage='pilot'. No registered evidence written.\n")
-    print(f"registered design: {total_fits:,} fits across sizes {sizes}")
-    print(f"budget: {K.COMPUTE_ESCALATION_TRIGGER_GPU_HOURS} GPU-hour escalation "
-          f"trigger (P§14.3); schedule states 110-145 GPU-h\n")
+    print(f"W4 FRIDAY TIMING, rebuilt (S§W4 Fri; D-114 refused, D-116)")
+    print(f"host: LOCAL, {args.device}, {args.threads} threads -- WALL-HOURS, not "
+          f"GPU-hours (plan names Kaggle T4; see DEV-011)")
+    print(f"design: {acct['total_fits']:,} fits INCLUDING {acct['ablations']} ablations, "
+          f"{acct['total_collections']:,} collection events\n")
 
-    for device in devices:
-        if device == "cuda" and not torch.cuda.is_available():
-            print(f"-- {device}: unavailable, skipped\n")
-            continue
-        name = torch.cuda.get_device_name(0) if device == "cuda" else "CPU"
-        print(f"-- {device} ({name}) "
-              f"threads={torch.get_num_threads()} ------------------------")
-        print(f"{'train size':>11}{'collect s':>11}{'train s':>10}"
-              f"{'per-fit s':>11}{'design fits':>13}")
-        rates: dict[int, float] = {}
-        with tempfile.TemporaryDirectory():
-            for size in sizes:
-                m = time_condition(_reference_unit(size), seed=0, device=device)
-                rates[size] = m.per_fit_s
-                print(f"{size:>11,}{m.collect_s:>11.2f}{m.train_s:>10.2f}"
-                      f"{m.per_fit_s:>11.3f}{fits[size]:>13,}")
+    bench = benchmark_sizes(sizes, device=args.device, reps=args.reps)
+    print(f"{'size':>8}{'fits':>8}{'colls':>7}{'fit med':>10}{'fit max':>10}{'coll med':>10}")
+    for s in sizes:
+        b = bench[s]
+        print(f"{s:>8,}{acct['fits_by_size'][s]:>8,}"
+              f"{acct['collections_by_size'].get(s,0):>7,}"
+              f"{b.per_fit('median'):>10.3f}{b.per_fit('max'):>10.3f}"
+              f"{b.per_collection('median'):>10.3f}")
 
-        seconds = extrapolate(rates, fits)
-        total_h = sum(seconds.values()) / 3600
-        print(f"\n  EXTRAPOLATED TRAINING TIME: {total_h:.2f} hours "
-              f"({sum(seconds.values()):,.0f} s over {total_fits:,} fits)")
-        trigger = K.COMPUTE_ESCALATION_TRIGGER_GPU_HOURS
-        print(f"  against the {trigger}-hour escalation trigger: "
-              f"{total_h / trigger:.4f}x  ->  "
-              f"{'WITHIN' if total_h < trigger else 'OVER'} budget")
-        print(f"  headroom factor: {trigger / total_h:,.0f}x\n" if total_h else "\n")
+    unit = representative_condition()
+    print(f"\nfull condition end to end: n={unit.n_transitions:,}, "
+          f"{'all' if args.condition_seeds is None else args.condition_seeds} seeds ...")
+    full = run_full_condition(unit, device=args.device, seeds=args.condition_seeds)
+    recon = {h: reconcile(full, bench, h, unit=unit) for h in ("median", "max")}
+    print(f"  {full['fits']} fits over {full['conditions']} conditions, arms {full['arms']}")
+    print(f"  measured {full['measured_s']:.1f} s   predicted "
+          f"{recon['median']['predicted_s']:.1f} s (median) / "
+          f"{recon['max']['predicted_s']:.1f} s (max)")
+    print(f"  measured/predicted = {recon['median']['ratio_measured_over_predicted']:.2f} "
+          f"(median basis)")
 
-    print("Training time only; collection is measured and reported per condition")
-    print("but is not multiplied by member count. Measured on THIS machine, not")
-    print("on Kaggle, which the schedule names as the execution host.")
+    for how in ("median", "max"):
+        e = extrapolate(bench, acct, how)
+        print(f"\n  {how.upper():6} total {e['total_hours']:.2f} local wall-hours "
+              f"(train {e['training_s']/3600:.2f} h + collect {e['collection_s']/3600:.2f} h)"
+              f"  vs {K.COMPUTE_ESCALATION_TRIGGER_GPU_HOURS} h trigger -> "
+              f"{e['total_hours']/K.COMPUTE_ESCALATION_TRIGGER_GPU_HOURS:.3f}x")
+
+    record = build_record(bench, acct, args.device, args.threads, full, recon)
+    out = Path(args.attempt)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "timing.json"
+    if path.exists():
+        raise FileExistsError(f"{path} exists; attempts are immutable")
+    path.write_text(json.dumps(record, indent=2, sort_keys=True, default=str))
+    print(f"\nevidence written: {path}")
 
 
 if __name__ == "__main__":
