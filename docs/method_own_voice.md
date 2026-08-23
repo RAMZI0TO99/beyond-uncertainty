@@ -8,7 +8,7 @@ adding the frozen numbers with their estimands — and the student reads and
 confirms each section before it is marked accepted. Every section carries its
 source answers below it, verbatim, as provenance of whose voice it is.
 
-**Status: §1–§9 CONFIRMED by the student (2026-08-23). §10 drafted — awaiting student confirmation.**
+**Status: §1–§10 CONFIRMED by the student (2026-08-23). §11 drafted — awaiting student confirmation.**
 
 ---
 
@@ -429,7 +429,7 @@ above as a block).
 
 ---
 
-## 10 · The failure threshold *(W4 Fri, D-103/D-107 — replaces `method_draft.md` §10 when confirmed)*
+## 10 · The failure threshold *(W4 Fri, D-103/D-107 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §10)*
 
 Everything downstream of this section depends on one number. A transition is
 called a *failure* when its normalised prediction error is **strictly greater
@@ -502,3 +502,60 @@ was sharpened to the reference-of-normal argument. Answer 3 has the right
 principle; the specific boundary reasoning — that two real transitions sit on
 the value, so the strict rule decides actual labels — is Claude's, from
 `constants.py` and D-107.
+
+---
+
+## 11 · A limitation: failure is not spread evenly across layouts *(D-108/D-109 — replaces `method_draft.md` §11 when confirmed)*
+
+The threshold is one global number, but it does not mean one thing everywhere.
+Measured across the nine calibration strata, the proportion of transitions
+called failures ranges from **1.58% to 8.77%** — a **5.5-fold** spread, ordered
+systematically by layout: clustered lowest, then uniform, then sparse. This is
+reported because it is a finding, and nothing here is hidden merely because it
+makes the design look less tidy.
+
+The measurement is reported without an accompanying explanation, and the reason
+is worth stating openly, because an earlier version of this section did offer
+one. It claimed the spread was mostly an artefact of the per-dimension
+normalising scale. In review that claim was withdrawn while the numbers were
+confirmed, and the fault was not arithmetic. The evidence offered was about
+the *average* size of errors in each layout; prevalence is a statement about
+the *upper tail* of the error distribution. Overlapping bounds on averages
+cannot establish why tails differ, so the evidence could not reach the claim it
+was made to support. A measurement is a fact that can be re-derived from stored
+artefacts; an explanation is a causal claim, and it needs evidence aimed at the
+thing being explained. So the honest report is what was measured, plus the
+explicit statement that the mechanism behind it is not established here.
+
+Two smaller lessons from the same correction are carried into the reporting
+rules. A prevalence figure has to name how it was aggregated — pooling all
+rows and averaging the per-cell rates are different quantities, and the first
+version of this analysis mixed the two without naming either; both are now
+reported and labelled. And a per-dimension scale is a vector, not a single
+number: collapsing it to one figure per layout made the layouts look cleanly
+separated when, reported honestly as per-dimension ranges, two of them overlap.
+
+The consequence for the analysis is a set of registered rules rather than a
+change to the design. The failure set is not redefined and the registered
+primary weighting is not replaced. Layout-stratified estimates for Hypothesis 2
+are reported as a secondary robustness diagnostic, and for Hypothesis 3
+balanced accuracy and confusion behaviour are reported both overall and
+separately by layout. The student's own reading of the risk is the right one:
+if failures are far more common in some layouts than others, the labelled
+material can end up leaning on a subset of layouts rather than representing all
+of them — so the layout breakdown is reported alongside the headline number,
+where a reader can see it.
+
+**Source answers (student, 2026-08-23, verbatim):**
+> 1- it is a finding we are not going to hide anything.
+> 2-we just need to show the findings . right?
+> 3-to count on one layer rather than all layers.
+
+**Provenance notes:** answer 1 is the section's opening principle, kept in the
+student's terms. Answer 3 is correct in substance — the risk of leaning on a
+subset of layouts — and drives the closing paragraph; it was unprompted.
+Answer 2 was tentative and is sharpened: the distinction is not that findings
+should be shown, but that a **measurement** can be re-derived from stored
+evidence while an **explanation** is a causal claim needing evidence aimed at
+the quantity it explains (D-108, withdrawn by D-109; the aggregation and
+vector-scale lessons are D-109's).

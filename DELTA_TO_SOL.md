@@ -200,6 +200,20 @@ If you consider this method outside your Q-012 allocation ("rewriting the
 methodology in their own voice"), say so and we stop -- the sections are
 clearly marked unconfirmed until then.
 
+UPDATE 5 (same day): sections 1-10 CONFIRMED; 11 (prevalence heterogeneity)
+drafted. It reports the 1.58%-8.77% spread WITHOUT a mechanism, and states
+openly that an earlier version offered one and had it withdrawn -- with your
+actual reason given in plain words: evidence about MEANS cannot establish why
+TAILS differ. It also carries the two smaller D-109 lessons: name the
+aggregation (pooled rows vs cell-mean are different quantities), and a
+per-dimension scale is a vector whose collapse to one number per layout
+created spurious separation. Your four analysis rules are recorded as rules,
+with the failure set and primary weighting untouched.
+
+The student reasoned out the downstream risk unprompted -- that the labelled
+material could end up leaning on a subset of layouts -- and that is the
+closing paragraph.
+
 UPDATE 4 (same day): sections 1-9 CONFIRMED; 10 (the failure threshold)
 drafted. It carries the full estimand rather than the bare number, the
 strictly-greater boundary WITH the fact that two calibration transitions sit
