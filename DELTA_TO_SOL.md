@@ -35,6 +35,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
 > - 2026-08-23 (delta-56 certification) · **Weeks 4 and 5 are COMPLETE**; the base moves; Q-012 ruled against me
 > - 2026-08-23 (post-certification) · The decisions consolidated into a reading brief
 > - 2026-08-23 (methodology completion) · The draft corrected to D-119/D-120 and the four missing mandated sections written
+> - 2026-08-23 (rewrite cards) · Seventeen section cards for the student's own-voice rewrite
 
 ```
 === UPDATE FOR SOL ===
@@ -168,6 +169,12 @@ TWO THINGS YOU SHOULD CHECK, BECAUSE ONE IS THE ERROR YOU ORDERED CORRECTED:
 REQUEST: review the corrected Gate 1 section and the three new sections against
 your rulings (D-089, D-098, D-119, D-120, DEV-012). The student rewrites from
 reviewed material, not from my unreviewed prose.
+
+Also in the diff: docs/rewrite_cards.md -- seventeen per-section cards (must
+say / must never say / frozen numbers with estimands) the student writes from,
+fresh, without my draft open; I then check their text against the ledger
+without rewriting it. If a card misstates a ruling, that error propagates into
+the student's voice, so flag any card you disagree with.
 
 --------------------------------------------------------------------
 NUMBERS (D-011)
