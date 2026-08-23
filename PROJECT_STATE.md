@@ -464,26 +464,18 @@ Two conditions:
 
 Entries before this one are in `PROJECT_STATE_ARCHIVE.md` — **57 archived, the newest kept here**. Nothing is condensed or summarised: the archive holds every entry in full, and §3's index carries every decision id regardless of which file its session lives in.
 
-*(Archived in order, all of them because this file kept reaching its 500-line paste cap, none of them because they stopped mattering: the W3 certification and W4 Tuesday gate rounds → D-068 … D-077; W4 Thursday's MDE and the W5 Mon–Fri cells → D-078 … D-081; the W5 closeout and Sol correction rounds of 2026-08-20 → D-082 … D-102 and the Gate 1 FAIL; W4 Friday's threshold calibration → D-103 … D-105, delivered as delta 49; then the 2026-08-22 sessions in sequence — the delta-49 review → D-106, the D-035 promotion → D-107, the post-promotion probe → D-108, the delta-51 ruling → D-109, the methodology prose → D-110, the delta-52 ruling → D-111, the methodology closeout → D-112, and the schedule check → D-113 with DEV-009.*
-
-***Read D-109 before D-108** — it is the correction of record and D-108's causal reading is withdrawn. The threshold D-103 calibrated is now frozen and certified; see D-107.)*
+*(Archived in order, all because this file kept reaching its 500-line paste cap, none because they stopped mattering: the W3 certification and W4 Tuesday gate rounds → D-068 … D-077; W4 Thursday's MDE and the W5 Mon–Fri cells → D-078 … D-081; the W5 closeout and 2026-08-20 correction rounds → D-082 … D-102 and the Gate 1 FAIL; W4 Friday's threshold calibration → D-103 … D-105 (delta 49); then the 2026-08-22 sessions in sequence — delta-49 review → D-106, the D-035 promotion → D-107, the post-promotion probe → D-108, delta-51 → D-109, methodology prose → D-110, delta-52 → D-111, methodology closeout → D-112, schedule check → D-113 with DEV-009. **Read D-109 before D-108** — D-108's causal reading is withdrawn. The threshold D-103 calibrated is frozen and certified; see D-107.)*
 
 ### DEV-008 · 2026-08-18 · The MDE simulation's significance level is not in the plan
 **Deviation:** P§10.7 fixes power at eighty percent but does not state a significance level. The C-006 simulation uses **α = 0.05, two-sided**.
 **Why:** consistency with every other interval in the project — repair acceptance is a 95% CI excluding zero (P§7.3), and the H1 trend test is a 95% interval (D-068). A one-sided test would shrink the MDE by about 11% and change no conclusion.
 **Goes in methodology:** **yes.** It is an assumption the reported MDE depends on, and the MDE is a Gate 1 condition. Stated rather than absorbed silently.
 
-*(Six further 2026-08-22 sessions archived, in order: the timing harness → D-114 (certification
-WITHHELD, see D-115); the W4 closeout → DEV-010 (whose expansion claim D-115 corrects); the
-delta-53 ruling → D-115 (frozen trace cap, W5 balancer, and the correction of my false expansion
-arithmetic); the W4 timing rebuild → D-116; the W4/W5 audit → D-117 (six findings, accepted by
-Sol); and the delta-54 closeout → D-118, whose timing evidence Sol has now certified and whose
-balancer fixes it accepted as materially correct. **Read D-115 before D-114 or DEV-010**, and note
-that DEV-010's own 2026-08-22 correction is further corrected by D-119 — it compares local
-wall-hours with GPU-hours. The entry below closes the three boundaries that remained.)*
-
-*(The delta-55 micro-closeout (D-119) was archived on 2026-08-23, certified in full by the entry below:
-three balancer boundaries, the timing schema correction, and the compute-condition correction of record.)*
+*(Seven further sessions archived, in order: the timing harness → D-114 (certification WITHHELD, see
+D-115); the W4 closeout → DEV-010; the delta-53 ruling → D-115; the W4 timing rebuild → D-116; the
+W4/W5 audit → D-117; the delta-54 closeout → D-118; and the delta-55 micro-closeout → D-119,
+certified in full below. **Read D-115 before D-114 or DEV-010**, and note that DEV-010's own
+correction is itself further corrected by D-119 — it compares local wall-hours with GPU-hours.)*
 
 ### 2026-08-23 (delta-56 certification) · **Weeks 4 and 5 are COMPLETE**; the base moves; Q-012 ruled against me · Claude
 
@@ -498,3 +490,11 @@ three balancer boundaries, the timing schema correction, and the compute-conditi
 **>>> And a false locator of my own, found while filing.** `DELTA_TO_SOL.md`'s header said deltas *"1–7 and 10–54 are in `PROJECT_STATE_ARCHIVE.md`"*. **They are not** — the archive holds 25 ids, highest **33**; deltas 34–55 were replaced without archiving, including delta 55, which I replaced this session. **Nothing is lost** (all recoverable from git, verified for 34/45/54/55), but a header pointing at something it does not contain is the D-072 defect: a claim checked only against itself. Corrected to what is true.
 
 **Tests:** **895 passing**, 2 skipped. **No code touched, no compute, no data.**
+
+### 2026-08-23 (post-certification) · The decisions consolidated into a reading brief · Claude
+
+**Under D-120's allocation — prose and review only.** `docs/decision_briefing.md` compresses D-001 … D-120 into a brief the student can read in a sitting: what is **frozen** and why, what the study is, the four identities, where Gate 1 actually stands, **which entries are superseded**, the recurring failure modes, and what is still open. It is explicitly a reading aid — **where it and the ledger disagree, the ledger wins** — and every claim carries its D-number.
+
+**The most useful thing in it is Part 5.** D-098's signed gate record still reads **condition 2 = PASS**, because §5 is append-only; it was corrected to NOT ADJUDICABLE by D-119/D-120. That is the single most likely place to quote a withdrawn claim into the thesis, since the original sits in a *signed gate record*. Same for D-039/D-042 → D-044, D-108 → D-109, and D-114/D-115 → D-119.
+
+**No code, no tests, no compute, no data.** 895 passing, 2 skipped, unchanged.

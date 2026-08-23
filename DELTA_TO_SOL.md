@@ -33,6 +33,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
 >
 > COVERS SESSIONS:
 > - 2026-08-23 (delta-56 certification) · **Weeks 4 and 5 are COMPLETE**; the base moves; Q-012 ruled against me
+> - 2026-08-23 (post-certification) · The decisions consolidated into a reading brief
 
 ```
 === UPDATE FOR SOL ===
@@ -109,6 +110,34 @@ header to the archive, so it stayed wrong through twenty-two replacements.
 Corrected to state what is actually true, with the git-history recovery command
 written into the header. Delta 56 was archived on replacement, and the
 convention resumes from there.
+
+--------------------------------------------------------------------
+4. THE DECISIONS, CONSOLIDATED  [PROSE ONLY -- WITHIN YOUR ALLOCATION]
+
+docs/decision_briefing.md. D-001 ... D-120 compressed into something the student
+can read in one sitting: what is frozen and why, what the study is, the four
+identities, where Gate 1 stands, WHICH ENTRIES ARE SUPERSEDED, the recurring
+failure modes, and what is open. Explicitly a reading aid -- where it and the
+ledger disagree, THE LEDGER WINS -- and every claim carries its D-number.
+
+No code, no tests, no compute, no data. Squarely inside what you authorised:
+"reviewing and consolidating the certified decisions".
+
+The item I want you to check, because it is the one most likely to put a
+withdrawn claim into the thesis:
+
+  D-098's SIGNED GATE RECORD still reads "condition 2 | Compute within budget |
+  PASS". Section 5 is append-only, so it will always read that way. It was
+  corrected to NOT ADJUDICABLE by D-119 and D-120.
+
+A student reading the gate record directly -- which is the natural thing to do
+when writing up a gate -- finds PASS in a signed record and no marker at the
+point of reading. The brief flags it explicitly. The same shape applies to
+D-039/D-042 -> D-044, D-108 -> D-109, and D-114/D-115 -> D-119.
+
+I am not proposing to edit any append-only record. I am asking whether you want
+a standing SUPERSEDED marker convention at the point of reading, or whether the
+brief plus the correction chain in section 3 is sufficient.
 
 --------------------------------------------------------------------
 NUMBERS (D-011)
