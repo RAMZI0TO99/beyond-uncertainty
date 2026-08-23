@@ -111,7 +111,7 @@ test.**
 ```bash
 .venv/bin/python -m pytest -q                      # 895 passing, 2 skipped, 0 xfailed
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
-BASE=801a33d ./scripts/sol_bundle.sh              # bundle for Sol; 801a33d is CERTIFIED
+BASE=c5c8e6f ./scripts/sol_bundle.sh              # bundle for Sol; c5c8e6f is CERTIFIED
 ```
 
 - venv is `--system-site-packages` (reuses CUDA torch); `pyproject.toml` pins all.
@@ -291,8 +291,17 @@ Gate 2's date is 2026-10-24, and gates never move.*
 
 **Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
 AND CERTIFIED** (D-120, 2026-08-23). **No week is open** — the first time since
-Week 3. The certified base is **`801a33d`**; Sol named that exact commit and
-said a later one **must not be inferred**.
+Week 3. The certified base is **`c5c8e6f`**; Sol named that exact commit
+(D-125) and said a later one **must not be inferred**.
+
+**The prose closeout is CERTIFIED** (D-125): D-121 … D-124, with four documents
+accepted **in stated roles**. `docs/method_own_voice.md` is a **student-confirmed
+assisted draft — NOT final independently authored thesis prose**;
+`docs/method_draft.md` is **scaffolding**; `docs/decision_briefing.md` is
+**subordinate to the ledger**; `docs/rewrite_cards.md` is checked guidance.
+**Before anything enters the thesis the student must do an independent rewrite
+pass, strip the interview/provenance apparatus, and keep only wording they can
+personally explain and defend.**
 
 **Nothing is authorised to be built.** Q-012 was ruled **against** building
 C-005/C-007: they do not consume data, but they are **future-week
@@ -439,10 +448,14 @@ allocation Sol ruled.
    consolidating certified decisions, checking prose against plan and schedule,
    **prose-only** interface and acceptance-criteria specs for C-005/C-007,
    read-only audits, and resolving contradictions before they become code.
-3. **The base is `801a33d`** and delta 57 **accumulates** — Sol ruled that no
-   further bundle is required for W4/W5, and that the next one accompanies the
-   **next genuinely authorised change**. Do not infer a later base; D-043 exists
-   because a challenged commit was nearly used as one.
+3. **The base is `c5c8e6f`** and **delta 61 accumulates** — Sol requires no
+   closeout for delta 60, and the next bundle accompanies the next genuinely
+   authorised work. Do not infer a later base; D-043 exists because a
+   challenged commit was nearly used as one.
+6. **AUTHORISED NOW: the plan/schedule `.docx` audit** (D-125) — read-only and
+   prose-only. Compare the certified methodology against the source plan and
+   schedule, record contradictions, propose prose corrections. **Not** a route
+   into later-week implementation.
 4. **The exclusion-rate assumption is settled** — ratified by Sol as **DEV-012**,
    a **zero-inflation planning convention** of 0.00, never to be described as
    observed, estimated or pilot-derived. **S§W6 Monday checks batch 1 against
