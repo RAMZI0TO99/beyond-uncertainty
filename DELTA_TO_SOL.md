@@ -67,6 +67,25 @@ RECORDED EXACTLY AS YOU RULED:
                    W6-W11 code, no executable tests, no real data, no labels,
                    no reserve, no threshold change, no expansion, no compute
 
+>>> ONE DISCLOSURE, REPORTED RATHER THAN QUIETLY FIXED
+
+Commit 7b19d2b's message claimed the new base was updated in CLAUDE.md. It was
+not. The CLAUDE.md edit script aborted on a TypeError and wrote nothing, while
+the commit -- a separate command, not a chain -- ran regardless. CLAUDE.md
+continued to name 801a33d in three places, including the bundle command a
+future session would copy. Fixed and verified in 4007d65: zero occurrences of
+801a33d remain.
+
+That is the THIRD variant of one failure this session: pytest piped into tail
+masking a test failure (70212c6); a multi-edit discarding an already-applied
+fix when a later anchor failed (D-123); and now an aborted edit followed by an
+unconditional commit. Each time a guard existed and each time the SEQUENCING
+let the outcome through. The rule I am adopting: an edit and its commit must
+share a fate -- if the edit does not complete, the commit does not happen.
+
+I am not asking you to re-review the certified bytes; c5c8e6f is unaffected,
+since CLAUDE.md is operational handoff and not part of the certified prose set.
+
 NEXT: the plan/schedule .docx audit, under D-120's allocation, read-only and
 prose-only -- comparing the certified methodology against the source plan and
 schedule, recording contradictions and proposing prose corrections, NOT
