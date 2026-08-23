@@ -2057,3 +2057,33 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Data seen:** none. **Compute:** none.
 **Plan ref:** D-023, D-092, D-121, D-122, D-123, DEV-006. Read-only audit under D-120's allocation.
 **Reviewed by Sol:** **not yet — delta 59 reports it.**
+
+---
+
+### D-125 · 2026-08-23 · **Sol CERTIFIED delta 60** — the prose closeout D-121…D-124 is certified, the base moves to `c5c8e6f`, and the plan/schedule audit is authorised
+
+**Decision:** Sol **certified delta 60** and, with it, **the cumulative prose closeout represented by D-121 through the scope-corrected D-124**. Digests verified before filing, per the standing rule: Sol's quoted bundle sha256 `76e531c67b98…6723a15` matches the delivered file byte-for-byte, the delta digest `e67c698c43f8` matches the bundle header, and the reviewed head is `HEAD`. **The new certified base is exactly `c5c8e6fd35c0ea7da17adb9fca1f4fb674c62e0b` — set `BASE=c5c8e6f`, and do not infer any later commit** (Sol's words; D-043 exists because a challenged commit was nearly used as a base).
+
+**Sol confirmed the D-124 scope correction is present as requested:** the title scopes the audit to fifteen mechanically checkable claims, the result reads **0/15 observed defects**, the remaining **126 sentences are explicitly identified as not mechanically verified**, the entry no longer claims a zero defect rate for the class or that no other issue can remain, and **the correction is visibly recorded rather than silently substituted**. The methodology documents were not reopened in this round — their four snapshots were byte-identical to delta 59.
+
+**The four documents are accepted in stated roles, and the roles are the ruling.**
+
+| Document | Accepted as |
+|---|---|
+| `docs/method_own_voice.md` | **student-confirmed assisted methodology draft** — *not* final independently authored thesis prose |
+| `docs/rewrite_cards.md` | checked rewrite guidance |
+| `docs/decision_briefing.md` | reader-facing consolidation **subordinate to the decision ledger** |
+| `docs/method_draft.md` | methodology **scaffolding**, not final student prose |
+
+**None of these is thesis prose yet.** Sol restated the standing condition: **before anything enters the thesis the student must perform the recorded independent rewrite pass, remove the interview and provenance apparatus, and retain only wording they can personally explain and defend.**
+
+**Scope is unchanged.** W4 and W5 remain complete. **Gate 1 remains FAIL on the MDE condition.** Compute **condition 2 remains NOT ADJUDICABLE, never PASS**. **Q-012 remains closed.** No C-005/C-007 implementation, no W6–W11 code, no executable tests, no real data, no labels, no reserve consumption, no threshold change, no expansion, and no compute is authorised.
+
+**One new workstream is authorised.** The **plan/schedule `.docx` audit** may now begin under D-120's existing allocation — **read-only and prose-only**. Its purpose is to compare the certified methodology against the source plan and schedule, **record contradictions, and propose prose corrections** — explicitly *not* to begin later-week implementation. It is the first piece of genuinely new work authorised since W4/W5 closed.
+
+**No further closeout is required for delta 60.**
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed. No code touched.
+**Data seen:** none. **Compute:** none.
+**Plan ref:** D-008, D-043, D-054, D-120, D-121, D-122, D-123, D-124, Q-012. Sol's certification of delta 60.
+**Reviewed by Sol:** **this IS Sol's certification.** Filed 2026-08-23.

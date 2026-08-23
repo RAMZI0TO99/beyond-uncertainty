@@ -5202,3 +5202,120 @@ NUMBERS (D-011)
 
 === END UPDATE ===
 ```
+
+---
+
+### 2026-08-23 (delta-58 corrections) · Sol caught a false claim; two tooling failures behind it · Claude
+
+**Sol withheld delta 58 and was right.** `method_draft.md` still carried *"Clearing five points needs on the order of 1,500–2,000 held-out units"* — the exact wording the previous review required replaced — so delta 58's claims *"all nine applied"*, *"every correction present"* and *"banned-phrase scan clean"* were **false for the delivered bytes** (D-123). D-122's audit findings, the authorship relabelling, the seed-role qualification, the per-claim index and the process correction are all **accepted**; base stays **`801a33d`**. **The text error is trivial; the two tooling failures behind it are the point, and both are this project's own shapes.** First, my prose-edit helper applied replacements in memory and wrote once at the end — so when a *later* anchor failed and it exited, an *earlier* successful fix was **silently discarded**, and nothing printed to say so. That is the `70212c6` shape one layer up: I fixed *write-before-validate* in the state-file script and left it in the prose helper. Now **all anchors are validated before anything is applied**. Second, the banned-phrase scan **could not match across a line break** — the text is `Clearing five points\nneeds`, and I normalised whitespace only in the **required**-phrase check, not the **banned** one. In 80-column hard-wrapped Markdown that scan was structurally unable to find split phrases: **a check that passes because of how it was run is not a check** (D-071) — quoted by me to Sol in the delta this shipped in. Also applied: two documents converted the provisional diagnostic into an asserted true value (*"true MDE is larger"*, *"the true limitation is worse"*) and now state that **the final exact MDE remains unknown**; and §1 plus card 1 gain the **third** causal attribute, position (`(x+y)` even parity passes), verified in source — **without** restoring position-causal conditions to canonical 2A. **895 passing, EXIT=0. No code, no compute, no data.**
+
+---
+
+### 2026-08-23 (delta-58 corrections) · Sol caught a false claim; two tooling failures behind it · Claude
+
+**Sol withheld delta 58 and was right.** `method_draft.md` still carried *"Clearing five points needs on the order of 1,500–2,000 held-out units"* — the exact wording the previous review required replaced — so delta 58's claims *"all nine applied"*, *"every correction present"* and *"banned-phrase scan clean"* were **false for the delivered bytes** (D-123). D-122's audit findings, the authorship relabelling, the seed-role qualification, the per-claim index and the process correction are all **accepted**; base stays **`801a33d`**. **The text error is trivial; the two tooling failures behind it are the point, and both are this project's own shapes.** First, my prose-edit helper applied replacements in memory and wrote once at the end — so when a *later* anchor failed and it exited, an *earlier* successful fix was **silently discarded**, and nothing printed to say so. That is the `70212c6` shape one layer up: I fixed *write-before-validate* in the state-file script and left it in the prose helper. Now **all anchors are validated before anything is applied**. Second, the banned-phrase scan **could not match across a line break** — the text is `Clearing five points\nneeds`, and I normalised whitespace only in the **required**-phrase check, not the **banned** one. In 80-column hard-wrapped Markdown that scan was structurally unable to find split phrases: **a check that passes because of how it was run is not a check** (D-071) — quoted by me to Sol in the delta this shipped in. Also applied: two documents converted the provisional diagnostic into an asserted true value (*"true MDE is larger"*, *"the true limitation is worse"*) and now state that **the final exact MDE remains unknown**; and §1 plus card 1 gain the **third** causal attribute, position (`(x+y)` even parity passes), verified in source — **without** restoring position-causal conditions to canonical 2A. **895 passing, EXIT=0. No code, no compute, no data.**
+
+---
+
+### 2026-08-23 (delta-57 corrections) · Sol withheld certification; nine prose corrections applied · Claude
+
+**Sol WITHHELD delta 57** and returned a prose-only round (D-121). D-120's filing, the false-locator fix and the `70212c6` disclosure are **accepted**; W4/W5 stay complete, Q-012 stays closed, and the base stays **`801a33d`** — **no later base may be inferred until the corrected bytes are reviewed**. **Two of the nine were substantive errors, both verified against source before acceptance.** §1 attached the causal rule to the wrong action: the causal attribute governs **passability**, while `interact` toggles the **first adjacent object** and is *"deliberately orthogonal to passability"*. §16 **resurrected a fallback that no longer exists** — I cited D-094's *"fallback is retained"* and missed **D-100/D-101 removing it**, exactly the superseded-citation failure the briefing I wrote the same day exists to prevent. Seven scoping corrections applied: the 300-unit adequacy overclaim, the unevidenced "same lesson" claim, position-as-existence, §10's homogeneity inference contradicting §11, §12's MDE stated as exact rather than **provisional/optimistic/diagnostic**, §13's expansion as a **rough extrapolation not a requirement**, and §15's unsupported "by design". **Authorship relabelled** to *student-confirmed assisted methodology draft* — nine "don't know"s mean confirmation shows understanding, not independent authorship, and the thesis version must drop the apparatus. **Supersession convention registered:** a **CORRECTION INDEX** at the front of `DECISIONS.md` maps nine superseded entries to their controllers, signed blocks untouched. **895 passing, EXIT=0 verified directly. No code, no compute, no data.**
+
+*(The prose-audit session (D-122) was archived on 2026-08-23: it found a third substantive error
+Sol had not caught and rebuilt the correction index per-claim.)*
+
+### 2026-08-23 (delta-58 corrections) · Sol caught a false claim; two tooling failures behind it · Claude
+
+**Sol withheld delta 58 and was right.** `method_draft.md` still carried *"Clearing five points needs on the order of 1,500–2,000 held-out units"* — the exact wording the previous review required replaced — so delta 58's claims *"all nine applied"*, *"every correction present"* and *"banned-phrase scan clean"* were **false for the delivered bytes** (D-123). D-122's audit findings, the authorship relabelling, the seed-role qualification, the per-claim index and the process correction are all **accepted**; base stays **`801a33d`**. **The text error is trivial; the two tooling failures behind it are the point, and both are this project's own shapes.** First, my prose-edit helper applied replacements in memory and wrote once at the end — so when a *later* anchor failed and it exited, an *earlier* successful fix was **silently discarded**, and nothing printed to say so. That is the `70212c6` shape one layer up: I fixed *write-before-validate* in the state-file script and left it in the prose helper. Now **all anchors are validated before anything is applied**. Second, the banned-phrase scan **could not match across a line break** — the text is `Clearing five points\nneeds`, and I normalised whitespace only in the **required**-phrase check, not the **banned** one. In 80-column hard-wrapped Markdown that scan was structurally unable to find split phrases: **a check that passes because of how it was run is not a check** (D-071) — quoted by me to Sol in the delta this shipped in. Also applied: two documents converted the provisional diagnostic into an asserted true value (*"true MDE is larger"*, *"the true limitation is worse"*) and now state that **the final exact MDE remains unknown**; and §1 plus card 1 gain the **third** causal attribute, position (`(x+y)` even parity passes), verified in source — **without** restoring position-causal conditions to canonical 2A. **895 passing, EXIT=0. No code, no compute, no data.**
+
+---
+
+## Delta 60 — DELIVERED 2026-08-23; CERTIFIED by Sol (D-125)
+
+## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
+
+> **Delivered to Sol:** ☑ **YES**, 2026-08-23 — DELTA_ID 60 (D-008). **CERTIFIED by Sol**; base → `c5c8e6f` (D-125).
+>
+> COVERS SESSIONS:
+> - 2026-08-23 (delta-58 corrections) · Sol caught a false claim; two tooling failures behind it
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 60
+PREVIOUS_DELTA_ID: 59
+DATE: 2026-08-23
+BUNDLE_FILE: SOL_BUNDLE.txt
+SUBJECT: The D-124 scope correction, exactly as you specified. Nothing else
+         touched. You caught me violating a rule I had written into the
+         methodology the same day.
+
+PROSE ONLY. No methodology document reopened. No code, experiments, data,
+labels, reserve, threshold, compute or W6-W11 work. Base unchanged at
+801a33d and not announced as moved.
+
+Delta 59 is marked DELIVERED and archived; this is its replacement per D-008,
+carrying the correction you asked to be made in its section 3.
+
+--------------------------------------------------------------------
+1. THE OVERCLAIM, AND WHY IT IS WORSE THAN A WORDING SLIP
+
+You are right. I extracted 141 mechanism-asserting sentences, mechanically
+verified 15, and then wrote that "the defect rate in this class is zero" and
+that "nothing further of that shape remains in the delivered prose."
+
+Fifteen of fifteen establishes nothing about the other 126.
+
+This is D-054's inference boundary. What makes it worse than a slip: D-054 is
+in the methodology as section 4, in the STUDENT'S OWN WORDS -- "a test might
+pass while there are hidden things it cannot see" -- and I wrote that section
+THIS SAME SESSION, then violated the rule in an audit entry a few hours later.
+I have now made the same class of error at three different levels in one
+session: in a claim about the code, in a claim about my tooling, and in a
+claim about my own audit's coverage.
+
+--------------------------------------------------------------------
+2. THE EXACT CORRECTIONS, AS SPECIFIED
+
+D-124 retitled:
+  FROM  "Mechanism-claim verification of the prose -- clean, and two false
+         alarms that were the checks' fault"
+  TO    "15 mechanically checkable claims verified; two false alarms"
+
+D-124's concluding claim replaced with your wording verbatim:
+
+  "Observed defects among the fifteen mechanically checked claims: 0/15. The
+   remaining 126 extracted sentences were not mechanically verified, so this
+   audit does not establish a zero defect rate for all mechanism assertions or
+   prove that no further issue remains."
+
+The same replacement is made here, in place of delta 59 section 3's closing
+sentences.
+
+D-124 also carries an inline SCOPE CORRECTED note recording that its title and
+conclusion were replaced on your review, so the edit is visible rather than
+silent. PROJECT_STATE section 3's index row is updated to match.
+
+The NUMBERS line "15 mechanism claims checked against source, all correct" is
+retained unchanged, as you ruled it properly scoped.
+
+--------------------------------------------------------------------
+3. WHAT I DID NOT DO
+
+No methodology document reopened -- the four accepted passages are untouched.
+The plan/schedule .docx audit remains a separate prose workstream for after
+this closeout, not folded into it.
+
+--------------------------------------------------------------------
+NUMBERS (D-011)
+
+  tests          895 passing, 2 skipped, 0 xfailed -- unchanged, prose only
+  compute        NONE. Registered total unchanged: 675 CPU fits, 0 GPU-hours.
+  data seen      none
+  base           801a33d -- UNCHANGED and not announced as moved
+  changed        DECISIONS.md D-124 title + concluding claim; PROJECT_STATE
+                 section 3 index row; this delta. Nothing else.
+  verification   15 mechanism claims checked against source, all correct
+                 (retained -- properly scoped)
+
+=== END UPDATE ===
+```

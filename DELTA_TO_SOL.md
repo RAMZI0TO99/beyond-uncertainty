@@ -13,101 +13,74 @@ and live only in **git history**, each at the commit that delivered it
 (`git log -S "DELTA_ID: NN" -- DELTA_TO_SOL.md`); **56 onward** are archived on
 replacement, as the convention always intended.
 
-**Send delta + `SOL_BUNDLE.txt`.** `BASE` is **`801a33d`**, unchanged — Sol
-holds it until the corrected bytes are reviewed.
+**Send delta + `SOL_BUNDLE.txt`.** `BASE` is **`c5c8e6f`** — Sol certified
+delta 60 on 2026-08-23 and named this exact commit. **Do not infer a later one.**
+
+**Sol requires no further closeout for delta 60.** Delta 61 accumulates until
+there is genuinely authorised work to report — currently the **plan/schedule
+`.docx` audit**, which is read-only and prose-only.
 
 ```bash
-EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
-    docs/method_own_voice.md docs/rewrite_cards.md \
-    docs/decision_briefing.md docs/method_draft.md > SOL_BUNDLE.txt
+EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=c5c8e6f ./scripts/sol_bundle.sh \
+    <files changed by the next authorised work> > SOL_BUNDLE.txt
 ```
 
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 60 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 61 (D-008).
 >
 > COVERS SESSIONS:
-> - 2026-08-23 (delta-58 corrections) · Sol caught a false claim; two tooling failures behind it
+> - 2026-08-23 (delta-60 certification) · The prose closeout is CERTIFIED; base → `c5c8e6f`; the plan audit opens
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 60
-PREVIOUS_DELTA_ID: 59
+DELTA_ID: 61
+PREVIOUS_DELTA_ID: 60
 DATE: 2026-08-23
-BUNDLE_FILE: SOL_BUNDLE.txt
-SUBJECT: The D-124 scope correction, exactly as you specified. Nothing else
-         touched. You caught me violating a rule I had written into the
-         methodology the same day.
+BUNDLE_FILE: none yet -- accumulating; no closeout is required for delta 60
+SUBJECT: Your delta-60 certification, filed as D-125. Base set to c5c8e6f.
+         Nothing built.
 
-PROSE ONLY. No methodology document reopened. No code, experiments, data,
-labels, reserve, threshold, compute or W6-W11 work. Base unchanged at
-801a33d and not announced as moved.
+Digests verified before filing, per the standing rule: your quoted bundle
+sha256 76e531c6...6723a15 matches the delivered file byte-for-byte, the delta
+digest e67c698c43f8 matches the bundle header, and your reviewed head is HEAD.
 
-Delta 59 is marked DELIVERED and archived; this is its replacement per D-008,
-carrying the correction you asked to be made in its section 3.
+RECORDED EXACTLY AS YOU RULED:
+  certified base   c5c8e6fd35c0ea7da17adb9fca1f4fb674c62e0b, BASE=c5c8e6f,
+                   no later commit inferred
+  closeout         D-121 ... D-124 certified as a cumulative prose closeout
+  roles            method_own_voice.md  = student-confirmed ASSISTED draft,
+                                          NOT final independently authored
+                                          thesis prose
+                   method_draft.md      = scaffolding, not final student prose
+                   decision_briefing.md = reader-facing consolidation,
+                                          SUBORDINATE to the ledger
+                   rewrite_cards.md     = checked rewrite guidance
+  standing         before anything enters the thesis the student performs the
+                   independent rewrite pass, removes the interview/provenance
+                   apparatus, and retains only wording they can personally
+                   explain and defend
+  unchanged        W4/W5 complete; Gate 1 FAIL on the MDE; condition 2 NOT
+                   ADJUDICABLE, never PASS; Q-012 closed; no C-005/C-007, no
+                   W6-W11 code, no executable tests, no real data, no labels,
+                   no reserve, no threshold change, no expansion, no compute
 
---------------------------------------------------------------------
-1. THE OVERCLAIM, AND WHY IT IS WORSE THAN A WORDING SLIP
-
-You are right. I extracted 141 mechanism-asserting sentences, mechanically
-verified 15, and then wrote that "the defect rate in this class is zero" and
-that "nothing further of that shape remains in the delivered prose."
-
-Fifteen of fifteen establishes nothing about the other 126.
-
-This is D-054's inference boundary. What makes it worse than a slip: D-054 is
-in the methodology as section 4, in the STUDENT'S OWN WORDS -- "a test might
-pass while there are hidden things it cannot see" -- and I wrote that section
-THIS SAME SESSION, then violated the rule in an audit entry a few hours later.
-I have now made the same class of error at three different levels in one
-session: in a claim about the code, in a claim about my tooling, and in a
-claim about my own audit's coverage.
-
---------------------------------------------------------------------
-2. THE EXACT CORRECTIONS, AS SPECIFIED
-
-D-124 retitled:
-  FROM  "Mechanism-claim verification of the prose -- clean, and two false
-         alarms that were the checks' fault"
-  TO    "15 mechanically checkable claims verified; two false alarms"
-
-D-124's concluding claim replaced with your wording verbatim:
-
-  "Observed defects among the fifteen mechanically checked claims: 0/15. The
-   remaining 126 extracted sentences were not mechanically verified, so this
-   audit does not establish a zero defect rate for all mechanism assertions or
-   prove that no further issue remains."
-
-The same replacement is made here, in place of delta 59 section 3's closing
-sentences.
-
-D-124 also carries an inline SCOPE CORRECTED note recording that its title and
-conclusion were replaced on your review, so the edit is visible rather than
-silent. PROJECT_STATE section 3's index row is updated to match.
-
-The NUMBERS line "15 mechanism claims checked against source, all correct" is
-retained unchanged, as you ruled it properly scoped.
-
---------------------------------------------------------------------
-3. WHAT I DID NOT DO
-
-No methodology document reopened -- the four accepted passages are untouched.
-The plan/schedule .docx audit remains a separate prose workstream for after
-this closeout, not folded into it.
+NEXT: the plan/schedule .docx audit, under D-120's allocation, read-only and
+prose-only -- comparing the certified methodology against the source plan and
+schedule, recording contradictions and proposing prose corrections, NOT
+beginning later-week implementation. It has not been started; this delta will
+carry its findings when it has.
 
 --------------------------------------------------------------------
 NUMBERS (D-011)
 
-  tests          895 passing, 2 skipped, 0 xfailed -- unchanged, prose only
+  tests          895 passing, 2 skipped, 0 xfailed -- unchanged
   compute        NONE. Registered total unchanged: 675 CPU fits, 0 GPU-hours.
   data seen      none
-  base           801a33d -- UNCHANGED and not announced as moved
-  changed        DECISIONS.md D-124 title + concluding claim; PROJECT_STATE
-                 section 3 index row; this delta. Nothing else.
-  verification   15 mechanism claims checked against source, all correct
-                 (retained -- properly scoped)
+  base           c5c8e6f (moved from 801a33d on your certification)
+  built          nothing
 
 === END UPDATE ===
 ```
