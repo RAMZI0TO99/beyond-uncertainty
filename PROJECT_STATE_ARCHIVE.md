@@ -4377,3 +4377,13 @@ labels, recalibration, or Week 6 work has been performed or is claimed.
 **>>> And a false locator of my own, found while filing.** `DELTA_TO_SOL.md`'s header said deltas *"1–7 and 10–54 are in `PROJECT_STATE_ARCHIVE.md`"*. **They are not** — the archive holds 25 ids, highest **33**; deltas 34–55 were replaced without archiving, including delta 55, which I replaced this session. **Nothing is lost** (all recoverable from git, verified for 34/45/54/55), but a header pointing at something it does not contain is the D-072 defect: a claim checked only against itself. Corrected to what is true.
 
 **Tests:** **895 passing**, 2 skipped. **No code touched, no compute, no data.**
+
+---
+
+### 2026-08-23 (post-certification) · The decisions consolidated into a reading brief · Claude
+
+**Under D-120's allocation — prose and review only.** `docs/decision_briefing.md` compresses D-001 … D-120 into a brief the student can read in a sitting: what is **frozen** and why, what the study is, the four identities, where Gate 1 actually stands, **which entries are superseded**, the recurring failure modes, and what is still open. It is explicitly a reading aid — **where it and the ledger disagree, the ledger wins** — and every claim carries its D-number.
+
+**The most useful thing in it is Part 5.** D-098's signed gate record still reads **condition 2 = PASS**, because §5 is append-only; it was corrected to NOT ADJUDICABLE by D-119/D-120. That is the single most likely place to quote a withdrawn claim into the thesis, since the original sits in a *signed gate record*. Same for D-039/D-042 → D-044, D-108 → D-109, and D-114/D-115 → D-119.
+
+**No code, no tests, no compute, no data.** 895 passing, 2 skipped, unchanged.

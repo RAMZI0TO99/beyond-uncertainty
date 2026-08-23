@@ -36,6 +36,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
 > - 2026-08-23 (post-certification) · The decisions consolidated into a reading brief
 > - 2026-08-23 (methodology completion) · The draft corrected to D-119/D-120 and the four missing mandated sections written
 > - 2026-08-23 (rewrite cards) · Seventeen section cards for the student's own-voice rewrite
+> - 2026-08-23 (own-voice §1) · The interview rewrite begins — section 1 built from the student's answers
 
 ```
 === UPDATE FOR SOL ===
@@ -175,6 +176,28 @@ say / must never say / frozen numbers with estimands) the student writes from,
 fresh, without my draft open; I then check their text against the ledger
 without rewriting it. If a card misstates a ruling, that error propagates into
 the student's voice, so flag any card you disagree with.
+
+--------------------------------------------------------------------
+6. THE OWN-VOICE REWRITE HAS STARTED -- METHOD ON THE RECORD
+
+Per section: Claude asks simple questions in chat; the student answers IN
+THEIR OWN WORDS; Claude assembles the section FROM those answers -- keeping
+the student's phrasings where right, correcting facts against the ledger,
+adding frozen numbers -- and the student reads and confirms each section
+before it is accepted. docs/method_own_voice.md carries the sections WITH THE
+SOURCE ANSWERS STORED VERBATIM below each one, as provenance of whose voice
+it is.
+
+Section 1 (environment rationale) is built and awaiting the student's
+confirmation. Corrected on the way, and recorded in the file: the student
+described the agent as learning; the agent never learns -- the scripted
+policy collects (D-020/D-051), the world model learns (D-032), the critic
+diagnoses. Also corrected: "repairs working together" is the AMBIGUOUS
+exclusion, not a success case.
+
+If you consider this method outside your Q-012 allocation ("rewriting the
+methodology in their own voice"), say so and we stop -- the sections are
+clearly marked unconfirmed until then.
 
 --------------------------------------------------------------------
 NUMBERS (D-011)

@@ -480,13 +480,8 @@ correction is itself further corrected by D-119 — it compares local wall-hours
 *(The delta-56 certification session (D-120) was archived on 2026-08-23: Sol certified W4/W5
 complete, moved the base to `801a33d`, and closed Q-012 against pulling implementation forward.)*
 
-### 2026-08-23 (post-certification) · The decisions consolidated into a reading brief · Claude
-
-**Under D-120's allocation — prose and review only.** `docs/decision_briefing.md` compresses D-001 … D-120 into a brief the student can read in a sitting: what is **frozen** and why, what the study is, the four identities, where Gate 1 actually stands, **which entries are superseded**, the recurring failure modes, and what is still open. It is explicitly a reading aid — **where it and the ledger disagree, the ledger wins** — and every claim carries its D-number.
-
-**The most useful thing in it is Part 5.** D-098's signed gate record still reads **condition 2 = PASS**, because §5 is append-only; it was corrected to NOT ADJUDICABLE by D-119/D-120. That is the single most likely place to quote a withdrawn claim into the thesis, since the original sits in a *signed gate record*. Same for D-039/D-042 → D-044, D-108 → D-109, and D-114/D-115 → D-119.
-
-**No code, no tests, no compute, no data.** 895 passing, 2 skipped, unchanged.
+*(The briefing session (post-certification) was archived on 2026-08-23: `docs/decision_briefing.md`
+consolidates D-001 … D-120; the D-098 append-only "compute PASS" trap is flagged there and in delta 57.)*
 
 ### 2026-08-23 (methodology completion) · The draft corrected to D-119/D-120 and the four missing mandated sections written · Claude
 
@@ -497,3 +492,7 @@ complete, moved the base to `801a33d`, and closed Q-012 against pulling implemen
 ### 2026-08-23 (rewrite cards) · Seventeen section cards for the student's own-voice rewrite · Claude
 
 **Prose only, D-120's allocation.** `docs/rewrite_cards.md`: one card per `method_draft.md` section — what it must say, what it must **never** say, the frozen numbers with their estimands, sources. The student writes each section fresh from the card, without the draft open; Claude then checks the text against the ledger without rewriting it. **895 passing, unchanged.**
+
+### 2026-08-23 (own-voice §1) · The interview rewrite begins — section 1 built from the student's answers · Claude
+
+**The method, on the record:** Claude asks simple per-section questions; the student answers **in their own words**; Claude assembles the section *from those answers*, fact-checks it against the ledger, and the student confirms before it counts. `docs/method_own_voice.md` opens with §1 (environment rationale), built from five student answers with their phrasings kept and the source answers stored verbatim as provenance — **pending the student's confirmation**. One misconception corrected on the record: **the agent never learns** — the scripted policy collects (D-020/D-051), the world model learns (D-032), the critic diagnoses. **895 passing, unchanged.**
