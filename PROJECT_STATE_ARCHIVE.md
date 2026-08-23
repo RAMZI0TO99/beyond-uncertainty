@@ -4361,3 +4361,19 @@ W5 is open only for this closeout. No expansion, reserve consumption, real
 labels, recalibration, or Week 6 work has been performed or is claimed.
 === END UPDATE ===
 ```
+
+---
+
+### 2026-08-23 (delta-56 certification) · **Weeks 4 and 5 are COMPLETE**; the base moves; Q-012 ruled against me · Claude
+
+**Sol CERTIFIED delta 56. W4 and W5 are COMPLETE**, D-119 is certified, the **W5 balancer is certified for its synthetic-input scope**, and **DEV-012 is certified exactly as recorded**. The base moves **`51907c6` → `801a33d`**, with Sol's explicit instruction to use that exact commit and **not infer a later one**. Digests verified before filing, per the standing rule: Sol's quoted bundle sha256 `ab9512ba…59c720` matches the delivered file exactly, and the reviewed head is `HEAD`. **This is the first time since Week 3 that no week is open.**
+
+**>>> Q-012 was ruled against me, and the distinction is the point.** I asked whether C-005 and C-007 could be built now that W4/W5 had closed, reasoning that neither consumes data. **Sol chose (b): build nothing from W6–W11.** *"Although those tasks do not themselves consume data, they are future-week implementation and are exactly the kind of implementation lead that Q-004 identified as verification lag."* And the sentence I should have written myself: **completing W4/W5 obligations repaired omissions; it did not authorise pulling later implementation forward.** Repairing a missed obligation and starting a future one are different acts, and I had them one step apart. **Asking was right; the answer was no.**
+
+**The four-week lead is now allocated to prose and review, explicitly** — methodology in the student's own voice, consolidating certified decisions, checking prose against plan and schedule, **prose-only** interface and acceptance-criteria specs for C-005/C-007, read-only audits, and resolving contradictions before they become code. **Source code, executable tests, real data, labels and reserve consumption are not authorised.**
+
+**Gate 1 is unchanged: FAIL** on the MDE, condition 2 **NOT ADJUDICABLE**, expansion still refused, and **no local-wall-hour / GPU-hour comparison may support that decision**. The balancer stays **synthetic-input-only until C-005 exists**.
+
+**>>> And a false locator of my own, found while filing.** `DELTA_TO_SOL.md`'s header said deltas *"1–7 and 10–54 are in `PROJECT_STATE_ARCHIVE.md`"*. **They are not** — the archive holds 25 ids, highest **33**; deltas 34–55 were replaced without archiving, including delta 55, which I replaced this session. **Nothing is lost** (all recoverable from git, verified for 34/45/54/55), but a header pointing at something it does not contain is the D-072 defect: a claim checked only against itself. Corrected to what is true.
+
+**Tests:** **895 passing**, 2 skipped. **No code touched, no compute, no data.**

@@ -512,9 +512,14 @@ was as a preregistered balancing stratum for the single global threshold.
 ## What this design can and cannot detect *(Gate 1, D-078/D-089/D-098)*
 
 Gate 1 asked four questions and the design **failed** the fourth, which is
-recorded here rather than softened. The reliability gate passed, the compute
-estimate is within budget, and the repair-acceptance test is calibrated against
-its permutation null. But a diagnostic simulation of the scheduled
+recorded here rather than softened. The reliability gate passed and the
+repair-acceptance test is calibrated against its permutation null. The compute
+condition returned **no verdict**: the design's cost was measured — 5.72 median
+/ 6.91 conservative-maximum **local wall-hours** — but the registered trigger is
+denominated in **GPU-hours** on a device the study never used, and the two are
+not adjudicable against each other (the deviation on execution host, below).
+The condition is therefore recorded as **not adjudicable**, which is neither a
+pass nor a failure, and Gate 1's failure rests on the fourth condition alone. But a diagnostic simulation of the scheduled
 unit-weighted, paired H3 comparison, using a provisional Wald/normal rejection
 approximation rather than the final H3 inference, produced optimistic
 minimum-detectable differences of **18–22 percentage points** at the scheduled
@@ -529,6 +534,13 @@ requirement on the order of 1,500–2,000 held-out units against the 60–80
 scheduled — an approximate figure rather than a computed sample-size
 requirement — and that expansion is incompatible with the registered scope.
 
+One assumption of the simulation is itself a recorded deviation: the plan
+fixes power at eighty percent but names no significance level, and the
+simulation uses **α = 0.05, two-sided**, for consistency with every other
+interval in the study — repair acceptance is a 95% interval excluding zero, and
+the H1 trend statistic reports a 95% interval. A one-sided test would shrink
+the diagnostic MDE by roughly 11% and change no conclusion.
+
 The design therefore continues unchanged, under an explicit power limitation:
 **H3 can detect only comparatively large differences and may be inconclusive
 around ±5 points.** No equivalence claim will be made that the final interval
@@ -539,6 +551,80 @@ percentile, with measured null rejection of 6.1–9.2% against a nominal 5% — 
 the true minimum detectable difference is if anything *larger*. A study that
 reports what it cannot resolve is a complete study; one that discovers the limit
 after the fact is not.
+
+## The remedy the schedule prescribed, and why it was declined *(DEV-010, D-089/D-115/D-119 — mandated)*
+
+The schedule anticipated exactly the situation the previous section records. Its
+Week 5 instruction is explicit: if the minimum detectable difference does not
+clear five percentage points, *raise the configuration count now* — the
+reasoning being that configuration count is machine time, while discovering the
+shortfall in Week 15 costs the thesis. The count was **not** raised. That was a
+deliberate, reviewed decision rather than an oversight, and it is recorded as a
+deviation because declining a scheduled remedy is a design-relevant act.
+
+The scale of the required expansion is what decided it. Clearing five points
+needs on the order of **1,500–2,000 held-out units**; the schedule holds out
+60–80 of 300. Preserving the held-out fraction, the design would need roughly
+**5,625–10,000 total units — an 18.75× to 33.3× expansion**. That multiplier is
+a ratio of unit counts and deliberately carries no execution host: converting it
+into hours and comparing the result against the registered compute trigger would
+repeat, in prose, the cross-host comparison the previous section declines to
+make. The refusal rests on two grounds, both of which survive the compute
+measurement: the expansion is incompatible with the registered scope, and the
+budget position rests on the registered GPU-hour design estimate together with
+the scope decision — never on arithmetic across hosts. An expansion of that
+order is not a larger version of this study; it is a different study.
+
+The consequence is the stated power limitation, carried forward rather than
+repaired: the study proceeds at its registered size, reports what it cannot
+resolve, and treats an inconclusive H3 as a legitimate, reportable outcome.
+
+## Where the results were produced *(DEV-011, D-116/D-119 — mandated)*
+
+The plan's compute model names a Kaggle T4, with a budget denominated in
+GPU-hours and an escalation trigger near 120. **Every fit in this study has in
+fact run on a local CPU workstation, and no Kaggle job has ever been
+submitted.** This is recorded as a deviation not because the local machine is
+inadequate — the certified timing evidence puts the full design at **5.72
+(median) to 6.91 (conservative maximum) local wall-hours** — but because a
+compute claim inherits the host it was measured on. Local CPU wall-hours and
+Kaggle GPU-hours are different quantities, and no verdict in this study compares
+one against the other.
+
+Two reproducibility consequences follow. First, every timing figure reported
+here is a local wall-hour figure at a recorded thread count; thread count is
+part of the record because it is **not numerically neutral** — re-running
+certified cells at four threads instead of eight reproduced one cell exactly and
+moved another by 0.19%, since floating-point reduction order differs. Second,
+the timing evidence itself is provenance-bound: the certified record names the
+exact source commit it ran from, required a clean tree before execution, and
+carries a content digest verified independently in review.
+
+## The exclusion-rate assumption *(DEV-012 — mandated)*
+
+Ground-truth labelling can exclude a unit: a repair outcome can be *ambiguous*
+(both repairs help, or the acceptance test cannot separate them) or
+*undiagnosed* (neither does). The schedule asks for the configuration target to
+be inflated by a **pilot** exclusion rate, with the assumption stated, and for
+the first labelled batch to be checked against that assumption. No pilot
+exclusion rate existed when the count was set — the pilot phase produced no
+labelled units by design — so there was nothing empirical to inflate by.
+
+The registered convention, ratified in review **before any real labels
+existed**, is a planning assumption of **0.00**: the gross configuration target
+is `ceil(300 / (1 − 0.00)) = 300`, with no anticipatory oversampling of either
+class. This is a **zero-inflation planning convention, not an empirical
+prediction that exclusion will be zero** — it is never described as observed,
+estimated, or pilot-derived, because it is none of those things.
+
+The convention is falsifiable at a scheduled checkpoint. The observed exclusion
+rate is defined as **(ambiguous + undiagnosed) / all attempted labelled units**,
+reported both pooled and by intended class; any observed exclusion above zero
+means the planning assumption was missed, and the response is fixed in advance:
+report the shortfall first, then draw replacements exclusively from the
+predeclared reserve in its committed order, under its own authorisation gate.
+Effective sample sizes for the critic are always reported as the surviving
+`min(N₀, N₁)` after exclusions — never as the attempted total.
 
 ## The repair-acceptance test, and why it is not the registered mixed model *(DEV-009, D-094/D-100 — mandated)*
 

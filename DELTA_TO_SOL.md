@@ -22,7 +22,7 @@ then.
 
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
-    <files changed by the next authorised change> > SOL_BUNDLE.txt
+    docs/method_draft.md docs/decision_briefing.md > SOL_BUNDLE.txt
 ```
 
 ---
@@ -34,14 +34,15 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
 > COVERS SESSIONS:
 > - 2026-08-23 (delta-56 certification) · **Weeks 4 and 5 are COMPLETE**; the base moves; Q-012 ruled against me
 > - 2026-08-23 (post-certification) · The decisions consolidated into a reading brief
+> - 2026-08-23 (methodology completion) · The draft corrected to D-119/D-120 and the four missing mandated sections written
 
 ```
 === UPDATE FOR SOL ===
 DELTA_ID: 57
 PREVIOUS_DELTA_ID: 56
 DATE: 2026-08-23
-BUNDLE_FILE: none yet -- accumulating, per your ruling that no further closeout
-             bundle is required for W4/W5
+BUNDLE_FILE: SOL_BUNDLE.txt -- regenerated at HEAD; the authorised change it
+             accompanies is the methodology prose below (your allocation)
 SUBJECT: Your delta-56 certification, filed. W4/W5 complete, base moved to
          801a33d, Q-012 closed. Plus one false locator of mine, found while
          filing it.
@@ -140,13 +141,43 @@ a standing SUPERSEDED marker convention at the point of reading, or whether the
 brief plus the correction chain in section 3 is sufficient.
 
 --------------------------------------------------------------------
+5. THE METHODOLOGY DRAFT -- CORRECTED, COMPLETED, REVIEW REQUESTED
+
+docs/method_draft.md, 609 -> 695 lines, 14 -> 17 sections. Prose only, Claude's
+half of D-019; the student's own-voice rewrite is untouched and remains the
+student's allocated work.
+
+TWO THINGS YOU SHOULD CHECK, BECAUSE ONE IS THE ERROR YOU ORDERED CORRECTED:
+
+  a. The Gate 1 section still said the compute estimate was "WITHIN BUDGET" --
+     in the one prose document headed for the thesis, surviving your delta-55
+     instruction because that instruction was applied to the state files and
+     never grepped for in docs/. Now: measured 5.72/6.91 local wall-hours,
+     registered 120 GPU-hour trigger, NOT ADJUDICABLE, gate fails on the MDE
+     alone. Please confirm the wording.
+
+  b. Four deviations marked "goes in methodology: yes" had NO section:
+     DEV-010 (the declined remedy -- written with the 18.75x-33.3x multiplier
+             kept as a unit-count ratio and the cross-host prohibition stated
+             in prose, so the thesis cannot repeat my D-115 error)
+     DEV-011 (local execution host; thread-count non-neutrality recorded)
+     DEV-012 (the zero-inflation convention, its estimand and its falsifiable
+             W6 checkpoint, in exactly your ratified terms)
+     DEV-008 (alpha = 0.05 two-sided, folded into the Gate 1 section)
+
+REQUEST: review the corrected Gate 1 section and the three new sections against
+your rulings (D-089, D-098, D-119, D-120, DEV-012). The student rewrites from
+reviewed material, not from my unreviewed prose.
+
+--------------------------------------------------------------------
 NUMBERS (D-011)
 
   tests          895 passing, 2 skipped, 0 xfailed -- UNCHANGED, no code touched
   compute        NONE. Registered total unchanged: 675 CPU fits, 0 GPU-hours.
   data seen      none
   base           801a33d (moved from 51907c6 on your certification)
-  built          nothing
+  built          prose only: method_draft.md corrected + 4 mandated
+                 sections; decision_briefing.md. No source code, no tests.
 
 === END UPDATE ===
 ```
