@@ -1912,3 +1912,31 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Compute:** **none.** No timing rerun, no fits.
 **Plan ref:** S§W4 Fri, S§W5 Thu, S§W6 Mon, D-039, D-041, D-042, D-044, D-071, D-092, D-115, D-116, D-118, DEV-010, DEV-011, DEV-012. Sol's ruling on delta 55.
 **Reviewed by Sol:** **not yet — delta 56 returns the micro-closeout.**
+
+---
+
+### D-120 · 2026-08-23 · Sol CERTIFIED delta 56 — **Weeks 4 and 5 are COMPLETE**, the base moves to `801a33d`, and Q-012 is closed against pulling implementation forward
+
+**Decision:** Sol **accepted delta 56 and certified D-119**. The **W5 balancer is CERTIFIED** for its current synthetic-input scope, **DEV-012 is CERTIFIED exactly as recorded**, and **Weeks 4 and 5 are COMPLETE**. The certified review base moves from `51907c6` to **`801a33d2e10124f2ba7639b6108bce41d5948149`**, with Sol's explicit instruction to *use this exact commit* and **not infer a later one** — the D-043 hazard, named by Sol rather than by me.
+
+**The digests were verified before the ruling was filed, per the standing rule.** Sol quoted bundle sha256 `ab9512ba…59c720`; the delivered file hashes to exactly that. The delta digest `0dd6ba4ab74f` matches the bundle header, and the reviewed head `801a33d…` is `HEAD`. Sol reviewed the exact bytes at the exact commit — no stale-copy repeat of D-036.
+
+**What Sol confirmed closed.** All three balancer boundaries: canonical split names fixed at `train` / `validation` / `held_out`, with Sol stating the property in its own words — *a caller cannot legalise a typo by supplying the same typo as configuration*; trace ids validated **before** conversion or uniqueness, Python and NumPy integers accepted and booleans, strings, floats and negatives refused; `BALANCE_SCHEMA_VERSION = 2` before any real manifest exists. And the timing hardening: attempt-003 byte-identical with its sha256 still verifying, the schema correction tracked beside the immutable record, schema 2 for future records, git failures raising, the captured commit required to be exactly 40 lowercase hex characters, and the digest test comparing **actual record bytes** against sidecar contents. **Sol accepted the `.gitignore` correction in the terms that matter**: the schema correction *"would otherwise have been present locally but absent from the delivered evidence"* — which is the D-041 shape stated exactly.
+
+**Gate 1 is unchanged and stays FAIL.** Sol re-affirmed the final wording: W4 local timing **complete and certified**; estimate **5.72 / 6.91 local wall-hours**; registered trigger **120 GPU-hours** on the planned Kaggle T4; cross-host comparison **NOT ADJUDICABLE**; **Gate 1 condition 2 NOT ADJUDICABLE, not PASS**; **overall Gate 1 FAIL independently on the MDE condition**. The **18.75×–33.3×** multiplier remains valid as a ratio of unit counts. **Expansion remains unauthorised on scope and power grounds, and no local-wall-hour / GPU-hour comparison may be used to support the decision.** Historical incorrect entries stay append-only, with D-119 and the DEV-010 correction acting as the correction of record.
+
+**>>> Q-012 — RULED, and against me.** I asked whether building C-005 and C-007 was authorised once W4/W5 closed, since neither consumes data. **Sol chose option (b): build nothing from W6–W11 yet.** The reasoning is the one worth carrying: *although those tasks do not themselves consume data, they are future-week implementation and are exactly the kind of implementation lead that Q-004 identified as verification lag.* **Completing W4/W5 obligations repaired omissions; it did not authorise pulling later implementation forward.** The distinction between *repairing a missed obligation* and *starting a future one* is the whole ruling, and I had them one step apart.
+
+**The four-week lead is allocated, explicitly:** the student understanding and rewriting the methodology in their own voice; reviewing and consolidating the certified decisions; checking thesis prose against the source plan and schedule; documenting the interfaces and acceptance criteria for C-005/C-007 **in prose**; read-only audits and explanation; and resolving contradictions or questions before they become code. **A prose-only implementation specification or review checklist for C-005/C-007 is allowed. Source code, executable tests, real data, labels and reserve consumption are not.** C-005/C-007 may begin at their scheduled time or after a fresh explicit authorisation. **Q-012 is CLOSED.**
+
+**What remains barred:** expansion, recalibration, reserve consumption, repair labels, real labelled data, and Week 6 execution. The balancer stays **synthetic-input-only until C-005 exists**. DEV-012's terms stay frozen before real labels, including that **zero is not observed, estimated or pilot-derived** and that any observed exclusion above zero means the assumption was missed and **the shortfall is reported before any response**.
+
+**No further closeout bundle is required for W4/W5.** Sol's instruction: the next bundle accompanies the **next genuinely authorised change** and uses `801a33d` as its base.
+
+**>>> A locator claim of mine that was false, found while filing this.** `DELTA_TO_SOL.md`'s header states *"Deltas 1–7 and 10–54 are in `PROJECT_STATE_ARCHIVE.md`"*. **They are not.** The archive holds 25 distinct delta ids, the highest being **33**; deltas 34–55 were replaced without ever being archived, including delta 55, which I replaced myself this session. **No text is lost** — every one is recoverable from git history at its delivering commit, verified for deltas 34, 45, 54 and 55 — but a header that tells a reader where to find something it does not contain is the same defect class as a manifest checked only against itself (D-072). The header now states what is actually true.
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed. Unchanged — no code was touched.
+**Data seen:** none.
+**Compute:** **none.**
+**Plan ref:** S§W4, S§W5, Q-004, Q-012, D-036, D-041, D-043, D-072, D-092, D-119, DEV-010, DEV-011, DEV-012. Sol's certification of delta 56.
+**Reviewed by Sol:** **this IS Sol's ruling.** Filed 2026-08-23.

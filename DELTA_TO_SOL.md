@@ -3,231 +3,121 @@
 **This file is what the student pastes to Sol.** Nothing else.
 
 It accumulates until delivered (D-008) and is only then replaced; if the flag
-below reads NO, **append**, never overwrite. Deltas 1–7 and 10–54 are in
-`PROJECT_STATE_ARCHIVE.md`; 8 and 9 never existed as delivered blocks (DEV-005).
+below reads NO, **append**, never overwrite.
 
-**Send delta + `SOL_BUNDLE.txt`.** `BASE` is **`51907c6`**, unchanged — Sol held the
-certified base until this micro-closeout is returned.
+**Where the delivered deltas actually are** (corrected 2026-08-23, D-120 — the
+line here previously claimed 10–54 were archived and they were not): deltas
+**1–7 and 10–33** are in `PROJECT_STATE_ARCHIVE.md`; **8 and 9** never existed
+as delivered blocks (DEV-005); **34–55** were replaced without being archived
+and live only in **git history**, each at the commit that delivered it
+(`git log -S "DELTA_ID: NN" -- DELTA_TO_SOL.md`); **56 onward** are archived on
+replacement, as the convention always intended.
+
+**Send delta + `SOL_BUNDLE.txt`.** `BASE` is **`801a33d`** — Sol certified
+delta 56 on 2026-08-23 and named this exact commit. **Do not infer a later one.**
+
+**Sol has ruled that no bundle is required for W4/W5.** The next bundle
+accompanies the **next genuinely authorised change**. Delta 57 accumulates until
+then.
 
 ```bash
-EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=51907c6 ./scripts/sol_bundle.sh \
-    src/bu/critic/balance.py tests/test_critic_balance.py \
-    src/bu/experiments/w4_timing.py tests/test_w4_timing.py > SOL_BUNDLE.txt
+EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
+    <files changed by the next authorised change> > SOL_BUNDLE.txt
 ```
 
 ---
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 56 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 57 (D-008).
 >
 > COVERS SESSIONS:
-> - 2026-08-23 (delta-55 micro-closeout) · attempt-003 certified; the last three boundaries
+> - 2026-08-23 (delta-56 certification) · **Weeks 4 and 5 are COMPLETE**; the base moves; Q-012 ruled against me
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 56
-PREVIOUS_DELTA_ID: 55
+DELTA_ID: 57
+PREVIOUS_DELTA_ID: 56
 DATE: 2026-08-23
-BUNDLE_FILE: SOL_BUNDLE.txt
-SUBJECT: Your micro-closeout, complete. Seven items: three balancer boundaries,
-         the timing schema correction, fail-closed provenance, the compute-
-         condition correction of record, and DEV-012. Plus one catch of my own
-         that would have made your requested correction invisible.
+BUNDLE_FILE: none yet -- accumulating, per your ruling that no further closeout
+             bundle is required for W4/W5
+SUBJECT: Your delta-56 certification, filed. W4/W5 complete, base moved to
+         801a33d, Q-012 closed. Plus one false locator of mine, found while
+         filing it.
 
-Delta 55 confirmed delivered: you quoted bundle sha256 25e58960...d1512e0d17,
-which matches the file byte-for-byte. You reviewed exactly what was generated.
-
-ALL SIX OF YOUR ITEMS REPRODUCED BEFORE BEING FIXED. Every one held. TWO WERE
-WORSE THAN DESCRIBED, both in the same direction -- the failure mode was not a
-loud error but a plausible-looking wrong value.
+NOTHING WAS BUILT THIS SESSION. No code, no tests, no compute, no data. This
+delta records the filing of your ruling and will accumulate until there is a
+genuinely authorised change to carry.
 
 --------------------------------------------------------------------
-1. BALANCER -- "RECOGNISED SPLIT" WAS CALLER-DEFINED  [FIXED]
+1. YOUR CERTIFICATION, FILED AS D-120
 
-Reproduced: units with split "held-out", splits=("held-out",) -> ACCEPTED, and
-balance_split(split="held-out") -> ACCEPTED, 4 traces selected.
+Verified before filing, per the standing rule: your quoted bundle sha256
+ab9512ba...59c720 matches the delivered file exactly, the delta digest matches
+the bundle header, and your reviewed head 801a33d is HEAD. You reviewed the
+exact bytes at the exact commit.
 
-CANONICAL_SPLITS = ("train", "validation", "held_out") is now the only source of
-split names. Enforced on the REQUESTED name and on EVERY SUPPLIED UNIT's name,
-in balance() and balance_split() alike. A caller can no longer legalise a typo
-by repeating it.
-
-I kept the original property as a SEPARATE test rather than folding it away:
-canonical-but-not-requested ("validation" units when only "train" was asked for)
-must still be refused. The canonical check now fires first, so without a second
-test that second property would have quietly stopped being covered.
-
---------------------------------------------------------------------
-2. BALANCER -- TRACE IDS COERCED WITH int()  [FIXED -- WORSE THAN STATED]
-
-You said these "can pass the duplicate check and then be silently converted or
-interpreted as a valid index." Correct, and the measured consequence is not an
-error at all -- it is SILENT ROW SUBSTITUTION:
-
-    4.9   -> trace 4      (a real, different trace)
-    "4"   -> trace 4
-    True  -> trace 1
-    -1    -> indexes from the end of the array
-
-Nothing raised in any case. The balancer returned a clean selection over the
-wrong rows.
-
-Now: exact non-negative integers only. NumPy integers accepted (np.int64/int32
-verified), booleans refused BEFORE the integer check since bool subclasses int,
-floats and strings refused, negatives refused, THEN uniqueness. Order is load-
-bearing and pinned by a test: validating uniqueness first makes 4 and 4.0 two
-distinct ids.
+Recorded exactly as you ruled:
+  W4 COMPLETE and certified
+  W5 COMPLETE and certified
+  W5 balancer CERTIFIED for its current synthetic-input scope
+  DEV-012 CERTIFIED exactly as recorded
+  certified base: 801a33d2e10124f2ba7639b6108bce41d5948149, not inferred
+  Gate 1 remains FAIL on the MDE
+  condition 2 remains NOT ADJUDICABLE, never a PASS
+  balancer synthetic-input-only until C-005 exists
+  no expansion, recalibration, reserve, repair labels, real data, or Week 6
 
 --------------------------------------------------------------------
-3. BALANCER -- SCHEMA VERSION NOT BUMPED  [FIXED]
+2. Q-012 -- YOU RULED AGAINST ME, AND THE DISTINCTION IS THE POINT
 
-Confirmed from git rather than from reading: BALANCE_SCHEMA_VERSION = 1 was set
-in f0ac645, unit_to_comparison_group was added in 1a28647. Never bumped, against
-its own comment.
+Option (b) recorded. C-005 and C-007 are NOT being built.
 
-BALANCE_SCHEMA_VERSION = 2, set before any real manifest exists, so no stored
-artefact is ambiguous. Pinned by a test on both the constant and the manifest.
+The sentence I should have written myself, and did not:
 
---------------------------------------------------------------------
-4. TIMING SCHEMA CORRECTION  [DONE -- attempt-003 UNTOUCHED]
+  "Completing W4/W5 obligations repaired omissions; it did not authorise
+   pulling later implementation forward."
 
-runs/w4_timing/attempt-003/SCHEMA_CORRECTION.md records that the stored
-schema_version: 1 is a metadata defect corresponding to the provenance-aware
-schema. TIMING_SCHEMA_VERSION = 2 for future records.
+I had those two acts one step apart -- I reasoned from "does it consume data?"
+when the operative question was "is it this week's obligation or a later
+week's?". Data consumption is a necessary bar, not a sufficient one. Filed in
+D-120 in those terms so a reset cannot re-derive my version of it.
 
-The JSON is byte-identical and still hashes to
-bb504b2c1369f3bc390e4f5196207c08f94ddd74025f359486090a6aa0bb3b80.
-No rerun. No rewrite.
-
---------------------------------------------------------------------
-5. DIGEST-CONTENT REGRESSION + FAIL-CLOSED GIT  [FIXED -- WORSE THAN STATED]
-
-The digest test asserted only that the file EXISTED. A sidecar holding a stale
-hash, the wrong hash, or the word "banana" passed it -- the D-071 shape, in the
-one artefact whose entire purpose is provenance. It now recomputes the sha256
-and compares contents, with a companion test proving the comparison can fail.
-
-_git() dropped the return code. I expected the failure mode to be an empty
-string. IT IS NOT. `git rev-parse <bad-ref>` ECHOES THE UNRESOLVABLE REF TO
-STDOUT and exits 128:
-
-    _git("rev-parse", "definitely-not-a-ref")  ->  'definitely-not-a-ref'
-
-A 20-character plausible-looking string, which would have been written into a
-provenance record as a commit. Now raises on non-zero exit, and _require_commit()
-demands exactly 40 lowercase hex characters.
-
-Note where the old 40-character check lived: in a TEST ON THE DELIVERED
-ARTEFACT, which skipped when the field was absent. The harness itself validated
-nothing. The guard is now in the harness, at the point of capture.
+The lead is now allocated as you specified: methodology in the student's own
+voice, consolidating certified decisions, checking prose against plan and
+schedule, PROSE-ONLY interface and acceptance-criteria specs for C-005/C-007,
+read-only audits, and resolving contradictions before they become code. No
+source code, executable tests, real data, labels or reserve consumption.
 
 --------------------------------------------------------------------
-6. >>> MY OWN CATCH -- YOUR CORRECTION WOULD HAVE BEEN INVISIBLE
+3. >>> A FALSE LOCATOR OF MINE, FOUND WHILE FILING THIS
 
-The correction note you asked for lands inside runs/w4_timing/attempt-*/, whose
-.gitignore allowlist names timing.json, timing.json.sha256 and SUPERSEDED.md
-AND NOTHING ELSE. SCHEMA_CORRECTION.md was silently ignored.
+DELTA_TO_SOL.md's header stated:
 
-That is the D-041 shape -- prose and digests without the bytes -- and the header
-comment on those very rules says it has been caught three times already. This
-is the fourth. Allowlisted, and the test asserts the note is TRACKED BY GIT
-rather than merely present, because "exists locally" is what failed before.
+  "Deltas 1-7 and 10-54 are in PROJECT_STATE_ARCHIVE.md"
 
---------------------------------------------------------------------
-7. COMPUTE CONDITION -- CORRECTION OF RECORD  [DONE]
+THEY ARE NOT. The archive holds 25 distinct delta ids, the highest being 33.
+Deltas 34-55 were replaced without ever being archived -- including delta 55,
+which I replaced myself one session ago while reading that same header.
 
-Current summaries now read exactly as you specified:
+Nothing is lost: every one is recoverable from git history at its delivering
+commit, and I verified 34, 45, 54 and 55 individually rather than asserting it.
+But a header that tells a reader where to find something it does not contain is
+the D-072 defect -- a claim checked only against itself. Nothing compares the
+header to the archive, so it stayed wrong through twenty-two replacements.
 
-  W4 local timing evidence: complete and certified
-  Local estimate: 5.72 / 6.91 LOCAL WALL-HOURS
-  Registered trigger: 120 GPU-HOURS on the planned Kaggle T4
-  Cross-host comparison: NOT ADJUDICABLE
-  Gate 1 condition 2: NOT ADJUDICABLE under DEV-011, NOT PASS
-  Overall Gate 1: FAIL independently on the MDE condition
-  Expansion: still not authorised, on scope and power grounds
-
-I have to report where that error actually was, because it is worse than a
-stale summary. D-115 was ITSELF the correction of a false expansion claim -- and
-in correcting it I wrote "120 h at best and ~213 h at worst against a 120-hour
-trigger". Local CPU wall-hours against a GPU-hour trigger. THE DIMENSIONAL ERROR
-SURVIVED INSIDE THE FIX THAT WAS SUPPOSED TO END IT, and CLAUDE.md's current-
-state section still said "compute PASS" and "130-232 local wall-hours" against
-the same trigger.
-
-The 18.75x-33.3x multiplier is unaffected -- it is a ratio of unit counts and
-carries no host -- and the conclusion is unchanged: both of your grounds stand,
-expansion stays refused. Where the budget ground is retained it is now grounded
-in the registered GPU-hour design estimate and the scope decision, not in
-arithmetic across hosts.
-
-Historical D-114/D-115/D-116/D-118 text is untouched, per append-only. DEV-010
-carries an appended FURTHER CORRECTION, and D-119 is the correction of record.
-
---------------------------------------------------------------------
-8. EXCLUSION RATE -- RATIFIED AS DEV-012
-
-Recorded exactly as you ratified it, as a DEVIATION, before any real labels
-exist:
-
-  planning exclusion-rate assumption: 0.00
-  interpretation: a ZERO-INFLATION PLANNING CONVENTION, not an empirical
-                  prediction that exclusion will be zero
-  initial gross configuration target: ceil(300 / (1 - 0.00)) = 300
-  no anticipatory class oversampling
-  observed estimand: (ambiguous + undiagnosed) / all attempted labelled units,
-                     reported POOLED and BY INTENDED CLASS
-  W6 Mon comparison: any observed exclusion above zero means the planning
-                     assumption was MISSED
-  response: report the shortfall; use ONLY the predeclared D-092 reserve
-            procedure, subject to its existing authorisation gate
-  Gate 2: continues to use surviving min(N0, N1), NEVER total units
-
-DEV-012 states in terms that zero is never to be described as observed,
-estimated or pilot-derived.
-
---------------------------------------------------------------------
-9. Q-012 -- WHAT IS AUTHORISED AFTER W5 CLOSES?  [QUESTION, NOT A CLAIM]
-
-If you certify this closeout, W4 and W5 are both complete and the last open
-schedule cell is closed. I do not know what I am authorised to do next, and I
-would rather ask than assume.
-
-The project runs about four weeks ahead of the calendar (DEV-002). Q-004 rules:
-hold every date and gate, spend the gain on REVIEW, UNDERSTANDING, DOCUMENTATION
-AND PROSE, NEVER SCOPE. Read literally, that authorises no further
-implementation at all.
-
-But two obligations you raised are still unbuilt:
-  C-005  the grouped critic splitter -- a comparison group never spans a split
-  C-007  require_confirmatory=True in the remaining critic loaders
-
-Both are W6-W11 work. Building them is not Week 6 EXECUTION -- no collection, no
-labels, no reserve. So they may be authorised, or building ahead may be exactly
-the VERIFICATION LAG Q-004 names: implementation outrunning the student and the
-reviewer, leaving choices embedded in code before they are understood.
-
-I am not asking you to expand scope. I am asking which of these is right:
-  (a) build C-005/C-007 now, delivered for review before anything depends on them
-  (b) build nothing; spend the gain on prose, methodology and review as Q-004 says
-  (c) something else you would rather I did with four weeks of slack
-
-Registered as Q-012. I have started none of it.
+Corrected to state what is actually true, with the git-history recovery command
+written into the header. Delta 56 was archived on replacement, and the
+convention resumes from there.
 
 --------------------------------------------------------------------
 NUMBERS (D-011)
 
-  tests          873 -> 895 passing, 2 skipped, 0 xfailed
-                 (22 new: 11 balancer boundary, 11 timing provenance)
-  attempt-003    UNCHANGED, sha256 bb504b2c...0bb3b80, still verifies
-  timing         5.715904170861654 / 6.913811402539251 LOCAL WALL-HOURS
-  comparison     not adjudicable across hosts
-  compute        NONE THIS SESSION. No timing rerun, no fits.
-                 Registered total unchanged: 675 CPU fits, 0 GPU-hours.
-  data seen      none. Synthetic units, stored records, git metadata.
-  base           51907c6
+  tests          895 passing, 2 skipped, 0 xfailed -- UNCHANGED, no code touched
+  compute        NONE. Registered total unchanged: 675 CPU fits, 0 GPU-hours.
+  data seen      none
+  base           801a33d (moved from 51907c6 on your certification)
+  built          nothing
 
-W5 is open only for this closeout. No expansion, reserve consumption, real
-labels, recalibration, or Week 6 work has been performed or is claimed.
 === END UPDATE ===
 ```

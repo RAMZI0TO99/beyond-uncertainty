@@ -111,7 +111,7 @@ test.**
 ```bash
 .venv/bin/python -m pytest -q                      # 895 passing, 2 skipped, 0 xfailed
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
-BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
+BASE=801a33d ./scripts/sol_bundle.sh              # bundle for Sol; 801a33d is CERTIFIED
 ```
 
 - venv is `--system-site-packages` (reuses CUDA torch); `pyproject.toml` pins all.
@@ -289,9 +289,17 @@ Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
 
-**Weeks 1–3 are certified and frozen at `9c0d89d`. W4 Monday and Tuesday are
-certified. WEEKS 4 AND 5 ARE *NOT* COMPLETE** — they are **built** but **OPEN**
-on Sol's explicit ruling, pending certification of the delta-55 closeout.
+**Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
+AND CERTIFIED** (D-120, 2026-08-23). **No week is open** — the first time since
+Week 3. The certified base is **`801a33d`**; Sol named that exact commit and
+said a later one **must not be inferred**.
+
+**Nothing is authorised to be built.** Q-012 was ruled **against** building
+C-005/C-007: they do not consume data, but they are **future-week
+implementation**, which is the verification lag Q-004 names. Sol's sentence —
+*completing W4/W5 obligations repaired omissions; it did not authorise pulling
+later implementation forward*. **Prose, review and read-only audit only. No
+source code, no executable tests, no real data, no labels, no reserve.**
 
 **Do not write anywhere that W4/W5 are finished until Sol certifies.** That
 claim was already made prematurely once: §1 carried *"Weeks 1–5 are complete"*
@@ -418,20 +426,23 @@ never its truth. **So read it as a dated snapshot, not as state.** If the ledger
 disagrees, the ledger wins: check the highest D-number in `DECISIONS.md` and the
 newest §7 entry in `PROJECT_STATE.md` before trusting anything here.*
 
-**As of 2026-08-23, delta 56 is with the student and nothing else is unblocked.**
+**As of 2026-08-23, W4 and W5 are certified complete and NOTHING is authorised
+to be built.** This is not a lull to fill with implementation — it is the
+allocation Sol ruled.
 
-1. **Sol's reply to delta 56 is the only thing that moves.** Delta 56 is
-   **undelivered** — the flag in `DELTA_TO_SOL.md` reads NO — and it needs a
-   freshly generated `SOL_BUNDLE.txt` (the command is in the delta's header).
-   **Check whether it actually reached Sol before doing anything.** Sol has
-   twice reported receiving a delta with no bundle.
-2. **W4 is COMPLETE and certified** — attempt-003 was certified on 2026-08-23
-   and Sol ruled W4 Friday's timing obligation complete under DEV-011 (D-119).
-   **W5 is OPEN for the delta-56 micro-closeout only.** Do not write that W5 is
-   finished until Sol certifies; that claim was made prematurely once (D-113).
-3. **The base is still `51907c6`.** Sol held it explicitly until this closeout
-   is returned. Do not infer a new one — D-043 exists because a challenged
-   commit was nearly used as a base.
+1. **Do not build C-005 or C-007.** Q-012 is closed (D-120). I asked, reasoning
+   they consume no data; Sol said no, because **data consumption is a necessary
+   bar and not a sufficient one** — the operative question is whether the work
+   is *this* week's obligation or a *later* week's. C-005/C-007 begin at their
+   scheduled time or on a **fresh explicit authorisation**.
+2. **What IS authorised:** methodology prose in the student's own voice,
+   consolidating certified decisions, checking prose against plan and schedule,
+   **prose-only** interface and acceptance-criteria specs for C-005/C-007,
+   read-only audits, and resolving contradictions before they become code.
+3. **The base is `801a33d`** and delta 57 **accumulates** — Sol ruled that no
+   further bundle is required for W4/W5, and that the next one accompanies the
+   **next genuinely authorised change**. Do not infer a later base; D-043 exists
+   because a challenged commit was nearly used as one.
 4. **The exclusion-rate assumption is settled** — ratified by Sol as **DEV-012**,
    a **zero-inflation planning convention** of 0.00, never to be described as
    observed, estimated or pilot-derived. **S§W6 Monday checks batch 1 against
