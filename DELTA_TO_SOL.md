@@ -199,6 +199,14 @@ If you consider this method outside your Q-012 allocation ("rewriting the
 methodology in their own voice"), say so and we stop -- the sections are
 clearly marked unconfirmed until then.
 
+UPDATE (same day): section 2 (configuration axes) drafted the same way.
+Notable: the student answered one question "i do not know? tell me what we
+did" -- that paragraph (the balanced sample, D-018) is Claude's explanation,
+recorded as such in the file's provenance notes. Corrections recorded: the
+half/half balance is fair classification, not a repair-vs-repair contest;
+the reserve is predeclared against cherry-picking (D-092). Sections 1-2 both
+await student confirmation.
+
 --------------------------------------------------------------------
 NUMBERS (D-011)
 

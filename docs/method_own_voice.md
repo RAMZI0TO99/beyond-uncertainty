@@ -8,7 +8,7 @@ adding the frozen numbers with their estimands — and the student reads and
 confirms each section before it is marked accepted. Every section carries its
 source answers below it, verbatim, as provenance of whose voice it is.
 
-**Status: §1 drafted from the student's answers — awaiting student confirmation.**
+**Status: §1 and §2 drafted from the student's answers — both awaiting student confirmation.**
 
 ---
 
@@ -70,3 +70,64 @@ the scripted policy collects (D-020, D-051), the **world model** learns
 (D-032), the **critic** diagnoses. "See if they could work together"
 corrected: repairs run separately, and both-working is the **ambiguous**
 exclusion (P§7.4), not a success case.
+
+---
+
+## 2 · The configuration axes, and why there are 300 of them *(W2 Thu — replaces `method_draft.md` §2 when confirmed)*
+
+The study is not looking for one best configuration. Each configuration —
+called a *unit* — changes a few settings on purpose: how much data the world
+model gets, how the objects are laid out in the grid, which feature (if any) is
+hidden from the model, how large the model is, and how strongly a misleading
+decoy attribute imitates the true rule. Every unit is set up so that one
+failure type should appear in it: either the not-enough-data failure or the
+wrong-tools failure.
+
+The reason there are many units is that **the units themselves are the data of
+this thesis**. Each unit ends with one label — which repair actually worked —
+and the critic has to learn from these labelled examples and then be judged on
+examples it has never seen. One configuration would be one data point; no
+classifier can be trained or fairly tested on a handful of points. Three
+hundred units give the critic enough variety to learn from and enough held-out
+examples to be judged on honestly.
+
+We did not run every possible combination of settings. The full crossing of
+all the axes would be far larger, and most of those combinations would repeat
+the same lesson at higher compute cost. Instead the design draws a **balanced
+sample** from the crossing: every axis is covered fairly, and the two intended
+failure classes are kept at 150 units each.
+
+That 150/150 balance is not decoration. The critic is a classifier with two
+possible answers, and if one class dominated — say 270 data-failures and 30
+tool-failures — a useless critic that always answers "more data" would look
+90% right while diagnosing nothing. Keeping the classes balanced, and scoring
+with balanced accuracy, makes that cheat impossible.
+
+Some units will still turn out unusable: the acceptance test can find that
+both repairs work (*ambiguous*) or that neither does (*undiagnosed*), and such
+units are excluded — they might fail to do what we need. For that case a
+replacement list exists, drawn up and committed **before any result was
+seen**. The order is fixed in advance for one reason: if we picked
+replacements after seeing results, we could — even without meaning to — choose
+units that flatter the hypothesis. A choice made before the data exists cannot
+be bent by the data. The same principle runs through the whole thesis: the
+thresholds, seed rules and test rules are all frozen in one file before use.
+
+**Source answers (student, 2026-08-23, verbatim):**
+> 1- so we can test how much change is good. it is not a fixed number or best configurations.
+> 2- i do not know? tell me what we did and write it.
+> 3- because we are testing both methods and we want to see which is better.
+> 4- because they have not been tested yet. and they might fail to do what we need.
+
+**Provenance notes:** "not looking for one best configuration" and "they might
+fail to do what we need" are the student's, kept. The balanced-sample
+explanation (paragraph 3) is Claude's, supplied at the student's explicit
+request ("i do not know? tell me what we did") and recorded as such (D-018).
+**Corrections applied:** Q1 — many units exist because they are the critic's
+labelled examples, not to "test how much change is good"; Q3 — the half/half
+balance is about fair classification (a dominant class lets a useless critic
+score high), **not** about comparing the two repair methods against each other
+— repairs are not competitors, each unit has one true label (D-031, D-044);
+Q4 — the reserve is predeclared **so replacements cannot be cherry-picked
+after seeing data** (D-092); "not tested yet" is why a reserve *exists*, not
+why its order is fixed in advance.
