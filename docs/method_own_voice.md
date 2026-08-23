@@ -8,11 +8,11 @@ adding the frozen numbers with their estimands — and the student reads and
 confirms each section before it is marked accepted. Every section carries its
 source answers below it, verbatim, as provenance of whose voice it is.
 
-**Status: §1 and §2 drafted from the student's answers — both awaiting student confirmation.**
+**Status: §1 and §2 CONFIRMED by the student (2026-08-23). §3 drafted — awaiting student confirmation.**
 
 ---
 
-## 1 · Why the environment looks like it does *(W1 Thu — replaces `method_draft.md` §1 when confirmed)*
+## 1 · Why the environment looks like it does *(W1 Thu — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §1)*
 
 The environment is a small gridworld, and the simplicity is a choice, not a
 shortcut. A simple world gives us quick results: one world model trains in a
@@ -73,7 +73,7 @@ exclusion (P§7.4), not a success case.
 
 ---
 
-## 2 · The configuration axes, and why there are 300 of them *(W2 Thu — replaces `method_draft.md` §2 when confirmed)*
+## 2 · The configuration axes, and why there are 300 of them *(W2 Thu — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §2)*
 
 The study is not looking for one best configuration. Each configuration —
 called a *unit* — changes a few settings on purpose: how much data the world
@@ -131,3 +131,46 @@ score high), **not** about comparing the two repair methods against each other
 Q4 — the reserve is predeclared **so replacements cannot be cherry-picked
 after seeing data** (D-092); "not tested yet" is why a reserve *exists*, not
 why its order is fixed in advance.
+
+---
+
+## 3 · How the data is collected, and why the collector is a script *(W2 Sat — replaces `method_draft.md` §3 when confirmed)*
+
+The world model learns from transitions: the agent was here, it did this, and
+that happened next. The collector's only job is to produce transitions that
+show the world well. There is no task to win and no reward to chase in this
+study — the agent does not have to be clever, it has to be *everywhere*. It
+must visit all parts of the grid, walk into things, and press `interact` next
+to objects of every kind, because the model can only learn what the data lets
+it see. A fixed script that wanders and pokes at everything does this job.
+
+The original plan named PPO, a learning policy, as the collector. We replaced
+it with the script, and the reason is the experiment's most important axis:
+dataset size. The study compares world models trained on 100 transitions
+against models trained on up to 5,000, and calls a failure *estimation
+failure* when more data repairs it. That test is only clean if a big dataset
+is the same kind of data as a small one — just more of it. A learning
+collector changes its own behaviour while it collects: its early transitions
+come from random wandering, its later ones from a confident routine. More data
+would then also mean *different* data, and an improvement could no longer be
+credited to the amount alone. The script behaves the same way in every
+episode, so size is the only thing that changes between conditions.
+
+We did not simply claim that the script explores well enough — the claim is
+backed with real tests and results: coverage was measured, not asserted. And
+when the script was later corrected — an early version changed slightly across
+episodes, exactly the problem described above in miniature — every measurement
+taken under the old version was declared void and re-measured under the fixed
+one. A claim is only worth the setup it was measured on.
+
+**Source answers (student, 2026-08-23, verbatim):**
+> 1- i do not know why ?
+> 2- also dont know.
+> 3- because it can be backed with real tests and results.
+
+**Provenance notes:** paragraphs 1 and 2 are Claude's explanations, supplied
+after two honest "don't know"s and recorded as such (D-020, D-051, D-052); the
+student was taught the content in chat before confirming. "Backed with real
+tests and results" is the student's, kept in paragraph 3. The void-and-remeasure
+sentence is the D-051 event (pre-D-051/D-052 numbers are void and are never
+quoted).

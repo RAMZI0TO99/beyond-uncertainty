@@ -199,7 +199,11 @@ If you consider this method outside your Q-012 allocation ("rewriting the
 methodology in their own voice"), say so and we stop -- the sections are
 clearly marked unconfirmed until then.
 
-UPDATE (same day): section 2 (configuration axes) drafted the same way.
+UPDATE (same day): sections 1 and 2 are CONFIRMED by the student. Section 3
+(the scripted collector) is drafted: the student answered two questions with
+honest "don't know"s, so paragraphs 1-2 are Claude's explanations, marked as
+such in the file, and the student is being taught the content in chat before
+confirming. Section 2 note: section 2 (configuration axes) drafted the same way.
 Notable: the student answered one question "i do not know? tell me what we
 did" -- that paragraph (the balanced sample, D-018) is Claude's explanation,
 recorded as such in the file's provenance notes. Corrections recorded: the
