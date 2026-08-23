@@ -2017,3 +2017,24 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Data seen:** none. **Compute:** none.
 **Plan ref:** D-015, D-021, D-060, D-064, D-076, D-094, D-098, D-099, D-100, D-101, D-105, D-108, D-115, D-119, D-121, DEV-006.
 **Reviewed by Sol:** **not yet — delta 58 carries it.**
+
+---
+
+### D-123 · 2026-08-23 · Sol caught a false claim of mine — the banned-phrase scan could not see across a line break, and an aborted edit had silently discarded a fix
+
+**Decision:** Sol withheld delta 58 and was **right**: `docs/method_draft.md` still contained *"Clearing five points needs on the order of 1,500–2,000 held-out units"* — the exact categorical wording the delta-57 review required replaced. **Delta 58's claims that "all nine applied", "every correction present" and "banned-phrase scan clean" were therefore false for the delivered bytes.** Digests verified before filing: Sol's quoted delta `c95fd6d99861…` and bundle `9b21d1f8c081…` match at head `70f88ee`. D-122's audit findings are **accepted**; the authorship relabelling, seed-role qualification, per-claim index and process correction are **accepted**. Base remains **`801a33d`**.
+
+**>>> The text error is trivial; the two tooling failures behind it are not, and both are this project's own documented shapes.**
+
+**1. An aborted multi-edit silently discarded a successful replacement.** My helper applied every replacement to an in-memory string and wrote once at the end. In the run that fixed this passage, the *expansion* anchor matched and was applied, then the *pilot* anchor failed and the helper called `sys.exit` — **discarding the expansion fix that had already succeeded**. I then fixed the pilot wording in a separate follow-up and never re-applied the expansion fix, because the first run had *printed nothing to indicate a partial loss*. This is precisely the `70212c6` shape Sol ruled on one delta earlier — **validate before mutating** — reappearing one layer up: I had fixed *writing before validating* in the state-file script and left the same pattern in the prose-edit helper. Now restructured: **all anchors are checked first, and only then is anything applied**, so a failure writes nothing and cannot leave a half-applied edit.
+
+**2. The banned-phrase scan could not see across a line break.** The text reads `Clearing five points\nneeds`, and the pattern `[Cc]learing five points needs` requires the words adjacent. Measured directly: the regex returns **False** on the raw text and **True** on the same text whitespace-normalised. In the same audit I *did* normalise whitespace — but only in the **required**-phrase check, not the **banned**-phrase check. So the scan that produced the sentence "banned-phrase scan: clean" was structurally incapable of finding a violation that spanned a line, in Markdown prose that is hard-wrapped at 80 columns and therefore *routinely* splits phrases. **A check that passes because of how it was run is not a check** (D-071) — the lesson I quoted to Sol in the very delta this defect shipped in. The scan now normalises whitespace before matching and re-runs clean across all four documents.
+
+**The three consistency corrections Sol required, applied.** `method_draft.md`'s *"the true minimum detectable difference is if anything larger"* and `method_own_voice.md` §12's *"the estimate is optimistic, so the true limitation is worse"* both converted a provisional optimistic diagnostic into an asserted true value — the same error in two documents. Both now say the over-rejection means the diagnostic is optimistic, that 18–22 **must not be treated as conservative**, and that **the final exact MDE remains unknown** pending H3's final group-level inference and validated null calibration.
+
+**The environment description was incomplete, not wrong.** §1 named shape and colour and said "one of those attributes" governs passability; the source admits **three** causal attributes. Verified in `env/gridworld.py`: shape → triangles pass; colour → red passes; **position → `(obj.x + obj.y) % 2 == 0` passes**, i.e. even parity passes and odd blocks. Added to §1 and to card 1, with an explicit note in the card that listing position **does not** restore position-causal conditions to canonical Experiment 2A — §8's causal-aliasing exclusion is untouched.
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed. Prose only.
+**Data seen:** none. **Compute:** none.
+**Plan ref:** D-071, D-119, D-121, D-122, DEV-006, DEV-010. Sol's delta-58 review.
+**Reviewed by Sol:** **not yet — delta 59 returns the four corrected passages.**

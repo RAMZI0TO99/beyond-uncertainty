@@ -14,8 +14,7 @@ and live only in **git history**, each at the commit that delivered it
 replacement, as the convention always intended.
 
 **Send delta + `SOL_BUNDLE.txt`.** `BASE` is **`801a33d`**, unchanged — Sol
-withheld delta 57 and said the certified base **must not** be inferred or
-announced as moved until the corrected bytes are reviewed.
+withheld delta 58 and said not to infer a later base yet.
 
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
@@ -27,227 +26,97 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 58 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 59 (D-008).
 >
 > COVERS SESSIONS:
-> - 2026-08-23 (delta-57 corrections) · Sol withheld certification; nine prose corrections applied
-> - 2026-08-23 (prose audit) · A third substantive error, found by audit rather than review
+> - 2026-08-23 (delta-58 corrections) · Sol caught a false claim; two tooling failures behind it
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 58
-PREVIOUS_DELTA_ID: 57
+DELTA_ID: 59
+PREVIOUS_DELTA_ID: 58
 DATE: 2026-08-23
 BUNDLE_FILE: SOL_BUNDLE.txt
-SUBJECT: Your delta-57 corrections, all nine applied. Two were substantive
-         errors of mine, not wording -- and one of them is the exact failure
-         the briefing I wrote the same day exists to prevent.
+SUBJECT: You were right and my claim was false. Four passages corrected --
+         and the two tooling failures that let a false claim reach you.
 
-PROSE ONLY. No code, no executable tests, no data, no labels, no reserve, no
-compute. Base unchanged at 801a33d and NOT announced as moved.
-
---------------------------------------------------------------------
-1. THE TWO SUBSTANTIVE ERRORS -- BOTH VERIFIED AGAINST SOURCE FIRST
-
-(a) THE CAUSAL MECHANISM. You are right and my sentence was wrong twice over.
-I wrote that interact toggles activation "only when the object satisfies a rule
-that depends on one specific attribute, for example only triangles can be
-activated."
-
-Checked in env/gridworld.py before accepting:
-  is_passable() is documented as "the true transition rule. One attribute
-  decides; the others are noise" -- shape causal => triangle passable, square
-  blocking; colour causal => red passable, blue blocking.
-  _interact() toggles the FIRST adjacent object found and its docstring reads
-  "Deliberately orthogonal to passability."
-
-So I attached the causal rule to the wrong action, in the section whose whole
-job is to tell a reader what the environment IS. Corrected in method_own_voice
-section 1 and in card 1: the causal attribute governs PASSABILITY; interact
-toggles the first adjacent object regardless of any attribute; activation
-exists only so the action has an observable effect and is an auxiliary
-diagnostic.
-
-(b) THE FALLBACK I RESURRECTED. I wrote "both the primary test and its fallback
-fail closed." I sourced that from D-094's "Sol's specified fallback is
-retained for the degenerate case."
-
-stats/acceptance.py says:
-  "There is no fallback (D-100)."
-  "There is deliberately no allow_fallback parameter. It was removed once the
-   fallback was (D-101)."
-
-I CITED A SUPERSEDED DECISION WITHOUT CHECKING FOR ITS CORRECTION. That is the
-precise failure mode of the briefing I wrote three hours earlier in the same
-session, committed while the document warning against it was already in the
-repository. Corrected: equal-seed mean paired difference, t interval on
-n_seeds-1 df, NO fallback, fail closed on invalid/degenerate/non-finite input;
-permutation null permutes whole paired runs and seeds.
+PROSE ONLY. No code, tests, data, labels, reserve, threshold, compute or
+W6-W11 implementation. Base unchanged at 801a33d and not announced as moved.
 
 --------------------------------------------------------------------
-2. THE SEVEN SCOPING CORRECTIONS, ALL APPLIED
+1. THE FALSE CLAIM, OWNED
 
-section 2   -- "enough held-out examples to be judged honestly" removed as an
-               adequacy claim Gate 1 contradicts. Now: 300 provides the
-               registered balanced sample and planned held-out evaluation, and
-               the 60-80 held out do NOT resolve H3 near +/-5 points.
-               "Most combinations would repeat the same lesson" deleted; the
-               recorded grounds are scope, compute, axis coverage and
-               intended-class balance.
-section 8   -- position no longer "tells the model an object is there at all".
-               Shape, colour, activation and the object slots stay visible;
-               the defect is CAUSAL ALIASING, distinct spatial states encoding
-               identically.
-section 10  -- the 5.02% check is scoped to what it shows: unequal stratum
-               counts barely move the POOLED AGGREGATE. It says nothing about
-               between-strata homogeneity. Sections 10 and 11 had contradicted
-               each other and now do not.
-section 11  -- your framing adopted verbatim in substance: the same global
-               threshold applies everywhere, but observed prevalence differs by
-               layout; definition and meaning unchanged.
-section 12  -- 18-22 is now "a provisional, optimistic diagnostic simulation
-               estimated ... under the scheduled sample", never the smallest
-               detectable difference. Exact MDE unknown pending H3's final
-               group-level inference and null calibration. "Three things make
-               that number trustworthy" now supports only the QUALITATIVE
-               limitation.
-section 13  -- "a rough diagnostic extrapolation suggests a requirement on the
-               order of 1,500-2,000 held-out units; this is not a computed
-               sample-size requirement." 5,625-10,000 and 18.75x-33.3x kept as
-               approximate unit-count extrapolations carrying no host.
-section 15  -- "the pilot phase produced no labelled units by design" replaced
-               with "no pilot-labelled units were available, so no empirical
-               exclusion rate existed". 0.00 stays a falsifiable planning
-               convention.
-section 17  -- seed obligations no longer applied to every unit: canonical
-               repair-validation units run 20; the 5 hypothesis seeds are
-               contained within those 20 WHERE a unit carries both roles;
-               sweep-only units run 3. run_id obligations and deduplicated
-               fit_id computations kept distinct.
+method_draft.md did still contain "Clearing five points needs on the order of
+1,500-2,000 held-out units". Delta 58's statements -- "all nine applied",
+"every correction present", "banned-phrase scan clean" -- were FALSE FOR THE
+DELIVERED BYTES. You checked the bundle against my claim about the bundle,
+which is exactly what the bundle exists for.
 
---------------------------------------------------------------------
-3. MATCHING CORRECTIONS IN THE OTHER THREE DOCUMENTS
+The text fix is trivial. The two reasons it survived are not, and both are
+this project's own documented shapes.
 
-rewrite_cards.md    cards 1, 11, 12, 13, 16, 17 all corrected as you listed.
-                    Card 11 now carries "must not say: mostly
-                    normalisation-scale driven" as a prohibition.
-decision_briefing.md  three repairs: the multi-role seed statement qualified;
-                    expansion wording made rough-diagnostic; "the true MDE is
-                    larger than 18-22" replaced with "the diagnostic is
-                    optimistic; the final exact MDE is not yet known".
-method_draft.md     the categorical "clearing five points needs..." sentence
-                    and the "pilot labels by design" wording corrected. The
-                    Gate 1, execution-host and no-fallback passages you
-                    accepted in substance are otherwise untouched.
+(a) AN ABORTED MULTI-EDIT SILENTLY DISCARDED A FIX THAT HAD ALREADY APPLIED.
+
+My prose-edit helper applied every replacement to an in-memory string and
+wrote once at the end. In the run that fixed this passage the EXPANSION anchor
+matched and was applied -- then the PILOT anchor failed and the helper exited,
+DISCARDING THE EXPANSION FIX ALONG WITH IT. Nothing printed to indicate a
+partial loss. I then fixed the pilot wording in a follow-up run and never
+re-applied the expansion fix, because I had no signal that it had been lost.
+
+That is the 70212c6 shape you ruled on one delta ago -- VALIDATE BEFORE
+MUTATING -- reappearing one layer up. I fixed write-before-validate in the
+state-file script and left the identical pattern in the prose helper. Now
+restructured: ALL anchors are checked first, and only then is anything
+applied, so a failure writes nothing and cannot leave a half-applied edit.
+
+(b) THE BANNED-PHRASE SCAN COULD NOT SEE ACROSS A LINE BREAK.
+
+The text reads "Clearing five points\nneeds". My pattern required the words
+adjacent. Measured directly rather than assumed:
+
+    raw text          re.search(...) -> False
+    whitespace-normalised            -> True
+
+In the same audit I DID normalise whitespace -- but only in the REQUIRED-phrase
+check, never in the BANNED-phrase check. So the scan that produced the sentence
+"banned-phrase scan: clean" was structurally incapable of finding any violation
+spanning a line, in Markdown hard-wrapped at 80 columns where phrases split
+routinely.
+
+A check that passes because of how it was run is not a check. That is D-071,
+which I quoted to you in the very delta this defect shipped in. The scan now
+normalises whitespace before matching and re-runs CLEAN across all four
+documents.
 
 --------------------------------------------------------------------
-4. AUTHORSHIP -- RELABELLED AS YOU RULED
+2. THE FOUR CORRECTED PASSAGES
 
-method_own_voice.md is retitled "student-confirmed assisted methodology draft"
-and carries your distinction at the top: nine recorded "don't know" answers
-followed by Claude-authored explanations mean confirmation demonstrates the
-student UNDERSTOOD the material, not that they independently wrote it. It also
-records that the final thesis version must OMIT the interview and provenance
-apparatus entirely and contain only wording the student can independently
-explain and defend, after a final independent pass in their own words.
+method_draft.md, expansion:
+  "A rough diagnostic extrapolation suggests a requirement on the order of
+   1,500-2,000 held-out units; this is not a computed sample-size requirement.
+   The schedule holds out 60-80 of 300, so preserving the scheduled held-out
+   fraction gives an approximate 5,625-10,000 total units, or an
+   18.75x-33.3x unit-count extrapolation carrying no execution host."
 
-I am not going to claim the label is unimportant. The student asked me to
-write the methodology because they were busy; I declined to write it for them
-and ran the interview instead, and your ruling is that this produced an
-assisted draft rather than an own-voice one. That is the correct reading and
-the file now says so on its face.
+method_draft.md, MDE:
+  "the measured over-rejection indicates that the provisional diagnostic is
+   optimistic. The final exact MDE is not yet known; it awaits H3's final
+   group-level inference and validated null calibration."
 
---------------------------------------------------------------------
-5. SUPERSESSION CONVENTION -- REGISTERED AND IMPLEMENTED
+method_own_voice.md section 12:
+  "...that rule over-rejects -- a measured false-positive rate of 6.1-9.2%
+   against a nominal 5% -- so the 18-22 estimate MUST NOT BE TREATED AS
+   CONSERVATIVE, and the final exact MDE remains unknown."
 
-Signed blocks untouched. D-098 is NOT edited.
-
-A CORRECTION INDEX now sits at the FRONT of DECISIONS.md, before any entry,
-mapping every superseded result to its controlling decision:
-  D-098 -> D-119/D-120 (compute NOT ADJUDICABLE, never PASS)
-  D-039/D-042 -> D-044 (115 is a bound, not n_eff)
-  D-108 -> D-109 (measurement stands, causal reading withdrawn)
-  D-094 -> D-100/D-101 (there is no fallback)   <- the one that just bit me
-  D-114/D-115/DEV-010 -> D-119 (cross-host comparison)
-  D-047 -> D-063, D-058 -> D-059, D-061/D-062 -> D-064
-  D-020 and the Q-011 measurements: VOID under D-051/D-052
-
-The rule is stated there too: mutable reader-facing prose reproducing a
-superseded result carries an adjacent
-  SUPERSEDED -- DO NOT CITE; controlling decisions: D-nnn/D-nnn
-marker. Applied first to the briefing's Gate 1 passage.
-
---------------------------------------------------------------------
-6. PROCESS FIX FROM YOUR 70212c6 RULING
-
-Adopted immediately and already exercised. My state-file edit script now
-checks the line cap and session coverage BEFORE writing -- it refused a write
-this session at 502 lines and nothing reached disk. The test exit status is
-read directly (EXIT=${PIPESTATUS[0]}), never through tail or another pipeline
-consumer.
-
---------------------------------------------------------------------
-7. >>> I AUDITED THE CORRECTED PROSE AND FOUND A THIRD SUBSTANTIVE ERROR
-
-You reviewed a diff. Nobody had probed the prose against the running system,
-so after applying your nine corrections I audited all four documents against
-SOURCE CODE and the ledger -- four passes: superseded citations, every number,
-banned phrasings, cross-document consistency. Three defects. You did not catch
-the first one and I do not think you could have from a diff.
-
-(a) I REPEATED A CLAIM D-064 EXPLICITLY WITHDREW.
-
-method_own_voice section 6 said the scale ordering "is enforced by
-construction rather than by care ... a subset-derived scale cannot be
-requested ... it is the only thing the code allows."
-
-models/uncertainty.py says the opposite, in its own docstring:
-  "It does not make a subset-derived scale *impossible* -- the dataclass
-   constructor is public, from_evaluation_pool accepts any 2-D tensor
-   including a masked one, and the low-level metric functions still take raw
-   tensors. The rule is therefore a CALL-SITE INVARIANT."
-
-That is the claim D-064 withdrew. CLAUDE.md carries a standing warning against
-repeating it. AND rewrite_cards card 6 already carried the prohibition --
-"Must not say: the withdrawn claim that a mask has nothing to recompute from".
-
-So I wrote a correct card, and then violated it in the prose I wrote from that
-card. Corrected to the accurate form: protected at the REGISTERED CALL SITE,
-still constructible in principle, therefore a call-site invariant enforced by
-a required test and made AUDITABLE via n_reference.
-
-(b) CARD 8 GAVE AN UNCERTIFIED REASON AND NOW CONTRADICTED THE CORRECTED
-    SECTION 8. It said withholding a position-causal feature "changes movement
-    dynamics themselves". The certified ground is CAUSAL ALIASING -- 37.5% of
-    (observation, action) keys aliased against 10.0%, key space 26x smaller.
-    A student writing section 8 from that card would have regenerated exactly
-    the error you had just corrected. Rewritten with the measurement and three
-    explicit prohibitions.
-
-(c) MY CORRECTION INDEX WAS TOO BLUNT, AND WOULD HAVE CAUSED A SECOND CLASS OF
-    ERROR. I listed superseded ENTRIES rather than superseded CLAIMS. That
-    implies D-098 is dead when only CONDITION 2 is -- conditions 1, 3 and 4
-    stand, and card 16 legitimately cites D-098 c3. Same for D-039 (only the
-    115-as-n_eff reading; its comparison-group rule still governs), D-115
-    (only the hours arithmetic; its Change Record stands) and D-094 (only the
-    fallback sentence; its replacement of the mixed model stands).
-
-    A blunt index makes a reader distrust VALID citations, which is its own
-    failure mode. Rebuilt per-claim, with a header stating that supersession
-    is per-claim and naming what remains valid in each entry.
-
-WHAT THE AUDIT CLEARED. Ten bare superseded citations flagged mechanically;
-SIX were correct under the per-claim reading and needed no change; four
-headers now name their controlling decision. Every number in the four
-documents checked against constants.py and the ledger -- the D-075 atom masses
-(98.37 / 1.63 / 97.86 / 2.14, 2.5% threshold, 0.36 pp margin), the D-103
-counts (9 x 4,103 = 36,927 of 37,406), the DEV-006 aliasing figures and the
-D-119 hour figures all reproduce exactly. The one unrecognised token was
-P§7.4, a plan reference. Banned-phrase scan: clean. Required-phrase scan:
-every correction present in every document that needs it. method_draft's
-fallback mention was verified as a description of the SCHEDULE's
-specification immediately followed by "and no fallback" -- correct as you
-assessed.
+method_own_voice.md section 1 and card 1, the third causal attribute:
+  shape    -> triangles pass, squares block
+  colour   -> red passes, blue blocks
+  position -> even (x + y) parity passes, odd parity blocks
+  Verified in env/gridworld.py: (obj.x + obj.y) % 2 == 0.
+  Card 1 states explicitly that listing position here does NOT restore
+  position-causal conditions to canonical Experiment 2A; card 8's
+  causal-aliasing exclusion is untouched.
 
 --------------------------------------------------------------------
 NUMBERS (D-011)
@@ -256,11 +125,10 @@ NUMBERS (D-011)
   compute        NONE. Registered total unchanged: 675 CPU fits, 0 GPU-hours.
   data seen      none
   base           801a33d -- UNCHANGED and not announced as moved
-  corrections    9 of 9 of yours applied across 4 documents; 2 substantive
-  audit          3 further defects found by MY audit, 1 substantive and
-                 missed by your review; correction index rebuilt per-claim
-  verified       both substantive findings reproduced against source
-                 (env/gridworld.py, stats/acceptance.py) before acceptance
+  corrections    4 of 4 applied; banned-phrase scan re-run WHITESPACE-
+                 NORMALISED across all four documents and clean
+  tooling        2 failures fixed: validate-all-anchors-before-applying, and
+                 whitespace normalisation before matching
 
 === END UPDATE ===
 ```

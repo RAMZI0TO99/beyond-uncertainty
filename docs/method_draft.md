@@ -548,7 +548,9 @@ cannot resolve. The 18–22 figure is itself reported as a diagnostic rather tha
 an exact result, because the simulation's rejection rule is anti-conservative —
 it uses a Wald interval where the registered analysis uses a group-bootstrap
 percentile, with measured null rejection of 6.1–9.2% against a nominal 5% — so
-the true minimum detectable difference is if anything *larger*. A study that
+the measured over-rejection indicates that the provisional diagnostic is
+optimistic. **The final exact MDE is not yet known**; it awaits H3's final
+group-level inference and validated null calibration. A study that
 reports what it cannot resolve is a complete study; one that discovers the limit
 after the fact is not.
 
@@ -562,11 +564,13 @@ shortfall in Week 15 costs the thesis. The count was **not** raised. That was a
 deliberate, reviewed decision rather than an oversight, and it is recorded as a
 deviation because declining a scheduled remedy is a design-relevant act.
 
-The scale of the required expansion is what decided it. Clearing five points
-needs on the order of **1,500–2,000 held-out units**; the schedule holds out
-60–80 of 300. Preserving the held-out fraction, the design would need roughly
-**5,625–10,000 total units — an 18.75× to 33.3× expansion**. That multiplier is
-a ratio of unit counts and deliberately carries no execution host: converting it
+The scale of the required expansion is what decided it. A **rough diagnostic
+extrapolation** suggests a requirement on the order of **1,500–2,000 held-out
+units**; this is *not* a computed sample-size requirement. The schedule holds
+out 60–80 of 300, so preserving the scheduled held-out fraction gives an
+approximate **5,625–10,000 total units, or an 18.75×–33.3× unit-count
+extrapolation carrying no execution host**. Because it is a ratio of unit
+counts, converting it
 into hours and comparing the result against the registered compute trigger would
 repeat, in prose, the cross-host comparison the previous section declines to
 make. The refusal rests on two grounds, both of which survive the compute

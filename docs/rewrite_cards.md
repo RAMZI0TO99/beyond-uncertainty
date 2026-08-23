@@ -16,8 +16,11 @@ disagree, the ledger wins.
 **Must say:** why a gridworld with factored observations — failure modes must be
 *constructible* (estimation vs hypothesis-class) and labels *counterfactual*;
 the environment is built against `UnitSpec` directly (D-017). **The causal
-attribute governs PASSABILITY during movement** (shape causal → triangles
-passable, squares block; colour causal → red passable, blue blocks).
+attribute governs PASSABILITY during movement**, and there are **three**: shape
+causal → triangles pass, squares block; colour causal → red passes, blue blocks;
+**position** causal → even `(x + y)` parity passes, odd parity blocks. (Listing
+position here does **not** restore position-causal conditions to canonical
+Experiment 2A — card 8's causal-aliasing exclusion stands.)
 **`interact` toggles the first adjacent object's activation and is deliberately
 ORTHOGONAL to passability** — no attribute governs it; it exists so the action
 has an observable effect, and activation is an auxiliary diagnostic only.

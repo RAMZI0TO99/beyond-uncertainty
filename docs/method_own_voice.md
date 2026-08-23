@@ -54,11 +54,12 @@ them on purpose. That clean switch is how the wrong-tools failure is
 manufactured: the model is denied exactly the attribute the rule depends on.
 
 One episode looks like this. A grid contains objects, and every object has
-fixed attributes — a shape and a colour — that never change. **One of those
-attributes decides whether an object can be moved through**: when shape is the
-causal attribute, triangles are passable and squares block the agent; when
-colour is causal, red is passable and blue blocks. Which attribute governs
-passability is a setting of the configuration, and it is exactly the rule the
+fixed attributes — a shape and a colour — that never change, and a position in
+the grid. **One designated attribute decides whether an object can be moved
+through**: when **shape** is causal, triangles are passable and squares block;
+when **colour** is causal, red passes and blue blocks; when **position** is
+causal, a cell of even `(x + y)` parity passes and odd parity blocks. Which
+attribute governs passability is a setting of the configuration, and it is exactly the rule the
 world model must discover from data. The agent also has one extra action,
 `interact`, which toggles the activation bit of the **first adjacent object**
 it finds. **Activation is deliberately orthogonal to passability**: `interact`
@@ -625,10 +626,11 @@ parameter least knowable before data — the detectable difference is still 18
 points. Second, every available lever was tested and none closes the gap:
 strong pairing between critic and baseline reaches eight points, and holding
 out *all three hundred* units reaches six. Third, the estimate is
-**optimistic**, so the true limitation is worse. The simulation uses a
-provisional normal-approximation rejection rule rather than the interval the
-registered analysis will use, and that rule over-rejects — a measured false-
-positive rate of 6.1–9.2% against a nominal 5%. A significance level of
+**optimistic**. The simulation uses a provisional normal-approximation
+rejection rule rather than the interval the registered analysis will use, and
+that rule over-rejects — a measured false-positive rate of 6.1–9.2% against a
+nominal 5% — so the 18–22 estimate **must not be treated as conservative**, and
+**the final exact MDE remains unknown**. A significance level of
 α = 0.05, two-sided, is itself a recorded deviation, since the plan fixes
 power but never named one.
 
