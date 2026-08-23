@@ -8,7 +8,7 @@ adding the frozen numbers with their estimands — and the student reads and
 confirms each section before it is marked accepted. Every section carries its
 source answers below it, verbatim, as provenance of whose voice it is.
 
-**Status: ALL SEVENTEEN SECTIONS DRAFTED. §1–§15 CONFIRMED by the student (2026-08-23); §16 and §17 await confirmation.**
+**Status: ALL SEVENTEEN SECTIONS DRAFTED AND CONFIRMED by the student (2026-08-23). Awaiting Sol's review.**
 
 ---
 
@@ -783,7 +783,7 @@ falsifiability rule and the surviving-count rule are DEV-012's as ratified.
 
 ---
 
-## 16 · How a repair is judged to have worked *(DEV-009, D-094/D-100 — replaces `method_draft.md` §16 when confirmed)*
+## 16 · How a repair is judged to have worked *(DEV-009, D-094/D-100 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §16)*
 
 Every ground-truth label in this study comes from one test: a repair is
 applied, and the question is whether it worked. Three conditions must **all**
@@ -833,7 +833,7 @@ Claude's from `constants.py`, DEV-009, D-079, D-094 and D-100.
 
 ---
 
-## 17 · One unit, several roles *(W2 Wed, D-007/D-033/D-039 — replaces `method_draft.md` §17 when confirmed)*
+## 17 · One unit, several roles *(W2 Wed, D-007/D-033/D-039 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §17)*
 
 The statistical unit of this study is the **configuration-condition**: one
 setting of the environment together with one failure condition. It is shared

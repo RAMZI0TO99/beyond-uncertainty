@@ -49,8 +49,10 @@ DATE: 2026-08-23
 BUNDLE_FILE: SOL_BUNDLE.txt -- regenerated at HEAD; the authorised change it
              accompanies is the methodology prose below (your allocation)
 SUBJECT: Your delta-56 certification, filed. W4/W5 complete, base moved to
-         801a33d, Q-012 closed. Plus one false locator of mine, found while
-         filing it.
+         801a33d, Q-012 closed. THE OWN-VOICE METHODOLOGY REWRITE IS COMPLETE
+         -- all seventeen sections, student-confirmed, review requested. Plus
+         two failures of mine: a false locator, and a commit I pushed with
+         the protocol suite failing.
 
 NOTHING WAS BUILT THIS SESSION. No code, no tests, no compute, no data. This
 delta records the filing of your ruling and will accumulate until there is a
@@ -318,14 +320,50 @@ the reserve is predeclared against cherry-picking (D-092). Sections 1-2 both
 await student confirmation.
 
 --------------------------------------------------------------------
+7. >>> I PUSHED A COMMIT WITH THE PROTOCOL SUITE FAILING
+
+Reporting this because you would not otherwise see it: it is two commits
+back in the diff and green now.
+
+Commit 70212c6 went to the remote with TWO protocol tests failing --
+test_state_file_stays_pasteable (PROJECT_STATE.md at 502 lines against the
+500 cap) and test_every_session_is_covered_by_a_delta (a new session-log
+entry named in no delta). Repaired in 1beb302.
+
+Two mistakes in one command, both the project's own documented shapes:
+
+  a. My edit script WROTE the file and only then checked the cap, so the
+     over-cap file was already on disk when the guard fired. The guard was
+     correct; it just ran after the damage. Validate before writing.
+
+  b. I chained `pytest -q | tail -2 && git add && git commit`. The pipe makes
+     the exit status come from tail, which always succeeds, so a two-failed
+     run reported success and the commit went through and pushed. EVERY
+     earlier commit in this session used the same construction and was green
+     by luck, not by checking. That is "a check that passes because of how it
+     was run is not a check" -- D-071's shape, applied to my own tooling.
+
+No content was lost: the repair consolidated two ARCHIVE POINTERS, which are
+my editorial notes, not session entries. All subsequent commits read the exit
+code directly rather than through a pipe.
+
+--------------------------------------------------------------------
 NUMBERS (D-011)
 
   tests          895 passing, 2 skipped, 0 xfailed -- UNCHANGED, no code touched
   compute        NONE. Registered total unchanged: 675 CPU fits, 0 GPU-hours.
   data seen      none
   base           801a33d (moved from 51907c6 on your certification)
-  built          prose only: method_draft.md corrected + 4 mandated
-                 sections; decision_briefing.md. No source code, no tests.
+  built          prose only, no source code and no executable tests:
+                 method_own_voice.md  -- 17/17 sections, ALL student-confirmed
+                 method_draft.md      -- corrected + 4 mandated DEV sections
+                 decision_briefing.md -- D-001..D-120 consolidated
+                 rewrite_cards.md     -- 17 per-section cards
+  provenance     9 student "don't know"s recorded in method_own_voice.md,
+                 each taught before confirmation; every section stores its
+                 source answers verbatim, so whose voice is where is auditable
+  protocol       one self-inflicted failure reported in item 7 above:
+                 70212c6 pushed with 2 protocol tests failing, fixed 1beb302
 
 === END UPDATE ===
 ```
