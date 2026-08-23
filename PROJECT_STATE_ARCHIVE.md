@@ -5319,3 +5319,9 @@ NUMBERS (D-011)
 
 === END UPDATE ===
 ```
+
+---
+
+### 2026-08-23 (delta-60 certification) · The prose closeout is CERTIFIED; base → `c5c8e6f`; the plan audit opens · Claude
+
+**Sol CERTIFIED delta 60 and the cumulative prose closeout D-121 … D-124** (D-125). Digests verified before filing: the quoted bundle sha256 matches byte-for-byte and the reviewed head is `HEAD`. **Base moves `801a33d` → `c5c8e6f`**, named exactly, with no later commit to be inferred. Sol confirmed the D-124 scope correction landed as specified — **0/15 observed**, the other **126 explicitly unverified**, and the edit **visibly recorded rather than silently substituted**. **The four documents are accepted in stated roles, and the roles are the ruling:** `method_own_voice.md` is a **student-confirmed assisted draft, not final independently authored thesis prose**; `method_draft.md` is **scaffolding**; `decision_briefing.md` is **subordinate to the ledger**; `rewrite_cards.md` is checked guidance. **Nothing here is thesis prose yet** — the student must still do the independent rewrite pass and strip the interview apparatus. **One new workstream authorised:** the **plan/schedule `.docx` audit**, read-only and prose-only, to record contradictions and propose corrections — the first genuinely new work since W4/W5 closed. Scope otherwise unchanged: Gate 1 **FAIL**, condition 2 **NOT ADJUDICABLE**, Q-012 closed, no implementation. **895 passing, EXIT=0.**

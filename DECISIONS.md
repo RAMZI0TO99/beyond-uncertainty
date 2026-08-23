@@ -2087,3 +2087,21 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Data seen:** none. **Compute:** none.
 **Plan ref:** D-008, D-043, D-054, D-120, D-121, D-122, D-123, D-124, Q-012. Sol's certification of delta 60.
 **Reviewed by Sol:** **this IS Sol's certification.** Filed 2026-08-23.
+
+---
+
+### D-126 · 2026-08-23 · The plan/schedule audit — ~30 claims verified, four attribution corrections proposed, and a plan-internal contradiction surfaced
+
+**Decision:** the audit Sol authorised at D-125 ran: both `.docx` sources extracted in full (paragraphs **and** tables, python-docx), and every sentence in the four certified documents asserting what the plan or schedule says was checked against the source text — read, not recalled, because all three substantive errors of the delta-57 round came from writing about a source without reading it. **The certified documents were not edited**; their snapshots remain byte-identical to what D-125 certified. Every correction is a **proposal** in `docs/plan_audit.md`, awaiting Sol.
+
+**~30 claims verified exactly**, including: the ±5 margin's full P§4.2 wording; the ×10 budget and 20% floor as v-fixed; the 5/20/3/5 seed policy; 110–145 GPU-hours against the ~120 trigger with *"a gate rather than a formality"*; 80% power with **no alpha named** (DEV-008's premise); the ≥60-of-≥300 held-out floor; the balancer as **S§W5 Fri scope in code** with W15 Mon only applying it — confirming the D-113/D-115 account; the exclusion-rate cells behind DEV-012; the verbatim *"raise the configuration count now"* focus note; the one-implementation trend rule as the schedule's own; the four-levels-×-five-configurations reconciliation of canonical 2A; and P§13.2's note that a scripted policy is an *"acceptable substitute … recorded rather than hidden."*
+
+**Four corrections proposed, none touching a number or verdict.** **F1, the substantive one:** own-voice §5 claims the H1 reading rule — *"which statistic, which direction, what counts as a pass"* — was not yet frozen when the W3 curves were drawn. **P§4.2-H1 (v1.2) had already fixed the statistic and direction** — *"tested as a rank correlation across the six data sizes with a confidence interval over seeds"* — and the schedule repeats it. What D-068 later froze was the exact implementation. The current sentence makes the project look *less* preregistered than it was. **F2:** the mixed model is attributed to the schedule; **P§7.3 is the specification** (with the episode-mean fallback as *"equivalent and preferred"*), so DEV-009 deviates from the **plan**, the stronger statement. **F3:** the raise-the-count instruction is attributed to the schedule; **P§10.7 mandates it** (*"the configuration count is raised until it does not"*). **F4:** *"a Kaggle T4"* understates P§14.1's *"Kaggle, 2× T4"*.
+
+**One contradiction inside the plan itself, surfaced for Sol (F5).** P§2.2 says the causal rule governs **passability**; P§13.1.2's family-A table row says *"Shape determines **interaction outcome**"*. The implementation and the certified prose follow §2.2 — causal attribute → passability, `interact` deliberately orthogonal — and Sol's own delta-58 corrections enforced that description. **No recorded decision reconciles the two plan statements.** Proposed: a one-line note naming P§2.2 as governing, for Sol to ratify. Also recorded: plan Table 3 retains the v1.1-style falsifying wording that P§4.2 (v1.2) explicitly replaced (F6).
+
+**Scheduled-later, confirmed not due:** the P§7.4 conditioning statement — *"accuracy on cleanly separable failures, not on failures in general"* — is **W17 Thu limitations prose** by the schedule's own cell, so its absence from the certified methodology is correct; one forward-pointer sentence proposed as optional insurance (F7), since nothing mechanical checks schedule coverage (D-113).
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed. Read-only and prose-only throughout; no code, no experiments, no data, no labels, no compute.
+**Plan ref:** P§2.2, P§4.2, P§7.2–7.4, P§8.2.1, P§10.1, P§10.4, P§10.6, P§10.7, P§13.1.2, P§13.2, P§14.1–14.3, S§W2–W6, S§W15, S§W17; D-068, D-113, D-125, DEV-006 … DEV-012.
+**Reviewed by Sol:** **not yet — delta 61 carries the audit and its proposals.**
