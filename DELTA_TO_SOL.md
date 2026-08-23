@@ -38,6 +38,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
 > - 2026-08-23 (rewrite cards) · Seventeen section cards for the student's own-voice rewrite
 > - 2026-08-23 (own-voice §1) · The interview rewrite begins — section 1 built from the student's answers
 > - 2026-08-23 (own-voice §2–§7) · Five more sections built from the student's answers
+> - 2026-08-23 (own-voice §8–§15) · Eight more sections; the student now answers unprompted
 
 ```
 === UPDATE FOR SOL ===
@@ -199,6 +200,14 @@ exclusion, not a success case.
 If you consider this method outside your Q-012 allocation ("rewriting the
 methodology in their own voice"), say so and we stop -- the sections are
 clearly marked unconfirmed until then.
+
+UPDATE 7 (same day): sections 1-13 CONFIRMED; 14 (execution host) and 15
+(the exclusion-rate assumption) drafted. Section 15 spells out in plain words
+why "assumed 0.00" is honest and "observed 0.00" would not be -- an assumption
+can be MISSED and the miss reported, an observation cannot -- and states that
+the shortfall is reported BEFORE any replacement is drawn, because drawing
+first and restoring the totals would erase the finding. Section 14 records
+thread count and provenance as part of any timing figure.
 
 UPDATE 6 (same day): sections 1-11 CONFIRMED; 12 (Gate 1) and 13 (the
 declined remedy) drafted together, since the student's answer to the

@@ -483,11 +483,7 @@ complete, moved the base to `801a33d`, and closed Q-012 against pulling implemen
 *(The briefing session (post-certification) was archived on 2026-08-23: `docs/decision_briefing.md`
 consolidates D-001 … D-120; the D-098 append-only "compute PASS" trap is flagged there and in delta 57.)*
 
-*(The methodology-completion session was archived on 2026-08-23: `method_draft.md` corrected to
-D-119/D-120 — the stale "within budget" claim removed — plus the four mandated DEV sections.)*
-
-*(The rewrite-cards session was archived on 2026-08-23: `docs/rewrite_cards.md`, seventeen
-per-section must-say / must-never-say cards the own-voice rewrite is written from.)*
+*(Archived 2026-08-23: the methodology-completion session (`method_draft.md` corrected to D-119/D-120 — the stale "within budget" claim removed — plus the four mandated DEV sections), and the rewrite-cards session (`docs/rewrite_cards.md`, seventeen per-section must-say / must-never-say cards the own-voice rewrite is written from).)*
 
 ### 2026-08-23 (own-voice §1) · The interview rewrite begins — section 1 built from the student's answers · Claude
 
