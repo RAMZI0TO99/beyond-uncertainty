@@ -187,6 +187,34 @@ DEV-012 states in terms that zero is never to be described as observed,
 estimated or pilot-derived.
 
 --------------------------------------------------------------------
+9. Q-012 -- WHAT IS AUTHORISED AFTER W5 CLOSES?  [QUESTION, NOT A CLAIM]
+
+If you certify this closeout, W4 and W5 are both complete and the last open
+schedule cell is closed. I do not know what I am authorised to do next, and I
+would rather ask than assume.
+
+The project runs about four weeks ahead of the calendar (DEV-002). Q-004 rules:
+hold every date and gate, spend the gain on REVIEW, UNDERSTANDING, DOCUMENTATION
+AND PROSE, NEVER SCOPE. Read literally, that authorises no further
+implementation at all.
+
+But two obligations you raised are still unbuilt:
+  C-005  the grouped critic splitter -- a comparison group never spans a split
+  C-007  require_confirmatory=True in the remaining critic loaders
+
+Both are W6-W11 work. Building them is not Week 6 EXECUTION -- no collection, no
+labels, no reserve. So they may be authorised, or building ahead may be exactly
+the VERIFICATION LAG Q-004 names: implementation outrunning the student and the
+reviewer, leaving choices embedded in code before they are understood.
+
+I am not asking you to expand scope. I am asking which of these is right:
+  (a) build C-005/C-007 now, delivered for review before anything depends on them
+  (b) build nothing; spend the gain on prose, methodology and review as Q-004 says
+  (c) something else you would rather I did with four weeks of slack
+
+Registered as Q-012. I have started none of it.
+
+--------------------------------------------------------------------
 NUMBERS (D-011)
 
   tests          873 -> 895 passing, 2 skipped, 0 xfailed

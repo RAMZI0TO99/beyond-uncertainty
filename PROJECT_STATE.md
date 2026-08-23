@@ -439,6 +439,7 @@ Two conditions:
 | Q-009 | What does the world model predict, and is the failure threshold comparable across families? | 2026-08-16 | **Closed** → D-032 (dynamic components; primary error on agent position over movement transitions) and D-035 (one global threshold on a balanced reference pool) |
 | Q-008 | Seed independence across units: shared environment streams at the same seed. | 2026-08-15 | **Closed** → D-030. Sol: named streams, independent across sweep units, but common random numbers preserved inside explicitly paired canonical comparisons via a preregistered `comparison_group_id`. `arm` never in the failure-set stream. **Decided, not yet built** — first Week 3 task |
 | Q-007 | Plan/schedule contradiction on whether the no-statistics critic variant sees error history. | 2026-08-15 | **Closed** → D-029. Sol: P§12.1 and P§13.5.1 are internally inconsistent; keep the schema, rename the variant **"no explicit statistics"**, and tighten the W13 negative control to exclude `predicted_vs_actual_state` as well |
+| Q-012 | **W4 and W5 both close on delta 56. What is authorised next?** The project runs ~4 weeks ahead (DEV-002) and Q-004 says hold every date and spend the gain on *review, understanding, documentation and prose, never scope*. Read literally that authorises **no further implementation**. But C-005 (grouped critic splitter) and C-007 (confirmatory guards in the critic loaders) are unbuilt W6–W11 obligations, and building them is not Week 6 *execution*. Is that implementation authorised now, or is it exactly the verification lag Q-004 names? | 2026-08-23 | **Open** — asked in delta 56 |
 
 **For Claude** — things Sol or the student wants implemented, checked or measured.
 
@@ -448,7 +449,7 @@ Two conditions:
 | C-002 | Build the D-030 named-stream module | Sol, 2026-08-16 | **Done** → `src/bu/streams.py`, `tests/test_streams.py` |
 | C-004 | File the dynamic-target decision; correct the baseline accounting; mark inspected data as pilot; implement named streams; regenerate the Sol bundle | Sol, 2026-08-16 (delta 11) | **Done** → D-032 … D-036 |
 | C-005 | Grouped dataset partitioning for the critic splitter — a comparison group never spans a split | Sol, 2026-08-16 (delta 12) | **Open** — key and report built (D-039); splitter is W6/W11 |
-| ~~C-006~~ | Week 5 MDE simulation: reproduce the **actual paired balanced-accuracy estimator** — real group sizes and class membership, group-preserving partitions, unit weights, paired critic-vs-baseline predictions, ICC grid — and validate against the analytic result at ICC = 0 **and** ICC = 1 | Sol, 2026-08-16 (deltas 12–14) | **Done** → D-078. Both validations pass. **The MDE does not clear five points** — 18–22 pp at the scheduled held-out counts. Awaiting Sol (delta 41) |
+| ~~C-006~~ | Week 5 MDE simulation: reproduce the **actual paired balanced-accuracy estimator** — real group sizes and class membership, group-preserving partitions, unit weights, paired critic-vs-baseline predictions, ICC grid — and validate against the analytic result at ICC = 0 **and** ICC = 1 | Sol, 2026-08-16 (deltas 12–14) | **Done** → D-078. Both validations pass. **The MDE does not clear five points** — 18–22 pp at the scheduled held-out counts. **Sol ruled on delta 41 → D-089; this row said "Awaiting Sol" for eleven sessions after that.** The table is **uncertified and explicitly optimistic**, retained as a diagnostic; MDE-vs-margin is a **necessary sensitivity check, not an equivalence test**; and no *exact* MDE may be reported until the simulation uses H3's **final** group-level inference with its null size validated against .05. That last is **gated on reporting, not on this closeout** — H3's final test is not settled |
 | C-007 | Pass `require_confirmatory=True` in threshold calibration, repair acceptance and every critic loader as each is built | Sol, 2026-08-16 (delta 12) | **Threshold calibration (D-090) and repair acceptance (D-093) done**; critic loaders remain, W6–W11. Tied to the *stage*, never a boolean — a probe labels itself `pilot` rather than exempting itself |
 | ~~C-008~~ | **Build the confirmatory runner**, which must own: episode bootstrap only, registered configuration and arm, matching pools and run identity, confirmatory seed policy, complete run records. `bootstrap_episodes()` + `train(train_index=…)` still bypasses the `train_ensemble` guard | Sol, 2026-08-16 (cert of 2875e60) | **Done** → D-091 (guard) and **D-096** (integration): bound to registered obligations, frozen TrainConfig, K=1 repaired arms, dirty-tree refusal, and one fit producing both the record and the paired per-transition errors |
 | C-009 | Runner hardening: reject `source_unit is None` in `assert_pools_match()` rather than ignoring it, and check each dataset's `stream_version` against the run's | Sol, 2026-08-16 | **Done** → D-077. Both were opt-outs, and adding them broke no test — nothing had exercised either path |
@@ -471,15 +472,14 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md` — **57 archived, the
 **Why:** consistency with every other interval in the project — repair acceptance is a 95% CI excluding zero (P§7.3), and the H1 trend test is a 95% interval (D-068). A one-sided test would shrink the MDE by about 11% and change no conclusion.
 **Goes in methodology:** **yes.** It is an assumption the reported MDE depends on, and the MDE is a Gate 1 condition. Stated rather than absorbed silently.
 
-*(Six further 2026-08-22 sessions archived, in order: the timing harness → D-114
-(certification WITHHELD, see D-115); the W4 closeout → DEV-010 (whose expansion claim
-D-115 corrects); the delta-53 ruling → D-115 (frozen trace cap, W5 balancer, and the
-correction of my false expansion arithmetic); the W4 timing rebuild → D-116; the W4/W5
-audit → D-117 (six findings, accepted by Sol); and the delta-54 closeout → D-118, whose
-timing evidence Sol has now certified and whose balancer fixes it accepted as materially
-correct. **Read D-115 before D-114 or DEV-010**, and note that DEV-010's own 2026-08-22
-correction is further corrected by D-119 — it compares local wall-hours with GPU-hours.
-The entry below closes the three input/schema boundaries that remained.)*
+*(Six further 2026-08-22 sessions archived, in order: the timing harness → D-114 (certification
+WITHHELD, see D-115); the W4 closeout → DEV-010 (whose expansion claim D-115 corrects); the
+delta-53 ruling → D-115 (frozen trace cap, W5 balancer, and the correction of my false expansion
+arithmetic); the W4 timing rebuild → D-116; the W4/W5 audit → D-117 (six findings, accepted by
+Sol); and the delta-54 closeout → D-118, whose timing evidence Sol has now certified and whose
+balancer fixes it accepted as materially correct. **Read D-115 before D-114 or DEV-010**, and note
+that DEV-010's own 2026-08-22 correction is further corrected by D-119 — it compares local
+wall-hours with GPU-hours. The entry below closes the three boundaries that remained.)*
 
 ### 2026-08-23 (delta-55 micro-closeout) · attempt-003 certified; the last three boundaries · Claude
 

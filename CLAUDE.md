@@ -507,9 +507,13 @@ labelled data. The balancer is synthetic-inputs-only until C-005 exists.
   else on the obligation list is **done**: C-003 (D-092), C-006 (D-078), C-008
   (D-096), C-009 (D-077), C-010 (D-076), C-011 (D-072).
 
-Still blocked by Sol, correctly: confirmatory collection, critic splitting, and
-W5 MDE *approval* — the simulation exists now, but what to do about its answer
-does not.
+Still blocked by Sol, correctly: confirmatory collection and critic splitting.
+**The MDE is not among them — that claim was stale.** Sol ruled on all three
+questions in **D-089**: the simulation is a **diagnostic**, not H3's estimator;
+MDE-vs-margin is a **necessary sensitivity check and explicitly not an
+equivalence test**; and reporting an *exact* MDE is **gated on H3's final
+inference existing**, which is W15 work, not on any closeout. What is genuinely
+unsettled is **H3's final test**, and the exact-MDE report waits on it.
 
 ### Three things that will bite if forgotten
 
