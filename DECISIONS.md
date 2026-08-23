@@ -2038,3 +2038,20 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Data seen:** none. **Compute:** none.
 **Plan ref:** D-071, D-119, D-121, D-122, DEV-006, DEV-010. Sol's delta-58 review.
 **Reviewed by Sol:** **not yet — delta 59 returns the four corrected passages.**
+
+---
+
+### D-124 · 2026-08-23 · Mechanism-claim verification of the prose — clean, and two false alarms that were the checks' fault
+
+**Decision:** the three substantive prose errors of this session (D-121's causal mechanism and resurrected fallback, D-122's withdrawn scale claim) share one shape: **a claim about what the code does, written from memory of the ledger rather than checked against source**. That class had never been audited systematically, so it was, before delta 59 was sent. 141 mechanism-asserting sentences were extracted from `method_own_voice.md`; the fifteen that are mechanically checkable were verified by **static introspection and pure-function inspection only** — no training, no RNG consumption, no artefacts, consistent with Sol's *"run no experiments"*.
+
+**All fifteen verified.** `ScaledEvaluation.from_pool` takes no mask parameter and `failure_mask` takes no threshold parameter, so §6's corrected call-site wording holds; `MIN_PRACTICAL_EFFECT` is 0.20; the seed policy is 3 / 5 / 20 with the twenty containing the five as a range prefix; 9 × 4,103 = 36,927 against 37,406, a 1.28% discard exactly as §10 states; the permutation code operates at seed level; `is_passable` covers exactly shape, colour and position with the position rule `(obj.x + obj.y) % 2 == 0`, confirming the parity sentence added to §1 and card 1; and `_interact` returns a state whose agent field is untouched, confirming §7's action-conditional claim.
+
+**Two checks failed and both were the checks' fault, not the code's — recorded because a false alarm is worth reporting (D-023's standing rule).** The `allow_fallback` check matched the string inside the docstring that *denies* the parameter exists (*"There is deliberately **no** `allow_fallback` parameter"*); with docstrings stripped and signatures inspected, `acceptance_test` and `permutation_null` carry no such parameter, so §16's *"there is no fallback"* is correct. The reserve check looked for a key named `order`; the file uses `draw_order_all` and `draw_order_by_intended_class`, and reads **231 entries against `n_reserve` 231, split 120/111 by intended class** — so §15's *"reserve fixed in advance and in its committed order"* is correct. **The defect rate in this class is zero**; the earlier three errors were each caught, and nothing further of that shape remains in the delivered prose.
+
+**Scope held deliberately.** Sol's delta-58 review asked for a **narrow** prose micro-closeout of four passages. Checking the prose against the plan and schedule `.docx` files is separately authorised under D-120's allocation but is a **new workstream**, not part of this closeout, and widening a closeout Sol asked to keep narrow is how a review round multiplies. It is proposed for after certification rather than added here.
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed. Prose and read-only introspection only.
+**Data seen:** none. **Compute:** none.
+**Plan ref:** D-023, D-092, D-121, D-122, D-123, DEV-006. Read-only audit under D-120's allocation.
+**Reviewed by Sol:** **not yet — delta 59 reports it.**

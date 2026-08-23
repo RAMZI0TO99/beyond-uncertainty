@@ -300,6 +300,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-121** | 2026-08-23 | Sol **WITHHELD delta 57** — nine prose corrections (two substantive: the causal mechanism, and a fallback resurrected from superseded D-094); authorship relabelled; **supersession convention registered** | **Sol's ruling** |
 | **D-122** | 2026-08-23 | **Audit** of the corrected prose — a **third** substantive error Sol did not catch (§6 repeated the claim D-064 withdrew), card 8's uncertified reason, and the correction index rebuilt **per-claim** | **Audit** |
 | **D-123** | 2026-08-23 | Sol caught a **false claim** of mine — the banned-phrase scan could not match across a line break, and an aborted multi-edit had silently discarded an applied fix | **Sol's finding** |
+| **D-124** | 2026-08-23 | **Mechanism-claim verification** of the prose — 15 checkable code claims all verified against source; two apparent failures were the **checks'** fault | **Audit** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
