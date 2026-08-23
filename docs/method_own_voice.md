@@ -8,7 +8,7 @@ adding the frozen numbers with their estimands — and the student reads and
 confirms each section before it is marked accepted. Every section carries its
 source answers below it, verbatim, as provenance of whose voice it is.
 
-**Status: §1–§5 CONFIRMED by the student (2026-08-23). §6 and §7 drafted — awaiting student confirmation.**
+**Status: §1–§7 CONFIRMED by the student (2026-08-23). §8 and §9 drafted — awaiting student confirmation.**
 
 ---
 
@@ -239,7 +239,7 @@ D-068.
 
 ---
 
-## 6 · The normalising scale, and why it is fixed before anything is marked *(D-061/D-076 — replaces `method_draft.md` §6 when confirmed)*
+## 6 · The normalising scale, and why it is fixed before anything is marked *(D-061/D-076 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §6)*
 
 Errors from different configurations are not directly comparable. A large grid
 produces larger position mistakes than a small one simply because there is
@@ -282,7 +282,7 @@ enforced structurally by D-076).
 
 ---
 
-## 7 · What the error is, and what it is not *(DEV-007/D-032/D-047 — replaces `method_draft.md` §7 when confirmed)*
+## 7 · What the error is, and what it is not *(DEV-007/D-032/D-047 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §7)*
 
 The world model predicts only what can change. In this environment an object's
 shape and colour are fixed for the whole episode: nothing any action does will
@@ -323,3 +323,106 @@ sharpened to the registered reason (each action can only change certain
 quantities, so scoring elsewhere marks a free win). Paragraph 2 is Claude's
 after a recorded "don't know", taught in chat (D-032; the rejected full-delta
 target). The diagnostic-only status of the activation head is D-047/D-063.
+
+---
+
+## 8 · Why hiding position is a different experiment *(DEV-006/D-026 — replaces `method_draft.md` §8 when confirmed)*
+
+Experiment 2A manufactures the wrong-tools failure by hiding from the model
+exactly the attribute the rule depends on. Hiding shape or colour does this
+cleanly: the model still sees the whole scene and knows where everything is,
+it simply cannot tell which objects satisfy a rule it can no longer express.
+The failure is that the rule is unrepresentable, which is the failure the
+experiment is about.
+
+Hiding *position* is not the same thing, and the difference is not a matter of
+degree. Position is not one property of a visible object — it is what tells
+the model that an object is there at all. Remove it and situations that are
+genuinely different start to look identical in the data: the same observation
+and action now correspond to more than one true outcome. Measured, **37.5% of
+(observation, action) keys are aliased when position is withheld, against
+10.0% for shape and colour**, in a key space **26× smaller**.
+
+A model in that condition is not failing because the rule cannot be written
+down; it is failing because it cannot tell two different situations apart. That
+is a different structural failure, so position-causal conditions are not
+counted among the five canonical Experiment 2A configurations. They still run,
+as a declared robustness configuration in the three-seed sweep, and are
+reported as such. The point of recording this as a deviation is to bound the
+claim: Experiment 2A's result is a result about withheld *attributes of visible
+objects*, and the measurement that justifies the boundary is reported beside
+it.
+
+**Source answer (student, 2026-08-23, verbatim):**
+> 1- because they are not the same thnig. i think. i do not really get it.
+
+**Provenance notes:** the student identified correctly that the two cases are
+not the same but could not say why; the aliasing explanation is Claude's,
+taught in chat before confirmation, with the 37.5% / 10.0% / 26× measurement
+from DEV-006 and D-026 quoted rather than paraphrased.
+
+---
+
+## 9 · The reliability gate, and what its intervals really say *(W4 Tue, D-074/D-075 — replaces `method_draft.md` §9 when confirmed)*
+
+Before Hypothesis 1 could be tested at all, the machinery had to be shown to
+work: does ensemble disagreement actually fall as the dataset grows, in a way
+the registered statistic can read? The gate answers that question on three
+predeclared layouts — uniform, clustered and sparse — with five development
+seeds each, and it passed on all three, at the first rung of a difficulty
+ladder that was then correctly stopped: 90 ensembles, 450 model fits, 4
+minutes 52 seconds on CPU.
+
+The reasoning behind the statistic is the reasoning behind Hypothesis 1. When
+the members of an ensemble disagree with each other, it means the data did not
+pin the answer down: several different models fit what was seen equally well,
+and the disagreement is what is left over. Give the model more data and the
+possibilities narrow, so disagreement should fall. Spearman's rank correlation
+between dataset size and mean disagreement was **−0.9429** in all three
+configurations — identical because the statistic reads ranks only, and all
+three mean curves share the same rank pattern.
+
+Two of the three reported intervals are a single point, `[−0.9429, −0.9429]`,
+and that must never be presented without its explanation:
+
+> Exact paired seed-block bootstrap percentile intervals were computed over all
+> 3,125 resamples. Because Spearman correlation over six dataset sizes has
+> highly discrete support, the bootstrap distributions contained only two or
+> three distinct values. A zero-width percentile interval therefore reflects
+> quantile discreteness, not zero sampling uncertainty.
+
+The atom table belongs with that sentence, because it shows how narrowly the
+width is decided: the uniform distribution puts 98.37% of its mass on −0.9429
+and 1.63% on −0.8286, sparse 97.86% and 2.14%, against a 2.5% quantile
+threshold — sparse is within 0.36 percentage points of its upper bound
+flipping. The verdict does not depend on this in the slightest, since every
+atom in every configuration lies far below zero, but the reported *width*
+does, and a reader taking a zero-width interval as a precise estimate would be
+misled.
+
+Two honesty notes travel with the result. Disagreement is **not** monotone in
+dataset size: in 14 of the 15 seed-configuration curves it peaks at N=250
+before falling, and the gate passes because the registered statistic tolerates
+exactly one inversion. The exception, clustered seed 4, peaks at N=500 with
+N=250 below N=100; it is kept and reported exactly as observed, not smoothed,
+not rerun, and not investigated — doing so now would be exploring after seeing
+the result, and confirmation waits for the untouched confirmatory seeds.
+
+And the gate is not the hypothesis. It ran on development seeds, below the
+confirmatory line at 1000, so it establishes that the estimator behaves as
+registered — not that Hypothesis 1 is true. That verdict is taken later, on
+seeds nobody has looked at.
+
+**Source answers (student, 2026-08-23, verbatim):**
+> 2- that the data was contradeted.
+> 3- we have not tested it on high seeds(>1000).
+> 4- because it could be that there is a hiden error or somthing we mised.
+
+**Provenance notes:** answer 3 is correct and is paragraph 6's content in the
+student's own understanding. Answer 2 is corrected: disagreement means the data
+**underdetermined** the answer — several models fit it equally well — rather
+than that the data was contradictory (D-069/D-074). Answer 4's suspicion is
+right in spirit but the actual cause is specific and is Claude's: the bootstrap
+has only two or three atoms because a rank correlation over six points has very
+coarse support (D-075, whose wording Sol required verbatim and which is quoted
+above as a block).

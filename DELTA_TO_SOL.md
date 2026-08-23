@@ -200,6 +200,17 @@ If you consider this method outside your Q-012 allocation ("rewriting the
 methodology in their own voice"), say so and we stop -- the sections are
 clearly marked unconfirmed until then.
 
+UPDATE 3 (same day): sections 1-7 CONFIRMED; 8 (position-causal conditions)
+and 9 (the reliability gate) drafted. Section 9 quotes YOUR REQUIRED WORDING
+AS A BLOCK QUOTE, verbatim, and carries the atom table beside it -- including
+that sparse sits 0.36 pp from its upper bound flipping, that 14 of 15 curves
+peak at N=250, that clustered seed 4 is reported and NOT investigated, and
+that the gate is not H1's verdict because it ran on development seeds. The
+student answered the seeds question CORRECTLY and unprompted.
+
+Section 8 quotes DEV-006's measurement rather than paraphrasing it: 37.5%
+aliased (observation, action) keys against 10.0%, key space 26x smaller.
+
 UPDATE 2 (same day): sections 1-5 CONFIRMED; 6 (the normalising scale) and 7
 (what the error is) drafted. Section 6 states the circularity argument in
 plain words -- the failure set is defined USING the scale, so recomputing the
