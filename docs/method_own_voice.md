@@ -1,4 +1,4 @@
-# Method — the student's own-voice rewrite
+# Method — student-confirmed assisted methodology draft
 
 **How this file is produced (method recorded for Sol in delta 57):** for each
 section, Claude asks simple questions in chat; the student answers **in their
@@ -8,7 +8,16 @@ adding the frozen numbers with their estimands — and the student reads and
 confirms each section before it is marked accepted. Every section carries its
 source answers below it, verbatim, as provenance of whose voice it is.
 
-**Status: ALL SEVENTEEN SECTIONS DRAFTED AND CONFIRMED by the student (2026-08-23). Awaiting Sol's review.**
+**Status: all seventeen sections drafted and student-confirmed (2026-08-23); corrected to Sol's delta-57 review. Awaiting re-review.**
+
+**Authorship label, on Sol's ruling (delta 57).** This is a **student-confirmed
+assisted methodology draft**, not a wholly student-authored one. Nine questions
+were answered "I don't know" and the corresponding explanations are Claude's;
+confirmation demonstrates that the student *understood* them, which is not the
+same as having independently written them. **The final thesis version must omit
+this interview and provenance apparatus entirely and contain only wording the
+student can independently explain and defend**, after a final independent pass
+in their own words.
 
 ---
 
@@ -45,13 +54,19 @@ them on purpose. That clean switch is how the wrong-tools failure is
 manufactured: the model is denied exactly the attribute the rule depends on.
 
 One episode looks like this. A grid contains objects, and every object has
-fixed attributes — a shape and a colour — that never change; some objects
-block movement, depending on those attributes. The agent moves through the
-grid and has one extra action, `interact`, which toggles the activation of an
-object standing next to it — but only when the object satisfies a rule that
-depends on one specific attribute, for example "only triangles can be
-activated". Which attribute matters is a setting of the configuration, and it
-is exactly what the world model must discover from data. The agent itself
+fixed attributes — a shape and a colour — that never change. **One of those
+attributes decides whether an object can be moved through**: when shape is the
+causal attribute, triangles are passable and squares block the agent; when
+colour is causal, red is passable and blue blocks. Which attribute governs
+passability is a setting of the configuration, and it is exactly the rule the
+world model must discover from data. The agent also has one extra action,
+`interact`, which toggles the activation bit of the **first adjacent object**
+it finds. **Activation is deliberately orthogonal to passability**: `interact`
+does not test the causal rule, and no attribute governs it. It exists only so
+the action has an observable effect — otherwise a world model would learn it is
+the identity and the action would carry no information — and giving it any
+influence on the transition rule would confound the manipulation under study.
+Activation is an auxiliary diagnostic throughout. The agent itself
 never learns: a fixed scripted policy chooses its actions and only collects
 experience. The learner is the world model, which must predict the agent's
 next position after a move and any activation change after an `interact`.
@@ -88,14 +103,17 @@ this thesis**. Each unit ends with one label — which repair actually worked �
 and the critic has to learn from these labelled examples and then be judged on
 examples it has never seen. One configuration would be one data point; no
 classifier can be trained or fairly tested on a handful of points. Three
-hundred units give the critic enough variety to learn from and enough held-out
-examples to be judged on honestly.
+hundred units provide the registered balanced sample and the planned held-out
+evaluation. They do **not** guarantee adequate sensitivity: as Gate 1 records,
+the sixty to eighty held-out units do not resolve Hypothesis 3 near ±5
+percentage points.
 
-We did not run every possible combination of settings. The full crossing of
-all the axes would be far larger, and most of those combinations would repeat
-the same lesson at higher compute cost. Instead the design draws a **balanced
-sample** from the crossing: every axis is covered fairly, and the two intended
-failure classes are kept at 150 units each.
+We did not run every possible combination of settings. The full crossing of all
+the axes would be far larger than the registered scope and compute allow.
+Instead the design draws a **balanced sample** from the crossing, on the
+recorded grounds of scope, compute, axis coverage and intended-class balance:
+every axis is covered fairly, and the two intended failure classes are kept at
+150 units each.
 
 That 150/150 balance is not decoration. The critic is a classifier with two
 possible answers, and if one class dominated — say 270 data-failures and 30
@@ -336,10 +354,12 @@ The failure is that the rule is unrepresentable, which is the failure the
 experiment is about.
 
 Hiding *position* is not the same thing, and the difference is not a matter of
-degree. Position is not one property of a visible object — it is what tells
-the model that an object is there at all. Remove it and situations that are
-genuinely different start to look identical in the data: the same observation
-and action now correspond to more than one true outcome. Measured, **37.5% of
+degree. Position is what tells the model **where** an object is; shape, colour,
+activation and the fixed object slots all remain visible, so the object does not
+vanish from the observation. What is lost is spatial arrangement, and the
+consequence is **causal aliasing**: distinct spatial states encode identically,
+so the same observation and action now correspond to more than one true
+outcome. Measured, **37.5% of
 (observation, action) keys are aliased when position is withheld, against
 10.0% for shape and colour**, in a key space **26× smaller**.
 
@@ -454,9 +474,11 @@ on CPU. The strata were weighted equally by deterministic subsampling without
 replacement to the smallest stratum's count, giving 9 × 4,103 = 36,927 of
 37,406 transitions, so that no layout could dominate the reference simply by
 contributing more data. Applying the rule to the unbalanced pool instead gives
-5.02% failures against the 5% the balanced pool has by construction — a sanity
-check that the strata are not wildly different in the upper tail, reported as
-a check and not as a criterion.
+5.02% failures against the 5% the balanced pool has by construction. That
+agreement shows only that the unequal stratum counts have little effect on the
+**pooled aggregate**; it says nothing about homogeneity **between** strata,
+which §11 reports as a 5.5-fold spread. It is a check on the weighting, not
+evidence about the tails, and it is not a criterion.
 
 The threshold may never be re-tuned, and the reason is one the student put
 plainly: changing it would change a great many results that accumulate on top
@@ -507,7 +529,8 @@ the value, so the strict rule decides actual labels — is Claude's, from
 
 ## 11 · A limitation: failure is not spread evenly across layouts *(D-108/D-109 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §11)*
 
-The threshold is one global number, but it does not mean one thing everywhere.
+The same global threshold applies everywhere, but the observed prevalence
+differs by layout — the threshold's definition and meaning do not change.
 Measured across the nine calibration strata, the proportion of transitions
 called failures ranges from **1.58% to 8.77%** — a **5.5-fold** spread, ordered
 systematically by layout: clustered lowest, then uniform, then sparse. This is
@@ -579,15 +602,18 @@ alone.
 
 That fourth condition asked whether the design can resolve a five-percentage-
 point difference in balanced accuracy, which is the margin Hypothesis 3 is
-stated against. It cannot. The smallest difference the design can reliably
-detect is **18 to 22 percentage points**. The instrument works — it is simply
-too coarse for the question: like a scale that weighs correctly but only in
-twenty-kilogram steps, it will register a large change and cannot see a small
-one. The study is doing well at what it does; it is not sensitive enough for
-the difference that matters.
+stated against. The evidence says it cannot. A **provisional, optimistic
+diagnostic simulation** estimated a detectable difference of **18 to 22
+percentage points** under the scheduled sample. That figure is **not an exact
+minimum detectable difference**: its rejection rule is a Wald approximation
+that over-rejects, and the final MDE remains unknown until Hypothesis 3's final
+group-level inference exists and its null calibration has been validated. The
+instrument works — it is simply too coarse for the question: like a scale that
+weighs correctly but only in twenty-kilogram steps, it will register a large
+change and cannot see a small one.
 
-Three things make that number trustworthy as a limitation rather than a
-guess. First, the shortfall is driven by **sample size**, not by uncertain
+Three things support the **qualitative** limitation — that the registered
+sample cannot resolve ±5 points — rather than any precise value. First, the shortfall is driven by **sample size**, not by uncertain
 assumptions: even with no correlation between related units at all — the
 parameter least knowable before data — the detectable difference is still 18
 points. Second, every available lever was tested and none closes the gap:
@@ -650,11 +676,12 @@ be available at all. Early discovery converts a potential embarrassment into a
 stated limitation, and it saves the effort that would otherwise be spent
 running a study toward a question it could not answer.
 
-The reason the remedy was declined is the scale of it. Clearing five points
-needs on the order of **1,500 to 2,000 held-out units**; the schedule holds out
-sixty to eighty of three hundred. Preserving that fraction, the design would
-need roughly **5,625 to 10,000 total units — an eighteen- to thirty-three-fold
-expansion**. That multiplier is a ratio of unit counts and deliberately carries
+The reason the remedy was declined is the scale of it. A **rough diagnostic
+extrapolation** suggests a requirement on the order of **1,500 to 2,000
+held-out units** — this is *not* a computed sample-size requirement; the
+schedule holds out sixty to eighty of three hundred. Preserving that fraction,
+the design would need roughly **5,625 to 10,000 total units, an approximate
+eighteen- to thirty-three-fold extrapolation**. That multiplier is a ratio of unit counts and deliberately carries
 no execution host with it: converting it into hours and comparing the result
 against the registered compute trigger would repeat, in prose, exactly the
 cross-host comparison the previous section refuses to make.
@@ -736,10 +763,10 @@ usable units is smaller than the number attempted.
 
 The schedule asks for the configuration target to be inflated by a **pilot**
 exclusion rate, with the assumption stated, and for the first labelled batch
-to be checked against it. No pilot exclusion rate existed. The pilot phase
-produced no labelled units by design, so there was no dependable measurement
-to inflate by, and the registered convention is a planning assumption of
-**zero**: the gross target is 300 units, with no anticipatory oversampling of
+to be checked against it. **No pilot-labelled units were available, so no
+empirical exclusion rate existed** — there was no dependable measurement to
+inflate by, and the registered convention is a falsifiable planning assumption
+of **zero**: the gross target is 300 units, with no anticipatory oversampling of
 either class.
 
 The wording matters more than the number. Saying the study **assumed** zero
@@ -813,13 +840,15 @@ successful repairs out of seed noise, and those manufactured successes become
 labels that everything downstream depends on. What is used instead takes the
 pairing first — differencing out everything the two arms share on each
 transition — and keeps **seed as the replication level**, which is what the
-random intercept was for. Where the differences are degenerate, both the
-primary test and its fallback fail **closed**, returning no result rather than
-inventing one.
+random intercept was for: an equal-seed mean paired difference with a t
+interval on `n_seeds - 1` degrees of freedom. **There is no fallback.** The
+schedule's episode-mean fallback was removed rather than retained, and the
+option to request one was removed with it. Invalid, degenerate or non-finite
+inputs fail **closed**, returning no result rather than inventing one.
 
 The test is calibrated against a permutation null, which permutes **whole
-runs** rather than individual transitions, because transitions within a run are
-not exchangeable. Under that null the full three-condition rule fires on none
+paired runs and seeds** rather than individual transitions, because transitions
+within a run are not exchangeable. Under that null the full three-condition rule fires on none
 of 200 permutations, and the interval condition alone fires on five to seven —
 inside the admissible range for a nominal 5% rule.
 
@@ -844,10 +873,12 @@ repair arm identifies a configuration, adding the stage and seed identifies a
 run, and the configuration with its seed but **without** the stage identifies
 the computation itself.
 
-That last distinction is not pedantry. A unit owes **five** seeds to the
-hypothesis experiments and **twenty** to repair validation, and the twenty
-**contain** the five — they are one set of fits serving two purposes, not two
-separate sets. Counting them as separate obligations once produced an
+That last distinction is not pedantry, and the seed obligations are not uniform
+across units. Canonical **repair-validation** units run **twenty** seeds. Where
+such a unit *also* serves an H1/H2 role, the **five** hypothesis seeds are
+**contained within** those twenty — one set of fits serving two purposes, not
+two separate sets. Units appearing only in the configuration sweep run **three**
+seeds and carry neither obligation. Counting them as separate obligations once produced an
 accounting of 375 model fits that did not exist. The identity that names the
 computation, rather than the obligation it discharges, is what keeps a fit from
 being counted twice.

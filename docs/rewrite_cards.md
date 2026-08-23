@@ -15,8 +15,14 @@ disagree, the ledger wins.
 ## 1 · Environment design rationale *(W1 Thu)*
 **Must say:** why a gridworld with factored observations — failure modes must be
 *constructible* (estimation vs hypothesis-class) and labels *counterfactual*;
-the environment is built against `UnitSpec` directly (D-017). Objects, static
-attributes, activation via `interact`.
+the environment is built against `UnitSpec` directly (D-017). **The causal
+attribute governs PASSABILITY during movement** (shape causal → triangles
+passable, squares block; colour causal → red passable, blue blocks).
+**`interact` toggles the first adjacent object's activation and is deliberately
+ORTHOGONAL to passability** — no attribute governs it; it exists so the action
+has an observable effect, and activation is an auxiliary diagnostic only.
+**Must not say:** "only triangles can be activated", or anything implying
+activation is the transition rule the primary model must discover.
 **Must not say:** anything implying the environment was tuned after seeing model
 behaviour.
 **Sources:** D-017, D-027, P§5.
@@ -112,8 +118,14 @@ closed permanently.
 
 ## 11 · Limitation: failure prevalence is not uniform across layouts *(D-108/D-109)*
 **Must say:** the measured 5.5× spread (1.58%–8.77%, ordered clustered <
-uniform < sparse) **stands**; it is mostly normalisation-scale driven. Analysis
-rule registered by Sol in D-109.
+uniform < sparse) **stands as a measurement**. Preferred framing: *the same
+global threshold applies everywhere, but the observed prevalence differs by
+layout* — the threshold's definition and meaning do not change. Analysis rule
+registered by Sol in D-109.
+**Must not say:** that it is "mostly normalisation-scale driven" — that is
+D-108's **withdrawn** mechanism claim; D-109 preserves the measurement, not its
+explanation. Also: the 5.02% unbalanced-pool check bears on **weighting**, never
+on between-strata homogeneity.
 **Must not say:** **D-108's causal interpretation — it is withdrawn** (D-109).
 Report the measurement, not the mechanism story.
 **Sources:** D-108, **D-109 controls**.
@@ -122,9 +134,11 @@ Report the measurement, not the mechanism story.
 **Must say:** four conditions: reliability **PASS**; compute **NOT
 ADJUDICABLE** — measured 5.72/6.91 **local wall-hours** vs a **120 GPU-hour**
 trigger on a device never used, neither pass nor fail; permutation calibration
-**PASS**; MDE **FAIL** — 18–22 pp against a ±5 margin, *diagnostic and
-optimistic* (Wald rule over-rejects: null 6.1–9.2% vs 5%, so the true MDE is
-larger). Sample size is the driver (ICC = 0 still gives 18). α = 0.05
+**PASS**; MDE **FAIL**. At **first mention**, call 18–22 pp a **provisional,
+optimistic diagnostic** estimate under the scheduled sample — never "the
+smallest difference the design can detect". The Wald rule over-rejects
+(6.1–9.2% vs nominal 5%), and **the final exact MDE is not yet known**: it waits
+on H3's final group-level inference and its null calibration. Sample size is the driver (ICC = 0 still gives 18). α = 0.05
 two-sided is a recorded deviation (DEV-008). MDE-vs-margin is a **necessary
 sensitivity check, not an equivalence test**; no *exact* MDE until H3's final
 inference exists. H3 may be inconclusive around ±5 and that is a reportable
@@ -136,9 +150,11 @@ study is underpowered" without the diagnostic framing.
 
 ## 13 · The remedy the schedule prescribed, and why it was declined *(DEV-010 — mandated)*
 **Must say:** the schedule said *raise the configuration count now*; it was not
-raised — deliberately, on review. Clearing five points needs **1,500–2,000
-held-out** units vs 60–80 scheduled: **5,625–10,000 total, 18.75×–33.3×** — a
-**unit-count ratio carrying no host**. Refusal grounds: registered scope, and a
+raised — deliberately, on review. A **rough diagnostic extrapolation** suggests
+on the order of **1,500–2,000 held-out** units vs 60–80 scheduled — **not a
+computed sample-size requirement**. Preserving the fraction gives an
+**approximate 5,625–10,000 total, 18.75×–33.3×**, explicitly a **unit-count
+extrapolation carrying no execution host**. Refusal grounds: registered scope, and a
 budget position resting on the registered GPU-hour design estimate plus the
 scope decision. The limitation is carried forward, not repaired.
 **Must not say:** the multiplier converted into hours against the 120-hour
@@ -171,9 +187,13 @@ exact prohibition.
 ## 16 · The repair-acceptance test *(DEV-009, D-094/D-100 — mandated)*
 **Must say:** the schedule's mixed-effects model is replaced — the literal
 specification is **degenerate** for this design (D-094); the registered test is
-three conditions, **all required**, on paired per-transition errors, with a
-permutation null that **permutes whole runs, never transitions** (D-079);
-episode-mean fallback is a *labelled different method*. Calibration: 5–7/200
+three conditions, **all required**, on paired per-transition errors, reduced to
+an **equal-seed mean paired difference with a t interval on `n_seeds − 1` df**,
+with a permutation null that **permutes whole paired runs and seeds, never
+transitions** (D-079).
+**Must not say:** that an episode-mean fallback exists or is an alternative —
+**there is no fallback** (D-100/D-101 removed it, and removed the option to
+request one). Invalid, degenerate or non-finite inputs **fail closed**. Calibration: 5–7/200
 against an admissible [1, 10], full rule 0/200 (D-098 c3).
 **Must not say:** that the mixed model was "approximated" — it was replaced,
 under a Change Record, and the deviation says why.
@@ -182,10 +202,13 @@ under a Change Record, and the deviation says why.
 ## 17 · One unit, several roles *(W2 Wed, D-007 — mandated)*
 **Must say:** the four identities and what each is for; the statistical unit is
 the **configuration-condition**, shared by a failure condition and its repair
-arms — that is what makes a label assignable. One unit owes 5 seeds to H1/H2
-and 20 to repair validation, and **the twenty contain the five** — one set of
-fits wearing two roles, not 25 runs (D-033; conflating them once produced 375
-phantom fits). Comparison groups **never span a split or fold** (D-039).
+arms — that is what makes a label assignable. Seed obligations are **not uniform**: canonical
+**repair-validation** units run **20** seeds; where such a unit *also* serves an
+H1/H2 role the **5** hypothesis seeds are **contained within** those 20 — one
+set of fits wearing two roles, not 25 runs (D-033; conflating them once produced
+375 phantom fits); **sweep-only** units run **3** seeds and carry neither
+obligation. Preserve the distinction between `run_id` obligations and
+deduplicated `fit_id` computations. Comparison groups **never span a split or fold** (D-039).
 Confirmatory seeds ≥ 1000; everything below is permanently development data
 (D-034).
 **Must not say:** an effective sample size without its estimand — under the

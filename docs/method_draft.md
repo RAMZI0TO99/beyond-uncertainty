@@ -607,8 +607,9 @@ Ground-truth labelling can exclude a unit: a repair outcome can be *ambiguous*
 *undiagnosed* (neither does). The schedule asks for the configuration target to
 be inflated by a **pilot** exclusion rate, with the assumption stated, and for
 the first labelled batch to be checked against that assumption. No pilot
-exclusion rate existed when the count was set — the pilot phase produced no
-labelled units by design — so there was nothing empirical to inflate by.
+exclusion rate existed when the count was set: **no pilot-labelled units were
+available, so no empirical exclusion rate existed**, and there was nothing to
+inflate by.
 
 The registered convention, ratified in review **before any real labels
 existed**, is a planning assumption of **0.00**: the gross configuration target

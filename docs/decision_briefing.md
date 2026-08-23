@@ -115,10 +115,11 @@ minutes.
 | `run_id` | + stage **and** seed | which obligation a record discharges |
 | `fit_id` | `config_id` + seed, **no stage** | the identity of the *computation* |
 
-**Keep the last two apart.** One unit owes 5 seeds to an H1/H2 claim and 20 to
-repair validation, and **the twenty contain the five**. They are one set of fits
-wearing two roles, not 25 runs (D-033). Conflating them once cost **375 phantom
-fits**.
+**Keep the last two apart, and note the obligations are not uniform.** Canonical
+**repair-validation** units run **20** seeds; where such a unit *also* carries an
+H1/H2 role, **the twenty contain the five**. **Sweep-only** units run **3** and
+carry neither. They are one set of fits wearing two roles, not 25 runs (D-033).
+Conflating them once cost **375 phantom fits**.
 
 ---
 
@@ -136,11 +137,13 @@ open — first time since Week 3. Gate 2 is 2026-10-24 and gates never move.
 | 3 · Permutation calibration | **PASS** (D-085/D-086) |
 | 4 · MDE resolves five points | **FAIL** — 18–22 points (D-078, D-089) |
 
-> **If you read D-098 itself, its table says condition 2 = PASS.** That was the
-> record on 2026-08-20 and it is **append-only, so it still reads that way**. It
-> was corrected to NOT ADJUDICABLE by D-119 and D-120. **Cite the corrected
+> **SUPERSEDED — DO NOT CITE; controlling decisions: D-119/D-120.**
+> D-098's own table reads *condition 2 = PASS*. That was the record on
+> 2026-08-20 and it is **append-only, so it will always read that way**. It was
+> corrected to **NOT ADJUDICABLE** by D-119 and D-120. **Cite the corrected
 > value.** This is the single most likely place to quote a withdrawn claim,
-> because the original is in a signed gate record.
+> because the original sits in a signed gate record. The full correction map is
+> at the front of `DECISIONS.md`.
 
 **Gate 1 fails on the MDE, independently.** It must never be renamed a pass.
 
@@ -153,10 +156,12 @@ points, so the conclusion does not rest on the parameter least knowable before
 data. Every lever was tested: pairing reaches 8.0 at correlation 0.99; holding
 out *all 300* units gives 6.0 paired.
 
-**The numbers are if anything optimistic** (D-082): the power test is
-anti-conservative — type-I error 0.06–0.09 against 0.05 — because it uses a Wald
-`1.96×SE` rule where D-044 registers a group-bootstrap percentile. So the true
-MDE is *larger* than 18–22. The risk is real, not a simulation artefact.
+**The diagnostic is optimistic** (D-082): the power test is anti-conservative —
+type-I error 0.06–0.09 against 0.05 — because it uses a Wald `1.96×SE` rule
+where D-044 registers a group-bootstrap percentile. **The final exact MDE is
+not yet known**; it waits on H3's final group-level inference and its null
+calibration. The qualitative risk — that the registered sample cannot resolve
+±5 points — is real, not a simulation artefact.
 
 **What the MDE is and is not** (D-089, and this is the sentence for the thesis):
 MDE-versus-margin is a **necessary sensitivity check, not an equivalence test**.
@@ -175,9 +180,10 @@ reporting, and **H3's final test is not settled**.
 - **Zero GPU-hours have ever been spent.** 675 CPU fits total; nothing has ever
   run on Kaggle (DEV-011)
 
-**Expansion is refused** on scope and power grounds. Clearing five points needs
-**1,500–2,000 held-out** units against 60–80 scheduled — **18.75×–33.3×** as a
-ratio of unit counts. **Never convert that into hours and compare it to the
+**Expansion is refused** on scope and power grounds. A **rough diagnostic
+extrapolation** suggests on the order of **1,500–2,000 held-out** units against
+60–80 scheduled — **not a computed sample-size requirement** — giving an
+**approximate 18.75×–33.3×** unit-count extrapolation. **Never convert that into hours and compare it to the
 120-hour trigger**; that is local CPU wall-hours against GPU-hours, and it is
 the error that survived two attempts to fix it (D-115, corrected by D-119).
 

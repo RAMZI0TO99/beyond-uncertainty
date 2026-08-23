@@ -6,6 +6,35 @@ a correction is a new entry that references the old one (D-014). Split out of
 one-line index of everything here, and the two are checked against each other by
 `tests/test_project_state.py`.
 
+---
+
+## ⚠ CORRECTION INDEX — read before citing any entry below
+
+**Standing convention, registered by Sol on 2026-08-23 (delta 57).** Entries in
+this ledger are **append-only and are never edited**, so a superseded result
+still reads exactly as it did when it was signed. This index is the correction
+map. **A signed block is not evidence that its claim still stands** — check
+here first.
+
+| If you are citing … | It is SUPERSEDED — cite instead | What changed |
+|---|---|---|
+| **D-098** — Gate 1, *"condition 2 · compute · **PASS**"* | **D-119, D-120** | Compute is **NOT ADJUDICABLE across hosts** — never a PASS. Local wall-hours cannot adjudicate a GPU-hour trigger. Gate 1 still **FAIL**, on condition 4 alone |
+| **D-039, D-042** — `min(N₀,N₁) = 115` as *the* effective sample size | **D-044** | 115 is a **bound**, not n_eff. Under the registered `"unit"` weighting the ICC=1 boundary is 75/72.6. **Never quote an n_eff without its estimand** |
+| **D-108** — prevalence spread *"is mostly normalisation"* | **D-109** | The **measurement stands** (5.5×, 1.58%–8.77%); the **causal reading is withdrawn**. Evidence about means cannot explain why tails differ |
+| **D-094** — *"Sol's specified fallback is retained"* | **D-100, D-101** | **There is no fallback.** The episode-mean fallback was removed, and the option to request one with it. Inputs fail **closed** |
+| **D-114, D-115, DEV-010** — expansion in hours vs the 120-hour trigger | **D-119** | Local CPU wall-hours vs GPU-hours is a **cross-host comparison**. The 18.75×–33.3× multiplier stands only as an **approximate unit-count extrapolation** |
+| **D-047** — the auxiliary head's open item | **D-063** | No second trunk; the head is a **non-decisional diagnostic** |
+| **D-058** — what the W3 pilot showed | **D-059** | What it actually measured, versus what was claimed |
+| **D-061, D-062** — scale wording / isolation claim | **D-064** | A claim narrowed; an "isolation" that was CPU-only |
+| **D-020**, Q-011 measurements | — | **VOID.** Taken under the non-stationary policy and derived split (D-051/D-052). Re-measure; do not quote |
+
+**Rule for mutable prose** (Sol, delta 57): wherever reader-facing material
+quotes or reproduces a superseded result, place an adjacent marker —
+`SUPERSEDED — DO NOT CITE; controlling decisions: D-nnn/D-nnn`. **Do not
+rewrite or insert text inside the signed historical blocks**, including D-098.
+
+---
+
 Every decision a future reader would otherwise have to reconstruct. Format:
 
 ```
@@ -1940,3 +1969,26 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Compute:** **none.**
 **Plan ref:** S§W4, S§W5, Q-004, Q-012, D-036, D-041, D-043, D-072, D-092, D-119, DEV-010, DEV-011, DEV-012. Sol's certification of delta 56.
 **Reviewed by Sol:** **this IS Sol's ruling.** Filed 2026-08-23.
+
+---
+
+### D-121 · 2026-08-23 · Sol withheld delta 57 — nine prose corrections, two of them substantive errors of mine, and the supersession convention registered
+
+**Decision:** Sol **withheld certification of delta 57** and returned a prose-only correction round. D-120's filing, the false-locator correction and the `70212c6` disclosure are **accepted**; W4/W5 remain complete; Q-012 remains closed; the base remains **`801a33d`** and **no later base may be inferred or announced** until the corrected bytes are reviewed. Nothing here authorises code, tests, data, labels, reserve, recalibration, expansion or compute. Digests verified before filing: Sol's quoted delta sha256 `97d14c5f11b9…` and bundle sha256 `0335d11b6072…` both match the delivered files, at head `dd45dfa`.
+
+**>>> Two of the nine are substantive errors, not wording — and both were verified against source before being accepted.**
+
+**The environment's causal mechanism was described wrongly (§1).** I wrote that `interact` toggles activation *"only when the object satisfies a rule that depends on one specific attribute, for example only triangles can be activated"*. That is false in both halves. `is_passable()` in `env/gridworld.py` is *"the true transition rule"* and the causal attribute governs **passability during movement** — shape causal means triangles are passable and squares block. `_interact()` toggles the **first adjacent object** it finds and its docstring says **"deliberately orthogonal to passability"**: no attribute governs it, and it exists solely so the action has an observable effect rather than being learned as the identity. I attached the causal rule to the wrong action, in the section that teaches a reader what the environment *is*.
+
+**§16 resurrected a fallback that was removed (D-100/D-101).** I wrote that *"both the primary test and its fallback fail closed"*, sourced from D-094's *"Sol's specified fallback is retained"*. `stats/acceptance.py` says plainly: **"There is no fallback (D-100)"**, and *"there is deliberately no `allow_fallback` parameter — it was removed once the fallback was (D-101)"*. **I cited a superseded decision without checking for its correction** — the precise failure the briefing I wrote three hours earlier exists to prevent, committed in the same session. The registered test is an equal-seed mean paired difference with a t interval on `n_seeds − 1` df, no fallback, failing closed on invalid, degenerate or non-finite input; the permutation null permutes **whole paired runs and seeds**.
+
+**The seven scoping corrections, all applied.** §2 no longer claims 300 units give *"enough held-out examples to be judged honestly"* — an adequacy claim Gate 1 contradicts — and no longer asserts that omitted combinations *"would repeat the same lesson"*, which had no evidence; the recorded grounds are scope, compute, axis coverage and intended-class balance. §8 no longer says position tells the model *"an object is there at all"* — shape, colour, activation and the object slots remain visible; the defect is **causal aliasing**, distinct spatial states encoding identically. §10's 5.02% check is now scoped to what it shows — that unequal stratum counts barely move the **pooled aggregate** — and explicitly **not** to between-strata homogeneity, which §11 reports as a 5.5-fold spread; the two sections had contradicted each other. §11 adopts Sol's framing: the same global threshold applies everywhere, only the **observed prevalence** differs. §12 states 18–22 as a **provisional, optimistic diagnostic**, never as the smallest detectable difference, with the exact MDE unknown until H3's final inference and null calibration exist; *"three things make that number trustworthy"* now supports only the **qualitative** limitation. §13 and every affected document label 1,500–2,000 a **rough diagnostic extrapolation, not a computed sample-size requirement**, with 5,625–10,000 and 18.75×–33.3× as approximate unit-count extrapolations carrying no host. §15 drops *"the pilot phase produced no labelled units by design"* — an unsupported reason — for the certified fact that no pilot-labelled units were available. §17 no longer applies both seed obligations to every unit: canonical repair-validation units run twenty, the five hypothesis seeds are contained within those twenty **where a unit carries both roles**, and sweep-only units run three.
+
+**The authorship label is corrected on Sol's ruling.** Nine recorded "don't know"s followed by Claude-authored explanations mean confirmation demonstrates **understanding**, not independent authorship. `method_own_voice.md` is retitled **"student-confirmed assisted methodology draft"**, carries that statement at the top, and records that **the final thesis version must omit the interview and provenance apparatus entirely** and contain only wording the student can independently explain and defend after a final independent pass.
+
+**The supersession convention is registered and implemented.** Signed historical blocks stay untouched — **D-098 is not edited**. A **CORRECTION INDEX** now sits at the front of `DECISIONS.md`, mapping every superseded entry to its controlling decision: D-098 → D-119/D-120, D-039/D-042 → D-044, D-108 → D-109, **D-094 → D-100/D-101**, D-114/D-115/DEV-010 → D-119, D-047 → D-063, D-058 → D-059, D-061/D-062 → D-064, and D-020/Q-011 as void. Mutable reader-facing prose that reproduces a superseded result now carries an adjacent `SUPERSEDED — DO NOT CITE; controlling decisions: …` marker, applied first in the briefing's Gate 1 passage.
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed. Unchanged — prose only.
+**Data seen:** none. **Compute:** none.
+**Plan ref:** D-094, D-098, D-100, D-101, D-108, D-109, D-119, D-120, DEV-010, DEV-012, Q-012. Sol's delta-57 review.
+**Reviewed by Sol:** **not yet — delta 58 returns the corrected passages.**
