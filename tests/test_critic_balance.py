@@ -16,11 +16,11 @@ from bu.critic.balance import (
 )
 
 
-def unit(uid, label, split="train", group=None, n_traces=100):
+def unit(uid, label, split="train", group=None, n_traces=100, traces=None):
     return LabelledUnit(
         unit_id=uid, label=label, split=split,
         comparison_group_id=group or f"g-{uid}",
-        eligible_traces=tuple(range(n_traces)),
+        eligible_traces=tuple(range(n_traces)) if traces is None else tuple(traces),
     )
 
 
@@ -234,9 +234,83 @@ def test_one_unit_may_not_appear_in_two_splits():
 def test_an_unrecognised_split_name_is_refused_not_dropped():
     """A typo — `held-out` for `held_out` — used to disappear silently."""
     from bu.critic.balance import balance
-    with pytest.raises(ValueError, match="not requested"):
+    with pytest.raises(ValueError, match="not canonical"):
         balance([unit("a", ESTIMATION, "held-out"), unit("b", HYPOTHESIS_CLASS, "held-out"),
                  unit("x", ESTIMATION), unit("y", HYPOTHESIS_CLASS)], splits=("train",))
+
+
+def test_a_canonical_split_that_was_not_requested_is_still_refused():
+    """The original guard, kept distinct: canonical does not mean requested.
+
+    The canonical check now fires first, so this pins the *second* property —
+    a well-spelled `validation` unit is not silently dropped because the caller
+    only asked for `train`.
+    """
+    from bu.critic.balance import balance
+    with pytest.raises(ValueError, match="not requested"):
+        balance([unit("a", ESTIMATION, "validation"), unit("b", HYPOTHESIS_CLASS, "validation"),
+                 unit("x", ESTIMATION), unit("y", HYPOTHESIS_CLASS)], splits=("train",))
+
+
+def test_repeating_the_typo_in_the_requested_splits_does_not_legalise_it():
+    """Sol, delta 55: the caller could satisfy the old guard by agreeing with it."""
+    from bu.critic.balance import balance, balance_split
+    units = [unit("a", ESTIMATION, "held-out"), unit("b", HYPOTHESIS_CLASS, "held-out")]
+    with pytest.raises(ValueError, match="not canonical"):
+        balance(units, splits=("held-out",))
+    # `balance_split` is public and is what these tests call; it may not be the
+    # lenient door into the same procedure.
+    with pytest.raises(ValueError, match="not canonical"):
+        balance_split(units, split="held-out")
+
+
+def test_balance_split_refuses_a_noncanonical_requested_split_even_with_clean_units():
+    """The requested name is validated on its own, not only via the units."""
+    from bu.critic.balance import balance_split
+    with pytest.raises(ValueError, match="not canonical"):
+        balance_split([unit("a", ESTIMATION), unit("b", HYPOTHESIS_CLASS)], split="Train")
+
+
+@pytest.mark.parametrize("bad,why", [
+    (4.9, "float truncates to a different valid trace"),
+    (4.0, "an exact-valued float is still a float"),
+    ("4", "a string parses into a valid trace"),
+    (True, "True == 1 and bool subclasses int"),
+    (-1, "negative ids index from the end"),
+])
+def test_trace_ids_must_be_exact_nonnegative_integers(bad, why):
+    """Sol, delta 55: each of these became a *valid, different* trace silently."""
+    from bu.critic.balance import balance_split
+    with pytest.raises(ValueError):
+        balance_split([unit("a", ESTIMATION, traces=(bad, 2)),
+                       unit("b", HYPOTHESIS_CLASS, traces=(7, 8))], split="train")
+
+
+def test_numpy_integer_trace_ids_are_accepted():
+    """Rejecting floats must not also reject the integer type the pipeline uses."""
+    import numpy as np
+    from bu.critic.balance import balance_split
+    sel, _ = balance_split([unit("a", ESTIMATION, traces=(np.int64(4), np.int32(2))),
+                            unit("b", HYPOTHESIS_CLASS, traces=(7, 8))], split="train")
+    assert sorted(sel.X_trace_ids) == [2, 4, 7, 8]
+    assert all(type(t) is int for t in sel.X_trace_ids)
+
+
+def test_type_validation_precedes_uniqueness():
+    """Order matters: otherwise `4` and `4.0` are two distinct ids."""
+    from bu.critic.balance import balance_split
+    with pytest.raises(ValueError, match="exact integers"):
+        balance_split([unit("a", ESTIMATION, traces=(4, 4.0)),
+                       unit("b", HYPOTHESIS_CLASS, traces=(7, 8))], split="train")
+
+
+def test_balance_schema_version_is_two():
+    """Bumped when `unit_to_comparison_group` and the input semantics changed."""
+    from bu.critic.balance import BALANCE_SCHEMA_VERSION, balance_split
+    assert BALANCE_SCHEMA_VERSION == 2
+    _, manifest = balance_split([unit("a", ESTIMATION), unit("b", HYPOTHESIS_CLASS)],
+                                split="train")
+    assert manifest["schema_version"] == 2
 
 
 def test_duplicate_split_names_are_refused():

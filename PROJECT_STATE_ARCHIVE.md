@@ -4106,3 +4106,19 @@ All clean. The **certified W4 Tuesday evidence still verifies today** after ever
 **Not one finding was a coding error in the ordinary sense.** Each was a guard that was absent, a claim that did not match behaviour, or evidence that could not be re-derived — the same class D-099 and D-105 found, and the reason this project audits *after* reviewing rather than instead of it.
 
 **Tests:** 855 → **863 passing**, 2 skipped. **No fits, no reserve, no real labels.**
+
+---
+
+### 2026-08-22 (delta-54 closeout) · Boundary integrity and evidence provenance · Claude
+
+**Sol withheld certification of the timing and the balancer, and W4/W5 stay OPEN until this closeout is certified.** All seven findings reproduced before being fixed. Every one was a **boundary** defect — both algorithms were right; the public input surface let silent design violations through.
+
+**The balancer's six fail-open paths.** Invalid labels were caught **only when they emptied a class**, so a split with a valid `0`, a valid `1` and a string `"0"` balanced happily and filed the string as *undecidable* — my own guard from one review earlier fired only at `m == 0`, so the all-string fixture passed and the **mixed** one never existed. **Booleans refused** (`True == 1`, and `bool` subclasses `int`). `unit_id` uniqueness was **per-split**, so one content-hashed unit could sit in train *and* held-out under different group ids — training and evaluating on the same configuration. The **frozen cap was caller-overridable**. An **unrecognised split name was silently dropped**. **`balance_split()` bypassed the cross-split group guard** although it is public and is what the tests call. **Duplicate trace ids defeated "without replacement"** — sampling draws distinct *positions*, so `(4, 4, 9)` could select trace 4 twice.
+
+**The cross-unit verdict is gone.** The record said *local wall-hours* and the program printed a ratio against a **GPU-hour** trigger — and a test of mine asserted it as a PASS. In the one harness that exists *because* a compute condition was adjudicated on a proxy for its own quantity. `comparison_status` now reads **"not adjudicable across hosts"**; the bare field name is gone too, because it invites the comparison.
+
+**Provenance repaired, and the defect was real.** attempt-002 named `f0ac645` with `tree_clean: false`, and `f0ac645` **predates** the rebuild in `e3e9411`. Provenance is now captured **before** the run, a dirty tree is **refused** (proved by dirtying one), and a sha256 sits beside the record. **attempt-003** ran from a clean tree at `1a28647`: **5.715904170861654 / 6.913811402539251** local wall-hours, **recomputing bit-identically**, reconciliation **1.0684**.
+
+**And a new W5 gap, found while checking whether the weeks were finished.** S§W5 Thu requires *"configuration count set from it, **with the exclusion-rate assumption stated**"*. No exclusion rate is stated anywhere — it appears three times only as a forward promise — **and S§W6 Mon is scheduled to check batch 1 against it.** Sol's to ratify.
+
+**Tests:** 863 → **873 passing**, 2 skipped. **No fits, no reserve, no labels.**

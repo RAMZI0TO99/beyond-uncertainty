@@ -109,7 +109,7 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 819 passing, 2 skipped, 0 xfailed
+.venv/bin/python -m pytest -q                      # 895 passing, 2 skipped, 0 xfailed
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
 BASE=<last-CERTIFIED-commit> ./scripts/sol_bundle.sh # verification bundle for Sol
 ```
@@ -308,24 +308,30 @@ strict boundary decides real labels. **Never recalibrate, round, make it
 per-layout, or add a caller override.** `ScaledEvaluation.failure_mask()` is the
 registered construction and takes no threshold.
 
-**Everything is with Sol; nothing is unblocked.** Delta 55 is undelivered and
-carries: six balancer boundary fixes, the removal of a local-wall-hour vs
-GPU-hour PASS comparison, a clean-source timing attempt with recoverable
-provenance, and a newly found W5 gap — S§W5 Thursday requires an
-**exclusion-rate assumption** that has never been stated, though S§W6 Monday is
-scheduled to check against it.
+**W4 Friday's timing is COMPLETE and attempt-003 is CERTIFIED** (D-119). Sol
+verified the record itself — recomputing from the raw repetitions — and ruled it
+complete under DEV-011. **No fourth timing attempt is required.** **W5 is open
+for one micro-closeout**, returned as **delta 56**, which is undelivered.
 
-**Gate 1 = FAIL** (D-098), on the five-point MDE. Reliability PASS, compute PASS,
-permutation calibration PASS. Sol was explicit this must **never** be renamed a
-pass — the MDE failure is independent. It is **not** the condition-1 pivot:
-H1's machinery works; what failed is power. The unchanged **300-unit design
-continues** under a recorded power limitation, with **Direction C authorised**.
+**Gate 1 = FAIL** (D-098), on the five-point MDE. Reliability PASS, permutation
+calibration PASS. **Condition 2 (compute) is NOT ADJUDICABLE across hosts — it
+is NOT a PASS** (D-119); it was called "compute PASS" here for several sessions
+and that is exactly the dimensional error the harness now refuses to print. Sol
+was explicit the gate must **never** be renamed a pass — the MDE failure is
+independent. It is **not** the condition-1 pivot: H1's machinery works; what
+failed is power. The unchanged **300-unit design continues** under a recorded
+power limitation, with **Direction C authorised**.
 
-**Expansion is refused, and the arithmetic matters.** Clearing five points needs
-**1,500–2,000 HELD-OUT** units — not total. Against 60–80 held out of 300 that
-is **5,625–10,000 total units, 18.75×–33.3×**, i.e. **130–232 local wall-hours**
-against a 120-hour trigger. I once wrote "5–6×" by comparing held-out units to
-the total design and used it to argue Sol's budget ground away; it was false
+**Expansion is refused, and the arithmetic matters — including its units.**
+Clearing five points needs **1,500–2,000 HELD-OUT** units — not total. Against
+60–80 held out of 300 that is **5,625–10,000 total units, 18.75×–33.3×**. That
+multiplier is a ratio of **unit counts** and carries no host, so it stands. **Do
+not convert it into hours and compare it against the 120-hour trigger** — I did,
+twice, writing "130–232 local wall-hours against a 120-hour trigger", which puts
+**local CPU wall-hours** against a **GPU-hour** trigger. The budget ground rests
+on the **registered GPU-hour design estimate and the scope decision**, never on
+that arithmetic. I once also wrote "5–6×" by comparing held-out units to the
+total design and used it to argue Sol's budget ground away; it was false
 (D-115). **Both of Sol's grounds stand.**
 
 **Compute is measured, and is local.** The design costs **5.72 / 6.91 local
@@ -412,23 +418,24 @@ never its truth. **So read it as a dated snapshot, not as state.** If the ledger
 disagrees, the ledger wins: check the highest D-number in `DECISIONS.md` and the
 newest §7 entry in `PROJECT_STATE.md` before trusting anything here.*
 
-**As of 2026-08-22, everything is with Sol and nothing is unblocked.**
+**As of 2026-08-23, delta 56 is with the student and nothing else is unblocked.**
 
-1. **Sol's reply to delta 55 is the only thing that moves.** It is expected
-   2026-08-23. Delta 55 is **undelivered** — the flag in `DELTA_TO_SOL.md` reads
-   NO — and the student has it plus `SOL_BUNDLE.txt`. **Check whether it was
-   actually delivered before doing anything**, and if Sol's ruling has arrived,
-   file it before touching code.
-2. **W4 and W5 are OPEN**, on Sol's explicit ruling, pending certification of
-   the delta-55 closeout. Both weeks are *built*; neither is *certified*. Do not
-   write anywhere that they are finished until Sol says so — that claim has
-   already been made prematurely once (D-113).
-3. **If Sol certifies:** W4/W5 close, and the base moves to whatever commit Sol
-   names. Do not infer the base — D-043 exists because a challenged commit was
-   nearly used as one.
-4. **If Sol rules on the exclusion-rate assumption** (delta 55's last item):
-   record it, because **S§W6 Monday is scheduled to check batch 1 against it**
-   and it does not exist yet.
+1. **Sol's reply to delta 56 is the only thing that moves.** Delta 56 is
+   **undelivered** — the flag in `DELTA_TO_SOL.md` reads NO — and it needs a
+   freshly generated `SOL_BUNDLE.txt` (the command is in the delta's header).
+   **Check whether it actually reached Sol before doing anything.** Sol has
+   twice reported receiving a delta with no bundle.
+2. **W4 is COMPLETE and certified** — attempt-003 was certified on 2026-08-23
+   and Sol ruled W4 Friday's timing obligation complete under DEV-011 (D-119).
+   **W5 is OPEN for the delta-56 micro-closeout only.** Do not write that W5 is
+   finished until Sol certifies; that claim was made prematurely once (D-113).
+3. **The base is still `51907c6`.** Sol held it explicitly until this closeout
+   is returned. Do not infer a new one — D-043 exists because a challenged
+   commit was nearly used as a base.
+4. **The exclusion-rate assumption is settled** — ratified by Sol as **DEV-012**,
+   a **zero-inflation planning convention** of 0.00, never to be described as
+   observed, estimated or pilot-derived. **S§W6 Monday checks batch 1 against
+   it**, so it must survive intact to Week 6.
 5. **Week 6 execution stays closed.** Q-004 was re-ruled on 2026-08-22 and still
    bars it. Finishing missed W4/W5 obligations is authorised; starting Week 6 is
    not. C-005 and C-007 remain W6–W11 work. C-003, C-006, C-008 … C-011 are done.
@@ -461,11 +468,12 @@ labelled data. The balancer is synthetic-inputs-only until C-005 exists.
 
 ### Open, and what each blocks
 
-- **Delta 50 is with Sol** and carries the only live blocker: the **D-035
-  promotion of the failure threshold**. Sol withheld it on 2026-08-22 — *not*
-  for any fault in the run, which it found consistent with the authorised
-  specification on every field, but because delta 49 delivered **digests with no
-  bytes**. Deltas 39–48 are all answered (D-089, D-100, D-101, D-102, D-106).
+- **The D-035 threshold promotion is CLOSED**, not open. Sol authorised it
+  (D-107) and certified it (D-109) on 2026-08-22 after independently verifying
+  135 digests and recomputing the percentile to a binary-identical float. This
+  bullet described delta 50 as carrying "the only live blocker" for several
+  sessions after that was false — **the live delta is 56**. Deltas 39–55 are all
+  answered (D-089, D-100 … D-102, D-106, D-111, D-118, D-119).
 - **W4 Friday has run** (D-103) and **will not be rerun** — the threshold has
   been inspected, so Sol's invalidation protocol can no longer be satisfied. The
   number is calibrated but **not frozen**: promotion into `constants.py` is the

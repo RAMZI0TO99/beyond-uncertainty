@@ -45,6 +45,7 @@ import hashlib
 import json
 import platform
 import statistics
+import re
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -65,7 +66,12 @@ from .enumerate_units import (
 #: Never a registered stage. A timing run must not be able to enter a claim.
 TIMING_STAGE = "pilot"
 #: Bumped if the record's fields or their meaning change.
-TIMING_SCHEMA_VERSION = 1
+#: **2** (Sol, delta 55): version 1 gained the provenance fields
+#: (``source_commit``, ``source_tree_clean_before_run``) and the
+#: ``comparison_status`` field without a bump. attempt-003 is CERTIFIED and
+#: **immutable**, so its stored ``schema_version: 1`` is corrected by a sidecar
+#: note beside it rather than by rewriting the record; future records are 2.
+TIMING_SCHEMA_VERSION = 2
 #: Discarded runs before timing begins, so allocator and cache warm-up is not
 #: charged to the first size measured.
 WARMUP_RUNS = 1
@@ -340,7 +346,36 @@ def recompute_totals(path: str | Path) -> dict[str, float]:
 
 
 def _git(*args: str) -> str:
-    return subprocess.run(["git", *args], capture_output=True, text=True).stdout.strip()
+    """Run git, **fail closed**.
+
+    **Sol, delta 55:** this swallowed the return code. And the failure is not the
+    quiet empty string it looks like -- ``git rev-parse <bad-ref>`` *echoes the
+    unresolvable ref to stdout* and exits 128, so the old helper returned
+    ``'definitely-not-a-ref'``: a plausible-looking string that would have been
+    written into a provenance record as a commit.
+    """
+    proc = subprocess.run(["git", *args], capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"git {' '.join(args)} failed with code {proc.returncode}: "
+            f"{proc.stderr.strip()}. Provenance may not be guessed -- a timing "
+            "record whose commit does not identify its harness is not evidence"
+        )
+    return proc.stdout.strip()
+
+
+_COMMIT_RE = re.compile(r"\A[0-9a-f]{40}\Z")
+
+
+def _require_commit(value: str) -> str:
+    """A commit is exactly 40 lowercase hex characters. Nothing else is one."""
+    if not _COMMIT_RE.match(value):
+        raise RuntimeError(
+            f"source_commit {value!r} is not a 40-character hexadecimal commit. "
+            "Refusing to record it: an unresolved ref name, a short hash or an "
+            "empty string would all be silently stored as provenance"
+        )
+    return value
 
 
 def build_record(bench, acct, device, threads, full, recon,
@@ -406,7 +441,7 @@ def main() -> None:
     # Provenance is captured BEFORE anything runs, and a dirty source tree is
     # refused outright: a timing record whose commit does not identify the
     # harness that produced it is not evidence, whatever is tracked afterwards.
-    source_commit = _git("rev-parse", "HEAD")
+    source_commit = _require_commit(_git("rev-parse", "HEAD"))
     source_clean = _git("status", "--porcelain") == ""
     if not source_clean and not args.allow_dirty:
         raise SystemExit(

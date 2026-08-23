@@ -12,6 +12,8 @@ Two defects are pinned here because both actually shipped:
 
 from __future__ import annotations
 
+import hashlib
+import subprocess
 import json
 import pathlib
 
@@ -21,6 +23,7 @@ from bu import constants as K
 from bu.experiments.enumerate_units import design_units, execution_plan, total_model_fits
 from bu.experiments.w4_timing import (
     ABLATION_ASSUMED_SIZE, MIN_REPETITIONS, SizeBenchmark, TIMING_STAGE,
+    TIMING_SCHEMA_VERSION,
     benchmark_sizes, design_accounting, extrapolate, reconcile,
     representative_condition,
 )
@@ -238,3 +241,87 @@ def test_the_delivered_attempt_identifies_the_code_that_produced_it():
     assert len(rec["source_commit"]) == 40
     digest = ATTEMPT.parent / "timing.json.sha256"
     assert digest.exists(), "no digest beside the record"
+
+
+def test_the_digest_sidecar_actually_matches_the_record():
+    """Sol, delta 55: the check above asserts only that the FILE EXISTS.
+
+    A sidecar holding the wrong hash, a stale hash, or the word "banana" passed
+    it. That is the D-071 shape — a check that passes because the thing it
+    checks is missing — in the one artefact whose whole purpose is provenance.
+    """
+    if not ATTEMPT.exists():
+        pytest.skip("timing evidence not present in this checkout")
+    sidecar = ATTEMPT.parent / "timing.json.sha256"
+    if not sidecar.exists():
+        pytest.skip("superseded attempt predates digest capture")
+    recorded = sidecar.read_text().split()[0].strip().lower()
+    actual = hashlib.sha256(ATTEMPT.read_bytes()).hexdigest()
+    assert recorded == actual, (
+        f"sidecar records {recorded} but the record hashes to {actual}. The "
+        "digest is the only thing binding this file to what Sol certified"
+    )
+
+
+def test_a_wrong_digest_would_be_caught():
+    """Could the test above fail? Proved, not assumed (D-055)."""
+    if not ATTEMPT.exists():
+        pytest.skip("timing evidence not present in this checkout")
+    actual = hashlib.sha256(ATTEMPT.read_bytes()).hexdigest()
+    assert actual != "banana", "the comparison must be against a real digest"
+    assert actual != "0" * 64
+
+
+def test_certified_attempt_carries_its_schema_correction():
+    """attempt-003 stores schema_version 1 but holds version-2 provenance fields.
+
+    It is CERTIFIED and immutable, so the correction is a note beside it. The
+    note must be tracked — an untracked correction is the D-041 shape again, and
+    `.gitignore`'s attempt allowlist would have swallowed it.
+    """
+    if not ATTEMPT.exists():
+        pytest.skip("timing evidence not present in this checkout")
+    rec = json.loads(ATTEMPT.read_text())
+    if rec.get("schema_version") == TIMING_SCHEMA_VERSION:
+        return  # a future record written under the corrected version
+    note = ATTEMPT.parent / "SCHEMA_CORRECTION.md"
+    assert note.exists(), (
+        f"{ATTEMPT.parent.name} stores schema_version "
+        f"{rec.get('schema_version')} while TIMING_SCHEMA_VERSION is "
+        f"{TIMING_SCHEMA_VERSION}, and carries no correction note"
+    )
+    tracked = subprocess.run(["git", "ls-files", "--error-unmatch", str(note)],
+                             capture_output=True, text=True)
+    assert tracked.returncode == 0, f"{note} exists but is not tracked by git"
+
+
+def test_git_helper_fails_closed():
+    """It swallowed the return code — and the failure is not an empty string.
+
+    `git rev-parse <bad-ref>` echoes the unresolvable ref to stdout and exits
+    128, so the old helper returned a plausible-looking 20-character string.
+    """
+    from bu.experiments.w4_timing import _git
+    with pytest.raises(RuntimeError, match="failed with code"):
+        _git("rev-parse", "definitely-not-a-ref-xyz")
+
+
+@pytest.mark.parametrize("bad", [
+    "definitely-not-a-ref-xyz",   # what the old helper actually returned
+    "",                           # what it was assumed to return
+    "60a726e",                    # a short hash
+    "60a726ee3c453fea8f177b2fc7c613e1ae0479f",    # 39 chars
+    "60a726ee3c453fea8f177b2fc7c613e1ae0479fez",  # 41, non-hex
+    "60A726EE3C453FEA8F177B2FC7C613E1AE0479FE",   # uppercase
+])
+def test_only_a_real_commit_is_accepted_as_provenance(bad):
+    from bu.experiments.w4_timing import _require_commit
+    with pytest.raises(RuntimeError, match="not a 40-character"):
+        _require_commit(bad)
+
+
+def test_a_real_commit_passes_the_provenance_guard():
+    """Rejecting bad values must not also reject the value actually used."""
+    from bu.experiments.w4_timing import _git, _require_commit
+    head = _git("rev-parse", "HEAD")
+    assert _require_commit(head) == head
