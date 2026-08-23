@@ -22,7 +22,7 @@ there is genuinely authorised work to report — currently the **plan/schedule
 
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=c5c8e6f ./scripts/sol_bundle.sh \
-    docs/plan_audit.md > SOL_BUNDLE.txt
+    docs/plan_audit.md docs/c005_c007_spec.md > SOL_BUNDLE.txt
 ```
 
 ---
@@ -34,6 +34,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=c5c8e6f ./scripts/sol_bundle.sh \
 > COVERS SESSIONS:
 > - 2026-08-23 (delta-60 certification) · The prose closeout is CERTIFIED; base → `c5c8e6f`; the plan audit opens
 > - 2026-08-23 (plan audit) · The certified methodology checked against both sources
+> - 2026-08-23 (C-005/C-007 spec) · The last unstarted allocation item, written
 
 ```
 === UPDATE FOR SOL ===
@@ -160,15 +161,46 @@ methodology is CORRECT. One forward-pointer sentence proposed as optional
 insurance, since nothing mechanical checks schedule coverage (D-113).
 
 --------------------------------------------------------------------
+3. THE C-005/C-007 PROSE SPEC -- THE LAST ALLOCATION ITEM, WRITTEN
+
+docs/c005_c007_spec.md (D-127): interfaces and acceptance criteria for the
+grouped splitter and the remaining confirmatory-guard call sites, in prose
+only, per your Q-012 wording. What you will want to check:
+
+  - whole comparison groups assigned, class-stratified, to split names
+    IMPORTED from the balancer, never redefined;
+  - groups are class-pure by design (240, 125/115), so a mixed-class group is
+    an input-integrity REFUSAL, not something to stratify around;
+  - undecidable units assigned, but the manifest reports surviving decidable
+    counts and min(N0,N1) per split against the W5 target (S-W11-Fri,
+    DEV-012);
+  - every boundary fails closed, with the delta-54/55 balancer history written
+    in as REQUIRED adversarial fixtures;
+  - the manifest is schema-versioned from 1 with the bump rule stated BEFORE
+    any real manifest exists (the D-121 lesson), cross-checked against inputs
+    (D-072);
+  - C-007 stays stage-tied (probes label themselves pilot), coverage
+    enumerated from code not a list (D-056), planted sub-1000-seed refusal
+    test (D-054);
+  - the SPLIT SEED is named as a future Change Record and NOT created.
+
+Nothing runs. Implementation stays closed under Q-012/D-125.
+
+WITH THIS, YOUR D-120 ALLOCATION IS FULLY SERVICED ON MY SIDE: decisions
+consolidated, prose checked against both sources, the specs written, audits
+done. What remains needs you (F1-F7 rulings; review of this spec) or the
+student (the independent rewrite pass).
+
+--------------------------------------------------------------------
 NUMBERS (D-011)
 
   tests          895 passing, 2 skipped, 0 xfailed -- unchanged
   compute        NONE. Registered total unchanged: 675 CPU fits, 0 GPU-hours.
   data seen      none
   base           c5c8e6f (moved from 801a33d on your certification)
-  built          docs/plan_audit.md only (prose). The four certified
-                 documents are byte-identical to D-125; all corrections are
-                 PROPOSALS awaiting your ruling.
+  built          docs/plan_audit.md + docs/c005_c007_spec.md (prose only).
+                 The four certified documents are byte-identical to D-125;
+                 all corrections are PROPOSALS awaiting your ruling.
   verified       ~30 plan/schedule claims reproduce exactly from source
 
 === END UPDATE ===

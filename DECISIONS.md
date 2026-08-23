@@ -2105,3 +2105,17 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Tests:** **895 passing**, 2 skipped, 0 xfailed. Read-only and prose-only throughout; no code, no experiments, no data, no labels, no compute.
 **Plan ref:** P§2.2, P§4.2, P§7.2–7.4, P§8.2.1, P§10.1, P§10.4, P§10.6, P§10.7, P§13.1.2, P§13.2, P§14.1–14.3, S§W2–W6, S§W15, S§W17; D-068, D-113, D-125, DEV-006 … DEV-012.
 **Reviewed by Sol:** **not yet — delta 61 carries the audit and its proposals.**
+
+---
+
+### D-127 · 2026-08-23 · The C-005/C-007 prose specification — the last unstarted item on the D-120 allocation
+
+**Decision:** `docs/c005_c007_spec.md` documents the interfaces and acceptance criteria for the grouped critic splitter (C-005) and the remaining confirmatory-guard call sites (C-007), **in prose only** — the deliverable Sol's Q-012 ruling explicitly authorised and D-125 left in scope. **Nothing runs, nothing is implemented**, and the one new registered constant the splitter needs (the split seed) is named as **requiring its own future Change Record**, not created.
+
+**What the spec fixes in advance, and where each requirement comes from.** The splitter assigns **whole comparison groups**, stratified by intended class, to the three canonical split names **imported from the balancer** — never redefined (the `held-out` typo history). Groups are class-pure by design (240 groups, 125/115), so a mixed-class group is an input-integrity refusal, not something to stratify around. Assignment is deterministic via the keyed `blake2b` pattern, never `hash()` (D-115). Undecidable units are assigned but the manifest reports **surviving decidable counts and `min(N₀, N₁)` per split** against the W5 target, which is what S§W11 Fri verifies (DEV-012). Every boundary fails closed, with the delta-54/55 balancer history written in as the required adversarial fixtures — string `"0"`, booleans before integers, the typo split, one unit in two splits. The manifest is schema-versioned from 1 with the bump-on-meaning-change rule stated **before** any real manifest exists (the D-121 lesson), and is cross-checked against inputs, never against itself (D-072). C-007's guard stays **tied to the stage** — a probe labels itself `pilot` rather than exempting itself — with coverage enumerated from the code rather than a hardcoded loader list (D-056), and a planted sub-1000-seed record as a positive refusal test (D-054).
+
+**With this, the D-120 allocation is fully serviced on my side:** decisions consolidated (briefing), prose checked against plan and schedule (D-126), the C-005/C-007 specs written, read-only audits done. What remains needs Sol (rulings on the audit's F1–F7) or the student (the independent rewrite pass).
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed. Prose only.
+**Plan ref:** P§7.4, P§10.7, P Table 7, S§W11 Fri, S§W12 Tue; D-034, D-039, D-054, D-055, D-056, D-072, D-090, D-093, D-115, D-118, D-120, D-121, D-125, DEV-012, Q-012.
+**Reviewed by Sol:** **not yet — delta 61 carries it beside the plan audit.**
