@@ -8,7 +8,7 @@ adding the frozen numbers with their estimands — and the student reads and
 confirms each section before it is marked accepted. Every section carries its
 source answers below it, verbatim, as provenance of whose voice it is.
 
-**Status: §1 and §2 CONFIRMED by the student (2026-08-23). §3 drafted — awaiting student confirmation.**
+**Status: §1–§3 CONFIRMED by the student (2026-08-23). §4 and §5 drafted — awaiting student confirmation.**
 
 ---
 
@@ -134,7 +134,7 @@ why its order is fixed in advance.
 
 ---
 
-## 3 · How the data is collected, and why the collector is a script *(W2 Sat — replaces `method_draft.md` §3 when confirmed)*
+## 3 · How the data is collected, and why the collector is a script *(W2 Sat — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §3)*
 
 The world model learns from transitions: the agent was here, it did this, and
 that happened next. The collector's only job is to produce transitions that
@@ -174,3 +174,65 @@ student was taught the content in chat before confirming. "Backed with real
 tests and results" is the student's, kept in paragraph 3. The void-and-remeasure
 sentence is the D-051 event (pre-D-051/D-052 numbers are void and are never
 quoted).
+
+---
+
+## 4 · What the re-measured evidence can and cannot say *(D-051/D-054 — replaces `method_draft.md` §4 when confirmed)*
+
+After the collector script was corrected, its evidence was measured again from
+scratch. One of the new measurements looked for drift across episodes and
+found none worth reporting — about one standard error, in a direction that
+favours nothing. We recorded that measurement as **consistent with** stable
+episodes, and deliberately not as proof of them.
+
+The reason is simple: a test might pass while there are hidden things it
+cannot see. A drift test that finds nothing has only shown that *this* test,
+at *this* sensitivity, saw nothing — the drift could be smaller than the test
+can detect, or live somewhere the test does not look. A null result never
+proves the null. So wherever a property is true *by construction* — the
+script is literally the same object in every episode — we state and check the
+construction itself, and let the measurement be supporting evidence rather
+than the foundation.
+
+**Source answer (student, 2026-08-23, verbatim):**
+> 1- because the test maight pass but there is are hiden things from it.
+
+**Provenance notes:** the student's answer is the core of paragraph 2, kept
+nearly verbatim ("a test might pass while there are hidden things it cannot
+see"). The structural-property rule is D-054's.
+
+---
+
+## 5 · What the first curves look like, and why they are not a result *(W3 Sat — replaces `method_draft.md` §5 when confirmed)*
+
+At the end of Week 3 we drew the first pictures of the system working. They
+showed what we hoped to see: prediction error falls as the dataset grows, and
+the members of an ensemble agree with each other more as data increases. It
+is tempting to call that an early confirmation of Hypothesis 1. We did not,
+for two reasons.
+
+First, the seeds. Those curves were made with development seeds — the ones we
+were free to look at while building and debugging. The confirmatory seeds,
+numbered from 1000 upward, had never been touched, and they are the only
+seeds the registered tests are allowed to use. Data that was looked at while
+the system was being shaped cannot also be its judge, the same way a student
+cannot be graded on the practice problems they studied from.
+
+Second, the rule. At the time the curves were drawn, the formal reading rule
+for Hypothesis 1 — which statistic, which direction, what counts as a pass —
+had not yet been frozen. A curve without a pre-committed rule is a picture,
+not a result. The rule was frozen afterwards, before the gate that used it
+ran, precisely so that nobody could bend the rule around a curve already
+seen. Changing things after peeking, and then testing them, is not an
+approach — it is the mistake the whole preregistration discipline exists to
+prevent. So the Week 3 curves stand in this thesis as description only.
+
+**Source answers (student, 2026-08-23, verbatim):**
+> 2- i  do not know.
+> 3- the formal test tests more and changeing tihngs before testing them is not a good aporutch.
+
+**Provenance notes:** the seeds explanation (paragraph 2) is Claude's, after
+an honest "don't know", taught in chat before confirmation (D-034). The
+student's answer 3 is the seed of paragraph 3's closing ("changing things
+before testing them is not an approach"), refined; the frozen-rule fact is
+D-068.

@@ -199,7 +199,12 @@ If you consider this method outside your Q-012 allocation ("rewriting the
 methodology in their own voice"), say so and we stop -- the sections are
 clearly marked unconfirmed until then.
 
-UPDATE (same day): sections 1 and 2 are CONFIRMED by the student. Section 3
+UPDATE (same day): section 3 is CONFIRMED; sections 4 and 5 are drafted --
+the student's null-result answer ("the test might pass but there are hidden
+things from it") is kept nearly verbatim in section 4; the development-vs-
+confirmatory-seeds explanation in section 5 is Claude's after a recorded
+"don't know", taught in chat before confirmation. Earlier: sections 1 and 2
+are CONFIRMED by the student. Section 3
 (the scripted collector) is drafted: the student answered two questions with
 honest "don't know"s, so paragraphs 1-2 are Claude's explanations, marked as
 such in the file, and the student is being taught the content in chat before
