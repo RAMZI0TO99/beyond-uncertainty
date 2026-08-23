@@ -483,11 +483,8 @@ complete, moved the base to `801a33d`, and closed Q-012 against pulling implemen
 *(The briefing session (post-certification) was archived on 2026-08-23: `docs/decision_briefing.md`
 consolidates D-001 … D-120; the D-098 append-only "compute PASS" trap is flagged there and in delta 57.)*
 
-### 2026-08-23 (methodology completion) · The draft corrected to D-119/D-120 and the four missing mandated sections written · Claude
-
-**Under D-120's allocation — prose only; Claude's half of D-019.** `docs/method_draft.md` (609 → 695 lines, 14 → 17 sections). The Gate 1 section still said the compute estimate was *"within budget"* — **the exact claim Sol ordered corrected**, surviving in the one prose document headed for the thesis — now replaced with the certified wording: measured 5.72/6.91 local wall-hours, GPU-hour trigger, **not adjudicable**, gate fails on the MDE alone. Four deviations marked *goes in methodology: yes* had no section: **DEV-010** (the declined remedy, with the 18.75×–33.3× multiplier kept as a unit-count ratio and the cross-host prohibition stated), **DEV-011** (local execution host, thread-count non-neutrality), **DEV-012** (the zero-inflation convention and its falsifiable checkpoint), and **DEV-008** (α = 0.05 two-sided, folded into the Gate 1 section). Review requested from Sol in delta 57; **the student's own-voice rewrite remains the student's allocated work and is untouched.**
-
-**No code, no tests, no compute, no data.** 895 passing, 2 skipped, unchanged.
+*(The methodology-completion session was archived on 2026-08-23: `method_draft.md` corrected to
+D-119/D-120 — the stale "within budget" claim removed — plus the four mandated DEV sections.)*
 
 ### 2026-08-23 (rewrite cards) · Seventeen section cards for the student's own-voice rewrite · Claude
 
@@ -496,3 +493,7 @@ consolidates D-001 … D-120; the D-098 append-only "compute PASS" trap is flagg
 ### 2026-08-23 (own-voice §1) · The interview rewrite begins — section 1 built from the student's answers · Claude
 
 **The method, on the record:** Claude asks simple per-section questions; the student answers **in their own words**; Claude assembles the section *from those answers*, fact-checks it against the ledger, and the student confirms before it counts. `docs/method_own_voice.md` opens with §1 (environment rationale), built from five student answers with their phrasings kept and the source answers stored verbatim as provenance — **pending the student's confirmation**. One misconception corrected on the record: **the agent never learns** — the scripted policy collects (D-020/D-051), the world model learns (D-032), the critic diagnoses. **895 passing, unchanged.**
+
+### 2026-08-23 (own-voice §2–§7) · Five more sections built from the student's answers · Claude
+
+**The interview rewrite continues.** `docs/method_own_voice.md` now carries **§1–§7**; **§1–§5 are CONFIRMED by the student** and §6–§7 await confirmation. Every section stores its source answers **verbatim** beneath it, and every paragraph the student could not supply is **marked as Claude's** — five "don't know"s so far, each taught in chat before the student confirmed, and each recorded rather than smoothed over. Student sentences kept largely intact include *"the test might pass but there are hidden things from it"* (§4, the null-never-proves-the-null rule, D-054) and *"so the scales are normalised and become comparable"* (§6). **Three concept errors corrected on the record:** the agent never learns (§1); the 150/150 balance is fair classification, not a repair-vs-repair contest (§2); the reserve is predeclared against cherry-picking, not merely because units are untested (§2). **895 passing, unchanged. No code, no compute, no data.**

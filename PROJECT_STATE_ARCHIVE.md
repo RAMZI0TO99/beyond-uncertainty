@@ -4387,3 +4387,11 @@ labels, recalibration, or Week 6 work has been performed or is claimed.
 **The most useful thing in it is Part 5.** D-098's signed gate record still reads **condition 2 = PASS**, because §5 is append-only; it was corrected to NOT ADJUDICABLE by D-119/D-120. That is the single most likely place to quote a withdrawn claim into the thesis, since the original sits in a *signed gate record*. Same for D-039/D-042 → D-044, D-108 → D-109, and D-114/D-115 → D-119.
 
 **No code, no tests, no compute, no data.** 895 passing, 2 skipped, unchanged.
+
+---
+
+### 2026-08-23 (methodology completion) · The draft corrected to D-119/D-120 and the four missing mandated sections written · Claude
+
+**Under D-120's allocation — prose only; Claude's half of D-019.** `docs/method_draft.md` (609 → 695 lines, 14 → 17 sections). The Gate 1 section still said the compute estimate was *"within budget"* — **the exact claim Sol ordered corrected**, surviving in the one prose document headed for the thesis — now replaced with the certified wording: measured 5.72/6.91 local wall-hours, GPU-hour trigger, **not adjudicable**, gate fails on the MDE alone. Four deviations marked *goes in methodology: yes* had no section: **DEV-010** (the declined remedy, with the 18.75×–33.3× multiplier kept as a unit-count ratio and the cross-host prohibition stated), **DEV-011** (local execution host, thread-count non-neutrality), **DEV-012** (the zero-inflation convention and its falsifiable checkpoint), and **DEV-008** (α = 0.05 two-sided, folded into the Gate 1 section). Review requested from Sol in delta 57; **the student's own-voice rewrite remains the student's allocated work and is untouched.**
+
+**No code, no tests, no compute, no data.** 895 passing, 2 skipped, unchanged.

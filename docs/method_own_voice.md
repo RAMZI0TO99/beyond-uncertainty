@@ -8,7 +8,7 @@ adding the frozen numbers with their estimands — and the student reads and
 confirms each section before it is marked accepted. Every section carries its
 source answers below it, verbatim, as provenance of whose voice it is.
 
-**Status: §1–§3 CONFIRMED by the student (2026-08-23). §4 and §5 drafted — awaiting student confirmation.**
+**Status: §1–§5 CONFIRMED by the student (2026-08-23). §6 and §7 drafted — awaiting student confirmation.**
 
 ---
 
@@ -177,7 +177,7 @@ quoted).
 
 ---
 
-## 4 · What the re-measured evidence can and cannot say *(D-051/D-054 — replaces `method_draft.md` §4 when confirmed)*
+## 4 · What the re-measured evidence can and cannot say *(D-051/D-054 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §4)*
 
 After the collector script was corrected, its evidence was measured again from
 scratch. One of the new measurements looked for drift across episodes and
@@ -203,7 +203,7 @@ see"). The structural-property rule is D-054's.
 
 ---
 
-## 5 · What the first curves look like, and why they are not a result *(W3 Sat — replaces `method_draft.md` §5 when confirmed)*
+## 5 · What the first curves look like, and why they are not a result *(W3 Sat — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §5)*
 
 At the end of Week 3 we drew the first pictures of the system working. They
 showed what we hoped to see: prediction error falls as the dataset grows, and
@@ -236,3 +236,90 @@ an honest "don't know", taught in chat before confirmation (D-034). The
 student's answer 3 is the seed of paragraph 3's closing ("changing things
 before testing them is not an approach"), refined; the frozen-rule fact is
 D-068.
+
+---
+
+## 6 · The normalising scale, and why it is fixed before anything is marked *(D-061/D-076 — replaces `method_draft.md` §6 when confirmed)*
+
+Errors from different configurations are not directly comparable. A large grid
+produces larger position mistakes than a small one simply because there is
+more room to be wrong, and different prediction dimensions have different
+natural sizes. Before any comparison, each error is divided by a per-dimension
+scale, so the scales are normalised and the numbers become comparable — the
+same idea as converting two exam marks, one out of 20 and one out of 100, to
+percentages before deciding which student did better.
+
+Where that scale comes from is a registered decision, not an implementation
+detail. The scale is computed from the **full evaluation pool**, before any
+transition has been marked as a failure, and the identical scale object is
+then reused for every statistic that follows — the whole-pool numbers and the
+failure-only numbers alike.
+
+The reason is circularity. A transition is called a failure when its
+*normalised* error exceeds a fixed threshold, so the failure set is defined
+using the scale. If the scale were then recomputed from the failures alone, it
+would depend on the very selection it was used to make, and the threshold
+would quietly mean something different in every subset — a moving ruler used
+to measure the thing that moved it. Fixing the scale first breaks the loop,
+and it is the same discipline as the sealed seeds and the predeclared reserve:
+the quantity is settled before the data can influence it.
+
+This is enforced by construction rather than by care. The routine that builds
+a scale from a pool accepts no failure mask at all, so a subset-derived scale
+cannot be requested, and the masked view reuses the identical object it was
+built from. The ordering is not something a future user has to remember —
+it is the only thing the code allows.
+
+**Source answers (student, 2026-08-23, verbatim):**
+> 1- so the sacles are normalized and become compaerable.
+> 2- i do not know.
+
+**Provenance notes:** the student's answer 1 is paragraph 1's core, kept
+("so the scales are normalised and the numbers become comparable"). The
+circularity argument (paragraph 3) is Claude's after a recorded "don't know",
+taught in chat before confirmation (D-061, wording corrected by D-064;
+enforced structurally by D-076).
+
+---
+
+## 7 · What the error is, and what it is not *(DEV-007/D-032/D-047 — replaces `method_draft.md` §7 when confirmed)*
+
+The world model predicts only what can change. In this environment an object's
+shape and colour are fixed for the whole episode: nothing any action does will
+ever alter them. They are therefore copied straight from the current
+observation into the predicted next one, and they never enter the training
+loss.
+
+Asking the model to *predict* them instead would be worse than merely
+pointless. Those outputs are correct for free — copying the input scores
+perfectly — so they would inflate the model's apparent accuracy while teaching
+it nothing, and a model that looks accurate for a trivial reason hides the
+dynamics errors this study exists to measure. The failure we care about must
+show up in the score, not be diluted by a large block of guaranteed wins.
+
+The same argument decides how the two real predictions are scored. Each action
+changes only certain things: a movement can change the agent's position but
+never toggles an object's activation, and an `interact` can toggle an
+activation but never moves the agent. So the position error is measured on
+movement steps and the activation error on `interact` steps, each on the
+transitions where that quantity is actually at stake. Scoring position on an
+`interact` step would be marking the model for predicting that nothing moved —
+true by construction, and free marks again.
+
+The primary error for the whole study is the one that follows from this: the
+error in the predicted next agent position, over movement transitions,
+per-dimension normalised. The activation prediction remains a diagnostic and
+is deliberately kept out of every decision — it does not train the shared
+trunk, does not influence early stopping or model selection, and plays no part
+in defining failures, labels or the critic's inputs.
+
+**Source answers (student, 2026-08-23, verbatim):**
+> 3- i do not know.
+> 4-so see what happens when interation is used and when movements is changed.
+
+**Provenance notes:** answer 4's instinct — that the two actions do different
+things and should be looked at separately — is paragraph 3's argument,
+sharpened to the registered reason (each action can only change certain
+quantities, so scoring elsewhere marks a free win). Paragraph 2 is Claude's
+after a recorded "don't know", taught in chat (D-032; the rejected full-delta
+target). The diagnostic-only status of the activation head is D-047/D-063.

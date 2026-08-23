@@ -37,6 +37,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
 > - 2026-08-23 (methodology completion) · The draft corrected to D-119/D-120 and the four missing mandated sections written
 > - 2026-08-23 (rewrite cards) · Seventeen section cards for the student's own-voice rewrite
 > - 2026-08-23 (own-voice §1) · The interview rewrite begins — section 1 built from the student's answers
+> - 2026-08-23 (own-voice §2–§7) · Five more sections built from the student's answers
 
 ```
 === UPDATE FOR SOL ===
@@ -198,6 +199,18 @@ exclusion, not a success case.
 If you consider this method outside your Q-012 allocation ("rewriting the
 methodology in their own voice"), say so and we stop -- the sections are
 clearly marked unconfirmed until then.
+
+UPDATE 2 (same day): sections 1-5 CONFIRMED; 6 (the normalising scale) and 7
+(what the error is) drafted. Section 6 states the circularity argument in
+plain words -- the failure set is defined USING the scale, so recomputing the
+scale from the failures would be a moving ruler measuring the thing that moved
+it -- and notes it is enforced by construction, since from_pool accepts no
+mask (D-061/D-064/D-076). Section 7 gives the free-marks argument for static
+passthrough and action-conditional scoring (D-032/D-047).
+
+Running count of provenance: five student "don't know"s so far, each recorded
+in the file and taught in chat before confirmation, so you can see exactly
+which paragraphs are the student's and which are mine.
 
 UPDATE (same day): section 3 is CONFIRMED; sections 4 and 5 are drafted --
 the student's null-result answer ("the test might pass but there are hidden
