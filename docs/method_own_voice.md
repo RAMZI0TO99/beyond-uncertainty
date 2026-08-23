@@ -257,7 +257,7 @@ D-068.
 
 ---
 
-## 6 · The normalising scale, and why it is fixed before anything is marked *(D-061/D-076 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §6)*
+## 6 · The normalising scale, and why it is fixed before anything is marked *(D-061 as corrected by D-064; enforced at the call site by D-076 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §6)*
 
 Errors from different configurations are not directly comparable. A large grid
 produces larger position mistakes than a small one simply because there is
@@ -282,11 +282,17 @@ to measure the thing that moved it. Fixing the scale first breaks the loop,
 and it is the same discipline as the sealed seeds and the predeclared reserve:
 the quantity is settled before the data can influence it.
 
-This is enforced by construction rather than by care. The routine that builds
-a scale from a pool accepts no failure mask at all, so a subset-derived scale
-cannot be requested, and the masked view reuses the identical object it was
-built from. The ordering is not something a future user has to remember —
-it is the only thing the code allows.
+The ordering is protected at the point where it matters rather than made
+universally impossible, and the distinction is worth stating exactly. The
+registered evaluation path builds the scale from the pool and takes no failure
+mask, so the scale necessarily precedes any mask there, and the masked view
+reuses that identical object. What it does **not** do is make a subset-derived
+scale impossible in principle: the underlying scale type can still be
+constructed from any set of transitions a caller hands it. The rule is
+therefore a **call-site invariant**, enforced by a required test at the
+registered call site and made **auditable** everywhere else — each scale
+records how many transitions it was measured over, so a subset-derived one is
+visible in any artefact carrying it.
 
 **Source answers (student, 2026-08-23, verbatim):**
 > 1- so the sacles are normalized and become compaerable.
@@ -300,7 +306,7 @@ enforced structurally by D-076).
 
 ---
 
-## 7 · What the error is, and what it is not *(DEV-007/D-032/D-047 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §7)*
+## 7 · What the error is, and what it is not *(DEV-007/D-032; D-047 as closed by D-063 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §7)*
 
 The world model predicts only what can change. In this environment an object's
 shape and colour are fixed for the whole episode: nothing any action does will

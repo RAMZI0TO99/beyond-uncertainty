@@ -81,9 +81,21 @@ gradient inversion, D-047); anything reviving the head.
 **Sources:** D-032, D-047, D-063, DEV-007.
 
 ## 8 · Why position-causal conditions are not canonical 2A *(DEV-006/D-026 — mandated)*
-**Must say:** withholding a *position-causal* feature changes movement dynamics
-themselves, so those conditions left the canonical Experiment 2A set; recorded
-as a deviation, not silently dropped.
+**Must say:** hiding shape or colour leaves the scene fully visible and makes the
+*rule* unrepresentable — the failure 2A is about. Hiding **position** is a
+different structural failure: position says **where** an object is (shape,
+colour, activation and the object slots stay visible, so the object does not
+disappear), and removing it makes **distinct spatial states encode
+identically** — **causal aliasing**. Measured: **37.5%** of (observation,
+action) keys aliased against **10.0%** for shape and colour, in a key space
+**26× smaller**. So those conditions left the canonical Experiment 2A set and
+run as a declared robustness configuration; recorded as a deviation, not
+silently dropped. It **bounds the claim**: 2A is a result about withheld
+*attributes of visible objects*.
+**Must not say:** that position tells the model an object **exists** at all;
+that the model fails because the rule became unrepresentable (it fails because
+it cannot tell two situations apart); or that withholding position merely
+"changes movement dynamics" — that is not the certified reason.
 **Sources:** D-026, DEV-006.
 
 ## 9 · The reliability gate, and the rung it passed at *(W4 Tue, D-074/D-075 — mandated)*

@@ -135,7 +135,7 @@ open — first time since Week 3. Gate 2 is 2026-10-24 and gates never move.
 | 1 · Reliability | **PASS** — rung 0, rho = −0.9429, certified (D-074/D-075) |
 | 2 · Compute | **NOT ADJUDICABLE across hosts. Not a PASS** (D-119/D-120) |
 | 3 · Permutation calibration | **PASS** (D-085/D-086) |
-| 4 · MDE resolves five points | **FAIL** — 18–22 points (D-078, D-089) |
+| 4 · MDE resolves five points | **FAIL** — a **provisional, optimistic diagnostic** estimate of 18–22 points; **not an exact MDE** (D-078, D-089) |
 
 > **SUPERSEDED — DO NOT CITE; controlling decisions: D-119/D-120.**
 > D-098's own table reads *condition 2 = PASS*. That was the record on
@@ -151,8 +151,8 @@ open — first time since Week 3. Gate 2 is 2026-10-24 and gates never move.
 300-unit design continues under a recorded power limitation with **Direction C
 authorised**.
 
-**Sample size is the driver, not correlation.** At ICC = 0 the MDE is still 18
-points, so the conclusion does not rest on the parameter least knowable before
+**Sample size is the driver, not correlation.** At ICC = 0 the diagnostic is
+still 18 points, so the conclusion does not rest on the parameter least knowable before
 data. Every lever was tested: pairing reaches 8.0 at correlation 0.99; holding
 out *all 300* units gives 6.0 paired.
 

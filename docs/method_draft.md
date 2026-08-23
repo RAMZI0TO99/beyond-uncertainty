@@ -300,7 +300,7 @@ different mechanism from the rest of the sweep.
 *Per-transition exports:* `runs/w3_pilot/attempt-001/transitions_n*_seed*.npz`,
 accounted for with their digests in `runs/w3_pilot/attempt-001/manifest.json`.
 
-## The normalising scale, and why it is fixed to the evaluation pool *(2026-08-17, D-061)*
+## The normalising scale, and why it is fixed to the evaluation pool *(2026-08-17, D-061 as corrected by D-064; call site enforced by D-076)*
 
 Plan §10.3 requires per-dimension normalised error and does not say which set
 defines the normalisation. That omission is not cosmetic. Because the scale is a
@@ -509,7 +509,7 @@ determine a layout-specific threshold and will not be used for later retuning,
 label overrides, or post-hoc reweighting. Its only role in the frozen calibration
 was as a preregistered balancing stratum for the single global threshold.
 
-## What this design can and cannot detect *(Gate 1, D-078/D-089/D-098)*
+## What this design can and cannot detect *(Gate 1, D-078/D-089; D-098 as corrected by D-119/D-120 — condition 2 is NOT ADJUDICABLE, not PASS)*
 
 Gate 1 asked four questions and the design **failed** the fourth, which is
 recorded here rather than softened. The reliability gate passed and the

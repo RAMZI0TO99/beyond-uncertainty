@@ -298,6 +298,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-119** | 2026-08-23 | Sol's delta-55 micro-closeout — **attempt-003 CERTIFIED**, three balancer boundaries, and a correction of record on the compute condition | **Sol's ruling** |
 | **D-120** | 2026-08-23 | **Sol CERTIFIED delta 56 — WEEKS 4 AND 5 ARE COMPLETE**, base → `801a33d`, Q-012 closed against pulling W6–W11 implementation forward | **Sol's ruling** |
 | **D-121** | 2026-08-23 | Sol **WITHHELD delta 57** — nine prose corrections (two substantive: the causal mechanism, and a fallback resurrected from superseded D-094); authorship relabelled; **supersession convention registered** | **Sol's ruling** |
+| **D-122** | 2026-08-23 | **Audit** of the corrected prose — a **third** substantive error Sol did not catch (§6 repeated the claim D-064 withdrew), card 8's uncertified reason, and the correction index rebuilt **per-claim** | **Audit** |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -472,28 +473,23 @@ Entries before this one are in `PROJECT_STATE_ARCHIVE.md` — **57 archived, the
 **Why:** consistency with every other interval in the project — repair acceptance is a 95% CI excluding zero (P§7.3), and the H1 trend test is a 95% interval (D-068). A one-sided test would shrink the MDE by about 11% and change no conclusion.
 **Goes in methodology:** **yes.** It is an assumption the reported MDE depends on, and the MDE is a Gate 1 condition. Stated rather than absorbed silently.
 
-*(Seven further sessions archived, in order: the timing harness → D-114 (certification WITHHELD, see
-D-115); the W4 closeout → DEV-010; the delta-53 ruling → D-115; the W4 timing rebuild → D-116; the
-W4/W5 audit → D-117; the delta-54 closeout → D-118; and the delta-55 micro-closeout → D-119,
-certified in full below. **Read D-115 before D-114 or DEV-010**, and note that DEV-010's own
-correction is itself further corrected by D-119 — it compares local wall-hours with GPU-hours.)*
-
-*(The delta-56 certification session (D-120) was archived on 2026-08-23: Sol certified W4/W5
-complete, moved the base to `801a33d`, and closed Q-012 against pulling implementation forward.)*
-
-*(The briefing session (post-certification) was archived on 2026-08-23: `docs/decision_briefing.md`
-consolidates D-001 … D-120; the D-098 append-only "compute PASS" trap is flagged there and in delta 57.)*
-
-*(Archived 2026-08-23: the methodology-completion session (`method_draft.md` corrected to D-119/D-120 — the stale "within budget" claim removed — plus the four mandated DEV sections), and the rewrite-cards session (`docs/rewrite_cards.md`, seventeen per-section must-say / must-never-say cards the own-voice rewrite is written from).)*
-
-*(The own-voice §1 session was archived on 2026-08-23: it opens `docs/method_own_voice.md` and
-records the interview method — Claude asks, the student answers, Claude assembles and fact-checks,
-the student confirms — with source answers stored verbatim as provenance.)*
-
-*(The own-voice rewrite sessions (§8–§15 and §16–§17) were archived on 2026-08-23. They built
-`docs/method_own_voice.md` to all seventeen sections; several passages are corrected by D-121 on
-Sol's delta-57 review, and the authorship label is corrected there too.)*
+*(Archived 2026-08-23, in order, all because this file keeps reaching its 500-line paste cap: the
+timing harness → D-114 (certification WITHHELD, see D-115); the W4 closeout → DEV-010; the delta-53
+ruling → D-115; the W4 timing rebuild → D-116; the W4/W5 audit → D-117; the delta-54 closeout →
+D-118; the **delta-56 certification** → D-120 (W4/W5 complete, base → `801a33d`, Q-012 closed); the
+**decision briefing** (`docs/decision_briefing.md`, D-001 … D-120 consolidated, D-098's append-only
+"compute PASS" trap flagged); the **methodology completion** (`method_draft.md` corrected plus four
+mandated DEV sections); the **rewrite cards** (`docs/rewrite_cards.md`, seventeen per-section cards);
+and the **own-voice rewrite** sessions §1, §8–§15 and §16–§17, which built `docs/method_own_voice.md`
+to all seventeen sections and recorded the interview method — Claude asks, the student answers,
+Claude assembles and fact-checks, the student confirms, source answers stored verbatim.
+**Read D-115 before D-114 or DEV-010**; DEV-010's own correction is further corrected by D-119, and
+several own-voice passages are corrected by D-121 and D-122.)*
 
 ### 2026-08-23 (delta-57 corrections) · Sol withheld certification; nine prose corrections applied · Claude
 
 **Sol WITHHELD delta 57** and returned a prose-only round (D-121). D-120's filing, the false-locator fix and the `70212c6` disclosure are **accepted**; W4/W5 stay complete, Q-012 stays closed, and the base stays **`801a33d`** — **no later base may be inferred until the corrected bytes are reviewed**. **Two of the nine were substantive errors, both verified against source before acceptance.** §1 attached the causal rule to the wrong action: the causal attribute governs **passability**, while `interact` toggles the **first adjacent object** and is *"deliberately orthogonal to passability"*. §16 **resurrected a fallback that no longer exists** — I cited D-094's *"fallback is retained"* and missed **D-100/D-101 removing it**, exactly the superseded-citation failure the briefing I wrote the same day exists to prevent. Seven scoping corrections applied: the 300-unit adequacy overclaim, the unevidenced "same lesson" claim, position-as-existence, §10's homogeneity inference contradicting §11, §12's MDE stated as exact rather than **provisional/optimistic/diagnostic**, §13's expansion as a **rough extrapolation not a requirement**, and §15's unsupported "by design". **Authorship relabelled** to *student-confirmed assisted methodology draft* — nine "don't know"s mean confirmation shows understanding, not independent authorship, and the thesis version must drop the apparatus. **Supersession convention registered:** a **CORRECTION INDEX** at the front of `DECISIONS.md` maps nine superseded entries to their controllers, signed blocks untouched. **895 passing, EXIT=0 verified directly. No code, no compute, no data.**
+
+### 2026-08-23 (prose audit) · A third substantive error, found by audit rather than review · Claude
+
+**Audited the corrected prose against source and ledger rather than re-reading it** (D-122) — Sol reviewed a diff; nobody had probed the prose against the running system. Four passes: superseded citations, every number, banned phrasings, cross-document consistency. **Three defects, one substantive and missed by Sol.** `method_own_voice.md` §6 claimed the scale ordering *"is enforced by construction … the only thing the code allows"*; `models/uncertainty.py` says the opposite — it *"does not make a subset-derived scale **impossible**"*, so the rule is a **call-site invariant**. That is the claim **D-064 withdrew**, `CLAUDE.md` warns against it, **and card 6 already forbade it** — I wrote a correct card and then violated it in the prose written from that card. **Card 8** gave an uncertified reason (*"changes movement dynamics"*) instead of **causal aliasing**, and would have regenerated the error Sol had just fixed. **The correction index was too blunt:** it listed superseded *entries*, implying D-098, D-039, D-115 and D-094 were wholly dead when only one claim in each is — rebuilt **per-claim**. Every number reproduces exactly; the banned-phrase scan is clean; all corrections present in all four documents. **895 passing, EXIT=0. No code, no compute, no data.**

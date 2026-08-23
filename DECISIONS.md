@@ -16,17 +16,23 @@ still reads exactly as it did when it was signed. This index is the correction
 map. **A signed block is not evidence that its claim still stands** — check
 here first.
 
-| If you are citing … | It is SUPERSEDED — cite instead | What changed |
-|---|---|---|
-| **D-098** — Gate 1, *"condition 2 · compute · **PASS**"* | **D-119, D-120** | Compute is **NOT ADJUDICABLE across hosts** — never a PASS. Local wall-hours cannot adjudicate a GPU-hour trigger. Gate 1 still **FAIL**, on condition 4 alone |
-| **D-039, D-042** — `min(N₀,N₁) = 115` as *the* effective sample size | **D-044** | 115 is a **bound**, not n_eff. Under the registered `"unit"` weighting the ICC=1 boundary is 75/72.6. **Never quote an n_eff without its estimand** |
-| **D-108** — prevalence spread *"is mostly normalisation"* | **D-109** | The **measurement stands** (5.5×, 1.58%–8.77%); the **causal reading is withdrawn**. Evidence about means cannot explain why tails differ |
-| **D-094** — *"Sol's specified fallback is retained"* | **D-100, D-101** | **There is no fallback.** The episode-mean fallback was removed, and the option to request one with it. Inputs fail **closed** |
-| **D-114, D-115, DEV-010** — expansion in hours vs the 120-hour trigger | **D-119** | Local CPU wall-hours vs GPU-hours is a **cross-host comparison**. The 18.75×–33.3× multiplier stands only as an **approximate unit-count extrapolation** |
-| **D-047** — the auxiliary head's open item | **D-063** | No second trunk; the head is a **non-decisional diagnostic** |
-| **D-058** — what the W3 pilot showed | **D-059** | What it actually measured, versus what was claimed |
-| **D-061, D-062** — scale wording / isolation claim | **D-064** | A claim narrowed; an "isolation" that was CPU-only |
-| **D-020**, Q-011 measurements | — | **VOID.** Taken under the non-stationary policy and derived split (D-051/D-052). Re-measure; do not quote |
+**Supersession here is per-claim, not per-entry.** Most of these entries remain
+valid for everything except the one claim named below — D-098's conditions 1, 3
+and 4 still stand, D-039's comparison-group rule still stands, D-115's Change
+Record still stands. **Check which claim you are citing**, not merely which
+entry.
+
+| If you are citing this CLAIM … | from | Cite instead | What changed |
+|---|---|---|---|
+| Gate 1 **condition 2 = PASS** | D-098 | **D-119, D-120** | Compute is **NOT ADJUDICABLE across hosts** — never a PASS. Conditions 1, 3, 4 in D-098 are unaffected; Gate 1 still **FAIL** on condition 4 alone |
+| `min(N₀,N₁) = 115` as *the* effective sample size | D-039, D-042 | **D-044** | 115 is a **bound**, not n_eff. Under the registered `"unit"` weighting the ICC=1 boundary is 75/72.6. **D-039's comparison-group rule is unaffected and still governs.** Never quote an n_eff without its estimand |
+| prevalence spread *"is mostly normalisation"* | D-108 | **D-109** | The **measurement stands** (5.5×, 1.58%–8.77%); only the **causal reading is withdrawn**. Evidence about means cannot explain why tails differ |
+| *"Sol's specified fallback is retained"* | D-094 | **D-100, D-101** | **There is no fallback.** It was removed, and the option to request one with it. Inputs fail **closed**. D-094's *replacement of the mixed model* is unaffected and still governs |
+| expansion converted to **hours** vs the 120-hour trigger | D-114, D-115, DEV-010 | **D-119** | Local CPU wall-hours vs GPU-hours is a **cross-host comparison**. 18.75×–33.3× stands only as an **approximate unit-count extrapolation**. D-115's Change Record (trace cap, balance seed) is unaffected |
+| the auxiliary head's **open item** | D-047 | **D-063** | No second trunk; the head is a **non-decisional diagnostic**. D-047's detachment and action-conditional losses are unaffected |
+| what the W3 pilot **showed** | D-058 | **D-059** | What it actually measured, versus what was claimed |
+| *"a subset-derived scale is impossible / a mask has nothing to recompute from"* | D-061, D-062 | **D-064**, call site by **D-076** | **Withdrawn.** The scale type is still constructible from any subset; the rule is a **call-site invariant**, enforced by a required test and made auditable via `n_reference`. D-062's MC-dropout finding is unaffected |
+| any **number** from D-020 or the Q-011 measurements | D-020, Q-011 | **D-051, D-052** | **VOID.** Taken under the non-stationary policy and derived split. Re-measure; do not quote |
 
 **Rule for mutable prose** (Sol, delta 57): wherever reader-facing material
 quotes or reproduces a superseded result, place an adjacent marker —
@@ -1992,3 +1998,22 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Data seen:** none. **Compute:** none.
 **Plan ref:** D-094, D-098, D-100, D-101, D-108, D-109, D-119, D-120, DEV-010, DEV-012, Q-012. Sol's delta-57 review.
 **Reviewed by Sol:** **not yet — delta 58 returns the corrected passages.**
+
+---
+
+### D-122 · 2026-08-23 · Audit of the corrected prose — a third substantive error Sol did not catch, and the correction index was too blunt
+
+**Decision:** after applying Sol's nine delta-57 corrections, I audited all four prose documents against **source code and the ledger** rather than re-reading them, on the standing principle that *an audit finds a different class of defect than a review does* (D-015, D-021, D-060, D-099, D-105). Sol reviewed a diff; nobody had probed the prose against the running system. Four passes: superseded citations, every number, banned phrasings, and cross-document consistency. **Three genuine defects, one of them substantive.**
+
+**>>> The substantive one: I repeated a claim D-064 explicitly withdrew, in the section corrected from a card that forbids it.** `method_own_voice.md` §6 said the scale ordering *"is enforced by construction rather than by care … a subset-derived scale cannot be requested … it is the only thing the code allows."* `models/uncertainty.py` states the opposite in its own docstring: the registered summary path requires an explicit scale **so a subset cannot be normalised by accident**, but *"it does not make a subset-derived scale **impossible** — the dataclass constructor is public, `from_evaluation_pool` accepts any 2-D tensor including a masked one, and the low-level metric functions still take raw tensors. The rule is therefore a **call-site invariant**."* That is precisely the claim D-064 withdrew, and `CLAUDE.md` carries the standing warning *"do not repeat the withdrawn claim that a mask 'has nothing to recompute from'"*. **Worse: `rewrite_cards.md` card 6 already carried that prohibition** — *"Must not say: the withdrawn claim …"* — so I wrote a correct card and then violated it in the prose written from it. Rewritten to the accurate form: protected **at the registered call site**, still constructible in principle, therefore a call-site invariant enforced by a required test and made **auditable** via `n_reference`. **Sol did not catch this one.**
+
+**Card 8 gave an uncertified reason and now contradicted the corrected §8.** It said withholding a position-causal feature *"changes movement dynamics themselves"* — not the certified ground, which is **causal aliasing** (37.5% of (observation, action) keys aliased against 10.0%, key space 26× smaller). A student writing §8 from that card would have regenerated exactly the error Sol had just corrected. Rewritten, with the measurement and three explicit prohibitions.
+
+**The correction index I built the same day was too blunt, and would have caused a second class of error.** It listed superseded *entries* rather than superseded *claims*, so it implied D-098 was dead when only **condition 2** is (conditions 1, 3 and 4 stand, and card 16 legitimately cites D-098 c3); that D-039 was dead when only the *115-as-n_eff* reading is (its **comparison-group rule still governs**); that D-115 was dead when only the *hours* arithmetic is (its Change Record for the trace cap and balance seed stands); and that D-094 was dead when only the *fallback* sentence is (its replacement of the mixed model stands). A blunt index makes a reader distrust valid citations, which is its own failure mode. Rebuilt **per-claim**, with a header stating that supersession is per-claim and naming what remains valid in each entry.
+
+**What the audit cleared.** Ten bare superseded citations were flagged mechanically; **six were correct** under the per-claim reading and needed no change, and four headers were amended to name their controlling decision (`D-061 as corrected by D-064`, `D-047 as closed by D-063`, and in `method_draft.md` the scale and Gate 1 headers). Every number in the four documents was checked against `constants.py` and the ledger — the D-075 atom masses (98.37 / 1.63 / 97.86 / 2.14, 2.5% threshold, 0.36 pp margin), the D-103 calibration counts (9 × 4,103 = 36,927 of 37,406), the DEV-006 aliasing figures and the D-119 hour figures all reproduce exactly, and the one unrecognised token was `P§7.4`, a plan reference. A banned-phrase scan over the corrected forms returns **clean**, and a required-phrase scan confirms every correction is present in **every** document that needs it — `method_draft.md`'s fallback mention was verified as a description of the *schedule's* specification immediately followed by *"and no fallback"*, which is correct.
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed. Prose only, no code touched.
+**Data seen:** none. **Compute:** none.
+**Plan ref:** D-015, D-021, D-060, D-064, D-076, D-094, D-098, D-099, D-100, D-101, D-105, D-108, D-115, D-119, D-121, DEV-006.
+**Reviewed by Sol:** **not yet — delta 58 carries it.**

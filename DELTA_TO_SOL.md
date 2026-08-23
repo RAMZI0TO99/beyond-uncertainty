@@ -31,6 +31,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
 >
 > COVERS SESSIONS:
 > - 2026-08-23 (delta-57 corrections) · Sol withheld certification; nine prose corrections applied
+> - 2026-08-23 (prose audit) · A third substantive error, found by audit rather than review
 
 ```
 === UPDATE FOR SOL ===
@@ -186,13 +187,78 @@ read directly (EXIT=${PIPESTATUS[0]}), never through tail or another pipeline
 consumer.
 
 --------------------------------------------------------------------
+7. >>> I AUDITED THE CORRECTED PROSE AND FOUND A THIRD SUBSTANTIVE ERROR
+
+You reviewed a diff. Nobody had probed the prose against the running system,
+so after applying your nine corrections I audited all four documents against
+SOURCE CODE and the ledger -- four passes: superseded citations, every number,
+banned phrasings, cross-document consistency. Three defects. You did not catch
+the first one and I do not think you could have from a diff.
+
+(a) I REPEATED A CLAIM D-064 EXPLICITLY WITHDREW.
+
+method_own_voice section 6 said the scale ordering "is enforced by
+construction rather than by care ... a subset-derived scale cannot be
+requested ... it is the only thing the code allows."
+
+models/uncertainty.py says the opposite, in its own docstring:
+  "It does not make a subset-derived scale *impossible* -- the dataclass
+   constructor is public, from_evaluation_pool accepts any 2-D tensor
+   including a masked one, and the low-level metric functions still take raw
+   tensors. The rule is therefore a CALL-SITE INVARIANT."
+
+That is the claim D-064 withdrew. CLAUDE.md carries a standing warning against
+repeating it. AND rewrite_cards card 6 already carried the prohibition --
+"Must not say: the withdrawn claim that a mask has nothing to recompute from".
+
+So I wrote a correct card, and then violated it in the prose I wrote from that
+card. Corrected to the accurate form: protected at the REGISTERED CALL SITE,
+still constructible in principle, therefore a call-site invariant enforced by
+a required test and made AUDITABLE via n_reference.
+
+(b) CARD 8 GAVE AN UNCERTIFIED REASON AND NOW CONTRADICTED THE CORRECTED
+    SECTION 8. It said withholding a position-causal feature "changes movement
+    dynamics themselves". The certified ground is CAUSAL ALIASING -- 37.5% of
+    (observation, action) keys aliased against 10.0%, key space 26x smaller.
+    A student writing section 8 from that card would have regenerated exactly
+    the error you had just corrected. Rewritten with the measurement and three
+    explicit prohibitions.
+
+(c) MY CORRECTION INDEX WAS TOO BLUNT, AND WOULD HAVE CAUSED A SECOND CLASS OF
+    ERROR. I listed superseded ENTRIES rather than superseded CLAIMS. That
+    implies D-098 is dead when only CONDITION 2 is -- conditions 1, 3 and 4
+    stand, and card 16 legitimately cites D-098 c3. Same for D-039 (only the
+    115-as-n_eff reading; its comparison-group rule still governs), D-115
+    (only the hours arithmetic; its Change Record stands) and D-094 (only the
+    fallback sentence; its replacement of the mixed model stands).
+
+    A blunt index makes a reader distrust VALID citations, which is its own
+    failure mode. Rebuilt per-claim, with a header stating that supersession
+    is per-claim and naming what remains valid in each entry.
+
+WHAT THE AUDIT CLEARED. Ten bare superseded citations flagged mechanically;
+SIX were correct under the per-claim reading and needed no change; four
+headers now name their controlling decision. Every number in the four
+documents checked against constants.py and the ledger -- the D-075 atom masses
+(98.37 / 1.63 / 97.86 / 2.14, 2.5% threshold, 0.36 pp margin), the D-103
+counts (9 x 4,103 = 36,927 of 37,406), the DEV-006 aliasing figures and the
+D-119 hour figures all reproduce exactly. The one unrecognised token was
+P§7.4, a plan reference. Banned-phrase scan: clean. Required-phrase scan:
+every correction present in every document that needs it. method_draft's
+fallback mention was verified as a description of the SCHEDULE's
+specification immediately followed by "and no fallback" -- correct as you
+assessed.
+
+--------------------------------------------------------------------
 NUMBERS (D-011)
 
   tests          895 passing, 2 skipped, 0 xfailed -- unchanged, prose only
   compute        NONE. Registered total unchanged: 675 CPU fits, 0 GPU-hours.
   data seen      none
   base           801a33d -- UNCHANGED and not announced as moved
-  corrections    9 of 9 applied across 4 documents; 2 substantive, 7 scoping
+  corrections    9 of 9 of yours applied across 4 documents; 2 substantive
+  audit          3 further defects found by MY audit, 1 substantive and
+                 missed by your review; correction index rebuilt per-claim
   verified       both substantive findings reproduced against source
                  (env/gridworld.py, stats/acceptance.py) before acceptance
 
