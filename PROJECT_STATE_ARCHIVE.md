@@ -4395,3 +4395,9 @@ labels, recalibration, or Week 6 work has been performed or is claimed.
 **Under D-120's allocation — prose only; Claude's half of D-019.** `docs/method_draft.md` (609 → 695 lines, 14 → 17 sections). The Gate 1 section still said the compute estimate was *"within budget"* — **the exact claim Sol ordered corrected**, surviving in the one prose document headed for the thesis — now replaced with the certified wording: measured 5.72/6.91 local wall-hours, GPU-hour trigger, **not adjudicable**, gate fails on the MDE alone. Four deviations marked *goes in methodology: yes* had no section: **DEV-010** (the declined remedy, with the 18.75×–33.3× multiplier kept as a unit-count ratio and the cross-host prohibition stated), **DEV-011** (local execution host, thread-count non-neutrality), **DEV-012** (the zero-inflation convention and its falsifiable checkpoint), and **DEV-008** (α = 0.05 two-sided, folded into the Gate 1 section). Review requested from Sol in delta 57; **the student's own-voice rewrite remains the student's allocated work and is untouched.**
 
 **No code, no tests, no compute, no data.** 895 passing, 2 skipped, unchanged.
+
+---
+
+### 2026-08-23 (rewrite cards) · Seventeen section cards for the student's own-voice rewrite · Claude
+
+**Prose only, D-120's allocation.** `docs/rewrite_cards.md`: one card per `method_draft.md` section — what it must say, what it must **never** say, the frozen numbers with their estimands, sources. The student writes each section fresh from the card, without the draft open; Claude then checks the text against the ledger without rewriting it. **895 passing, unchanged.**

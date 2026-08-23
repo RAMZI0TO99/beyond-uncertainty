@@ -486,9 +486,8 @@ consolidates D-001 … D-120; the D-098 append-only "compute PASS" trap is flagg
 *(The methodology-completion session was archived on 2026-08-23: `method_draft.md` corrected to
 D-119/D-120 — the stale "within budget" claim removed — plus the four mandated DEV sections.)*
 
-### 2026-08-23 (rewrite cards) · Seventeen section cards for the student's own-voice rewrite · Claude
-
-**Prose only, D-120's allocation.** `docs/rewrite_cards.md`: one card per `method_draft.md` section — what it must say, what it must **never** say, the frozen numbers with their estimands, sources. The student writes each section fresh from the card, without the draft open; Claude then checks the text against the ledger without rewriting it. **895 passing, unchanged.**
+*(The rewrite-cards session was archived on 2026-08-23: `docs/rewrite_cards.md`, seventeen
+per-section must-say / must-never-say cards the own-voice rewrite is written from.)*
 
 ### 2026-08-23 (own-voice §1) · The interview rewrite begins — section 1 built from the student's answers · Claude
 
@@ -497,3 +496,7 @@ D-119/D-120 — the stale "within budget" claim removed — plus the four mandat
 ### 2026-08-23 (own-voice §2–§7) · Five more sections built from the student's answers · Claude
 
 **The interview rewrite continues.** `docs/method_own_voice.md` now carries **§1–§7**; **§1–§5 are CONFIRMED by the student** and §6–§7 await confirmation. Every section stores its source answers **verbatim** beneath it, and every paragraph the student could not supply is **marked as Claude's** — five "don't know"s so far, each taught in chat before the student confirmed, and each recorded rather than smoothed over. Student sentences kept largely intact include *"the test might pass but there are hidden things from it"* (§4, the null-never-proves-the-null rule, D-054) and *"so the scales are normalised and become comparable"* (§6). **Three concept errors corrected on the record:** the agent never learns (§1); the 150/150 balance is fair classification, not a repair-vs-repair contest (§2); the reserve is predeclared against cherry-picking, not merely because units are untested (§2). **895 passing, unchanged. No code, no compute, no data.**
+
+### 2026-08-23 (own-voice §8–§15) · Eight more sections; the student now answers unprompted · Claude
+
+**`docs/method_own_voice.md` carries §1–§15; §1–§13 are CONFIRMED.** Each section stores its source answers **verbatim** and marks every paragraph the student could not supply as Claude's. **The student is now getting things right without prompting** — the confirmatory-seed rule (§9), the threshold cascade *"it will change a lot of results that are accumulative"* (§10), the layout-leaning risk (§11), and *"it is not worth the effort"* as §13's verdict. Corrections taught and recorded this run: disagreement means the data **underdetermined** the answer, not that it was contradictory (§9); a **measurement** can be re-derived while an **explanation** is a causal claim needing evidence aimed at the quantity explained (§11); an **inconclusive H3 is a complete thesis**, and only hiding the limitation or steering toward H3 would make it a failure (§13). **§12 carries an in-file warning** that D-098's signed record still reads *"compute PASS"* and that D-119/D-120 hold the corrected value. **895 passing, unchanged. No code, no compute, no data.**

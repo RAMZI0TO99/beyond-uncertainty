@@ -8,7 +8,7 @@ adding the frozen numbers with their estimands — and the student reads and
 confirms each section before it is marked accepted. Every section carries its
 source answers below it, verbatim, as provenance of whose voice it is.
 
-**Status: §1–§11 CONFIRMED by the student (2026-08-23). §12 and §13 drafted — awaiting student confirmation.**
+**Status: §1–§13 CONFIRMED by the student (2026-08-23). §14 and §15 drafted — awaiting student confirmation.**
 
 ---
 
@@ -562,7 +562,7 @@ vector-scale lessons are D-109's).
 
 ---
 
-## 12 · What this design can and cannot detect *(Gate 1 — replaces `method_draft.md` §12 when confirmed)*
+## 12 · What this design can and cannot detect *(Gate 1 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §12)*
 
 Gate 1 was a scheduled checkpoint asking whether the study was fit to
 continue. It put four questions, and the design **failed the fourth**, which
@@ -630,7 +630,7 @@ adjudicable* by D-119 and D-120, and the corrected value is the one used here.
 
 ---
 
-## 13 · The remedy the schedule prescribed, and why it was declined *(DEV-010 — replaces `method_draft.md` §13 when confirmed)*
+## 13 · The remedy the schedule prescribed, and why it was declined *(DEV-010 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §13)*
 
 The schedule anticipated this exact situation and gave an instruction: if the
 detectable difference does not clear five points, **raise the configuration
@@ -686,3 +686,97 @@ it. The Week-4-versus-Week-15 argument in paragraph 2 develops the student's
 "saves a lot of time and effort" from §12's answer 2. The negative-result
 paragraph is Claude's, after the student answered "I do not know" — taught in
 chat before confirmation.
+
+---
+
+## 14 · Where the results were produced *(DEV-011 — replaces `method_draft.md` §14 when confirmed)*
+
+The plan's compute model names a Kaggle T4, denominates its budget in
+GPU-hours, and sets an escalation trigger near 120 of them. **Every model fit
+in this study has in fact run on a local CPU workstation, and no Kaggle job
+has ever been submitted.** Zero GPU-hours have been spent. This is recorded as
+a deviation so that a reader knows what hardware the results were produced on
+and what the design actually needed.
+
+It is recorded because a compute claim inherits the host it was measured on.
+The certified measurement puts the full design at 5.72 median to 6.91
+conservative-maximum **local wall-hours**, which is a genuine and useful
+figure — but it is not a GPU-hour figure, and the two cannot be compared to
+decide whether the design fits a GPU-hour budget. That is why the compute
+condition of Gate 1 is recorded as not adjudicable rather than as a pass: the
+measurement is real, and it simply does not answer the question the trigger
+asks.
+
+Two details are recorded with any timing figure, because reproducing it
+requires them. The first is the thread count, which is **not numerically
+neutral**: re-running certified cells at four threads instead of eight
+reproduced one result exactly and moved another by 0.19%, because the order in
+which floating-point values are summed differs. The second is provenance —
+each timing record names the exact source commit it ran from, was required to
+run from a clean working tree, and carries a content digest, so that the
+figure can be traced to the code that produced it rather than merely asserted
+alongside it.
+
+**Source answer (student, 2026-08-23, verbatim):**
+> 1- so we know that hard ware it worked on.  and what it needed
+
+**Provenance notes:** the student's answer is paragraph 1's closing sentence,
+kept. The inheritance argument, the thread-count measurement and the
+provenance requirements are Claude's from DEV-011, D-076 and D-116.
+
+---
+
+## 15 · The exclusion-rate assumption *(DEV-012 — replaces `method_draft.md` §15 when confirmed)*
+
+Ground-truth labelling does not always produce a label. A unit is *ambiguous*
+when both repairs work and the acceptance test cannot separate them, and
+*undiagnosed* when neither works. Such units carry no evidence about either
+repair and are excluded rather than forced into a class, so the number of
+usable units is smaller than the number attempted.
+
+The schedule asks for the configuration target to be inflated by a **pilot**
+exclusion rate, with the assumption stated, and for the first labelled batch
+to be checked against it. No pilot exclusion rate existed. The pilot phase
+produced no labelled units by design, so there was no dependable measurement
+to inflate by, and the registered convention is a planning assumption of
+**zero**: the gross target is 300 units, with no anticipatory oversampling of
+either class.
+
+The wording matters more than the number. Saying the study **assumed** zero
+describes an act of planning made in the absence of evidence — it is a
+placeholder, openly labelled, and it can be wrong. Saying the study
+**observed** zero would claim that labelling was carried out and no unit was
+excluded, which never happened. The second sentence reports a measurement that
+does not exist, and it would also destroy the check that makes the assumption
+useful: an assumption can be missed and the miss reported, whereas an
+observation is simply a result. For that reason the figure is never described
+as observed, estimated, or pilot-derived anywhere in this thesis.
+
+The convention is deliberately falsifiable, and the test is scheduled. The
+observed exclusion rate is defined as **(ambiguous + undiagnosed) divided by
+all attempted labelled units**, reported both pooled and separately by
+intended class, and it is checked against the assumption when the first batch
+of labels exists. **Any observed exclusion above zero means the planning
+assumption was missed.**
+
+When that happens the shortfall is reported **before** any replacement is
+drawn, so that the record shows what happened and when. Reporting first keeps
+the evidence about the design's own accuracy: if replacements were drawn and
+the totals quietly restored, a reader would see only the repaired study and
+could never tell how far the plan had been from reality — the fix would have
+erased the finding. Only after the shortfall is on the record are replacements
+drawn, exclusively from the reserve fixed in advance and in its committed
+order, under its own authorisation. And the sample sizes reported for the
+critic are always the **surviving** counts after exclusions, never the number
+of units attempted.
+
+**Source answers (student, 2026-08-23, verbatim):**
+> 2- we assumed 0 becuase we saw no real dependaple results.
+> 3-so we note an know what and when it happend.
+
+**Provenance notes:** answer 2 is correct and supplies paragraph 2's reasoning
+in the student's terms — "no real dependable results" is exactly the situation,
+there being no pilot measurement at all. Answer 3 opens paragraph 5, kept
+("so that the record shows what happened and when"), and is extended with the
+reason a fix applied first would erase the finding. The estimand, the
+falsifiability rule and the surviving-count rule are DEV-012's as ratified.
