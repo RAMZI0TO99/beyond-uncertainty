@@ -8,7 +8,7 @@ adding the frozen numbers with their estimands — and the student reads and
 confirms each section before it is marked accepted. Every section carries its
 source answers below it, verbatim, as provenance of whose voice it is.
 
-**Status: §1–§10 CONFIRMED by the student (2026-08-23). §11 drafted — awaiting student confirmation.**
+**Status: §1–§11 CONFIRMED by the student (2026-08-23). §12 and §13 drafted — awaiting student confirmation.**
 
 ---
 
@@ -505,7 +505,7 @@ the value, so the strict rule decides actual labels — is Claude's, from
 
 ---
 
-## 11 · A limitation: failure is not spread evenly across layouts *(D-108/D-109 — replaces `method_draft.md` §11 when confirmed)*
+## 11 · A limitation: failure is not spread evenly across layouts *(D-108/D-109 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §11)*
 
 The threshold is one global number, but it does not mean one thing everywhere.
 Measured across the nine calibration strata, the proportion of transitions
@@ -559,3 +559,130 @@ should be shown, but that a **measurement** can be re-derived from stored
 evidence while an **explanation** is a causal claim needing evidence aimed at
 the quantity it explains (D-108, withdrawn by D-109; the aggregation and
 vector-scale lessons are D-109's).
+
+---
+
+## 12 · What this design can and cannot detect *(Gate 1 — replaces `method_draft.md` §12 when confirmed)*
+
+Gate 1 was a scheduled checkpoint asking whether the study was fit to
+continue. It put four questions, and the design **failed the fourth**, which
+is recorded here rather than softened.
+
+The reliability gate passed. The repair-acceptance test is calibrated against
+its permutation null. The compute condition returned **no verdict at all**:
+the design's cost was measured at 5.72 median and 6.91 conservative-maximum
+**local wall-hours**, but the registered budget is denominated in **GPU-hours**
+on a device this study never used, and those are different quantities. The
+condition is therefore recorded as **not adjudicable across hosts** — neither
+a pass nor a failure — and Gate 1's failure rests on the fourth condition
+alone.
+
+That fourth condition asked whether the design can resolve a five-percentage-
+point difference in balanced accuracy, which is the margin Hypothesis 3 is
+stated against. It cannot. The smallest difference the design can reliably
+detect is **18 to 22 percentage points**. The instrument works — it is simply
+too coarse for the question: like a scale that weighs correctly but only in
+twenty-kilogram steps, it will register a large change and cannot see a small
+one. The study is doing well at what it does; it is not sensitive enough for
+the difference that matters.
+
+Three things make that number trustworthy as a limitation rather than a
+guess. First, the shortfall is driven by **sample size**, not by uncertain
+assumptions: even with no correlation between related units at all — the
+parameter least knowable before data — the detectable difference is still 18
+points. Second, every available lever was tested and none closes the gap:
+strong pairing between critic and baseline reaches eight points, and holding
+out *all three hundred* units reaches six. Third, the estimate is
+**optimistic**, so the true limitation is worse. The simulation uses a
+provisional normal-approximation rejection rule rather than the interval the
+registered analysis will use, and that rule over-rejects — a measured false-
+positive rate of 6.1–9.2% against a nominal 5%. A significance level of
+α = 0.05, two-sided, is itself a recorded deviation, since the plan fixes
+power but never named one.
+
+Two statements of scope keep this honest. The figure is reported as a
+**diagnostic**, not as an exact result: no exact minimum detectable difference
+will be quoted until the simulation uses the same final inference Hypothesis 3
+is tested with and its false-positive rate is validated. And comparing a
+detectable difference against the five-point margin is a **necessary
+sensitivity check, not an equivalence test** — the two share units, so a
+detectable difference above five points does mean the study cannot resolve
+that region, but the reverse would not follow: a figure below five would not
+by itself establish adequate power.
+
+The design therefore continues unchanged, under an explicit and pre-registered
+power limitation: **Hypothesis 3 can detect only comparatively large
+differences and may be inconclusive around ±5 points.** No equivalence claim
+will be made that the final interval cannot support.
+
+**Source answers (student, 2026-08-23, verbatim):**
+> 1- it is doing good but not enough
+> 2- because it will save alot of time and effort
+> 4-i do not know.
+
+**Provenance notes:** answer 1 is paragraph 3's closing sentence, kept in the
+student's terms and sharpened with the coarse-scale image. The four-condition
+account, the anti-conservatism, and the diagnostic/equivalence scope
+statements are Claude's from D-078, D-082, D-089 and D-098. **Note for the
+student:** D-098's signed gate record still reads *"condition 2 · compute ·
+PASS"* because gate records are append-only; it was corrected to *not
+adjudicable* by D-119 and D-120, and the corrected value is the one used here.
+
+---
+
+## 13 · The remedy the schedule prescribed, and why it was declined *(DEV-010 — replaces `method_draft.md` §13 when confirmed)*
+
+The schedule anticipated this exact situation and gave an instruction: if the
+detectable difference does not clear five points, **raise the configuration
+count now**, because discovering the shortfall in Week 15 costs the thesis.
+The count was not raised. That was a deliberate, reviewed decision, and it is
+recorded as a deviation because declining a scheduled remedy is a
+design-relevant act rather than an omission.
+
+Finding the limit in Week 4 rather than Week 15 is what made a considered
+decision possible at all, and this is the schedule's own reasoning. A
+limitation discovered early can be measured, reported, and planned around: the
+scope of the claim is set before the results exist, and the reader is told what
+the study can and cannot resolve as part of its design. The same fact
+discovered after all the data was collected would arrive as an excuse for a
+disappointing result, indistinguishable from one — and by then no remedy would
+be available at all. Early discovery converts a potential embarrassment into a
+stated limitation, and it saves the effort that would otherwise be spent
+running a study toward a question it could not answer.
+
+The reason the remedy was declined is the scale of it. Clearing five points
+needs on the order of **1,500 to 2,000 held-out units**; the schedule holds out
+sixty to eighty of three hundred. Preserving that fraction, the design would
+need roughly **5,625 to 10,000 total units — an eighteen- to thirty-three-fold
+expansion**. That multiplier is a ratio of unit counts and deliberately carries
+no execution host with it: converting it into hours and comparing the result
+against the registered compute trigger would repeat, in prose, exactly the
+cross-host comparison the previous section refuses to make.
+
+An expansion of that order is not a larger version of this study — it is a
+different study, on a different timescale, and it is incompatible with the
+registered scope. That, together with the registered compute design estimate,
+is the ground for refusing it; the ground is never arithmetic across hosts.
+The student's summary is the correct one: the remedy is not worth what it
+costs, once the cost is understood as a twenty- to thirty-fold expansion rather
+than an adjustment.
+
+The consequence is carried forward rather than repaired. The study proceeds at
+its registered size and reports what it cannot resolve. An inconclusive
+Hypothesis 3 is therefore a legitimate and reportable outcome, not a failure of
+the work: the thesis asks whether a critic can distinguish the two repairs, and
+a well-conducted study that answers *"not at this sensitivity, and here is
+precisely the sensitivity that would be required"* has answered something real.
+What would make it a failure is hiding the limitation, or steering the analysis
+toward the answer that was hoped for — which is what the frozen thresholds,
+sealed seeds and predeclared reserve exist to prevent.
+
+**Source answer (student, 2026-08-23, verbatim):**
+> 3- it is not worth the effort.
+
+**Provenance notes:** the student's answer is the section's verdict and is
+stated as theirs in paragraph 4, qualified with the multiplier that justifies
+it. The Week-4-versus-Week-15 argument in paragraph 2 develops the student's
+"saves a lot of time and effort" from §12's answer 2. The negative-result
+paragraph is Claude's, after the student answered "I do not know" — taught in
+chat before confirmation.

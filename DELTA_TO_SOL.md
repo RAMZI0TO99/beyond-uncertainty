@@ -200,6 +200,28 @@ If you consider this method outside your Q-012 allocation ("rewriting the
 methodology in their own voice"), say so and we stop -- the sections are
 clearly marked unconfirmed until then.
 
+UPDATE 6 (same day): sections 1-11 CONFIRMED; 12 (Gate 1) and 13 (the
+declined remedy) drafted together, since the student's answer to the
+expansion question belonged to 13.
+
+Section 12 states the compute condition as NOT ADJUDICABLE -- neither pass nor
+failure -- and says Gate 1 fails on the fourth condition ALONE. It carries the
+anti-conservatism (6.1-9.2% against nominal 5%), the diagnostic-not-exact
+scope, the sensitivity-check-not-equivalence-test scope, and DEV-008's alpha.
+It also warns the student IN THE FILE that D-098's signed record still reads
+"compute PASS" and that the corrected value is the one to cite -- the trap
+flagged in delta 57 item 4.
+
+Section 13 keeps the 18.75x-33.3x multiplier as a UNIT-COUNT RATIO and states
+in prose that converting it to hours and comparing against the trigger would
+repeat the cross-host error. Grounds given as scope plus the registered
+compute design estimate, never host arithmetic.
+
+The student answered "i do not know" to whether an inconclusive H3 makes the
+thesis a failure. That paragraph is Claude's, marked as such: a negative
+result is a complete thesis; what would make it a failure is hiding the
+limitation or steering toward H3.
+
 UPDATE 5 (same day): sections 1-10 CONFIRMED; 11 (prevalence heterogeneity)
 drafted. It reports the 1.58%-8.77% spread WITHOUT a mechanism, and states
 openly that an earlier version offered one and had it withdrawn -- with your
