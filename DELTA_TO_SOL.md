@@ -29,7 +29,10 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 57 (D-008).
+> **Delivered to Sol:** ☑ **YES**, 2026-08-23, with `SOL_BUNDLE.txt` at `dd45dfa` — DELTA_ID 57 (D-008).
+>
+> **Awaiting Sol's verdict.** Do **not** append to this block: it is delivered, so the next
+> session opens delta 58 and archives this one (the convention resumed at delta 56).
 >
 > COVERS SESSIONS:
 > - 2026-08-23 (delta-56 certification) · **Weeks 4 and 5 are COMPLETE**; the base moves; Q-012 ruled against me
