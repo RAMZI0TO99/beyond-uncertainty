@@ -8,7 +8,7 @@ adding the frozen numbers with their estimands — and the student reads and
 confirms each section before it is marked accepted. Every section carries its
 source answers below it, verbatim, as provenance of whose voice it is.
 
-**Status: §1–§7 CONFIRMED by the student (2026-08-23). §8 and §9 drafted — awaiting student confirmation.**
+**Status: §1–§9 CONFIRMED by the student (2026-08-23). §10 drafted — awaiting student confirmation.**
 
 ---
 
@@ -326,7 +326,7 @@ target). The diagnostic-only status of the activation head is D-047/D-063.
 
 ---
 
-## 8 · Why hiding position is a different experiment *(DEV-006/D-026 — replaces `method_draft.md` §8 when confirmed)*
+## 8 · Why hiding position is a different experiment *(DEV-006/D-026 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §8)*
 
 Experiment 2A manufactures the wrong-tools failure by hiding from the model
 exactly the attribute the rule depends on. Hiding shape or colour does this
@@ -363,7 +363,7 @@ from DEV-006 and D-026 quoted rather than paraphrased.
 
 ---
 
-## 9 · The reliability gate, and what its intervals really say *(W4 Tue, D-074/D-075 — replaces `method_draft.md` §9 when confirmed)*
+## 9 · The reliability gate, and what its intervals really say *(W4 Tue, D-074/D-075 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §9)*
 
 Before Hypothesis 1 could be tested at all, the machinery had to be shown to
 work: does ensemble disagreement actually fall as the dataset grows, in a way
@@ -426,3 +426,79 @@ right in spirit but the actual cause is specific and is Claude's: the bootstrap
 has only two or three atoms because a rank correlation over six points has very
 coarse support (D-075, whose wording Sol required verbatim and which is quoted
 above as a block).
+
+---
+
+## 10 · The failure threshold *(W4 Fri, D-103/D-107 — replaces `method_draft.md` §10 when confirmed)*
+
+Everything downstream of this section depends on one number. A transition is
+called a *failure* when its normalised prediction error is **strictly greater
+than 0.610702633857727**. Every failure set is built with that line, every
+repair label is assigned by testing repairs on those failure sets, and
+Hypotheses 2 and 3 are claims about those labels. It is the most irreversible
+quantity in the study, and it is permanently frozen.
+
+The line is calibrated on **healthy** models, not broken ones, because its job
+is to say what abnormally bad looks like — and "abnormal" is only meaningful
+against a reference of normal. The reference models are fully observed,
+trained on the largest dataset size with no confound: models given every
+chance to be right. Their errors are what this environment looks like when
+nothing is wrong, and the threshold is the 95th percentile of that
+distribution — the worst 5% of healthy behaviour. Calibrating on broken models
+instead would define failure relative to failure: the worse the reference, the
+higher the line, and the fewer failures anything would appear to have.
+
+The calibration was run once. Nine strata — layout crossed with causal
+attribute — at five seeds each, 225 model fits at n=5,000, about four minutes
+on CPU. The strata were weighted equally by deterministic subsampling without
+replacement to the smallest stratum's count, giving 9 × 4,103 = 36,927 of
+37,406 transitions, so that no layout could dominate the reference simply by
+contributing more data. Applying the rule to the unbalanced pool instead gives
+5.02% failures against the 5% the balanced pool has by construction — a sanity
+check that the strata are not wildly different in the upper tail, reported as
+a check and not as a criterion.
+
+The threshold may never be re-tuned, and the reason is one the student put
+plainly: changing it would change a great many results that accumulate on top
+of it. Because failure sets feed repair labels, and repair labels feed the
+critic, a later adjustment would not simply move one number — it would
+silently redefine every label in the study. But the stronger reason is the one
+that governs the whole design: a quantity that can be adjusted after seeing
+results can be adjusted, however unintentionally, toward the result one hopes
+for. The threshold was therefore fixed before its consequences were known, its
+calibration run given exactly one attempt with the preconditions checked
+first, and its value verified independently in review — the reviewer
+re-extracted the stored evidence, checked every artefact digest, and recomputed
+the percentile to a bit-identical floating-point value. There is no longer a
+procedure by which the number could be legitimately replaced.
+
+One detail of the definition is not a formality. The comparison is **strictly
+greater**: a transition whose error is exactly equal to the threshold is *not*
+a failure. That has to be written into the registered definition rather than
+left to whoever implements it, because **two transitions in the calibration
+pool sit exactly on the value**. The boundary rule therefore decides the label
+of real data. A specification that left it implicit would produce different
+labels depending on which implementation, or which reading of the
+specification, happened to be followed — which is precisely the failure the
+preregistration file exists to prevent.
+
+Finally, the number is meaningless without saying what it is a percentile
+*of*. Reported in full, it is: the 95th percentile (`method="linear"`) of
+ensemble-mean, per-dimension-normalised agent-position error over movement
+transitions, from five-member ensembles of fully observed reference models
+trained at n=5,000 with no confound, pooled across nine layout × causal-
+attribute strata at confirmatory seeds 1000–1004, equally weighted by
+deterministic minimum-count subsampling at RNG seed 0.
+
+**Source answers (student, 2026-08-23, verbatim):**
+> 1- so they can have real reuslts rather than broken.
+> 2- because it will cahnge alot of results that are acoumalive.
+> 3- beacuse we must defain the failuer line before.
+
+**Provenance notes:** answer 2 is the student's own insight and is stated as
+theirs in paragraph 4 — the cascade from failure sets to labels to hypotheses
+is exactly right, and it was not prompted. Answer 1 is correct in direction and
+was sharpened to the reference-of-normal argument. Answer 3 has the right
+principle; the specific boundary reasoning — that two real transitions sit on
+the value, so the strict rule decides actual labels — is Claude's, from
+`constants.py` and D-107.

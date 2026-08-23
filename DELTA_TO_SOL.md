@@ -200,6 +200,18 @@ If you consider this method outside your Q-012 allocation ("rewriting the
 methodology in their own voice"), say so and we stop -- the sections are
 clearly marked unconfirmed until then.
 
+UPDATE 4 (same day): sections 1-9 CONFIRMED; 10 (the failure threshold)
+drafted. It carries the full estimand rather than the bare number, the
+strictly-greater boundary WITH the fact that two calibration transitions sit
+exactly on the value, the one-attempt calibration and your independent
+digest-level verification, and the statement that no legitimate replacement
+procedure remains.
+
+Notable: the student supplied the cascade argument UNPROMPTED -- "it will
+change a lot of results that are accumulative" -- which is exactly why the
+threshold cannot be re-tuned: failure sets feed labels, labels feed the
+critic. That paragraph is credited to them in the provenance notes.
+
 UPDATE 3 (same day): sections 1-7 CONFIRMED; 8 (position-causal conditions)
 and 9 (the reliability gate) drafted. Section 9 quotes YOUR REQUIRED WORDING
 AS A BLOCK QUOTE, verbatim, and carries the atom table beside it -- including
