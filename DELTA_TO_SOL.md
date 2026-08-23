@@ -39,6 +39,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=801a33d ./scripts/sol_bundle.sh \
 > - 2026-08-23 (own-voice §1) · The interview rewrite begins — section 1 built from the student's answers
 > - 2026-08-23 (own-voice §2–§7) · Five more sections built from the student's answers
 > - 2026-08-23 (own-voice §8–§15) · Eight more sections; the student now answers unprompted
+> - 2026-08-23 (own-voice §16–§17) · The rewrite is complete — all seventeen sections drafted
 
 ```
 === UPDATE FOR SOL ===
@@ -200,6 +201,25 @@ exclusion, not a success case.
 If you consider this method outside your Q-012 allocation ("rewriting the
 methodology in their own voice"), say so and we stop -- the sections are
 clearly marked unconfirmed until then.
+
+UPDATE 8 -- THE REWRITE IS COMPLETE. All seventeen sections drafted; 1-15
+CONFIRMED by the student, 16-17 awaiting confirmation. Nine "don't know"s
+across the whole run, every one recorded in the file and taught before
+confirmation, so you can audit exactly which paragraphs are the student's.
+
+Section 16 states the 20% floor as significance-versus-importance, and gives
+the mixed-model replacement honestly: fitted rather than assumed, found not
+estimable, and its estimable reduction ANTI-CONSERVATIVE -- which would
+manufacture repairs out of seed noise and turn them into labels.
+
+Section 17 explains why repair validation carries twenty seeds and the
+hypothesis experiments five: a claim is reported with its uncertainty, a
+LABEL is not -- everything downstream inherits it, so the foundation is
+measured more carefully than what is built on it. And why a comparison group
+may never span a split.
+
+REQUEST: review all seventeen against your rulings. The student rewrites
+nothing further until you have.
 
 UPDATE 7 (same day): sections 1-13 CONFIRMED; 14 (execution host) and 15
 (the exclusion-rate assumption) drafted. Section 15 spells out in plain words

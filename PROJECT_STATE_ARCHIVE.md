@@ -4401,3 +4401,13 @@ labels, recalibration, or Week 6 work has been performed or is claimed.
 ### 2026-08-23 (rewrite cards) · Seventeen section cards for the student's own-voice rewrite · Claude
 
 **Prose only, D-120's allocation.** `docs/rewrite_cards.md`: one card per `method_draft.md` section — what it must say, what it must **never** say, the frozen numbers with their estimands, sources. The student writes each section fresh from the card, without the draft open; Claude then checks the text against the ledger without rewriting it. **895 passing, unchanged.**
+
+---
+
+### 2026-08-23 (own-voice §1) · The interview rewrite begins — section 1 built from the student's answers · Claude
+
+**The method, on the record:** Claude asks simple per-section questions; the student answers **in their own words**; Claude assembles the section *from those answers*, fact-checks it against the ledger, and the student confirms before it counts. `docs/method_own_voice.md` opens with §1 (environment rationale), built from five student answers with their phrasings kept and the source answers stored verbatim as provenance — **pending the student's confirmation**. One misconception corrected on the record: **the agent never learns** — the scripted policy collects (D-020/D-051), the world model learns (D-032), the critic diagnoses. **895 passing, unchanged.**
+
+### 2026-08-23 (own-voice §2–§7) · Five more sections built from the student's answers · Claude
+
+**The interview rewrite continues.** `docs/method_own_voice.md` now carries **§1–§7**; **§1–§5 are CONFIRMED by the student** and §6–§7 await confirmation. Every section stores its source answers **verbatim** beneath it, and every paragraph the student could not supply is **marked as Claude's** — five "don't know"s so far, each taught in chat before the student confirmed, and each recorded rather than smoothed over. Student sentences kept largely intact include *"the test might pass but there are hidden things from it"* (§4, the null-never-proves-the-null rule, D-054) and *"so the scales are normalised and become comparable"* (§6). **Three concept errors corrected on the record:** the agent never learns (§1); the 150/150 balance is fair classification, not a repair-vs-repair contest (§2); the reserve is predeclared against cherry-picking, not merely because units are untested (§2). **895 passing, unchanged. No code, no compute, no data.**

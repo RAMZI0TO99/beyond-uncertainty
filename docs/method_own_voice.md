@@ -8,7 +8,7 @@ adding the frozen numbers with their estimands — and the student reads and
 confirms each section before it is marked accepted. Every section carries its
 source answers below it, verbatim, as provenance of whose voice it is.
 
-**Status: §1–§13 CONFIRMED by the student (2026-08-23). §14 and §15 drafted — awaiting student confirmation.**
+**Status: ALL SEVENTEEN SECTIONS DRAFTED. §1–§15 CONFIRMED by the student (2026-08-23); §16 and §17 await confirmation.**
 
 ---
 
@@ -689,7 +689,7 @@ chat before confirmation.
 
 ---
 
-## 14 · Where the results were produced *(DEV-011 — replaces `method_draft.md` §14 when confirmed)*
+## 14 · Where the results were produced *(DEV-011 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §14)*
 
 The plan's compute model names a Kaggle T4, denominates its budget in
 GPU-hours, and sets an escalation trigger near 120 of them. **Every model fit
@@ -726,7 +726,7 @@ provenance requirements are Claude's from DEV-011, D-076 and D-116.
 
 ---
 
-## 15 · The exclusion-rate assumption *(DEV-012 — replaces `method_draft.md` §15 when confirmed)*
+## 15 · The exclusion-rate assumption *(DEV-012 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §15)*
 
 Ground-truth labelling does not always produce a label. A unit is *ambiguous*
 when both repairs work and the acceptance test cannot separate them, and
@@ -780,3 +780,105 @@ there being no pilot measurement at all. Answer 3 opens paragraph 5, kept
 ("so that the record shows what happened and when"), and is extended with the
 reason a fix applied first would erase the finding. The estimand, the
 falsifiability rule and the surviving-count rule are DEV-012's as ratified.
+
+---
+
+## 16 · How a repair is judged to have worked *(DEV-009, D-094/D-100 — replaces `method_draft.md` §16 when confirmed)*
+
+Every ground-truth label in this study comes from one test: a repair is
+applied, and the question is whether it worked. Three conditions must **all**
+hold. The repair must reduce prediction error on the failure set; the 95%
+confidence interval on that reduction must exclude zero; and the reduction
+must exceed **20% of the original mean error**.
+
+The third condition exists because statistical reliability and practical
+importance are different things. With enough data, a vanishingly small
+improvement can be statistically real — a reduction of a fraction of a percent
+whose interval genuinely excludes zero — and calling that a successful repair
+would be true and useless. The 20% floor sets the least improvement the study
+is willing to call a repair, so that a label means the repair actually
+mattered. It is expressed as a fraction of the original error rather than as a
+fixed amount, because error scales differ across configurations, and a fixed
+amount would be a demanding threshold in one condition and a trivial one in
+another.
+
+The schedule specified this test as a linear mixed-effects model with random
+intercepts for seed and for episode within seed. That specification was
+replaced, under a recorded change, because when it was fitted rather than
+assumed it turned out not to be estimable in this design — and its estimable
+reduction was worse than not fitting it: it would have replaced a conservative
+test with one that could be substantially **anti-conservative**. That
+direction is the dangerous one here, because a too-narrow interval manufactures
+successful repairs out of seed noise, and those manufactured successes become
+labels that everything downstream depends on. What is used instead takes the
+pairing first — differencing out everything the two arms share on each
+transition — and keeps **seed as the replication level**, which is what the
+random intercept was for. Where the differences are degenerate, both the
+primary test and its fallback fail **closed**, returning no result rather than
+inventing one.
+
+The test is calibrated against a permutation null, which permutes **whole
+runs** rather than individual transitions, because transitions within a run are
+not exchangeable. Under that null the full three-condition rule fires on none
+of 200 permutations, and the interval condition alone fires on five to seven —
+inside the admissible range for a nominal 5% rule.
+
+**Source answer (student, 2026-08-23, verbatim):**
+> 1- we make the minimum 20% so it is the least exptibale improvement.
+
+**Provenance notes:** the student's phrase — the least acceptable improvement —
+is paragraph 2's definition, kept. The significance-versus-importance argument,
+the relative-not-absolute reasoning, and the mixed-model replacement are
+Claude's from `constants.py`, DEV-009, D-079, D-094 and D-100.
+
+---
+
+## 17 · One unit, several roles *(W2 Wed, D-007/D-033/D-039 — replaces `method_draft.md` §17 when confirmed)*
+
+The statistical unit of this study is the **configuration-condition**: one
+setting of the environment together with one failure condition. It is shared
+by a failure condition and all of its repair arms, and that sharing is what
+makes a label assignable — the same unit is what was broken and what the
+repairs were applied to. Finer identities are built on top of it: adding the
+repair arm identifies a configuration, adding the stage and seed identifies a
+run, and the configuration with its seed but **without** the stage identifies
+the computation itself.
+
+That last distinction is not pedantry. A unit owes **five** seeds to the
+hypothesis experiments and **twenty** to repair validation, and the twenty
+**contain** the five — they are one set of fits serving two purposes, not two
+separate sets. Counting them as separate obligations once produced an
+accounting of 375 model fits that did not exist. The identity that names the
+computation, rather than the obligation it discharges, is what keeps a fit from
+being counted twice.
+
+The reason repair validation carries twenty seeds while the hypothesis
+experiments carry five is what each is for. The hypothesis experiments test a
+claim, and a claim is reported with its uncertainty. Repair validation
+**assigns the ground truth** on which every label in the thesis rests — and a
+label is not reported with uncertainty, it is either right or wrong, and
+everything downstream inherits it. Twenty seeds rather than five roughly halves
+the standard error on the across-seed component, and seed-to-seed variation in
+the repair effect is precisely what that test has to see through. The
+foundation is measured more carefully than anything built on it.
+
+Finally, some units were **given related data by design**, and those form a
+comparison group. Such a group must never be split across a boundary that
+separates training from evaluation — not across the critic's train/test split,
+and not across a cross-validation fold. If it were, the critic would be trained
+on units that are near-relatives of the units it is later scored on, and it
+could score well by recognising familiar material rather than by diagnosing
+anything. That is the same objection as marking a student on questions taken
+from their own study guide: the score stops measuring the ability it claims to
+measure. Keeping groups whole is what makes the held-out result an honest
+estimate of performance on configurations the critic has genuinely never seen.
+
+**Source answers (student, 2026-08-23, verbatim):**
+> 2-beacuse it has more seeds.
+> 3-i do not know.
+
+**Provenance notes:** answer 2 restated the question rather than answering it,
+and the ground-truth-versus-claim argument in paragraph 3 is Claude's,
+taught in chat before confirmation (`constants.py` seed policy; D-033 for the
+375 phantom fits). Paragraph 4 is Claude's after a recorded "I do not know"
+(D-039), with the study-guide comparison supplied in chat.
