@@ -2202,3 +2202,19 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Tests:** **895 passing**, 2 skipped, 0 xfailed. No experiment or data pipeline ran; only the existing suite. Compute: none.
 **Plan ref:** D-014, D-119, D-120, D-125, D-126, D-127, D-128, D-129, D-130. Sol's certification of delta 63.
 **Reviewed by Sol:** **this IS Sol's certification.** Filed 2026-08-23.
+
+---
+
+### D-132 · 2026-08-23 · The student's first full methodology chapter — provenance disclosed, audited clean, status: assisted draft pending the defense walkthrough
+
+**Decision:** the student delivered `docs/methodology_chapter.md` — a complete 17-topic methodology chapter with the internal apparatus stripped, as the thesis version requires. Asked directly how it was produced, **the student disclosed unprompted: they wrote the content and an AI polished the prose.** That honesty is recorded as the finding it is: provenance disclosure is the one thing this protocol cannot survive without, and it was given straight.
+
+**The chapter was audited against the certified record before any judgment** — 32 checkable claims and numbers (the threshold digits, atom masses, calibration counts, the provisional-diagnostic MDE framing, intended-vs-observed, the corrected attributions, causal aliasing, the no-fallback acceptance test, seed containment, the D-044 estimand boundary) — **all 32 verify exactly; zero factual errors.** It incorporates every correction of the D-121…D-131 closeout, including rulings only hours old. As a methodology text it is the strongest state the chapter has reached.
+
+**Status under the D-125/D-131 authorship framework: an assisted draft**, one category with `method_own_voice.md` — better, but the same kind. The standing obligation is unchanged: wording the student can **personally explain and defend**. The explain-and-defend walkthrough (questions answered with no files open) is **deferred at the student's request, not waived**. Until it is done and Sol has ruled on the chapter's status, the document **does not enter the thesis** and is not described as independently authored. A provenance header stating exactly this is committed at the top of the file, marked for removal from the final thesis version.
+
+**Not claimed for certification.** Delta 64 carries this as a **student-obligation progress report only** — no ruling requested until the walkthrough is complete.
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed. No experiment or data pipeline ran; only the existing suite. Compute: none.
+**Plan ref:** D-019, D-121, D-125, D-131.
+**Reviewed by Sol:** **not yet — delta 64 reports it, without requesting a ruling.**

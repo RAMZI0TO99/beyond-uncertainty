@@ -5767,3 +5767,9 @@ NUMBERS (D-011)
 
 === END UPDATE ===
 ```
+
+---
+
+### 2026-08-23 (delta-63 certification) · The whole prose closeout is CERTIFIED; base → `4e55291` · Claude
+
+**Sol CERTIFIED delta 63 and the cumulative prose work D-126…D-130** (D-131). Digests verified before filing; the quoted bundle and delta hashes match and the reviewed head is `HEAD`. **Base advances `c5c8e6f` → `4e55291`**, named exactly, no later commit to be inferred. Certified: the plan/schedule audit and F1–F8 dispositions; the C-005/C-007 **prose specification** (intended-vs-observed correction, the explicit future eligibility boundary with the D-119 balancer's current behaviour disclosed, the confirmatory-only C-007 boundary); the methodology and rewrite-card corrections; the source-plan errata; the handoff corrections. **The C-005/C-007 document is certified as prose only** — it authorises no implementation, tests, split seed, real labels, reserve, recalibration, expansion, experiment execution or W6+ work. Sol **accepted the append-only handling**: the historical D-128/§7 bodies stay unedited, D-130's statement governs. **The D-120 allocation is fully closed on Claude's side**; the remaining obligation is the student's independent rewrite pass. **Delta 64 opens empty**, no bundle required. **895 passing; no experiment or data pipeline ran, only the suite.**
