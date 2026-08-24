@@ -14,7 +14,7 @@ and live only in **git history**, each at the commit that delivered it
 replacement, as the convention always intended.
 
 **Send delta + `SOL_BUNDLE.txt`.** `BASE` is **`c5c8e6f`**, unchanged — Sol
-withheld delta 61 and holds the base until the corrected bytes are reviewed.
+holds the base until delta 63's corrected bytes are reviewed.
 
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=c5c8e6f ./scripts/sol_bundle.sh \
@@ -26,131 +26,96 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=c5c8e6f ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 62 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_ID 63 (D-008).
 >
 > COVERS SESSIONS:
-> - 2026-08-23 (delta-61 corrections) · Plan audit accepted; the C-005 spec corrected on a real conflation
+> - 2026-08-23 (delta-62 corrections) · Spec accepted substantively; five staleness fixes applied
 
 ```
 === UPDATE FOR SOL ===
-DELTA_ID: 62
-PREVIOUS_DELTA_ID: 61
+DELTA_ID: 63
+PREVIOUS_DELTA_ID: 62
 DATE: 2026-08-23
 BUNDLE_FILE: SOL_BUNDLE.txt
-SUBJECT: Delta 61's corrections. You found a real conceptual error in the C-005
-         spec -- intended class vs observed label -- and it is fixed, verified
-         against source first. F1-F8 all applied.
+SUBJECT: Your five prose/handoff corrections, all applied. The spec design is
+         unchanged (you accepted it); this round is staleness only.
 
-PROSE ONLY. No source implementation, executable tests, split seed, real
-labels, reserve, recalibration, expansion, W6+ work or compute. Base unchanged
-at c5c8e6f and not announced as moved. constants.py untouched.
-
---------------------------------------------------------------------
-1. THE C-005 ERROR YOU FOUND -- REAL, AND FIXED
-
-You are right. My spec balanced and gated on INTENDED CLASS -- construction
-provenance -- and called observed-label mixing within a group an integrity
-violation. Verified against source before accepting your finding:
-
-  - the critic's target is the REPAIR-DERIVED OBSERVED label (plan Table 2:
-    data-repair-works x model-repair-works -> 0/1/ambiguous/undiagnosed);
-  - adequacy rests on surviving OBSERVED min(N0,N1) (DEV-012), with intended
-    class only a reporting stratifier ("reported ... by intended class");
-  - the design's 125/115 and the reserve's 120/111 are both "by intended
-    class" (D-092); the observed label does not exist until Month-2 labelling
-    and can differ from the intended class.
-
-So an intended-class-pure group can legitimately carry mixed observed outcomes,
-and that is scientific information, not an integrity violation. The spec now
-opens with the intended-vs-observed distinction stated once, and applies all
-six of your C-005 corrections:
-
-  1. intended class vs observed label separated throughout; only a
-     MIXED-INTENDED-CLASS group is a construction-integrity refusal, and the
-     adversarial fixture is labelled as such, not merely "mixed class";
-  2. allocation targets surviving observed decidable counts; each group modelled
-     by its (n0_g, n1_g) vector; intended class is secondary/diagnostic only;
-  3. a DETERMINISTIC CONSTRAINED GROUP ALLOCATOR, with the blake2b hash as a
-     TIE-BREAKER only, failing closed with the exact shortfall when whole-group
-     constraints make a target infeasible;
-  4. an explicit eligibility boundary -- split all attempted -> report
-     ambiguous/undiagnosed per split -> exclude ineligible -> pass only
-     observed 0/1 to the balancer, which no longer combines eligibility with
-     balancing;
-  5. floors stated precisely: >=60 is SURVIVING OBSERVED-DECIDABLE held-out
-     units, not attempted or assigned; the held-out MDE floor is NOT applied to
-     train/validation unless separately registered; the manifest reports
-     attempted, decidable-0, decidable-1, ambiguous, undiagnosed, total
-     surviving held-out, and min(N0,N1) on observed labels;
-  6. the manifest carries BOTH class concepts -- intended-class counts as
-     construction diagnostics, observed decidable counts for balance -- and
-     every adequacy/min(N0,N1) statement names the observed labels explicitly.
+PROSE/HANDOFF ONLY. No source implementation, executable tests, split seed,
+real labels, reserve, recalibration, expansion, experiment execution or W6+
+work. Base unchanged at c5c8e6f and not announced as moved. constants.py
+untouched.
 
 --------------------------------------------------------------------
-2. C-007 -- THE TENSION RESOLVED AS YOU REQUIRED
+1. PLAN_AUDIT.MD DISPOSITION BROUGHT CURRENT
 
-The first text both said "every loader passes require_confirmatory=True" and
-"never a boolean the caller can flip". Resolved: the requirement is a property
-of a CONFIRMATORY-ONLY CRITIC BOUNDARY, not a flag threaded through call sites.
-No caller-overridable exemption; stage metadata is validated but grants no
-permission to weaken the guard; a pilot probe uses a SEPARATE development-data
-path that every critic-facing consumer rejects; coverage is registry-
-authoritative, and adding an unregistered critic loader itself fails an
-invariant.
+Section 4's F7 paragraph is now labelled the PROPOSAL AT AUDIT TIME, superseded.
+Section 5 now says plainly: F5 is resolved by the source-plan erratum; F7 is
+mandatory and has been applied in section 15; it is no longer awaiting you and
+is not optional; nothing in the audit is now awaiting you.
+
+2. F3 HEADINGS CORRECTED IN BOTH METHODOLOGY DOCUMENTS
+
+method_own_voice.md section 13 and method_draft.md now read "The remedy the
+plan mandated and the schedule repeated, and why it was declined". The bodies
+already said P§10.7 mandates and the schedule repeats; the visible heading now
+matches, so the attribution error no longer survives in the most visible line.
+
+3. REWRITE_CARDS.MD BROUGHT UNDER F2-F4/F7
+
+  Card 13: "P§10.7 mandates raising the configuration count; the schedule
+           repeats it with the deadline." Heading and sources updated (P§10.7).
+  Card 14: "plan names Kaggle, 2x T4; the per-fit estimate is expressed on one
+           T4." Sources add P§14.1/P§14.3.
+  Card 15: adds the mandatory scope instruction -- every H3 accuracy figure
+           concerns cleanly separable failures and must not be generalised to
+           failures overall; the full excluded-fraction limitations treatment
+           remains W17. Sources add P§7.4/S§W17.
+  Card 16: "the plan's P§7.3 mixed-effects model, repeated by the schedule."
+           Sources add P§7.3.
+These were not optional polish: an independent rewrite from the old cards would
+have recreated the exact attributions and omission D-128 corrected.
+
+4. CLAUDE.MD HANDOFF REFRESHED
+
+"delta 61 accumulates" -> the delta-63 correction state; the plan/schedule
+audit removed from "authorised now" (it is complete); list numbering
+normalised to 1-6; the handoff now states that ONLY this prose-correction
+round is open, with C-005/C-007 implementation and W6+ work closed.
+
+5. THE "NOTHING RAN" IMPRECISION -- CORRECTED, WITH ONE PROTOCOL NOTE FOR YOU
+
+The literal "Nothing ran" (D-128 stated it, then reported 895 passing) sits in
+two APPEND-ONLY places: D-128's body and the section-7 delta-61 entry. Per the
+append-only rule (D-014 -- a correction is a new entry that references the old
+one) I corrected it in D-130 rather than by editing those bodies. The governing
+statement from now on:
+
+  NO EXPERIMENT OR DATA PIPELINE RAN; ONLY THE EXISTING TEST SUITE RAN.
+  "Compute: none" stands under the research-compute convention.
+
+If you intended the D-128 BODY itself edited -- which would break append-only --
+say so and I will do it as an explicit, disclosed exception. I did not want to
+mutate a signed entry on my own initiative.
 
 --------------------------------------------------------------------
-3. F1-F8, ALL APPLIED
+CONFIRMATION SEARCHES (the ones you required)
 
-F1 ACCEPT   -- section 5 and card 5 no longer understate preregistration: the
-               plan fixed the rank-correlation statistic and direction (P§4.2);
-               only the implementation was frozen later (D-068).
-F2 ACCEPT   -- the mixed model is P§7.3's; DEV-009 deviates from the PLAN.
-               Fixed in section 16 and the draft.
-F3 ACCEPT   -- P§10.7 mandates raising the count; DEV-010 deviates from the
-               PLAN. Fixed in section 13 and the draft.
-F4 PRECISION-- "Kaggle, 2x T4", per-fit estimate kept "on a T4". Both docs.
-F5 RULED    -- P§2.2 governs (causal -> passability); P§13.1.2's "interaction
-               outcome" is shorthand for the transition consequence, not the
-               interact action. Recorded as a SOURCE-PLAN ERRATUM in the
-               correction index; one-line clarification in section 1 and card
-               1. No code change.
-F6 ACCEPT   -- plan Table 3's stale falsifying wording is superseded by P§4.2;
-               recorded as a source erratum.
-F7 MANDATORY-- the cleanly-separable-failures scope sentence is now in section
-               15, as a scope statement and not a result.
-F8 ACCEPT   -- no change.
-
---------------------------------------------------------------------
-4. PRE-DELIVERY AUDIT OF THE CORRECTED SPEC (D-129)
-
-Before sending, I audited the corrected spec against existing code and the
-sources -- warranted because you had just found a conceptual error in this same
-document. One real gap, fixed:
-
-  the spec's pipeline step 4 said "the class balancer ... does no eligibility
-  selection" as present fact. The balancer YOU CERTIFIED at D-119 does the
-  opposite -- it accepts ambiguous/undiagnosed and excludes them internally. So
-  your delta-61 requirement (balancer must not combine eligibility with
-  balancing) describes a FUTURE CHANGE to a certified component, not the current
-  state. Stating it as current fact would leave an implementer unable to
-  reconcile the spec with the certified balancer. Now flagged as gated future
-  implementation, with the balancer's current behaviour named explicitly.
-
-Verified clean: the balancer really exports CANONICAL_SPLITS and public
-assert_groups_do_not_span_splits (the spec's reuse claims hold); design scale
-240/125-115/150-150 matches the state file; the >=60 floor is on surviving
-observed-decidable units; no bare "mixed class" survives.
+  no current-tense "F7 optional" in plan_audit.md ....... CLEAN
+  no stale "delta 61 accumulates" in CLAUDE.md .......... CLEAN
+  no "AUTHORISED NOW" audit line in CLAUDE.md ........... CLEAN
+  no stale plan/schedule attribution in cards 13/14/16 .. CLEAN
 
 --------------------------------------------------------------------
 NUMBERS (D-011)
 
-  tests          895 passing, 2 skipped, 0 xfailed -- unchanged, prose only
-  compute        NONE. Registered total unchanged: 675 CPU fits, 0 GPU-hours.
+  tests          895 passing, 2 skipped, 0 xfailed
+  ran            no experiment or data pipeline; only the existing test suite
+  compute        none
   data seen      none
   base           c5c8e6f -- UNCHANGED and not announced as moved
-  changed        docs/c005_c007_spec.md (rewritten), method_own_voice.md,
-                 method_draft.md, rewrite_cards.md, plan_audit.md,
-                 DECISIONS.md correction index. constants.py untouched.
+  changed        plan_audit.md, method_own_voice.md, method_draft.md,
+                 rewrite_cards.md, CLAUDE.md, DECISIONS.md (D-130).
+                 constants.py untouched; spec DESIGN unchanged (you accepted it)
 
 === END UPDATE ===
 ```

@@ -672,7 +672,7 @@ adjudicable* by D-119 and D-120, and the corrected value is the one used here.
 
 ---
 
-## 13 · The remedy the schedule prescribed, and why it was declined *(DEV-010 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §13)*
+## 13 · The remedy the plan mandated and the schedule repeated, and why it was declined *(DEV-010 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §13)*
 
 The plan anticipated this exact situation and mandates the remedy: P§10.7
 requires that if the detectable difference exceeds the five-point margin, *"the

@@ -2160,3 +2160,25 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Tests:** **895 passing**, 2 skipped, 0 xfailed. Prose only; `constants.py` untouched.
 **Plan ref:** D-056, D-119, D-125, D-128; Sol's delta-61 requirement on eligibility.
 **Reviewed by Sol:** **not yet — delta 62 carries it.**
+
+---
+
+### D-130 · 2026-08-23 · Sol accepted the corrected spec substantively; delta 62 withheld for five prose/handoff staleness fixes, now applied
+
+**Decision:** Sol **substantively ACCEPTED** the corrected C-005/C-007 specification (the intended-vs-observed separation, observed-decidable allocation with whole groups, the hash as tie-breaker only, eligibility and balancing as distinct responsibilities, the held-out floor on surviving observed labels, and the confirmatory-only C-007 boundary) and **accepted D-129**. No further C-005/C-007 conceptual work is required. Delta 62 was **WITHHELD** only for a narrow prose/handoff round: the claim *"F1–F8 all applied"* was not yet true across every surface. Digests verified before filing: delta `d4a82620ec53…`, bundle `13268da56c1c…`, head `7574ca0`, all match. **Base remains `c5c8e6f`.**
+
+**The five micro-corrections, applied.**
+
+1. **`docs/plan_audit.md` disposition brought current.** §4's F7 paragraph is now labelled the *proposal at audit time*, superseded; §5 states plainly that **F5 is resolved by the source-plan erratum**, **F7 is mandatory and applied** (not optional, not awaiting Sol), and nothing in the audit is now awaiting Sol.
+2. **F3 headings corrected in both methodology documents.** `method_own_voice.md` §13 and `method_draft.md` now read *"The remedy the plan mandated and the schedule repeated, and why it was declined"* — the body already attributed the mandate to P§10.7; the most visible line now matches.
+3. **`rewrite_cards.md` brought under F2–F4/F7.** Card 13: P§10.7 mandates the count-raise, schedule repeats it (heading and sources updated). Card 14: *"Kaggle, 2× T4"*, per-fit on one T4 (P§14.1/P§14.3 added). Card 15: the mandatory F7 scope instruction — every H3 figure concerns cleanly separable failures, not failures overall (P§7.4/S§W17 added). Card 16: the *plan's* P§7.3 mixed model, repeated by the schedule (P§7.3 added). An independent rewrite from these cards would otherwise have recreated the exact attributions D-128 corrected.
+4. **`CLAUDE.md` handoff refreshed.** *"delta 61 accumulates"* → the delta-63 correction state; the plan/schedule audit removed from *"authorised now"* (it is complete); list numbering normalised to 1–6; the handoff now states that **only this prose-correction round is open**, C-005/C-007 implementation and W6+ work closed.
+5. **The "Nothing ran" imprecision corrected — via this entry, not by mutating history.** Sol asked to replace the literal *"Nothing ran"* (D-128 stated it, then reported 895 passing). That phrase sits in two **append-only** places — D-128's body and the §7 delta-61 entry — so per the append-only rule (D-014, *a correction is a new entry that references the old one*) it is **corrected here** rather than by editing those bodies. **The precise statement, which governs from now on: *no experiment or data pipeline ran; only the existing test suite ran.* "Compute: none" stands under the research-compute convention.** *If Sol intended the D-128 body itself edited — which would break append-only — say so and it will be done as an explicit exception.*
+
+**Confirmation searches (Sol's required checks) return clean:** no current-tense *"F7 optional"* in `plan_audit.md`; no stale *"delta 61 accumulates"* or *"AUTHORISED NOW"* audit line in `CLAUDE.md`; no stale plan/schedule attribution in cards 13, 14, 16.
+
+**No experiment or data pipeline ran; only the existing test suite ran. Compute: none.** No source implementation, executable tests, split seed, real labels, reserve, recalibration, expansion, or W6+ work. `constants.py` untouched.
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed.
+**Plan ref:** P§7.3, P§7.4, P§10.7, P§14.1, P§14.3, S§W17; D-014, D-119, D-125, D-126, D-128, D-129. Sol's delta-62 review.
+**Reviewed by Sol:** **not yet — delta 63 returns the corrections.**

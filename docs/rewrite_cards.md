@@ -169,9 +169,11 @@ the corrected value, D-119/D-120**); any hours-vs-trigger comparison; "the
 study is underpowered" without the diagnostic framing.
 **Sources:** D-078, D-082, D-089, D-098, DEV-008, D-119, D-120.
 
-## 13 · The remedy the schedule prescribed, and why it was declined *(DEV-010 — mandated)*
-**Must say:** the schedule said *raise the configuration count now*; it was not
-raised — deliberately, on review. A **rough diagnostic extrapolation** suggests
+## 13 · The remedy the plan mandated and the schedule repeated, and why it was declined *(DEV-010 — mandated)*
+**Must say:** **P§10.7 mandates** raising the configuration count until the MDE
+clears the margin; the schedule repeats it with the deadline (*raise the
+configuration count now*). It was not raised — deliberately, on review, so this
+is a deviation from the **plan**. A **rough diagnostic extrapolation** suggests
 on the order of **1,500–2,000 held-out** units vs 60–80 scheduled — **not a
 computed sample-size requirement**. Preserving the fraction gives an
 **approximate 5,625–10,000 total, 18.75×–33.3×**, explicitly a **unit-count
@@ -180,17 +182,18 @@ budget position resting on the registered GPU-hour design estimate plus the
 scope decision. The limitation is carried forward, not repaired.
 **Must not say:** the multiplier converted into hours against the 120-hour
 trigger (**the error made twice, D-115 → D-119**); the withdrawn "5–6×".
-**Sources:** DEV-010, D-089, D-115, D-119.
+**Sources:** DEV-010, D-089, D-115, D-119; **P§10.7**.
 
 ## 14 · Where the results were produced *(DEV-011 — mandated)*
-**Must say:** plan says Kaggle T4 / GPU-hours; **every fit ever run is local
-CPU**, zero GPU-hours, no Kaggle job ever submitted. Certified timing:
+**Must say:** plan names **Kaggle, 2× T4** / GPU-hours (the per-fit estimate is
+expressed on one T4); **every fit ever run is local CPU**, zero GPU-hours, no
+Kaggle job ever submitted. Certified timing:
 **5.72 / 6.91 local wall-hours** (median / conservative max). Thread count is
 recorded because it is **not numerically neutral** (4 vs 8 threads moved one
 certified cell 0.19% — reduction order). Timing evidence is provenance-bound:
 exact source commit, clean tree required, content digest verified in review.
-**Must not say:** any local-figure-as-GPU-hours statement.
-**Sources:** DEV-011, D-076, D-116, D-119.
+**Must not say:** any local-figure-as-GPU-hours statement; "a Kaggle T4" (it is 2× T4).
+**Sources:** DEV-011, D-076, D-116, D-119; **P§14.1, P§14.3**.
 
 ## 15 · The exclusion-rate assumption *(DEV-012 — mandated)*
 **Must say:** schedule wanted pilot-rate inflation; **no pilot rate existed**.
@@ -201,13 +204,19 @@ zero-inflation planning convention, not an empirical prediction**; target
 intended class. Any exclusion > 0 ⇒ assumption missed ⇒ report the shortfall
 first, then the predeclared D-092 reserve under its gate. Critic sample sizes
 are surviving `min(N₀, N₁)`, never attempted totals.
+Also **mandatory scope (F7)**: every H3 accuracy figure concerns **cleanly
+separable failures** and must **not** be generalised to failures overall; state
+the excluded fraction beside it — the full limitations treatment is W17 work
+(P§7.4, S§W17 Thu).
 **Must not say:** zero as **observed, estimated, or pilot-derived** — Sol's
-exact prohibition.
-**Sources:** DEV-012, D-092, D-119, D-120.
+exact prohibition; nor any H3 figure generalised beyond cleanly separable
+failures.
+**Sources:** DEV-012, D-092, D-119, D-120; **P§7.4, S§W17 Thu**.
 
 ## 16 · The repair-acceptance test *(DEV-009, D-094/D-100 — mandated)*
-**Must say:** the schedule's mixed-effects model is replaced — the literal
-specification is **degenerate** for this design (D-094); the registered test is
+**Must say:** the **plan's P§7.3 mixed-effects model** (repeated by the
+schedule) is replaced — the literal specification is **degenerate** for this
+design (D-094); the registered test is
 three conditions, **all required**, on paired per-transition errors, reduced to
 an **equal-seed mean paired difference with a t interval on `n_seeds − 1` df**,
 with a permutation null that **permutes whole paired runs and seeds, never
@@ -218,7 +227,7 @@ request one). Invalid, degenerate or non-finite inputs **fail closed**. Calibrat
 against an admissible [1, 10], full rule 0/200 (D-098 c3).
 **Must not say:** that the mixed model was "approximated" — it was replaced,
 under a Change Record, and the deviation says why.
-**Sources:** DEV-009, D-079, D-085, D-086, D-094, D-100.
+**Sources:** DEV-009, D-079, D-085, D-086, D-094, D-100; **P§7.3**.
 
 ## 17 · One unit, several roles *(W2 Wed, D-007 — mandated)*
 **Must say:** the four identities and what each is for; the statistical unit is

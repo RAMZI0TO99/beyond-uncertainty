@@ -554,7 +554,7 @@ group-level inference and validated null calibration. A study that
 reports what it cannot resolve is a complete study; one that discovers the limit
 after the fact is not.
 
-## The remedy the schedule prescribed, and why it was declined *(DEV-010, D-089/D-115/D-119 — mandated)*
+## The remedy the plan mandated and the schedule repeated, and why it was declined *(DEV-010, D-089/D-115/D-119 — mandated)*
 
 The plan mandates the remedy for exactly this situation: P§10.7 requires that
 if the minimum detectable difference exceeds the five-point margin, *"the

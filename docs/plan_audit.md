@@ -129,10 +129,12 @@ statement. Recorded so nobody later cites Table 3's wording as the criterion.
 thesis state that *"the reported diagnosis accuracy is accuracy on cleanly
 separable failures, not on failures in general"*; the schedule places it in
 the W17 Thu limitations cell (~600 words) with *"State the excluded fraction
-next to it (P§7.4)"*. Absent from the certified methodology — **correctly**,
-since it is scheduled later. Optional cheap insurance (D-113's lesson that
-nothing checks schedule coverage): one forward-pointer sentence at the end of
-`method_own_voice.md` §15. Proposed: "The exclusion counts also bound what the
+next to it (P§7.4)"*. *(Proposal at audit time, now superseded — see Sol's dispositions below: F7
+was made **mandatory** and the sentence has been applied in §15; it is no
+longer optional and no longer awaiting Sol.)* At audit time this was recorded
+as absent-but-scheduled-later, offered as optional insurance (D-113's lesson
+that nothing checks schedule coverage): one forward-pointer sentence at the end
+of `method_own_voice.md` §15. Proposed then: "The exclusion counts also bound what the
 final result can claim: every Hypothesis-3 number is accuracy on the cleanly
 separable failures that survived these exclusions, and the thesis states this
 conditioning explicitly where the result is reported (P§7.4)."
@@ -158,7 +160,9 @@ corrected separately (D-128).
 
 Nothing in the certified documents contradicts the sources in a way that
 changes any number, verdict, or recorded deviation. The four textual
-corrections (F1–F4) are attribution and precision fixes; F5 asks Sol to
-reconcile a plan-internal inconsistency the implementation already resolved in
-the direction of P§2.2; F7 is one optional sentence of insurance. All verified
-rows in §1 stand as written.
+corrections (F1–F4) are attribution and precision fixes, all **applied** under
+D-128. **F5 is resolved by the source-plan erratum** (P§2.2 governs; P§13.1.2
+is recorded as erratum in the correction index) — not awaiting Sol. **F7 is
+mandatory and has been applied** in §15 — it is not optional. F6 is recorded as
+a source erratum. All verified rows in §1 stand as written, and **nothing in
+this audit is now awaiting Sol.**

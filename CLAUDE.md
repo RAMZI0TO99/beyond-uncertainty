@@ -439,30 +439,27 @@ newest §7 entry in `PROJECT_STATE.md` before trusting anything here.*
 to be built.** This is not a lull to fill with implementation — it is the
 allocation Sol ruled.
 
-1. **Do not build C-005 or C-007.** Q-012 is closed (D-120). I asked, reasoning
-   they consume no data; Sol said no, because **data consumption is a necessary
-   bar and not a sufficient one** — the operative question is whether the work
-   is *this* week's obligation or a *later* week's. C-005/C-007 begin at their
-   scheduled time or on a **fresh explicit authorisation**.
-2. **What IS authorised:** methodology prose in the student's own voice,
-   consolidating certified decisions, checking prose against plan and schedule,
-   **prose-only** interface and acceptance-criteria specs for C-005/C-007,
-   read-only audits, and resolving contradictions before they become code.
-3. **The base is `c5c8e6f`** and **delta 61 accumulates** — Sol requires no
-   closeout for delta 60, and the next bundle accompanies the next genuinely
-   authorised work. Do not infer a later base; D-043 exists because a
-   challenged commit was nearly used as one.
-6. **AUTHORISED NOW: the plan/schedule `.docx` audit** (D-125) — read-only and
-   prose-only. Compare the certified methodology against the source plan and
-   schedule, record contradictions, propose prose corrections. **Not** a route
-   into later-week implementation.
-4. **The exclusion-rate assumption is settled** — ratified by Sol as **DEV-012**,
+1. **Only this prose-correction round is open.** Delta 62 was delivered and
+   WITHHELD for narrow prose/handoff staleness (D-130); **delta 63 returns the
+   fixes**. Nothing else is authorised — no C-005/C-007 implementation, no W6+
+   work, no experiment execution, no compute.
+2. **Do not build C-005 or C-007.** Q-012 is closed (D-120), reaffirmed at
+   D-125/D-128. Data consumption is a **necessary bar, not a sufficient one** —
+   the operative question is whether the work is *this* week's obligation or a
+   *later* week's. C-005/C-007 begin at their scheduled time (W6–W11) or on a
+   **fresh explicit authorisation**. The C-005/C-007 **prose spec** is written
+   and substantively accepted (D-128); its implementation is not authorised.
+3. **The plan/schedule `.docx` audit is COMPLETE** (D-126, accepted), its
+   findings F1–F8 all ruled and applied (D-128) — it is **no longer** open work.
+4. **The base is `c5c8e6f`** (certified through delta 60 / D-125) and **delta 63
+   accumulates the current corrections**. Do not infer a later base; D-043
+   exists because a challenged commit was nearly used as one.
+5. **The exclusion-rate assumption is settled** — ratified by Sol as **DEV-012**,
    a **zero-inflation planning convention** of 0.00, never to be described as
    observed, estimated or pilot-derived. **S§W6 Monday checks batch 1 against
    it**, so it must survive intact to Week 6.
-5. **Week 6 execution stays closed.** Q-004 was re-ruled on 2026-08-22 and still
-   bars it. Finishing missed W4/W5 obligations is authorised; starting Week 6 is
-   not. C-005 and C-007 remain W6–W11 work. C-003, C-006, C-008 … C-011 are done.
+6. **Week 6 execution stays closed.** Q-004 still bars it. C-005 and C-007
+   remain W6–W11 work. C-003, C-006, C-008 … C-011 are done.
 
 **Do not, without a fresh Sol ruling:** recalibrate the threshold, expand the
 design, consume reserve units, generate repair labels, or run anything on real
