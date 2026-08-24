@@ -34,6 +34,17 @@ entry.
 | *"a subset-derived scale is impossible / a mask has nothing to recompute from"* | D-061, D-062 | **D-064**, call site by **D-076** | **Withdrawn.** The scale type is still constructible from any subset; the rule is a **call-site invariant**, enforced by a required test and made auditable via `n_reference`. D-062's MC-dropout finding is unaffected |
 | any **number** from D-020 or the Q-011 measurements | D-020, Q-011 | **D-051, D-052** | **VOID.** Taken under the non-stationary policy and derived split. Re-measure; do not quote |
 
+### Source-plan errata (Sol, delta 61 / D-128)
+
+These are contradictions **inside the source plan**, ruled by Sol. The plan is
+authoritative for design, so an erratum here says which statement governs — it
+is **not** a deviation and authorises no code change.
+
+| Source statement | Governing statement | Ruling |
+|---|---|---|
+| P§13.1.2 family-A row: *"Shape determines **interaction outcome**"* | **P§2.2** | The causal attribute determines **passability**. *"Interaction outcome"* is ambiguous shorthand for the **transition consequence**, and must **not** be read as the named `interact` action, which stays deliberately **orthogonal** to passability. |
+| P Table 3 falsifying wording: *"flat or non-monotonic, or the trend is within across-seed noise"* | **P§4.2 (v1.2)** | The revised trend-test rule in §4.2 controls; Table 3 retains superseded v1.1 wording. **Never cite Table 3 as the operative falsification rule.** |
+
 **Rule for mutable prose** (Sol, delta 57): wherever reader-facing material
 quotes or reproduces a superseded result, place an adjacent marker —
 `SUPERSEDED — DO NOT CITE; controlling decisions: D-nnn/D-nnn`. **Do not
@@ -2119,3 +2130,19 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Tests:** **895 passing**, 2 skipped, 0 xfailed. Prose only.
 **Plan ref:** P§7.4, P§10.7, P Table 7, S§W11 Fri, S§W12 Tue; D-034, D-039, D-054, D-055, D-056, D-072, D-090, D-093, D-115, D-118, D-120, D-121, D-125, DEV-012, Q-012.
 **Reviewed by Sol:** **not yet — delta 61 carries it beside the plan audit.**
+
+---
+
+### D-128 · 2026-08-23 · Sol withheld delta 61 — the plan audit accepted, the C-005 spec corrected on a real intended-vs-observed conflation, and F1–F8 ruled
+
+**Decision:** Sol **accepted D-126** (the plan/schedule audit) and ruled all its findings; **withheld D-127** (the C-005/C-007 spec) for a genuine conceptual error; and delivered delta 61, which is now archived. Digests verified before filing: delta sha256 `87aa2daffc94…`, bundle `b29af67f5aad…`, head `1d67183` — all match. **The base remains `c5c8e6f`; no later commit inferred.** The 7b19d2b disclosure is accepted and needs no delta-60 re-review.
+
+**>>> The C-005 error was real, verified against source before accepting.** My spec balanced and gated on **intended class** — construction provenance — and called observed-label mixing within a group an integrity violation. **The critic's target is the repair-derived *observed* label** (plan Table 2: data-repair-works × model-repair-works → 0/1/ambiguous/undiagnosed), and adequacy rests on surviving **observed** `min(N₀, N₁)` (DEV-012), with intended class only a *reporting* stratifier. Confirmed: the design's 125/115 and the reserve's 120/111 are both *"by intended class"* (§1, D-092); the observed label does not exist until Month-2 labelling and can differ from the intended class. An intended-class-pure group can legitimately carry mixed observed outcomes — **that is scientific information, not an integrity violation.** The rewritten spec (`docs/c005_c007_spec.md`) opens with the intended-vs-observed distinction and applies Sol's six C-005 corrections: balance on observed decidable counts via a **deterministic constrained group allocator** with the `blake2b` hash as **tie-breaker only**; whole groups intact; refuse only **mixed-intended-class** groups; an explicit **eligibility boundary** (split all → report → exclude ineligible → balance) so the balancer never combines eligibility with balancing; the **≥60 floor on surviving observed-decidable held-out units**, not applied to train/validation unless separately registered; and a manifest carrying **both** class concepts with observed named for every adequacy decision. The C-007 tension is resolved as Sol required: a **confirmatory-only critic boundary** with no caller-overridable exemption, pilot probes on a separate development path that every critic-facing consumer rejects, and registry-authoritative coverage where adding an unregistered loader itself fails an invariant.
+
+**F1–F8, all ruled and applied.** **F1** (ACCEPT): §5 and card 5 no longer understate preregistration — P§4.2 had fixed the rank-correlation statistic and direction; only the implementation was frozen later (D-068). **F2** (ACCEPT): the mixed model is P§7.3's, so DEV-009 deviates from the **plan** — fixed in §16 and the draft. **F3** (ACCEPT): P§10.7 mandates raising the count, so DEV-010 deviates from the **plan** — fixed in §13 and the draft. **F4** (ACCEPT WITH PRECISION): *"Kaggle, 2× T4"* with the per-fit estimate kept *"on a T4"* — fixed in both. **F5** (RULED): P§2.2 governs (causal → passability); P§13.1.2's *"interaction outcome"* is shorthand for the transition consequence, not the `interact` action — recorded as a **source-plan erratum** in the correction index, with a one-line clarification in §1 and card 1, no code change. **F6** (ACCEPT): plan Table 3's stale falsifying wording is superseded by P§4.2 — recorded as a source erratum. **F7** (MANDATORY): the cleanly-separable-failures scope sentence is now in §15 as a scope statement, not a result. **F8** (ACCEPT, no change).
+
+**Nothing ran.** No source implementation, no executable tests, no split seed, no real labels, no reserve, no recalibration, no expansion, no W6+ work, no compute. `constants.py` untouched.
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed. Prose only.
+**Plan ref:** P§2.2, P§4.2, P§7.3, P§10.7, P§13.1.2, P§14.1, P Table 2/3, S§W11 Fri, S§W17 Thu; D-034, D-039, D-054, D-056, D-068, D-092, D-100, D-101, D-115, D-118, D-121, D-125, D-126, D-127, DEV-009, DEV-010, DEV-012, Q-012. Sol's delta-61 review.
+**Reviewed by Sol:** **not yet — delta 62 returns the corrected spec, the prose diffs and the hashes.**

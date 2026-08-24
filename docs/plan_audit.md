@@ -141,6 +141,19 @@ conditioning explicitly where the result is reported (P§7.4)."
 plan's floor is ≥60 held out of ≥300, the schedule's MDE cell simulates
 N = 20/40/60/80. No change needed; recorded for precision.
 
+## Sol's dispositions (delta 61 / D-128)
+
+**D-126 accepted; all findings ruled.** F1 ACCEPT (applied). F2 ACCEPT — DEV-009
+deviates from the plan (applied). F3 ACCEPT — DEV-010 deviates from the plan
+(applied). F4 ACCEPT WITH PRECISION — "Kaggle, 2× T4", per-fit estimate may
+stay "on a T4" (applied). F5 RULED — P§2.2 governs; P§13.1.2 is a source-plan
+erratum, recorded in the correction index, no code change (applied). F6 ACCEPT
+— Table 3 wording superseded by P§4.2, recorded as source erratum (applied).
+F7 — pointer made **mandatory**; the forward scope sentence is now in §15
+(applied). F8 ACCEPT, no change. The certified four documents were edited under
+this authorisation; D-127 (the C-005/C-007 spec) was **not** accepted and is
+corrected separately (D-128).
+
 ## 5 · Disposition
 
 Nothing in the certified documents contradicts the sources in a way that

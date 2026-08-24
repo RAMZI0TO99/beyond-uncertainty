@@ -63,7 +63,11 @@ attribute governs passability is a setting of the configuration, and it is exact
 world model must discover from data. The agent also has one extra action,
 `interact`, which toggles the activation bit of the **first adjacent object**
 it finds. **Activation is deliberately orthogonal to passability**: `interact`
-does not test the causal rule, and no attribute governs it. It exists only so
+does not test the causal rule, and no attribute governs it. (The source plan
+governs this at P§2.2 — the causal attribute determines passability; a table
+row at P§13.1.2 that reads *"shape determines interaction outcome"* is
+shorthand for the transition consequence, not for the `interact` action, and is
+recorded as a source-plan erratum, D-128.) It exists only so
 the action has an observable effect — otherwise a world model would learn it is
 the identity and the action would carry no information — and giving it any
 influence on the transition rule would confound the manipulation under study.
@@ -237,12 +241,16 @@ seeds the registered tests are allowed to use. Data that was looked at while
 the system was being shaped cannot also be its judge, the same way a student
 cannot be graded on the practice problems they studied from.
 
-Second, the rule. At the time the curves were drawn, the formal reading rule
-for Hypothesis 1 — which statistic, which direction, what counts as a pass —
-had not yet been frozen. A curve without a pre-committed rule is a picture,
-not a result. The rule was frozen afterwards, before the gate that used it
-ran, precisely so that nobody could bend the rule around a curve already
-seen. Changing things after peeking, and then testing them, is not an
+Second, the rule. The plan had already fixed the statistic and its direction
+in advance — Hypothesis 1 is a **rank correlation across the six dataset
+sizes, with a confidence interval over seeds** (P§4.2). What had *not* yet
+been fixed when these curves were drawn was the **exact implementation** of
+that rule: which coefficient, which bootstrap, what happens in boundary cases
+(D-068 later froze Spearman, the exact paired seed-block bootstrap, the
+entire-interval decision and the degenerate cases). A curve read before that
+implementation was frozen is a picture, not a result. It was frozen
+afterwards, before the gate that used it ran, so that nobody could bend the
+remaining freedom around a curve already seen. Changing things after peeking, and then testing them, is not an
 approach — it is the mistake the whole preregistration discipline exists to
 prevent. So the Week 3 curves stand in this thesis as description only.
 
@@ -666,9 +674,12 @@ adjudicable* by D-119 and D-120, and the corrected value is the one used here.
 
 ## 13 · The remedy the schedule prescribed, and why it was declined *(DEV-010 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §13)*
 
-The schedule anticipated this exact situation and gave an instruction: if the
-detectable difference does not clear five points, **raise the configuration
-count now**, because discovering the shortfall in Week 15 costs the thesis.
+The plan anticipated this exact situation and mandates the remedy: P§10.7
+requires that if the detectable difference exceeds the five-point margin, *"the
+configuration count is raised until it does not"*. The schedule supplies the
+deadline — **raise the configuration count now**, because discovering the
+shortfall in Week 15 costs the thesis — so declining it is a deviation from
+the **plan**.
 The count was not raised. That was a deliberate, reviewed decision, and it is
 recorded as a deviation because declining a scheduled remedy is a
 design-relevant act rather than an omission.
@@ -726,8 +737,10 @@ chat before confirmation.
 
 ## 14 · Where the results were produced *(DEV-011 — CONFIRMED by the student 2026-08-23; replaces `method_draft.md` §14)*
 
-The plan's compute model names a Kaggle T4, denominates its budget in
-GPU-hours, and sets an escalation trigger near 120 of them. **Every model fit
+The plan's compute model names Kaggle **2× T4**, denominates its budget in
+GPU-hours, and sets an escalation trigger near 120 of them (P§14.1; the
+per-fit time is estimated on a single T4, which is what the source calculation
+describes). **Every model fit
 in this study has in fact run on a local CPU workstation, and no Kaggle job
 has ever been submitted.** Zero GPU-hours have been spent. This is recorded as
 a deviation so that a reader knows what hardware the results were produced on
@@ -805,6 +818,14 @@ order, under its own authorisation. And the sample sizes reported for the
 critic are always the **surviving** counts after exclusions, never the number
 of units attempted.
 
+One scope statement follows from these exclusions and is stated now rather than
+left to the end: because the critic is trained and judged only on the units
+where exactly one repair worked, **every Hypothesis-3 accuracy figure is
+accuracy on cleanly separable failures, and must not later be generalised to
+failures in general.** This is a scope condition, not a result; the full
+limitations treatment, with the excluded fraction stated beside it, is Week 17
+work (P§7.4, S§W17 Thu).
+
 **Source answers (student, 2026-08-23, verbatim):**
 > 2- we assumed 0 becuase we saw no real dependaple results.
 > 3-so we note an know what and when it happend.
@@ -837,9 +858,10 @@ fixed amount, because error scales differ across configurations, and a fixed
 amount would be a demanding threshold in one condition and a trivial one in
 another.
 
-The schedule specified this test as a linear mixed-effects model with random
-intercepts for seed and for episode within seed. That specification was
-replaced, under a recorded change, because when it was fitted rather than
+The plan specified this test as a linear mixed-effects model with random
+intercepts for seed and for episode within seed (P§7.3, with the schedule
+repeating it) — so this is a deviation from the **plan**, not merely from a
+schedule cell. That specification was replaced, under a recorded change, because when it was fitted rather than
 assumed it turned out not to be estimable in this design — and its estimable
 reduction was worse than not fitting it: it would have replaced a conservative
 test with one that could be substantially **anti-conservative**. That

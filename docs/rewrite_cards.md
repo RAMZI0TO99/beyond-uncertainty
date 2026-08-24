@@ -25,7 +25,10 @@ Experiment 2A — card 8's causal-aliasing exclusion stands.)
 ORTHOGONAL to passability** — no attribute governs it; it exists so the action
 has an observable effect, and activation is an auxiliary diagnostic only.
 **Must not say:** "only triangles can be activated", or anything implying
-activation is the transition rule the primary model must discover.
+activation is the transition rule the primary model must discover. (Source-plan
+erratum, D-128: P§2.2 governs — causal attribute → passability; P§13.1.2's
+"interaction outcome" is shorthand for the transition consequence, not the
+`interact` action.)
 **Must not say:** anything implying the environment was tuned after seeing model
 behaviour.
 **Sources:** D-017, D-027, P§5.
@@ -59,9 +62,12 @@ where a property is structural, the structure is asserted (D-054).
 ## 5 · What the first curves look like *(W3 Sat)*
 **Must say:** written before any formal test; error falls with data, ensembles
 agree more as data grows; explicitly descriptive, development seeds only.
-**Must not say:** anything that reads as an H1 verdict — the trend test came
-later, and confirmatory seeds have never been touched.
-**Sources:** D-058, **read D-059's correction first**.
+**Must not say:** anything that reads as an H1 verdict; and do **not** say the
+reading rule was unfrozen — the plan had already fixed the statistic and
+direction (rank correlation over six sizes, interval over seeds, P§4.2); only
+the exact implementation was frozen later (D-068). Confirmatory seeds have
+never been touched.
+**Sources:** D-058, **read D-059's correction first**; P§4.2, D-068.
 
 ## 6 · The normalising scale *(D-061/D-064/D-076)*
 **Must say:** per-dimension scale built from the **full movement evaluation

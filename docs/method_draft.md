@@ -556,9 +556,11 @@ after the fact is not.
 
 ## The remedy the schedule prescribed, and why it was declined *(DEV-010, D-089/D-115/D-119 — mandated)*
 
-The schedule anticipated exactly the situation the previous section records. Its
-Week 5 instruction is explicit: if the minimum detectable difference does not
-clear five percentage points, *raise the configuration count now* — the
+The plan mandates the remedy for exactly this situation: P§10.7 requires that
+if the minimum detectable difference exceeds the five-point margin, *"the
+configuration count is raised until it does not"*, so declining it is a
+deviation from the plan. The schedule supplies the deadline —
+*raise the configuration count now* — the
 reasoning being that configuration count is machine time, while discovering the
 shortfall in Week 15 costs the thesis. The count was **not** raised. That was a
 deliberate, reviewed decision rather than an oversight, and it is recorded as a
@@ -585,8 +587,9 @@ resolve, and treats an inconclusive H3 as a legitimate, reportable outcome.
 
 ## Where the results were produced *(DEV-011, D-116/D-119 — mandated)*
 
-The plan's compute model names a Kaggle T4, with a budget denominated in
-GPU-hours and an escalation trigger near 120. **Every fit in this study has in
+The plan's compute model names Kaggle **2× T4**, with a budget denominated in
+GPU-hours and an escalation trigger near 120 (P§14.1; the per-fit estimate is
+expressed on a single T4, which is what the source calculation describes). **Every fit in this study has in
 fact run on a local CPU workstation, and no Kaggle job has ever been
 submitted.** This is recorded as a deviation not because the local machine is
 inadequate — the certified timing evidence puts the full design at **5.72
@@ -633,9 +636,11 @@ Effective sample sizes for the critic are always reported as the surviving
 
 ## The repair-acceptance test, and why it is not the registered mixed model *(DEV-009, D-094/D-100 — mandated)*
 
-The schedule specifies the acceptance test as a mixed-effects model — per-transition
-error, a fixed effect for the repair, random intercepts for seed and for episode
-within seed — with an episode-mean fallback for when the nested fit is unstable.
+The plan specifies the acceptance test as a mixed-effects model (P§7.3, the
+schedule repeating it) — per-transition error, a fixed effect for the repair,
+random intercepts for seed and for episode within seed — with an episode-mean
+fallback for when the nested fit is unstable. The deviation is therefore from
+the plan, not merely from a schedule cell.
 The implemented test is neither of those. It is an **equal-seed mean paired
 difference with a t interval on `n_seeds − 1` degrees of freedom, and no
 fallback**.
