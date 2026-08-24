@@ -2146,3 +2146,17 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Tests:** **895 passing**, 2 skipped, 0 xfailed. Prose only.
 **Plan ref:** P§2.2, P§4.2, P§7.3, P§10.7, P§13.1.2, P§14.1, P Table 2/3, S§W11 Fri, S§W17 Thu; D-034, D-039, D-054, D-056, D-068, D-092, D-100, D-101, D-115, D-118, D-121, D-125, D-126, D-127, DEV-009, DEV-010, DEV-012, Q-012. Sol's delta-61 review.
 **Reviewed by Sol:** **not yet — delta 62 returns the corrected spec, the prose diffs and the hashes.**
+
+---
+
+### D-129 · 2026-08-23 · Pre-delivery audit of the corrected spec — one misrepresentation of the certified balancer, fixed before delta 62 ships
+
+**Decision:** before delivering delta 62, I audited the just-corrected `docs/c005_c007_spec.md` against existing code and the sources — the discipline that has paid off repeatedly this session, and doubly warranted here because Sol had just found a conceptual error in this same document. **One real gap, fixed; everything else verified.**
+
+**The gap:** the spec's pipeline step 4 read *"the class balancer … balances and does no eligibility selection"* as a present-tense fact. The balancer **certified at D-119 does the opposite** — it accepts `ambiguous`/`undiagnosed` labels and excludes them internally (`excluded_undecidable`, `_decidable`). Sol's delta-61 requirement that the balancer *"must not silently combine eligibility selection with balancing"* therefore describes a **future change to a certified component**, not the current state. Stating it as current fact would leave an implementer unable to reconcile the spec with the certified balancer — the D-056 shape (a responsibility described in the wrong layer). Corrected: the spec now names the balancer's current internal exclusion explicitly and flags that moving eligibility to C-005's boundary is gated future implementation, not an accomplished fact.
+
+**Verified and clean:** the balancer really does export `CANONICAL_SPLITS = (train, validation, held_out)` and a public `assert_groups_do_not_span_splits` (the spec's two reuse claims hold); the design scale 240 groups / 125/115 / 150/150 matches §1; the ≥60 floor is stated on surviving observed-decidable units; the F1–F7 edits left `method_own_voice.md` at 17 intact sections with the plan-deviation attributions singular; and no bare *"mixed class"* survives where Sol required *"mixed intended class"*.
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed. Prose only; `constants.py` untouched.
+**Plan ref:** D-056, D-119, D-125, D-128; Sol's delta-61 requirement on eligibility.
+**Reviewed by Sol:** **not yet — delta 62 carries it.**

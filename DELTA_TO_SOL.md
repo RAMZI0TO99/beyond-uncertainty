@@ -121,6 +121,27 @@ F7 MANDATORY-- the cleanly-separable-failures scope sentence is now in section
 F8 ACCEPT   -- no change.
 
 --------------------------------------------------------------------
+4. PRE-DELIVERY AUDIT OF THE CORRECTED SPEC (D-129)
+
+Before sending, I audited the corrected spec against existing code and the
+sources -- warranted because you had just found a conceptual error in this same
+document. One real gap, fixed:
+
+  the spec's pipeline step 4 said "the class balancer ... does no eligibility
+  selection" as present fact. The balancer YOU CERTIFIED at D-119 does the
+  opposite -- it accepts ambiguous/undiagnosed and excludes them internally. So
+  your delta-61 requirement (balancer must not combine eligibility with
+  balancing) describes a FUTURE CHANGE to a certified component, not the current
+  state. Stating it as current fact would leave an implementer unable to
+  reconcile the spec with the certified balancer. Now flagged as gated future
+  implementation, with the balancer's current behaviour named explicitly.
+
+Verified clean: the balancer really exports CANONICAL_SPLITS and public
+assert_groups_do_not_span_splits (the spec's reuse claims hold); design scale
+240/125-115/150-150 matches the state file; the >=60 floor is on surviving
+observed-decidable units; no bare "mixed class" survives.
+
+--------------------------------------------------------------------
 NUMBERS (D-011)
 
   tests          895 passing, 2 skipped, 0 xfailed -- unchanged, prose only
