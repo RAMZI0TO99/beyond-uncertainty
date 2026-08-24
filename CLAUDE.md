@@ -340,9 +340,10 @@ failed is power. The unchanged **300-unit design continues** under a recorded
 power limitation, with **Direction C authorised**.
 
 **Expansion is refused, and the arithmetic matters — including its units.**
-Clearing five points needs **1,500–2,000 HELD-OUT** units — not total. Against
-60–80 held out of 300 that is **5,625–10,000 total units, 18.75×–33.3×**. That
-multiplier is a ratio of **unit counts** and carries no host, so it stands. **Do
+A **rough diagnostic extrapolation** suggests on the order of **1,500–2,000
+HELD-OUT** units — *not a computed sample-size requirement*, and not total
+units. Against 60–80 held out of 300 that is an approximate **5,625–10,000
+total, an 18.75×–33.3×** unit-count extrapolation carrying no host. **Do
 not convert it into hours and compare it against the 120-hour trigger** — I did,
 twice, writing "130–232 local wall-hours against a 120-hour trigger", which puts
 **local CPU wall-hours** against a **GPU-hour** trigger. The budget ground rests
@@ -451,11 +452,12 @@ allocation Sol ruled.
    and substantively accepted (D-128); its implementation is not authorised.
 3. **The plan/schedule `.docx` audit is COMPLETE** (D-126, accepted), its
    findings F1–F8 all ruled and applied (D-128) — it is **no longer** open work.
-4. **The base is `4e55291`** (certified through delta 63 / D-131, covering the
-   cumulative prose closeout D-126…D-130) and **delta 64 is open but empty** —
-   it stays empty until genuinely new work is explicitly authorised. Do not
-   infer a later base; D-043 exists because a challenged commit was nearly used
-   as one.
+4. **The base is `4e55291`** (certified through delta 63 / D-131) and **delta 64
+   carries one thing: a student-obligation progress report** — the student's
+   full methodology chapter draft, provenance disclosed (student-written,
+   AI-polished, D-132), audited 32/32 clean, **explain-and-defend walkthrough
+   pending, no ruling requested**. Do not infer a later base; D-043 exists
+   because a challenged commit was nearly used as one.
 5. **The exclusion-rate assumption is settled** — ratified by Sol as **DEV-012**,
    a **zero-inflation planning convention** of 0.00, never to be described as
    observed, estimated or pilot-derived. **S§W6 Monday checks batch 1 against
