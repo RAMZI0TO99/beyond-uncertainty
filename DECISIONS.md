@@ -2182,3 +2182,23 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Tests:** **895 passing**, 2 skipped, 0 xfailed.
 **Plan ref:** P§7.3, P§7.4, P§10.7, P§14.1, P§14.3, S§W17; D-014, D-119, D-125, D-126, D-128, D-129. Sol's delta-62 review.
 **Reviewed by Sol:** **not yet — delta 63 returns the corrections.**
+
+---
+
+### D-131 · 2026-08-23 · Sol CERTIFIED delta 63 — the cumulative prose closeout D-126…D-130 is certified, base advances to `4e55291`, and the D-120 allocation is fully closed on Claude's side
+
+**Decision:** Sol **certified delta 63** and, with it, **the cumulative prose work D-126 through D-130**. Digests verified before filing: delta `951f0a9a…`, bundle `5318432a…`, reviewed head `4e55291` — all match. **The certified base advances `c5c8e6f` → `4e55291e08396ffe4a903ae73b1390396675643b`; set `BASE=4e55291`, and do not infer any later commit** (Sol's words).
+
+**All five delta-63 corrections confirmed present:** plan_audit distinguishes the historical F7 proposal from D-128's governing disposition (F5 resolved, F7 mandatory and applied, nothing awaiting Sol); both methodology §13 headings attribute the remedy to the plan, repeated by the schedule; rewrite cards 13–16 carry the correct P§10.7 / P§14.1–14.3 / P§7.4+S§W17 / P§7.3 instructions; CLAUDE.md reflects the delta-63 state with the audit marked complete, implementation/W6+ closed, numbering consistent; and the *"Nothing ran"* imprecision is superseded through D-130.
+
+**The append-only handling is explicitly accepted.** Sol ruled: **do not edit the historical D-128 or §7 bodies** — D-130's statement governs (*"No experiment or data pipeline ran; only the existing test suite ran"*), and the superseded phrase is **allowed to remain inside the signed entries**; the cleanliness condition applies only to current governing prose. This ratifies the correction-via-new-entry choice made in D-130.
+
+**What is certified.** The plan/schedule audit and F1–F8 dispositions; the corrected C-005/C-007 prose specification, including the intended-class-vs-observed-label correction, the explicit future eligibility boundary with accurate disclosure of the D-119 balancer's current behaviour, and the confirmatory-only C-007 boundary; the methodology and rewrite-card corrections; the source-plan errata; and the operational-handoff corrections. **The C-005/C-007 document is certified as a prose specification only** — it authorises no implementation, executable tests, split seed, real labels, reserve use, recalibration, expansion, experiment execution or W6+ work.
+
+**The D-120 allocation is fully closed on Claude's side.** The remaining obligation is the student's and unchanged: **before any assisted methodology text enters the thesis, perform the independent rewrite pass, remove the interview/provenance apparatus, and retain only wording the student can personally explain and defend.**
+
+**Delta 64 opens empty** and stays empty until genuinely new work is explicitly authorised; **no bundle is required to record this certification** (Sol).
+
+**Tests:** **895 passing**, 2 skipped, 0 xfailed. No experiment or data pipeline ran; only the existing suite. Compute: none.
+**Plan ref:** D-014, D-119, D-120, D-125, D-126, D-127, D-128, D-129, D-130. Sol's certification of delta 63.
+**Reviewed by Sol:** **this IS Sol's certification.** Filed 2026-08-23.

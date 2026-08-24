@@ -111,7 +111,7 @@ test.**
 ```bash
 .venv/bin/python -m pytest -q                      # 895 passing, 2 skipped, 0 xfailed
 .venv/bin/python -m bu.experiments.enumerate_units # design matrix report
-BASE=c5c8e6f ./scripts/sol_bundle.sh              # bundle for Sol; c5c8e6f is CERTIFIED
+BASE=4e55291 ./scripts/sol_bundle.sh              # bundle for Sol; 4e55291 is CERTIFIED
 ```
 
 - venv is `--system-site-packages` (reuses CUDA torch); `pyproject.toml` pins all.
@@ -291,8 +291,8 @@ Gate 2's date is 2026-10-24, and gates never move.*
 
 **Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
 AND CERTIFIED** (D-120, 2026-08-23). **No week is open** — the first time since
-Week 3. The certified base is **`c5c8e6f`**; Sol named that exact commit
-(D-125) and said a later one **must not be inferred**.
+Week 3. The certified base is **`4e55291`**; Sol certified delta 63 (D-131)
+and named that exact commit, and said a later one **must not be inferred**.
 
 **The prose closeout is CERTIFIED** (D-125): D-121 … D-124, with four documents
 accepted **in stated roles**. `docs/method_own_voice.md` is a **student-confirmed
@@ -451,9 +451,11 @@ allocation Sol ruled.
    and substantively accepted (D-128); its implementation is not authorised.
 3. **The plan/schedule `.docx` audit is COMPLETE** (D-126, accepted), its
    findings F1–F8 all ruled and applied (D-128) — it is **no longer** open work.
-4. **The base is `c5c8e6f`** (certified through delta 60 / D-125) and **delta 63
-   accumulates the current corrections**. Do not infer a later base; D-043
-   exists because a challenged commit was nearly used as one.
+4. **The base is `4e55291`** (certified through delta 63 / D-131, covering the
+   cumulative prose closeout D-126…D-130) and **delta 64 is open but empty** —
+   it stays empty until genuinely new work is explicitly authorised. Do not
+   infer a later base; D-043 exists because a challenged commit was nearly used
+   as one.
 5. **The exclusion-rate assumption is settled** — ratified by Sol as **DEV-012**,
    a **zero-inflation planning convention** of 0.00, never to be described as
    observed, estimated or pilot-derived. **S§W6 Monday checks batch 1 against
