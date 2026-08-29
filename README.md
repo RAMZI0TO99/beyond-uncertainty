@@ -102,7 +102,7 @@ written.
 ```
 src/bu/
   constants.py    preregistered values; one file, deliberately
-  config.py       Config / UnitSpec / Arm and the three identities
+  config.py       Config / UnitSpec / Arm and the four identities
   runrecord.py    provenance: config, seed, git commit, dirty flag, packages
   metrics.py      JSONL logging and load_runs()
   streams.py      named RNG streams: env / policy / bootstrap / init / batch
@@ -111,6 +111,9 @@ src/bu/
   stats/          trend test, acceptance test                     (Weeks 4–5)
   critic/         diagnosis critic and baselines                  (Weeks 11–12)
   experiments/    the 300-unit design matrix and drivers
-runs/             run outputs — gitignored, regenerable
+runs/             run outputs — gitignored by default; every file a tracked
+                  evidence record attests by digest (runs/w4_gate,
+                  runs/w4_threshold, …) is itself deliberately tracked, so
+                  certified verdicts verify from a fresh clone (D-103, D-104)
 figures/          all regenerated from logs — gitignored
 ```

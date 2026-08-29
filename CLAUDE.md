@@ -129,7 +129,7 @@ BASE=4e55291 ./scripts/sol_bundle.sh              # bundle for Sol; 4e55291 is C
 ```
 src/bu/
   constants.py   the preregistration, in one file, deliberately
-  config.py      UnitSpec / Arm / Config; the three identities; stage registry
+  config.py      UnitSpec / Arm / Config; the four identities; stage registry
   runrecord.py   provenance: config, seed, commit, dirty flag, package versions
   metrics.py     JSONL logging (flushed per line) + load_runs()
   critic/schema.py  frozen critic feature whitelist; fails closed
@@ -160,9 +160,9 @@ src/bu/
                     A wrapper over trend_test, never a second implementation
                     (D-070 … D-073). `select_attempt()` refuses to guess
   stats/acceptance.py  the repair acceptance test (P§7.3) and its permutation
-                    null. Three conditions, all required; episode-mean fallback
-                    is a labelled different method; permutes whole runs, never
-                    transitions (D-079)
+                    null. Three conditions, all required; no fallback — fails
+                    closed rather than degrading to a second method (D-094,
+                    D-100); permutes whole runs, never transitions (D-079)
   stats/mde.py      the W5 MDE simulation. Reproduces the ACTUAL estimator --
                     unit-weighted balanced accuracy over correlated groups,
                     paired, group-bootstrap interval. Deliberately exports NO
@@ -283,8 +283,8 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ## Where the project stands
 
-*Last session: **2026-08-22**. Week 1 Monday was 2026-08-17, so by the calendar
-it is **Week 1 Saturday** — the project runs roughly **4 weeks ahead** (DEV-002).
+*Last session: **2026-08-23**. Week 1 Monday was 2026-08-17, so by the calendar
+it is **Week 2 Saturday** — the project runs roughly **3 weeks ahead** (DEV-002).
 Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
@@ -327,8 +327,9 @@ registered construction and takes no threshold.
 
 **W4 Friday's timing is COMPLETE and attempt-003 is CERTIFIED** (D-119). Sol
 verified the record itself — recomputing from the raw repetitions — and ruled it
-complete under DEV-011. **No fourth timing attempt is required.** **W5 is open
-for one micro-closeout**, returned as **delta 56**, which is undelivered.
+complete under DEV-011. **No fourth timing attempt is required.** The W5
+micro-closeout went back as delta 56, which Sol **certified** (D-120,
+2026-08-23) — **Weeks 4 and 5 are complete; no week is open.**
 
 **Gate 1 = FAIL** (D-098), on the five-point MDE. Reliability PASS, permutation
 calibration PASS. **Condition 2 (compute) is NOT ADJUDICABLE across hosts — it
@@ -497,13 +498,16 @@ labelled data. The balancer is synthetic-inputs-only until C-005 exists.
   (D-107) and certified it (D-109) on 2026-08-22 after independently verifying
   135 digests and recomputing the percentile to a binary-identical float. This
   bullet described delta 50 as carrying "the only live blocker" for several
-  sessions after that was false — **the live delta is 56**. Deltas 39–55 are all
-  answered (D-089, D-100 … D-102, D-106, D-111, D-118, D-119).
+  sessions after that was false, then said the live delta was 56 after that too
+  had been certified (D-120) — **the live undelivered delta is 64** (D-132).
+  Deltas 39–63 are all answered or certified (D-089, D-100 … D-102, D-106,
+  D-111, D-118 … D-120, D-125, D-131).
 - **W4 Friday has run** (D-103) and **will not be rerun** — the threshold has
   been inspected, so Sol's invalidation protocol can no longer be satisfied. The
-  number is calibrated but **not frozen**: promotion into `constants.py` is the
-  outstanding D-035 Change Record. Freezing it remains the most irreversible act
-  in the project so far.
+  number is **frozen and certified**: the D-035 promotion into `constants.py`
+  was executed as the D-107 Change Record and certified by Sol (D-109) —
+  nothing about the threshold is outstanding. Freezing it was the most
+  irreversible act in the project so far, and it is done.
 - **Numbers taken before D-051/D-052 are void.** D-020's coverage evidence and
   the Q-011 disagreement measurements were both taken under the non-stationary
   policy and the derived split. Re-measure; do not quote them.
