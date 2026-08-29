@@ -1,0 +1,198 @@
+diff --git a/src/bu/config.py b/src/bu/config.py
+index 3154507..c71d007 100644
+--- a/src/bu/config.py
++++ b/src/bu/config.py
+@@ -252,13 +252,17 @@ class Arm:
+ 
+ @dataclass(frozen=True)
+ class TrainConfig:
+-    """Optimisation and ensemble settings. Not part of the unit identity."""
++    """Optimisation and ensemble settings. Not part of the unit identity.
++
++    ``val_fraction`` was removed in the W3 audit (W3-5): the validation pool is
++    generated independently (D-052) and nothing had referenced the field since.
++    A knob that does nothing still tells a reader that a split happens here.
++    """
+ 
+     lr: float = 1e-3
+     batch_size: int = 128
+     max_epochs: int = 500
+     patience: int = 20
+-    val_fraction: float = 0.2
+     ensemble_size: int = K.DEFAULT_ENSEMBLE_SIZE
+     bootstrap_ratio: float = 1.0
+ 
+diff --git a/src/bu/experiments/w3_pilot.py b/src/bu/experiments/w3_pilot.py
+index 1b05aed..0ccd56c 100644
+--- a/src/bu/experiments/w3_pilot.py
++++ b/src/bu/experiments/w3_pilot.py
+@@ -29,13 +29,14 @@ import numpy as np
+ import torch
+ 
+ from .. import constants as K
+-from ..config import TrainConfig, UnitSpec
++from ..config import Config, TrainConfig, UnitSpec
++from ..metrics import RunLogger
+ from ..env.collect import collect_pools
+ from ..models.ensemble import train_ensemble
+ from ..models.uncertainty import (
+     UncertaintySummary, across_seeds, per_transition_table, spread_diagnostic, summarise,
+ )
+-from ..models.world_model import activation_report, primary_error
++from ..models.world_model import activation_report
+ 
+ #: One configuration, as the schedule specifies. The reference configuration
+ #: (D-025), so the pilot looks at the conditions the ladder will later validate.
+@@ -89,9 +90,16 @@ def run(
+                 hidden_size=hidden_size,
+             )
+             pools = collect_pools(unit, stage="exp1", seed=seed)
+-            ensemble = train_ensemble(
+-                unit, pools, TrainConfig(), stage="exp1", seed=seed
+-            )
++            # Through RunLogger, so the run record carries the commit, the dirty
++            # flag, the package versions and the seed partition (W3-2). P§13.7
++            # requires every figure to be regenerable from logs *with* the
++            # provenance that explains them; the first version of this pilot
++            # wrote bare JSON and had none of it.
++            config = Config(unit=unit, seed=seed, stage="exp1")
++            with RunLogger.start(config, root=out / "records") as logger:
++                ensemble = train_ensemble(
++                    unit, pools, TrainConfig(), stage="exp1", seed=seed, logger=logger
++                )
+ 
+             obs = torch.as_tensor(pools.evaluation.obs)
+             action = torch.as_tensor(pools.evaluation.action)
+@@ -106,7 +114,25 @@ def run(
+ 
+             summary = summarise(members, targets, n_transitions=n, seed=seed)
+             spread = spread_diagnostic(members, targets)
+-            report = activation_report(ensemble.members[0], obs, action, next_obs)
++            # Across every member, not member 0 (W3-3). D-047's conditional is
++            # about the detached head in general, and one member of five could
++            # be the best or the worst of them.
++            reports = [
++                activation_report(model, obs, action, next_obs)
++                for model in ensemble.members
++            ]
++            report = {
++                "n_interact": reports[0].n_interact,
++                "n_changed": reports[0].n_changed,
++                "copy_baseline_interact": reports[0].copy_baseline_interact,
++                "error_interact_per_member": [r.error_interact for r in reports],
++                "error_changed_per_member": [r.error_changed for r in reports],
++                "error_interact_mean": float(np.mean([r.error_interact for r in reports])),
++                "beats_copy_baseline": bool(
++                    np.mean([r.error_interact for r in reports])
++                    < reports[0].copy_baseline_interact
++                ),
++            }
+ 
+             # The schedule requires PER-TRANSITION export; summaries are derived
+             # from it, never the other way round (D-059).
+@@ -123,7 +149,7 @@ def run(
+                     seed=seed,
+                     uncertainty=summary.as_row(),
+                     val_position_errors=list(ensemble.val_position_errors),
+-                    activation=asdict(report),
++                    activation=report,
+                     spread=spread.as_row(),
+                     epochs=[r.epochs_run for r in ensemble.results],
+                 )
+diff --git a/src/bu/models/ensemble.py b/src/bu/models/ensemble.py
+index 1ce6cad..5c7e197 100644
+--- a/src/bu/models/ensemble.py
++++ b/src/bu/models/ensemble.py
+@@ -169,9 +169,20 @@ class Ensemble:
+         """
+         outputs = []
+         for model in self.members:
++            was_training = model.training
+             model.eval()
+-            with torch.no_grad():
+-                position, _ = model(obs, action)
++            try:
++                with torch.no_grad():
++                    position, _ = model(obs, action)
++            finally:
++                # Restore, rather than leaving every member in eval mode
++                # (W3-4). Inert for this MLP, but P§9.3 plans **MC-dropout** as
++                # the reliability-gate fallback B2 -- "dropout at test time".
++                # Under that estimator a model silently left in eval mode
++                # returns deterministic predictions with **zero disagreement**,
++                # which would read as "MC-dropout also fails H1" and trigger a
++                # false pivot at exactly the gate the fallback exists for.
++                model.train(was_training)
+             outputs.append(position)
+         return torch.stack(outputs)
+ 
+diff --git a/src/bu/models/train.py b/src/bu/models/train.py
+index b56a7e2..dd83ac5 100644
+--- a/src/bu/models/train.py
++++ b/src/bu/models/train.py
+@@ -133,6 +133,18 @@ def train(
+     v_action = torch.as_tensor(validation.action)
+     v_next = torch.as_tensor(validation.next_obs)
+ 
++    if train_index is not None:
++        index = np.asarray(train_index)
++        # Torch wraps negative indices silently, so a resample that produced
++        # one would train on the wrong rows and surface, if at all, as an
++        # unrelated error much later (W3-6).
++        if index.size and (index.min() < 0 or index.max() >= len(train_data)):
++            raise ValueError(
++                f"train_index runs [{index.min()}, {index.max()}] but the "
++                f"training pool has {len(train_data)} rows. Negative indices "
++                "wrap silently in torch rather than raising, so this is checked "
++                "here."
++            )
+     train_idx = torch.as_tensor(
+         np.arange(len(train_data)) if train_index is None else train_index,
+         dtype=torch.long,
+diff --git a/src/bu/models/uncertainty.py b/src/bu/models/uncertainty.py
+index 41af9a7..32611b5 100644
+--- a/src/bu/models/uncertainty.py
++++ b/src/bu/models/uncertainty.py
+@@ -134,13 +134,24 @@ def summarise(
+     *,
+     n_transitions: int,
+     seed: int,
++    scale: torch.Tensor | None = None,
+ ) -> UncertaintySummary:
+     """Per-seed summary. The division happens **here**, before any pooling.
+ 
+     Pooling across seeds and then dividing would be a different statistic, and
+     Plan §10.3 names this one.
++
++    ``scale`` should be the **evaluation pool's** per-dimension scale, passed in
++    explicitly whenever ``targets`` is a *subset* of that pool (W3-1). P§10.3
++    requires per-dimension normalised error but does not say which set defines
++    the normalisation, and recomputing it from the subset makes the units move
++    with the subset: measured on one condition, the scale is [0.229, 0.224] over
++    the full evaluation pool and [0.357, 0.357] over the worst 1% of it — a 55%
++    shift. The ratio is invariant to this because numerator and denominator
++    share the scale, but P§10.2's primary *error* is not, and the Week 4 Friday
++    failure set is exactly such a subset.
+     """
+-    scale = per_dimension_scale(targets)
++    scale = per_dimension_scale(targets) if scale is None else scale
+     ensemble_mean = members.mean(dim=0)
+ 
+     error = normalised_error(ensemble_mean, targets, scale)
+@@ -215,6 +226,7 @@ def per_transition_table(
+     *,
+     episode: np.ndarray,
+     step: np.ndarray,
++    scale: torch.Tensor | None = None,
+ ) -> dict[str, np.ndarray]:
+     """The per-transition export the schedule requires (D-059).
+ 
+@@ -224,7 +236,7 @@ def per_transition_table(
+     independent regeneration of the registered H2 endpoint are all impossible
+     after the fact.
+     """
+-    scale = per_dimension_scale(targets)
++    scale = per_dimension_scale(targets) if scale is None else scale
+     return {
+         "episode": np.asarray(episode),
+         "step": np.asarray(step),
