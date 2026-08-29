@@ -56,7 +56,7 @@ from ..models.uncertainty import NormalisationScale, ScaledEvaluation, normalise
 from ..models.world_model import MOVEMENT_ACTIONS
 from ..runrecord import git_state
 from ..streams import is_confirmatory
-from .enumerate_units import execution_plan
+from .enumerate_units import design_units, execution_plan
 from .repair import ArmEvaluation, REPAIR_ENSEMBLE_SIZE, REPAIR_STAGE
 from ..stats.gate import METRIC_SCHEMA_VERSION
 from .w4_gate import _pin_threading, torch_threading
@@ -88,12 +88,17 @@ CONFIRMATORY_INTEROP_THREADS = 4
 def _registered_obligations() -> frozenset:
     """Every (unit, arm, stage, seed-index) the design actually registers.
 
-    Built from `execution_plan()`, which is the artefact the compute estimate is
-    taken over -- so "registered" here means the same thing it means in the
-    budget, rather than a second opinion about what the design contains.
+    Built from `execution_plan(design_units())` -- the registered 300-unit
+    design, the artefact the compute estimate (D-033) and the certified timing
+    harness (D-119) are taken over -- so "registered" here means the same thing
+    it means in the budget. The argument is load-bearing: `execution_plan()`
+    with no argument defaults to `full_matrix()`, the ~531-unit POOL the design
+    draws on ("the pool, not the plan"), and a guard built from the pool
+    accepted confirmatory fits on the 231 sweep units the design leaves out
+    (D-133).
     """
     out = set()
-    for fit in execution_plan():
+    for fit in execution_plan(design_units()):
         unit_id = Config(unit=fit.unit).unit_id
         for role in fit.roles:
             out.add((unit_id, fit.arm, role, fit.seed))

@@ -32,13 +32,17 @@ def registered_unit():
 
     The refusal tests can use any spec because they never reach a fit, but a real
     run has to discharge a real obligation now -- `assert_registered_obligation`
-    refuses anything the execution plan does not contain. This is the n=100
-    estimation/uniform/shape condition, which carries both `exp1` and
+    refuses anything the design's execution plan does not contain. Derived from
+    `execution_plan(design_units())`, the same artefact the guard reads (D-133):
+    the no-arg plan is the POOL, and this helper previously found the right unit
+    only because `full_matrix()` happens to enumerate the reference
+    configuration first -- a property standing on an accident (D-055). This is
+    the n=100 estimation/uniform/shape condition, which carries both `exp1` and
     `repair_validation` roles at seed index 0.
     """
-    from bu.experiments.enumerate_units import execution_plan
+    from bu.experiments.enumerate_units import design_units, execution_plan
 
-    for fit in execution_plan():
+    for fit in execution_plan(design_units()):
         if fit.arm == "baseline" and fit.seed == 0 and fit.unit.n_transitions == 100:
             return fit.unit
     raise AssertionError("no cheap registered baseline obligation found")
@@ -239,6 +243,55 @@ def test_a_seed_beyond_the_registered_count_is_refused():
     with pytest.raises(ValueError, match="not a registered obligation"):
         C.assert_registered_obligation(
             registered_unit(), arm="baseline", stage="exp1", seed=CONF + n
+        )
+
+
+def test_a_pool_only_sweep_unit_is_refused():
+    """The registry must be built from the design, not from the pool.
+
+    `full_matrix()` is the ~531-unit pool the design draws on; `design_units()`
+    is the registered 300 ("this matrix is the pool, not the plan"). A
+    confirmatory fit on a pool-only unit discharges no registered obligation,
+    yet all 231 were accepted while `_registered_obligations()` was built from
+    the no-arg `execution_plan()`, which defaults to the pool (D-133).
+
+    Stated over EVERY pool-only unit rather than one example: which units the
+    round-robin sweep leaves out is an accident of the draw, and a single named
+    unit's pool-only-ness would stand on that accident (D-055). Pure set
+    membership -- nothing here trains, collects, or fits.
+    """
+    from bu.config import Config
+    from bu.experiments.enumerate_units import design_units, full_matrix
+
+    registered = {Config(unit=u).unit_id for u in design_units()}
+    pool_only = [u for u in full_matrix()
+                 if Config(unit=u).unit_id not in registered]
+    assert pool_only, "the pool no longer exceeds the design; this test is vacuous"
+    for unit in pool_only:
+        with pytest.raises(ValueError, match="not a registered obligation"):
+            C.assert_registered_obligation(
+                unit, arm="baseline", stage="config_sweep", seed=CONF
+            )
+
+
+def test_every_design_sweep_unit_remains_registered():
+    """The complement: narrowing pool -> design must not overshoot to canonical-only.
+
+    Every non-canonical unit the design registers carries a `config_sweep`
+    baseline obligation, and the guard must accept it at seed index 0. Guards
+    the fix's other side: a registry built from `canonical_units()` (or any
+    subset of the design) would fail here while still passing the refusal test.
+    """
+    from bu.config import Config
+    from bu.experiments.enumerate_units import canonical_units, design_units
+
+    canonical = {Config(unit=u).unit_id for u in canonical_units()}
+    sweep = [u for u in design_units()
+             if Config(unit=u).unit_id not in canonical]
+    assert sweep, "expected non-canonical units in the design"
+    for unit in sweep:
+        C.assert_registered_obligation(
+            unit, arm="baseline", stage="config_sweep", seed=CONF
         )
 
 
