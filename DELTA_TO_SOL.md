@@ -32,12 +32,15 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_ID 64 (D-008).
+> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 64 and 65 (D-008). Delta 64 (the
+> student-chapter report) is unchanged below; delta 65 (the 2026-08-29
+> student-authorised session) is appended after it. Deliver both together.
 >
 > COVERS SESSIONS:
 > - 2026-08-23 (delta-63 certification) · The whole prose closeout is CERTIFIED; base → `4e55291`
 > - 2026-08-23 (student chapter) · The first full methodology chapter arrives; provenance disclosed
 > - 2026-08-23 (session close) · End-of-session audit; three stale claims fixed; everything committed
+> - 2026-08-29 (student-authorised session) · Sol out of the loop by the student's direction; D-133 guard defect fixed; C-005/C-007 built; thirteen stale claims fixed
 
 ```
 === UPDATE FOR SOL ===
@@ -106,6 +109,124 @@ NUMBERS (D-011)
   base           4e55291 (certified, D-131)
   built          the STUDENT's chapter draft (assisted; provenance disclosed);
                  Claude built nothing and requests no ruling
+
+=== END UPDATE ===
+```
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 65
+PREVIOUS_DELTA_ID: 64
+DATE: 2026-08-29
+BUNDLE_FILE: session_2026-08-29.patchseries (git format-patch, attached) +
+             SOL_BUNDLE.txt to be generated on the REAL repository after the
+             student applies the patches -- see PROVENANCE CAVEAT
+SUBJECT: A student-authorised session ran WITHOUT your pre-approval (DEV-013):
+         a real defect in C-008's obligation guard found and fixed (D-133),
+         C-005/C-007 implemented from your certified spec (D-134/D-135),
+         thirteen verified stale-prose claims fixed (D-136), all on a git-less
+         snapshot with a reconstructed environment (D-137). Nothing consumed
+         data, labels, seeds or reserve; everything is reversible and awaits
+         your ruling.
+
+READ FIRST -- GOVERNANCE. The student directed: "work without Sol for now ...
+we will report to sol everything in the end of this session." That overrides,
+for one session and on the owner's authority, the D-120/Q-012 allocation under
+which nothing was authorised to be built. It is recorded as DEV-013 -- and as
+a hit against the Q-001/D-001 tripwire -- not presented as compliant. You may
+rule any part void; every change is an isolated commit and reverts cleanly.
+
+PROVENANCE CAVEAT (D-137). The working copy is a dotfile-stripped export --
+no .git, no .venv. Your certified base 4e55291 exists in no local history, so
+BASE-anchored bundling was impossible here. Instead: a local baseline commit
+(ff18c9e) captures the snapshot exactly as received; every change is a commit
+on top; the session exports as a patch series the student applies to the real
+repository, where the tree must come back clean before SOL_BUNDLE.txt is
+generated against BASE=4e55291 as usual. The pinned environment was rebuilt
+from pyproject.toml (all eight pins + pytest exact; deviations: Python 3.13.5
+vs the repo's 3.12, CPU-only torch so three CUDA tests skip here). Four
+evidence-tracking tests failed on Windows path separators with the evidence
+fully tracked (458 files); fixed with as_posix() (D-028's class).
+
+1. THE DEFECT (D-133). _registered_obligations() in confirmatory.py was built
+from the no-arg execution_plan(), which defaults to full_matrix() -- the
+531-unit POOL -- not design_units(), the registered 300. Measured: all 231
+pool-only sweep units were ACCEPTED as registered obligations at confirmatory
+seed 1000. No such fit was ever run. Fix: execution_plan(design_units()),
+the same call w4_timing makes. Shrink-only, verified: registry 4,675 -> 3,022
+keys, new set a subset of the old. Two property tests bracket it: all 231
+pool-only units refused (shown failing before the fix), all 225 design sweep
+units still accepted. RAISED FOR YOU: execution_plan's fail-open default has
+now bitten a guard once and needed the explicit argument three times; should
+the default go?
+
+2. C-005 / C-007 IMPLEMENTED (D-134/D-135) from the spec you accepted at
+D-130 and certified at D-131, student-authorised ahead of the W6-W11 slot.
+Four new files only: src/bu/critic/split.py (833 lines), loading.py (372),
+tests/test_critic_split.py (754), tests/test_critic_loading.py (401) -- 92
+property tests. balance.py, schema.py, metrics.py, constants.py UNTOUCHED.
+Key properties, each with a test you can run: whole-group assignment (D-039)
+fed unmodified into the certified balancer's assert_groups_do_not_span_splits;
+mixed-INTENDED-class groups refused, mixed OBSERVED labels accepted (D-128);
+the four ordered steps separate -- the certified balancer simply receives
+only observed 0/1 along the splitter path (excluded_undecidable pins to []
+end-to-end); deterministic constrained allocator, blake2b tie-break only,
+determinism proven across interpreters under two PYTHONHASHSEEDs; fail-closed
+with exact shortfalls; SPLIT_SCHEMA_VERSION 1 manifest recording both class
+concepts, every count recomputable from mapping + inputs (D-072). C-007: the
+confirmatory requirement is a property of the loading boundary -- the flag is
+a body literal, the parameter does not exist; a separate development path
+dead-ends before the critic; consumers come from an authoritative registry
+and an unregistered loader fails the coverage test; missing stage/seed
+metadata fails closed. NOT created: CRITIC_SPLIT_SEED and the registered
+numeric targets -- your spec names both as Change-Record-gated, so the
+splitter fails closed where they would be needed and tests inject synthetic
+values as fixtures.
+
+OPEN QUESTIONS FOR YOUR RULING (full list in D-134/D-135):
+  a. Is fixture injection of a synthetic split seed acceptable until the real
+     Change Record lands (the public API exposes no seed)?
+  b. The allocator is a registered, frozen, deterministic procedure that can
+     conservatively refuse a feasible instance (refusals distinguish provable
+     aggregate infeasibility from procedure fixpoint). Acceptable under
+     fail-closed discipline, or do you require a complete search?
+  c. The boundary refuses stage='pilot' even at confirmatory seeds (two-roads
+     reading; the spec's letter gates on seeds and metadata). Wanted, or
+     overreach?
+  d. Groups with zero decidable units are placed deterministically by
+     tie-break and reported, not balanced. Sufficient?
+  e. The coverage scanner tokenizes call sites rather than raw substrings
+     (frozen schema.py mentions load_runs() in prose); empty loads and empty
+     wrappers are refused beyond the spec's listed refusals. Both fine?
+
+3. PROSE (D-136). Thirteen verified stale claims fixed across README ("runs/
+gitignored, regenerable" -- the inverse of the evidence contract), CLAUDE.md
+(threshold "calibrated but not frozen" -- false since D-107/D-109; the dead
+acceptance fallback; the stale dateline and delta pointers), PROJECT_STATE
+sections 1 and 6, config.py's header (the four identities). Section 1's
+Gate-1 paragraph also corrected in rewrite from "Compute PASS, contingent" to
+NOT ADJUDICABLE per your D-119 ruling. Every edit cites its controlling
+D-number; append-only sections untouched.
+
+4. WHAT DID NOT HAPPEN. No real data, no labels, no reserve, no confirmatory
+execution, no threshold action, no constants.py change, no expansion, no
+recalibration. The MDE/Gate-1 record is untouched. The student's walkthrough
+obligation (delta 64, unchanged above) remains open.
+
+--------------------------------------------------------------------
+NUMBERS (D-011)
+
+  tests          987 passing, 4 skipped, 0 xfailed on the snapshot host
+                 (was 895/2: +92 new C-005/C-007 tests; +2 skips are CUDA
+                 tests on this CPU-only torch; 4 Windows path failures fixed)
+  ran            the test suite only; no experiment or data pipeline
+  compute        none (CPU test fixtures only)
+  base           4e55291 remains your certified base (D-131) -- NOT advanced;
+                 local snapshot baseline ff18c9e, 7 session commits, patch
+                 series attached; the HEAD is the commit carrying this delta
+  built          D-133 guard fix; C-005 splitter; C-007 boundary; D-136 prose
+                 fixes; D-137 environment reconstruction; D-133..D-137 +
+                 DEV-013 filed
 
 === END UPDATE ===
 ```

@@ -289,6 +289,19 @@ Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
 
+**2026-08-29 UPDATE (read D-133 … D-137 and DEV-013 before trusting anything
+below):** a student-authorised session ran **without Sol pre-approval** on a
+**git-less snapshot** of the repo (local baseline `ff18c9e`, patch series
+exported — this copy's history is NOT the remote's). It fixed a real defect in
+the confirmatory obligation guard (D-133), **implemented C-005/C-007** from the
+certified spec (D-134/D-135 — so "nothing is authorised to be built" below is
+now historical; the implementations await Sol's ruling), fixed thirteen stale
+prose claims (D-136), and rebuilt the environment (D-137: Python 3.13.5,
+CPU-only torch, tests **987 passing / 4 skipped** here). **Deltas 64 AND 65 are
+both undelivered.** The split-seed Change Record was deliberately NOT created;
+`constants.py` is untouched. Standing prohibitions on data, labels, reserve,
+threshold and expansion are unchanged.
+
 **Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
 AND CERTIFIED** (D-120, 2026-08-23). **No week is open** — the first time since
 Week 3. The certified base is **`4e55291`**; Sol certified delta 63 (D-131)
