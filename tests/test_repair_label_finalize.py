@@ -24,16 +24,21 @@ FINALIZER_COMMIT = "b" * 40
 
 @pytest.fixture
 def correction_boundary(tmp_path, monkeypatch):
-    output = tmp_path / "output"
-    sync = tmp_path / "sync"
+    output = tmp_path / "attempt-output"
+    sync = tmp_path / "historical-sync"
     staging = tmp_path / "staging"
     preflight_root = tmp_path / "preflight"
-    for path in (output, sync, staging, preflight_root):
+    project_evidence = tmp_path / "attempt-project-evidence"
+    for path in (output, sync, staging, preflight_root, project_evidence):
         path.mkdir()
     sync_directory = sync / PF.REPAIR_LABEL_SYNC_DIRECTORY
     sync_directory.mkdir()
     preflight = preflight_root / PF.REPAIR_LABEL_PREFLIGHT_FILE
     preflight.write_text("{}\n", encoding="utf-8")
+    plan = output / R.REPAIR_LABEL_PLAN_FILE
+    plan.write_text("{}\n", encoding="utf-8")
+    canary = preflight_root / "preflight_sync_canary.json"
+    canary.write_text("{}\n", encoding="utf-8")
     validated = L.ValidatedRepairLabelPreflight(
         report_path=preflight,
         report_sha256="c" * 64,
@@ -42,12 +47,12 @@ def correction_boundary(tmp_path, monkeypatch):
         staging_root=staging.resolve(),
         sync_root=sync.resolve(),
         sync_directory=sync_directory.resolve(),
-        report={},
+        report={"sync_canary": {"source_path": str(canary)}},
     )
 
     monkeypatch.setattr(
-        L,
-        "_validate_repair_label_preflight",
+        F,
+        "_validate_original_preflight_read_only",
         lambda *args, **kwargs: validated,
     )
     monkeypatch.setattr(
@@ -100,6 +105,7 @@ def correction_boundary(tmp_path, monkeypatch):
     return SimpleNamespace(
         output=output,
         sync=sync,
+        project_evidence=project_evidence,
         preflight=preflight,
         planned=planned,
         loads=loads,
@@ -111,7 +117,6 @@ def _finalize(boundary):
     return F.finalize_existing_repair_label_smoke(
         preflight_report=boundary.preflight,
         output_root=boundary.output,
-        sync_root=boundary.sync,
     )
 
 
@@ -126,13 +131,15 @@ def test_correction_finalizer_reuses_exactly_sixty_original_commit_fits(
     assert report["executed_fits"] == 0
     assert report["retrained_fits"] == 0
     assert report["verified_existing_fits"] == 60
-    assert report["synced_fits"] == 60
+    assert report["project_copied_fits"] == 60
     assert report["preflight"]["fit_commit"] == FIT_COMMIT
     assert report["finalizer"]["commit"] == FINALIZER_COMMIT
-    assert report["correction_record"] == "D-147"
+    assert report["correction_records"] == ["D-147", "D-148"]
+    assert report["historical_sync"]["mode"] == "read_only"
+    assert Path(report["project_evidence"]["root"]) == correction_boundary.project_evidence
     assert report["counts"]["values"]["attempted"] == 1
     assert Path(report["report"]["path"]).is_file()
-    assert Path(report["report"]["sync"]["destination_path"]).is_file()
+    assert Path(report["report"]["copy"]["destination_path"]).is_file()
 
 
 def test_correction_finalizer_has_no_fit_or_process_boundary():

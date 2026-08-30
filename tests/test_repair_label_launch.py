@@ -18,6 +18,7 @@ import pytest
 import torch
 
 from bu.config import Arm
+from bu.experiments import repair_label_finalize as Finalize
 from bu.experiments import repair_label_launch as L
 from bu.experiments import repair_label_preflight as PF
 from bu.experiments import repair_label_run as R
@@ -218,6 +219,38 @@ def test_only_private_correction_validation_accepts_a_clean_new_commit(
         require_current_commit=False,
     )
     assert validated.git_commit == COMMIT
+
+
+def test_project_finalizer_validates_historical_sync_strictly_read_only(
+    ready_report, roots, environment, monkeypatch
+):
+    _old_state, versions, pins = environment()
+    before = {
+        path.relative_to(roots["sync"]): (
+            path.stat().st_mtime_ns,
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+        )
+        for path in roots["sync"].rglob("*")
+        if path.is_file()
+    }
+
+    def corrected_environment():
+        return GitState("d" * 40, False, "main"), versions, pins
+
+    monkeypatch.setattr(Finalize.P, "_verify_environment", corrected_environment)
+    validated = Finalize._validate_original_preflight_read_only(
+        ready_report, output_root=roots["output"]
+    )
+    after = {
+        path.relative_to(roots["sync"]): (
+            path.stat().st_mtime_ns,
+            hashlib.sha256(path.read_bytes()).hexdigest(),
+        )
+        for path in roots["sync"].rglob("*")
+        if path.is_file()
+    }
+    assert validated.git_commit == COMMIT
+    assert after == before
 
 
 def test_launch_executes_exact_order_binds_commit_syncs_each_and_counts_only(
