@@ -327,9 +327,9 @@ NUMBERS (D-011)
 DELTA_ID: 67
 PREVIOUS_DELTA_ID: 66
 DATE: 2026-08-30
-BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0011) +
+BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0012) +
              SOL_BUNDLE.txt generated in the REAL repository after application
-SUBJECT: D-141..D-148 / DEV-015..017 — Week-6 software integrated and audited;
+SUBJECT: D-141..D-149 / DEV-015..017 — Week-6 software integrated and audited;
          owner-authorised frozen-CPU execution opened before external review.
 GOVERNANCE. The student designated the active Codex implementation agent
 "Sol2", asked it to work with you instead of the historical local labels
@@ -358,35 +358,30 @@ recovery refuses. The exact 60-fit smoke now has its own no-compute preflight,
 fresh timed processes, lease/staging/incremental sync and label plus four counts
 only—Week-8 exclusion analysis stays closed. Experiment 1 writes matching
 local/durable start evidence and has a strict non-scientific partial monitor.
-4. SCHEDULE CORRECTION (D-144). The 173/300 units without a registered model
-repair are a Week-7+/whole-design question, not a blocker to the registered
-Week-6 smoke unit or baseline Experiment 1. Eight of fifteen canonical repair
-units have exactly one registered model repair; seven still have none. The
-30/150 multi-role Experiment-1 fits are now represented once. Exclusion-rate
-comparison is Week 8, not Week 6. The substantive DEV-012 planning convention
-remains 0.00; no observed exclusion rate exists. Canonical 20-seed repair
-validation launches Week 9 even though its persisted label definition is now
-implemented.
-5. FIREWALL / OPEN BOUNDARY. The physical X/y/groups critic boundary exposes
-only allowlisted X. C-007 now reaches persisted fit-to-label evidence, but the
-final label-to-critic SplitCandidate bridge remains absent. The splitter and
-balancer remain synthetic-inputs-only until registered parameters and use are
-authorised.
-6. EXECUTION / FAIL-CLOSED CORRECTION (D-147). Smoke preflight passed at clean
-`750266c7`; 60/60 sidecars (140 member trainings) executed and synchronized
-without retry. Finalization refused before a label because feature repair's
-encoded obs digest differed from baseline. All 20 seeds prove that difference
-expected while action/episode/step match. `7be59bd` fixes the consumer and adds
-a zero-fit two-commit finalizer. D-148 makes historical C evidence read-only and
-puts every new file in a fixed project root; no label/verdict/Exp1 fit yet exists.
-NUMBERS: D-148 final suite 1,669 passed / 7 skipped / 0 failed in 1,610.29 s;
-smoke 60 sidecars / 140 member trainings; GPU zero; no rerun. Apply after exact real
-target 66edf4a11dce39b91974d5c331cca81424f83b6e; review cumulatively from
-certified BASE=4e55291. Never use git am --3way or infer remote ancestry from
-the reconstructed local commits.
+4. SCHEDULE CORRECTION (D-144). Missing whole-design repairs are Week 7+, not a
+blocker to this smoke or baseline Experiment 1. Eight of fifteen canonical
+repair units have one registered model repair; seven have none. Multi-role fits
+are represented once; exclusion comparison remains Week 8 and canonical repair
+validation Week 9. DEV-012's 0.00 is planning only, not an observed rate.
+5. FIREWALL / OPEN BOUNDARY. X/y/groups exposes only allowlisted X. C-007 reaches
+persisted labels but lacks the label-to-SplitCandidate bridge; splitter/balancer
+remain synthetic-only pending registered parameters and authority.
+6. EXECUTION / CORRECTION (D-147…D-149). Preflight passed at `750266c7`; 60/60
+sidecars (140 member trainings) completed/synchronized without retry. D-147
+corrected the fail-closed feature digest rule; D-148 made C evidence read-only.
+At clean finalizer `f6833f2`, 60 fits verified/copied, 0 executed/retrained.
+Observed label **0 (data only)** for intended `hypothesis_class` smoke unit.
+NUMBERS: attempted/N0/N1/min/ambiguous/undiagnosed = 1/1/0/0/0/0; confirmatory
+seeds 1000–1019. Paired-seed-cluster 95% t intervals over 20 seed clusters:
+data effect −0.1493043 [−0.1716447,−0.1269639], 22.5413%, PASS; feature effect
+−0.0292878 [−0.0627686,0.0041930], 4.4217%, FAIL; threshold 20%, 191 episodes/
+1,102 failure-set transitions. One-unit smoke, not a rate or hypothesis result.
+Suite 1,669/7/0; GPU zero; historical C aggregate unchanged. No exclusion rate
+or Experiment-1 fit. Apply after exact target 66edf4a11dce39b91974d5c331cca81424f83b6e;
+review from BASE=4e55291; never `git am --3way` or infer reconstructed ancestry.
 
 RULINGS / AUTHORITY REQUESTED:
-  a. Review D-141..D-148 and DEV-015..017 plus the cumulative patch series.
+  a. Review D-141..D-149 and DEV-015..017 plus the cumulative patch series.
   b. Review the owner's frozen-local-CPU execution choice; no Kaggle/T4 or GPU
      result may be inferred and the two hosts' compute units stay distinct.
   c. Approve or amend quarantine-and-restart (no within-fit checkpoint) for an
