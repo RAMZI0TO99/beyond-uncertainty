@@ -293,7 +293,7 @@ Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
 
-**2026-08-30 SOL2 UPDATE (read D-133…D-151 and DEV-013…017 before older
+**2026-08-30 SOL2 UPDATE (read D-133…D-152 and DEV-013…017 before older
 claims):** exact Config/Git/run/fit provenance and serialized gate/threshold
 evidence were hardened. Week-6 software now includes a source-reverifying
 persisted 20-seed repair-label pipeline, one-fit/many-role evidence, a physical
@@ -323,7 +323,10 @@ launch/monitor closeout passed **184/1/0 in 121.95 s**. D-151 restored the
 preregistered strict `>20%` repair boundary in creation and persisted-evidence
 validation; the focused suite passed **104/0/0 in 178.30 s**, the state gate
 **13/0/0 in 0.64 s**, and the final full CPU suite **1,671/7/0 in 1,722.04 s**.
-The recorded smoke label is unchanged.
+The recorded smoke label is unchanged. D-152 corrects the stale phase label:
+scheduled Phase A (Weeks 1–5) is complete/certified with Gate 1 FAIL; current
+work is Phase B Week-6 closeout. Plan §13.6's separate “PHASE 1” is a repeated
+per-condition data-generation loop, not authority for a global unattended run.
 
 **Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
 AND CERTIFIED** (D-120, 2026-08-23). Calendar time is Week 2 Sunday; scheduled
@@ -470,8 +473,8 @@ rerun. These are confirmatory smoke evidence, not development diagnostics.
 1. Ask the student to rewrite `docs/week6_student_closeout_drafting_aid.md`
    independently into about 400 words in their own voice on the labelling
    protocol and fixed 10× data-repair budget; fact-check, never ghost-author.
-2. Package D-151 as patch 0014, run the focused/state gates, then deliver
-   undelivered deltas **64–67** to external Sol. Request review of D-141…D-151,
+2. Package D-152 as patch 0015, run the state gate, then deliver
+   undelivered deltas **64–67** to external Sol. Request review of D-141…D-152,
    the raw-tail inspection, the strict `>20%` correction, and Week-7/Week-10
    trend-timing ambiguity.
 3. Only after those rulings, specify and synthetically test the missing
@@ -565,7 +568,9 @@ consume reserve units, or use the splitter/balancer on real inputs.
   project copies and a final validated monitor. A raw journal tail exposed two
   per-fit summaries mid-run; no adaptation occurred, and Sol must audit it.
   D-151 restores strict `>20%` semantics and records the still-missing Week-7
-  evidence adapters. External certification remains pending (D-141…D-151).
+  evidence adapters. D-152 records that Phase A is already complete and that
+  pipeline PHASE 1 is not a global launch. External certification remains
+  pending (D-141…D-152).
 
 Still blocked by Sol, correctly: registered split seed/targets, real critic
 splitting, reserve use and later whole-design repair coverage. Owner-authorised

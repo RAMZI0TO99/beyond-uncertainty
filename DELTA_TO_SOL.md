@@ -327,9 +327,9 @@ NUMBERS (D-011)
 DELTA_ID: 67
 PREVIOUS_DELTA_ID: 66
 DATE: 2026-08-30
-BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0014) +
+BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0015) +
              SOL_BUNDLE.txt generated in the REAL repository after application
-SUBJECT: D-141..D-151 / DEV-015..017 — Week-6 software integrated and audited;
+SUBJECT: D-141..D-152 / DEV-015..017 — Week-6 software integrated and audited;
          owner-authorised frozen-CPU execution opened before external review.
 GOVERNANCE. The student designated the active Codex implementation agent
 "Sol2", asked it to work with you instead of the historical local labels
@@ -381,12 +381,12 @@ Suite 1,669/7/0; GPU zero; historical C aggregate unchanged. Experiment 1 at
 46m03.962s; final validated monitor and byte-identical project copy. A raw-tail
 check exposed two per-fit summaries mid-run; no adaptation—please audit D-150.
 7. D-151: P§7.3 says **>20%**, but creation/reload used `>=`; both now use `>` with exact-boundary tests. Smoke label 0 unchanged; full suite 1,671/7/0. AI-only 406-word scaffold/reminder created; Week 7 source audit opened no results.
-Week-7 label/figure/trend adapters are incomplete; please rule missing model repairs and whether W7 Tue may reveal the W10 Mon H1 interval/verdict.
+Week-7 label/figure/trend adapters are incomplete; please rule missing repairs and W7/W10 timing. D-152 confirms Phase A is already complete/certified; plan PHASE 1 is per-condition, not global launch authority.
 Closeout 184/1/0 in 121.95s; Week 6 awaits only the student's own-voice Thursday prose. Apply after exact target 66edf4a11dce39b91974d5c331cca81424f83b6e;
 review from BASE=4e55291; never `git am --3way` or infer reconstructed ancestry.
 
 RULINGS / AUTHORITY REQUESTED:
-  a. Review D-141..D-151 and DEV-015..017 plus the cumulative patch series.
+  a. Review D-141..D-152 and DEV-015..017 plus the cumulative patch series.
   b. Review the owner's frozen-local-CPU execution choice; no Kaggle/T4 or GPU
      result may be inferred and the two hosts' compute units stay distinct.
   c. Approve or amend quarantine-and-restart (no within-fit checkpoint) for an
