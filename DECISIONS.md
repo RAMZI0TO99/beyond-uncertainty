@@ -2278,3 +2278,33 @@ Timings differ slightly from attempt-002, as Sol said they would; that is timing
 **Data seen:** none.
 **Plan ref:** D-028, D-041, D-043, D-103, D-131.
 **Reviewed by Sol:** **not yet — delta 65 carries the full patch series and this record.**
+
+### D-138 · 2026-08-30 · Correction to D-133 — confirmatory execution history and the exact obligation-test boundary
+
+**Correction:** D-133's sentence *"the only confirmatory-seed fits to date are the suite's"* is false. The certified W4 Friday threshold calibration executed **45 cells × 5 members = 225 real fits** at seeds 1000–1004 (D-103); those are confirmatory-range seeds even though their registered stage is `threshold_calibration`. The narrower and relevant claim survives: the repository inventory contains **no executed fit for any of the 231 pool-only units** that the defective guard would have accepted. No result or threshold is changed.
+
+**Test correction:** D-133's first tests sampled one baseline arm/role/seed per unit, so they covered only 231 removed keys and only the non-canonical design subset on the positive side. The tests now derive the exact set difference between `execution_plan(full_matrix())` and `execution_plan(design_units())`, refuse **every removed `(unit_id, arm, role, seed)` key**, and accept **every exact design key** across all arms, roles and registered stage seeds. This tests the guard's real domain rather than a unit-level proxy.
+
+**Data inspected:** run-record inventory and registered plans only, to correct provenance. No metric, label, threshold or scientific result was recomputed.
+**Reviewed by Sol:** **not yet — delta 66.**
+
+### D-139 · 2026-08-30 · Post-Fable audit of C-005/C-007 — reproduced defects fixed, and one completion claim narrowed
+
+**C-005 finding and fix:** the deterministic greedy/first-improvement allocator could stall at a local minimum and call the registration infeasible even when a whole-group assignment existed. A synthetic counterexample was reproduced: group profiles `(2,1), (3,1), (3,0), (1,1)` satisfy exact train `(3,1)`, validation `(1,1)`, held-out `(5,1)` targets but require a swap whose individual moves are not strictly improving. The splitter now retains the documented heuristic as its fast path, then uses SciPy/HiGHS (already exactly pinned) as a complete binary feasibility fallback. A refusal is issued only on solver-proven infeasibility; indeterminate solver outcomes fail closed without being mislabeled. The keyed stable-hash objective makes feasible witness selection reproducible. Input, mapping and target/floor shape guards were also made positive, and the digest/tie tests now prove the fields and seed affect the result.
+
+**C-007 finding and fix:** a frozen wrapper did not freeze its pandas frame, wrapper metadata was not cross-checked against rows, the development loader accepted confirmatory/mixed data, duplicate top-level/config stages could disagree, and the source scanner missed aliases, qualified calls, direct metric-file reads and nested modules. Those paths are now refused and tested. Git provenance was hardened separately under D-140.
+
+**Scope correction controlling D-135:** C-007 is **not end-to-end closed**. `load_critic_runs()` is a real confirmatory-only loading boundary, but the future adapter binding loaded run ids to repair-derived `SplitCandidate` labels does not exist, and the legacy balancer's `LabelledUnit` carries neither seed nor stage. The code therefore exposes `C007_INTEGRATION_STATUS = "loading_boundary_only"`; any claim that the development road cannot reach every eventual critic computation remains premature. No adapter was invented in this session because its scientific mapping is not registered.
+
+**Registration boundary:** `CRITIC_SPLIT_SEED`, numeric split targets and floors remain absent and Change-Record-gated. All splitter inputs were synthetic; no real labels exist or were consumed. The complete fallback is a post-spec implementation choice made under DEV-014 and requires Sol's ruling before real use.
+**Reviewed by Sol:** **not yet — delta 66.**
+
+### D-140 · 2026-08-30 · Provenance and handoff correction — git-less trust, the exact application target, and what the local baseline means
+
+**Run provenance defect:** D-137 identified that `git_state()` returned `commit="UNCOMMITTED"` with an empty status and therefore `trustworthy=True` outside a repository. `GitState.trustworthy` now requires both a clean tree and an exact 40-character lowercase hexadecimal commit. Confirmatory and threshold runners refuse git-less execution; the W4 gate's `allow_dirty` escape hatch still cannot admit an absent commit; evidence verification rejects non-commit manifest values. Development-only code may still record an untrustworthy state, accurately labelled.
+
+**Handoff correction:** the exact real-repository state represented by the received export is **`66edf4a11dce39b91974d5c331cca81424f83b6e`**, recorded in the pre-existing Sol bundle after D-132. Sol's certified review base remains **`4e55291e08396ffe4a903ae73b1390396675643b`**. They serve different purposes: checkout `66edf4a…` before applying the patch series; after application, generate Sol's cumulative diff with `BASE=4e55291`. Applying directly to `4e55291` would omit the undelivered D-132/delta-64 state.
+
+**Local-baseline correction:** `ff18c9e` is not an exact byte-for-byte snapshot marker because the reconstructed `.gitignore` was necessarily added before that commit. It is only the root of this export's local audit history and is never a remote ancestor. Five of Fable's seven post-baseline commits are transferable; the egg-info untracking and patch-directory-ignore commits are snapshot-local housekeeping. The handoff now includes committed preimage blob ids and refuses drift rather than using `git am --3way`.
+
+**Reviewed by Sol:** **not yet — delta 66.**

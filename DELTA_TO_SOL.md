@@ -13,9 +13,10 @@ and live only in **git history**, each at the commit that delivered it
 (`git log -S "DELTA_ID: NN" -- DELTA_TO_SOL.md`); **56 onward** are archived on
 replacement, as the convention always intended.
 
-**Send delta + `SOL_BUNDLE.txt`.** `BASE` is **`4e55291`** — Sol certified
-delta 63 on 2026-08-23 (D-131) and named this exact commit. **Do not infer a
-later one.**
+**Send delta + `SOL_BUNDLE.txt`.** For review, `BASE` is **`4e55291`** — Sol
+certified delta 63 on 2026-08-23 (D-131). For patch application, the exact real
+repository target is **`66edf4a11dce39b91974d5c331cca81424f83b6e`** (D-140).
+These are different anchors; do not apply the series directly to `4e55291`.
 
 **Delta 64 carries a student-obligation progress report only** — the student's
 methodology chapter draft (provenance disclosed, D-132) and the end-of-session
@@ -32,15 +33,16 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 64 and 65 (D-008). Delta 64 (the
-> student-chapter report) is unchanged below; delta 65 (the 2026-08-29
-> student-authorised session) is appended after it. Deliver both together.
+> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 64, 65 and 66 (D-008). Deltas 64
+> and 65 remain byte-for-byte historical blocks below; delta 66 corrects and
+> extends them after the post-Fable audit. Deliver all three together.
 >
 > COVERS SESSIONS:
 > - 2026-08-23 (delta-63 certification) · The whole prose closeout is CERTIFIED; base → `4e55291`
 > - 2026-08-23 (student chapter) · The first full methodology chapter arrives; provenance disclosed
 > - 2026-08-23 (session close) · End-of-session audit; three stale claims fixed; everything committed
 > - 2026-08-29 (student-authorised session) · Sol out of the loop by the student's direction; D-133 guard defect fixed; C-005/C-007 built; thirteen stale claims fixed
+> - 2026-08-30 (post-Fable audit) · C-005/C-007/provenance correction
 
 ```
 === UPDATE FOR SOL ===
@@ -227,6 +229,91 @@ NUMBERS (D-011)
   built          D-133 guard fix; C-005 splitter; C-007 boundary; D-136 prose
                  fixes; D-137 environment reconstruction; D-133..D-137 +
                  DEV-013 filed
+
+=== END UPDATE ===
+```
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 66
+PREVIOUS_DELTA_ID: 65
+DATE: 2026-08-30
+BUNDLE_FILE: session_2026-08-29.patchseries (patches 0001, 0003..0008) +
+             SOL_BUNDLE.txt generated in the REAL repository after application
+SUBJECT: Post-Fable audit corrections (D-138..D-140, DEV-014): D-133's
+         execution-history claim corrected; C-005 false infeasibility fixed;
+         C-007 provenance hardened and its scope narrowed to loading boundary
+         only; git-less provenance fixed; exact patch target established.
+
+GOVERNANCE. The student explicitly asked Codex to continue Fable's work before
+Sol reviewed delta 65 and authorised parallel agents. This is DEV-014, a second
+recorded instance of Q-004 verification lag. It does not expand authority into
+real data, labels, reserve, registered constants, threshold work, expansion or
+experiment execution. You may accept, amend or void these changes.
+
+1. CORRECTION TO D-133 (D-138). Delta 65's statement that only tests had used
+confirmatory-range seeds is false: the certified threshold calibration ran 45
+cells x 5 members = 225 real fits at seeds 1000..1004 (D-103). The relevant
+narrow claim remains true: no fit was executed for any of the 231 pool-only
+units the bad guard admitted. The guard tests now quantify the exact obligation
+domain: every removed (unit, arm, role, seed) key is refused and every exact
+design key is accepted, rather than sampling one baseline key per unit.
+
+2. C-005 AUDIT (D-139). The heuristic could stall and label a mathematically
+feasible whole-group split infeasible. Reproduced synthetic counterexample:
+profiles (2,1), (3,1), (3,0), (1,1), exact train (3,1), validation (1,1),
+held-out (5,1). The fast deterministic heuristic remains, followed on a stall
+by a complete binary feasibility model using the already-pinned SciPy/HiGHS.
+Only solver-proven infeasibility is now called infeasible; an indeterminate
+solver fails closed under a different message. The stable blake2b-derived
+objective chooses reproducibly among witnesses. Target/floor contradictions,
+bad mappings, blank ids/groups, pilot candidates, digest-field omissions and
+an inert split seed now have positive regression tests. This post-spec solver
+choice still requires your ruling before real use.
+
+3. C-007 AUDIT AND SCOPE CORRECTION (D-139). ConfirmatoryRuns now revalidates
+its mutable DataFrame at every consumer and cross-checks tuple metadata against
+row seeds/stages. The development road refuses confirmatory or mixed seeds.
+load_runs requires top-level and config stage copies to exist and agree. The
+coverage scanner now catches imported aliases, qualified calls, direct
+metrics.jsonl reads and nested package modules. However, C-007 is NOT
+end-to-end complete: no adapter yet binds loaded run ids to repair-derived
+SplitCandidate labels, and legacy LabelledUnit carries no seed/stage. The code
+publishes C007_INTEGRATION_STATUS="loading_boundary_only". No scientific
+adapter was invented without a registered mapping.
+
+4. PROVENANCE AND HANDOFF (D-140). GitState.trustworthy now requires a clean
+tree AND an exact 40-lowercase-hex commit. Confirmatory/threshold runners and
+gate evidence reject UNCOMMITTED; allow_dirty cannot admit a git-less gate.
+Dirty diffs are preserved as raw Git bytes, avoiding Windows cp1252 corruption.
+
+The exact REAL-repository application target is
+66edf4a11dce39b91974d5c331cca81424f83b6e (post-D-132/delta-64, read from the
+existing bundle). The Sol review base remains 4e55291. Checkout the first,
+verify every committed target:path blob against BASELINE_PREIMAGE_BLOBS.txt,
+apply patches, then generate the cumulative Sol bundle with BASE=4e55291.
+ff18c9e is only reconstructed local history and includes a reconstructed
+.gitignore; it is not an exact remote snapshot marker. Five of Fable's seven
+post-baseline commits transfer; egg-info untracking and patch-directory ignore
+are local housekeeping. Do not use git am --3way.
+
+5. WHAT DID NOT HAPPEN. No real data or labels were consumed, no reserve used,
+no threshold or evidence changed, no registered split seed/target/floor added,
+no experiment run and no scientific result recomputed. constants.py and the
+certified balancer remain untouched. The student's chapter walkthrough remains
+pending.
+
+--------------------------------------------------------------------
+NUMBERS (D-011)
+
+  tests          FINAL_VERIFICATION_PENDING
+  ran            synthetic/unit/protocol tests only; no experiment pipeline
+  compute        no experimental compute (test fixtures only)
+  review base    4e55291 (Sol-certified, unchanged)
+  patch target   66edf4a11dce39b91974d5c331cca81424f83b6e
+  built/fixed    D-138 exact obligation coverage; D-139 complete splitter and
+                 loading-boundary hardening/scope marker; D-140 provenance and
+                 portable handoff; DEV-014 filed
 
 === END UPDATE ===
 ```

@@ -109,18 +109,21 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 895 passing, 2 skipped, 0 xfailed
-.venv/bin/python -m bu.experiments.enumerate_units # design matrix report
-BASE=4e55291 ./scripts/sol_bundle.sh              # bundle for Sol; 4e55291 is CERTIFIED
+.venv/Scripts/python.exe -m pytest -q              # Windows snapshot; count in PROJECT_STATE §1
+.venv/Scripts/python.exe -m bu.experiments.enumerate_units
+BASE=4e55291 ./scripts/sol_bundle.sh               # real checkout, after applying the series
 ```
 
-- venv is `--system-site-packages` (reuses CUDA torch); `pyproject.toml` pins all.
+- This snapshot's venv is fully isolated, Python 3.13.5 with CPU-only torch;
+  `pyproject.toml` pins every dependency exactly. The real checkout may have a
+  CUDA-enabled environment, so skip counts differ by host (D-137).
 - Git identity is set repo-locally to the student. **`git pull --rebase` needs
   it** — a rebase stalled once because the machine had none configured.
 - Auth is an SSH key at `~/.ssh/id_ed25519_github`. **Never accept a token.**
 - `.claude/settings.local.json` is untracked and rewrites itself; it can dirty
   the tree mid-command. Harmless.
-- Remote: `RAMZI0TO99/beyond-uncertainty`, private, branch `main`.
+- Real remote: `RAMZI0TO99/beyond-uncertainty`, private, branch `main`. This
+  reconstructed snapshot has **no remote** and uses local branch `master`.
 
 ---
 
@@ -283,24 +286,24 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ## Where the project stands
 
-*Last session: **2026-08-23**. Week 1 Monday was 2026-08-17, so by the calendar
-it is **Week 2 Saturday** — the project runs roughly **3 weeks ahead** (DEV-002).
+*Last session: **2026-08-30**. Week 1 Monday was 2026-08-17, so by the calendar
+it is **Week 2 Sunday** — the project runs roughly **3 weeks ahead** (DEV-002).
 Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
 
-**2026-08-29 UPDATE (read D-133 … D-137 and DEV-013 before trusting anything
-below):** a student-authorised session ran **without Sol pre-approval** on a
-**git-less snapshot** of the repo (local baseline `ff18c9e`, patch series
-exported — this copy's history is NOT the remote's). It fixed a real defect in
-the confirmatory obligation guard (D-133), **implemented C-005/C-007** from the
-certified spec (D-134/D-135 — so "nothing is authorised to be built" below is
-now historical; the implementations await Sol's ruling), fixed thirteen stale
-prose claims (D-136), and rebuilt the environment (D-137: Python 3.13.5,
-CPU-only torch, tests **987 passing / 4 skipped** here). **Deltas 64 AND 65 are
-both undelivered.** The split-seed Change Record was deliberately NOT created;
-`constants.py` is untouched. Standing prohibitions on data, labels, reserve,
-threshold and expansion are unchanged.
+**2026-08-30 UPDATE (read D-133 … D-140 and DEV-013/014 before trusting older
+claims):** Fable's student-authorised, without-Sol session was continued by
+Codex with five parallel read-only audits. Reproduced defects were fixed: the
+C-005 heuristic could falsely call a feasible split infeasible; C-007 wrappers
+could detach metadata from a mutable frame; duplicated stages were not checked;
+git-less execution looked trustworthy; and the handoff named the wrong patch
+preimage. **C-007 is now explicitly loading-boundary-only**, because no real
+run-to-label adapter exists (D-139). **Deltas 64–66 are undelivered.** The exact
+real-repository patch target is `66edf4a11dce39b91974d5c331cca81424f83b6e`;
+Sol's review base remains `4e55291`. Split seed/targets remain unregistered,
+`constants.py` is untouched, and no real data, labels, reserve, threshold,
+expansion or experimental compute was touched.
 
 **Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
 AND CERTIFIED** (D-120, 2026-08-23). **No week is open** — the first time since
@@ -316,19 +319,16 @@ assisted draft — NOT final independently authored thesis prose**;
 pass, strip the interview/provenance apparatus, and keep only wording they can
 personally explain and defend.**
 
-**Nothing is authorised to be built.** Q-012 was ruled **against** building
-C-005/C-007: they do not consume data, but they are **future-week
-implementation**, which is the verification lag Q-004 names. Sol's sentence —
-*completing W4/W5 obligations repaired omissions; it did not authorise pulling
-later implementation forward*. **Prose, review and read-only audit only. No
-source code, no executable tests, no real data, no labels, no reserve.**
+**Scope now:** Sol's Q-012 ruling still bars scheduled W6+ execution. The
+student nevertheless explicitly authorised the D-133…D-140 implementation
+sessions without Sol; DEV-013/014 disclose that verification lag and delta 66
+requests review. Do not extend that authority into real data, labels, reserve,
+registered split constants, threshold work, expansion or experiment execution.
 
-**Do not write anywhere that W4/W5 are finished until Sol certifies.** That
-claim was already made prematurely once: §1 carried *"Weeks 1–5 are complete"*
-for many sessions until D-113 checked the schedule's own *Done when* column and
-found W4 Friday's timing harness and W5 Friday's balancer had never been built,
-and that the acceptance-model change had no deviation record. **The ledger tracks
-decisions; it does not track cells.** Nothing checks schedule coverage.
+**W4/W5 are now certified complete (D-120), but preserve the lesson:** that
+claim was made prematurely before D-113 checked the schedule's *Done when*
+column and found missing work. **The ledger tracks decisions; it does not track
+cells.** Verify schedule coverage before declaring a week complete.
 
 **The failure threshold is FROZEN and CERTIFIED:**
 `FAILURE_THRESHOLD = 0.610702633857727` in `src/bu/constants.py` (D-107,
@@ -372,33 +372,24 @@ a Kaggle T4 and **nothing has ever run there** (DEV-011). Local wall-hours and
 GPU-hours are different units and **must never be compared as a PASS**; the
 record says `comparison_status: not adjudicable across hosts`.
 
-### ⚠ The biggest open thing: Gate 1 is at risk (D-078)
+### Gate 1 failed; the exact final-inference MDE remains unsettled
 
-C-006 is built and both of D-044's validations pass — and the answer is that
-**the design cannot resolve a five-point balanced-accuracy difference at 80%
-power.** At the scheduled held-out counts the MDE is **18–22 points**.
+C-006 is built and both D-044 validations pass. Its diagnostic says the design
+does not resolve a five-point balanced-accuracy difference at 80% power; at the
+scheduled held-out counts its **uncertified optimistic table is 18–22 points**.
+Gate 1 is already a signed FAIL (D-098).
 
-**Sample size is the driver, not correlation.** At ICC = 0 it is still 18
-points, so the conclusion does not rest on the parameter least knowable before
-data. Checked against hand arithmetic (19.8 analytic vs 19.0 simulated). Every
-lever tested: pairing takes it to 8.0 at correlation 0.99; holding out *all 300*
-units gives 6.0 paired. Clearing five points conservatively needs on the order
-of **1,500–2,000 held-out units** against the 60–80 scheduled.
+**Sample size is the driver in that diagnostic, not correlation.** At ICC = 0
+it is still 18 points (19.8 analytic vs 19.0 simulated). Pairing takes it to 8.0
+at correlation 0.99; holding out all 300 units gives 6.0 paired. The often-cited
+**1,500–2,000 held-out** figure is a rough extrapolation, not a computed
+sample-size requirement.
 
-**The numbers are if anything optimistic** (D-082 audit). The power test is
-anti-conservative — type-I error 0.06–0.09 vs 0.05, worse at higher ICC —
-because it uses a Wald `1.96×SE` rule rather than D-044's group-bootstrap
-percentile, and both over-reject at ~20–40 clusters. So the true MDE is *larger*
-than 18–22; the risk is real, not a simulation artefact.
-
-**Do not act on this number.** P§14.3's remedy is configuration count — never
-seeds — but that is the student's and Sol's decision, and **three** things need
-adversarial review first: whether the simulated estimand is the one H3's test
-will use, whether comparing an **MDE** against an **equivalence margin** is
-coherent at all, and (D-082) which inference procedure the MDE should use, since
-the current one over-rejects. The plan frames it that way (P§10.7) and the simulation follows
-the plan exactly; if the framing is wrong, the table is the right computation of
-the wrong thing.
+**The current table is optimistic for its Wald procedure** (D-082): its type-I
+error is 0.06–0.09 instead of 0.05 at ~20–40 clusters. **Do not infer an exact
+"true MDE" or its direction for H3's final procedure**; that procedure is not
+registered yet. D-089 permits the table only as a diagnostic and gates any
+exact report on the final group-level inference and a validated null size.
 
 ### W4 Tuesday's result, certified
 
@@ -438,46 +429,22 @@ certified cells at 4 threads instead of 8 reproduced N=100 exactly and moved
 N=250 by 0.19%. Now recorded **additively** — making it a required field would
 invalidate the certified attempt, which is Sol's call (delta 40).
 
-**Zero GPU-hours.** The only compute ever spent is 450 CPU fits (W4 Tue) plus
-~25 CPU fits of smoke and probe work in scratch directories.
+**Zero GPU-hours.** Official experimental compute is **675 CPU fits**: 450 W4
+gate fits plus 225 W4 threshold-calibration fits. Smoke/probe fits are separate
+development diagnostics and are not included in that official total.
 
 ### Next, in order
 
-*Rewritten 2026-08-22 at session end. **This list has now gone stale three
-times** — it has twice described work as blocked that had already run. Nothing
-mechanical catches that, because the protocol suite checks §1's structure and
-never its truth. **So read it as a dated snapshot, not as state.** If the ledger
-disagrees, the ledger wins: check the highest D-number in `DECISIONS.md` and the
-newest §7 entry in `PROJECT_STATE.md` before trusting anything here.*
-
-**As of 2026-08-23, W4 and W5 are certified complete and NOTHING is authorised
-to be built.** This is not a lull to fill with implementation — it is the
-allocation Sol ruled.
-
-1. **Only this prose-correction round is open.** Delta 62 was delivered and
-   WITHHELD for narrow prose/handoff staleness (D-130); **delta 63 returns the
-   fixes**. Nothing else is authorised — no C-005/C-007 implementation, no W6+
-   work, no experiment execution, no compute.
-2. **Do not build C-005 or C-007.** Q-012 is closed (D-120), reaffirmed at
-   D-125/D-128. Data consumption is a **necessary bar, not a sufficient one** —
-   the operative question is whether the work is *this* week's obligation or a
-   *later* week's. C-005/C-007 begin at their scheduled time (W6–W11) or on a
-   **fresh explicit authorisation**. The C-005/C-007 **prose spec** is written
-   and substantively accepted (D-128); its implementation is not authorised.
-3. **The plan/schedule `.docx` audit is COMPLETE** (D-126, accepted), its
-   findings F1–F8 all ruled and applied (D-128) — it is **no longer** open work.
-4. **The base is `4e55291`** (certified through delta 63 / D-131) and **delta 64
-   carries one thing: a student-obligation progress report** — the student's
-   full methodology chapter draft, provenance disclosed (student-written,
-   AI-polished, D-132), audited 32/32 clean, **explain-and-defend walkthrough
-   pending, no ruling requested**. Do not infer a later base; D-043 exists
-   because a challenged commit was nearly used as one.
-5. **The exclusion-rate assumption is settled** — ratified by Sol as **DEV-012**,
-   a **zero-inflation planning convention** of 0.00, never to be described as
-   observed, estimated or pilot-derived. **S§W6 Monday checks batch 1 against
-   it**, so it must survive intact to Week 6.
-6. **Week 6 execution stays closed.** Q-004 still bars it. C-005 and C-007
-   remain W6–W11 work. C-003, C-006, C-008 … C-011 are done.
+1. Finish full-suite and patch-application verification for D-138…D-140.
+2. In the **real** repository, checkout exact target `66edf4a…`, verify the
+   committed preimage blobs, apply transferable patches in order, then create
+   `SOL_BUNDLE.txt` with `BASE=4e55291`.
+3. Deliver undelivered deltas **64, 65 and 66** to Sol. Sol may accept, amend or
+   void the student-authorised C-005/C-007 work.
+4. Complete the student's explain-and-defend walkthrough for the methodology
+   chapter. Week 6 execution remains closed under Q-004/D-120.
+5. Preserve DEV-012's 0.00 zero-inflation planning convention exactly; it is
+   not observed, estimated or pilot-derived.
 
 **Do not, without a fresh Sol ruling:** recalibrate the threshold, expand the
 design, consume reserve units, generate repair labels, or run anything on real
@@ -512,7 +479,7 @@ labelled data. The balancer is synthetic-inputs-only until C-005 exists.
   135 digests and recomputing the percentile to a binary-identical float. This
   bullet described delta 50 as carrying "the only live blocker" for several
   sessions after that was false, then said the live delta was 56 after that too
-  had been certified (D-120) — **the live undelivered delta is 64** (D-132).
+  had been certified (D-120) — **the live undelivered deltas are 64–66**.
   Deltas 39–63 are all answered or certified (D-089, D-100 … D-102, D-106,
   D-111, D-118 … D-120, D-125, D-131).
 - **W4 Friday has run** (D-103) and **will not be rerun** — the threshold has
@@ -544,12 +511,14 @@ labelled data. The balancer is synthetic-inputs-only until C-005 exists.
   repair efficacy may need reading on the **activation** task, not position
   alone. Tentative — a whole-pool smoke test with no threshold — but check it
   when real repair validation runs (P§7.3, the failure set needs W4 Friday).
-- **C-005 / C-007** — the grouped critic splitter and the remaining
-  confirmatory-guard call sites in the critic loaders. W6–W11 work. Everything
-  else on the obligation list is **done**: C-003 (D-092), C-006 (D-078), C-008
-  (D-096), C-009 (D-077), C-010 (D-076), C-011 (D-072).
+- **C-005 / C-007** — built early under DEV-013/014 and awaiting Sol. C-005 now
+  has a complete feasibility fallback (D-139). C-007 is a hardened loading
+  boundary only: the real run-to-label adapter remains future work, and the
+  legacy balancer input carries no seed/stage provenance. Everything else on
+  the obligation list is done: C-003, C-006 and C-008…C-011.
 
-Still blocked by Sol, correctly: confirmatory collection and critic splitting.
+Still blocked by Sol, correctly: confirmatory collection, registered split
+seed/targets, real critic splitting, and any use of the early implementation.
 **The MDE is not among them — that claim was stale.** Sol ruled on all three
 questions in **D-089**: the simulation is a **diagnostic**, not H3's estimator;
 MDE-vs-margin is a **necessary sensitivity check and explicitly not an
