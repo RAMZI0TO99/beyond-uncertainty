@@ -293,7 +293,7 @@ Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
 
-**2026-08-30 SOL2 UPDATE (read D-133…D-150 and DEV-013…017 before older
+**2026-08-30 SOL2 UPDATE (read D-133…D-151 and DEV-013…017 before older
 claims):** exact Config/Git/run/fit provenance and serialized gate/threshold
 evidence were hardened. Week-6 software now includes a source-reverifying
 persisted 20-seed repair-label pipeline, one-fit/many-role evidence, a physical
@@ -319,14 +319,19 @@ wide gate passed **1,669 tests, skipped 7 and failed 0 in 1,610.29 s** on the
 CPU-only Windows host. The
 seven skips are three CUDA checks, three unprivileged Windows-symlink cases and
 one intentionally vacuous identity case. D-150's final state/preflight/batch/
-launch/monitor closeout passed **184/1/0 in 121.95 s**.
+launch/monitor closeout passed **184/1/0 in 121.95 s**. D-151 restored the
+preregistered strict `>20%` repair boundary in creation and persisted-evidence
+validation; the focused suite passed **104/0/0 in 178.30 s**, the state gate
+**13/0/0 in 0.64 s**, and the final full CPU suite **1,671/7/0 in 1,722.04 s**.
+The recorded smoke label is unchanged.
 
 **Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
 AND CERTIFIED** (D-120, 2026-08-23). Calendar time is Week 2 Sunday; scheduled
 Week 6 begins 2026-09-21. The owner opened Week 6 **readiness** early under
 DEV-015/016 and then explicitly authorised real confirmatory execution on the
 disclosed frozen local CPU under D-145/DEV-017. Preflight precedes every fit;
-the week remains incomplete until execution closes. Certified base is `4e55291`;
+the machine rows are closed; the week remains locally incomplete until the
+student supplies and defends the Thursday own-voice prose. Certified base is `4e55291`;
 no later certified commit may be inferred.
 
 **The prose closeout is CERTIFIED** (D-125): D-121 … D-124, with four documents
@@ -345,8 +350,9 @@ Reserve, split registration, threshold changes and expansion remain stopped.
 Delta 67 asks Sol to audit the resulting evidence and restart policy. D-146
 records the independent stop-before-launch audit, D-147 the first real
 fail-closed execution correction, D-148 the owner's project-only write
-boundary, D-149 the resulting smoke label/count evidence, and D-150 the full
-Experiment-1 execution plus disclosed raw-tail inspection. Missing
+boundary, D-149 the resulting smoke label/count evidence, D-150 the full
+Experiment-1 execution plus disclosed raw-tail inspection, and D-151 the
+strict-boundary correction plus source-only Week-7 readiness audit. Missing
 whole-design model repairs and the final label-to-critic bridge remain later
 rulings, not guessed prerequisites.
 
@@ -461,18 +467,23 @@ rerun. These are confirmatory smoke evidence, not development diagnostics.
 
 ### Next, in order
 
-1. Package D-150's execution record as patch 0013 and run the focused closeout
-   plus state-document test gate.
-2. Ask the student for the frozen Week-6 Thursday deliverable: about 400 words
-   in their own voice on the labelling protocol and fixed 10× data-repair budget.
-3. Deliver undelivered deltas **64–67** to external Sol with exact execution
-   counts; request review of D-141…D-150 and the raw-tail inspection deviation.
+1. Ask the student to rewrite `docs/week6_student_closeout_drafting_aid.md`
+   independently into about 400 words in their own voice on the labelling
+   protocol and fixed 10× data-repair budget; fact-check, never ghost-author.
+2. Package D-151 as patch 0014, run the focused/state gates, then deliver
+   undelivered deltas **64–67** to external Sol. Request review of D-141…D-151,
+   the raw-tail inspection, the strict `>20%` correction, and Week-7/Week-10
+   trend-timing ambiguity.
+3. Only after those rulings, specify and synthetically test the missing
+   Experiment-1 label/figure/trend adapters; do not open results or choose
+   missing model repairs now.
 4. Complete the student's explain-and-defend walkthrough and preserve
    DEV-012's 0.00 zero-inflation planning convention exactly; it is
    not observed, estimated or pilot-derived.
 
-**Owner authority now covers only the registered Week-6 smoke/label and
-Experiment-1 paths.** Do not choose missing model repairs, invent baseline
+**Owner authority now also covers the requested drafting aid, reminder and
+bounded source-only continuation recorded by D-151.** Do not open Week-7
+scientific results, choose missing model repairs, invent baseline
 roles, duplicate multi-role fits, recalibrate the threshold, expand the design,
 consume reserve units, or use the splitter/balancer on real inputs.
 
@@ -553,7 +564,8 @@ consume reserve units, or use the splitter/balancer on real inputs.
   1/1/0/0/0. D-150 completed Experiment 1 at 150/150 with byte-identical
   project copies and a final validated monitor. A raw journal tail exposed two
   per-fit summaries mid-run; no adaptation occurred, and Sol must audit it.
-  External certification remains pending (D-141…D-150).
+  D-151 restores strict `>20%` semantics and records the still-missing Week-7
+  evidence adapters. External certification remains pending (D-141…D-151).
 
 Still blocked by Sol, correctly: registered split seed/targets, real critic
 splitting, reserve use and later whole-design repair coverage. Owner-authorised

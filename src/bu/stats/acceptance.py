@@ -207,7 +207,10 @@ def _verdict(effect, ci_low, ci_high, unrepaired_mean) -> tuple[bool, float, str
     relative = -effect / unrepaired_mean if unrepaired_mean > 0 else float("nan")
     negative = effect < 0
     excludes_zero = ci_high < 0
-    practical = relative >= K.MIN_PRACTICAL_EFFECT
+    # P§7.3 says the reduction must *exceed* the frozen minimum. Equality is
+    # therefore not a successful repair; using >= would silently change the
+    # ground-truth label at the exact 20% boundary.
+    practical = relative > K.MIN_PRACTICAL_EFFECT
     if negative and excludes_zero and practical:
         return True, relative, (
             "all three conditions met: negative equal-seed mean paired "

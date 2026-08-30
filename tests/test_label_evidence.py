@@ -651,6 +651,31 @@ def test_loader_recomputes_acceptance_verdict(fit_store, tmp_path, mutate):
         load_label_evidence(path)
 
 
+def test_persisted_acceptance_uses_the_strict_twenty_percent_boundary():
+    """The evidence loader must enforce the same strict P§7.3 rule as creation."""
+    row = {
+        "effect": -K.MIN_PRACTICAL_EFFECT,
+        "ci_low": -0.25,
+        "ci_high": -0.15,
+        "relative_reduction": K.MIN_PRACTICAL_EFFECT,
+        "passed": True,
+        "reason": "synthetic exact-boundary row",
+        "method": "paired_seed_cluster",
+        "converged": True,
+        "n_transitions": 40,
+        "n_seeds": 20,
+        "n_episodes": 20,
+        "unrepaired_mean": 1.0,
+        "min_practical_effect": K.MIN_PRACTICAL_EFFECT,
+        "confidence": 0.95,
+    }
+    with pytest.raises(ValueError, match="passed=True.*recomputed passed=False"):
+        L._validate_acceptance_row(row, name="data_repair", n_seeds=20)
+
+    row["passed"] = False
+    assert not L._validate_acceptance_row(row, name="data_repair", n_seeds=20)
+
+
 def test_loader_refuses_duplicate_physical_fit_id_in_record(fit_store, tmp_path):
     record = _record(fit_store, tmp_path)
     record["runs"][1]["baseline"] = dict(record["runs"][0]["baseline"])

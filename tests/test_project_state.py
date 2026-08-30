@@ -172,7 +172,6 @@ def test_frozen_constants_match_the_code(text: str):
 
     checks = {
         f"**{K.DATA_REPAIR_MULTIPLIER}×**": "data-repair multiplier",
-        f"**{int(K.MIN_PRACTICAL_EFFECT * 100)}%**": "minimum practical effect",
         f"**±{K.EQUIVALENCE_MARGIN_PP:.0f} percentage points**": "equivalence margin",
         f"**{K.SEEDS_REPAIR_VALIDATION}**": "repair-validation seeds",
         f"**{K.MIN_LABELLED_UNITS}**": "minimum labelled units",
@@ -180,6 +179,12 @@ def test_frozen_constants_match_the_code(text: str):
     }
     for needle, what in checks.items():
         assert needle in text, f"§2 does not state the code's {what} ({needle})"
+
+    strict_floor = f"**> {int(K.MIN_PRACTICAL_EFFECT * 100)}%** relative reduction"
+    assert strict_floor in text, (
+        "§2 must preserve P§7.3's strict practical-effect boundary; stating only "
+        "the 20% value cannot detect an accidental >= comparison"
+    )
 
     # The threshold every failure set and repair label descends from (D-107),
     # checked against §2 ALONE rather than the whole file. The first version of

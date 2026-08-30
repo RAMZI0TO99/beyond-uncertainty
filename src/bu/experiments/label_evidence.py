@@ -807,7 +807,7 @@ def _validate_acceptance_row(row: object, *, name: str, n_seeds: int) -> bool:
         expected_passed = (
             effect < 0
             and ci_high < 0
-            and relative >= K.MIN_PRACTICAL_EFFECT
+            and relative > K.MIN_PRACTICAL_EFFECT
         )
     else:
         expected_passed = False

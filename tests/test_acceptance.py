@@ -17,7 +17,7 @@ import pytest
 
 from bu import constants as K
 from bu.stats.acceptance import (
-    CONFIDENCE, acceptance_test, permutation_null,
+    CONFIDENCE, _verdict, acceptance_test, permutation_null,
 )
 
 BASE = 0.10
@@ -119,6 +119,22 @@ def test_the_three_conditions_are_all_required():
     row = accepted.as_row()
     assert row["min_practical_effect"] == K.MIN_PRACTICAL_EFFECT
     assert row["confidence"] == CONFIDENCE == 0.95
+
+
+def test_the_twenty_percent_practical_effect_boundary_is_strict():
+    """P§7.3 says the reduction must exceed, not equal, the frozen floor."""
+    passed, relative, reason = _verdict(
+        -K.MIN_PRACTICAL_EFFECT, -0.25, -0.15, 1.0
+    )
+    assert relative == K.MIN_PRACTICAL_EFFECT
+    assert not passed
+    assert "does not clear" in reason
+
+    passed_above, relative_above, _ = _verdict(
+        -(K.MIN_PRACTICAL_EFFECT + 1e-12), -0.25, -0.15, 1.0
+    )
+    assert relative_above > K.MIN_PRACTICAL_EFFECT
+    assert passed_above
 
 
 # --- the fallback is a different claim, and says so -------------------------
