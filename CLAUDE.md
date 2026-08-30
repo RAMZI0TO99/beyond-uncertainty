@@ -293,7 +293,7 @@ Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
 
-**2026-08-30 SOL2 UPDATE (read D-133…D-146 and DEV-013…017 before older
+**2026-08-30 SOL2 UPDATE (read D-133…D-147 and DEV-013…017 before older
 claims):** exact Config/Git/run/fit provenance and serialized gate/threshold
 evidence were hardened. Week-6 software now includes a source-reverifying
 persisted 20-seed repair-label pipeline, one-fit/many-role evidence, a physical
@@ -307,10 +307,10 @@ but still lacks the final label-to-`SplitCandidate` bridge. **Deltas 64–67 are
 undelivered.** Exact real patch target
 `66edf4a11dce39b91974d5c331cca81424f83b6e`; Sol review base `4e55291`.
 
-**Verification:** D-146 stopped the launch with every execution root empty, fixed
-five pre-execution gaps and recorded focused green matrices of **233/1**,
-**113/1** and **82/1**. The final hardened repository-wide gate passed **1,659
-tests, skipped 7 and failed 0 in 1,213.80 s** on the CPU-only Windows host. The
+**Verification:** D-146 stopped the launch with every execution root empty and
+fixed five pre-execution gaps. D-147 then corrected a real fail-closed feature-
+encoding finalizer defect. The current repository-wide gate passed **1,668
+tests, skipped 7 and failed 0 in 1,445.85 s** on the CPU-only Windows host. The
 seven skips are three CUDA checks, three unprivileged Windows-symlink cases and
 one intentionally vacuous identity case.
 
@@ -336,7 +336,8 @@ real CPU execution under D-145/DEV-017; external Sol has not reviewed it. The
 registered smoke/label and Experiment-1 paths may run only after exact preflight.
 Reserve, split registration, threshold changes and expansion remain stopped.
 Delta 67 asks Sol to audit the resulting evidence and restart policy. D-146
-records the independent stop-before-launch audit and all five corrections. Missing
+records the independent stop-before-launch audit and D-147 the first real
+fail-closed execution correction. Missing
 whole-design model repairs and the final label-to-critic bridge remain later
 rulings, not guessed prerequisites.
 
@@ -444,21 +445,22 @@ certified cells at 4 threads instead of 8 reproduced N=100 exactly and moved
 N=250 by 0.19%. Now recorded **additively** — making it a required field would
 invalidate the certified attempt, which is Sol's call (delta 40).
 
-**Zero GPU-hours.** Official experimental compute is **675 CPU fits**: 450 W4
-gate fits plus 225 W4 threshold-calibration fits. Smoke/probe fits are separate
-development diagnostics and are not included in that official total.
+**Zero GPU-hours.** Prior official experimental compute is **675 CPU member
+fits**: 450 W4 gate plus 225 W4 threshold calibration. D-147 adds **60 Week-6
+physical sidecars / 140 member-model trainings**, pending Sol, with no retry or
+rerun. These are confirmatory smoke evidence, not development diagnostics.
 
 ### Next, in order
 
-1. Preserve verified implementation commit `7a8960d` plus the governance
-   closeout as patches 0006–0007; no preflight may precede a clean package state.
-2. Recheck the separate fresh smoke and Experiment-1
-   roots, run each immutable preflight, and launch only if every check passes.
-3. Execute/verify the exact 20-seed registered smoke label and safely launch the
+1. Preserve D-147 correction commit `7be59bd` plus its governance closeout as
+   patches 0008–0009; no finalization may precede a clean package state.
+2. Run the zero-fit correction finalizer over all 60 immutable sidecars from
+   fit commit `750266c7…`; verify and synchronize only label plus four counts.
+3. Recheck Experiment-1's still-empty roots, run immutable preflight, and safely launch the
    150-job Experiment-1 plan with immutable start evidence and monitoring;
    preserve source evidence and a separate-volume synchronized copy.
 4. Deliver undelivered deltas **64–67** to external Sol with exact execution
-   counts; request review of D-141…D-146 and the restart/host deviation.
+   counts; request review of D-141…D-147 and the restart/host deviation.
 5. Complete the student's explain-and-defend walkthrough and preserve
    DEV-012's 0.00 zero-inflation planning convention exactly; it is
    not observed, estimated or pilot-derived.
@@ -536,9 +538,11 @@ consume reserve units, or use the splitter/balancer on real inputs.
   implementation-complete and fail-closed. D-146 adds commit-bound workers,
   crash-durable synchronization, token-only lease release, a fixed production
   smoke launcher/count artifact and an evidence-only Experiment-1 monitor. The
-  owner has supplied execution authority and selected the disclosed frozen CPU
-  route; no real Week-6 fit has started and external certification remains
-  pending (D-141…D-146).
+  owner supplied execution authority and selected the frozen CPU route. D-147's
+  preflight and all 60 smoke sidecars completed and synchronized; first label
+  finalization failed closed on an incorrect feature-encoding equality rule.
+  The zero-fit correction is green, no label exists yet, and external
+  certification remains pending (D-141…D-147).
 
 Still blocked by Sol, correctly: registered split seed/targets, real critic
 splitting, reserve use and later whole-design repair coverage. Owner-authorised

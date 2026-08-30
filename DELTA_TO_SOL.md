@@ -327,9 +327,9 @@ NUMBERS (D-011)
 DELTA_ID: 67
 PREVIOUS_DELTA_ID: 66
 DATE: 2026-08-30
-BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0007) +
+BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0009) +
              SOL_BUNDLE.txt generated in the REAL repository after application
-SUBJECT: D-141..D-146 / DEV-015..017 — Week-6 software integrated and audited;
+SUBJECT: D-141..D-147 / DEV-015..017 — Week-6 software integrated and audited;
          owner-authorised frozen-CPU execution opened before external review.
 GOVERNANCE. The student designated the active Codex implementation agent
 "Sol2", asked it to work with you instead of the historical local labels
@@ -348,8 +348,8 @@ The registered 20-seed repair-label runner persists one immutable plan before
 work, resumes only source-verified fits, uses one baseline scale for all arms,
 and writes a label whose 60 fit sidecars are reopened and exactly rederived.
 Each physical fit can attest multiple registered roles without duplication.
-Full 1,000-action evaluation inventories and pool digests bind cross-arm
-pairing. Both legacy duplicate-fit repair helpers refuse before compute.
+Full action/episode/step inventories bind latent pairing; encoded-pool digests
+bind arms whose feature schema is unchanged. Duplicate-fit helpers refuse.
 3. PRE-EXECUTION AUDIT (D-146). It stopped launch with every root empty; four
 smoke roots are separated from four Experiment-1 roots to avoid canary collision. Mounted
 sync now stages/fsyncs/atomically publishes before readback; every spawned fit
@@ -372,21 +372,21 @@ only allowlisted X. C-007 now reaches persisted fit-to-label evidence, but the
 final label-to-critic SplitCandidate bridge remains absent. The splitter and
 balancer remain synthetic-inputs-only until registered parameters and use are
 authorised.
+6. EXECUTION / FAIL-CLOSED CORRECTION (D-147). Smoke preflight passed at clean
+`750266c7`; 60/60 sidecars (140 member trainings) executed and synchronized
+without retry. Finalization refused before a label because feature repair's
+encoded obs digest differed from baseline. All 20 seeds prove that difference
+expected while action/episode/step match. `7be59bd` fixes the consumer and adds
+a zero-fit two-commit finalizer. No label/verdict/exclusion/Exp1 fit yet exists.
 
-6. WHAT DID NOT HAPPEN. No real smoke, label, preflight, launch, repair verdict,
-exclusion observation, reserve use, threshold action, registered split value,
-constants.py change, Kaggle/API session or experimental fit. Week-6 software is
-implementation-complete for current registered interfaces; Week 6 itself is
-NOT complete because execution has not started.
-
-NUMBERS: D-146 final suite 1,659 passed / 7 skipped / 0 failed in 1,213.80 s;
-focused matrices 233/1, 113/1 and 82/1 overlap. Experimental compute: zero. Apply after exact real
+NUMBERS: D-147 final suite 1,668 passed / 7 skipped / 0 failed in 1,445.85 s;
+smoke 60 sidecars / 140 member trainings; GPU zero; no rerun. Apply after exact real
 target 66edf4a11dce39b91974d5c331cca81424f83b6e; review cumulatively from
 certified BASE=4e55291. Never use git am --3way or infer remote ancestry from
 the reconstructed local commits.
 
 RULINGS / AUTHORITY REQUESTED:
-  a. Review D-141..D-146 and DEV-015..017 plus the cumulative patch series.
+  a. Review D-141..D-147 and DEV-015..017 plus the cumulative patch series.
   b. Review the owner's frozen-local-CPU execution choice; no Kaggle/T4 or GPU
      result may be inferred and the two hosts' compute units stay distinct.
   c. Approve or amend quarantine-and-restart (no within-fit checkpoint) for an
