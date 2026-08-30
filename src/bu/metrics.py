@@ -13,6 +13,7 @@ printed.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Mapping
 from pathlib import Path
 from types import TracebackType
@@ -97,6 +98,7 @@ class RunLogger:
             raise ValueError("refusing to log an empty record")
         self._fh.write(json.dumps({"i": self._n, **fields}, default=_jsonable) + "\n")
         self._fh.flush()
+        os.fsync(self._fh.fileno())
         self._n += 1
 
     @property

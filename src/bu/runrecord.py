@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .durable import atomic_write_bytes, atomic_write_json
 from .streams import is_confirmatory, seed_partition
 from .config import IDENTITY_VERSION, SCHEMA_VERSION, UNIT_IDENTITY_FIELDS, Config
 
@@ -193,7 +194,7 @@ def write_run_record(
     if extra:
         record["extra"] = extra
 
-    path.write_text(json.dumps(record, indent=2, sort_keys=True))
+    atomic_write_json(path, record)
 
     # A dirty tree is recoverable only if we keep the diff.
     if git.dirty:
@@ -203,7 +204,7 @@ def write_run_record(
         ).stdout
         # Preserve the exact Git bytes. In particular, never ask the host's
         # locale codec to interpret a UTF-8 patch before recording it.
-        (run_dir / "dirty.diff").write_bytes(diff)
+        atomic_write_bytes(run_dir / "dirty.diff", diff)
 
     return path
 

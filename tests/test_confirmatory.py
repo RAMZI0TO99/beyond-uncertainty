@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import inspect
 import json
-from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
 
 from bu import constants as K
-from bu.config import Arm, Config, TrainConfig, UnitSpec
+from bu.config import Config, TrainConfig, UnitSpec
 from bu.experiments import confirmatory as C
 
 CONF = K.CONFIRMATORY_SEED_BASE
@@ -134,14 +133,21 @@ def clean_tree():
     Monkeypatching that is honest; an `allow_dirty` flag in the runner would not
     have been.
     """
+    import bu.runrecord as RR
     from bu.runrecord import GitState
 
-    real = C.git_state
-    C.git_state = lambda: GitState(commit="d" * 40, dirty=False, branch="main")
+    fake = lambda *_args, **_kwargs: GitState(
+        commit="d" * 40, dirty=False, branch="main"
+    )
+    real_confirmatory = C.git_state
+    real_runrecord = RR.git_state
+    C.git_state = fake
+    RR.git_state = fake
     try:
         yield
     finally:
-        C.git_state = real
+        C.git_state = real_confirmatory
+        RR.git_state = real_runrecord
 
 
 @pytest.fixture(scope="module")
@@ -182,12 +188,35 @@ def test_the_digests_are_of_the_files_actually_written(real_run):
         assert real_run.run[field] == actual
 
 
+def test_confirmatory_metrics_persist_member_bound_epoch_curves(real_run):
+    """A completed batch must retain the loss curves needed for diagnosis."""
+    rows = [
+        json.loads(line)
+        for line in (real_run.record_dir / "metrics.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    epochs = [row for row in rows if row.get("record_type") == "epoch"]
+    summaries = [
+        row for row in rows if row.get("record_type") == "member_summary"
+    ]
+    assert epochs
+    assert {row["member"] for row in epochs} == set(range(real_run.member_count))
+    assert len(summaries) == real_run.member_count
+
+
 def test_threading_is_recorded_for_contract_v2(real_run):
     """v2 requires it on the record written at training time (D-088)."""
     record = json.loads((real_run.record_dir / "run.json").read_text())
     for field in ("num_threads", "num_interop_threads"):
         assert record["extra"]["threading"][field] is not None
         assert real_run.run["threading"][field] == record["extra"]["threading"][field]
+
+
+def test_the_execution_device_is_frozen_and_recorded(real_run):
+    record = json.loads((real_run.record_dir / "run.json").read_text())
+    assert C.CONFIRMATORY_DEVICE == "cpu"
+    assert record["extra"]["device"] == C.CONFIRMATORY_DEVICE
+    assert real_run.run["device"] == C.CONFIRMATORY_DEVICE
 
 
 def test_the_identities_are_distinct_roles_not_duplicates(real_run):
@@ -207,12 +236,81 @@ def test_the_evaluation_pool_digest_is_of_contents_not_of_a_label(real_run):
     assert C._digest_pool(other) != real_run.run["evaluation_pool_digest"]
 
 
+def test_evaluation_pool_digest_frames_names_shapes_and_dtypes():
+    from types import SimpleNamespace
+
+    def pools(obs, action):
+        evaluation = SimpleNamespace(
+            obs=np.asarray(obs, dtype=np.int64),
+            action=np.asarray(action, dtype=np.int64),
+            next_obs=np.asarray([3], dtype=np.int64),
+            episode=np.asarray([4], dtype=np.int64),
+        )
+        return SimpleNamespace(evaluation=evaluation)
+
+    # These first two raw arrays concatenate to the same bytes.  Their framed
+    # semantic inventories are still different and must hash differently.
+    assert C._digest_pool(pools([1], [2])) != C._digest_pool(pools([1, 2], []))
+
+
 def test_the_scale_comes_from_the_full_pool_with_no_mask_available(real_run):
     """D-061/C-010: the scale precedes any mask structurally, not by ordering."""
     from bu.models.uncertainty import ScaledEvaluation
 
     assert "mask" not in inspect.signature(ScaledEvaluation.from_pool).parameters
     assert real_run.run["normalisation"]["scale_source"] == "evaluation_pool"
+
+
+def test_primary_outputs_survive_beyond_the_training_process(real_run):
+    """Week 7 must not need to rerun a Week 6 model to recover its inputs."""
+    assert np.isfinite(real_run.run["mean_error"])
+    assert np.isfinite(real_run.run["mean_disagreement"])
+    assert np.isfinite(real_run.run["mean_predictive_variance"])
+    assert np.isfinite(real_run.run["ratio"])
+    assert real_run.diagnostics is not None
+    required = {
+        "episode", "step", "error", "disagreement", "predictive_variance",
+        "scale", "scale_n_reference", "scale_domain", "scale_source",
+        "evaluation_action",
+    }
+    assert required == set(real_run.diagnostics)
+    n = len(real_run.evaluation)
+    for field in ("episode", "step", "error", "disagreement", "predictive_variance"):
+        assert real_run.diagnostics[field].shape == (n,)
+
+
+@pytest.fixture(scope="module")
+def real_persisted_fit(tmp_path_factory, clean_tree):
+    """One genuine producer -> immutable sidecar -> verified loader round trip."""
+    from bu.experiments.fit_evidence import run_confirmatory_fit
+
+    out = tmp_path_factory.mktemp("persisted-confirmatory-fit")
+    return run_confirmatory_fit(
+        registered_unit(), arm="baseline", seed=CONF, out_dir=out
+    )
+
+
+def test_real_producer_sidecar_preserves_the_complete_action_inventory(
+    real_persisted_fit,
+):
+    """The full-action mask contract is exercised on a real fit, not only stubs."""
+    from bu.models.world_model import MOVEMENT_ACTIONS
+
+    physical = real_persisted_fit.physical
+    verified = real_persisted_fit.verified
+    source_actions = np.asarray(physical.diagnostics["evaluation_action"])
+    stored_actions = verified.diagnostics["evaluation_action"]
+    movement = np.isin(stored_actions, np.asarray(MOVEMENT_ACTIONS))
+    full_episode = np.repeat(
+        np.arange(K.EVALUATION_EPISODES), K.EPISODE_LENGTH
+    )
+    full_step = np.tile(np.arange(K.EPISODE_LENGTH), K.EVALUATION_EPISODES)
+
+    assert len(stored_actions) == K.EVALUATION_EPISODES * K.EPISODE_LENGTH
+    assert np.array_equal(stored_actions, source_actions)
+    assert np.array_equal(verified.episode, full_episode[movement])
+    assert np.array_equal(verified.step, full_step[movement])
+    assert np.array_equal(verified.error, physical.evaluation.error)
 
 
 # --- C-008 integration (Sol's ruling on delta 44) ---------------------------
@@ -363,103 +461,36 @@ def test_a_repaired_arm_without_a_scale_is_refused(tmp_path):
                            arm="data_repair", out_dir=tmp_path)
 
 
-@pytest.fixture(scope="module")
-def repair_pair(tmp_path_factory, clean_tree):
-    out = tmp_path_factory.mktemp("repairval")
-    return C.run_repair_validation(
-        registered_unit(), seed=CONF, arm="data_repair", out_dir=out
-    )
+def test_a_baseline_refuses_a_caller_supplied_scale_before_writing(tmp_path):
+    from bu.models.uncertainty import NormalisationScale
 
-
-def test_repair_validation_produces_ONE_fit_carrying_both_products(repair_pair):
-    """C-008's core requirement: not two parallel training paths.
-
-    The per-transition errors and the complete record must come from the same
-    fit, or nothing guarantees the number and the evidence describe one model.
-    """
-    for run in repair_pair:
-        assert run.evaluation is not None
-        assert run.evaluation.run_id == run.run_id
-        assert run.evaluation.config_id == run.config_id
-        assert (run.record_dir / "run.json").exists()
-
-
-def test_the_repaired_arm_fits_exactly_one_model(repair_pair):
-    baseline, repaired = repair_pair
-    assert repaired.evaluation.ensemble_size == 1
-    assert baseline.evaluation.ensemble_size == K.DEFAULT_ENSEMBLE_SIZE
-
-
-def test_both_arms_share_the_identical_scale_object(repair_pair):
-    """Identity, not equality: two equal scales are still two measurements."""
-    baseline, repaired = repair_pair
-    assert baseline.evaluation.scale is repaired.evaluation.scale
-
-
-def test_the_two_arms_score_the_same_transitions(repair_pair):
-    baseline, repaired = repair_pair
-    assert np.array_equal(baseline.evaluation.episode, repaired.evaluation.episode)
-    assert np.array_equal(baseline.evaluation.step, repaired.evaluation.step)
-
-
-def test_the_recorded_evaluations_are_shaped_for_acceptance(repair_pair):
-    """The plumbing works, and the frozen-seed guard is what stops a partial set.
-
-    A registered label needs the whole 20-seed set (Sol, delta 45), which this
-    module does not fit. So the assertion is twofold: the recorded evaluations
-    carry everything `acceptance_inputs` consumes, AND the only thing refusing
-    them is the seed-set rule -- not a missing field or a broken pairing.
-    """
-    from bu.experiments.repair import acceptance_inputs
-
-    baseline, repaired = repair_pair
-    n = len(baseline.evaluation)
-    for ev in (baseline.evaluation, repaired.evaluation):
-        assert ev.step is not None and ev.episode is not None
-        assert ev.error.shape == (n,)
-        assert ev.stage == "repair_validation"
-
-    with pytest.raises(ValueError, match="registers exactly 20 seeds"):
-        acceptance_inputs(
-            [baseline.evaluation], [repaired.evaluation],
-            failure_masks={CONF: np.ones(n, dtype=bool)},
+    injected = NormalisationScale(torch.ones(2), n_reference=2)
+    with pytest.raises(ValueError, match="baseline cannot accept"):
+        C.run_confirmatory(
+            registered_unit(),
+            stage="exp1",
+            seed=CONF,
+            arm="baseline",
+            out_dir=tmp_path,
+            scale=injected,
         )
+    assert not list(tmp_path.iterdir())
 
 
-def test_the_same_evaluations_build_a_label_on_an_exploratory_stage(repair_pair):
-    """Same objects, honestly relabelled: the assembly itself is sound."""
-    from dataclasses import replace as dc_replace
-    from bu.experiments.repair import acceptance_inputs, EXPLORATORY_STAGE
-
-    baseline, repaired = repair_pair
-    n = len(baseline.evaluation)
-    out = acceptance_inputs(
-        [dc_replace(baseline.evaluation, stage=EXPLORATORY_STAGE)],
-        [dc_replace(repaired.evaluation, stage=EXPLORATORY_STAGE)],
-        failure_masks={CONF: np.ones(n, dtype=bool)},
+@pytest.mark.parametrize("arm", ["baseline", "data_repair", "feature_repair"])
+def test_legacy_pair_by_pair_repair_validation_is_disabled(
+    arm, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        C,
+        "run_confirmatory",
+        lambda *args, **kwargs: pytest.fail("refusal must happen before a fit"),
     )
-    assert len(out["errors"]) == 2 * n
-    assert set(out["transition"]) == set(baseline.evaluation.step)
-
-def test_run_repair_validation_refuses_a_baseline_arm(tmp_path):
-    with pytest.raises(ValueError, match="pass the repaired arm"):
-        C.run_repair_validation(registered_unit(), seed=CONF, arm="baseline",
-                                out_dir=tmp_path)
-
-
-def test_a_single_model_arm_reports_NO_disagreement_rather_than_zero(repair_pair):
-    """Undefined, not zero -- and found only by joining the two paths.
-
-    A repaired arm fits one model (P§14.2), so member spread does not exist.
-    Reporting 0.0 would be a measurement nobody took, and would read as "the
-    members agreed perfectly". The record carries null; the baseline, which does
-    fit an ensemble, carries a number.
-    """
-    baseline, repaired = repair_pair
-    assert repaired.run["mean_disagreement"] is None
-    assert np.isnan(repaired.mean_disagreement)
-    assert baseline.run["mean_disagreement"] is not None
-    assert np.isfinite(baseline.mean_disagreement)
+    with pytest.raises(ValueError, match="duplicate a baseline fit"):
+        C.run_repair_validation(
+            registered_unit(), seed=CONF, arm=arm, out_dir=tmp_path
+        )
+    assert not list(tmp_path.iterdir())
 
 
 def test_the_runner_exposes_no_dirty_override_or_thread_choice():
@@ -485,130 +516,34 @@ def test_a_dirty_tree_cannot_be_overridden(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
-# --- Week 6 one-condition repair harness -----------------------------------
+# --- Legacy Week 6 one-seed repair harness ---------------------------------
 
 
-def _stub_run(unit, *, stage, seed, arm, out_dir, scale=None):
-    """A no-training ConfirmatoryRun preserving the harness's scale contract."""
-    from bu.experiments.repair import ArmEvaluation
-    from bu.models.uncertainty import NormalisationScale
-
-    if scale is None:
-        scale = NormalisationScale(torch.ones(2), n_reference=2)
-    cfg = Config(
-        unit=unit,
-        arm=Arm(arm),
-        stage=stage,
-        seed=seed,
-        train=C.CONFIRMATORY_TRAIN if arm == "baseline" else C.REPAIRED_TRAIN,
-    )
-    evaluation = ArmEvaluation(
-        arm=arm,
-        seed=seed,
-        error=np.ones(2),
-        episode=np.array([0, 0]),
-        step=np.array([0, 1]),
-        scale=scale,
-        config_id=cfg.config_id,
-        run_id=cfg.run_id,
-        n_train=unit.n_transitions,
-        stage=stage,
-        ensemble_size=cfg.train.ensemble_size,
-    )
-    row = {
-        "run_id": cfg.run_id,
-        "config_id": cfg.config_id,
-        "unit_id": cfg.unit_id,
-        "fit_id": cfg.fit_id,
-        "stage": stage,
-        "seed": seed,
-        "arm": arm,
-    }
-    return C.ConfirmatoryRun(
-        run_id=cfg.run_id,
-        config_id=cfg.config_id,
-        unit_id=cfg.unit_id,
-        fit_id=cfg.fit_id,
-        stage=stage,
-        arm=arm,
-        seed=seed,
-        n_train=unit.n_transitions,
-        member_count=cfg.train.ensemble_size,
-        mean_disagreement=float("nan"),
-        record_dir=Path(out_dir) / cfg.run_id,
-        run=row,
-        evaluation=evaluation,
-    )
-
-
-def test_week6_harness_fits_one_baseline_then_both_repairs(monkeypatch, tmp_path):
-    calls = []
-
-    def run(*args, **kwargs):
-        result = _stub_run(*args, **kwargs)
-        calls.append((kwargs["arm"], kwargs.get("scale")))
-        return result
-
-    monkeypatch.setattr(C, "run_confirmatory", run)
-    unit = UnitSpec(
-        family="missing_feature",
-        withheld_features=("shape",),
-        confound_rate=0.25,
-    )
-    result = C.run_repair_condition(unit, seed=CONF, out_dir=tmp_path)
-
-    assert [arm for arm, _ in calls] == [
-        "baseline", "data_repair", "feature_repair"
-    ]
-    assert calls[0][1] is None
-    baseline_scale = result.baseline.evaluation.scale
-    assert calls[1][1] is calls[2][1] is baseline_scale
-    assert result.data_repair.evaluation.scale is baseline_scale
-    assert result.model_repair.evaluation.scale is baseline_scale
-    assert result.model_repair_arm == "feature_repair"
-
-
-def test_week6_harness_uses_capacity_as_the_predeclared_model_repair(
-    monkeypatch, tmp_path
-):
-    monkeypatch.setattr(C, "run_confirmatory", _stub_run)
-    unit = UnitSpec(family="capacity", hidden_size=16)
-    result = C.run_repair_condition(unit, seed=CONF, out_dir=tmp_path)
-    assert result.model_repair_arm == "capacity_repair"
-
-
-def test_week6_harness_refuses_to_invent_a_missing_model_repair(
-    monkeypatch, tmp_path
+@pytest.mark.parametrize(
+    "unit",
+    [
+        UnitSpec(
+            family="missing_feature",
+            withheld_features=("shape",),
+            confound_rate=0.25,
+        ),
+        UnitSpec(family="capacity", hidden_size=16),
+        UnitSpec(family="estimation", n_transitions=100),
+        UnitSpec(
+            family="missing_feature",
+            withheld_features=("shape",),
+            hidden_size=16,
+            confound_rate=0.25,
+        ),
+    ],
+)
+def test_legacy_one_seed_repair_condition_path_is_disabled(
+    unit, monkeypatch, tmp_path
 ):
     monkeypatch.setattr(
         C,
         "run_confirmatory",
         lambda *args, **kwargs: pytest.fail("refusal must happen before a fit"),
     )
-    with pytest.raises(ValueError, match="exactly one predeclared model intervention"):
-        C.run_repair_condition(
-            UnitSpec(family="estimation", n_transitions=100),
-            seed=CONF,
-            out_dir=tmp_path,
-        )
-
-
-def test_week6_harness_refuses_a_condition_with_two_model_repairs(
-    monkeypatch, tmp_path
-):
-    monkeypatch.setattr(
-        C,
-        "run_confirmatory",
-        lambda *args, **kwargs: pytest.fail("refusal must happen before a fit"),
-    )
-    with pytest.raises(ValueError, match="exactly one predeclared model intervention"):
-        C.run_repair_condition(
-            UnitSpec(
-                family="missing_feature",
-                withheld_features=("shape",),
-                hidden_size=16,
-                confound_rate=0.25,
-            ),
-            seed=CONF,
-            out_dir=tmp_path,
-        )
+    with pytest.raises(ValueError, match="one-seed in-memory result"):
+        C.run_repair_condition(unit, seed=CONF, out_dir=tmp_path)
