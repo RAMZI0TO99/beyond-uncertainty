@@ -148,6 +148,7 @@ class ReferenceCell:
     run_id: str
     config_id: str
     unit_id: str
+    fit_id: str
     n_members: int
 
     @property
@@ -361,7 +362,8 @@ def score_reference_cell(unit: UnitSpec, *, seed: int, attempt: Path) -> Referen
     return ReferenceCell(
         layout=unit.layout, causal_attribute=unit.causal_attribute, seed=seed,
         errors=errors, run_id=config.run_id, config_id=config.config_id,
-        unit_id=config.unit_id, n_members=config.train.ensemble_size,
+        unit_id=config.unit_id, fit_id=config.fit_id,
+        n_members=config.train.ensemble_size,
     )
 
 
@@ -380,7 +382,7 @@ def calibrate(out_dir: str | Path, *, attempt: str = "attempt-001") -> Threshold
     target = assert_may_attempt(Path(out_dir), attempt=attempt)
 
     git = git_state()
-    if not git.trustworthy:
+    if (git.dirty is not False or git.trustworthy is not True):
         raise ValueError(
             f"the working tree is not trustworthy at commit {git.commit!r} "
             f"(dirty={git.dirty}). This threshold is frozen permanently and every "
@@ -432,7 +434,8 @@ def calibrate(out_dir: str | Path, *, attempt: str = "attempt-001") -> Threshold
             "layout": cell.layout, "causal_attribute": cell.causal_attribute,
             "seed": cell.seed, "n_transitions": len(cell),
             "run_id": cell.run_id, "config_id": cell.config_id,
-            "unit_id": cell.unit_id, "n_members": cell.n_members,
+            "unit_id": cell.unit_id, "fit_id": cell.fit_id,
+            "n_members": cell.n_members,
             "errors_file": f"arrays/{name}", "errors_digest": _sha256_file(path),
             "run_record_digest": _sha256_file(target / "records" / cell.run_id / "run.json"),
             "member_record_digest": _sha256_file(target / "records" / cell.run_id / "metrics.jsonl"),
@@ -453,6 +456,166 @@ def calibrate(out_dir: str | Path, *, attempt: str = "attempt-001") -> Threshold
         json.dumps(calibration.as_row(), indent=2), encoding="utf-8"
     )
     return calibration
+
+
+def _exact_commit(value) -> bool:
+    """Whether *value* is one exact lower-case SHA-1 object name."""
+    return (
+        isinstance(value, str)
+        and len(value) == 40
+        and all(ch in "0123456789abcdef" for ch in value)
+    )
+
+
+def _verify_cell_run_evidence(
+    attempt: Path,
+    cell: dict,
+    *,
+    record_commit: str,
+) -> None:
+    """Bind one threshold cell to its run config, members, and clean Git tree.
+
+    File digests establish byte identity, but do not establish that those bytes
+    describe the cell that cites them.  Reconstructing :class:`Config` closes
+    that second half of the evidence boundary.
+    """
+    run_id = cell.get("run_id")
+    records = attempt / "records" / str(run_id)
+    targets = (
+        ("run.json", "run_record_digest"),
+        ("metrics.jsonl", "member_record_digest"),
+    )
+    for name, field in targets:
+        target = records / name
+        if not target.exists():
+            raise ValueError(f"{run_id}/{name} is missing from the attempt")
+        if _sha256_file(target) != cell.get(field):
+            raise ValueError(f"{run_id}/{name} does not match its recorded digest")
+
+    run_path = records / "run.json"
+    try:
+        run_record = json.loads(run_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ValueError(f"{run_id}/run.json is not valid UTF-8 JSON") from exc
+    if not isinstance(run_record, dict):
+        raise ValueError(f"{run_id}/run.json must contain one JSON object")
+
+    config_row = run_record.get("config")
+    if not isinstance(config_row, dict):
+        raise ValueError(f"{run_id}/run.json has no reconstructable config object")
+    if type(config_row.get("seed")) is not int:
+        raise ValueError(f"{run_id}/run.json config seed must be one exact integer")
+    try:
+        config = Config.from_dict(config_row)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"{run_id}/run.json config cannot be reconstructed") from exc
+
+    layout = cell.get("layout")
+    attribute = cell.get("causal_attribute")
+    expected_unit = UnitSpec(
+        family=REFERENCE_FAMILY,
+        layout=layout,
+        causal_attribute=attribute,
+        confound_rate=REFERENCE_CONFOUND_RATE,
+        n_transitions=REFERENCE_SIZE,
+        withheld_features=(),
+    )
+    if config.unit != expected_unit:
+        raise ValueError(
+            f"{run_id}/run.json config unit is not the registered reference "
+            f"condition for cell {layout}/{attribute}"
+        )
+    if config.arm.kind != "baseline" or config.train != TrainConfig():
+        raise ValueError(
+            f"{run_id}/run.json does not use the registered baseline arm and "
+            "training configuration"
+        )
+
+    if type(cell.get("seed")) is not int:
+        raise ValueError(f"cell {layout}/{attribute} seed must be one exact integer")
+    if type(run_record.get("seed")) is not int:
+        raise ValueError(f"{run_id}/run.json top-level seed must be one exact integer")
+    if config.seed != cell["seed"] or run_record["seed"] != config.seed:
+        raise ValueError(
+            f"{run_id}/run.json seed does not match its reconstructed config and cell"
+        )
+    if config.stage != THRESHOLD_STAGE or run_record.get("stage") != config.stage:
+        raise ValueError(
+            f"{run_id}/run.json stage does not match the registered threshold stage"
+        )
+
+    for field, computed in (
+        ("unit_id", config.unit_id),
+        ("config_id", config.config_id),
+        ("run_id", config.run_id),
+    ):
+        if run_record.get(field) != computed or cell.get(field) != computed:
+            raise ValueError(
+                f"{run_id}/run.json {field} does not match the reconstructed "
+                "config and threshold cell"
+            )
+
+    if run_record.get("fit_id") not in (None, config.fit_id):
+        raise ValueError(
+            f"{run_id}/run.json fit_id does not match the reconstructed config"
+        )
+
+    # fit_id was not written into the historical frozen evidence, so its legacy
+    # row identity is reconstructed from the cell's config_id and seed.  New
+    # attempts record it explicitly; both forms must equal Config.fit_id.
+    row_fit_id = cell.get(
+        "fit_id", f"{cell.get('config_id')}-s{cell['seed']:03d}"
+    )
+    if row_fit_id != config.fit_id:
+        raise ValueError(
+            f"{run_id}/run.json fit_id does not match the reconstructed config "
+            "and threshold cell"
+        )
+
+    git = run_record.get("git")
+    if not isinstance(git, dict):
+        raise ValueError(f"{run_id}/run.json has no Git provenance object")
+    if git.get("commit") != record_commit:
+        raise ValueError(
+            f"{run_id}/run.json commit does not match the threshold record's "
+            "common commit"
+        )
+    if git.get("dirty") is not False or git.get("trustworthy") is not True:
+        raise ValueError(
+            f"{run_id}/run.json Git state is not exactly clean and trustworthy"
+        )
+    if not _exact_commit(git.get("commit")):
+        raise ValueError(f"{run_id}/run.json Git commit is not one exact object name")
+
+    metric_path = records / "metrics.jsonl"
+    metric_rows = []
+    for line_number, line in enumerate(
+        metric_path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        if not line.strip():
+            continue
+        try:
+            metric = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"{run_id}/metrics.jsonl line {line_number} is not valid JSON"
+            ) from exc
+        if not isinstance(metric, dict) or type(metric.get("member")) is not int:
+            raise ValueError(
+                f"{run_id}/metrics.jsonl line {line_number} has no exact integer member"
+            )
+        metric_rows.append(metric["member"])
+
+    expected_roster = list(range(config.train.ensemble_size))
+    if sorted(metric_rows) != expected_roster or len(metric_rows) != len(expected_roster):
+        raise ValueError(
+            f"{run_id}/metrics.jsonl member roster is {metric_rows!r}, not exactly "
+            f"{expected_roster!r} once each"
+        )
+    if cell.get("n_members") != config.train.ensemble_size:
+        raise ValueError(
+            f"{run_id} cell member count does not match the reconstructed config"
+        )
 
 
 def recompute_threshold(attempt_dir: str | Path) -> float:
@@ -486,6 +649,12 @@ def recompute_threshold(attempt_dir: str | Path) -> float:
     expect("required_cells", REQUIRED_CELLS, "required cell count")
     expect("seeds", list(THRESHOLD_SEEDS), "seed set")
     expect("failure_rule", "error > threshold (strict)", "failure rule")
+    record_commit = row.get("commit")
+    if not _exact_commit(record_commit):
+        raise ValueError(
+            f"record-level commit {record_commit!r} is not one exact lower-case "
+            "Git object name"
+        )
     balance = row.get("balance", {})
     if balance.get("rng_seed") != BALANCE_RNG_SEED:
         raise ValueError("the attempt records a different balancing RNG seed")
@@ -547,16 +716,9 @@ def recompute_threshold(attempt_dir: str | Path) -> float:
                 f"{cell['errors_file']} has a digest the attempt does not record. "
                 "The stored errors are not the ones the threshold was taken over"
             )
-        records = attempt / "records" / cell["run_id"]
-        for name, field in (("run.json", "run_record_digest"),
-                            ("metrics.jsonl", "member_record_digest")):
-            target = records / name
-            if not target.exists():
-                raise ValueError(f"{cell['run_id']}/{name} is missing from the attempt")
-            if _sha256_file(target) != cell[field]:
-                raise ValueError(
-                    f"{cell['run_id']}/{name} does not match its recorded digest"
-                )
+        _verify_cell_run_evidence(
+            attempt, cell, record_commit=record_commit,
+        )
         errors = np.load(path)
         if errors.shape != (cell["n_transitions"],):
             raise ValueError(

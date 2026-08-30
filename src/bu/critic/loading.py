@@ -32,7 +32,7 @@ import.
 from __future__ import annotations
 
 import importlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from numbers import Integral
 from pathlib import Path
 from typing import Iterable
@@ -50,7 +50,7 @@ C007_INTEGRATION_STATUS = "loading_boundary_only"
 
 
 def _check_stage(stage: object, *, where: str, allow_pilot: bool) -> None:
-    if not isinstance(stage, str) or stage == "unknown" or stage not in STAGES:
+    if type(stage) is not str or stage == "unknown" or stage not in STAGES:
         raise ValueError(
             f"{where} carries stage {stage!r}, which is missing, 'unknown', or "
             f"not a registered stage {list(STAGES)}. Stage metadata is refused, "
@@ -89,7 +89,7 @@ def _validate_frame(frame: pd.DataFrame, *, root: object, allow_pilot: bool) -> 
             "DataFrame. The provenance boundary refuses unknown container "
             "shapes rather than trusting duck-typed metadata (C-007; D-054)"
         )
-    required = {"run_id", "seed", "stage"}
+    required = {"run_id", "unit_id", "config_id", "fit_id", "seed", "stage"}
     missing = sorted(required - set(frame.columns))
     if missing:
         raise ValueError(
@@ -106,8 +106,47 @@ def _validate_frame(frame: pd.DataFrame, *, root: object, allow_pilot: bool) -> 
         )
     for row in frame.itertuples(index=False):
         where = f"run {row.run_id!r}"
+        _check_identity_string(row.run_id, field_name="run_id", where=where)
+        _check_identity_string(row.unit_id, field_name="unit_id", where=where)
+        _check_identity_string(row.config_id, field_name="config_id", where=where)
+        _check_identity_string(row.fit_id, field_name="fit_id", where=where)
         _check_seed(row.seed, where=where)
         _check_stage(row.stage, where=where, allow_pilot=allow_pilot)
+
+
+def _check_identity_string(value: object, *, field_name: str, where: str) -> str:
+    if type(value) is not str or not value.strip():
+        raise ValueError(
+            f"{where} carries {field_name}={value!r} of type "
+            f"{type(value).__name__}; every identity must be an exact nonblank "
+            "string and is refused rather than coerced (C-007)"
+        )
+    return value
+
+
+_BOUND_IDENTITY_COLUMNS = (
+    "run_id", "unit_id", "config_id", "fit_id", "seed", "stage"
+)
+
+
+def _identity_snapshot(frame: pd.DataFrame) -> tuple[tuple[object, ...], ...]:
+    """Immutable, type-tagged copy of the identity rows consumers receive."""
+    rows: list[tuple[object, ...]] = []
+    for values in frame.loc[:, list(_BOUND_IDENTITY_COLUMNS)].itertuples(
+        index=False, name=None
+    ):
+        tagged = []
+        for value in values:
+            if isinstance(value, bool):
+                tagged.append(("bool", value))
+            elif isinstance(value, Integral):
+                tagged.append(("int", int(value)))
+            elif type(value) is str:
+                tagged.append(("str", value))
+            else:
+                tagged.append((type(value).__name__, repr(value)))
+        rows.append(tuple(tagged))
+    return tuple(rows)
 
 
 @dataclass(frozen=True)
@@ -123,21 +162,38 @@ class ConfirmatoryRuns:
     frame: pd.DataFrame
     seeds: tuple[int, ...]
     stages: tuple[str, ...]
+    run_ids: tuple[str, ...]
+    _bound_identity: tuple[tuple[object, ...], ...] = field(
+        init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
-        if not self.seeds or not self.stages:
+        if not self.seeds or not self.stages or not self.run_ids:
             raise ValueError(
-                "ConfirmatoryRuns with empty seeds or stages: a wrapper over "
-                "nothing passes every downstream guard vacuously, and unknown "
-                "provenance is refused, not defaulted (C-007; D-034)"
+                "ConfirmatoryRuns with empty seeds, stages, or run_ids: a "
+                "wrapper over nothing passes every downstream guard vacuously, "
+                "and unknown provenance is refused, not defaulted "
+                "(C-007; D-034)"
             )
         for s in self.seeds:
             _check_seed(s, where="ConfirmatoryRuns")
         assert_confirmatory(self.seeds, what="ConfirmatoryRuns")
         for stage in self.stages:
             _check_stage(stage, where="ConfirmatoryRuns", allow_pilot=False)
+        checked_run_ids = tuple(
+            _check_identity_string(
+                run_id, field_name="run_id", where="ConfirmatoryRuns"
+            )
+            for run_id in self.run_ids
+        )
+        if len(set(checked_run_ids)) != len(checked_run_ids):
+            raise ValueError(
+                f"ConfirmatoryRuns carries duplicate run_ids {self.run_ids!r}; "
+                "the wrapper inventory must identify each loaded run once"
+            )
 
         self.validate()
+        object.__setattr__(self, "_bound_identity", _identity_snapshot(self.frame))
 
     def validate(self) -> None:
         """Re-verify the mutable frame and its duplicated metadata.
@@ -150,7 +206,13 @@ class ConfirmatoryRuns:
         _validate_frame(self.frame, root="ConfirmatoryRuns.frame", allow_pilot=False)
         frame_seeds = tuple(sorted({_check_seed(s, where="ConfirmatoryRuns.frame")
                                     for s in self.frame["seed"]}))
-        frame_stages = tuple(sorted({str(s) for s in self.frame["stage"]}))
+        frame_stages = tuple(sorted(set(self.frame["stage"])))
+        frame_run_ids = tuple(sorted({
+            _check_identity_string(
+                run_id, field_name="run_id", where="ConfirmatoryRuns.frame"
+            )
+            for run_id in self.frame["run_id"]
+        }))
         if frame_seeds != tuple(sorted(self.seeds)):
             raise ValueError(
                 f"ConfirmatoryRuns seeds {self.seeds!r} disagree with frame "
@@ -163,6 +225,20 @@ class ConfirmatoryRuns:
                 f"ConfirmatoryRuns stages {self.stages!r} disagree with frame "
                 f"stages {frame_stages!r}. Wrapper metadata is cross-checked "
                 "against the rows consumers receive (D-072; C-007)"
+            )
+        if frame_run_ids != tuple(sorted(self.run_ids)):
+            raise ValueError(
+                f"ConfirmatoryRuns run_ids {self.run_ids!r} disagree with frame "
+                f"run_ids {frame_run_ids!r}. The requested/loaded run inventory "
+                "is bound to the rows consumers receive (D-072; C-007)"
+            )
+        current_identity = _identity_snapshot(self.frame)
+        bound_identity = getattr(self, "_bound_identity", None)
+        if bound_identity is not None and current_identity != bound_identity:
+            raise ValueError(
+                "ConfirmatoryRuns identity columns changed after the boundary "
+                "created the wrapper. A mutable DataFrame cannot rewrite its "
+                "run/config/unit/fit identity in place (D-072; C-007)"
             )
 
 
@@ -203,8 +279,11 @@ def load_critic_runs(
         ) from exc
     _validate_frame(frame, root=root, allow_pilot=False)
     seeds = tuple(sorted({int(s) for s in frame["seed"]}))
-    stages = tuple(sorted({str(s) for s in frame["stage"]}))
-    return ConfirmatoryRuns(frame=frame, seeds=seeds, stages=stages)
+    stages = tuple(sorted(set(frame["stage"])))
+    run_ids = tuple(sorted(set(frame["run_id"])))
+    return ConfirmatoryRuns(
+        frame=frame, seeds=seeds, stages=stages, run_ids=run_ids
+    )
 
 
 load_critic_runs.__critic_consumer__ = "critic.load_runs"
@@ -329,9 +408,13 @@ def find_run_loading_tokens(source_text: str) -> list[str]:
     and prove the scanner has teeth: a check that cannot fail is not a check
     (D-055, D-057).
 
-    The scan is over Python's AST, not raw text: comments and docstrings are
-    excluded, while imported aliases, qualified calls, ``METRICS_FILE`` aliases
-    and direct ``metrics.jsonl`` reads are recognised.  The certified
+    This is a static **hygiene guard**, not a proof against arbitrary dynamic
+    Python access: reflection, runtime-generated names and native extensions
+    cannot be established safe by a source scan. The scan nevertheless covers
+    ordinary imported aliases, assignment aliases, qualified calls,
+    ``METRICS_FILE`` aliases and constant-folded ``metrics.jsonl`` paths. The
+    scan is over Python's AST, not raw text, so comments and docstrings are
+    excluded. The certified
     ``schema.py`` legitimately *mentions* ``load_runs`` in prose, which is not
     a call site. Text that does not parse falls back to a plain substring scan
     — failing open on a syntax error would let a malformed module dodge the
@@ -348,6 +431,7 @@ def find_run_loading_tokens(source_text: str) -> list[str]:
 
     call_aliases: dict[str, str] = {name: name for name in _RUN_LOADING_CALLS}
     metrics_aliases: set[str] = {_METRICS_CONSTANT}
+    string_constants: dict[str, str] = {}
     docstrings: set[int] = set()
     for owner in ast.walk(tree):
         body = getattr(owner, "body", None)
@@ -367,6 +451,67 @@ def find_run_loading_tokens(source_text: str) -> list[str]:
                 if item.name == _METRICS_CONSTANT:
                     metrics_aliases.add(bound)
 
+    def static_string(node) -> str | None:
+        if isinstance(node, ast.Constant) and type(node.value) is str:
+            return node.value
+        if isinstance(node, ast.Name):
+            # This module deliberately constructs its scanner sentinel from
+            # pieces so the scanner source does not report itself as a bypass.
+            if node.id == "_METRICS_FILENAME":
+                return None
+            return string_constants.get(node.id)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Div)):
+            left = static_string(node.left)
+            right = static_string(node.right)
+            if left is None or right is None:
+                return None
+            separator = "/" if isinstance(node.op, ast.Div) else ""
+            return left.rstrip("/\\") + separator + right.lstrip("/\\")
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id in {"Path", "PurePath"} and len(node.args) == 1):
+            return static_string(node.args[0])
+        return None
+
+    # Resolve ordinary assignment chains to a fixpoint: ``reader = load_runs``
+    # and ``reader2 = reader`` are both bypass shapes worth flagging. This is
+    # deliberately bounded to statically evident assignments; see the honesty
+    # statement above about Python's dynamic features.
+    assignments = [node for node in ast.walk(tree)
+                   if isinstance(node, (ast.Assign, ast.AnnAssign))]
+    sentinel_definition_values: set[int] = set()
+    for node in assignments:
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        if any(isinstance(target, ast.Name)
+               and target.id == "_METRICS_FILENAME" for target in targets):
+            sentinel_definition_values.add(id(node.value))
+    changed = True
+    while changed:
+        changed = False
+        for node in assignments:
+            value = node.value
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            names = [target.id for target in targets if isinstance(target, ast.Name)]
+            if not names or value is None:
+                continue
+            call_name = None
+            if isinstance(value, ast.Name) and value.id in call_aliases:
+                call_name = call_aliases[value.id]
+            elif (isinstance(value, ast.Attribute)
+                  and value.attr in _RUN_LOADING_CALLS):
+                call_name = value.attr
+            metric_alias = isinstance(value, ast.Name) and value.id in metrics_aliases
+            constant = static_string(value)
+            for name in names:
+                if call_name is not None and call_aliases.get(name) != call_name:
+                    call_aliases[name] = call_name
+                    changed = True
+                if metric_alias and name not in metrics_aliases:
+                    metrics_aliases.add(name)
+                    changed = True
+                if constant is not None and string_constants.get(name) != constant:
+                    string_constants[name] = constant
+                    changed = True
+
     found: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
@@ -378,9 +523,10 @@ def find_run_loading_tokens(source_text: str) -> list[str]:
                 found.add(node.func.attr + "(")
         elif isinstance(node, ast.Name) and node.id in metrics_aliases:
             found.add(_METRICS_CONSTANT)
-        elif (isinstance(node, ast.Constant) and id(node) not in docstrings
-              and isinstance(node.value, str)
-              and node.value.replace("\\", "/").split("/")[-1]
+        elif (id(node) not in docstrings
+              and id(node) not in sentinel_definition_values
+              and (static_value := static_string(node)) is not None
+              and static_value.replace("\\", "/").split("/")[-1]
               == _METRICS_FILENAME):
             # A direct read is still a loader even when it bypasses METRICS_FILE.
             found.add(_METRICS_FILENAME)

@@ -532,7 +532,7 @@ def test_duplicate_unit_ids_are_refused():
         validate_candidates([cand("dup", "g1", 0), cand("dup", "g2", 1)])
 
 
-@pytest.mark.parametrize("unit_id", ["", "   ", 7, None])
+@pytest.mark.parametrize("unit_id", ["", "   ", 7, None, [], {}])
 def test_unit_ids_must_be_nonblank_strings(unit_id):
     with pytest.raises(ValueError, match="unit_id.*non-blank string"):
         validate_candidates([cand(unit_id, "g1", 0)])
@@ -612,6 +612,12 @@ def test_the_split_seed_is_not_caller_overridable_and_absence_fails_closed(
         split_units(basic_candidates(), targets=uniform_targets(), seed=1)
     monkeypatch.delattr(K, "CRITIC_SPLIT_SEED", raising=False)
     with pytest.raises(ValueError, match="Change Record"):
+        split_units(basic_candidates(), targets=uniform_targets())
+
+
+def test_a_negative_registered_split_seed_is_refused(monkeypatch):
+    monkeypatch.setattr(K, "CRITIC_SPLIT_SEED", -1, raising=False)
+    with pytest.raises(ValueError, match="negative"):
         split_units(basic_candidates(), targets=uniform_targets())
 
 

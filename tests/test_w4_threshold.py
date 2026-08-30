@@ -18,8 +18,13 @@ import numpy as np
 import pytest
 
 from bu import constants as K
+from bu.config import Config, UnitSpec
+from bu.runrecord import GitState
 from bu.stats.gate import EVIDENCE_CONTRACT_VERSION, METRIC_SCHEMA_VERSION
 from bu.experiments import w4_threshold as T
+
+
+CLEAN_COMMIT = "a" * 40
 
 
 # --- the API cannot change the number ---------------------------------------
@@ -40,21 +45,58 @@ def test_calibrate_takes_no_result_changing_argument():
         assert forbidden not in params
 
 
-def test_calibration_refuses_a_gitless_tree_before_scoring(monkeypatch, tmp_path):
-    """A permanent threshold must identify a real commit, not UNCOMMITTED."""
-    from bu.runrecord import GitState
-
+@pytest.mark.parametrize(
+    "git",
+    [
+        GitState(commit="UNCOMMITTED", dirty=False, branch="unknown"),
+        GitState(commit="a" * 39, dirty=False, branch="main"),
+        GitState(commit="A" * 40, dirty=False, branch="main"),
+        GitState(commit="g" * 40, dirty=False, branch="main"),
+        GitState(commit=CLEAN_COMMIT, dirty=True, branch="main"),
+        GitState(commit=CLEAN_COMMIT, dirty=0, branch="main"),
+    ],
+)
+def test_calibration_refuses_untrustworthy_git_before_scoring(
+    monkeypatch, tmp_path, git,
+):
+    """Malformed, dirty, and inexact Git states all stop before the first fit."""
     monkeypatch.setattr(
         T,
         "git_state",
-        lambda: GitState(commit="UNCOMMITTED", dirty=False, branch="unknown"),
+        lambda: git,
     )
     scored = []
     monkeypatch.setattr(T, "score_reference_cell", lambda *a, **k: scored.append(1))
 
-    with pytest.raises(ValueError, match="UNCOMMITTED"):
+    with pytest.raises(ValueError, match="not trustworthy"):
         T.calibrate(tmp_path, attempt="attempt-001")
     assert not scored, "a reference cell was scored without a repository"
+
+
+def test_calibration_clean_git_advances_to_the_first_score(monkeypatch, tmp_path):
+    """Positive sentinel: a genuinely clean exact commit passes the Git guard."""
+    class ReachedScoring(RuntimeError):
+        pass
+
+    monkeypatch.setattr(
+        T, "git_state",
+        lambda: GitState(commit=CLEAN_COMMIT, dirty=False, branch="main"),
+    )
+    monkeypatch.setattr(T, "_pin_threading", lambda *args: None)
+    monkeypatch.setattr(
+        T, "torch_threading",
+        lambda: {
+            "num_threads": T.THRESHOLD_THREADS,
+            "num_interop_threads": T.THRESHOLD_INTEROP_THREADS,
+        },
+    )
+
+    def reached(*args, **kwargs):
+        raise ReachedScoring
+
+    monkeypatch.setattr(T, "score_reference_cell", reached)
+    with pytest.raises(ReachedScoring):
+        T.calibrate(tmp_path, attempt="attempt-001")
 
 
 def test_the_frozen_specification_is_what_sol_ruled():
@@ -251,7 +293,7 @@ def test_declaring_invalid_AFTER_reading_the_threshold_is_refused(tmp_path):
 
 
 def fake_attempt(tmp_path, n=40):
-    """An attempt directory built from arrays and stub records -- no fitting."""
+    """An attempt directory with real Config provenance but no fitting."""
     attempt = tmp_path / "attempt-001"
     (attempt / "arrays").mkdir(parents=True)
     arrays, cells = {}, []
@@ -263,15 +305,49 @@ def fake_attempt(tmp_path, n=40):
             name = f"{layout}-{attr}-s{seed}.npy"
             path = attempt / "arrays" / name
             np.save(path, errs)
-            run_id = f"r-{layout}-{attr}-{seed}"
+            config = Config(
+                unit=UnitSpec(
+                    family=T.REFERENCE_FAMILY,
+                    layout=layout,
+                    causal_attribute=attr,
+                    confound_rate=T.REFERENCE_CONFOUND_RATE,
+                    n_transitions=T.REFERENCE_SIZE,
+                    withheld_features=(),
+                ),
+                seed=seed,
+                stage=T.THRESHOLD_STAGE,
+            )
+            run_id = config.run_id
             rec = attempt / "records" / run_id
             rec.mkdir(parents=True)
-            (rec / "run.json").write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
-            (rec / "metrics.jsonl").write_text('{"member": 0}\n', encoding="utf-8")
+            (rec / "run.json").write_text(json.dumps({
+                "run_id": config.run_id,
+                "config_id": config.config_id,
+                "unit_id": config.unit_id,
+                "fit_id": config.fit_id,
+                "seed": config.seed,
+                "stage": config.stage,
+                "config": config.to_dict(),
+                "git": {
+                    "commit": CLEAN_COMMIT,
+                    "branch": "main",
+                    "dirty": False,
+                    "trustworthy": True,
+                },
+            }), encoding="utf-8")
+            (rec / "metrics.jsonl").write_text(
+                "".join(
+                    json.dumps({"i": member, "member": member}) + "\n"
+                    for member in range(config.train.ensemble_size)
+                ),
+                encoding="utf-8",
+            )
             cells.append({
                 "layout": layout, "causal_attribute": attr, "seed": seed,
                 "n_transitions": n, "run_id": run_id,
-                "config_id": "c", "unit_id": "u", "n_members": 5,
+                "config_id": config.config_id, "unit_id": config.unit_id,
+                "fit_id": config.fit_id,
+                "n_members": config.train.ensemble_size,
                 "errors_file": f"arrays/{name}",
                 "errors_digest": hashlib.sha256(path.read_bytes()).hexdigest(),
                 "run_record_digest": hashlib.sha256((rec / "run.json").read_bytes()).hexdigest(),
@@ -298,9 +374,42 @@ def fake_attempt(tmp_path, n=40):
                       "statistic": "ensemble-mean normalised movement error"},
         "threading": {"num_threads": T.THRESHOLD_THREADS,
                       "num_interop_threads": T.THRESHOLD_INTEROP_THREADS},
+        "commit": CLEAN_COMMIT,
         "cells": cells, "selected_indices": selected,
     }, indent=2), encoding="utf-8")
     return attempt
+
+
+def _rewrite_attempt_row(attempt, row):
+    (attempt / "threshold_calibration.json").write_text(
+        json.dumps(row), encoding="utf-8"
+    )
+
+
+def _mutate_run_record(attempt, mutate):
+    """Mutate semantics and refresh the digest so digest-only checks cannot win."""
+    row = json.loads((attempt / "threshold_calibration.json").read_text())
+    cell = row["cells"][0]
+    path = attempt / "records" / cell["run_id"] / "run.json"
+    record = json.loads(path.read_text())
+    mutate(record)
+    path.write_text(json.dumps(record), encoding="utf-8")
+    cell["run_record_digest"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    _rewrite_attempt_row(attempt, row)
+
+
+def _replace_member_roster(attempt, roster):
+    """Replace a member stream and refresh its digest for a semantic test."""
+    row = json.loads((attempt / "threshold_calibration.json").read_text())
+    cell = row["cells"][0]
+    path = attempt / "records" / cell["run_id"] / "metrics.jsonl"
+    path.write_text(
+        "".join(json.dumps({"i": i, "member": member}) + "\n"
+                for i, member in enumerate(roster)),
+        encoding="utf-8",
+    )
+    cell["member_record_digest"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    _rewrite_attempt_row(attempt, row)
 
 
 def test_the_threshold_recomputes_from_stored_artefacts(tmp_path):
@@ -410,6 +519,143 @@ def test_recompute_verifies_the_run_and_member_records(tmp_path):
     victim = attempt / "records" / row["cells"][3]["run_id"] / "metrics.jsonl"
     victim.write_text('{"member": 99}\n', encoding="utf-8")
     with pytest.raises(ValueError, match="does not match its recorded digest"):
+        T.recompute_threshold(attempt)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("unit_id", "wrong-unit"),
+        ("config_id", "wrong-config"),
+        ("run_id", "wrong-run"),
+    ],
+)
+def test_recompute_reconstructs_and_checks_every_run_identity(
+    tmp_path, field, value,
+):
+    attempt = fake_attempt(tmp_path)
+    _mutate_run_record(attempt, lambda record: record.__setitem__(field, value))
+    with pytest.raises(ValueError, match=field):
+        T.recompute_threshold(attempt)
+
+
+def test_recompute_checks_the_explicit_cell_fit_identity(tmp_path):
+    attempt = fake_attempt(tmp_path)
+    row = json.loads((attempt / "threshold_calibration.json").read_text())
+    row["cells"][0]["fit_id"] = "wrong-fit"
+    _rewrite_attempt_row(attempt, row)
+    with pytest.raises(ValueError, match="fit_id"):
+        T.recompute_threshold(attempt)
+
+
+def test_recompute_checks_the_run_record_fit_identity(tmp_path):
+    attempt = fake_attempt(tmp_path)
+    _mutate_run_record(
+        attempt, lambda record: record.__setitem__("fit_id", "wrong-fit")
+    )
+    with pytest.raises(ValueError, match="fit_id"):
+        T.recompute_threshold(attempt)
+
+
+@pytest.mark.parametrize("field", ["unit_id", "config_id"])
+def test_recompute_binds_run_identity_to_the_citing_cell(tmp_path, field):
+    attempt = fake_attempt(tmp_path)
+    row = json.loads((attempt / "threshold_calibration.json").read_text())
+    row["cells"][0][field] = f"wrong-{field}"
+    _rewrite_attempt_row(attempt, row)
+    with pytest.raises(ValueError, match=field):
+        T.recompute_threshold(attempt)
+
+
+def test_recompute_refuses_two_cells_with_swapped_run_references(tmp_path):
+    """Valid digested records cannot be reassigned to different cells."""
+    attempt = fake_attempt(tmp_path)
+    row = json.loads((attempt / "threshold_calibration.json").read_text())
+    fields = ("run_id", "run_record_digest", "member_record_digest")
+    first, second = row["cells"][:2]
+    for field in fields:
+        first[field], second[field] = second[field], first[field]
+    _rewrite_attempt_row(attempt, row)
+    with pytest.raises(ValueError, match="seed does not match"):
+        T.recompute_threshold(attempt)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (lambda r: r.__setitem__("seed", 1001), "seed"),
+        (lambda r: r.__setitem__("seed", True), "exact integer"),
+        (lambda r: r.__setitem__("stage", "exp1"), "stage"),
+        (lambda r: r["config"].__setitem__("stage", "exp1"), "stage"),
+        (
+            lambda r: r["config"]["unit"].__setitem__("hidden_size", 128),
+            "registered reference condition",
+        ),
+        (
+            lambda r: r["config"]["train"].__setitem__("ensemble_size", 4),
+            "registered baseline arm and training configuration",
+        ),
+    ],
+)
+def test_recompute_checks_run_stage_seed_and_reconstructed_config(
+    tmp_path, mutate, match,
+):
+    attempt = fake_attempt(tmp_path)
+    _mutate_run_record(attempt, mutate)
+    with pytest.raises(ValueError, match=match):
+        T.recompute_threshold(attempt)
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda r: r["git"].__setitem__("dirty", True),
+        lambda r: r["git"].__setitem__("dirty", 0),
+        lambda r: r["git"].__setitem__("trustworthy", False),
+        lambda r: r["git"].__setitem__("trustworthy", 1),
+    ],
+)
+def test_recompute_requires_exact_clean_trustworthy_run_git(
+    tmp_path, mutate,
+):
+    attempt = fake_attempt(tmp_path)
+    _mutate_run_record(attempt, mutate)
+    with pytest.raises(ValueError, match="exactly clean and trustworthy"):
+        T.recompute_threshold(attempt)
+
+
+def test_recompute_requires_every_run_to_share_the_record_commit(tmp_path):
+    attempt = fake_attempt(tmp_path)
+    _mutate_run_record(
+        attempt,
+        lambda record: record["git"].__setitem__("commit", "b" * 40),
+    )
+    with pytest.raises(ValueError, match="common commit"):
+        T.recompute_threshold(attempt)
+
+
+@pytest.mark.parametrize(
+    "roster",
+    [
+        [0, 1, 2, 3],
+        [0, 1, 2, 3, 3],
+        [0, 1, 2, 3, 4, 5],
+        [0, 1, 2, 3, True],
+    ],
+)
+def test_recompute_requires_the_exact_member_roster_once_each(tmp_path, roster):
+    attempt = fake_attempt(tmp_path)
+    _replace_member_roster(attempt, roster)
+    with pytest.raises(ValueError, match="member roster|exact integer member"):
+        T.recompute_threshold(attempt)
+
+
+def test_recompute_refuses_a_malformed_record_level_commit(tmp_path):
+    attempt = fake_attempt(tmp_path)
+    row = json.loads((attempt / "threshold_calibration.json").read_text())
+    row["commit"] = "not-a-commit"
+    _rewrite_attempt_row(attempt, row)
+    with pytest.raises(ValueError, match="record-level commit"):
         T.recompute_threshold(attempt)
 
 

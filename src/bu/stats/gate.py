@@ -414,6 +414,13 @@ MANIFEST_VERSION = 1
 #: bump to either silently invalidate evidence about the other (D-073).
 METRIC_SCHEMA_VERSION = 1
 
+#: Schema of the self-contained evidence embedded in ``GateResult.as_row()``.
+#: This is deliberately separate from the attempt-manifest contract above: an
+#: old attempt can still be checked against its files and emitted in the new
+#: serialised form, while an old verdict record that omitted its source rows is
+#: refused because its claimed disagreements cannot be verified in isolation.
+SERIALIZED_EVIDENCE_VERSION = 1
+
 #: The experimental cell these runs discharge, attested in each run record so a
 #: manifest cannot borrow an honest run from a different obligation.
 CELL = "W4 Tue -- reliability gate"
@@ -470,6 +477,11 @@ class EvidenceCell:
     metric_schema_version: int
     row_index: int
     row_digest: str
+    #: The complete JSON row whose uncertainty summary supplied
+    #: ``disagreement``.  Carrying it closes the detached-float hole: a
+    #: serialised verdict can now recompute both this row's digest and the
+    #: claimed value without consulting ``rows.json``.
+    source_row: dict
     attempt_id: str
     attempt: str
     commit: str
@@ -496,8 +508,23 @@ class EvidenceCell:
 
     @classmethod
     def from_row(cls, row: Mapping) -> "EvidenceCell":
+        if not isinstance(row, Mapping):
+            raise ValueError(
+                "a serialised evidence cell must be a mapping, not "
+                f"{type(row).__name__}"
+            )
+        missing = [k for k in cls.__dataclass_fields__ if k not in row]
+        if missing:
+            raise ValueError(
+                f"a serialised evidence cell is missing {missing}; in particular, "
+                "source_row is required so its disagreement can be independently "
+                "verified"
+            )
         fields = {k: row[k] for k in cls.__dataclass_fields__}
         fields["member_indices"] = tuple(fields["member_indices"])
+        if not isinstance(fields["source_row"], Mapping):
+            raise ValueError("a serialised evidence cell's source_row must be a mapping")
+        fields["source_row"] = dict(fields["source_row"])
         return cls(**fields)
 
 
@@ -631,6 +658,8 @@ class GateEvidence:
 
     @staticmethod
     def _verify_cell(cell: EvidenceCell, spec: RungSpec) -> None:
+        GateEvidence._verify_serialised_source_row(cell)
+
         # Everything below is derived from the canonical config. The flattened
         # fields are then required to AGREE with it -- they are never the source.
         config = cell.reconstruct()
@@ -734,6 +763,82 @@ class GateEvidence:
             )
 
     @staticmethod
+    def _verify_serialised_source_row(cell: EvidenceCell) -> None:
+        """Re-derive a cell's digest and value from its embedded source row.
+
+        ``row_digest`` used to travel beside a detached ``disagreement``.  Both
+        values had been checked against ``rows.json`` while loading an attempt,
+        but after serialisation there was no material from which either check
+        could be repeated.  Mutating only the float therefore changed a verdict
+        without changing any digest or the attempt id.  The source row is now
+        part of every cell and is the authority during every verification.
+        """
+        if not isinstance(cell.source_row, Mapping):
+            raise ValueError(
+                f"cell {cell.key} carries no canonical source row; a detached "
+                "disagreement cannot be verified"
+            )
+        try:
+            encoded = json.dumps(
+                cell.source_row, sort_keys=True, separators=(",", ":")
+            ).encode()
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"cell {cell.key}'s source row is not canonical JSON: {exc}"
+            ) from exc
+        digest = hashlib.sha256(encoded).hexdigest()
+        if digest != cell.row_digest:
+            raise ValueError(
+                f"cell {cell.key} names source-row digest "
+                f"{cell.row_digest[:12]}..., but its embedded row hashes to "
+                f"{digest[:12]}.... The serialised source row or digest was mutated"
+            )
+
+        row_claims = {
+            "layout": cell.layout,
+            "n_transitions": cell.size,
+            "seed": cell.seed,
+        }
+        disagreements = {
+            field: (cell.source_row.get(field), expected)
+            for field, expected in row_claims.items()
+            if cell.source_row.get(field) != expected
+        }
+        if disagreements:
+            raise ValueError(
+                f"cell {cell.key}'s source row describes a different cell: "
+                f"{disagreements} (source row, evidence cell)"
+            )
+
+        uncertainty = cell.source_row.get("uncertainty")
+        if not isinstance(uncertainty, Mapping):
+            raise ValueError(
+                f"cell {cell.key}'s source row carries no uncertainty mapping from "
+                "which to reproduce mean_disagreement"
+            )
+        source = uncertainty.get("mean_disagreement")
+        if source is None:
+            raise ValueError(
+                f"cell {cell.key}'s source row carries no mean_disagreement"
+            )
+        if source != cell.disagreement:
+            raise ValueError(
+                f"cell {cell.key} claims mean_disagreement {cell.disagreement!r}, "
+                f"but its embedded source row holds {source!r}. The source row is "
+                "the recomputation authority"
+            )
+        row_scale = {
+            key: uncertainty[key]
+            for key in cell.normalisation
+            if key in uncertainty
+        }
+        if row_scale != cell.normalisation:
+            raise ValueError(
+                f"cell {cell.key} reports normalisation {cell.normalisation}, but "
+                f"its embedded source row was computed under {row_scale}"
+            )
+
+    @staticmethod
     def _verify_evaluation_pools(seen: Mapping[tuple[str, int, int], EvidenceCell]) -> None:
         """One fixed evaluation pool per curve, across all six sizes.
 
@@ -775,6 +880,7 @@ class GateEvidence:
     def as_row(self) -> dict:
         """Every raw cell, so the verdict is recomputable without the run records."""
         return {
+            "serialized_evidence_version": SERIALIZED_EVIDENCE_VERSION,
             "evidence_contract_version": self.contract_version,
             "attempt_id": self.attempt_id,
             "attempt": self.attempt,
@@ -786,10 +892,47 @@ class GateEvidence:
     @classmethod
     def from_record(cls, row: Mapping) -> "GateEvidence":
         """Rebuild from :meth:`as_row`, so a serialised verdict can be recomputed."""
-        return cls(
-            cells=tuple(EvidenceCell.from_row(c) for c in row["cells"]),
+        if not isinstance(row, Mapping):
+            raise ValueError(
+                "serialised gate evidence must be a mapping, not "
+                f"{type(row).__name__}"
+            )
+        version = row.get("serialized_evidence_version")
+        if version != SERIALIZED_EVIDENCE_VERSION:
+            raise ValueError(
+                f"serialised gate evidence has version {version!r}; this reader "
+                f"requires {SERIALIZED_EVIDENCE_VERSION}. Older records omitted the "
+                "source rows needed to verify their disagreements and are refused"
+            )
+        cells = row.get("cells")
+        if not isinstance(cells, list):
+            raise ValueError("serialised gate evidence must carry a list of cells")
+        if type(row.get("n_cells")) is not int or row["n_cells"] != len(cells):
+            raise ValueError(
+                f"serialised gate evidence declares n_cells={row.get('n_cells')!r} "
+                f"but carries {len(cells)} cells"
+            )
+        evidence = cls(
+            cells=tuple(EvidenceCell.from_row(c) for c in cells),
             contract_version=row.get("evidence_contract_version", -1),
         )
+        if evidence.cells:
+            summaries = {
+                "attempt_id": evidence.attempt_id,
+                "attempt": evidence.attempt,
+                "commit": evidence.commit,
+            }
+            contradictions = {
+                key: (row.get(key), expected)
+                for key, expected in summaries.items()
+                if row.get(key) != expected
+            }
+            if contradictions:
+                raise ValueError(
+                    "serialised evidence summary contradicts its cells: "
+                    f"{contradictions} (summary, cells)"
+                )
+        return evidence
 
     # -- filesystem verification, which only `from_attempt` can perform --------
 
@@ -834,9 +977,11 @@ class GateEvidence:
                 "40-character hexadecimal commit; a gate verdict must identify "
                 "one reproducible code state"
             )
-        if manifest["dirty"]:
+        if manifest["dirty"] is not False:
             raise ValueError(
-                f"{attempt_dir} was produced from a dirty tree (commit "
+                f"{attempt_dir} was produced from a dirty tree or carries malformed "
+                f"cleanliness provenance: expected the exact clean-tree boolean "
+                f"dirty=false, got {manifest['dirty']!r} (commit "
                 f"{manifest['commit'][:7]}); a verdict must name one reproducible code "
                 "state"
             )
@@ -904,7 +1049,9 @@ class GateEvidence:
                     "predates this and is correctly refused here (D-072)"
                 )
             cls._verify_bound_row(attempt_dir, run, rows)
-            cls._verify_run_record(attempt_dir, run, spec)
+            cls._verify_run_record(
+                attempt_dir, run, spec, manifest_commit=manifest["commit"]
+            )
             if version >= THREADING_CONTRACT_VERSION:
                 cls._verify_threading_matches(attempt_dir, run, manifest["threading"])
             cells.append(
@@ -923,6 +1070,7 @@ class GateEvidence:
                     normalisation=run["normalisation"],
                     metric_schema_version=run["metric_schema_version"],
                     row_index=run["row_index"], row_digest=run["row_digest"],
+                    source_row=rows[run["row_index"]],
                     attempt_id=manifest["attempt_id"], attempt=manifest["attempt"],
                     commit=manifest["commit"],
                 )
@@ -1050,7 +1198,13 @@ class GateEvidence:
                 )
 
     @staticmethod
-    def _verify_run_record(attempt_dir: Path, run: Mapping, spec: "RungSpec") -> None:
+    def _verify_run_record(
+        attempt_dir: Path,
+        run: Mapping,
+        spec: "RungSpec",
+        *,
+        manifest_commit: str,
+    ) -> None:
         """Cross-check the manifest against the record written at training time.
 
         This is the actual trust boundary. A manifest is a summary the runner
@@ -1080,6 +1234,31 @@ class GateEvidence:
                 f"{attempt_dir}: run {run['run_id']}'s manifest config differs from the "
                 "config in its own run record. The record was written when the run "
                 "started; the manifest is a later summary, so the record wins (D-072)"
+            )
+        git = record.get("git")
+        if not isinstance(git, Mapping):
+            raise ValueError(
+                f"{attempt_dir}: run {run['run_id']}'s record carries no git "
+                "provenance mapping. A manifest commit cannot attest a run that did "
+                "not record its own code state"
+            )
+        if git.get("commit") != manifest_commit:
+            raise ValueError(
+                f"{attempt_dir}: run {run['run_id']}'s record names git commit "
+                f"{git.get('commit')!r}, but the manifest names "
+                f"{manifest_commit!r}. Every bound run and the verdict must identify "
+                "one exact code state"
+            )
+        if git.get("dirty") is not False:
+            raise ValueError(
+                f"{attempt_dir}: run {run['run_id']}'s record does not carry the "
+                f"exact clean-tree boolean dirty=false (got {git.get('dirty')!r})"
+            )
+        if git.get("trustworthy") is not True:
+            raise ValueError(
+                f"{attempt_dir}: run {run['run_id']}'s record does not carry the "
+                "exact provenance boolean trustworthy=true (got "
+                f"{git.get('trustworthy')!r})"
             )
         # All five attestations, not only granularity. Otherwise a manifest can
         # borrow an honest run record while changing the evaluation pool or the

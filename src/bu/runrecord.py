@@ -38,6 +38,12 @@ TRACKED_PACKAGES = (
     "PyYAML",
 )
 
+#: Repository associated with this installed source tree.  Provenance must not
+#: depend on whichever directory happened to be current when a runner started.
+#: In an editable install this is the project checkout; in a built install it
+#: deliberately fails closed unless that installed tree is itself in Git.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 @dataclass(frozen=True)
 class GitState:
@@ -66,22 +72,45 @@ class GitState:
         return self.identifies_commit and not self.dirty
 
 
-def git_state(repo: str | Path = ".") -> GitState:
-    def run(*args: str) -> str:
-        raw = subprocess.run(
+def _provenance_repo(repo: str | Path | None) -> Path:
+    """Resolve the repository used for provenance.
+
+    ``None`` means the project containing this module. Any supplied path,
+    including ``"."``, is an explicit caller choice and is preserved. Keeping
+    those cases distinct prevents a caller that intentionally names another
+    checkout from being silently rebound to this installed source tree.
+    """
+    if repo is None:
+        return PROJECT_ROOT
+    return Path(repo)
+
+
+def git_state(repo: str | Path | None = None) -> GitState:
+    repo_path = _provenance_repo(repo)
+
+    def run(*args: str) -> tuple[str, bool]:
+        completed = subprocess.run(
             ["git", *args],
-            cwd=str(repo),
+            cwd=str(repo_path),
             capture_output=True,
             check=False,
-        ).stdout
+        )
         # Git emits bytes. Decoding through the Windows process locale made a
         # UTF-8 source diff crash a provenance check under cp1252. Replacement
         # is safe for these status/ref names; dirty.diff below keeps raw bytes.
-        return raw.decode("utf-8", errors="replace").strip()
+        output = completed.stdout.decode("utf-8", errors="replace").strip()
+        return output, completed.returncode == 0
 
-    commit = run("rev-parse", "HEAD") or "UNCOMMITTED"
-    branch = run("rev-parse", "--abbrev-ref", "HEAD") or "unknown"
-    dirty = bool(run("status", "--porcelain"))
+    commit_output, commit_ok = run("rev-parse", "HEAD")
+    branch_output, branch_ok = run("rev-parse", "--abbrev-ref", "HEAD")
+    status_output, status_ok = run("status", "--porcelain")
+
+    # A command failure is evidence we do not know the state, never evidence
+    # of a clean tree.  Ignore even plausible-looking stdout from a failed Git
+    # invocation: wrappers and hooks can emit partial/stale output on failure.
+    commit = commit_output if commit_ok and commit_output else "UNCOMMITTED"
+    branch = branch_output if branch_ok and branch_output else "unknown"
+    dirty = bool(status_output) or not (commit_ok and branch_ok and status_ok)
     return GitState(commit=commit, dirty=dirty, branch=branch)
 
 
@@ -101,7 +130,7 @@ def write_run_record(
     config: Config,
     run_dir: str | Path,
     *,
-    repo: str | Path = ".",
+    repo: str | Path | None = None,
     extra: dict[str, Any] | None = None,
 ) -> Path:
     """Write ``run.json`` for a run and return its path.
@@ -118,11 +147,16 @@ def write_run_record(
             f"{path} already exists; run_id {config.run_id} is not unique"
         )
 
-    git = git_state(repo)
+    repo_path = _provenance_repo(repo)
+    git = git_state(repo_path)
     record: dict[str, Any] = {
         "run_id": config.run_id,
         "config_id": config.config_id,
         "unit_id": config.unit_id,
+        # The identity of the computation, distinct from the obligation-specific
+        # run_id (D-033). Historical schema-v2 records may omit this duplicate;
+        # loaders reconstruct and validate it from Config.
+        "fit_id": config.fit_id,
         "seed": config.seed,
         # Promoted to the top level alongside the other identity parts: the
         # stage says which experimental obligation this run discharges, and a
@@ -164,7 +198,7 @@ def write_run_record(
     # A dirty tree is recoverable only if we keep the diff.
     if git.dirty:
         diff = subprocess.run(
-            ["git", "diff", "HEAD"], cwd=str(repo), capture_output=True,
+            ["git", "diff", "HEAD"], cwd=str(repo_path), capture_output=True,
             check=False,
         ).stdout
         # Preserve the exact Git bytes. In particular, never ask the host's

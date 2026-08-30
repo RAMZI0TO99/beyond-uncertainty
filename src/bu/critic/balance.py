@@ -167,7 +167,15 @@ def assert_canonical_splits(names: Iterable[str]) -> None:
     the same name. A check that the caller can satisfy by agreeing with itself
     is not a check.
     """
-    stray = sorted({n for n in names} - set(CANONICAL_SPLITS))
+    supplied = tuple(names)
+    malformed = [name for name in supplied if not isinstance(name, str)]
+    if malformed:
+        raise ValueError(
+            f"split names must be strings, got {malformed!r}. Type validation "
+            "precedes hashing and sorting so malformed input fails at this "
+            "boundary with ValueError rather than an incidental TypeError"
+        )
+    stray = sorted(set(supplied) - set(CANONICAL_SPLITS))
     if stray:
         raise ValueError(
             f"split name(s) {stray} are not canonical. The only split names in "
@@ -183,9 +191,9 @@ def validate_splits(units: Iterable[LabelledUnit], splits: Sequence[str]) -> Non
     disappeared, because the requested splits balanced fine without it. Units
     that are simply not looked at are the quietest possible data loss.
     """
+    assert_canonical_splits(splits)
     if len(set(splits)) != len(splits):
         raise ValueError(f"duplicate split names requested: {list(splits)}")
-    assert_canonical_splits(splits)
     assert_canonical_splits([u.split for u in units])
     requested = set(splits)
     stray = sorted({u.split for u in units} - requested)

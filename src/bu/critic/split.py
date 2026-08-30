@@ -274,6 +274,13 @@ def validate_candidates(candidates: Sequence[SplitCandidate]) -> None:
                 "Unknown input shapes are refused positively rather than dying "
                 "in an AttributeError (D-054)"
             )
+        if not isinstance(c.unit_id, str) or not c.unit_id.strip():
+            raise ValueError(
+                f"candidate unit_id {c.unit_id!r} is not a non-blank string. "
+                "The statistical-unit content hash must travel as an explicit "
+                "identifier; an empty or non-string id cannot be joined safely "
+                "(D-033, D-054)"
+            )
         if c.unit_id in seen:
             raise ValueError(
                 f"duplicate unit_id {c.unit_id!r}. `unit_id` is a content hash, "
@@ -282,13 +289,6 @@ def validate_candidates(candidates: Sequence[SplitCandidate]) -> None:
                 "configuration (Sol, delta 54; D-033, D-039)"
             )
         seen.add(c.unit_id)
-        if not isinstance(c.unit_id, str) or not c.unit_id.strip():
-            raise ValueError(
-                f"candidate unit_id {c.unit_id!r} is not a non-blank string. "
-                "The statistical-unit content hash must travel as an explicit "
-                "identifier; an empty or non-string id cannot be joined safely "
-                "(D-033, D-054)"
-            )
         if isinstance(c.observed_label, bool):
             raise ValueError(
                 f"unit {c.unit_id!r} has boolean observed_label "
@@ -415,6 +415,12 @@ def _split_seed() -> int:
             "naming the constant (docs/c005_c007_spec.md 'Registered "
             "parameters'; D-115). Refusing to allocate without it — a defaulted "
             "seed is a caller-invisible degree of freedom (Sol, delta 54)"
+        )
+    if int(seed) < 0:
+        raise ValueError(
+            f"bu.constants.CRITIC_SPLIT_SEED is negative ({int(seed)}). A "
+            "registered RNG seed must be a non-negative exact integer; refusing "
+            "to reinterpret it through hashing or platform-specific RNG behavior"
         )
     return int(seed)
 

@@ -84,7 +84,7 @@ class RunLogger:
         config: Config,
         root: str | Path = "runs",
         *,
-        repo: str | Path = ".",
+        repo: str | Path | None = None,
         extra: dict[str, Any] | None = None,
     ) -> RunLogger:
         run_dir = Path(root) / config.run_id
@@ -168,14 +168,35 @@ def load_runs(
             debugging at low seeds still works, which is the whole point of
             keeping a development range.
     """
-    wanted = set(run_ids) if run_ids is not None else None
+    if type(require_clean_git) is not bool:
+        raise TypeError(
+            "require_clean_git must be an exact bool; truthy strings are not "
+            "provenance policy"
+        )
+    if type(require_confirmatory) is not bool:
+        raise TypeError(
+            "require_confirmatory must be an exact bool; truthy strings are not "
+            "seed-partition policy"
+        )
+    wanted = _normalise_requested_run_ids(run_ids)
     frames: list[pd.DataFrame] = []
     seen: dict[str, Path] = {}
+    loaded: set[str] = set()
 
     for run_dir in iter_run_dirs(root):
         rec = read_run_record(run_dir)
-        if wanted is not None and rec["run_id"] not in wanted:
+        if not isinstance(rec, Mapping):
+            raise RuntimeError(
+                f"run record in {run_dir} is a {type(rec).__name__}, not a "
+                "mapping; provenance cannot be reconstructed"
+            )
+        raw_run_id = _exact_nonblank_string(
+            rec.get("run_id"), field="run_id", where=str(run_dir)
+        )
+        if wanted is not None and raw_run_id not in wanted:
             continue
+
+        config = _reconstruct_and_validate_identity(rec, run_dir=run_dir)
 
         # Two directories carrying one run_id are two *executions* of the same
         # identity -- most plainly, two attempt directories from the same pilot
@@ -183,64 +204,35 @@ def load_runs(
         # and every interval taken over them. The run_id uniqueness guard in
         # write_run_record only protects a single directory, so the merge is
         # where this has to be caught.
-        if rec["run_id"] in seen:
+        if raw_run_id in seen:
             raise RuntimeError(
-                f"run_id {rec['run_id']} appears in two directories:\n"
-                f"  {seen[rec['run_id']]}\n  {run_dir}\n"
+                f"run_id {raw_run_id} appears in two directories:\n"
+                f"  {seen[raw_run_id]}\n  {run_dir}\n"
                 "These are separate executions of one identity. Load a single "
                 "attempt directory rather than a tree containing several."
             )
-        seen[rec["run_id"]] = run_dir
-        if require_clean_git and not rec.get("git", {}).get("trustworthy", False):
-            raise RuntimeError(
-                f"run {rec['run_id']} was recorded from a dirty working tree; "
-                "its commit hash does not identify the code that ran"
-            )
-
-        # Stage is duplicated at the top level and inside Config because it is
-        # both provenance and an identity component.  A fallback chooses one
-        # side of a tampered record silently; require both and require equality
-        # before flattening anything for a critic boundary (D-012, D-042).
-        top_stage = rec.get("stage")
-        config_payload = rec.get("config")
-        if not isinstance(config_payload, Mapping):
-            raise RuntimeError(
-                f"run {rec['run_id']} has config metadata of type "
-                f"{type(config_payload).__name__}, not a mapping; duplicated "
-                "stage provenance cannot be cross-checked"
-            )
-        config_stage = config_payload.get("stage")
-        if top_stage is None or config_stage is None:
-            raise RuntimeError(
-                f"run {rec['run_id']} is missing duplicated stage metadata "
-                f"(top-level={top_stage!r}, config={config_stage!r}); stage is "
-                "refused, not defaulted"
-            )
-        if top_stage != config_stage:
-            raise RuntimeError(
-                f"run {rec['run_id']} records top-level stage={top_stage!r} "
-                f"but config.stage={config_stage!r}; something rewrote the run "
-                "record and neither value is trusted"
-            )
+        seen[raw_run_id] = run_dir
+        if require_clean_git:
+            _require_clean_git_record(rec, run_id=raw_run_id)
 
         # The numerical seed is authoritative; the recorded fields are a
         # convenience. If they disagree, something rewrote a run record and the
         # analysis must not proceed on either value (D-042).
-        seed = int(rec["seed"])
+        seed = config.seed
         recorded = rec.get("seed_partition")
         if recorded is not None:
             # Type first, then value. `bool("false")` is True and `"false"` is a
             # perfectly ordinary thing for a hand-edited or round-tripped JSON
             # record to contain, so a truthiness check would wave through the
             # exact corruption this exists to catch (D-045).
-            if recorded not in SEED_PARTITIONS:
+            if type(recorded) is not str or recorded not in SEED_PARTITIONS:
                 raise RuntimeError(
-                    f"run {rec['run_id']} records seed_partition={recorded!r}, "
+                    f"run {raw_run_id} records seed_partition={recorded!r}, "
                     f"which is not one of {sorted(SEED_PARTITIONS)}"
                 )
             if recorded != seed_partition(seed):
                 raise RuntimeError(
-                    f"run {rec['run_id']} records seed_partition={recorded!r} but "
+                    f"run {raw_run_id} records seed_partition={recorded!r} but "
                     f"seed {seed} is {seed_partition(seed)!r}. The seed is "
                     "authoritative; the record has been altered."
                 )
@@ -248,14 +240,14 @@ def load_runs(
         if recorded_flag is not None:
             if type(recorded_flag) is not bool:
                 raise RuntimeError(
-                    f"run {rec['run_id']} records confirmatory="
+                    f"run {raw_run_id} records confirmatory="
                     f"{recorded_flag!r} of type {type(recorded_flag).__name__}; "
                     "it must be a JSON boolean. A truthy string would pass a "
                     "value check while meaning the opposite."
                 )
             if recorded_flag != is_confirmatory(seed):
                 raise RuntimeError(
-                    f"run {rec['run_id']} records confirmatory={recorded_flag!r} "
+                    f"run {raw_run_id} records confirmatory={recorded_flag!r} "
                     f"but seed {seed} is {seed_partition(seed)!r}."
                 )
         if require_confirmatory:
@@ -269,9 +261,25 @@ def load_runs(
             continue
 
         df = pd.DataFrame(rows)
-        for col, val in _identity_columns(rec).items():
+        for col, val in _identity_columns(rec, config).items():
             df[col] = val
         frames.append(df)
+        loaded.add(raw_run_id)
+
+    if wanted is not None:
+        missing = sorted(wanted - set(seen))
+        metricless = sorted((wanted & set(seen)) - loaded)
+        if missing or metricless:
+            details = []
+            if missing:
+                details.append(f"missing run_id(s) {missing}")
+            if metricless:
+                details.append(f"run_id(s) with no metric rows {metricless}")
+            raise RuntimeError(
+                "requested run_ids were not fully accounted for: "
+                + "; ".join(details)
+                + ". A restricted load must not silently return a subset."
+            )
 
     if not frames:
         return pd.DataFrame(columns=list(_IDENTITY_COLS))
@@ -286,6 +294,7 @@ _IDENTITY_COLS = (
     "run_id",
     "unit_id",
     "config_id",
+    "fit_id",
     "seed",
     "stage",
     "arm",
@@ -294,21 +303,25 @@ _IDENTITY_COLS = (
 )
 
 
-def _identity_columns(rec: dict[str, Any]) -> dict[str, Any]:
+def _identity_columns(rec: Mapping[str, Any], config: Config) -> dict[str, Any]:
     unit = rec["config"]["unit"]
     cols: dict[str, Any] = {
-        "run_id": rec["run_id"],
-        "unit_id": rec["unit_id"],
-        "config_id": rec["config_id"],
-        "seed": rec["seed"],
+        "run_id": config.run_id,
+        "unit_id": config.unit_id,
+        "config_id": config.config_id,
+        # fit_id is reconstructed even for historical schema-v2 records whose
+        # writer did not duplicate it at the top level. If a copy is present,
+        # _reconstruct_and_validate_identity has already required equality.
+        "fit_id": config.fit_id,
+        "seed": config.seed,
         # Without this, a unit's five H1/H2 seeds cannot be separated from the
         # twenty behind its repair label -- they differ only by stage (D-012).
-        "stage": rec["stage"],
-        "arm": rec["config"]["arm"]["kind"],
+        "stage": config.stage,
+        "arm": config.arm.kind,
         "family": unit["family"],
         # Which side of the pilot boundary. Carried into the frame so an
         # analysis can assert on it rather than reconstruct it from the seed.
-        "seed_partition": rec.get("seed_partition", seed_partition(int(rec["seed"]))),
+        "seed_partition": rec.get("seed_partition", seed_partition(config.seed)),
     }
     for k, v in unit.items():
         if k == "family":
@@ -318,6 +331,172 @@ def _identity_columns(rec: dict[str, Any]) -> dict[str, Any]:
         # survive a groupby or a CSV round-trip.
         cols[f"unit_{k}"] = ",".join(sorted(v)) if isinstance(v, list) else v
     return cols
+
+
+def _normalise_requested_run_ids(
+    run_ids: Iterable[str] | None,
+) -> set[str] | None:
+    if run_ids is None:
+        return None
+    if isinstance(run_ids, (str, bytes)):
+        raise TypeError(
+            "run_ids must be an iterable of nonblank strings, not one string"
+        )
+    try:
+        values = list(run_ids)
+    except TypeError as exc:
+        raise TypeError("run_ids must be an iterable of nonblank strings") from exc
+    out: set[str] = set()
+    for index, value in enumerate(values):
+        out.add(_exact_nonblank_string(
+            value, field=f"run_ids[{index}]", where="load_runs request"
+        ))
+    return out
+
+
+def _exact_nonblank_string(value: object, *, field: str, where: str) -> str:
+    if type(value) is not str or not value.strip():
+        raise RuntimeError(
+            f"{where} carries {field}={value!r} of type "
+            f"{type(value).__name__}; an exact nonblank string is required"
+        )
+    return value
+
+
+def _exact_integer(value: object, *, field: str, where: str) -> int:
+    # JSON integers arrive as exact Python ints. In particular, bool is not an
+    # integer here even though bool subclasses int, and strings are never
+    # coerced with int(...).
+    if type(value) is not int:
+        raise RuntimeError(
+            f"{where} carries {field}={value!r} of type "
+            f"{type(value).__name__}; an exact JSON integer is required"
+        )
+    return value
+
+
+def _same_json_types_and_values(left: object, right: object) -> bool:
+    """Type-sensitive JSON equality used before trusting Config coercions."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, Mapping):
+        return (
+            left.keys() == right.keys()
+            and all(_same_json_types_and_values(left[k], right[k]) for k in left)
+        )
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            _same_json_types_and_values(a, b) for a, b in zip(left, right)
+        )
+    return left == right
+
+
+def _reconstruct_and_validate_identity(
+    rec: Mapping[str, Any], *, run_dir: Path
+) -> Config:
+    """Rebuild the authoritative Config and verify every duplicated identity."""
+    where = f"run record in {run_dir}"
+    run_id = _exact_nonblank_string(rec.get("run_id"), field="run_id", where=where)
+    payload = rec.get("config")
+    if type(payload) is not dict:
+        raise RuntimeError(
+            f"run {run_id} has config metadata of type "
+            f"{type(payload).__name__}, not a mapping of the exact JSON object "
+            "type; identity cannot be reconstructed"
+        )
+
+    # Config.from_dict intentionally canonicalises constructor inputs. At this
+    # trust boundary, canonicalisation must not launder JSON strings or bools
+    # into the identity, so inspect the duplicated fields first and compare the
+    # entire payload type-sensitively after reconstruction.
+    top_seed = _exact_integer(rec.get("seed"), field="seed", where=f"run {run_id}")
+    config_seed = _exact_integer(
+        payload.get("seed"), field="config.seed", where=f"run {run_id}"
+    )
+    top_stage = rec.get("stage")
+    config_stage = payload.get("stage")
+    if top_stage is None or config_stage is None:
+        raise RuntimeError(
+            f"run {run_id} is missing duplicated stage metadata "
+            f"(top-level={top_stage!r}, config={config_stage!r}); stage is "
+            "refused, not defaulted"
+        )
+    _exact_nonblank_string(top_stage, field="stage", where=f"run {run_id}")
+    _exact_nonblank_string(
+        config_stage, field="config.stage", where=f"run {run_id}"
+    )
+    if top_seed != config_seed:
+        raise RuntimeError(
+            f"run {run_id} records top-level seed={top_seed!r} but "
+            f"config.seed={config_seed!r}; something rewrote the run record "
+            "and neither value is trusted"
+        )
+    if top_stage != config_stage:
+        raise RuntimeError(
+            f"run {run_id} records top-level stage={top_stage!r} but "
+            f"config.stage={config_stage!r}; something rewrote the run record "
+            "and neither value is trusted"
+        )
+    try:
+        config = Config.from_dict(payload)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"run {run_id} config cannot be reconstructed exactly: {exc}"
+        ) from exc
+    if not _same_json_types_and_values(payload, config.to_dict()):
+        raise RuntimeError(
+            f"run {run_id} config payload changes value or JSON type when "
+            "reconstructed; coercive identity laundering is refused"
+        )
+
+    expected: dict[str, object] = {
+        "unit_id": config.unit_id,
+        "config_id": config.config_id,
+        "run_id": config.run_id,
+        "seed": config.seed,
+        "stage": config.stage,
+    }
+    # Early schema-v2 records did not duplicate fit_id at the top level. Keep
+    # those historical records loadable, but validate a top-level copy whenever
+    # one exists and always expose the reconstructed fit_id in the DataFrame.
+    if "fit_id" in rec:
+        expected["fit_id"] = config.fit_id
+
+    for field, expected_value in expected.items():
+        actual = rec.get(field)
+        if isinstance(expected_value, str):
+            _exact_nonblank_string(actual, field=field, where=f"run {run_id}")
+        else:
+            _exact_integer(actual, field=field, where=f"run {run_id}")
+        if type(actual) is not type(expected_value) or actual != expected_value:
+            raise RuntimeError(
+                f"run {run_id} records top-level {field}={actual!r}, but the "
+                f"reconstructed Config requires {expected_value!r}; neither "
+                "duplicate is trusted"
+            )
+    return config
+
+
+def _require_clean_git_record(rec: Mapping[str, Any], *, run_id: str) -> None:
+    git = rec.get("git")
+    if type(git) is not dict:
+        raise RuntimeError(
+            f"run {run_id} has no exact git provenance mapping; clean Git "
+            "status cannot be established"
+        )
+    dirty = git.get("dirty")
+    trustworthy = git.get("trustworthy")
+    if type(dirty) is not bool or type(trustworthy) is not bool:
+        raise RuntimeError(
+            f"run {run_id} records git dirty={dirty!r} and "
+            f"trustworthy={trustworthy!r}; both must be exact JSON booleans, "
+            "not truthy values"
+        )
+    if dirty or not trustworthy:
+        raise RuntimeError(
+            f"run {run_id} was not recorded from a clean trustworthy Git "
+            "state; its commit hash does not identify the code that ran"
+        )
 
 
 def _jsonable(obj: Any) -> Any:

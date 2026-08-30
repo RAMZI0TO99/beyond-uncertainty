@@ -64,10 +64,14 @@ def _dev_runs() -> DevelopmentRuns:
 def _confirmatory_wrapper() -> ConfirmatoryRuns:
     return ConfirmatoryRuns(frame=pd.DataFrame({
                                 "run_id": ["synthetic-exp1-s1000"],
+                                "unit_id": ["unit-a"],
+                                "config_id": ["config-a"],
+                                "fit_id": ["fit-a-s1000"],
                                 "seed": [1000],
                                 "stage": ["exp1"],
                             }),
-                            seeds=(1000,), stages=("exp1",))
+                            seeds=(1000,), stages=("exp1",),
+                            run_ids=("synthetic-exp1-s1000",))
 
 
 def _targets():
@@ -90,6 +94,7 @@ def test_confirmatory_runs_load_through_the_boundary(tmp_path):
     assert type(runs) is ConfirmatoryRuns
     assert len(runs.frame) == 2
     assert runs.seeds == (1000, 1001)
+    assert runs.run_ids == tuple(sorted(runs.frame["run_id"].unique()))
     assert_critic_input(runs, consumer="critic.split_units")  # must not raise
 
 
@@ -188,6 +193,12 @@ def test_an_empty_load_is_refused_not_wrapped(tmp_path):
         load_development_runs(tmp_path)
 
 
+def test_requested_critic_run_inventory_cannot_silently_shrink(tmp_path):
+    cfg = _run(tmp_path, 1000)
+    with pytest.raises(ValueError, match="not fully accounted.*missing run_id"):
+        load_critic_runs(tmp_path, run_ids=[cfg.run_id, "missing-run"])
+
+
 def test_boundary_provenance_matches_its_frame(tmp_path):
     """Wrapper metadata cross-checked against the CONTENT consumers actually
     receive, not against itself (D-072)."""
@@ -196,6 +207,7 @@ def test_boundary_provenance_matches_its_frame(tmp_path):
     runs = load_critic_runs(tmp_path)
     assert runs.seeds == tuple(sorted({int(s) for s in runs.frame["seed"]}))
     assert runs.stages == tuple(sorted({str(s) for s in runs.frame["stage"]}))
+    assert runs.run_ids == tuple(sorted({str(s) for s in runs.frame["run_id"]}))
     assert set(runs.stages) == {"exp1", "exp2a"}, "fixture must span stages"
 
 
@@ -299,7 +311,7 @@ def test_a_confirmatory_runs_subclass_is_refused():
 
     base = _confirmatory_wrapper()
     mimic = Mimic(frame=base.frame.copy(), seeds=base.seeds,
-                  stages=base.stages)
+                  stages=base.stages, run_ids=base.run_ids)
     with pytest.raises(ValueError, match="provenance"):
         assert_critic_input(mimic, consumer="critic.split_units")
 
@@ -331,21 +343,28 @@ def test_confirmatory_wrapper_cannot_be_hand_built_around_development_data(
     assert _confirmatory_wrapper() is not None  # the well-formed case builds
     frame_seeds = list(seeds) or [1000]
     frame_stages = list(stages) or ["exp1"]
+    run_ids = tuple(f"synthetic-{i}" for i in range(len(frame_seeds)))
     with pytest.raises(ValueError, match=match):
         ConfirmatoryRuns(frame=pd.DataFrame({
-                             "run_id": [f"synthetic-{i}" for i in range(len(frame_seeds))],
+                             "run_id": list(run_ids),
+                             "unit_id": [f"unit-{i}" for i in range(len(frame_seeds))],
+                             "config_id": [f"config-{i}" for i in range(len(frame_seeds))],
+                             "fit_id": [f"fit-{i}" for i in range(len(frame_seeds))],
                              "seed": frame_seeds,
                              "stage": [frame_stages[0]] * len(frame_seeds),
                          }),
-                         seeds=seeds, stages=stages)
+                         seeds=seeds, stages=stages, run_ids=run_ids)
 
 
 def test_wrapper_metadata_cannot_disagree_with_its_frame():
     frame = pd.DataFrame({
-        "run_id": ["planted"], "seed": [999], "stage": ["pilot"]
+        "run_id": ["planted"], "unit_id": ["unit-a"],
+        "config_id": ["config-a"], "fit_id": ["fit-a"],
+        "seed": [999], "stage": ["pilot"]
     })
     with pytest.raises(ValueError, match="development seeds|pilot|disagree"):
-        ConfirmatoryRuns(frame=frame, seeds=(1000,), stages=("exp1",))
+        ConfirmatoryRuns(frame=frame, seeds=(1000,), stages=("exp1",),
+                         run_ids=("planted",))
 
 
 def test_mutating_a_valid_wrapper_is_detected_at_the_consumer():
@@ -354,6 +373,44 @@ def test_mutating_a_valid_wrapper_is_detected_at_the_consumer():
     runs.frame.loc[0, "stage"] = "pilot"
     with pytest.raises(ValueError, match="development seeds|pilot|disagree"):
         assert_critic_input(runs, consumer="critic.split_units")
+
+
+@pytest.mark.parametrize("column", [
+    "run_id", "unit_id", "config_id", "fit_id",
+])
+def test_mutating_any_bound_identity_is_detected_at_the_consumer(column):
+    runs = _confirmatory_wrapper()
+    runs.frame.loc[0, column] = "rewritten-identity"
+    with pytest.raises(ValueError, match="run_ids.*disagree|identity columns changed"):
+        assert_critic_input(runs, consumer="critic.split_units")
+
+
+def test_swapping_run_ids_is_detected_even_when_the_inventory_set_is_unchanged(
+        tmp_path):
+    _run(tmp_path, 1000)
+    _run(tmp_path, 1001)
+    runs = load_critic_runs(tmp_path)
+    before = runs.frame["run_id"].copy()
+    runs.frame.loc[:, "run_id"] = list(reversed(before.tolist()))
+    assert set(runs.frame["run_id"]) == set(runs.run_ids), (
+        "the set-only inventory check is deliberately insufficient here"
+    )
+    with pytest.raises(ValueError, match="identity columns changed"):
+        assert_critic_input(runs, consumer="critic.split_units")
+
+
+@pytest.mark.parametrize("run_ids,match", [
+    (("",), "nonblank"),
+    ((1000,), "nonblank"),
+    (("synthetic-exp1-s1000", "synthetic-exp1-s1000"), "duplicate"),
+])
+def test_wrapper_run_id_inventory_is_exact_and_unique(run_ids, match):
+    base = _confirmatory_wrapper()
+    with pytest.raises(ValueError, match=match):
+        ConfirmatoryRuns(
+            frame=base.frame.copy(), seeds=base.seeds, stages=base.stages,
+            run_ids=run_ids,
+        )
 
 
 # --- the registry is authoritative, and its checker has teeth ----------------
@@ -423,13 +480,14 @@ def test_an_unregistered_critic_loader_fails_the_coverage_invariant():
             registered_spans.append(range(start, start + len(lines)))
     assert registered_spans, "no registered loader functions in loading.py"
 
-    package_dir = Path(bu.critic.__file__).parent
+    package_dir = Path(bu.critic.__file__).parent.resolve()
+    approved_boundary = Path(inspect.getsourcefile(load_critic_runs)).resolve()
     scanned = 0
     for path in sorted(package_dir.rglob("*.py")):
         text = path.read_text(encoding="utf-8")
         scanned += 1
         hits = find_run_loading_tokens(text)
-        if path.name != "loading.py":
+        if path.resolve() != approved_boundary:
             assert hits == [], (
                 f"{path.relative_to(package_dir)} contains run-loading call "
                 f"site(s) {hits} outside "
@@ -463,8 +521,18 @@ def test_an_unregistered_critic_loader_fails_the_coverage_invariant():
     assert "load_runs(" in find_run_loading_tokens(aliased)
     qualified_alias = "import bu.metrics as m\nm.load_runs(root)\n"
     assert "load_runs(" in find_run_loading_tokens(qualified_alias)
+    assigned_alias = "from bu.metrics import load_runs\nreader = load_runs\nreader(root)\n"
+    assert "load_runs(" in find_run_loading_tokens(assigned_alias)
+    chained_alias = (
+        "from bu.metrics import load_runs\nreader = load_runs\n"
+        "reader_again = reader\nreader_again(root)\n"
+    )
+    assert "load_runs(" in find_run_loading_tokens(chained_alias)
     assert "metrics.jsonl" in find_run_loading_tokens(
         "payload = Path('metrics.jsonl').read_text()"
+    )
+    assert "metrics.jsonl" in find_run_loading_tokens(
+        "name = 'metrics' + '.jsonl'\npayload = Path(name).read_text()"
     )
     assert "METRICS" + "_FILE" in find_run_loading_tokens(
         "path = run_dir / METRICS" + "_FILE")

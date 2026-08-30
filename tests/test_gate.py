@@ -12,6 +12,7 @@ carrying all eighteen golden `config_id`s with no model ever fitted.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace as dataclass_replace
 
@@ -64,9 +65,29 @@ def cell_fields(layout, seed, n, spec, *, attempt="attempt-001", commit=COMMIT):
         evaluation_pool_id=f"{layout}-s{seed:03d}",
         evaluation_pool_digest=f"pool-{layout}-{seed}",
         normalisation={"scale": [1.0, 1.0], "n_reference": 800},
-        metric_schema_version=1, row_index=0, row_digest="c" * 64,
+        metric_schema_version=1, row_index=0,
         attempt_id=f"w4-gate-r{spec.rung:02d}-{spec.spec_hash}-{attempt}",
         attempt=attempt, commit=commit,
+    )
+
+
+def bind_source_row(fields, disagreement):
+    """Attach the canonical row from which a synthetic cell's value derives."""
+    source_row = {
+        "layout": fields["layout"],
+        "n_transitions": fields["size"],
+        "seed": fields["seed"],
+        "uncertainty": {
+            "mean_disagreement": disagreement,
+            **fields["normalisation"],
+        },
+    }
+    fields.update(
+        disagreement=disagreement,
+        source_row=source_row,
+        row_digest=hashlib.sha256(
+            json.dumps(source_row, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
     )
 
 
@@ -91,8 +112,9 @@ def evidence_with_config(spec=None, **config_kwargs):
                 fields.update(
                     config=config.to_dict(), config_id=config.config_id,
                     run_id=config.run_id, unit_id=config.unit_id,
-                    stage=config.stage, disagreement=v + 0.01 * i,
+                    stage=config.stage,
                 )
+                bind_source_row(fields, v + 0.01 * i)
                 cells.append(EvidenceCell(**fields))
     return GateEvidence(cells=_with_content_id(cells, spec))
 
@@ -119,8 +141,9 @@ def evidence(
                         layout=layout, size=n,
                     )
                 )
-                fields["disagreement"] = v + jitter * i
+                disagreement = v + jitter * i
                 fields.update(cell_overrides)
+                bind_source_row(fields, fields.get("disagreement", disagreement))
                 cells.append(EvidenceCell(**fields))
     return GateEvidence(cells=_with_content_id(cells, spec, cell_overrides))
 

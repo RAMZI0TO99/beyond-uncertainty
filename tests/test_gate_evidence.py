@@ -68,6 +68,19 @@ def build_attempt(tmp_path, *, spec=None, name="attempt-001", layouts=GATE_LAYOU
                                 granularity=spec.granularity)
                 value = (disagreement or FALLING)[n]
                 record_dir = attempt / "records" / config.run_id
+                # The manifest below deliberately uses a stable synthetic git
+                # identity.  Make the fixture's real run record attest that same
+                # identity so provenance-consistency tests do not depend on the
+                # checkout in which pytest happens to run.
+                record_path = record_dir / "run.json"
+                record = json.loads(record_path.read_text())
+                record["git"] = {
+                    "commit": CLEAN.commit,
+                    "branch": CLEAN.branch,
+                    "dirty": False,
+                    "trustworthy": True,
+                }
+                record_path.write_text(json.dumps(record, indent=2, sort_keys=True))
                 scale = {"scale": [1.0, 1.0], "scale_n_reference": 800,
                          "scale_domain": "movement", "scale_source": "evaluation_pool"}
                 row = {"layout": layout, "n_transitions": n, "seed": seed,
@@ -127,6 +140,20 @@ def edit_manifest(attempt, fn):
     return attempt
 
 
+def edit_run_record(attempt, index, fn):
+    """Mutate one synthetic run record and keep the manifest's file digest current."""
+    manifest_path = attempt / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    run = manifest["runs"][index]
+    record_path = attempt / "records" / run["run_id"] / "run.json"
+    record = json.loads(record_path.read_text())
+    fn(record)
+    record_path.write_text(json.dumps(record, indent=2, sort_keys=True))
+    run["run_record_digest"] = _digest(record_path)
+    manifest_path.write_text(json.dumps(manifest, indent=2))
+    return attempt
+
+
 # --- the well-formed case, so every refusal below refuses a real verdict -----
 
 
@@ -143,6 +170,60 @@ def test_the_verdict_recomputes_from_its_own_record(attempt):
     from bu.stats.gate import recompute
     again = recompute(json.loads(json.dumps(original.as_row())))
     assert again.as_row() == original.as_row()
+
+
+def test_a_serialised_disagreement_cannot_drift_away_from_its_source_row(attempt):
+    """The raw row, not a detached float, is the recomputation authority.
+
+    Before the serialised evidence carried its source rows, changing the six
+    uniform-cell disagreements from falling to rising left every recorded
+    digest and the attempt id untouched.  ``recompute`` then changed PASS to
+    FAIL while still treating the record as verified evidence.
+    """
+    from bu.stats.gate import recompute
+
+    original = reliability_gate(GateEvidence.from_attempt(attempt), rung=0)
+    row = json.loads(json.dumps(original.as_row()))
+    identity_before = row["evidence"]["attempt_id"]
+    digests_before = [c["row_digest"] for c in row["evidence"]["cells"]]
+    for cell in row["evidence"]["cells"]:
+        if cell["layout"] == "uniform":
+            cell["disagreement"] = 0.2 + 0.1 * SIZES.index(cell["size"])
+
+    assert row["evidence"]["attempt_id"] == identity_before
+    assert [c["row_digest"] for c in row["evidence"]["cells"]] == digests_before
+    with pytest.raises(ValueError, match="source row|mean_disagreement"):
+        recompute(row)
+
+
+def test_a_mutated_serialised_source_row_fails_its_recomputed_digest(attempt):
+    from bu.stats.gate import recompute
+
+    result = reliability_gate(GateEvidence.from_attempt(attempt), rung=0)
+    row = json.loads(json.dumps(result.as_row()))
+    row["evidence"]["cells"][0]["source_row"]["uncertainty"][
+        "mean_disagreement"
+    ] = 0.123
+
+    with pytest.raises(ValueError, match="embedded row hashes|source row or digest was mutated"):
+        recompute(row)
+
+
+@pytest.mark.parametrize("missing", ["version", "source_row"])
+def test_old_serialised_records_without_verifiable_source_material_are_refused(
+    attempt, missing
+):
+    from bu.stats.gate import recompute
+
+    result = reliability_gate(GateEvidence.from_attempt(attempt), rung=0)
+    row = json.loads(json.dumps(result.as_row()))
+    if missing == "version":
+        row["evidence"].pop("serialized_evidence_version")
+    else:
+        row["evidence"]["cells"][0].pop("source_row")
+
+    with pytest.raises(ValueError, match="source row|source_row|Older records"):
+        recompute(row)
 
 
 # --- Sol's required refusals ------------------------------------------------
@@ -278,6 +359,39 @@ def test_a_dirty_tree_cannot_produce_a_verdict(attempt):
         GateEvidence.from_attempt(attempt)
 
 
+@pytest.mark.parametrize("not_false", [0, None, "false"])
+def test_manifest_cleanliness_is_an_exact_boolean(attempt, not_false):
+    edit_manifest(attempt, lambda m: m.update(dirty=not_false))
+    with pytest.raises(ValueError, match="exact clean-tree boolean"):
+        GateEvidence.from_attempt(attempt)
+
+
+def test_every_run_record_must_name_the_manifest_commit(attempt):
+    edit_run_record(
+        attempt, 0, lambda record: record["git"].update(commit="b" * 40)
+    )
+    with pytest.raises(ValueError, match="record names git commit.*manifest names"):
+        GateEvidence.from_attempt(attempt)
+
+
+@pytest.mark.parametrize(
+    "field,value,match",
+    [
+        ("dirty", "false", "exact clean-tree boolean"),
+        ("dirty", 0, "exact clean-tree boolean"),
+        ("trustworthy", "true", "exact provenance boolean"),
+        ("trustworthy", 1, "exact provenance boolean"),
+        ("trustworthy", False, "exact provenance boolean"),
+    ],
+)
+def test_run_record_git_booleans_are_exact(attempt, field, value, match):
+    edit_run_record(
+        attempt, 0, lambda record: record["git"].update({field: value})
+    )
+    with pytest.raises(ValueError, match=match):
+        GateEvidence.from_attempt(attempt)
+
+
 def test_a_missing_rows_file_is_a_refusal_not_a_crash(attempt):
     """An incidental FileNotFoundError is an accident; this must be a refusal."""
     (attempt / "rows.json").unlink()
@@ -306,7 +420,9 @@ def test_the_w3_pilot_manifest_is_refused_as_gate_evidence():
 # --- the runner itself, exercised for real ---------------------------------
 
 
-def test_the_runner_reuses_one_scale_and_one_pool_across_dataset_sizes(tmp_path):
+def test_the_runner_reuses_one_scale_and_one_pool_across_dataset_sizes(
+    tmp_path, monkeypatch
+):
     """C-010's invariant, on the real path rather than a fixture.
 
     Every other test in this module builds evidence without training, which is
@@ -317,9 +433,17 @@ def test_the_runner_reuses_one_scale_and_one_pool_across_dataset_sizes(tmp_path)
     reuse that same object. So this one runs the machinery: two sizes, one seed,
     ten fits, a few seconds on CPU.
     """
-    from bu.experiments.w4_gate import run
+    import bu.experiments.w4_gate as w4
+    import bu.runrecord as runrecord
 
-    attempt = run(
+    # This integration test exercises numerical pooling, not the checkout in
+    # which pytest runs.  Give both the manifest writer and the per-run record
+    # writer the same exact clean synthetic code state.  Editing only the
+    # manifest's dirty flag after execution would now (correctly) be refused.
+    monkeypatch.setattr(w4, "git_state", lambda *a, **k: CLEAN)
+    monkeypatch.setattr(runrecord, "git_state", lambda *a, **k: CLEAN)
+
+    attempt = w4.run(
         rung=0, layouts=("uniform",), seeds=(0,), sizes=(100, 250),
         out_dir=tmp_path / "gate", verbose=False, allow_dirty=True,
     )
@@ -336,9 +460,8 @@ def test_the_runner_reuses_one_scale_and_one_pool_across_dataset_sizes(tmp_path)
         "the evaluation pool differs between dataset sizes, so the trend would "
         "compare disagreement measured on different data (D-052)"
     )
-    # And the artefacts it wrote are internally consistent: dirty flag aside,
-    # this is exactly what the gate will read on Tuesday.
-    edit_manifest(attempt, lambda m: m.update(dirty=False))
+    # And the artefacts it wrote are internally consistent: this is exactly
+    # what the gate will read on Tuesday.
     evidence = GateEvidence.from_attempt(attempt)
     assert len(evidence.cells) == 2
     assert evidence.cells[0].member_indices == (0, 1, 2, 3, 4)

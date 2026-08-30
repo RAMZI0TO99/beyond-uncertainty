@@ -320,6 +320,13 @@ def test_duplicate_split_names_are_refused():
                 splits=("train", "train"))
 
 
+@pytest.mark.parametrize("bad", [(None, 7), ([], "train")])
+def test_malformed_split_names_raise_valueerror_not_incidental_typeerror(bad):
+    from bu.critic.balance import assert_canonical_splits
+    with pytest.raises(ValueError, match="must be strings"):
+        assert_canonical_splits(bad)
+
+
 def test_balance_split_runs_the_cross_split_group_guard_itself():
     """It is a public entry point; the guard used to run only from `balance()`."""
     with pytest.raises(ValueError, match="spans splits"):
