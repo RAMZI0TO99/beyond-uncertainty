@@ -305,6 +305,9 @@ Sol's review base remains `4e55291`. Split seed/targets remain unregistered,
 `constants.py` is untouched, and no real data, labels, reserve, threshold,
 expansion or experimental compute was touched.
 
+**Verification:** focused post-audit run **302 passed / 1 skipped**; full clean
+suite **1,014 passed / 4 skipped / 0 failed** in 406.28 s on the CPU-only host.
+
 **Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
 AND CERTIFIED** (D-120, 2026-08-23). **No week is open** — the first time since
 Week 3. The certified base is **`4e55291`**; Sol certified delta 63 (D-131)
@@ -435,7 +438,9 @@ development diagnostics and are not included in that official total.
 
 ### Next, in order
 
-1. Finish full-suite and patch-application verification for D-138…D-140.
+1. **Local verification is complete:** 1,014/4 green. Patch application itself
+   must still be checked in the real repository because this export has no
+   remote history.
 2. In the **real** repository, checkout exact target `66edf4a…`, verify the
    committed preimage blobs, apply transferable patches in order, then create
    `SOL_BUNDLE.txt` with `BASE=4e55291`.

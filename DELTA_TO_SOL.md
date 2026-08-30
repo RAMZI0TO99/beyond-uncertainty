@@ -306,8 +306,12 @@ pending.
 --------------------------------------------------------------------
 NUMBERS (D-011)
 
-  tests          FINAL_VERIFICATION_PENDING
-  ran            synthetic/unit/protocol tests only; no experiment pipeline
+  tests          1,014 passing, 4 skipped, 0 xfailed/failing in 406.28 s
+                 (focused audit set: 302 passing, 1 skipped in 298.81 s)
+  skipped        3 CUDA-device requirements on CPU-only torch + 1 intentional
+                 vacuous identity-exclusion case
+  ran            full suite including tiny real-fit fixtures; no project
+                 experiment/data pipeline
   compute        no experimental compute (test fixtures only)
   review base    4e55291 (Sol-certified, unchanged)
   patch target   66edf4a11dce39b91974d5c331cca81424f83b6e
