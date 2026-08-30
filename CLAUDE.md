@@ -293,7 +293,7 @@ Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
 
-**2026-08-30 SOL2 UPDATE (read D-133…D-149 and DEV-013…017 before older
+**2026-08-30 SOL2 UPDATE (read D-133…D-150 and DEV-013…017 before older
 claims):** exact Config/Git/run/fit provenance and serialized gate/threshold
 evidence were hardened. Week-6 software now includes a source-reverifying
 persisted 20-seed repair-label pipeline, one-fit/many-role evidence, a physical
@@ -312,11 +312,14 @@ fixed five pre-execution gaps. D-147 corrected a real fail-closed feature-
 encoding finalizer defect; D-148 makes the historical C-volume evidence
 read-only and confines every new file to the project. D-149 then finalized the
 60 immutable smoke fits with zero retraining: observed label 0 and counts
-attempted/N0/N1/ambiguous/undiagnosed = 1/1/0/0/0. The current repository-
+attempted/N0/N1/ambiguous/undiagnosed = 1/1/0/0/0. D-150 then completed
+Experiment 1: 150/150 executed and project-synchronized, 0 failures/recoveries,
+750 member trainings, CPU only. The current repository-
 wide gate passed **1,669 tests, skipped 7 and failed 0 in 1,610.29 s** on the
 CPU-only Windows host. The
 seven skips are three CUDA checks, three unprivileged Windows-symlink cases and
-one intentionally vacuous identity case.
+one intentionally vacuous identity case. D-150's final state/preflight/batch/
+launch/monitor closeout passed **184/1/0 in 121.95 s**.
 
 **Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
 AND CERTIFIED** (D-120, 2026-08-23). Calendar time is Week 2 Sunday; scheduled
@@ -342,7 +345,8 @@ Reserve, split registration, threshold changes and expansion remain stopped.
 Delta 67 asks Sol to audit the resulting evidence and restart policy. D-146
 records the independent stop-before-launch audit, D-147 the first real
 fail-closed execution correction, D-148 the owner's project-only write
-boundary, and D-149 the resulting smoke label/count evidence. Missing
+boundary, D-149 the resulting smoke label/count evidence, and D-150 the full
+Experiment-1 execution plus disclosed raw-tail inspection. Missing
 whole-design model repairs and the final label-to-critic bridge remain later
 rulings, not guessed prerequisites.
 
@@ -457,13 +461,12 @@ rerun. These are confirmatory smoke evidence, not development diagnostics.
 
 ### Next, in order
 
-1. Package D-149's observed smoke evidence as patch 0012 and require a clean
-   repository before any Experiment-1 preflight.
-2. Move Experiment-1's evidence destination into the project, recheck all
-   still-empty roots, run immutable preflight, and safely launch its 150-job
-   plan with immutable start evidence and monitoring.
+1. Package D-150's execution record as patch 0013 and run the focused closeout
+   plus state-document test gate.
+2. Ask the student for the frozen Week-6 Thursday deliverable: about 400 words
+   in their own voice on the labelling protocol and fixed 10× data-repair budget.
 3. Deliver undelivered deltas **64–67** to external Sol with exact execution
-   counts; request review of D-141…D-149 and the restart/host deviation.
+   counts; request review of D-141…D-150 and the raw-tail inspection deviation.
 4. Complete the student's explain-and-defend walkthrough and preserve
    DEV-012's 0.00 zero-inflation planning convention exactly; it is
    not observed, estimated or pilot-derived.
@@ -547,7 +550,10 @@ consume reserve units, or use the splitter/balancer on real inputs.
   D-148 confines all new correction evidence to the project while reading the
   historical C copy only. D-149 finalized without retraining: data repair
   passed, feature repair failed, observed label 0, and exact counts are
-  1/1/0/0/0. External certification remains pending (D-141…D-149).
+  1/1/0/0/0. D-150 completed Experiment 1 at 150/150 with byte-identical
+  project copies and a final validated monitor. A raw journal tail exposed two
+  per-fit summaries mid-run; no adaptation occurred, and Sol must audit it.
+  External certification remains pending (D-141…D-150).
 
 Still blocked by Sol, correctly: registered split seed/targets, real critic
 splitting, reserve use and later whole-design repair coverage. Owner-authorised
