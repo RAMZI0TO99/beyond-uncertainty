@@ -11,6 +11,7 @@ import pytest
 
 from bu.durable import atomic_write_bytes, read_json
 from bu.experiments import batch as B
+from bu.experiments import fit_evidence as F
 from bu.experiments import launch as L
 from bu.experiments import preflight as P
 from bu.experiments.supervisor import LeaseConflictError
@@ -162,10 +163,11 @@ def test_launch_uses_exact_plan_default_executor_spawn_timeout_and_mounted_sync(
     assert jobs == registered_jobs
     assert arguments == {
         "root": roots["output"].resolve(),
-            "sync": sentinel_sync,
-            "attempt_timeout_seconds": 3600.0,
-            "attempt_staging_root": roots["staging"].resolve(),
-        }
+        "sync": sentinel_sync,
+        "expected_git_commit": "a" * 40,
+        "attempt_timeout_seconds": 3600.0,
+        "attempt_staging_root": roots["staging"].resolve(),
+    }
     assert "executor" not in arguments
     assert sync_calls == [roots["sync"].resolve()]
     assert report["status"] == "complete"
@@ -184,6 +186,11 @@ def test_launch_uses_exact_plan_default_executor_spawn_timeout_and_mounted_sync(
     persisted = read_json(report["report_path"])
     assert persisted == report
     assert Path(report["lease"]["released_history_path"]).is_file()
+    assert Path(report["launch_start"]["local_path"]).is_file()
+    assert Path(report["launch_start"]["durable_path"]).is_file()
+    assert Path(report["launch_start"]["local_path"]).read_bytes() == Path(
+        report["launch_start"]["durable_path"]
+    ).read_bytes()
 
 
 def test_validation_itself_is_read_only_and_returns_bound_roots(roots):
@@ -298,6 +305,46 @@ def test_changed_current_commit_is_refused_before_launch(monkeypatch, roots):
             attempt_timeout_seconds=10,
         )
     assert calls == []
+
+
+def test_clean_new_commit_after_parent_preflight_is_refused_before_fit(
+    monkeypatch, roots
+):
+    report_path, _ = ready_preflight(roots)
+    runner_calls = []
+    monkeypatch.setattr(
+        F,
+        "git_state",
+        lambda: GitState(commit="c" * 40, dirty=False, branch="main"),
+    )
+    monkeypatch.setattr(
+        F,
+        "run_confirmatory",
+        lambda *args, **kwargs: runner_calls.append((args, kwargs)),
+    )
+
+    def child_observes_new_commit(jobs, *, expected_git_commit, **kwargs):
+        item = tuple(jobs)[0]
+        F.run_confirmatory_fit(
+            item.unit,
+            arm=item.arm,
+            seed=item.seed,
+            out_dir=roots["staging"] / "must-not-exist",
+            expected_git_commit=expected_git_commit,
+        )
+
+    monkeypatch.setattr(B, "_run_registered_batch", child_observes_new_commit)
+    with pytest.raises(ValueError, match="launch-bound preflight commit"):
+        L.launch_experiment_1(
+            preflight_report=report_path,
+            output_root=roots["output"],
+            sync_root=roots["sync"],
+            attempt_timeout_seconds=10,
+        )
+
+    assert runner_calls == []
+    assert not (roots["staging"] / "must-not-exist").exists()
+    assert not (roots["output"] / L.LAUNCH_REPORT_DIRECTORY).exists()
 
 
 def test_dirty_current_git_is_refused_before_launch(monkeypatch, roots):
@@ -581,7 +628,7 @@ def test_bad_stale_recovery_bound_refuses_before_preflight(monkeypatch, roots, s
         lambda *args, **kwargs: validation_calls.append(True),
     )
 
-    with pytest.raises(ValueError, match="finite positive"):
+    with pytest.raises(ValueError, match="stale lease recovery"):
         L.launch_experiment_1(
             preflight_report=report_path,
             output_root=roots["output"],
@@ -592,44 +639,27 @@ def test_bad_stale_recovery_bound_refuses_before_preflight(monkeypatch, roots, s
     assert validation_calls == []
 
 
-def test_explicit_stale_recovery_bound_is_forwarded(monkeypatch, roots):
-    report_path, _ = ready_preflight(roots)
-    batch_calls = []
-    install_complete_batch(monkeypatch, batch_calls)
-    lease_calls = []
-
-    class FakeLease:
-        token = "synthetic-lease-token"
-
-        def release(self):
-            destination = roots["output"] / "synthetic-released-lease.json"
-            destination.write_text("{}\n", encoding="utf-8")
-            return destination
-
-    def acquire(root, **kwargs):
-        lease_calls.append((Path(root), kwargs))
-        return FakeLease()
-
-    monkeypatch.setattr(L, "acquire_batch_lease", acquire)
-
-    report = L.launch_experiment_1(
-        preflight_report=report_path,
-        output_root=roots["output"],
-        sync_root=roots["sync"],
-        attempt_timeout_seconds=10,
-        stale_lease_after_seconds=300,
+def test_explicit_stale_recovery_bound_is_refused_before_preflight(
+    monkeypatch, roots
+):
+    validation_calls = []
+    monkeypatch.setattr(
+        L,
+        "validate_ready_preflight",
+        lambda *args, **kwargs: validation_calls.append((args, kwargs)),
     )
 
-    assert lease_calls == [
-        (
-            roots["output"].resolve(),
-            {
-                "lease_name": L.EXPERIMENT_1_LEASE_NAME,
-                "stale_after_seconds": 300.0,
-            },
+    with pytest.raises(ValueError, match="time-only stale lease recovery"):
+        L.launch_experiment_1(
+            preflight_report=roots["preflight"] / "not-read.json",
+            output_root=roots["output"],
+            sync_root=roots["sync"],
+            attempt_timeout_seconds=10,
+            stale_lease_after_seconds=300,
         )
-    ]
-    assert report["execution"]["stale_lease_after_seconds"] == 300.0
+
+    assert validation_calls == []
+    assert tuple(roots["output"].iterdir()) == ()
 
 
 def test_lease_conflict_prevents_batch_and_launch_report(monkeypatch, roots):

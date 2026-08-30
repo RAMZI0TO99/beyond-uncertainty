@@ -39,18 +39,19 @@ from .fit_evidence import (
     run_confirmatory_fit,
 )
 from .label_evidence import (
+    LABEL_COUNT_FILE,
     LABEL_EVIDENCE_FILE,
-    LABEL_SUMMARY_FILE,
     PersistedRepairCondition,
     build_label_evidence,
-    write_label_evidence_summary,
+    write_label_evidence_counts,
 )
 from .repair import REPAIR_STAGE, applicable_arms
 
 
-REPAIR_LABEL_PLAN_SCHEMA_VERSION = 1
+REPAIR_LABEL_PLAN_SCHEMA_VERSION = 2
 REPAIR_LABEL_PLAN_FILE = "repair_label_plan.json"
-FIT_DIRECTORY = "fits"
+FIT_DIRECTORY = "jobs"
+WEEK6_SMOKE_UNIT_ID = "d5baeb907ac3"
 
 _MODEL_REPAIR_ARMS = ("feature_repair", "capacity_repair")
 _ARMS_BEFORE_MODEL = ("baseline", "data_repair")
@@ -75,9 +76,9 @@ class RepairLabelRunResult:
 
     plan_path: Path
     label_path: Path
-    summary_path: Path
+    count_path: Path
     label: dict[str, Any]
-    summary: dict[str, Any]
+    counts: dict[str, Any]
     executed_fits: int
     resumed_fits: int
 
@@ -108,6 +109,42 @@ def _digest(value: object) -> str:
 
 def _unit_row(unit: UnitSpec) -> dict[str, Any]:
     return dict(Config(unit=unit).to_dict()["unit"])
+
+
+def registered_week6_smoke_unit() -> UnitSpec:
+    """Return the one predeclared Week-6 repair-label smoke condition."""
+
+    unit = UnitSpec(
+        causal_attribute="shape",
+        confound_rate=0.25,
+        layout="uniform",
+        family="missing_feature",
+        n_transitions=5000,
+        withheld_features=("shape",),
+        hidden_size=256,
+    )
+    observed = Config(unit=unit).unit_id
+    if observed != WEEK6_SMOKE_UNIT_ID:
+        raise RuntimeError(
+            "the predeclared Week-6 smoke unit identity drifted: "
+            f"observed {observed!r}, expected {WEEK6_SMOKE_UNIT_ID!r}"
+        )
+    return unit
+
+
+def _require_registered_smoke_unit(unit: object) -> UnitSpec:
+    if type(unit) is not UnitSpec:
+        raise ValueError(
+            f"unit must be an exact UnitSpec, got {type(unit).__name__}"
+        )
+    expected = registered_week6_smoke_unit()
+    observed_id = Config(unit=unit).unit_id
+    if unit != expected or observed_id != WEEK6_SMOKE_UNIT_ID:
+        raise ValueError(
+            "the production Week-6 smoke boundary accepts only predeclared "
+            f"unit {WEEK6_SMOKE_UNIT_ID}; got {observed_id}"
+        )
+    return unit
 
 
 def _model_repair_arm(unit: UnitSpec) -> str:
@@ -199,7 +236,7 @@ def _plan_document(
         ],
         "outputs": {
             "label": LABEL_EVIDENCE_FILE,
-            "summary": LABEL_SUMMARY_FILE,
+            "counts": LABEL_COUNT_FILE,
         },
     }
     return {**payload, "plan_digest": _digest(payload)}
@@ -279,7 +316,9 @@ def _validate_loaded(
     return verified
 
 
-def _load_existing(planned: _PlannedFit) -> VerifiedFitEvidence:
+def _load_existing(
+    planned: _PlannedFit, *, expected_git_commit: str | None = None
+) -> VerifiedFitEvidence:
     if planned.path.is_symlink():
         raise ValueError(
             f"expected fit directory {planned.path} is a symlink; refusing resume"
@@ -289,7 +328,12 @@ def _load_existing(planned: _PlannedFit) -> VerifiedFitEvidence:
             f"expected fit path {planned.path} exists but is not a directory"
         )
     try:
-        loaded = load_fit_evidence(planned.path)
+        if expected_git_commit is None:
+            loaded = load_fit_evidence(planned.path)
+        else:
+            loaded = load_fit_evidence(
+                planned.path, expected_git_commit=expected_git_commit
+            )
     except Exception as exc:
         if isinstance(exc, (KeyboardInterrupt, SystemExit)):
             raise
@@ -336,15 +380,18 @@ def _obtain_fit(
     return _validate_loaded(loaded, planned=planned), True
 
 
-def run_repair_label(
+def _run_synthetic_repair_label(
     unit: UnitSpec,
     *,
     out_dir: str | Path,
 ) -> RepairLabelRunResult:
-    """Run or safely resume one complete persisted Week 6 smoke/label unit.
+    """Synthetic-only in-process exercise of the persisted label boundary.
 
-    ``out_dir`` is an evidence destination, not a scientific degree of freedom.
-    All result-changing choices are derived from the registered design.
+    Production code must use :mod:`bu.experiments.repair_label_launch`, which
+    supplies a lease, a mandatory timeout, fresh-process isolation, staging,
+    atomic publication, commit binding, and incremental independent sync.
+    This private function remains only for deterministic tests with fabricated
+    fit writers; calling it is never a valid way to produce scientific data.
     """
 
     root = Path(out_dir).resolve()
@@ -394,17 +441,70 @@ def run_repair_label(
         for seed in seeds
     )
     label_path = root / LABEL_EVIDENCE_FILE
-    summary_path = root / LABEL_SUMMARY_FILE
+    count_path = root / LABEL_COUNT_FILE
     label = build_label_evidence(conditions, path=label_path)
-    # The summary boundary deliberately reloads the immutable label from its
+    # The count boundary deliberately reloads the immutable label from its
     # path rather than trusting the in-memory mapping returned by the writer.
-    summary = write_label_evidence_summary((label_path,), path=summary_path)
+    counts = write_label_evidence_counts((label_path,), path=count_path)
     return RepairLabelRunResult(
         plan_path=plan_path,
         label_path=label_path,
-        summary_path=summary_path,
+        count_path=count_path,
         label=label,
-        summary=summary,
+        counts=counts,
         executed_fits=executed,
         resumed_fits=resumed,
+    )
+
+
+def _finalize_registered_label(
+    root: str | Path, *, expected_git_commit: str | None = None
+) -> RepairLabelRunResult:
+    """Reopen all 60 planned sidecars, then publish label and Week-6 counts."""
+
+    root_path = Path(root).resolve()
+    unit = registered_week6_smoke_unit()
+    model_arm, seeds, planned = _registered_plan(unit, root_path)
+    plan = _plan_document(
+        unit, model_arm=model_arm, seeds=seeds, planned=planned
+    )
+    _publish_plan(root_path / REPAIR_LABEL_PLAN_FILE, plan)
+
+    by_seed: dict[int, dict[str, Path]] = {}
+    for item in planned:
+        verified = _load_existing(
+            item, expected_git_commit=expected_git_commit
+        )
+        by_seed.setdefault(item.seed, {})[item.arm] = verified.fit_dir
+    conditions = tuple(
+        PersistedRepairCondition(
+            baseline=by_seed[seed]["baseline"],
+            data_repair=by_seed[seed]["data_repair"],
+            model_repair=by_seed[seed][model_arm],
+        )
+        for seed in seeds
+    )
+    label_path = root_path / LABEL_EVIDENCE_FILE
+    count_path = root_path / LABEL_COUNT_FILE
+    label = build_label_evidence(conditions, path=label_path)
+    counts = write_label_evidence_counts((label_path,), path=count_path)
+    return RepairLabelRunResult(
+        plan_path=root_path / REPAIR_LABEL_PLAN_FILE,
+        label_path=label_path,
+        count_path=count_path,
+        label=label,
+        counts=counts,
+        executed_fits=0,
+        resumed_fits=len(planned),
+    )
+
+
+def run_repair_label(unit: UnitSpec, *, out_dir: str | Path) -> RepairLabelRunResult:
+    """Refuse the retired in-process production path before filesystem access."""
+
+    del unit, out_dir
+    raise RuntimeError(
+        "direct repair-label execution is disabled; run the immutable "
+        "repair_label_preflight CLI followed by repair_label_launch so every "
+        "fit is commit-bound, isolated, timed, staged, leased, and synced"
     )

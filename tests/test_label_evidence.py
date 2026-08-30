@@ -27,8 +27,10 @@ from bu.experiments.fit_evidence import VerifiedFitEvidence, registered_fit_spec
 from bu.experiments.label_evidence import (
     PersistedRepairCondition,
     build_label_evidence,
+    count_label_evidence,
     load_label_evidence,
     summarize_label_evidence,
+    write_label_evidence_counts,
     write_label_evidence_summary,
 )
 from bu.experiments.repair import REPAIR_STAGE
@@ -781,3 +783,59 @@ def test_summary_refuses_raw_metadata_even_if_metadata_is_valid(fit_store, tmp_p
 def test_summary_refuses_to_call_planning_assumption_observed_without_data():
     with pytest.raises(ValueError, match="planning assumption"):
         summarize_label_evidence([])
+
+
+def test_week6_count_report_reopens_sources_and_omits_week8_estimand(
+    fit_store, tmp_path
+):
+    outcomes = ((True, False), (False, True), (True, True), (False, False))
+    paths = []
+    for index, (data, model) in enumerate(outcomes):
+        _record(
+            fit_store,
+            tmp_path,
+            data=data,
+            model=model,
+            unit_index=index,
+        )
+        paths.append(
+            _record_path(
+                tmp_path,
+                data=data,
+                model=model,
+                unit_index=index,
+            )
+        )
+
+    counts = count_label_evidence(paths)
+
+    assert counts["label_count_schema_version"] == 1
+    assert counts["attempted"] == 4
+    assert counts["observed_0"] == 1
+    assert counts["observed_1"] == 1
+    assert counts["ambiguous"] == 1
+    assert counts["undiagnosed"] == 1
+    forbidden = {
+        "excluded",
+        "exclusion_rate",
+        "registered_planning_exclusion_rate",
+        "planning_assumption_missed",
+        "shortfall_before_reserve_count",
+        "shortfall_before_reserve",
+    }
+    assert forbidden.isdisjoint(counts)
+
+    destination = tmp_path / "counts.json"
+    assert write_label_evidence_counts(paths, path=destination) == counts
+    assert json.loads(destination.read_text(encoding="utf-8")) == counts
+
+
+def test_week6_counts_refuse_raw_duplicate_and_empty_inputs(fit_store, tmp_path):
+    record = _record(fit_store, tmp_path)
+    path = _record_path(tmp_path)
+    with pytest.raises(ValueError, match="filesystem path"):
+        count_label_evidence([record])
+    with pytest.raises(ValueError, match="duplicate unit_id"):
+        count_label_evidence([path, path])
+    with pytest.raises(ValueError, match="zero label-evidence"):
+        count_label_evidence([])

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import errno
 import json
-import multiprocessing
 import os
 import time
 from pathlib import Path
@@ -15,8 +14,6 @@ import bu.experiments.supervisor as supervisor
 from bu.experiments.supervisor import (
     RECEIPT_FILE,
     RESULT_FILE,
-    SUPERVISOR_SCHEMA_VERSION,
-    BatchLease,
     DivergentEvidenceError,
     LeaseConflictError,
     acquire_batch_lease,
@@ -69,36 +66,6 @@ def symlink_job(attempt_dir: Path, payload: object) -> dict:
     target.write_text("mutable target\n", encoding="utf-8")
     os.symlink(target.name, attempt_dir / "worker-link.txt")
     return {"created_link": True}
-
-
-def race_release(
-    lease: BatchLease,
-    start: multiprocessing.synchronize.Event,
-    results: multiprocessing.queues.Queue,
-) -> None:
-    start.wait()
-    try:
-        history = lease.release()
-    except Exception as exc:
-        results.put(("release", "conflict", type(exc).__name__, str(exc)))
-    else:
-        results.put(("release", "released", str(history)))
-
-
-def race_recover(
-    root: Path,
-    start: multiprocessing.synchronize.Event,
-    results: multiprocessing.queues.Queue,
-) -> None:
-    start.wait()
-    try:
-        lease = acquire_batch_lease(
-            root, lease_name="race", stale_after_seconds=60
-        )
-    except Exception as exc:
-        results.put(("recover", "conflict", type(exc).__name__, str(exc)))
-    else:
-        results.put(("recover", "acquired", lease.token))
 
 
 def read_json(path: Path) -> dict:
@@ -514,183 +481,38 @@ def test_old_owner_cannot_release_replacement_owner_lease(tmp_path):
     ).exists()
 
 
-def test_explicitly_bounded_stale_lease_recovery_preserves_history(tmp_path):
-    lease_root = tmp_path / "leases"
-    lease_root.mkdir()
-    active = lease_root / "batch.lease.json"
-    old = {
-        "schema_version": SUPERVISOR_SCHEMA_VERSION,
-        "lease_name": "batch",
-        "pid": 999999,
-        "token": "old-owner-token",
-        "timestamp": time.time() - 3600,
-        "timestamp_utc": "2000-01-01T00:00:00Z",
-    }
-    active.write_text(json.dumps(old), encoding="utf-8")
+def test_time_only_stale_recovery_is_disabled_before_filesystem_access(tmp_path):
+    root = tmp_path / "does-not-exist"
 
-    with acquire_batch_lease(
-        tmp_path, lease_name="batch", stale_after_seconds=60
-    ) as recovered:
-        assert recovered.token != old["token"]
-        history = (
-            lease_root / "history" / "batch.old-owner-token.stale.json"
-        )
-        assert read_json(history) == old
+    with pytest.raises(ValueError, match="time-only stale lease recovery"):
+        acquire_batch_lease(root, lease_name="batch", stale_after_seconds=60)
+
+    assert not root.exists()
 
 
-@pytest.mark.parametrize(
-    ("active_bytes", "message"),
-    [
-        (b"{not-json\n", "unreadable"),
-        (
-            json.dumps(
-                {
-                    "schema_version": SUPERVISOR_SCHEMA_VERSION,
-                    "lease_name": "batch",
-                    "pid": 999999,
-                    "token": "old-owner-token",
-                    "timestamp": "not-a-timestamp",
-                    "timestamp_utc": "invalid",
-                }
-            ).encode("utf-8"),
-            "no valid timestamp",
-        ),
-        (
-            json.dumps(
-                {
-                    "schema_version": SUPERVISOR_SCHEMA_VERSION,
-                    "lease_name": "batch",
-                    "pid": 999999,
-                    "token": "young-owner-token",
-                    # Keep this unmistakably younger than the recovery bound
-                    # even when the full suite spends minutes between collection
-                    # and this parametrised case.
-                    "timestamp": time.time() + 3600,
-                    "timestamp_utc": "now",
-                }
-            ).encode("utf-8"),
-            "is only",
-        ),
-        (
-            json.dumps(
-                {
-                    "schema_version": SUPERVISOR_SCHEMA_VERSION,
-                    "lease_name": "batch",
-                    "pid": 999999,
-                    "token": "",
-                    "timestamp": time.time() - 3600,
-                    "timestamp_utc": "old",
-                }
-            ).encode("utf-8"),
-            "no valid token",
-        ),
-    ],
-    ids=["malformed-json", "invalid-timestamp", "too-young", "invalid-token"],
-)
-def test_refused_stale_recovery_preserves_active_lease_and_creates_no_history(
-    tmp_path, active_bytes, message
-):
-    lease_root = tmp_path / "leases"
-    lease_root.mkdir()
-    active = lease_root / "batch.lease.json"
-    active.write_bytes(active_bytes)
-    planted = active.read_bytes()
+def test_live_aged_lease_is_never_archived_or_replaced_by_age(tmp_path):
+    live = acquire_batch_lease(tmp_path, lease_name="long-running")
+    live_record = read_json(live.path)
+    live_record["timestamp"] = time.time() - 24 * 60 * 60
+    live_record["timestamp_utc"] = "2000-01-01T00:00:00Z"
+    live.path.write_text(json.dumps(live_record), encoding="utf-8")
+    planted = live.path.read_bytes()
 
-    with pytest.raises(LeaseConflictError, match=message):
+    with pytest.raises(ValueError, match="cannot prove owner death"):
         acquire_batch_lease(
-            tmp_path, lease_name="batch", stale_after_seconds=60
+            tmp_path,
+            lease_name="long-running",
+            stale_after_seconds=1,
         )
 
-    assert active.read_bytes() == planted
-    assert not (lease_root / "history").exists()
-    assert list(lease_root.glob("batch.*.stale.json")) == []
+    assert live.path.read_bytes() == planted
+    assert not live.history_dir.exists()
+    assert list((tmp_path / "leases").glob("*.stale.json")) == []
 
-
-def test_release_and_stale_recovery_interleaving_preserves_new_owner(tmp_path):
-    lease_root = tmp_path / "leases"
-    lease_root.mkdir()
-    active = lease_root / "race.lease.json"
-    old = {
-        "schema_version": SUPERVISOR_SCHEMA_VERSION,
-        "lease_name": "race",
-        "pid": 999999,
-        "token": "old-racing-owner",
-        "timestamp": time.time() - 3600,
-        "timestamp_utc": "2000-01-01T00:00:00Z",
-    }
-    active.write_text(json.dumps(old), encoding="utf-8")
-    old_lease = BatchLease(
-        path=active,
-        history_dir=lease_root / "history",
-        name="race",
-        token=old["token"],
-    )
-
-    context = multiprocessing.get_context("spawn")
-    start = context.Event()
-    results = context.Queue()
-    release_process = context.Process(
-        target=race_release, args=(old_lease, start, results)
-    )
-    recover_process = context.Process(
-        target=race_recover, args=(tmp_path, start, results)
-    )
-    release_process.start()
-    recover_process.start()
-    start.set()
-    release_process.join(15)
-    recover_process.join(15)
-
-    assert release_process.exitcode == 0
-    assert recover_process.exitcode == 0
-    reported = [results.get(timeout=2) for _ in range(2)]
-    outcomes = {item[0]: item for item in reported}
-    assert set(outcomes) == {"release", "recover"}
-    assert outcomes["recover"][1] == "acquired"
-    assert outcomes["release"][1] in {"released", "conflict"}
-    active_record = read_json(active)
-    assert active_record["token"] == outcomes["recover"][2]
-    old_history = list((lease_root / "history").glob("race.old-racing-owner.*"))
-    assert len(old_history) == 1
-    assert read_json(old_history[0]) == old
-
-
-def test_competing_stale_recoveries_have_exactly_one_new_owner(tmp_path):
-    lease_root = tmp_path / "leases"
-    lease_root.mkdir()
-    active = lease_root / "race.lease.json"
-    old = {
-        "schema_version": SUPERVISOR_SCHEMA_VERSION,
-        "lease_name": "race",
-        "pid": 999999,
-        "token": "one-stale-owner",
-        "timestamp": time.time() - 3600,
-        "timestamp_utc": "2000-01-01T00:00:00Z",
-    }
-    active.write_text(json.dumps(old), encoding="utf-8")
-
-    context = multiprocessing.get_context("spawn")
-    start = context.Event()
-    results = context.Queue()
-    processes = [
-        context.Process(target=race_recover, args=(tmp_path, start, results))
-        for _ in range(2)
-    ]
-    for process in processes:
-        process.start()
-    start.set()
-    for process in processes:
-        process.join(15)
-        assert process.exitcode == 0
-
-    reported = [results.get(timeout=2) for _ in range(2)]
-    acquired = [item for item in reported if item[1] == "acquired"]
-    conflicts = [item for item in reported if item[1] == "conflict"]
-    assert len(acquired) == 1
-    assert len(conflicts) == 1
-    assert read_json(active)["token"] == acquired[0][2]
-    history = lease_root / "history" / "race.one-stale-owner.stale.json"
-    assert read_json(history) == old
+    released = live.release()
+    assert read_json(released) == live_record
+    with acquire_batch_lease(tmp_path, lease_name="long-running") as next_owner:
+        assert next_owner.token != live.token
 
 
 @pytest.mark.parametrize(

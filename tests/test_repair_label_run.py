@@ -3,7 +3,7 @@
 No environment is sampled and no model is fitted. Most tests use lightweight
 boundary doubles; one high-value integration test writes genuine schema-v3 fit
 sidecars around fabricated arrays and exercises the production fit loader,
-label builder, label loader, and source-reloading summary end to end.
+label builder, label loader, and source-reloading Week-6 counts end to end.
 """
 
 from __future__ import annotations
@@ -55,10 +55,9 @@ def _model_arms(unit: UnitSpec) -> tuple[str, ...]:
 
 
 def _eligible_unit() -> UnitSpec:
-    for unit in repair_validation_units():
-        if len(_model_arms(unit)) == 1:
-            return unit
-    raise AssertionError("registered repair ladder has no one-model-repair unit")
+    unit = R.registered_week6_smoke_unit()
+    assert unit in repair_validation_units()
+    return unit
 
 
 def _json_bytes(value: dict) -> bytes:
@@ -362,7 +361,7 @@ def synthetic_boundaries(tmp_path, monkeypatch):
     root = tmp_path / "week6-smoke"
     store = _SyntheticPersistedFits(root)
     labels: list[tuple[tuple[PersistedRepairCondition, ...], Path]] = []
-    summaries: list[tuple[tuple[Path, ...], Path]] = []
+    counts: list[tuple[tuple[Path, ...], Path]] = []
 
     def build(conditions, *, path):
         rows = tuple(conditions)
@@ -371,29 +370,29 @@ def synthetic_boundaries(tmp_path, monkeypatch):
         labels.append((rows, destination))
         return {"synthetic": "exact-label", "condition_count": len(rows)}
 
-    def summarize(records, *, path):
+    def count(records, *, path):
         rows = tuple(Path(row) for row in records)
         assert all(row.is_file() for row in rows)
         destination = Path(path)
-        destination.write_text('{"synthetic":"summary"}\n', encoding="utf-8")
-        summaries.append((rows, destination))
-        return {"synthetic": "summary", "record_count": len(rows)}
+        destination.write_text('{"synthetic":"counts"}\n', encoding="utf-8")
+        counts.append((rows, destination))
+        return {"synthetic": "counts", "record_count": len(rows)}
 
     monkeypatch.setattr(R, "run_confirmatory_fit", store.execute)
     monkeypatch.setattr(R, "load_fit_evidence", store.load)
     monkeypatch.setattr(R, "build_label_evidence", build)
-    monkeypatch.setattr(R, "write_label_evidence_summary", summarize)
-    return root, store, labels, summaries
+    monkeypatch.setattr(R, "write_label_evidence_counts", count)
+    return root, store, labels, counts
 
 
 def test_runs_exact_twenty_by_three_inventory_in_registered_order_and_reuses_scale(
     synthetic_boundaries,
 ):
-    root, store, labels, summaries = synthetic_boundaries
+    root, store, labels, counts = synthetic_boundaries
     unit = _eligible_unit()
     model_arm = _model_arms(unit)[0]
 
-    result = R.run_repair_label(unit, out_dir=root)
+    result = R._run_synthetic_repair_label(unit, out_dir=root)
 
     expected_order = [
         (seed, arm)
@@ -411,7 +410,7 @@ def test_runs_exact_twenty_by_three_inventory_in_registered_order_and_reuses_sca
         assert model[3] is persisted_baseline.scale
 
     plan = json.loads(result.plan_path.read_text(encoding="utf-8"))
-    assert plan["repair_label_plan_schema_version"] == 1
+    assert plan["repair_label_plan_schema_version"] == 2
     assert plan["unit_id"] == Config(unit=unit).unit_id
     assert plan["stage"] == "repair_validation"
     assert plan["seeds"] == list(SEEDS)
@@ -426,8 +425,8 @@ def test_runs_exact_twenty_by_three_inventory_in_registered_order_and_reuses_sca
     assert len(conditions) == 20
     assert all(type(row) is PersistedRepairCondition for row in conditions)
     assert label_path == root / "label_evidence.json"
-    assert summaries == [
-        ((root / "label_evidence.json",), root / "label_evidence_summary.json")
+    assert counts == [
+        ((root / "label_evidence.json",), root / "label_counts.json")
     ]
 
 
@@ -437,7 +436,7 @@ def test_schema_v3_orchestrator_reloads_real_synthetic_sidecars_end_to_end(
     root = tmp_path / "schema-v3-integration"
     monkeypatch.setattr(R, "run_confirmatory_fit", _write_synthetic_schema_v3_fit)
 
-    result = R.run_repair_label(_eligible_unit(), out_dir=root)
+    result = R._run_synthetic_repair_label(_eligible_unit(), out_dir=root)
 
     assert result.executed_fits == 60
     assert result.resumed_fits == 0
@@ -453,11 +452,12 @@ def test_schema_v3_orchestrator_reloads_real_synthetic_sidecars_end_to_end(
     }
     assert len(source_paths) == 60
     assert all(not Path(path).is_absolute() and ".." not in Path(path).parts for path in source_paths)
-    persisted_summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
-    assert persisted_summary == result.summary
-    assert result.summary["attempted"] == 1
-    assert result.summary["observed_0"] == 1
-    assert result.summary["excluded"] == 0
+    persisted_counts = json.loads(result.count_path.read_text(encoding="utf-8"))
+    assert persisted_counts == result.counts
+    assert result.counts["attempted"] == 1
+    assert result.counts["observed_0"] == 1
+    assert "excluded" not in result.counts
+    assert "exclusion_rate" not in result.counts
 
 
 def test_second_invocation_resumes_only_independently_verified_complete_fits(
@@ -465,12 +465,12 @@ def test_second_invocation_resumes_only_independently_verified_complete_fits(
 ):
     root, store, _, _ = synthetic_boundaries
     unit = _eligible_unit()
-    first = R.run_repair_label(unit, out_dir=root)
+    first = R._run_synthetic_repair_label(unit, out_dir=root)
     assert first.executed_fits == 60
     store.execute_calls.clear()
     store.load_calls.clear()
 
-    second = R.run_repair_label(unit, out_dir=root)
+    second = R._run_synthetic_repair_label(unit, out_dir=root)
 
     assert store.execute_calls == []
     assert len(store.load_calls) == 60
@@ -490,7 +490,7 @@ def test_existing_partial_fit_directory_is_refused_before_any_fit(
     (partial / "run.json").write_text("{}\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="partial or invalid"):
-        R.run_repair_label(unit, out_dir=root)
+        R._run_synthetic_repair_label(unit, out_dir=root)
 
     assert (root / R.REPAIR_LABEL_PLAN_FILE).is_file()
     assert store.execute_calls == []
@@ -510,7 +510,7 @@ def test_existing_divergent_verified_fit_is_refused_without_retraining(
     )
 
     with pytest.raises(ValueError, match="diverges from its immutable plan"):
-        R.run_repair_label(unit, out_dir=root)
+        R._run_synthetic_repair_label(unit, out_dir=root)
 
     assert store.execute_calls == []
     assert labels == []
@@ -521,7 +521,7 @@ def test_divergent_immutable_plan_is_refused_before_resume_or_retraining(
 ):
     root, store, labels, _ = synthetic_boundaries
     unit = _eligible_unit()
-    first = R.run_repair_label(unit, out_dir=root)
+    first = R._run_synthetic_repair_label(unit, out_dir=root)
     document = json.loads(first.plan_path.read_text(encoding="utf-8"))
     document["stage"] = "exp1"
     first.plan_path.write_text(json.dumps(document), encoding="utf-8")
@@ -530,7 +530,7 @@ def test_divergent_immutable_plan_is_refused_before_resume_or_retraining(
     labels.clear()
 
     with pytest.raises(ValueError, match="differs from the exact registered plan"):
-        R.run_repair_label(unit, out_dir=root)
+        R._run_synthetic_repair_label(unit, out_dir=root)
 
     assert store.execute_calls == []
     assert store.load_calls == []
@@ -548,7 +548,7 @@ def test_existing_fit_path_that_is_not_a_directory_is_refused(
     destination.write_text("not a fit directory\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="exists but is not a directory"):
-        R.run_repair_label(unit, out_dir=root)
+        R._run_synthetic_repair_label(unit, out_dir=root)
 
     assert store.execute_calls == []
     assert labels == []
@@ -570,7 +570,7 @@ def test_existing_fit_symlink_is_refused_where_supported(
         pytest.skip(f"OS does not permit unprivileged symlink creation: {exc}")
 
     with pytest.raises(ValueError, match="is a symlink; refusing resume"):
-        R.run_repair_label(unit, out_dir=root)
+        R._run_synthetic_repair_label(unit, out_dir=root)
 
     assert destination.is_symlink()
     assert store.execute_calls == []
@@ -590,7 +590,7 @@ def test_new_fit_without_verifiable_sidecar_is_refused(
 
     monkeypatch.setattr(R, "run_confirmatory_fit", incomplete_fit)
     with pytest.raises(ValueError, match="did not publish complete verifiable"):
-        R.run_repair_label(_eligible_unit(), out_dir=root)
+        R._run_synthetic_repair_label(_eligible_unit(), out_dir=root)
 
     assert store.load_calls
     assert store.execute_calls == []
@@ -621,7 +621,7 @@ def test_repaired_fit_with_wrong_baseline_scale_is_refused(
 
     monkeypatch.setattr(R, "run_confirmatory_fit", wrong_scale_fit)
     with pytest.raises(ValueError, match="exact normalisation scale"):
-        R.run_repair_label(_eligible_unit(), out_dir=root)
+        R._run_synthetic_repair_label(_eligible_unit(), out_dir=root)
 
     assert [arm for _, arm, _, _ in store.execute_calls] == [
         "baseline",
@@ -650,7 +650,7 @@ def test_refuses_units_without_exactly_one_model_repair_before_manifest_or_fit(
     root, store, labels, _ = synthetic_boundaries
 
     with pytest.raises(ValueError, match="exactly one registered model-class repair"):
-        R.run_repair_label(unit, out_dir=root)
+        R._run_synthetic_repair_label(unit, out_dir=root)
 
     assert not (root / R.REPAIR_LABEL_PLAN_FILE).exists()
     assert store.execute_calls == []

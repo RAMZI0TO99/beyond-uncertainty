@@ -24,6 +24,7 @@ import json
 import os
 import shutil
 import stat
+import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +37,7 @@ from ..durable import (
     DurabilityError,
     append_jsonl,
     atomic_write_json,
+    fsync_directory,
     read_jsonl,
     recover_unterminated_jsonl,
 )
@@ -159,6 +161,14 @@ SyncCallback = Callable[[Path, BatchJob, Mapping[str, Any]], SyncReceipt]
 Executor = Callable[[BatchJob, Path], Mapping[str, Any]]
 
 
+@dataclass(frozen=True)
+class _RegisteredFitRequest:
+    """Spawn-safe production payload bound to one preflight commit."""
+
+    job: BatchJob
+    expected_git_commit: str
+
+
 def _execute_in_spawned_child(
     attempt_dir: Path,
     payload: tuple[Executor, BatchJob],
@@ -168,12 +178,29 @@ def _execute_in_spawned_child(
     return executor(job, attempt_dir)
 
 
+def _execute_registered_in_spawned_child(
+    attempt_dir: Path,
+    payload: _RegisteredFitRequest,
+) -> Mapping[str, Any]:
+    """Run the fixed executor with its exact launch-bound Git commit."""
+
+    if type(payload) is not _RegisteredFitRequest:
+        raise ValueError(
+            "registered child payload must be an exact _RegisteredFitRequest"
+        )
+    return _default_executor(
+        payload.job,
+        attempt_dir,
+        expected_git_commit=payload.expected_git_commit,
+    )
+
+
 def experiment_1_jobs() -> tuple[BatchJob, ...]:
     """The registered 6×5×5 plan, deduplicated at the computation identity.
 
     Thirty jobs also discharge ``repair_validation``. They remain one job with
-    two roles; the default executor refuses the launch until it can write both
-    obligation records from that one fit.
+    two roles; fit-evidence schema v2 writes both obligation projections from
+    that one physical fit without duplication (D-144).
     """
 
     jobs = tuple(
@@ -339,6 +366,19 @@ def _is_sha256(value: object) -> bool:
         and len(value) == 64
         and all(ch in "0123456789abcdef" for ch in value)
     )
+
+
+def _expected_git_commit(value: object) -> str:
+    if (
+        type(value) is not str
+        or len(value) != 40
+        or any(ch not in "0123456789abcdef" for ch in value)
+    ):
+        raise ValueError(
+            "expected_git_commit must be an exact lowercase 40-hex commit, "
+            f"got {value!r}"
+        )
+    return value
 
 
 def _lstat_regular_file(path: Path) -> os.stat_result:
@@ -521,12 +561,19 @@ def _validate_sync_receipt(
     return receipt
 
 
-def _default_executor(job: BatchJob, job_dir: Path) -> Mapping[str, Any]:
+def _default_executor(
+    job: BatchJob,
+    job_dir: Path,
+    *,
+    expected_git_commit: str,
+) -> Mapping[str, Any]:
+    expected = _expected_git_commit(expected_git_commit)
     result = run_confirmatory_fit(
         job.unit,
         seed=job.seed,
         arm=job.arm,
         out_dir=job_dir,
+        expected_git_commit=expected,
     )
     row = result.as_row()
     return row
@@ -564,12 +611,21 @@ def _validate_result(job: BatchJob, result: object) -> dict[str, Any]:
     return out
 
 
-def _validate_fit_evidence(job: BatchJob, job_dir: Path, result: Mapping[str, Any]) -> None:
+def _validate_fit_evidence(
+    job: BatchJob,
+    job_dir: Path,
+    result: Mapping[str, Any],
+    *,
+    expected_git_commit: str,
+) -> None:
     if result.get("fit_evidence_schema_version") != FIT_EVIDENCE_SCHEMA_VERSION:
         raise ValueError("default executor result has no fit-evidence schema")
     if result.get("fit_evidence_file") != FIT_EVIDENCE_FILE:
         raise ValueError("default executor result names a noncanonical fit-evidence file")
-    verified = load_fit_evidence(job_dir)
+    verified = load_fit_evidence(
+        job_dir,
+        expected_git_commit=_expected_git_commit(expected_git_commit),
+    )
     if verified.fit_id != job.job_id or verified.roles != job.roles:
         raise ValueError("fit evidence disagrees with the batch job identity or roles")
     if result.get("fit_evidence_digest") != verified.execution_digest:
@@ -581,17 +637,31 @@ def _recover_result(
     job_dir: Path,
     *,
     require_fit_evidence: bool = False,
+    expected_git_commit: str | None = None,
 ) -> dict[str, Any] | None:
+    if require_fit_evidence:
+        expected_git_commit = _expected_git_commit(expected_git_commit)
+    elif expected_git_commit is not None:
+        raise ValueError(
+            "expected_git_commit is reserved for registered fit-evidence recovery"
+        )
     result_path = job_dir / RESULT_FILE
     if result_path.exists():
         result = _validate_result(
             job, json.loads(result_path.read_text(encoding="utf-8"))
         )
         if require_fit_evidence:
-            _validate_fit_evidence(job, job_dir, result)
+            _validate_fit_evidence(
+                job,
+                job_dir,
+                result,
+                expected_git_commit=expected_git_commit,
+            )
         return result
     if require_fit_evidence and (job_dir / FIT_EVIDENCE_FILE).exists():
-        verified = load_fit_evidence(job_dir)
+        verified = load_fit_evidence(
+            job_dir, expected_git_commit=expected_git_commit
+        )
         confirmatory_path = (
             job_dir / verified.execution_run_id / "confirmatory.json"
         )
@@ -608,7 +678,12 @@ def _recover_result(
             }
         )
         result = _validate_result(job, result)
-        _validate_fit_evidence(job, job_dir, result)
+        _validate_fit_evidence(
+            job,
+            job_dir,
+            result,
+            expected_git_commit=expected_git_commit,
+        )
         _write_json_exclusive(result_path, result)
         return result
     confirmatory = job_dir / job.config.run_id / "confirmatory.json"
@@ -641,6 +716,7 @@ def _run_batch(
     sync: SyncCallback,
     executor: Executor,
     require_fit_evidence: bool,
+    expected_git_commit: str | None = None,
     attempt_timeout_seconds: float | None = None,
     attempt_staging_root: str | Path | None = None,
 ) -> BatchReport:
@@ -658,6 +734,16 @@ def _run_batch(
         raise ValueError("sync must be a callable; unattended runs require sync-off")
     if not callable(executor):
         raise ValueError("executor must be callable")
+    if require_fit_evidence:
+        expected_git_commit = _expected_git_commit(expected_git_commit)
+        if executor is not _default_executor:
+            raise ValueError(
+                "registered fit evidence requires the fixed production executor"
+            )
+    elif expected_git_commit is not None:
+        raise ValueError(
+            "expected_git_commit is reserved for the registered production path"
+        )
     if attempt_staging_root is not None and attempt_timeout_seconds is None:
         raise ValueError(
             "attempt_staging_root requires process isolation with a positive "
@@ -690,6 +776,7 @@ def _run_batch(
                 job,
                 job_dir,
                 require_fit_evidence=require_fit_evidence,
+                expected_git_commit=expected_git_commit,
             )
             if result is None:
                 raise ValueError(
@@ -743,6 +830,7 @@ def _run_batch(
                 job,
                 job_dir,
                 require_fit_evidence=require_fit_evidence,
+                expected_git_commit=expected_git_commit,
             )
         except Exception as exc:
             # A completed/sync-failed checkpoint must never be downgraded to a
@@ -813,10 +901,28 @@ def _run_batch(
             try:
                 if attempt_timeout_seconds is None:
                     job_dir.mkdir(parents=True, exist_ok=True)
-                    raw_result = executor(job, job_dir)
+                    if require_fit_evidence:
+                        raw_result = _default_executor(
+                            job,
+                            job_dir,
+                            expected_git_commit=expected_git_commit,
+                        )
+                    else:
+                        raw_result = executor(job, job_dir)
                 else:
+                    child_target: Callable[..., Mapping[str, Any]]
+                    child_payload: object
+                    if require_fit_evidence:
+                        child_target = _execute_registered_in_spawned_child
+                        child_payload = _RegisteredFitRequest(
+                            job=job,
+                            expected_git_commit=expected_git_commit,
+                        )
+                    else:
+                        child_target = _execute_in_spawned_child
+                        child_payload = (executor, job)
                     outcome = run_isolated_attempt(
-                        _execute_in_spawned_child,
+                        child_target,
                         root=batch_dir,
                         staging_root=(
                             None
@@ -824,7 +930,7 @@ def _run_batch(
                             else Path(attempt_staging_root) / manifest["batch_id"]
                         ),
                         job_id=job.job_id,
-                        payload=(executor, job),
+                        payload=child_payload,
                         timeout_seconds=attempt_timeout_seconds,
                     )
                     if not outcome.succeeded:
@@ -838,7 +944,12 @@ def _run_batch(
                     )
                 result = _validate_result(job, raw_result)
                 if require_fit_evidence:
-                    _validate_fit_evidence(job, job_dir, result)
+                    _validate_fit_evidence(
+                        job,
+                        job_dir,
+                        result,
+                        expected_git_commit=expected_git_commit,
+                    )
                 _write_json_exclusive(job_dir / RESULT_FILE, result)
                 digest = _result_digest(result)
                 _append_transition(
@@ -925,6 +1036,7 @@ def _run_registered_batch(
     *,
     root: str | Path,
     sync: SyncCallback,
+    expected_git_commit: str,
     attempt_timeout_seconds: float | None = None,
     attempt_staging_root: str | Path | None = None,
 ) -> BatchReport:
@@ -936,6 +1048,7 @@ def _run_registered_batch(
     Executor injection is absent by construction.
     """
 
+    expected = _expected_git_commit(expected_git_commit)
     if (
         attempt_timeout_seconds is None
         or attempt_staging_root is None
@@ -956,6 +1069,7 @@ def _run_registered_batch(
         sync=sync,
         executor=_default_executor,
         require_fit_evidence=True,
+        expected_git_commit=expected,
         attempt_timeout_seconds=attempt_timeout_seconds,
         attempt_staging_root=attempt_staging_root,
     )
@@ -989,83 +1103,218 @@ def run_synthetic_batch(
     )
 
 
-def sync_to_directory(destination: str | Path) -> SyncCallback:
-    """Return a sync adapter for a durable mounted output directory."""
+def _durable_directory(path: Path) -> None:
+    """Create plain directories and sync every new directory entry."""
 
-    target_root = Path(destination)
+    absolute = Path(os.path.abspath(path))
+    missing: list[Path] = []
+    cursor = absolute
+    while not os.path.lexists(cursor):
+        missing.append(cursor)
+        if cursor.parent == cursor:
+            break
+        cursor = cursor.parent
+    _require_plain_directory_components(cursor)
+    absolute.mkdir(parents=True, exist_ok=True)
+    _require_plain_directory_components(absolute)
+    for created in reversed(missing):
+        fsync_directory(created)
+        fsync_directory(created.parent)
 
-    def copy_static(source: Path, target: Path) -> None:
-        """Create an immutable remote file or prove the existing bytes agree."""
-        _lstat_regular_file(source)
-        _require_plain_directory_components(target.parent)
-        if os.path.lexists(target):
-            _lstat_regular_file(target)
-            if os.path.samefile(source, target):
+
+def _fsync_regular_file(path: Path) -> None:
+    """Flush one already-written regular file before it can be acknowledged."""
+
+    _lstat_regular_file(path)
+    try:
+        # Windows' ``_commit`` (the implementation behind ``os.fsync``) rejects
+        # a read-only descriptor with EBADF. Open read/write without writing;
+        # the file's bytes and position remain unchanged.
+        with path.open("r+b") as handle:
+            os.fsync(handle.fileno())
+    except OSError as exc:
+        raise ValueError(f"cannot fsync durable evidence file {path}: {exc}") from exc
+
+
+def _fsync_regular_tree(root: Path) -> None:
+    """Flush all bytes and supported directory entries in a private tree."""
+
+    inventory = _regular_tree_inventory(root)
+    for row in inventory:
+        _fsync_regular_file(root / row["path"])
+    directories = [
+        path
+        for path in root.rglob("*")
+        if path.is_dir()
+    ]
+    for directory in sorted(
+        directories, key=lambda path: len(path.parts), reverse=True
+    ):
+        fsync_directory(directory)
+    fsync_directory(root)
+
+
+def _stage_file_bytes(target: Path, data: bytes) -> Path:
+    """Write and fsync bytes under a unique same-directory temporary name."""
+
+    descriptor: int | None = None
+    temporary: Path | None = None
+    try:
+        descriptor, name = tempfile.mkstemp(
+            prefix=f".{target.name}.", suffix=".partial", dir=target.parent
+        )
+        temporary = Path(name)
+        with os.fdopen(descriptor, "wb", closefd=True) as handle:
+            descriptor = None
+            written = handle.write(data)
+            if written != len(data):
                 raise ValueError(
-                    f"durable sync target aliases its local source: {target}"
+                    f"short durable write for {target}: wrote {written} of "
+                    f"{len(data)} bytes"
                 )
-            if source.read_bytes() != target.read_bytes():
-                raise ValueError(
-                    f"durable sync target {target} already exists with different "
-                    "bytes; refusing to overwrite batch identity evidence"
-                )
-            return
-        shutil.copy2(source, target)
+            handle.flush()
+            os.fsync(handle.fileno())
+        _lstat_regular_file(temporary)
+        if temporary.read_bytes() != data:
+            raise ValueError(
+                f"same-directory durable temporary for {target} failed read-back"
+            )
+        return temporary
+    except Exception:
+        if descriptor is not None:
+            os.close(descriptor)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        raise
+
+
+def _publish_file(
+    source: Path,
+    target: Path,
+    *,
+    append_only_prefix: bool,
+) -> None:
+    """Durably publish one immutable file or one append-only journal snapshot."""
+
+    _lstat_regular_file(source)
+    _require_plain_directory_components(target.parent)
+    source_bytes = source.read_bytes()
+    if os.path.lexists(target):
         _lstat_regular_file(target)
         if os.path.samefile(source, target):
             raise ValueError(f"durable sync target aliases its local source: {target}")
-
-    def extend_events(source: Path, target: Path) -> None:
-        """Extend only an exact prefix of the append-only event stream."""
-        _lstat_regular_file(source)
-        _require_plain_directory_components(target.parent)
-        source_bytes = source.read_bytes()
-        if os.path.lexists(target):
-            _lstat_regular_file(target)
-            if os.path.samefile(source, target):
-                raise ValueError(
-                    f"durable event log aliases its local source: {target}"
-                )
-            target_bytes = target.read_bytes()
+        target_bytes = target.read_bytes()
+        if append_only_prefix:
             if not source_bytes.startswith(target_bytes):
                 raise ValueError(
                     f"durable event log {target} is not an exact prefix of the "
                     "local append-only stream; refusing to overwrite either history"
                 )
+        elif source_bytes != target_bytes:
+            raise ValueError(
+                f"durable sync target {target} already exists with different "
+                "bytes; refusing to overwrite batch identity evidence"
+            )
+        if source_bytes == target_bytes:
+            _fsync_regular_file(target)
+            fsync_directory(target.parent)
+            return
+
+    temporary = _stage_file_bytes(target, source_bytes)
+    try:
+        # Recheck after staging so a conflicting final that appeared while the
+        # temporary was written is never silently replaced.
+        if os.path.lexists(target):
+            _lstat_regular_file(target)
+            target_bytes = target.read_bytes()
+            if append_only_prefix:
+                if not source_bytes.startswith(target_bytes):
+                    raise ValueError(
+                        f"durable event log {target} changed to a non-prefix "
+                        "during publication"
+                    )
+            elif source_bytes != target_bytes:
+                raise ValueError(
+                    f"durable sync target {target} changed during publication"
+                )
             if source_bytes == target_bytes:
+                _fsync_regular_file(target)
+                fsync_directory(target.parent)
                 return
-        shutil.copy2(source, target)
+        os.replace(temporary, target)
+        temporary = None
+        fsync_directory(target.parent)
         _lstat_regular_file(target)
-        if os.path.samefile(source, target):
-            raise ValueError(f"durable event log aliases its local source: {target}")
+        if target.read_bytes() != source_bytes:
+            raise ValueError(
+                f"durable sync target {target} failed post-publication read-back"
+            )
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _publish_job_tree(source: Path, target: Path) -> None:
+    """Durably publish a complete job tree without exposing a partial final."""
+
+    _regular_tree_inventory(source)
+    _durable_directory(target.parent)
+    if os.path.lexists(target):
+        _copy_evidence_digest(source, target)
+        _fsync_regular_tree(target)
+        fsync_directory(target.parent)
+        return
+
+    temporary = Path(
+        tempfile.mkdtemp(
+            prefix=f".{target.name}.", suffix=".partial", dir=target.parent
+        )
+    )
+    try:
+        shutil.copytree(source, temporary, dirs_exist_ok=True)
+        _copy_evidence_digest(source, temporary)
+        _fsync_regular_tree(temporary)
+        if os.path.lexists(target):
+            # Another publisher cannot be assumed equivalent. Validate it and
+            # use its already-final tree only when every independent byte agrees.
+            _copy_evidence_digest(source, target)
+            _fsync_regular_tree(target)
+            fsync_directory(target.parent)
+            return
+        os.replace(temporary, target)
+        temporary = None
+        fsync_directory(target.parent)
+        _copy_evidence_digest(source, target)
+    finally:
+        if temporary is not None:
+            shutil.rmtree(temporary)
+
+
+def sync_to_directory(destination: str | Path) -> SyncCallback:
+    """Return an atomic, fsynced adapter for a mounted output directory."""
+
+    target_root = Path(os.path.abspath(destination))
 
     def sync(
         batch_dir: Path, job: BatchJob, result: Mapping[str, Any]
     ) -> SyncReceipt:
         _require_plain_directory_components(target_root)
         target = target_root / batch_dir.name
-        target.mkdir(parents=True, exist_ok=True)
-        _require_plain_directory_components(target)
+        _durable_directory(target)
         source_job = batch_dir / "jobs" / job.job_id
-        _regular_tree_inventory(source_job)
         target_job = target / "jobs" / job.job_id
-        if os.path.lexists(target_job):
-            _copy_evidence_digest(source_job, target_job)
-        else:
-            target_job.parent.mkdir(parents=True, exist_ok=True)
-            _require_plain_directory_components(target_job.parent)
-            temporary = target_job.with_name(f".{target_job.name}.partial")
-            if os.path.lexists(temporary):
-                raise ValueError(
-                    f"durable sync temporary {temporary} already exists; inspect "
-                    "and quarantine it before retrying"
-                )
-            shutil.copytree(source_job, temporary)
-            _copy_evidence_digest(source_job, temporary)
-            os.replace(temporary, target_job)
+        _publish_job_tree(source_job, target_job)
         copy_evidence = _copy_evidence_digest(source_job, target_job)
-        copy_static(batch_dir / MANIFEST_FILE, target / MANIFEST_FILE)
-        extend_events(batch_dir / EVENTS_FILE, target / EVENTS_FILE)
+        _publish_file(
+            batch_dir / MANIFEST_FILE,
+            target / MANIFEST_FILE,
+            append_only_prefix=False,
+        )
+        _publish_file(
+            batch_dir / EVENTS_FILE,
+            target / EVENTS_FILE,
+            append_only_prefix=True,
+        )
         return SyncReceipt(
             destination=str(target_job.resolve()),
             job_id=job.job_id,

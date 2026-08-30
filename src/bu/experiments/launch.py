@@ -9,8 +9,8 @@ those boundaries without weakening either one:
   against the current registered plan, Git commit, package environment,
   device, storage roots, and read-back sync canary;
 * no lease, output directory, or batch callback is touched before validation;
-* one explicit Experiment-1 lease protects the output root, with stale lease
-  recovery disabled unless the operator supplies a positive age bound; and
+* one explicit Experiment-1 lease protects the output root; acquisition age
+  alone can never authorize stale recovery; and
 * the batch always uses its production default executor, a fresh-process
   timeout, and the mounted-directory sync adapter.
 
@@ -39,10 +39,11 @@ from ..durable import atomic_write_json, read_json, sha256_bytes, sha256_file
 from . import batch as B
 from . import preflight as P
 from .confirmatory import CONFIRMATORY_DEVICE
+from .monitor import write_launch_start_evidence
 from .supervisor import acquire_batch_lease
 
 
-LAUNCH_SCHEMA_VERSION = 1
+LAUNCH_SCHEMA_VERSION = 2
 LAUNCH_REPORT_DIRECTORY = "launch_reports"
 EXPERIMENT_1_LEASE_NAME = "experiment-1"
 
@@ -500,21 +501,20 @@ def launch_experiment_1(
     production executor, supplies a mandatory fresh-process timeout, and builds
     sync solely with :func:`bu.experiments.batch.sync_to_directory`.
 
-    ``stale_lease_after_seconds=None`` disables stale recovery.  Supplying a
-    finite positive value explicitly authorizes only the bounded, evidence-
-    preserving recovery implemented by :func:`acquire_batch_lease`.
+    ``stale_lease_after_seconds`` is a fail-closed compatibility parameter.
+    Every non-``None`` value is refused because acquisition age cannot prove
+    that a long-running owner died (D-146).
     """
 
     timeout = _positive_number(
         attempt_timeout_seconds, what="attempt_timeout_seconds"
     )
-    stale_bound = (
-        None
-        if stale_lease_after_seconds is None
-        else _positive_number(
-            stale_lease_after_seconds, what="stale_lease_after_seconds"
+    if stale_lease_after_seconds is not None:
+        raise ValueError(
+            "time-only stale lease recovery is disabled: acquisition age "
+            "cannot prove owner death"
         )
-    )
+    stale_bound = None
     validated = validate_ready_preflight(
         preflight_report,
         output_root=output_root,
@@ -542,10 +542,25 @@ def launch_experiment_1(
     )
     released_path: Path | None = None
     try:
+        start_evidence = write_launch_start_evidence(
+            preflight_path=validated.report_path,
+            preflight_sha256=validated.report_sha256,
+            git_commit=validated.git_commit,
+            batch_id=B._manifest(jobs)["batch_id"],
+            output_root=validated.output_root,
+            staging_root=validated.staging_root,
+            sync_root=validated.sync_root,
+            attempt_timeout_seconds=timeout,
+            lease_path=lease.path,
+            lease_name=EXPERIMENT_1_LEASE_NAME,
+            lease_token=lease.token,
+            started_at=started_at,
+        )
         batch_report = B._run_registered_batch(
             jobs,
             root=validated.output_root,
             sync=B.sync_to_directory(validated.sync_root),
+            expected_git_commit=validated.git_commit,
             attempt_timeout_seconds=timeout,
             attempt_staging_root=validated.staging_root,
         )
@@ -591,6 +606,11 @@ def launch_experiment_1(
             "token": lease.token,
             "released_history_path": str(released_path.resolve(strict=True)),
         },
+        "launch_start": {
+            "local_path": str(start_evidence.local_path),
+            "durable_path": str(start_evidence.durable_path),
+            "sha256": start_evidence.sha256,
+        },
         "batch": {
             **asdict(checked_batch),
             "complete": checked_batch.complete,
@@ -623,8 +643,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         help=(
-            "Explicitly recover only a lease older than this positive bound; "
-            "omit to disable stale recovery."
+            "Compatibility-only option: every supplied value is refused; "
+            "time-only stale recovery is disabled."
         ),
     )
     return parser

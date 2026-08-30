@@ -14,9 +14,9 @@ evidence is never overwritten.
 
 Batch leases are immutable ownership records created with exclusive file
 creation. A stable OS-level transition lock closes ownership races. Normal
-release and explicitly bounded stale recovery preserve the old lease under an
-exclusive hard-link name in ``leases/history`` before removing the active
-name.
+release preserves the old lease under an exclusive hard-link name in
+``leases/history`` before removing the active name. Time-only stale recovery
+is deliberately disabled: acquisition age cannot prove that an owner died.
 """
 
 from __future__ import annotations
@@ -711,21 +711,20 @@ def acquire_batch_lease(
 ) -> BatchLease:
     """Acquire an exclusive batch lease.
 
-    Existing ownership always conflicts unless ``stale_after_seconds`` is
-    explicitly supplied and the recorded timestamp is older than that finite,
-    positive bound. Every read/archive/create transition is protected by one
-    stable OS-level lock. A recovered stale lease is hard-linked into history
-    under an exclusive name before a fresh lease is created; evidence is never
-    deleted before archival or overwritten.
+    Existing ownership always conflicts. ``stale_after_seconds`` is retained
+    only as a fail-closed compatibility parameter and every non-``None`` value
+    is rejected before filesystem access. Elapsed age alone cannot distinguish
+    a dead owner from a valid long-running batch; recovery requires a future
+    heartbeat and process-liveness protocol. Every read/archive/create
+    transition is protected by one stable OS-level lock.
     """
     safe_name = _validate_component(lease_name, what="lease_name")
-    stale_bound = (
-        None
-        if stale_after_seconds is None
-        else _validate_positive_finite(
-            stale_after_seconds, what="stale_after_seconds"
+    if stale_after_seconds is not None:
+        raise ValueError(
+            "time-only stale lease recovery is disabled: acquisition age "
+            "cannot prove owner death; release the lease with its owner token "
+            "or use a future heartbeat and process-liveness protocol"
         )
-    )
     lease_root = Path(root) / "leases"
     history_dir = lease_root / "history"
     lease_root.mkdir(parents=True, exist_ok=True)
@@ -755,43 +754,10 @@ def acquire_batch_lease(
                 ) from exc
             owner = existing.get("token")
             pid = existing.get("pid")
-            timestamp = existing.get("timestamp")
-            if stale_bound is None:
-                raise LeaseConflictError(
-                    f"batch lease {safe_name!r} is held by pid {pid!r}, token "
-                    f"{owner!r}"
-                )
-            if type(timestamp) not in {int, float} or not math.isfinite(
-                float(timestamp)
-            ):
-                raise LeaseConflictError(
-                    f"active lease {active} has no valid timestamp; refusing "
-                    "stale recovery"
-                )
-            age = time.time() - float(timestamp)
-            if age <= stale_bound:
-                raise LeaseConflictError(
-                    f"batch lease {safe_name!r} is only {age:.3f} seconds "
-                    f"old; stale recovery requires more than {stale_bound} "
-                    "seconds"
-                )
-            old_token = existing.get("token")
-            if type(old_token) is not str or not old_token:
-                raise LeaseConflictError(
-                    f"active lease {active} has no valid token; refusing "
-                    "stale recovery"
-                )
-            stale_history = history_dir / (
-                f"{safe_name}.{old_token}.stale.json"
+            raise LeaseConflictError(
+                f"batch lease {safe_name!r} is held by pid {pid!r}, token "
+                f"{owner!r}"
             )
-            _archive_file_exclusive(active, stale_history)
-            try:
-                _write_json_exclusive(active, new_record())
-            except FileExistsError as exc:  # defensive: non-cooperating writer
-                raise LeaseConflictError(
-                    f"another owner acquired batch lease {safe_name!r} during "
-                    "stale recovery"
-                ) from exc
 
     return BatchLease(
         path=active,

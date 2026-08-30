@@ -47,7 +47,7 @@ from ..env.gridworld import N_ACTIONS
 from ..metrics import METRICS_FILE
 from ..models.uncertainty import RATIO_FLOOR, NormalisationScale
 from ..models.world_model import MOVEMENT_ACTIONS
-from ..runrecord import TRACKED_PACKAGES
+from ..runrecord import TRACKED_PACKAGES, GitState, git_state
 from ..stats.gate import METRIC_SCHEMA_VERSION
 from ..streams import (
     PURPOSES,
@@ -347,6 +347,35 @@ def registered_fit_spec(
     )
 
 
+def _validate_expected_git_commit(value: object) -> str:
+    """Return one exact launch-bound Git commit or fail closed."""
+
+    if type(value) is not str or re.fullmatch(r"[0-9a-f]{40}", value) is None:
+        raise ValueError(
+            "expected_git_commit must be an exact lowercase 40-hex commit, "
+            f"got {value!r}"
+        )
+    return value
+
+
+def _require_current_git_commit(expected_git_commit: object) -> str:
+    """Bind a fit to the preflight commit before any scientific work starts."""
+
+    expected = _validate_expected_git_commit(expected_git_commit)
+    state = git_state()
+    if type(state) is not GitState:
+        raise ValueError(
+            f"git_state returned {type(state).__name__}, not an exact GitState"
+        )
+    if not state.trustworthy or state.commit != expected:
+        raise ValueError(
+            "current clean trustworthy Git commit does not equal the "
+            f"launch-bound preflight commit: current={state.commit!r}, "
+            f"dirty={state.dirty!r}, expected={expected!r}"
+        )
+    return expected
+
+
 def run_confirmatory_fit(
     unit: UnitSpec,
     *,
@@ -354,6 +383,7 @@ def run_confirmatory_fit(
     seed: int,
     out_dir: str | Path,
     scale: NormalisationScale | None = None,
+    expected_git_commit: str | None = None,
 ) -> CompletedFitEvidence:
     """Execute one registered fit once and seal every obligation it carries.
 
@@ -361,6 +391,8 @@ def run_confirmatory_fit(
     They are written into ``run.json`` before training and rederived by the
     sidecar loader after every artifact has landed.
     """
+    if expected_git_commit is not None:
+        _require_current_git_commit(expected_git_commit)
     spec = registered_fit_spec(unit, arm=arm, seed=seed)
     root = Path(out_dir)
     root.mkdir(parents=True, exist_ok=True)
@@ -374,7 +406,9 @@ def run_confirmatory_fit(
         _fit_roles=spec.roles,
     )
     evidence_path = write_fit_evidence(completed, fit_dir=root)
-    verified = load_fit_evidence(root)
+    verified = load_fit_evidence(
+        root, expected_git_commit=expected_git_commit
+    )
     return CompletedFitEvidence(
         physical=completed,
         verified=verified,
@@ -461,12 +495,18 @@ def write_fit_evidence(
     return sidecar_path
 
 
-def load_fit_evidence(fit_dir: str | Path) -> VerifiedFitEvidence:
+def load_fit_evidence(
+    fit_dir: str | Path,
+    *,
+    expected_git_commit: str | None = None,
+) -> VerifiedFitEvidence:
     """Load and independently verify a fit-evidence sidecar.
 
     A completed legacy run without ``fit_evidence.json`` remains valid only for
     its physical stage; it cannot be promoted through this role-aware loader.
     """
+    if expected_git_commit is not None:
+        _validate_expected_git_commit(expected_git_commit)
     root = Path(fit_dir).resolve()
     if not root.is_dir():
         raise ValueError(f"fit directory does not exist or is not a directory: {root}")
@@ -552,6 +592,15 @@ def load_fit_evidence(fit_dir: str | Path) -> VerifiedFitEvidence:
         artifact_bytes["run_record"],
         artifact_bytes["metrics"],
     )
+    if (
+        expected_git_commit is not None
+        and run_record["git"]["commit"] != expected_git_commit
+    ):
+        raise ValueError(
+            "fit evidence Git commit does not equal the launch-bound "
+            f"preflight commit: recorded={run_record['git']['commit']!r}, "
+            f"expected={expected_git_commit!r}"
+        )
     procedure = _require_mapping(document["procedure"], what="procedure")
     expected_procedure = _procedure_from_documents(
         config, run_record, confirmatory, spec, diagnostic_names

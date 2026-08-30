@@ -26,6 +26,7 @@ from bu.experiments.enumerate_units import design_units, execution_plan
 from bu.experiments.repair import ArmEvaluation
 from bu.models.uncertainty import NormalisationScale
 from bu.models.world_model import MOVEMENT_ACTIONS
+from bu.runrecord import GitState
 
 
 def _registered_shared_fit():
@@ -423,6 +424,43 @@ def test_registry_derives_roles_and_deterministic_execution_stage():
 
 def test_fit_evidence_v2_is_the_first_procedure_authoritative_schema():
     assert F.FIT_EVIDENCE_SCHEMA_VERSION == 2
+
+
+def test_launch_bound_fit_refuses_a_clean_new_commit_before_runner_or_output(
+    monkeypatch, tmp_path
+):
+    planned = _registered_shared_fit()
+    calls = []
+    monkeypatch.setattr(
+        F,
+        "git_state",
+        lambda: GitState(commit="c" * 40, dirty=False, branch="main"),
+    )
+    monkeypatch.setattr(
+        F,
+        "run_confirmatory",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    with pytest.raises(ValueError, match="launch-bound preflight commit"):
+        F.run_confirmatory_fit(
+            planned.unit,
+            arm=planned.arm,
+            seed=K.CONFIRMATORY_SEED_BASE + planned.seed,
+            out_dir=tmp_path / "must-not-exist",
+            expected_git_commit="b" * 40,
+        )
+
+    assert calls == []
+    assert not (tmp_path / "must-not-exist").exists()
+
+
+def test_loader_refuses_valid_fit_evidence_from_a_different_clean_commit(tmp_path):
+    completed, _ = _completed_run(tmp_path)
+    F.write_fit_evidence(completed, fit_dir=tmp_path)
+
+    with pytest.raises(ValueError, match="does not equal.*preflight commit"):
+        F.load_fit_evidence(tmp_path, expected_git_commit="c" * 40)
 
 
 @pytest.mark.parametrize("arm", ["baseline", "data_repair"])

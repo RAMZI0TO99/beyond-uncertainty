@@ -54,8 +54,10 @@ from .repair import ArmEvaluation, REPAIR_STAGE, acceptance_inputs
 
 LABEL_EVIDENCE_SCHEMA_VERSION = 3
 LABEL_SUMMARY_SCHEMA_VERSION = 1
+LABEL_COUNT_SCHEMA_VERSION = 1
 LABEL_EVIDENCE_FILE = "label_evidence.json"
 LABEL_SUMMARY_FILE = "label_evidence_summary.json"
+LABEL_COUNT_FILE = "label_counts.json"
 
 # Registered before real labels existed (DEV-012).  This is a planning
 # convention, never an empirical estimate.
@@ -1038,6 +1040,69 @@ def _count_report(counts: Mapping[str, int]) -> dict[str, Any]:
         "excluded": excluded,
         "exclusion_rate": (excluded / attempted if attempted else None),
     }
+
+
+def count_label_evidence(
+    evidence_paths: Iterable[str | PathLike[str]],
+) -> dict[str, Any]:
+    """Return the Week-6 count-only report over source-reverified labels.
+
+    This boundary deliberately stops before the exclusion-rate estimand.  The
+    first comparison with the registered 0.00 planning convention is a Week-8
+    obligation (D-144), so neither the rate, an ``excluded`` convenience
+    total, the convention, nor a pass/fail comparison appears in this schema.
+    Every input is reopened through :func:`load_label_evidence`; callers cannot
+    substitute an in-memory label or metadata row for the persisted sources.
+    """
+
+    if isinstance(evidence_paths, (str, bytes, PathLike, Mapping)):
+        raise ValueError(
+            "evidence_paths must be an iterable of label-evidence paths; raw "
+            "metadata records are refused because counts must reload sources"
+        )
+    counts = _empty_counts()
+    seen: set[str] = set()
+    for position, source in enumerate(evidence_paths):
+        if not isinstance(source, (str, PathLike)):
+            raise ValueError(
+                f"label evidence at position {position} must be a filesystem "
+                f"path, got {type(source).__name__}"
+            )
+        try:
+            record = load_label_evidence(source)
+        except ValueError as exc:
+            raise ValueError(
+                f"invalid evidence record at position {position}: {exc}"
+            ) from exc
+        unit_id = record["unit_id"]
+        if unit_id in seen:
+            raise ValueError(f"duplicate unit_id {unit_id!r} in evidence counts")
+        seen.add(unit_id)
+        _add_label(counts, record["label"]["observed_label"])
+
+    if not seen:
+        raise ValueError("cannot count zero label-evidence records")
+    payload: dict[str, Any] = {
+        "label_count_schema_version": LABEL_COUNT_SCHEMA_VERSION,
+        "attempted": sum(counts.values()),
+        "observed_0": counts["observed_0"],
+        "observed_1": counts["observed_1"],
+        "ambiguous": counts["ambiguous"],
+        "undiagnosed": counts["undiagnosed"],
+    }
+    return {**payload, "count_digest": _digest(payload)}
+
+
+def write_label_evidence_counts(
+    evidence_paths: Iterable[str | PathLike[str]],
+    *,
+    path: str | Path,
+) -> dict[str, Any]:
+    """Persist the exact Week-6 count-only report immutably."""
+
+    counts = count_label_evidence(evidence_paths)
+    _write_json_exclusive(Path(path), counts)
+    return json.loads(json.dumps(counts))
 
 
 def summarize_label_evidence(

@@ -525,6 +525,84 @@ def test_directory_sync_never_overwrites_different_remote_evidence(tmp_path):
     assert remote_result.read_text(encoding="utf-8") == "different bytes\n"
 
 
+def test_directory_sync_fsyncs_then_atomically_replaces_every_new_final(
+    monkeypatch, tmp_path
+):
+    local, remote = tmp_path / "local", tmp_path / "remote"
+    item = job(0)
+    report = run_batch(
+        [item],
+        root=local,
+        executor=lambda current, out: result_for(current),
+        sync=lambda *args: (_ for _ in ()).throw(OSError("offline")),
+    )
+    batch_dir = local / report.batch_id
+    real_replace = B.os.replace
+    real_fsync = B.os.fsync
+    replacements = []
+    fsynced_descriptors = []
+
+    def recording_replace(source, target):
+        replacements.append((Path(source), Path(target)))
+        return real_replace(source, target)
+
+    def recording_fsync(descriptor):
+        fsynced_descriptors.append(descriptor)
+        return real_fsync(descriptor)
+
+    monkeypatch.setattr(B.os, "replace", recording_replace)
+    monkeypatch.setattr(B.os, "fsync", recording_fsync)
+    receipt = sync_to_directory(remote)(batch_dir, item, result_for(item))
+
+    target_batch = remote / report.batch_id
+    final_targets = {target for _, target in replacements}
+    assert target_batch / "jobs" / item.job_id in final_targets
+    assert target_batch / MANIFEST_FILE in final_targets
+    assert target_batch / EVENTS_FILE in final_targets
+    assert all(source.parent == target.parent for source, target in replacements)
+    assert all(source.name.startswith(".") for source, _ in replacements)
+    assert len(fsynced_descriptors) >= 3
+    assert (target_batch / MANIFEST_FILE).read_bytes() == (
+        batch_dir / MANIFEST_FILE
+    ).read_bytes()
+    assert (target_batch / EVENTS_FILE).read_bytes() == (
+        batch_dir / EVENTS_FILE
+    ).read_bytes()
+    assert receipt.destination == str(
+        (target_batch / "jobs" / item.job_id).resolve()
+    )
+
+
+def test_directory_sync_never_acknowledges_a_tree_that_failed_fsync(
+    monkeypatch, tmp_path
+):
+    local, remote = tmp_path / "local", tmp_path / "remote"
+    item = job(0)
+    report = run_batch(
+        [item],
+        root=local,
+        executor=lambda current, out: result_for(current),
+        sync=lambda *args: (_ for _ in ()).throw(OSError("offline")),
+    )
+    batch_dir = local / report.batch_id
+    target_job = remote / report.batch_id / "jobs" / item.job_id
+    real_fsync_file = B._fsync_regular_file
+
+    def tear_before_publication(path):
+        if ".partial" in str(path):
+            raise ValueError("synthetic torn durable write")
+        return real_fsync_file(path)
+
+    monkeypatch.setattr(B, "_fsync_regular_file", tear_before_publication)
+    with pytest.raises(ValueError, match="synthetic torn durable write"):
+        sync_to_directory(remote)(batch_dir, item, result_for(item))
+
+    assert not os.path.lexists(target_job)
+    assert not list(target_job.parent.glob(f".{item.job_id}.*.partial"))
+    assert not (remote / report.batch_id / MANIFEST_FILE).exists()
+    assert not (remote / report.batch_id / EVENTS_FILE).exists()
+
+
 def test_directory_sync_rejects_a_hard_linked_destination_tree(tmp_path):
     local, remote = tmp_path / "local", tmp_path / "remote"
     item = job(0)
@@ -712,7 +790,12 @@ def test_default_recovery_refuses_confirmatory_without_fit_sidecar(tmp_path):
     )
 
     with pytest.raises(ValueError, match="partial evidence"):
-        B._recover_result(item, job_dir, require_fit_evidence=True)
+        B._recover_result(
+            item,
+            job_dir,
+            require_fit_evidence=True,
+            expected_git_commit="b" * 40,
+        )
     assert not (job_dir / RESULT_FILE).exists()
 
 
@@ -731,13 +814,52 @@ def test_default_executor_accepts_one_registered_multi_role_fit(monkeypatch, tmp
                 "fit_evidence_digest": "a" * 64,
             }
 
-    def fake_run(unit, *, seed, arm, out_dir):
-        calls.append((unit, seed, arm, out_dir))
+    def fake_run(unit, *, seed, arm, out_dir, expected_git_commit):
+        calls.append((unit, seed, arm, out_dir, expected_git_commit))
         return Completed()
 
     monkeypatch.setattr(B, "run_confirmatory_fit", fake_run)
-    assert B._default_executor(item, tmp_path).get("fit_roles") == list(item.roles)
+    assert B._default_executor(
+        item, tmp_path, expected_git_commit="a" * 40
+    ).get("fit_roles") == list(item.roles)
     assert len(calls) == 1
+    assert calls[0][-1] == "a" * 40
+
+
+def test_registered_spawn_payload_preserves_the_exact_preflight_commit(
+    monkeypatch, tmp_path
+):
+    item = experiment_1_jobs()[0]
+    calls = []
+
+    def fake_default(job, out, *, expected_git_commit):
+        calls.append((job, out, expected_git_commit))
+        return result_for(job)
+
+    monkeypatch.setattr(B, "_default_executor", fake_default)
+    request = B._RegisteredFitRequest(
+        job=item, expected_git_commit="a" * 40
+    )
+    result = B._execute_registered_in_spawned_child(tmp_path, request)
+
+    assert result == result_for(item)
+    assert calls == [(item, tmp_path, "a" * 40)]
+
+
+@pytest.mark.parametrize("bad", [None, "A" * 40, "a" * 39, True])
+def test_registered_batch_refuses_an_invalid_preflight_commit_before_writing(
+    tmp_path, bad
+):
+    with pytest.raises(ValueError, match="expected_git_commit"):
+        B._run_registered_batch(
+            experiment_1_jobs(),
+            root=tmp_path / "output",
+            sync=receipt_sync,
+            expected_git_commit=bad,
+            attempt_timeout_seconds=10,
+            attempt_staging_root=tmp_path / "staging",
+        )
+    assert not list(tmp_path.iterdir())
 
 
 @pytest.mark.parametrize(
@@ -756,6 +878,7 @@ def test_registered_default_batch_requires_every_production_launch_guard(
             experiment_1_jobs(),
             root=tmp_path,
             sync=receipt_sync,
+            expected_git_commit="a" * 40,
             attempt_timeout_seconds=timeout,
             attempt_staging_root=staging_root,
         )
@@ -765,12 +888,15 @@ def test_registered_default_batch_requires_every_production_launch_guard(
 def test_batch_exposes_no_public_production_launcher_or_capability(tmp_path):
     assert not hasattr(B, "run_batch")
     assert not hasattr(B, "_REGISTERED_LAUNCH_CAPABILITY")
-    wrapped = lambda item, out: B._default_executor(item, out)
+    wrapped = lambda item, out: B._default_executor(
+        item, out, expected_git_commit="a" * 40
+    )
     with pytest.raises(TypeError, match="executor"):
         B._run_registered_batch(
             experiment_1_jobs(),
             root=tmp_path / "output",
             sync=receipt_sync,
+            expected_git_commit="a" * 40,
             executor=wrapped,
             attempt_timeout_seconds=10,
             attempt_staging_root=tmp_path / "staging",
