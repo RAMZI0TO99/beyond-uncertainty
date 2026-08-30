@@ -57,7 +57,12 @@ from ..models.world_model import MOVEMENT_ACTIONS
 from ..runrecord import git_state
 from ..streams import is_confirmatory
 from .enumerate_units import design_units, execution_plan
-from .repair import ArmEvaluation, REPAIR_ENSEMBLE_SIZE, REPAIR_STAGE
+from .repair import (
+    ArmEvaluation,
+    REPAIR_ENSEMBLE_SIZE,
+    REPAIR_STAGE,
+    applicable_arms,
+)
 from ..stats.gate import METRIC_SCHEMA_VERSION
 from .w4_gate import _pin_threading, torch_threading
 
@@ -149,6 +154,22 @@ class ConfirmatoryRun:
 
     def as_row(self) -> dict:
         return dict(self.run)
+
+
+@dataclass(frozen=True)
+class RepairConditionRun:
+    """One Week-6 condition with one baseline and both independent repairs.
+
+    The baseline is fitted exactly once.  Both repairs reuse its scale object,
+    so the harness cannot accidentally compare one repair with a different
+    baseline fit or different units.  This is an execution result, not a label;
+    the registered acceptance test still decides whether each repair worked.
+    """
+
+    baseline: ConfirmatoryRun
+    data_repair: ConfirmatoryRun
+    model_repair: ConfirmatoryRun
+    model_repair_arm: str
 
 
 def _digest_file(path: Path) -> str:
@@ -391,3 +412,79 @@ def run_repair_validation(
             "measured on the baseline's full movement pool, reused verbatim"
         )
     return baseline, repaired
+
+
+def run_repair_condition(
+    unit: UnitSpec,
+    *,
+    seed: int,
+    out_dir: str | Path,
+) -> RepairConditionRun:
+    """Run the W6 one-condition harness: baseline, data repair, model repair.
+
+    This entry point is deliberately limited to the registered twenty-seed
+    repair-validation ladder.  The ordinary three-seed ``exp3_repairs`` path
+    does not yet have a same-stage baseline obligation in ``execution_plan``;
+    silently borrowing a ``config_sweep`` baseline would change the comparison
+    stream and break pairing.  That future integration needs a design ruling,
+    not an implementation guess.
+
+    A condition must expose exactly one model-class intervention (feature or
+    capacity).  Estimation units at full capacity expose none, while a manually
+    combined feature-and-capacity restriction exposes two; neither shape can
+    instantiate Plan Table 2 without choosing an intervention after the fact,
+    so both fail before any fit starts.
+    """
+
+    repairs = applicable_arms(unit)
+    if "data_repair" not in repairs:
+        raise ValueError("the repair protocol unexpectedly has no data-repair arm")
+    model_arms = tuple(
+        arm for arm in repairs if arm in ("feature_repair", "capacity_repair")
+    )
+    if len(model_arms) != 1:
+        raise ValueError(
+            f"unit exposes model-repair arms {model_arms}; the 2×2 label protocol "
+            "requires exactly one predeclared model intervention. Refusing to "
+            "invent one or choose between two after seeing outcomes"
+        )
+    model_arm = model_arms[0]
+
+    # The obligation guard inside each call independently proves that this unit,
+    # arm and seed belong to the registered repair-validation ladder.
+    baseline = run_confirmatory(
+        unit, stage=REPAIR_STAGE, seed=seed, arm="baseline", out_dir=out_dir
+    )
+    if baseline.evaluation is None:
+        raise ValueError("baseline run did not return its paired evaluation")
+    scale = baseline.evaluation.scale
+    data = run_confirmatory(
+        unit,
+        stage=REPAIR_STAGE,
+        seed=seed,
+        arm="data_repair",
+        out_dir=out_dir,
+        scale=scale,
+    )
+    model = run_confirmatory(
+        unit,
+        stage=REPAIR_STAGE,
+        seed=seed,
+        arm=model_arm,
+        out_dir=out_dir,
+        scale=scale,
+    )
+    for repaired in (data, model):
+        if repaired.evaluation is None:
+            raise ValueError(f"{repaired.arm} run did not return its paired evaluation")
+        if repaired.evaluation.scale is not scale:
+            raise ValueError(
+                f"{repaired.arm} did not reuse the baseline's scale object; "
+                "the fixed-failure-set comparison is not in common units (D-061)"
+            )
+    return RepairConditionRun(
+        baseline=baseline,
+        data_repair=data,
+        model_repair=model,
+        model_repair_arm=model_arm,
+    )

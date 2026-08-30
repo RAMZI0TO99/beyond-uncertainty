@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import inspect
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 
 from bu import constants as K
-from bu.config import TrainConfig, UnitSpec
+from bu.config import Arm, Config, TrainConfig, UnitSpec
 from bu.experiments import confirmatory as C
 
 CONF = K.CONFIRMATORY_SEED_BASE
@@ -481,3 +483,132 @@ def test_a_dirty_tree_cannot_be_overridden(tmp_path):
     finally:
         C.git_state = real
     assert not list(tmp_path.iterdir())
+
+
+# --- Week 6 one-condition repair harness -----------------------------------
+
+
+def _stub_run(unit, *, stage, seed, arm, out_dir, scale=None):
+    """A no-training ConfirmatoryRun preserving the harness's scale contract."""
+    from bu.experiments.repair import ArmEvaluation
+    from bu.models.uncertainty import NormalisationScale
+
+    if scale is None:
+        scale = NormalisationScale(torch.ones(2), n_reference=2)
+    cfg = Config(
+        unit=unit,
+        arm=Arm(arm),
+        stage=stage,
+        seed=seed,
+        train=C.CONFIRMATORY_TRAIN if arm == "baseline" else C.REPAIRED_TRAIN,
+    )
+    evaluation = ArmEvaluation(
+        arm=arm,
+        seed=seed,
+        error=np.ones(2),
+        episode=np.array([0, 0]),
+        step=np.array([0, 1]),
+        scale=scale,
+        config_id=cfg.config_id,
+        run_id=cfg.run_id,
+        n_train=unit.n_transitions,
+        stage=stage,
+        ensemble_size=cfg.train.ensemble_size,
+    )
+    row = {
+        "run_id": cfg.run_id,
+        "config_id": cfg.config_id,
+        "unit_id": cfg.unit_id,
+        "fit_id": cfg.fit_id,
+        "stage": stage,
+        "seed": seed,
+        "arm": arm,
+    }
+    return C.ConfirmatoryRun(
+        run_id=cfg.run_id,
+        config_id=cfg.config_id,
+        unit_id=cfg.unit_id,
+        fit_id=cfg.fit_id,
+        stage=stage,
+        arm=arm,
+        seed=seed,
+        n_train=unit.n_transitions,
+        member_count=cfg.train.ensemble_size,
+        mean_disagreement=float("nan"),
+        record_dir=Path(out_dir) / cfg.run_id,
+        run=row,
+        evaluation=evaluation,
+    )
+
+
+def test_week6_harness_fits_one_baseline_then_both_repairs(monkeypatch, tmp_path):
+    calls = []
+
+    def run(*args, **kwargs):
+        result = _stub_run(*args, **kwargs)
+        calls.append((kwargs["arm"], kwargs.get("scale")))
+        return result
+
+    monkeypatch.setattr(C, "run_confirmatory", run)
+    unit = UnitSpec(
+        family="missing_feature",
+        withheld_features=("shape",),
+        confound_rate=0.25,
+    )
+    result = C.run_repair_condition(unit, seed=CONF, out_dir=tmp_path)
+
+    assert [arm for arm, _ in calls] == [
+        "baseline", "data_repair", "feature_repair"
+    ]
+    assert calls[0][1] is None
+    baseline_scale = result.baseline.evaluation.scale
+    assert calls[1][1] is calls[2][1] is baseline_scale
+    assert result.data_repair.evaluation.scale is baseline_scale
+    assert result.model_repair.evaluation.scale is baseline_scale
+    assert result.model_repair_arm == "feature_repair"
+
+
+def test_week6_harness_uses_capacity_as_the_predeclared_model_repair(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(C, "run_confirmatory", _stub_run)
+    unit = UnitSpec(family="capacity", hidden_size=16)
+    result = C.run_repair_condition(unit, seed=CONF, out_dir=tmp_path)
+    assert result.model_repair_arm == "capacity_repair"
+
+
+def test_week6_harness_refuses_to_invent_a_missing_model_repair(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        C,
+        "run_confirmatory",
+        lambda *args, **kwargs: pytest.fail("refusal must happen before a fit"),
+    )
+    with pytest.raises(ValueError, match="exactly one predeclared model intervention"):
+        C.run_repair_condition(
+            UnitSpec(family="estimation", n_transitions=100),
+            seed=CONF,
+            out_dir=tmp_path,
+        )
+
+
+def test_week6_harness_refuses_a_condition_with_two_model_repairs(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(
+        C,
+        "run_confirmatory",
+        lambda *args, **kwargs: pytest.fail("refusal must happen before a fit"),
+    )
+    with pytest.raises(ValueError, match="exactly one predeclared model intervention"):
+        C.run_repair_condition(
+            UnitSpec(
+                family="missing_feature",
+                withheld_features=("shape",),
+                hidden_size=16,
+                confound_rate=0.25,
+            ),
+            seed=CONF,
+            out_dir=tmp_path,
+        )
