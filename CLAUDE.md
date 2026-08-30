@@ -293,24 +293,29 @@ Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
 
-**2026-08-30 SOL2 UPDATE (read D-133…D-143 and DEV-013…015 before older
+**2026-08-30 SOL2 UPDATE (read D-133…D-144 and DEV-013…016 before older
 claims):** exact Config/Git/run/fit provenance and serialized gate/threshold
-evidence were hardened; a one-condition repair harness, pure Table-2 mapper,
-physical X/y/groups leakage boundary and crash-safe fit-identity batch layer
-were built. The registered inventory then exposed the scientific blockers the
-runner now refuses: **173/300 units lack a model-repair arm, and 30/150 Exp1
-fits also discharge repair validation**. C-007 remains loading-boundary-only;
-no evidence adapter exists. **Deltas 64–67 are undelivered.** Exact real patch
-target `66edf4a11dce39b91974d5c331cca81424f83b6e`; Sol review base `4e55291`.
+evidence were hardened. Week-6 software now includes a source-reverifying
+persisted 20-seed repair-label pipeline, one-fit/many-role evidence, a physical
+X/y/groups leakage boundary, fresh-process isolation, exact preflight, private
+registered launch and durable sync. D-144 corrects the first blocker reading:
+**173/300 units lack a model-repair arm, but that is Week-7+/whole-design work,
+not a blocker to the registered Week-6 smoke unit or baseline Experiment 1**;
+the 30/150 multi-role fits are represented once. C-007 reaches persisted-label evidence
+but still lacks the final label-to-`SplitCandidate` bridge. **Deltas 64–67 are
+undelivered.** Exact real patch target
+`66edf4a11dce39b91974d5c331cca81424f83b6e`; Sol review base `4e55291`.
 
-**Verification:** gate/threshold **190 passed**; combined changed subsystems
-**465 passed / 1 skipped**; full clean suite **1,205 passed / 4 skipped / 0
-failed** in 412.07 s on the CPU-only host.
+**Verification:** complete Week-6 fault matrix **696 passed / 3 skipped / 0
+failed**; final repository-wide suite **1,604 passed / 7 skipped / 0 failed in
+807.87 s** on the CPU-only Windows host. Skips are three CUDA checks, three
+unprivileged-symlink cases and one intentionally vacuous identity case.
 
 **Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
 AND CERTIFIED** (D-120, 2026-08-23). Calendar time is Week 2 Sunday; scheduled
 Week 6 begins 2026-09-21. The owner opened Week 6 **readiness** early under
-DEV-015, but it is not complete or launch-ready. Certified base is `4e55291`;
+DEV-015/016. Its current registered software path is implementation-complete,
+but the week is not complete because real execution is unopened. Certified base is `4e55291`;
 no later certified commit may be inferred.
 
 **The prose closeout is CERTIFIED** (D-125): D-121 … D-124, with four documents
@@ -322,11 +327,13 @@ assisted draft — NOT final independently authored thesis prose**;
 pass, strip the interview/provenance apparatus, and keep only wording they can
 personally explain and defend.**
 
-**Scope now:** the student authorised reversible Week 6 readiness under
-DEV-013…015; external Sol has not reviewed it. Real data, repair verdicts,
+**Scope now:** the student authorised reversible Week-6 integration under
+DEV-013…016; external Sol has not reviewed it. Real data, repair verdicts,
 labels, reserve, registered split constants, threshold work, expansion and
-experiment execution remain stopped. Delta 67 asks Sol for the model-repair,
-multi-role record, checkpoint and launch-authority rulings.
+experiment execution remain stopped. Delta 67 asks Sol to review the new
+evidence/launch contract, rule execution host and restart policy, and grant or
+withhold real-compute authority. Missing whole-design model repairs and the
+final label-to-critic bridge remain later rulings, not guessed prerequisites.
 
 **W4/W5 are now certified complete (D-120), but preserve the lesson:** that
 claim was made prematurely before D-113 checked the schedule's *Done when*
@@ -438,23 +445,23 @@ development diagnostics and are not included in that official total.
 
 ### Next, in order
 
-1. **Local verification is complete:** 1,205/4 green. Patch application itself
-   must still be checked in the real repository because this export has no
-   remote history.
+1. **Local verification is complete:** Week-6 matrix 696/3 and final suite
+   1,604/7 green. Patch application itself must still be checked in the real
+   repository because this export has no remote history.
 2. In the **real** repository, checkout exact target `66edf4a…`, verify the
    committed preimage blobs, apply transferable patches in order, then create
    `SOL_BUNDLE.txt` with `BASE=4e55291`.
-3. Deliver undelivered deltas **64–67** to external Sol. Request the four D-143
-   rulings before changing repair coverage or launching any fit.
-4. After Sol rules, implement one-fit/multi-role records and the chosen model
-   repair coverage; then re-audit the complete Week 6 schedule before launch.
+3. Deliver undelivered deltas **64–67** to external Sol. Request review of
+   D-141…D-144, an execution-host/restart ruling and explicit compute authority.
+4. On a clean applied commit with distinct durable roots, run preflight and only
+   then launch the registered Week-6 smoke/Experiment-1 path if authorised.
 5. Complete the student's explain-and-defend walkthrough and preserve
    DEV-012's 0.00 zero-inflation planning convention exactly; it is
    not observed, estimated or pilot-derived.
 
 **Do not, without a fresh Sol ruling:** choose the missing model repair, invent
 baseline roles, duplicate multi-role fits, recalibrate the threshold, expand the
-design, consume reserve units, generate repair labels, or run real experiments.
+design, consume reserve units, generate real repair labels, or run experiments.
 The splitter/balancer remains synthetic-inputs-only until registered parameters
 and use are authorised.
 
@@ -519,11 +526,12 @@ and use are authorised.
   repair efficacy may need reading on the **activation** task, not position
   alone. Tentative — a whole-pool smoke test with no threshold — but check it
   when real repair validation runs (P§7.3, the failure set needs W4 Friday).
-- **C-005 / C-007 / Week 6** — built early under DEV-013…015 and awaiting Sol.
-  C-005 has complete feasibility and positive type/seed guards. C-007 is a
-  hardened loading boundary only; the evidence adapter is future work. Week 6
-  has reversible harness/firewall/batch infrastructure, but 173 missing model
-  repairs and 30 shared-role fits block a truthful launch (D-141…D-143).
+- **C-005 / C-007 / Week 6** — built early under DEV-013…016 and awaiting Sol.
+  C-005 has complete feasibility and positive type/seed guards. C-007 now has a
+  persisted fit-to-label evidence boundary, but its final label-to-
+  `SplitCandidate` bridge is future work. Week-6 current registered software is
+  implementation-complete and fail-closed; real execution still needs external
+  review, explicit authority, a ruled host and durable roots (D-141…D-144).
 
 Still blocked by Sol, correctly: confirmatory collection, registered split
 seed/targets, real critic splitting, and any use of the early implementation.

@@ -21,7 +21,7 @@ These are different anchors; do not apply the series directly to `4e55291`.
 **Delta 64 carries a student-obligation progress report only** — the student's
 methodology chapter draft (provenance disclosed, D-132) and the end-of-session
 integrity audit. Later Claude/Codex work is carried separately in deltas 65–67;
-the student explicitly authorised it under DEV-013…015.
+the student explicitly authorised it under DEV-013…016.
 
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
@@ -43,6 +43,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
 > - 2026-08-29 (student-authorised session) · Sol out of the loop by the student's direction; D-133 guard defect fixed; C-005/C-007 built; thirteen stale claims fixed
 > - 2026-08-30 (post-Fable audit) · C-005/C-007/provenance correction
 > - 2026-08-30 (Sol2 Week-6 readiness) · Provenance hardening and Week 6 blocker discovery
+> - 2026-08-30 (Sol2 Week-6 integration) · Persisted evidence, isolated launch and final audit
 
 ```
 === UPDATE FOR SOL ===
@@ -320,78 +321,80 @@ NUMBERS (D-011)
 
 === END UPDATE ===
 ```
-
-
 ```
 === UPDATE FOR SOL ===
 DELTA_ID: 67
 PREVIOUS_DELTA_ID: 66
 DATE: 2026-08-30
-BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0003) +
+BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0005) +
              SOL_BUNDLE.txt generated in the REAL repository after application
-SUBJECT: D-141..D-143 / DEV-015 — provenance and immutable evidence hardened;
-         Week 6 readiness built without execution; launch blockers quantified.
-
+SUBJECT: D-141..D-144 / DEV-015..016 — Week-6 software integrated and audited;
+         real execution remains unopened pending review and authority.
 GOVERNANCE. The student designated the active Codex implementation agent
 "Sol2", asked it to work with you instead of the historical local labels
-Fable/Oups, and authorised pulling Week 6 readiness forward. This name grants
-no review authority: you remain the external adversarial reviewer/certifier.
-DEV-015 records the verification lag. You may accept, amend or void the work.
+Fable/Oups, and extended the work through Week-6 integration. This name grants
+no review authority: you remain the external reviewer/certifier. DEV-015/016
+record the verification lag. You may accept, amend or void the work.
+1. PROVENANCE / EVIDENCE (D-141). Git failures now fail closed; run/config/fit
+identity copies, exact inventories, package pins and clean-commit attestations
+are cross-checked. Critic wrappers bind their frames. Serialized gate and
+threshold evidence rehashes its source rows. Existing certified evidence still
+recomputes; no statistic or frozen scalar changed.
+2. WEEK-6 IMPLEMENTATION (D-142, corrected and closed in scope by D-144).
+The registered 20-seed repair-label runner persists one immutable plan before
+work, resumes only source-verified fits, uses one baseline scale for all arms,
+and writes a label whose 60 fit sidecars are reopened and exactly rederived.
+Each physical fit can attest multiple registered roles without duplication.
+Full 1,000-action evaluation inventories and pool digests bind cross-arm
+pairing. Both legacy duplicate-fit repair helpers refuse before compute.
 
-1. PROVENANCE / EVIDENCE (D-141). Git subprocess failures now mean unknown and
-dirty, provenance defaults to the source repository rather than cwd, and new
-records duplicate fit_id. load_runs reconstructs Config type-sensitively,
-cross-checks all unit/config/run/fit/stage/seed copies, binds exact requested
-inventories and exact Git booleans, while preserving historical schema-v2
-records whose only omission is the reconstructable top-level fit_id. Critic
-wrappers bind mutable frame identities. Serialized gate verdicts carry and
-rehash their source rows; each run record must attest the manifest's clean
-commit. Threshold cells are bound to exact baseline Config, fit, member roster
-and common clean commit. The certified filesystem attempts still recompute;
-no statistic or frozen scalar changed.
+3. DURABILITY / LAUNCH (D-144). Run records use atomic immutable writes and
+metric rows are fsynced. Every fit runs in a fresh process with a lease, timeout,
+staging directory, same-volume atomic publication, stale recovery and divergent
+resume refusal. Preflight verifies the exact plan, CPU-only frozen environment,
+package pins, distinct roots, storage and readback canary. Production launch
+owns a private registered batch hand-off; public executor injection is only
+available under the explicitly synthetic API. Sync v2 rejects links, special
+files, hard links, same-inode aliases and stale destination receipts.
 
-2. WEEK-6 READINESS (D-142). Added: a one-unit/one-seed baseline + data repair
-+ exactly-one-model-repair harness with one shared scale; Plan Table 2's pure
-four-way label mapping (explicitly NOT an evidence adapter); a physical copied
-X/y/groups critic boundary exposing only allowlisted X; and an immutable,
-append-only, fsynced fit-identity batch layer with per-job isolation, crash
-window recovery, result digests, prefix-only durable sync and divergent-remote
-refusal. The registered Experiment-1 plan is 150 unique fits, not 150 stage
-records. No Kaggle session/API or real launch exists.
+4. SCHEDULE CORRECTION (D-144). The 173/300 units without a registered model
+repair are a Week-7+/whole-design question, not a blocker to the registered
+Week-6 smoke unit or baseline Experiment 1. Eight of fifteen canonical repair
+units have exactly one registered model repair; seven still have none. The
+30/150 multi-role Experiment-1 fits are now represented once. Exclusion-rate
+comparison is Week 8, not Week 6. The substantive DEV-012 planning convention
+remains 0.00; no observed exclusion rate exists. Canonical 20-seed repair
+validation launches Week 9 even though its persisted label definition is now
+implemented.
 
-3. BLOCKERS FOUND, NOT GUESSED THROUGH (D-143). Of 300 registered units,
-173 have no model-repair arm and 127 have exactly one; among the 15 canonical
-repair-validation units, 7 lack one and 8 have one. Also, 30/150 Experiment-1
-fits discharge both exp1 and repair_validation. The default batch refuses the
-whole launch before compute because the current recorder cannot attest two
-roles from one fit without either duplicating the fit or losing an obligation.
-For ordinary units, 285 exp3_repairs obligations have no matching baseline role,
-so the future run-to-label adapter remains scientifically unspecified.
+5. FIREWALL / OPEN BOUNDARY. The physical X/y/groups critic boundary exposes
+only allowlisted X. C-007 now reaches persisted fit-to-label evidence, but the
+final label-to-critic SplitCandidate bridge remains absent. The splitter and
+balancer remain synthetic-inputs-only until registered parameters and use are
+authorised.
 
-RULINGS REQUESTED:
-  a. Which registered model repair applies to the 173 units, especially the
-     seven canonical repair-validation units?
-  b. What is the evidence contract for one fit discharging multiple roles?
-  c. Should interrupted within-fit state be quarantined/restarted, or must the
-     runner implement model-level checkpoints before unattended execution?
-  d. After those answers, when may real Week 6 execution begin?
+6. WHAT DID NOT HAPPEN. No real smoke, label, preflight, launch, repair verdict,
+exclusion observation, reserve use, threshold action, registered split value,
+constants.py change, Kaggle/API session or experimental fit. Week-6 software is
+implementation-complete for current registered interfaces; Week 6 itself is
+NOT complete because execution has not started.
 
-4. WHAT DID NOT HAPPEN. No real data, repair verdict, label, exclusion-rate
-observation, reserve use, threshold action, registered split parameter,
-constants.py change, Kaggle launch or experimental fit. Week 6 is partly
-infrastructure-ready, scientifically launch-blocked, and NOT complete.
+NUMBERS: Week-6 fault matrix 696 passed / 3 skipped / 0 failed. FINAL_SUITE:
+1,604 passed / 7 skipped / 0 failed in 807.87 s. Experimental compute: zero. Apply after exact real
+target 66edf4a11dce39b91974d5c331cca81424f83b6e; review cumulatively from
+certified BASE=4e55291. Never use git am --3way or infer remote ancestry from
+the reconstructed local commits.
 
-NUMBERS: focused gate/threshold 190 passed; combined changed subsystems
-465 passed / 1 skipped; full clean suite 1,205 passed / 4 skipped / 0 failed in
-412.07 s. Experimental compute added: zero. Commits: df84ee2 (provenance),
-65058d7 (Week-6 readiness), plus the governance/handoff commit carrying this
-delta. Apply after exact real target 66edf4a11dce39b91974d5c331cca81424f83b6e;
-review cumulatively from certified BASE=4e55291.
-
-HANDOFF CORRECTION. Delta 66's patch list omitted the prior series' 0009 when
-describing its cumulative directory. Use that directory's README/preimage
-manifest, then apply all three new Sol2 patches in numeric order; never use
-git am --3way and never treat reconstructed local commits as remote ancestry.
+RULINGS / AUTHORITY REQUESTED:
+  a. Review D-141..D-144 and DEV-015..016 plus patches 0001..0005.
+  b. Rule whether Week-6 execution uses the frozen local CPU path or the
+     schedule's Kaggle T4; the two hosts' compute units may not be conflated.
+  c. Approve or amend quarantine-and-restart (no within-fit checkpoint) for an
+     interrupted fit.
+  d. Authorise real Week-6 smoke/Experiment-1 compute only after the patches are
+     applied to a clean real-repository commit and durable roots are supplied.
+  e. Later: rule the seven canonical and 173 whole-design missing model repairs,
+     then the final C-007 label-to-SplitCandidate bridge. Neither is guessed here.
 
 === END UPDATE ===
 ```

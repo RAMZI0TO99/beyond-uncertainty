@@ -5803,3 +5803,8 @@ NUMBERS (D-011)
 
 ### 2026-08-30 (post-Fable audit) · C-005/C-007/provenance correction · Claude
 Five read-only audits independently checked allocator completeness, loading provenance, tests, governance and patch portability. Reproduced findings were fixed under DEV-014 and filed as D-138…D-140: complete whole-group feasibility, frame/stage/seed/git provenance, exhaustive obligation tests, accurate C-007 scope, and an exact real-repo patch target. No scientific input or registered value was touched. Focused run 302/1 and full suite 1,014/4 passed; delta 66 records the closeout.
+
+## Archived from PROJECT_STATE.md §7 on 2026-08-30 — first Sol2 Week-6 readiness pass
+
+### 2026-08-30 (Sol2 Week-6 readiness) · Provenance hardening and Week 6 blocker discovery · Claude
+The owner designated Codex Sol2 and authorised Week 6 readiness ahead of schedule. Exact provenance/evidence reconstruction, one-condition repair orchestration, pure labels, physical leakage separation and crash-safe fit-identity batching were built and audited; the runner refuses the unresolved 173 missing model repairs and 30 shared-role fits before compute. Full suite 1,205/4 green; no real scientific execution. D-141…D-143, DEV-015 and delta 67 carry the handoff to external Sol.
