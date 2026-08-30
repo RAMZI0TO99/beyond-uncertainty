@@ -327,9 +327,9 @@ NUMBERS (D-011)
 DELTA_ID: 67
 PREVIOUS_DELTA_ID: 66
 DATE: 2026-08-30
-BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0009) +
+BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0011) +
              SOL_BUNDLE.txt generated in the REAL repository after application
-SUBJECT: D-141..D-147 / DEV-015..017 — Week-6 software integrated and audited;
+SUBJECT: D-141..D-148 / DEV-015..017 — Week-6 software integrated and audited;
          owner-authorised frozen-CPU execution opened before external review.
 GOVERNANCE. The student designated the active Codex implementation agent
 "Sol2", asked it to work with you instead of the historical local labels
@@ -377,16 +377,16 @@ authorised.
 without retry. Finalization refused before a label because feature repair's
 encoded obs digest differed from baseline. All 20 seeds prove that difference
 expected while action/episode/step match. `7be59bd` fixes the consumer and adds
-a zero-fit two-commit finalizer. No label/verdict/exclusion/Exp1 fit yet exists.
-
-NUMBERS: D-147 final suite 1,668 passed / 7 skipped / 0 failed in 1,445.85 s;
+a zero-fit two-commit finalizer. D-148 makes historical C evidence read-only and
+puts every new file in a fixed project root; no label/verdict/Exp1 fit yet exists.
+NUMBERS: D-148 final suite 1,669 passed / 7 skipped / 0 failed in 1,610.29 s;
 smoke 60 sidecars / 140 member trainings; GPU zero; no rerun. Apply after exact real
 target 66edf4a11dce39b91974d5c331cca81424f83b6e; review cumulatively from
 certified BASE=4e55291. Never use git am --3way or infer remote ancestry from
 the reconstructed local commits.
 
 RULINGS / AUTHORITY REQUESTED:
-  a. Review D-141..D-147 and DEV-015..017 plus the cumulative patch series.
+  a. Review D-141..D-148 and DEV-015..017 plus the cumulative patch series.
   b. Review the owner's frozen-local-CPU execution choice; no Kaggle/T4 or GPU
      result may be inferred and the two hosts' compute units stay distinct.
   c. Approve or amend quarantine-and-restart (no within-fit checkpoint) for an

@@ -293,7 +293,7 @@ Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
 
-**2026-08-30 SOL2 UPDATE (read D-133…D-147 and DEV-013…017 before older
+**2026-08-30 SOL2 UPDATE (read D-133…D-148 and DEV-013…017 before older
 claims):** exact Config/Git/run/fit provenance and serialized gate/threshold
 evidence were hardened. Week-6 software now includes a source-reverifying
 persisted 20-seed repair-label pipeline, one-fit/many-role evidence, a physical
@@ -308,9 +308,11 @@ undelivered.** Exact real patch target
 `66edf4a11dce39b91974d5c331cca81424f83b6e`; Sol review base `4e55291`.
 
 **Verification:** D-146 stopped the launch with every execution root empty and
-fixed five pre-execution gaps. D-147 then corrected a real fail-closed feature-
-encoding finalizer defect. The current repository-wide gate passed **1,668
-tests, skipped 7 and failed 0 in 1,445.85 s** on the CPU-only Windows host. The
+fixed five pre-execution gaps. D-147 corrected a real fail-closed feature-
+encoding finalizer defect; D-148 makes the historical C-volume evidence
+read-only and confines every new file to the project. The current repository-
+wide gate passed **1,669 tests, skipped 7 and failed 0 in 1,610.29 s** on the
+CPU-only Windows host. The
 seven skips are three CUDA checks, three unprivileged Windows-symlink cases and
 one intentionally vacuous identity case.
 
@@ -336,8 +338,9 @@ real CPU execution under D-145/DEV-017; external Sol has not reviewed it. The
 registered smoke/label and Experiment-1 paths may run only after exact preflight.
 Reserve, split registration, threshold changes and expansion remain stopped.
 Delta 67 asks Sol to audit the resulting evidence and restart policy. D-146
-records the independent stop-before-launch audit and D-147 the first real
-fail-closed execution correction. Missing
+records the independent stop-before-launch audit, D-147 the first real
+fail-closed execution correction, and D-148 the owner's project-only write
+boundary. Missing
 whole-design model repairs and the final label-to-critic bridge remain later
 rulings, not guessed prerequisites.
 
@@ -452,15 +455,15 @@ rerun. These are confirmatory smoke evidence, not development diagnostics.
 
 ### Next, in order
 
-1. Preserve D-147 correction commit `7be59bd` plus its governance closeout as
-   patches 0008–0009; no finalization may precede a clean package state.
-2. Run the zero-fit correction finalizer over all 60 immutable sidecars from
-   fit commit `750266c7…`; verify and synchronize only label plus four counts.
-3. Recheck Experiment-1's still-empty roots, run immutable preflight, and safely launch the
-   150-job Experiment-1 plan with immutable start evidence and monitoring;
-   preserve source evidence and a separate-volume synchronized copy.
+1. Package D-148 implementation `ebbeefa` plus its governance closeout as
+   patches 0010–0011; no finalization may precede a clean package state.
+2. Create the fixed empty project-evidence root and run the zero-fit correction
+   finalizer over all 60 immutable sidecars from fit commit `750266c7…`.
+3. Move Experiment-1's evidence destination into the project, recheck all
+   still-empty roots, run immutable preflight, and safely launch its 150-job
+   plan with immutable start evidence and monitoring.
 4. Deliver undelivered deltas **64–67** to external Sol with exact execution
-   counts; request review of D-141…D-147 and the restart/host deviation.
+   counts; request review of D-141…D-148 and the restart/host deviation.
 5. Complete the student's explain-and-defend walkthrough and preserve
    DEV-012's 0.00 zero-inflation planning convention exactly; it is
    not observed, estimated or pilot-derived.
@@ -541,8 +544,9 @@ consume reserve units, or use the splitter/balancer on real inputs.
   owner supplied execution authority and selected the frozen CPU route. D-147's
   preflight and all 60 smoke sidecars completed and synchronized; first label
   finalization failed closed on an incorrect feature-encoding equality rule.
-  The zero-fit correction is green, no label exists yet, and external
-  certification remains pending (D-141…D-147).
+  D-148 confines all new correction evidence to the project while reading the
+  historical C copy only; the zero-fit correction is green, no label exists
+  yet, and external certification remains pending (D-141…D-148).
 
 Still blocked by Sol, correctly: registered split seed/targets, real critic
 splitting, reserve use and later whole-design repair coverage. Owner-authorised
