@@ -42,11 +42,11 @@ This is the shared working file for the project. It is written by Claude/Codex, 
 | **Last updated** | 2026-08-30 |
 | **Updated by** | Codex — owner label **Sol2** (DEV-015); external Sol remains reviewer |
 | **Phase** | Phase A — infrastructure |
-| **Current week / day** | Calendar **Week 2 Sunday** (2026-08-30); scheduled Week 6 starts **2026-09-21**. **Weeks 4 and 5 remain complete and certified** (D-120). Pulled-forward Week 6 software is **implementation-complete for current registered interfaces**, including a persisted-label pipeline, one-fit/many-role evidence and isolated launch; **execution has not started, so Week 6 is not complete** (D-144). **Gate 1 FAIL** on the MDE; condition 2 **NOT ADJUDICABLE**; no expansion |
+| **Current week / day** | Calendar **Week 2 Sunday** (2026-08-30); scheduled Week 6 starts **2026-09-21**. **Weeks 4 and 5 remain complete and certified** (D-120). The owner authorised frozen-local-CPU Week-6 execution (D-145/DEV-017); a pre-execution audit stopped it and closed five production gaps with roots still empty (D-146). **The final full gate is green and verified implementation commit `7a8960d` exists; exact preflight is next. No new fit has started, so Week 6 is not complete.** **Gate 1 FAIL**; condition 2 **NOT ADJUDICABLE**; no expansion |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | This export is a reconstructed local `master` with no remote; its commits are handoff artefacts, not project history. **Exact real-repository patch target: `66edf4a11dce39b91974d5c331cca81424f83b6e`** (post-D-132 state proved by the existing bundle). **Sol-certified review base remains `4e55291e08396ffe4a903ae73b1390396675643b`** (D-131); use `BASE=4e55291` for Sol's diff after applying the series, but never apply the series directly to that older tree (D-140) |
-| **Tests** | Final full suite: **1,604 passing, 7 skipped, 0 failing in 807.87 s**. Skips: three CUDA availability checks, three Windows unprivileged-symlink cases with non-link refusal companions, and one intentionally vacuous identity-exclusion case. Complete Week-6 fault matrix: **696/3** green |
+| **Tests** | Final D-146 full suite: **1,659 passing, 7 skipped, 0 failing in 1,213.80 s**. Focused matrices: durable sync/commit **233/1**, launch/monitor/lease **113/1**, repair-label smoke **82/1** green; overlapping counts, not summed |
 | **Compute used** | **0 GPU-hours**, and none added this session. 675 CPU fits total: 450 (W4 Tue rung 0) + 225 (W4 Fri threshold calibration, 4.3 min at 4/4 threads) |
 | **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
 **Hypothesis status**
@@ -58,7 +58,7 @@ This is the shared working file for the project. It is written by Claude/Codex, 
 | H3 | Learned critic beats fitted (error, disagreement) rule by > 5 pts | Not tested | W15 Fri |
 **Done — Weeks 1 and 2, every "Done when" criterion verified rather than asserted.**
 Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and the ledger: Week 1 build and audit (D-005, D-006, D-015, D-016); Week 2 enumerator, policy, collector and audit (D-018 … D-021); Sol's early rulings (D-009, D-012, D-013); all eight 2026-08-16 reviews actioned with every finding independently verified (D-025 … D-057 — 375 phantom fits, the D-042 bound-as-measurement and D-044 estimand-comparison lessons); Week 3 Mon–Wed built then substantially corrected (non-stationary policy, derived split, degenerate N=100 bootstrap — D-046 … D-057); the D-030 named streams verified on their pairing properties (D-038, D-039).
-**In flight:** no local implementation or verification work remains; patch packaging and external review/authority are the handoff. **No experimental compute consumed this session.** Week 6 now has a source-reverifying 20-seed repair-label pipeline, one-fit/many-role evidence, the physical X/y/groups firewall, durable isolated execution, exact preflight and a launch-owned registered batch path. No real smoke, label, preflight or launch exists; the final label-to-critic `SplitCandidate` bridge remains absent (D-144).
+**In flight:** package the verified `7a8960d` implementation and this governance closeout, then owner-authorised CPU preflight, the exact 20-seed smoke label and registered Experiment-1 launch. The owner was told to keep the device awake; GPU use remains zero. D-146's final full gate passed 1,659/7; four Experiment-1 roots and four namespace-separated smoke roots remain empty. External Sol review is pending; every future result is uncertified.
 
 **The record of Weeks 3–5, kept because a reset rebuilds from it.** Items 1–6 below are **done**; item 7 (W4 Friday) is **done and executed** (D-103) and its entry is corrected in place on 2026-08-22 — it had still read "NEXT, and blocked on Sol" two sessions after it ran, which is exactly how a reset agent redoes finished work.
 0. **W3 Mon — DONE and Sol-ruled** (D-046, D-047, D-048). Criterion met across all five capacity levels and all four withholding configurations. Beyond it: blocked movement transitions carry **1.67×** the position error of free moves; `interact` is deterministic and predictable in every canonical condition (0 aliased successors) but aliased when position is withheld — a second mechanism behind D-026.
@@ -70,16 +70,8 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and the ledger: Week 1 build and aud
 6. **W4 Tue — DONE. Rung 0 PASSES** (D-074). All three configurations, on the certified commit with a clean tree: **rho = −0.9429** for every one, intervals [−0.9429, −0.9429] (uniform), [−0.9429, −0.8286] (clustered), [−0.9429, −0.9429] (sparse). 90 ensembles / 450 fits in **4 m 52 s** on CPU; `recompute()` exact; suite green after. Per Sol the ladder **stops here** — rungs 1 and 2 are not run. **Read the interval correctly:** the exact bootstrap is discrete with 2–3 atoms, and uniform and sparse are degenerate only just (second atom at 1.63% and 2.14% against a 2.5% threshold). The *verdict* is unaffected — every atom is far below zero — but the width is not a precision claim. **The N=250 peak reproduces in 14 of 15 curves**; clustered seed 4 peaks at N=500 instead. Disagreement is **not** monotone in dataset size; the test passes because Spearman tolerates one inversion.
 7. **W4 Fri — DONE and EXECUTED** (D-103). It ran once, into `attempt-001`, and **will not be rerun**: the threshold has been inspected, so Sol's invalidation protocol can no longer be satisfied. 45 cells, 225 fits, 4.3 min at 4/4 threads; recomputes bit-identically. C-010 (D-076) was what it ran on and Sol had cleared it. **The number is frozen and certified**: the D-106 withhold was lifted once the artefact bytes were delivered, the D-035 promotion was executed as D-107, and Sol certified it (D-109, 2026-08-22).
 
-**GATE 1 IS SIGNED OFF: FAIL** (D-098, §5). Reliability **PASS** (rung 0,
-certified). Compute **NOT ADJUDICABLE across hosts** (D-119 — local wall-hours
-vs a GPU-hour trigger; §5's signed "PASS — contingent" is superseded, see the
-correction index). Permutation calibration **PASS** (D-094). Five-point MDE
-**FAIL** — never to be renamed a pass; independent of condition 3. **Not the
-condition-1 pivot**: H1's machinery works; what failed is power. The unchanged
-**300-unit design continues** under a recorded power limitation, **Direction C
-authorised**; expansion to the 1,500–2,000 held-out units five points would
-need is refused. The 18–22 table stays **uncertified and optimistic** until the
-simulation uses H3's final group-level inference, null size validated at .05.
+**GATE 1 IS SIGNED OFF: FAIL** (D-098, §5). Reliability **PASS** (rung 0, certified). Compute **NOT ADJUDICABLE across hosts** (D-119 — local wall-hours vs a GPU-hour trigger; §5's signed "PASS — contingent" is superseded). Permutation calibration **PASS** (D-094). Five-point MDE **FAIL** — never rename it a pass; H1's machinery works, power failed.
+The unchanged **300-unit design continues** under a recorded power limitation, **Direction C authorised**; expansion to the 1,500–2,000 held-out units five points would need is refused. The 18–22 table stays **uncertified and optimistic** until the simulation uses H3's final group-level inference with null size validated at .05.
 
 **Two things the thesis must carry, recorded now because a reset loses them** (D-075):
 - **Never print a zero-width interval bare.** `[−0.9429, −0.9429]` reflects **quantile discreteness, not zero sampling uncertainty** — the bootstrap distribution has only 2–3 distinct values because Spearman over six sizes has highly discrete support. Sol's sentence for the results text is quoted verbatim in D-075, and the atom/mass table must travel with it.
@@ -310,6 +302,8 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-142** | 2026-08-30 | **Sol2 Week 6 readiness build** — repair harness, pure label mapping, physical leakage firewall, crash-safe fit-identity batch; no scientific execution | Owner-authorised — for Sol |
 | **D-143** | 2026-08-30 | **Week 6 launch blockers quantified** — 173/300 lack a model repair; 30/150 Exp1 fits have two roles; launch refuses rather than guessing | Finding — corrected by D-144 |
 | **D-144** | 2026-08-30 | **Authoritative Week-6 correction and implementation closeout** — persisted-label pipeline, multi-role fits, isolated launch; exclusion check is Week 8; execution remains unopened | Owner-authorised — for Sol |
+| **D-145** | 2026-08-30 | **Owner authorises real Week-6 confirmatory execution on the disclosed frozen local CPU**; preflight and separate-volume sync precede compute | Owner-authorised — for Sol |
+| **D-146** | 2026-08-30 | **Pre-execution audit stops launch and closes five gaps** — durable sync, commit pinning, lease safety, isolated count-only smoke, validated monitor | Audit + fixes — for Sol |
 
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
@@ -397,6 +391,8 @@ Format: `Week n Day | what was skipped or substituted | why | goes in methodolog
 **Goes in methodology:** **no** — process. Delta 67 reports the deviation and asks Sol to rule the blocked scientific interfaces.
 ### DEV-016 · 2026-08-30 · Owner extends Sol2 work through Week-6 integration before external review
 **Deviation:** the owner explicitly directed continued implementation with parallel agents through persisted evidence, process isolation, preflight and launch integration before external Sol reviewed deltas 64–67. External Sol remains reviewer/certifier; no real confirmatory execution, label, reserve, constant, threshold or scientific result was produced, and the student's own-voice obligation remains open. **Goes in methodology:** no — process; delta 67 carries it.
+### DEV-017 · 2026-08-30 · Owner authorises real Week-6 CPU execution before external Sol review
+**Deviation:** after the audited implementation closeout, the owner explicitly authorised the compute needed to continue and agreed to keep this device on. Sol2 disclosed and selected the frozen CPU route; GPU use is zero. External review remains deferred, not replaced. Exact preflight, execution and sync evidence must travel in delta 67. **Goes in methodology:** yes for the local execution host (DEV-011), no for review timing.
 
 ---
 
@@ -471,7 +467,7 @@ Two conditions:
 | Q-009 | What does the world model predict, and is the failure threshold comparable across families? | 2026-08-16 | **Closed** → D-032 (dynamic components; primary error on agent position over movement transitions) and D-035 (one global threshold on a balanced reference pool) |
 | Q-008 | Seed independence across units: shared environment streams at the same seed. | 2026-08-15 | **Closed and built** → D-030/D-038/D-039. Named streams are independent across sweep units and preserve common random numbers inside registered comparison groups; `arm` never enters the failure-set stream |
 | Q-007 | Plan/schedule contradiction on whether the no-statistics critic variant sees error history. | 2026-08-15 | **Closed** → D-029. Sol: P§12.1 and P§13.5.1 are internally inconsistent; keep the schema, rename the variant **"no explicit statistics"**, and tighten the W13 negative control to exclude `predicted_vs_actual_state` as well |
-| Q-012 | **W4 and W5 both close on delta 56. What is authorised next?** | 2026-08-23 | **Sol's ruling remains D-120:** build nothing from W6–W11 without fresh authorisation. The student later supplied owner authorisation under DEV-013…015 and pulled reversible implementation/readiness forward; that is disclosed verification lag, **not a Sol ruling**. Real execution, labels, reserve and scientific registration remain stopped pending Sol |
+| Q-012 | **W4 and W5 both close on delta 56. What is authorised next?** | 2026-08-23 | **Sol's ruling remains D-120.** The owner later authorised implementation under DEV-013…016 and real Week-6 CPU execution under D-145/DEV-017 before external review. This is disclosed verification lag, **not a Sol ruling**; reserve and scientific registration remain stopped |
 
 **For Claude** — things Sol or the student wants implemented, checked or measured.
 
@@ -493,8 +489,8 @@ Two conditions:
 
 ## 7. Session log — *append-only, newest last*
 
-Closed entries are in `PROJECT_STATE_ARCHIVE.md` in chronological order; §3 indexes every decision regardless of where its session lives. A 2026-08-30 audit counted **93 unique Claude session headings and 98 total**: five duplicate archived headings are preserved pending Sol's ruling rather than silently deleted. Read controlling corrections before historical claims: D-109 before D-108; D-115/D-119 before D-114/DEV-010; D-121/D-122 before affected prose; D-138…D-144 before D-133…D-137.
+Closed entries are in `PROJECT_STATE_ARCHIVE.md` in chronological order; §3 indexes every decision regardless of where its session lives. A 2026-08-30 audit counted **93 unique Claude session headings and 98 total**: five duplicate archived headings are preserved pending Sol's ruling rather than silently deleted. Read controlling corrections before historical claims: D-109 before D-108; D-115/D-119 before D-114/DEV-010; D-121/D-122 before affected prose; D-138…D-146 before D-133…D-137.
 *(All prior sessions through the post-Fable audit are archived in full because this file repeatedly reached its 500-line paste cap, never because their decisions stopped mattering.)*
-### 2026-08-30 (Sol2 Week-6 integration) · Persisted evidence, isolated launch and final audit · Claude
+### 2026-08-30 (Sol2 Week-6 execution) · Owner-authorised CPU preflight and registered run · Claude
 
-The owner extended Sol2 work through a full Week-6 implementation audit. A source-verifying 20-seed repair-label pipeline, one-fit/many-role evidence, durable fresh-process execution, exact preflight and a private registered launch hand-off were built; reproduced procedure, pool, duplicate-fit, wrapper, hard-link and stale-destination gaps were closed. D-144/DEV-016 correct the schedule and scope. No real compute or label ran; execution awaits Sol, authority and durable roots.
+The owner explicitly authorised real confirmatory compute and agreed to keep the device on. D-145/DEV-017 record the frozen CPU route, separate-volume synchronized copy, 10-GiB floor and one-hour timeout before data. Two independent audits then stopped launch with empty roots and D-146 closed durable-write, commit, lease, smoke-timing and monitor gaps. Four Experiment-1 roots plus four canary-namespace-separated smoke roots remain empty. The final full gate passed 1,659/7 and implementation commit `7a8960d` is fixed; exact preflight follows the governance/package closeout. External Sol remains the uncertified review boundary.

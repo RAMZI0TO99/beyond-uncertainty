@@ -5808,3 +5808,7 @@ Five read-only audits independently checked allocator completeness, loading prov
 
 ### 2026-08-30 (Sol2 Week-6 readiness) · Provenance hardening and Week 6 blocker discovery · Claude
 The owner designated Codex Sol2 and authorised Week 6 readiness ahead of schedule. Exact provenance/evidence reconstruction, one-condition repair orchestration, pure labels, physical leakage separation and crash-safe fit-identity batching were built and audited; the runner refuses the unresolved 173 missing model repairs and 30 shared-role fits before compute. Full suite 1,205/4 green; no real scientific execution. D-141…D-143, DEV-015 and delta 67 carry the handoff to external Sol.
+
+### 2026-08-30 (Sol2 Week-6 integration) · Persisted evidence, isolated launch and final audit · Claude
+
+The owner extended Sol2 work through a full Week-6 implementation audit. A source-verifying 20-seed repair-label pipeline, one-fit/many-role evidence, durable fresh-process execution, exact preflight and a private registered launch hand-off were built; reproduced procedure, pool, duplicate-fit, wrapper, hard-link and stale-destination gaps were closed. D-144/DEV-016 correct the schedule and scope. No real compute or label ran; execution awaited Sol, authority and durable roots.
