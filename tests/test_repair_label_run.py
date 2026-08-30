@@ -93,7 +93,12 @@ def _write_synthetic_schema_v3_fit(
     record_dir = root / spec.execution_run_id
     record_dir.mkdir()
     threading = {"num_threads": 4, "num_interop_threads": 4}
-    pool_digest = hashlib.sha256(b"synthetic-fixed-evaluation-pool").hexdigest()
+    pool_name = (
+        b"synthetic-feature-restored-evaluation-pool"
+        if arm == "feature_repair"
+        else b"synthetic-fixed-evaluation-pool"
+    )
+    pool_digest = hashlib.sha256(pool_name).hexdigest()
     role_run_ids = {role: spec.run_id_for(role) for role in spec.roles}
     effective_unit = Config(unit=config.effective_unit).to_dict()["unit"]
     base_unit = config.to_dict()["unit"]
@@ -295,8 +300,9 @@ class _SyntheticPersistedFits:
             np.arange(4, dtype=np.int64),
             (K.EVALUATION_EPISODES * K.EPISODE_LENGTH) // 4,
         )
+        pool_kind = "feature-restored" if arm == "feature_repair" else "baseline"
         pool_digest = hashlib.sha256(
-            f"synthetic-evaluation-pool:{seed}".encode("ascii")
+            f"synthetic-evaluation-pool:{seed}:{pool_kind}".encode("ascii")
         ).hexdigest()
         verified = VerifiedFitEvidence(
             fit_dir=path,

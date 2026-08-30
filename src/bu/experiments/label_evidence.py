@@ -319,12 +319,15 @@ def _load_projected_fit(source: object) -> _ProjectedFit:
 
 
 def _verified_pool_binding(verified: VerifiedFitEvidence) -> tuple[np.ndarray, str]:
-    """Bind the verified full action inventory to its verified pool digest.
+    """Bind the verified action inventory to its arm-specific encoded-pool digest.
 
     Both values are exposed only after :func:`load_fit_evidence` has independently
     revalidated the sidecar, source documents, and diagnostic artifacts.  This
     consumer still canonicalises a private action copy and validates the digest
-    shape before comparing arms.
+    shape before comparing arms.  The digest includes encoded ``obs`` and
+    ``next_obs``.  It is therefore equal for data/capacity repairs but must differ
+    for a feature repair that restores a withheld input; trajectory pairing is
+    checked separately on action, episode, and step inventories.
     """
 
     action = verified.diagnostics.get("evaluation_action")
@@ -413,24 +416,45 @@ def _validate_condition(
 
     baseline_scale = base.evaluation.scale
     for name, projected in (("data_repair", data), ("model_repair", model)):
-        if not np.array_equal(
-            projected.evaluation_action, base.evaluation_action
-        ):
-            raise ValueError(
-                f"seed {seed} {name} evidence does not use the baseline's exact "
-                "full evaluation_action inventory; cross-arm label comparisons "
-                "require one shared evaluation pool"
-            )
-        if projected.evaluation_pool_digest != base.evaluation_pool_digest:
-            raise ValueError(
-                f"seed {seed} {name} evaluation_pool_digest does not equal the "
-                "baseline's independently verified pool digest"
-            )
+        inventories = (
+            (
+                "evaluation_action",
+                projected.evaluation_action,
+                base.evaluation_action,
+            ),
+            ("episode", projected.evaluation.episode, base.evaluation.episode),
+            ("step", projected.evaluation.step, base.evaluation.step),
+        )
+        for inventory_name, observed, expected in inventories:
+            if not np.array_equal(observed, expected):
+                raise ValueError(
+                    f"seed {seed} {name} evidence does not use the baseline's "
+                    f"exact full {inventory_name} inventory; cross-arm label "
+                    "comparisons require one shared latent trajectory pool"
+                )
         if projected.evaluation.scale.as_row() != baseline_scale.as_row():
             raise ValueError(
                 f"seed {seed} {name} evidence does not attest the baseline's exact "
                 "full-pool normalisation scale"
             )
+    if data.evaluation_pool_digest != base.evaluation_pool_digest:
+        raise ValueError(
+            f"seed {seed} data_repair evaluation_pool_digest does not equal the "
+            "baseline's independently verified encoded-pool digest"
+        )
+    if model_arm == "capacity_repair":
+        if model.evaluation_pool_digest != base.evaluation_pool_digest:
+            raise ValueError(
+                f"seed {seed} capacity_repair evaluation_pool_digest does not "
+                "equal the baseline's independently verified encoded-pool digest"
+            )
+    elif model.evaluation_pool_digest == base.evaluation_pool_digest:
+        raise ValueError(
+            f"seed {seed} feature_repair evaluation_pool_digest unexpectedly "
+            "equals the baseline's encoded-pool digest; restoring a withheld "
+            "feature must change encoded obs/next_obs while preserving the exact "
+            "latent trajectory inventory"
+        )
     # The persisted values have been compared. Reuse one object so the existing
     # acceptance boundary can also enforce its object-identity invariant.
     data = replace(data, evaluation=replace(data.evaluation, scale=baseline_scale))

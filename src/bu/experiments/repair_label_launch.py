@@ -301,13 +301,24 @@ def _validate_preflight_copy(report_path: Path, sync_directory: Path) -> None:
         raise ValueError("synced smoke preflight report differs from the source")
 
 
-def validate_repair_label_preflight(
+def _validate_repair_label_preflight(
     preflight_report: str | Path,
     *,
     output_root: str | Path,
     sync_root: str | Path,
+    require_current_commit: bool,
 ) -> ValidatedRepairLabelPreflight:
-    """Re-attest the immutable report, environment, roots, plan, and sync."""
+    """Re-attest the immutable report, environment, roots, plan, and sync.
+
+    The private ``require_current_commit=False`` road exists only for the
+    correction-only finalizer: it keeps the original preflight commit as the
+    required commit of every immutable fit, while requiring the current
+    finalizer tree to be clean, trustworthy, and otherwise environment-identical.
+    The public launcher has no such option and always requires exact equality.
+    """
+
+    if type(require_current_commit) is not bool:
+        raise ValueError("require_current_commit must be an exact bool")
 
     requested = Path(preflight_report)
     PF._regular_file(requested, what="smoke preflight report")
@@ -383,8 +394,35 @@ def validate_repair_label_preflight(
         "packages": versions,
         "exact_pins": pins,
     }
-    if report["environment"] != current_environment:
-        raise ValueError("smoke preflight is not the current clean pinned environment")
+    recorded_environment = _strict_keys(
+        report["environment"],
+        {"git", "python", "platform", "packages", "exact_pins"},
+        what="smoke preflight environment",
+    )
+    recorded_git = _strict_keys(
+        recorded_environment["git"],
+        {"commit", "branch", "dirty", "trustworthy"},
+        what="smoke preflight git state",
+    )
+    if (
+        type(recorded_git["commit"]) is not str
+        or not recorded_git["commit"]
+        or recorded_git["dirty"] is not False
+        or recorded_git["trustworthy"] is not True
+    ):
+        raise ValueError("smoke preflight does not name one clean trustworthy commit")
+    if require_current_commit:
+        if recorded_environment != current_environment:
+            raise ValueError("smoke preflight is not the current clean pinned environment")
+    else:
+        if state.dirty or not state.trustworthy:
+            raise ValueError("correction finalization requires a clean trustworthy tree")
+        for key in ("python", "platform", "packages", "exact_pins"):
+            if recorded_environment[key] != current_environment[key]:
+                raise ValueError(
+                    "correction finalizer environment differs from the fit preflight "
+                    f"at {key!r}"
+                )
     if report["device"] != P._verify_device("cpu"):
         raise ValueError("smoke preflight is not the current frozen CPU route")
 
@@ -422,12 +460,28 @@ def validate_repair_label_preflight(
     return ValidatedRepairLabelPreflight(
         report_path=path,
         report_sha256=sha256_file(path),
-        git_commit=state.commit,
+        git_commit=recorded_git["commit"],
         output_root=roots["output"],
         staging_root=roots["staging"],
         sync_root=roots["sync"],
         sync_directory=sync_directory,
         report=report,
+    )
+
+
+def validate_repair_label_preflight(
+    preflight_report: str | Path,
+    *,
+    output_root: str | Path,
+    sync_root: str | Path,
+) -> ValidatedRepairLabelPreflight:
+    """Re-attest a launch preflight against the exact current commit."""
+
+    return _validate_repair_label_preflight(
+        preflight_report,
+        output_root=output_root,
+        sync_root=sync_root,
+        require_current_commit=True,
     )
 
 

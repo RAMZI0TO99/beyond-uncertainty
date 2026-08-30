@@ -106,8 +106,9 @@ class _SyntheticFitStore:
         else:
             evaluation_action = np.asarray(evaluation_action)
         if evaluation_pool_digest is None:
+            pool_kind = "feature-restored" if arm == "feature_repair" else "baseline"
             evaluation_pool_digest = hashlib.sha256(
-                f"pool:{spec.unit_id}:{seed}".encode("ascii")
+                f"pool:{spec.unit_id}:{seed}:{pool_kind}".encode("ascii")
             ).hexdigest()
         verified = VerifiedFitEvidence(
             fit_dir=path,
@@ -426,13 +427,62 @@ def test_cross_arm_independently_verified_pool_digest_must_match(
             model_works=False,
         )
     )
-    source = Path(conditions[0].model_repair).resolve()
+    source = Path(conditions[0].data_repair).resolve()
     verified = fit_store.entries[source]
     fit_store.entries[source] = replace(
         verified, evaluation_pool_digest="f" * 64
     )
 
-    with pytest.raises(ValueError, match="independently verified pool digest"):
+    with pytest.raises(ValueError, match="independently verified encoded-pool digest"):
+        build_label_evidence(conditions, path=tmp_path / "label.json")
+
+
+def test_feature_repair_encoded_pool_digest_must_change(fit_store, tmp_path):
+    conditions = list(
+        _conditions(
+            fit_store,
+            _units_with_one_model_repair()[0],
+            data_works=True,
+            model_works=False,
+        )
+    )
+    baseline = fit_store.entries[Path(conditions[0].baseline).resolve()]
+    source = Path(conditions[0].model_repair).resolve()
+    feature = fit_store.entries[source]
+    assert feature.arm == "feature_repair"
+    fit_store.entries[source] = replace(
+        feature, evaluation_pool_digest=baseline.evaluation_pool_digest
+    )
+
+    with pytest.raises(ValueError, match="restoring a withheld feature"):
+        build_label_evidence(conditions, path=tmp_path / "label.json")
+
+
+@pytest.mark.parametrize("inventory", ["episode", "step"])
+def test_cross_arm_latent_trajectory_inventory_must_match(
+    fit_store, tmp_path, inventory
+):
+    conditions = list(
+        _conditions(
+            fit_store,
+            _units_with_one_model_repair()[0],
+            data_works=True,
+            model_works=False,
+        )
+    )
+    source = Path(conditions[0].model_repair).resolve()
+    verified = fit_store.entries[source]
+    changed = np.array(verified.diagnostics[inventory], copy=True)
+    changed[-1] += 1
+    fit_store.entries[source] = replace(
+        verified,
+        diagnostics=MappingProxyType(
+            {**dict(verified.diagnostics), inventory: changed}
+        ),
+        **{inventory: changed},
+    )
+
+    with pytest.raises(ValueError, match=f"exact full {inventory} inventory"):
         build_label_evidence(conditions, path=tmp_path / "label.json")
 
 
@@ -458,7 +508,7 @@ def test_loader_rechecks_cross_arm_pool_binding(fit_store, tmp_path, binding):
         fit_store.entries[source] = replace(
             verified, evaluation_pool_digest="e" * 64
         )
-        message = "independently verified pool digest"
+        message = "independently verified encoded-pool digest"
 
     with pytest.raises(ValueError, match=message):
         load_label_evidence(path)

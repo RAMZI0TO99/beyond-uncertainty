@@ -66,7 +66,11 @@ class _SyntheticFits:
             execution_run_id=spec.execution_run_id,
             execution_digest=hashlib.sha256(spec.fit_id.encode()).hexdigest(),
             evaluation_pool_digest=hashlib.sha256(
-                f"pool:{payload['seed']}".encode()
+                (
+                    f"pool:{payload['seed']}:feature-restored"
+                    if payload["arm"] == "feature_repair"
+                    else f"pool:{payload['seed']}:baseline"
+                ).encode()
             ).hexdigest(),
             diagnostics=MappingProxyType({}),
             error=empty,
@@ -189,6 +193,31 @@ def _launch(ready_report, roots):
         sync_root=roots["sync"],
         attempt_timeout_seconds=17,
     )
+
+
+def test_only_private_correction_validation_accepts_a_clean_new_commit(
+    ready_report, roots, environment, monkeypatch
+):
+    _old_state, versions, pins = environment()
+
+    def corrected_environment():
+        return GitState("d" * 40, False, "main"), versions, pins
+
+    monkeypatch.setattr(L.P, "_verify_environment", corrected_environment)
+    with pytest.raises(ValueError, match="current clean pinned environment"):
+        L.validate_repair_label_preflight(
+            ready_report,
+            output_root=roots["output"],
+            sync_root=roots["sync"],
+        )
+
+    validated = L._validate_repair_label_preflight(
+        ready_report,
+        output_root=roots["output"],
+        sync_root=roots["sync"],
+        require_current_commit=False,
+    )
+    assert validated.git_commit == COMMIT
 
 
 def test_launch_executes_exact_order_binds_commit_syncs_each_and_counts_only(
