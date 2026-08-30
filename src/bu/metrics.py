@@ -13,6 +13,7 @@ printed.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Iterable, Iterator
@@ -196,6 +197,32 @@ def load_runs(
                 "its commit hash does not identify the code that ran"
             )
 
+        # Stage is duplicated at the top level and inside Config because it is
+        # both provenance and an identity component.  A fallback chooses one
+        # side of a tampered record silently; require both and require equality
+        # before flattening anything for a critic boundary (D-012, D-042).
+        top_stage = rec.get("stage")
+        config_payload = rec.get("config")
+        if not isinstance(config_payload, Mapping):
+            raise RuntimeError(
+                f"run {rec['run_id']} has config metadata of type "
+                f"{type(config_payload).__name__}, not a mapping; duplicated "
+                "stage provenance cannot be cross-checked"
+            )
+        config_stage = config_payload.get("stage")
+        if top_stage is None or config_stage is None:
+            raise RuntimeError(
+                f"run {rec['run_id']} is missing duplicated stage metadata "
+                f"(top-level={top_stage!r}, config={config_stage!r}); stage is "
+                "refused, not defaulted"
+            )
+        if top_stage != config_stage:
+            raise RuntimeError(
+                f"run {rec['run_id']} records top-level stage={top_stage!r} "
+                f"but config.stage={config_stage!r}; something rewrote the run "
+                "record and neither value is trusted"
+            )
+
         # The numerical seed is authoritative; the recorded fields are a
         # convenience. If they disagree, something rewrote a run record and the
         # analysis must not proceed on either value (D-042).
@@ -276,7 +303,7 @@ def _identity_columns(rec: dict[str, Any]) -> dict[str, Any]:
         "seed": rec["seed"],
         # Without this, a unit's five H1/H2 seeds cannot be separated from the
         # twenty behind its repair label -- they differ only by stage (D-012).
-        "stage": rec.get("stage", rec["config"].get("stage", "unknown")),
+        "stage": rec["stage"],
         "arm": rec["config"]["arm"]["kind"],
         "family": unit["family"],
         # Which side of the pilot boundary. Carried into the frame so an

@@ -46,20 +46,38 @@ class GitState:
     branch: str
 
     @property
+    def identifies_commit(self) -> bool:
+        """True only when ``commit`` is an exact Git SHA-1 object name.
+
+        ``git rev-parse`` writes failures to stderr.  The old wrapper ignored
+        that return code and substituted ``UNCOMMITTED`` while ``git status``
+        produced empty stdout, making a non-repository look clean.  P§13.7
+        requires an exact commit hash; absence of one must fail closed.
+        """
+        return (
+            isinstance(self.commit, str)
+            and len(self.commit) == 40
+            and all(ch in "0123456789abcdef" for ch in self.commit)
+        )
+
+    @property
     def trustworthy(self) -> bool:
-        """False if the code that ran is not the code at `commit`."""
-        return not self.dirty
+        """True only when the code is exactly a named committed tree."""
+        return self.identifies_commit and not self.dirty
 
 
 def git_state(repo: str | Path = ".") -> GitState:
     def run(*args: str) -> str:
-        return subprocess.run(
+        raw = subprocess.run(
             ["git", *args],
             cwd=str(repo),
             capture_output=True,
-            text=True,
             check=False,
-        ).stdout.strip()
+        ).stdout
+        # Git emits bytes. Decoding through the Windows process locale made a
+        # UTF-8 source diff crash a provenance check under cp1252. Replacement
+        # is safe for these status/ref names; dirty.diff below keeps raw bytes.
+        return raw.decode("utf-8", errors="replace").strip()
 
     commit = run("rev-parse", "HEAD") or "UNCOMMITTED"
     branch = run("rev-parse", "--abbrev-ref", "HEAD") or "unknown"
@@ -146,9 +164,12 @@ def write_run_record(
     # A dirty tree is recoverable only if we keep the diff.
     if git.dirty:
         diff = subprocess.run(
-            ["git", "diff", "HEAD"], cwd=str(repo), capture_output=True, text=True
+            ["git", "diff", "HEAD"], cwd=str(repo), capture_output=True,
+            check=False,
         ).stdout
-        (run_dir / "dirty.diff").write_text(diff)
+        # Preserve the exact Git bytes. In particular, never ask the host's
+        # locale codec to interpret a UTF-8 patch before recording it.
+        (run_dir / "dirty.diff").write_bytes(diff)
 
     return path
 

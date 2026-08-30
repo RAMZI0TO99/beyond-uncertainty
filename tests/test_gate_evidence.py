@@ -535,6 +535,13 @@ def test_an_artefact_whose_size_changed_is_refused(attempt):
         GateEvidence.from_attempt(attempt)
 
 
+def test_a_manifest_without_an_exact_commit_is_refused(attempt):
+    """Clean-looking UNCOMMITTED evidence is still not reproducible evidence."""
+    edit_manifest(attempt, lambda m: m.update(commit="UNCOMMITTED"))
+    with pytest.raises(ValueError, match="exact.*commit"):
+        GateEvidence.from_attempt(attempt)
+
+
 def test_the_runner_refuses_a_dirty_tree_before_fitting_anything(tmp_path, monkeypatch):
     """Refusing after 450 fits is refusing too late."""
     import bu.experiments.w4_gate as w4
@@ -550,6 +557,36 @@ def test_the_runner_refuses_a_dirty_tree_before_fitting_anything(tmp_path, monke
         w4.run(rung=0, layouts=("uniform",), seeds=(0,), sizes=(100,),
                out_dir=tmp_path / "gate", verbose=False)
     assert not called, "a fit was started despite the dirty tree"
+    assert not (tmp_path / "gate").exists(), "an attempt directory was created"
+
+
+def test_the_runner_refuses_a_gitless_tree_before_fitting_anything(
+    tmp_path, monkeypatch
+):
+    """No repository means no commit, even when status stdout is empty."""
+    import bu.experiments.w4_gate as w4
+    from bu.runrecord import GitState
+
+    monkeypatch.setattr(
+        w4,
+        "git_state",
+        lambda *a, **k: GitState(
+            commit="UNCOMMITTED", dirty=False, branch="unknown"
+        ),
+    )
+    called = []
+    monkeypatch.setattr(w4, "run_cell", lambda **kw: called.append(kw))
+
+    with pytest.raises(ValueError, match="UNCOMMITTED"):
+        w4.run(
+            rung=0,
+            layouts=("uniform",),
+            seeds=(0,),
+            sizes=(100,),
+            out_dir=tmp_path / "gate",
+            verbose=False,
+        )
+    assert not called, "a fit was started without a repository"
     assert not (tmp_path / "gate").exists(), "an attempt directory was created"
 
 

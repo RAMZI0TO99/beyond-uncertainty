@@ -111,9 +111,9 @@ src/bu/
   stats/          trend test, acceptance test                     (Weeks 4–5)
   critic/         diagnosis critic and baselines                  (Weeks 11–12)
   experiments/    the 300-unit design matrix and drivers
-runs/             run outputs — gitignored by default; every file a tracked
-                  evidence record attests by digest (runs/w4_gate,
-                  runs/w4_threshold, …) is itself deliberately tracked, so
-                  certified verdicts verify from a fresh clone (D-103, D-104)
+runs/             run outputs — certified digest-attested evidence
+                  (runs/w4_gate, runs/w4_threshold, …) is deliberately tracked
+                  so verdicts verify from a fresh clone; other outputs follow
+                  the repository's local ignore policy (D-103, D-104)
 figures/          all regenerated from logs — gitignored
 ```

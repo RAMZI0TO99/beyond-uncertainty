@@ -383,6 +383,14 @@ def run(
     # Captured before anything is written: reading git state afterwards would
     # report the tree dirty because of this attempt's own output (D-062).
     git = git_state()
+    if not git.identifies_commit:
+        raise ValueError(
+            f"the working tree names no exact commit ({git.commit!r}); a gate "
+            "verdict must identify one reproducible code state. A git-less tree "
+            "reports UNCOMMITTED and is refused before any fit. allow_dirty is a "
+            "development-test escape for a modified named commit, not an escape "
+            "from repository provenance."
+        )
     if git.dirty and not allow_dirty:
         # The verifier refuses a dirty attempt afterwards, which means the fits
         # were spent producing evidence that could never be used. Fail here

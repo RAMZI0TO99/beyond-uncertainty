@@ -246,14 +246,16 @@ def test_a_seed_beyond_the_registered_count_is_refused():
         )
 
 
-def test_a_pool_only_sweep_unit_is_refused():
+def test_every_pool_only_obligation_key_is_refused():
     """The registry must be built from the design, not from the pool.
 
     `full_matrix()` is the ~531-unit pool the design draws on; `design_units()`
     is the registered 300 ("this matrix is the pool, not the plan"). A
     confirmatory fit on a pool-only unit discharges no registered obligation,
-    yet all 231 were accepted while `_registered_obligations()` was built from
-    the no-arg `execution_plan()`, which defaults to the pool (D-133).
+    The original regression covered only baseline/config_sweep/seed-index-0,
+    231 of 1,653 removed obligation keys.  Quantifying the COMPLETE key
+    difference covers repaired arms, every role, and every seed index too; a
+    partial fix that filters only the old test shape must fail (D-055, D-133).
 
     Stated over EVERY pool-only unit rather than one example: which units the
     round-robin sweep leaves out is an accident of the draw, and a single named
@@ -261,38 +263,61 @@ def test_a_pool_only_sweep_unit_is_refused():
     membership -- nothing here trains, collects, or fits.
     """
     from bu.config import Config
-    from bu.experiments.enumerate_units import design_units, full_matrix
+    from bu.experiments.enumerate_units import (
+        design_units,
+        execution_plan,
+        full_matrix,
+    )
 
-    registered = {Config(unit=u).unit_id for u in design_units()}
-    pool_only = [u for u in full_matrix()
-                 if Config(unit=u).unit_id not in registered]
-    assert pool_only, "the pool no longer exceeds the design; this test is vacuous"
-    for unit in pool_only:
+    def keys(units):
+        out = {}
+        for fit in execution_plan(units):
+            unit_id = Config(unit=fit.unit).unit_id
+            for role in fit.roles:
+                out[(unit_id, fit.arm, role, fit.seed)] = fit.unit
+        return out
+
+    design = keys(design_units())
+    pool = keys(full_matrix())
+    removed = {key: unit for key, unit in pool.items() if key not in design}
+    assert removed, "the pool plan no longer exceeds the design; test is vacuous"
+    assert {key[1] for key in removed} > {"baseline"}, (
+        "fixture lost repaired-arm coverage"
+    )
+    assert max(key[3] for key in removed) > 0, "fixture lost later seed indices"
+    for (_, arm, stage, seed_index), unit in removed.items():
         with pytest.raises(ValueError, match="not a registered obligation"):
             C.assert_registered_obligation(
-                unit, arm="baseline", stage="config_sweep", seed=CONF
+                unit, arm=arm, stage=stage, seed=CONF + seed_index
             )
 
 
-def test_every_design_sweep_unit_remains_registered():
-    """The complement: narrowing pool -> design must not overshoot to canonical-only.
+def test_every_design_obligation_key_remains_registered():
+    """The complement: narrowing pool -> design must preserve every exact key.
 
-    Every non-canonical unit the design registers carries a `config_sweep`
-    baseline obligation, and the guard must accept it at seed index 0. Guards
-    the fix's other side: a registry built from `canonical_units()` (or any
-    subset of the design) would fail here while still passing the refusal test.
+    Covers all arms, roles, and seed indices in the 300-unit plan. A registry
+    narrowed to canonical units, baseline only, or seed index zero would pass
+    the negative test but fail here.
     """
-    from bu.config import Config
-    from bu.experiments.enumerate_units import canonical_units, design_units
+    from bu.experiments.enumerate_units import design_units, execution_plan
 
-    canonical = {Config(unit=u).unit_id for u in canonical_units()}
-    sweep = [u for u in design_units()
-             if Config(unit=u).unit_id not in canonical]
-    assert sweep, "expected non-canonical units in the design"
-    for unit in sweep:
-        C.assert_registered_obligation(
-            unit, arm="baseline", stage="config_sweep", seed=CONF
-        )
+    plan = execution_plan(design_units())
+    assert plan, "registered execution plan is empty"
+    seen_arms = set()
+    seen_seed_indices = set()
+    for fit in plan:
+        seen_arms.add(fit.arm)
+        seen_seed_indices.add(fit.seed)
+        for role in fit.roles:
+            C.assert_registered_obligation(
+                fit.unit,
+                arm=fit.arm,
+                stage=role,
+                seed=CONF + fit.seed,
+            )
+    assert seen_arms == {"baseline", "data_repair", "feature_repair",
+                         "capacity_repair"}
+    assert max(seen_seed_indices) > 0
 
 
 def test_the_training_configuration_is_frozen_not_accepted():
@@ -310,6 +335,22 @@ def test_a_dirty_tree_is_refused_before_fitting(monkeypatch, tmp_path):
                         lambda: GitState(commit="c" * 40, dirty=True, branch="main"))
     with pytest.raises(ValueError, match="dirty"):
         C.run_confirmatory(registered_unit(), stage="exp1", seed=CONF, out_dir=tmp_path)
+    assert not list(tmp_path.iterdir()), "a refused run still wrote to disk"
+
+
+def test_a_gitless_tree_is_refused_before_fitting(monkeypatch, tmp_path):
+    """An empty git stderr is not evidence of a clean, reproducible tree."""
+    from bu.runrecord import GitState
+
+    monkeypatch.setattr(
+        C,
+        "git_state",
+        lambda: GitState(commit="UNCOMMITTED", dirty=False, branch="unknown"),
+    )
+    with pytest.raises(ValueError, match="UNCOMMITTED"):
+        C.run_confirmatory(
+            registered_unit(), stage="exp1", seed=CONF, out_dir=tmp_path
+        )
     assert not list(tmp_path.iterdir()), "a refused run still wrote to disk"
 
 

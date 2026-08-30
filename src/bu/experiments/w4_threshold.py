@@ -380,13 +380,14 @@ def calibrate(out_dir: str | Path, *, attempt: str = "attempt-001") -> Threshold
     target = assert_may_attempt(Path(out_dir), attempt=attempt)
 
     git = git_state()
-    if git.dirty:
+    if not git.trustworthy:
         raise ValueError(
-            f"the working tree is dirty at commit {git.commit[:7]}. This threshold is "
-            "frozen permanently and every failure set in the thesis descends from it, "
-            "so it must name one reproducible code state. There is deliberately no "
-            "override: evidence that does not record its own ineligibility is worse "
-            "than no evidence."
+            f"the working tree is not trustworthy at commit {git.commit!r} "
+            f"(dirty={git.dirty}). This threshold is frozen permanently and every "
+            "failure set in the thesis descends from it, so it must name one exact "
+            "reproducible commit. There is deliberately no override: a git-less "
+            "tree reports UNCOMMITTED and is refused; evidence that does not record "
+            "its own ineligibility is worse than no evidence."
         )
 
     _pin_threading(THRESHOLD_THREADS, THRESHOLD_INTEROP_THREADS)

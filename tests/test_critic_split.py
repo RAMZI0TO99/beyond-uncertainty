@@ -15,6 +15,10 @@ fixture injection, not a caller override — the public API exposes no seed.
 
 from __future__ import annotations
 
+import hashlib
+import json
+from dataclasses import replace
+
 import pytest
 
 from bu import constants as K
@@ -304,6 +308,34 @@ def test_an_infeasible_whole_group_target_is_refused_with_the_exact_shortfall(
     assert "observed class 0" in message
 
 
+def test_a_feasible_swap_case_is_not_mislabeled_infeasible(split_seed):
+    """A single-move local minimum is not an infeasibility proof.
+
+    The witness requires swapping two groups: neither individual move improves
+    the heuristic violation, so the old repair reached fixpoint and refused.
+    The complete fallback must recover a valid whole-group assignment.
+    """
+    profiles = {"g0": (2, 1), "g1": (3, 1), "g2": (3, 0), "g3": (1, 1)}
+    candidates = []
+    for group, (n0, n1) in profiles.items():
+        candidates.extend(cand(f"{group}-0-{i}", group, 0) for i in range(n0))
+        candidates.extend(cand(f"{group}-1-{i}", group, 1) for i in range(n1))
+    targets = SplitTargets(
+        observed={
+            "train": {0: ObservedTarget(3, 3), 1: ObservedTarget(1, 1)},
+            "validation": {0: ObservedTarget(1, 1), 1: ObservedTarget(1, 1)},
+            "held_out": {0: ObservedTarget(5, 5), 1: ObservedTarget(1, 1)},
+        },
+        floors={"held_out": SplitFloor(2, 1)},
+    )
+    mapping, manifest = split_units(candidates, targets=targets)
+    counts = observed_counts(mapping, candidates)
+    assert (counts["train"][0], counts["train"][1]) == (3, 1)
+    assert (counts["validation"][0], counts["validation"][1]) == (1, 1)
+    assert (counts["held_out"][0], counts["held_out"][1]) == (5, 1)
+    assert manifest["n_groups"] == 4
+
+
 @pytest.mark.parametrize("lo,hi,fragment", [
     (2, 4, "deficit 3"),   # sum(lo)=6 over 3 available
     (0, 0, "excess 3"),    # sum(hi)=0 under 3 that must be assigned
@@ -463,6 +495,27 @@ def test_target_class_keys_and_bounds_are_validated(targets, match):
         validate_targets(targets)
 
 
+@pytest.mark.parametrize("targets,match", [
+    (SplitTargets(observed=None, floors={}), "observed must be a mapping"),
+    (SplitTargets(observed={s: None for s in CANONICAL_SPLITS},
+                  floors={"held_out": SplitFloor(0, 0)}),
+     "must map observed classes"),
+    (SplitTargets(
+        observed={s: {0: ObservedTarget(0, 1), 1: ObservedTarget(0, 1)}
+                  for s in CANONICAL_SPLITS},
+        floors={"held_out": SplitFloor(0, 2)}),
+     "exceeds an observed-class upper bound"),
+    (SplitTargets(
+        observed={s: {0: ObservedTarget(0, 1), 1: ObservedTarget(0, 1)}
+                  for s in CANONICAL_SPLITS},
+        floors={"held_out": SplitFloor(3, 0)}),
+     r"exceeds hi0\+hi1"),
+])
+def test_cross_field_target_contradictions_fail_before_allocation(targets, match):
+    with pytest.raises(ValueError, match=match):
+        validate_targets(targets)
+
+
 # --- input validation, mirroring the balancer's certified history ------------
 
 
@@ -477,6 +530,12 @@ def test_duplicate_unit_ids_are_refused():
     validate_candidates([cand("a", "g1", 0)])  # the well-formed case passes
     with pytest.raises(ValueError, match="duplicate unit_id"):
         validate_candidates([cand("dup", "g1", 0), cand("dup", "g2", 1)])
+
+
+@pytest.mark.parametrize("unit_id", ["", "   ", 7, None])
+def test_unit_ids_must_be_nonblank_strings(unit_id):
+    with pytest.raises(ValueError, match="unit_id.*non-blank string"):
+        validate_candidates([cand(unit_id, "g1", 0)])
 
 
 def test_boolean_observed_labels_are_refused_before_the_integer_check():
@@ -516,7 +575,7 @@ def test_missing_or_unknown_stage_metadata_fails_closed(stage):
         validate_candidates([cand("a", "g1", 0, stage=stage)])
 
 
-@pytest.mark.parametrize("stage", STAGES)
+@pytest.mark.parametrize("stage", [s for s in STAGES if s != "pilot"])
 def test_development_label_seeds_are_refused_at_the_splitter(stage):
     """A planted sub-1000 record cannot reach this critic path, whatever the
     stage — one arm passing is not evidence about another (D-034, D-055)."""
@@ -526,10 +585,17 @@ def test_development_label_seeds_are_refused_at_the_splitter(stage):
                                   seeds=(1000, 999))])
 
 
+def test_pilot_stage_cannot_reach_the_splitter_at_a_confirmatory_seed():
+    with pytest.raises(ValueError, match="pilot"):
+        validate_candidates([cand("a", "g1", 0, stage="pilot", seeds=(1000,))])
+
+
 def test_blank_comparison_group_ids_are_refused():
     """A blank group id would make a unit its own group and evade D-039."""
     with pytest.raises(ValueError, match="comparison_group_id"):
         validate_candidates([cand("a", "", 0)])
+    with pytest.raises(ValueError, match="comparison_group_id"):
+        validate_candidates([cand("a", "   ", 0)])
 
 
 def test_a_non_candidate_element_is_refused_positively():
@@ -620,7 +686,9 @@ def test_mapping_is_identical_across_processes_and_hash_seeds():
     assert payload["manifest"]["n_groups"] == 7, "fixture drifted"
 
 
-def test_the_blake2b_key_breaks_a_genuine_tie_deterministically(split_seed):
+def test_the_blake2b_key_breaks_a_genuine_tie_deterministically(
+    split_seed, monkeypatch
+):
     """Two profile-identical groups the targets force into DIFFERENT splits:
     nothing but the keyed hash separates them, so this exercises the
     tie-breaker path rather than assuming it — and reversed input order must
@@ -645,6 +713,15 @@ def test_the_blake2b_key_breaks_a_genuine_tie_deterministically(split_seed):
         "the two tied groups must be separated across the two floored-open "
         "splits"
     )
+    alternatives = []
+    for seed in range(4243, 4260):
+        monkeypatch.setattr(K, "CRITIC_SPLIT_SEED", seed, raising=False)
+        mapping, _ = split_units(cands, targets=targets)
+        alternatives.append(mapping)
+    assert any(mapping != first for mapping in alternatives), (
+        "changing the registered split seed never changed a genuine tie; a "
+        "lexical tie-breaker that ignores the seed would pass the old test"
+    )
 
 
 def test_assignment_does_not_depend_on_input_order(split_seed):
@@ -667,6 +744,21 @@ def test_manifest_counts_recompute_from_mapping_and_inputs(split_seed):
     assert manifest["unit_to_split"] == mapping
     assert manifest["n_attempted_units"] == len(candidates)
     assert manifest["input_digest"] == input_digest(candidates)
+    records = [
+        {
+            "unit_id": c.unit_id,
+            "comparison_group_id": c.comparison_group_id,
+            "intended_class": c.intended_class,
+            "observed_label": c.observed_label,
+            "stage": c.stage,
+            "label_seeds": list(c.label_seeds),
+        }
+        for c in sorted(candidates, key=lambda c: c.unit_id)
+    ]
+    independent_blob = json.dumps(
+        records, sort_keys=True, separators=(",", ":")
+    ).encode()
+    assert manifest["input_digest"] == hashlib.sha256(independent_blob).hexdigest()
     counts = observed_counts(mapping, candidates)
     for s in CANONICAL_SPLITS:
         per = manifest["per_split"][s]
@@ -685,6 +777,22 @@ def test_manifest_counts_recompute_from_mapping_and_inputs(split_seed):
     for c in candidates:
         assert manifest["group_to_split"][c.comparison_group_id] == mapping[
             c.unit_id]
+
+
+def test_input_digest_commits_to_every_candidate_field():
+    """Omitting any provenance field must change the delivered-byte digest."""
+    original = cand("u", "g", 0, intended="estimation", stage="exp1",
+                    seeds=(1000, 1001))
+    baseline = input_digest([original])
+    variants = [
+        replace(original, unit_id="u2"),
+        replace(original, comparison_group_id="g2"),
+        replace(original, intended_class="hypothesis_class"),
+        replace(original, observed_label=1),
+        replace(original, stage="exp2a"),
+        replace(original, label_seeds=(1000, 1002)),
+    ]
+    assert all(input_digest([variant]) != baseline for variant in variants)
 
 
 def test_manifest_schema_version_is_one_and_names_both_class_concepts(
@@ -734,6 +842,10 @@ def test_eligible_units_requires_assignment_to_cover_exactly_the_candidates(
     typo[candidates[0].unit_id] = "held-out"
     with pytest.raises(ValueError, match="not canonical"):
         eligible_units(candidates, typo, traces)
+    with pytest.raises(ValueError, match="assignment must be a mapping"):
+        eligible_units(candidates, None, traces)
+    with pytest.raises(ValueError, match="traces_by_unit must be a mapping"):
+        eligible_units(candidates, mapping, None)
 
 
 def test_a_decidable_unit_missing_from_the_trace_inventory_is_refused(

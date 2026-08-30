@@ -15,8 +15,13 @@ boundary, not a flag threaded through call sites.** There are two roads:
   dead-ends before the critic.
 
 Records missing stage or seed metadata fail closed — refused, not defaulted
-(D-034). Critic-facing consumers are discovered from
-:data:`CRITIC_CONSUMER_REGISTRY`, the authoritative registry: a hardcoded list
+(D-034). This module closes the loading boundary itself; the future real-label
+adapter must still prove that the ``SplitCandidate`` records it constructs are
+derived from these exact loaded runs. The balancer's public ``LabelledUnit``
+API predates C-007 and carries no seed/stage provenance, so this boundary alone
+must not be described as end-to-end closure. Registered boundary consumers are
+discovered from :data:`CRITIC_CONSUMER_REGISTRY`, the authoritative registry:
+a hardcoded list
 goes stale silently, and a fix in one layer is not a fix (D-056). The registry
 is checked for coherence at import, like ``schema.py``'s feature schema, so a
 drifted registry fails before any test runs. Every guard raises ``ValueError``
@@ -36,7 +41,12 @@ import pandas as pd
 
 from ..config import STAGES
 from ..metrics import load_runs
-from ..streams import assert_confirmatory
+from ..streams import assert_confirmatory, is_confirmatory
+
+
+#: Explicit status marker for handoff and tests. The loader boundary is built,
+#: but no real-label adapter yet binds loaded run ids to SplitCandidate labels.
+C007_INTEGRATION_STATUS = "loading_boundary_only"
 
 
 def _check_stage(stage: object, *, where: str, allow_pilot: bool) -> None:
@@ -73,6 +83,20 @@ def _check_seed(seed: object, *, where: str) -> int:
 
 
 def _validate_frame(frame: pd.DataFrame, *, root: object, allow_pilot: bool) -> None:
+    if not isinstance(frame, pd.DataFrame):
+        raise ValueError(
+            f"runs from {str(root)!r} are a {type(frame).__name__}, not a "
+            "DataFrame. The provenance boundary refuses unknown container "
+            "shapes rather than trusting duck-typed metadata (C-007; D-054)"
+        )
+    required = {"run_id", "seed", "stage"}
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise ValueError(
+            f"runs from {str(root)!r} lack required provenance column(s) "
+            f"{missing}. Seed and stage metadata are refused, not defaulted "
+            "(C-007; D-034)"
+        )
     if len(frame) == 0:
         raise ValueError(
             f"no runs loaded from {str(root)!r}: an empty frame is returned by "
@@ -113,6 +137,34 @@ class ConfirmatoryRuns:
         for stage in self.stages:
             _check_stage(stage, where="ConfirmatoryRuns", allow_pilot=False)
 
+        self.validate()
+
+    def validate(self) -> None:
+        """Re-verify the mutable frame and its duplicated metadata.
+
+        A frozen dataclass does not freeze a pandas DataFrame.  This method is
+        called both at construction and whenever a consumer accepts the
+        wrapper, so hand construction and post-load mutation cannot turn the
+        type into a provenance label detached from its contents (D-072).
+        """
+        _validate_frame(self.frame, root="ConfirmatoryRuns.frame", allow_pilot=False)
+        frame_seeds = tuple(sorted({_check_seed(s, where="ConfirmatoryRuns.frame")
+                                    for s in self.frame["seed"]}))
+        frame_stages = tuple(sorted({str(s) for s in self.frame["stage"]}))
+        if frame_seeds != tuple(sorted(self.seeds)):
+            raise ValueError(
+                f"ConfirmatoryRuns seeds {self.seeds!r} disagree with frame "
+                f"seeds {frame_seeds!r}. Wrapper metadata is cross-checked "
+                "against the rows consumers receive, never trusted as a label "
+                "on unrelated data (D-072; C-007)"
+            )
+        if frame_stages != tuple(sorted(self.stages)):
+            raise ValueError(
+                f"ConfirmatoryRuns stages {self.stages!r} disagree with frame "
+                f"stages {frame_stages!r}. Wrapper metadata is cross-checked "
+                "against the rows consumers receive (D-072; C-007)"
+            )
+
 
 @dataclass(frozen=True)
 class DevelopmentRuns:
@@ -141,7 +193,7 @@ def load_critic_runs(
     """
     try:
         frame = load_runs(root, run_ids=run_ids, require_confirmatory=True)
-    except (KeyError, TypeError) as exc:
+    except (KeyError, TypeError, RuntimeError) as exc:
         raise ValueError(
             f"critic loading from {str(root)!r} failed on run metadata: "
             f"{exc!r}. A run record without a usable seed or stage is refused, "
@@ -171,7 +223,7 @@ def load_development_runs(
     """
     try:
         frame = load_runs(root, run_ids=run_ids)
-    except (KeyError, TypeError) as exc:
+    except (KeyError, TypeError, RuntimeError) as exc:
         raise ValueError(
             f"development loading from {str(root)!r} failed on run metadata: "
             f"{exc!r}. A run record without a usable seed or stage is refused, "
@@ -179,6 +231,14 @@ def load_development_runs(
         ) from exc
     _validate_frame(frame, root=root, allow_pilot=True)
     seeds = tuple(sorted({int(s) for s in frame["seed"]}))
+    confirmatory = tuple(s for s in seeds if is_confirmatory(s))
+    if confirmatory:
+        raise ValueError(
+            f"development loading from {str(root)!r} contains confirmatory "
+            f"seed(s) {confirmatory}. The development road is a distinct data "
+            "partition, not a wrapper label callers may place on confirmatory "
+            "or mixed data (C-007; D-034)"
+        )
     return DevelopmentRuns(frame=frame, seeds=seeds)
 
 
@@ -217,6 +277,7 @@ def assert_critic_input(obj: object, *, consumer: str) -> None:
             "output type, ConfirmatoryRuns, is accepted — by exact type, not "
             "by subclass or attribute shape (C-007; D-034)"
         )
+    obj.validate()
 
 
 @dataclass(frozen=True)
@@ -248,13 +309,14 @@ CRITIC_CONSUMER_REGISTRY: dict[str, CriticConsumer] = {
 }
 
 
-# The run-loading tokens the coverage invariant scans for. Built from pieces so
+# The run-loading operations the coverage invariant scans for. Built from pieces so
 # this module's own definitions are not false hits: the invariant is that these
 # call shapes appear nowhere in bu/critic except inside this module's
 # registered loader functions.
 _RUN_LOADING_CALLS: tuple[str, ...] = ("load_runs", "iter_run_dirs",
                                        "read_run_record")
 _METRICS_CONSTANT = "METRICS" + "_FILE"
+_METRICS_FILENAME = "metrics" + ".jsonl"
 
 
 def find_run_loading_tokens(source_text: str) -> list[str]:
@@ -267,33 +329,62 @@ def find_run_loading_tokens(source_text: str) -> list[str]:
     and prove the scanner has teeth: a check that cannot fail is not a check
     (D-055, D-057).
 
-    The scan is over Python tokens, not raw text: string literals and comments
-    are excluded, because the invariant targets call sites and the certified
-    ``schema.py`` legitimately *mentions* the loader in its frozen docstring.
-    Text that does not tokenize falls back to a plain substring scan — failing
-    open on a syntax error would let a malformed module dodge the invariant.
+    The scan is over Python's AST, not raw text: comments and docstrings are
+    excluded, while imported aliases, qualified calls, ``METRICS_FILE`` aliases
+    and direct ``metrics.jsonl`` reads are recognised.  The certified
+    ``schema.py`` legitimately *mentions* ``load_runs`` in prose, which is not
+    a call site. Text that does not parse falls back to a plain substring scan
+    — failing open on a syntax error would let a malformed module dodge the
+    invariant.
     """
-    import io
-    import tokenize
+    import ast
 
-    fallback = [c + "(" for c in _RUN_LOADING_CALLS] + [_METRICS_CONSTANT]
+    fallback = ([c + "(" for c in _RUN_LOADING_CALLS]
+                + [_METRICS_CONSTANT, _METRICS_FILENAME])
     try:
-        toks = list(tokenize.generate_tokens(io.StringIO(source_text).readline))
-    except (tokenize.TokenError, IndentationError, SyntaxError):
+        tree = ast.parse(source_text)
+    except (IndentationError, SyntaxError):
         return [t for t in fallback if t in source_text]
-    found: list[str] = []
-    for i, tok in enumerate(toks):
-        if tok.type != tokenize.NAME:
-            continue
-        if tok.string in _RUN_LOADING_CALLS:
-            nxt = toks[i + 1] if i + 1 < len(toks) else None
-            called = (nxt is not None and nxt.type == tokenize.OP
-                      and nxt.string == "(")
-            if called and (tok.string + "(") not in found:
-                found.append(tok.string + "(")
-        elif tok.string == _METRICS_CONSTANT and _METRICS_CONSTANT not in found:
-            found.append(_METRICS_CONSTANT)
-    return found
+
+    call_aliases: dict[str, str] = {name: name for name in _RUN_LOADING_CALLS}
+    metrics_aliases: set[str] = {_METRICS_CONSTANT}
+    docstrings: set[int] = set()
+    for owner in ast.walk(tree):
+        body = getattr(owner, "body", None)
+        if (isinstance(body, list) and body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            docstrings.add(id(body[0].value))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and (
+            node.module == "metrics" or (node.module or "").endswith(".metrics")
+        ):
+            for item in node.names:
+                bound = item.asname or item.name
+                if item.name in _RUN_LOADING_CALLS:
+                    call_aliases[bound] = item.name
+                if item.name == _METRICS_CONSTANT:
+                    metrics_aliases.add(bound)
+
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Name) and node.func.id in call_aliases:
+                found.add(call_aliases[node.func.id] + "(")
+            elif (isinstance(node.func, ast.Attribute)
+                  and node.func.attr in _RUN_LOADING_CALLS):
+                # Covers ``metrics.load_runs`` and aliases such as ``m.load_runs``.
+                found.add(node.func.attr + "(")
+        elif isinstance(node, ast.Name) and node.id in metrics_aliases:
+            found.add(_METRICS_CONSTANT)
+        elif (isinstance(node, ast.Constant) and id(node) not in docstrings
+              and isinstance(node.value, str)
+              and node.value.replace("\\", "/").split("/")[-1]
+              == _METRICS_FILENAME):
+            # A direct read is still a loader even when it bypasses METRICS_FILE.
+            found.add(_METRICS_FILENAME)
+    return sorted(found)
 
 
 def _resolve_qualname(qualname: str):

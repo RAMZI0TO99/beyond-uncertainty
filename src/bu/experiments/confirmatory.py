@@ -226,14 +226,15 @@ def run_confirmatory(
         )
 
     git = git_state()
-    if git.dirty:
+    if not git.trustworthy:
         raise ValueError(
-            f"the working tree is dirty at commit {git.commit[:7]}. A confirmatory "
-            "fit is evidence for a thesis claim and must name one reproducible code "
-            "state. There is deliberately no override (Sol, delta 45): an opt-out "
-            "produces registered evidence under a configuration that is not "
-            "represented in run identity, which is the same defect as an "
-            "unrecorded thread count."
+            f"the working tree is not trustworthy at commit {git.commit!r} "
+            f"(dirty={git.dirty}). A confirmatory fit is evidence for a thesis "
+            "claim and must name one exact reproducible commit. There is "
+            "deliberately no override (Sol, delta 45): an opt-out produces "
+            "registered evidence under a configuration that is not represented "
+            "in run identity, which is the same defect as an unrecorded thread "
+            "count. A git-less tree reports UNCOMMITTED and is refused too."
         )
 
     _pin_threading(CONFIRMATORY_THREADS, CONFIRMATORY_INTEROP_THREADS)

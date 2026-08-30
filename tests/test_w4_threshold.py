@@ -40,6 +40,23 @@ def test_calibrate_takes_no_result_changing_argument():
         assert forbidden not in params
 
 
+def test_calibration_refuses_a_gitless_tree_before_scoring(monkeypatch, tmp_path):
+    """A permanent threshold must identify a real commit, not UNCOMMITTED."""
+    from bu.runrecord import GitState
+
+    monkeypatch.setattr(
+        T,
+        "git_state",
+        lambda: GitState(commit="UNCOMMITTED", dirty=False, branch="unknown"),
+    )
+    scored = []
+    monkeypatch.setattr(T, "score_reference_cell", lambda *a, **k: scored.append(1))
+
+    with pytest.raises(ValueError, match="UNCOMMITTED"):
+        T.calibrate(tmp_path, attempt="attempt-001")
+    assert not scored, "a reference cell was scored without a repository"
+
+
 def test_the_frozen_specification_is_what_sol_ruled():
     assert T.THRESHOLD_PERCENTILE == 95.0
     assert T.PERCENTILE_METHOD == "linear"

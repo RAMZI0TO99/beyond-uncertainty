@@ -823,6 +823,17 @@ class GateEvidence:
             )
         if version >= THREADING_CONTRACT_VERSION:
             cls._verify_threading_declared(attempt_dir, manifest.get("threading"), "manifest")
+        commit = manifest["commit"]
+        if not (
+            isinstance(commit, str)
+            and len(commit) == 40
+            and all(ch in "0123456789abcdef" for ch in commit)
+        ):
+            raise ValueError(
+                f"{attempt_dir} names commit {commit!r}, not an exact "
+                "40-character hexadecimal commit; a gate verdict must identify "
+                "one reproducible code state"
+            )
         if manifest["dirty"]:
             raise ValueError(
                 f"{attempt_dir} was produced from a dirty tree (commit "

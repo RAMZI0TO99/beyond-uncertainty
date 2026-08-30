@@ -23,6 +23,7 @@ import bu.critic
 from bu.config import Config, UnitSpec
 from bu.critic.balance import CANONICAL_SPLITS
 from bu.critic.loading import (
+    C007_INTEGRATION_STATUS,
     CRITIC_CONSUMER_REGISTRY,
     ConfirmatoryRuns,
     CriticConsumer,
@@ -61,7 +62,11 @@ def _dev_runs() -> DevelopmentRuns:
 
 
 def _confirmatory_wrapper() -> ConfirmatoryRuns:
-    return ConfirmatoryRuns(frame=pd.DataFrame({"seed": [1000]}),
+    return ConfirmatoryRuns(frame=pd.DataFrame({
+                                "run_id": ["synthetic-exp1-s1000"],
+                                "seed": [1000],
+                                "stage": ["exp1"],
+                            }),
                             seeds=(1000,), stages=("exp1",))
 
 
@@ -86,6 +91,11 @@ def test_confirmatory_runs_load_through_the_boundary(tmp_path):
     assert len(runs.frame) == 2
     assert runs.seeds == (1000, 1001)
     assert_critic_input(runs, consumer="critic.split_units")  # must not raise
+
+
+def test_c007_does_not_claim_the_unbuilt_real_label_adapter():
+    """The loading guard is real; downstream run-to-label binding is not yet."""
+    assert C007_INTEGRATION_STATUS == "loading_boundary_only"
 
 
 def test_a_planted_development_seed_record_cannot_reach_the_critic_boundary(
@@ -122,8 +132,30 @@ def test_missing_stage_metadata_fails_closed_at_the_boundary(tmp_path, loader):
     del data["stage"]
     del data["config"]["stage"]
     record.write_text(json.dumps(data), encoding="utf-8")
-    with pytest.raises(ValueError, match="'unknown'"):
+    with pytest.raises(ValueError, match="missing duplicated stage"):
         loader(tmp_path)
+
+
+def test_disagreeing_stage_copies_fail_before_the_boundary(tmp_path):
+    """Top-level and config stage are one identity stated twice, not options."""
+    cfg = _run(tmp_path, 1000)
+    record = tmp_path / cfg.run_id / "run.json"
+    data = json.loads(record.read_text(encoding="utf-8"))
+    data["config"]["stage"] = "pilot"
+    record.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="top-level stage.*config.stage"):
+        load_critic_runs(tmp_path)
+
+
+def test_malformed_config_metadata_fails_as_a_provenance_refusal(tmp_path):
+    """A non-mapping config must not leak an incidental AttributeError."""
+    cfg = _run(tmp_path, 1000)
+    record = tmp_path / cfg.run_id / "run.json"
+    data = json.loads(record.read_text(encoding="utf-8"))
+    data["config"] = None
+    record.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="config metadata.*not a mapping"):
+        load_critic_runs(tmp_path)
 
 
 def test_missing_or_noninteger_seed_fails_closed(tmp_path):
@@ -178,6 +210,13 @@ def test_the_development_path_loads_development_data(tmp_path):
     assert type(runs) is DevelopmentRuns
     assert runs.seeds == (999,)
     assert len(runs.frame) == 1
+
+
+def test_the_development_path_refuses_confirmatory_or_mixed_data(tmp_path):
+    _run(tmp_path, 999, stage="pilot")
+    _run(tmp_path, 1000, stage="exp1")
+    with pytest.raises(ValueError, match="confirmatory seed"):
+        load_development_runs(tmp_path)
 
 
 _CRITIC_FACING = [e for e in CRITIC_CONSUMER_REGISTRY.values()
@@ -258,8 +297,9 @@ def test_a_confirmatory_runs_subclass_is_refused():
     class Mimic(ConfirmatoryRuns):
         pass
 
-    mimic = Mimic(frame=pd.DataFrame({"seed": [1000]}), seeds=(1000,),
-                  stages=("exp1",))
+    base = _confirmatory_wrapper()
+    mimic = Mimic(frame=base.frame.copy(), seeds=base.seeds,
+                  stages=base.stages)
     with pytest.raises(ValueError, match="provenance"):
         assert_critic_input(mimic, consumer="critic.split_units")
 
@@ -289,9 +329,31 @@ def test_confirmatory_wrapper_cannot_be_hand_built_around_development_data(
     """The type is a check, not a label: hand-construction around development
     or unclassifiable data fails at construction, not at first use."""
     assert _confirmatory_wrapper() is not None  # the well-formed case builds
+    frame_seeds = list(seeds) or [1000]
+    frame_stages = list(stages) or ["exp1"]
     with pytest.raises(ValueError, match=match):
-        ConfirmatoryRuns(frame=pd.DataFrame({"seed": list(seeds)}),
+        ConfirmatoryRuns(frame=pd.DataFrame({
+                             "run_id": [f"synthetic-{i}" for i in range(len(frame_seeds))],
+                             "seed": frame_seeds,
+                             "stage": [frame_stages[0]] * len(frame_seeds),
+                         }),
                          seeds=seeds, stages=stages)
+
+
+def test_wrapper_metadata_cannot_disagree_with_its_frame():
+    frame = pd.DataFrame({
+        "run_id": ["planted"], "seed": [999], "stage": ["pilot"]
+    })
+    with pytest.raises(ValueError, match="development seeds|pilot|disagree"):
+        ConfirmatoryRuns(frame=frame, seeds=(1000,), stages=("exp1",))
+
+
+def test_mutating_a_valid_wrapper_is_detected_at_the_consumer():
+    runs = _confirmatory_wrapper()
+    runs.frame.loc[0, "seed"] = 999
+    runs.frame.loc[0, "stage"] = "pilot"
+    with pytest.raises(ValueError, match="development seeds|pilot|disagree"):
+        assert_critic_input(runs, consumer="critic.split_units")
 
 
 # --- the registry is authoritative, and its checker has teeth ----------------
@@ -363,13 +425,14 @@ def test_an_unregistered_critic_loader_fails_the_coverage_invariant():
 
     package_dir = Path(bu.critic.__file__).parent
     scanned = 0
-    for path in sorted(package_dir.glob("*.py")):
+    for path in sorted(package_dir.rglob("*.py")):
         text = path.read_text(encoding="utf-8")
         scanned += 1
         hits = find_run_loading_tokens(text)
         if path.name != "loading.py":
             assert hits == [], (
-                f"{path.name} contains run-loading call site(s) {hits} outside "
+                f"{path.relative_to(package_dir)} contains run-loading call "
+                f"site(s) {hits} outside "
                 "the C-007 boundary; register a loader in loading.py instead"
             )
             continue
@@ -396,6 +459,13 @@ def test_an_unregistered_critic_loader_fails_the_coverage_invariant():
     synthetic = ("from bu.metrics import iter_run_dirs\n"
                  "for d in iter_run_dirs(root):\n    pass\n")
     assert "iter_run_dirs(" in find_run_loading_tokens(synthetic)
+    aliased = "from bu.metrics import load_runs as ingest\ningest(root)\n"
+    assert "load_runs(" in find_run_loading_tokens(aliased)
+    qualified_alias = "import bu.metrics as m\nm.load_runs(root)\n"
+    assert "load_runs(" in find_run_loading_tokens(qualified_alias)
+    assert "metrics.jsonl" in find_run_loading_tokens(
+        "payload = Path('metrics.jsonl').read_text()"
+    )
     assert "METRICS" + "_FILE" in find_run_loading_tokens(
         "path = run_dir / METRICS" + "_FILE")
     assert find_run_loading_tokens("x = 1  # nothing loaded here") == []

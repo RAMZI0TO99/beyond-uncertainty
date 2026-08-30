@@ -7,6 +7,7 @@ identity invariants the labelling protocol depends on.
 from __future__ import annotations
 
 import dataclasses
+import subprocess
 
 import pytest
 
@@ -24,7 +25,7 @@ from bu.config import (
     seeds_for,
 )
 from bu.metrics import RunLogger, load_runs
-from bu.runrecord import read_run_record
+from bu.runrecord import GitState, git_state, read_run_record
 
 # --- identity semantics (Plan §10.7, §7.2) --------------------------------
 
@@ -247,6 +248,56 @@ def test_invalid_specifications_are_rejected():
 
 
 # --- Week 1 Tue: "a dummy run writes a complete, reloadable record" -------
+
+
+def test_a_clean_looking_uncommitted_state_is_not_trustworthy():
+    """P§13.7 requires an exact commit, not merely an empty status output.
+
+    Outside a repository, ``git status --porcelain`` writes its error to
+    stderr and stdout is empty.  Treating that as a clean tree would make a
+    git-less export look more trustworthy than a dirty repository.
+    """
+    state = GitState(commit="UNCOMMITTED", dirty=False, branch="unknown")
+    assert state.trustworthy is False
+
+
+@pytest.mark.parametrize("commit", [None, "a" * 39, "A" * 40, "not-a-sha"])
+def test_malformed_commit_identifiers_are_never_trustworthy(commit):
+    state = GitState(commit=commit, dirty=False, branch="unknown")
+    assert state.identifies_commit is False
+    assert state.trustworthy is False
+
+
+def test_git_state_outside_a_repository_fails_closed(tmp_path):
+    """The real subprocess path must preserve the same property."""
+    state = git_state(tmp_path)
+    assert state.commit == "UNCOMMITTED"
+    assert state.trustworthy is False
+
+
+def test_dirty_diff_preserves_utf8_bytes_on_windows(tmp_path):
+    """Provenance capture must not decode a Git patch through cp1252."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True,
+                   capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"],
+                   cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo,
+                   check=True)
+    tracked = repo / "tracked.txt"
+    tracked.write_text("plain\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True,
+                   capture_output=True)
+    tracked.write_text("unicode en dash – survives\n", encoding="utf-8")
+    expected = subprocess.run(
+        ["git", "diff", "HEAD"], cwd=repo, check=True, capture_output=True
+    ).stdout
+
+    cfg = Config(unit=UnitSpec(), seed=0)
+    RunLogger.start(cfg, root=tmp_path / "runs", repo=repo).close()
+    assert (tmp_path / "runs" / cfg.run_id / "dirty.diff").read_bytes() == expected
 
 
 def test_config_roundtrips_through_yaml(tmp_path):

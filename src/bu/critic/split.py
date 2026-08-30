@@ -169,6 +169,16 @@ def validate_targets(targets: SplitTargets) -> None:
             "bare mapping is refused positively rather than dying in an "
             "AttributeError (D-054)"
         )
+    if not isinstance(targets.observed, Mapping):
+        raise ValueError(
+            f"targets.observed must be a mapping, got "
+            f"{type(targets.observed).__name__} (D-054)"
+        )
+    if not isinstance(targets.floors, Mapping):
+        raise ValueError(
+            f"targets.floors must be a mapping, got "
+            f"{type(targets.floors).__name__} (D-054)"
+        )
     assert_canonical_splits(targets.observed.keys())
     if set(targets.observed.keys()) != set(CANONICAL_SPLITS):
         missing = sorted(set(CANONICAL_SPLITS) - set(targets.observed.keys()))
@@ -179,6 +189,11 @@ def validate_targets(targets: SplitTargets) -> None:
             "(docs/c005_c007_spec.md; D-039, D-118)"
         )
     for split_name, ranges in targets.observed.items():
+        if not isinstance(ranges, Mapping):
+            raise ValueError(
+                f"targets[{split_name!r}] must map observed classes to "
+                f"ObservedTarget values, got {type(ranges).__name__} (D-054)"
+            )
         keys = set()
         for cls in ranges:
             keys.add(_require_exact_int(cls, what=f"targets[{split_name!r}] class key"))
@@ -218,10 +233,29 @@ def validate_targets(targets: SplitTargets) -> None:
                 f"floors[{split_name!r}] must be a SplitFloor, got "
                 f"{type(floor).__name__} (D-054)"
             )
-        _require_exact_int(floor.min_surviving_observed,
-                           what=f"floors[{split_name!r}].min_surviving_observed")
-        _require_exact_int(floor.min_observed_per_class,
-                           what=f"floors[{split_name!r}].min_observed_per_class")
+        min_surviving = _require_exact_int(
+            floor.min_surviving_observed,
+            what=f"floors[{split_name!r}].min_surviving_observed",
+        )
+        min_class = _require_exact_int(
+            floor.min_observed_per_class,
+            what=f"floors[{split_name!r}].min_observed_per_class",
+        )
+        hi0 = int(targets.observed[split_name][ESTIMATION].hi)
+        hi1 = int(targets.observed[split_name][HYPOTHESIS_CLASS].hi)
+        if min_class > min(hi0, hi1):
+            raise ValueError(
+                f"floors[{split_name!r}].min_observed_per_class={min_class} "
+                f"exceeds an observed-class upper bound (hi0={hi0}, hi1={hi1}); "
+                "the registration is intrinsically contradictory before any "
+                "groups are allocated"
+            )
+        if min_surviving > hi0 + hi1:
+            raise ValueError(
+                f"floors[{split_name!r}].min_surviving_observed={min_surviving} "
+                f"exceeds hi0+hi1={hi0 + hi1}; the registration is "
+                "intrinsically contradictory before allocation"
+            )
 
 
 def validate_candidates(candidates: Sequence[SplitCandidate]) -> None:
@@ -248,6 +282,13 @@ def validate_candidates(candidates: Sequence[SplitCandidate]) -> None:
                 "configuration (Sol, delta 54; D-033, D-039)"
             )
         seen.add(c.unit_id)
+        if not isinstance(c.unit_id, str) or not c.unit_id.strip():
+            raise ValueError(
+                f"candidate unit_id {c.unit_id!r} is not a non-blank string. "
+                "The statistical-unit content hash must travel as an explicit "
+                "identifier; an empty or non-string id cannot be joined safely "
+                "(D-033, D-054)"
+            )
         if isinstance(c.observed_label, bool):
             raise ValueError(
                 f"unit {c.unit_id!r} has boolean observed_label "
@@ -280,7 +321,8 @@ def validate_candidates(candidates: Sequence[SplitCandidate]) -> None:
                 "never be transposed with the observed repair-derived label "
                 "(D-128)"
             )
-        if not isinstance(c.comparison_group_id, str) or not c.comparison_group_id:
+        if (not isinstance(c.comparison_group_id, str)
+                or not c.comparison_group_id.strip()):
             raise ValueError(
                 f"unit {c.unit_id!r} has comparison_group_id "
                 f"{c.comparison_group_id!r}. A blank or non-string group id "
@@ -292,6 +334,12 @@ def validate_candidates(candidates: Sequence[SplitCandidate]) -> None:
                 f"unit {c.unit_id!r} carries stage {c.stage!r}, which is "
                 f"missing, 'unknown', or not a registered stage {list(STAGES)}. "
                 "Stage metadata is refused, not defaulted (C-007; D-034)"
+            )
+        if c.stage == "pilot":
+            raise ValueError(
+                f"unit {c.unit_id!r} carries stage 'pilot'. Pilot output travels "
+                "the development road and dead-ends before every critic path, "
+                "even when someone used a confirmatory-range seed (C-007; D-034)"
             )
         if not isinstance(c.label_seeds, tuple) or not c.label_seeds:
             raise ValueError(
@@ -431,11 +479,13 @@ def split_units(
       (group, other-split) moves in canonical order, apply the first move
       strictly reducing the total violation V (lo_eff deficits + hi excesses +
       floor pair-sum deficits), loop to fixpoint.
-    * Phase 3 — V == 0 succeeds. Otherwise refuse, listing every
-      (split, observed class, lo, hi, achieved) with its shortfall or excess
-      and every floor's registered-vs-achieved numbers, and stating whether
-      infeasibility was proven in aggregate or the registered procedure
-      reached a fixpoint. No group splitting, no resampling, no partial output.
+    * Phase 3 — V == 0 succeeds. If the single-move repair stalls, a complete
+      binary feasibility model (SciPy/HiGHS, already pinned by the project)
+      decides the same whole-group constraints. A feasible witness replaces
+      the local minimum; only solver-proven infeasibility is refused. This is
+      required because a feasible assignment may require a swap whose two
+      individual moves are not strictly improving. No group splitting, no
+      resampling, no duplication, no partial output.
 
     Every post-condition is then recomputed FROM THE RETURNED MAPPING and the
     manifest is recounted from (assignment, candidates) — never copied from
@@ -571,7 +621,29 @@ def split_units(
         if not moved:
             break
 
-    # Phase 3 — succeed at V == 0, else refuse with the full arithmetic.
+    # Phase 3 — a stalled single-move repair is not proof of infeasibility.
+    # Ask the complete binary model before issuing that scientific claim.
+    if violation > 0:
+        solved = _complete_assignment(
+            profiles, ranges, lo_eff, floors, seed=seed, order=order
+        )
+        if solved is not None:
+            group_assign = solved
+            counts = {
+                s: {ESTIMATION: 0, HYPOTHESIS_CLASS: 0}
+                for s in CANONICAL_SPLITS
+            }
+            for group, split in group_assign.items():
+                counts[split][ESTIMATION] += profiles[group]["n0"]
+                counts[split][HYPOTHESIS_CLASS] += profiles[group]["n1"]
+            violation = total_violation(counts)
+            if violation != 0:
+                raise ValueError(
+                    "complete allocator returned a witness that violates the "
+                    "registered constraints; refusing internal solver drift "
+                    "before any output exists (D-059, D-072)"
+                )
+
     if violation > 0:
         lines = []
         for s in CANONICAL_SPLITS:
@@ -593,12 +665,11 @@ def split_units(
                 f"OBSERVED LABELS {floors[s][1]}, achieved {min_class}"
             )
         raise ValueError(
-            "infeasible whole-group targets: the registered deterministic "
-            "procedure reached a fixpoint without an assignment satisfying "
-            "every declared observed range and floor (aggregate feasibility "
-            "was not disproven in Phase 0, so this is a conservative "
-            "fail-closed refusal). No group was split, nothing was resampled, "
-            "no partial output exists (docs/c005_c007_spec.md; D-039):\n"
+            "infeasible whole-group targets: the complete binary feasibility "
+            "model proved there is no assignment satisfying every declared "
+            "observed range and floor. No group was split, nothing was "
+            "resampled or duplicated, and no partial output exists "
+            "(docs/c005_c007_spec.md; D-039):\n"
             + "\n".join(lines)
         )
 
@@ -610,6 +681,99 @@ def split_units(
     manifest = _build_manifest(unit_assign, group_assign, candidates, ranges,
                                floors, seed)
     return unit_assign, manifest
+
+
+def _complete_assignment(
+    profiles: Mapping[str, Mapping[str, object]],
+    ranges: Mapping[str, Mapping[int, tuple[int, int]]],
+    lo_eff: Mapping[str, Mapping[int, int]],
+    floors: Mapping[str, tuple[int, int]],
+    *,
+    seed: int,
+    order: Sequence[str],
+) -> dict[str, str] | None:
+    """Complete whole-group feasibility check after heuristic repair stalls.
+
+    One binary variable says whether group ``g`` is assigned to split ``s``.
+    Constraints encode exactly one split per group, every observed-class range,
+    and every registered surviving-count floor. HiGHS returns either a witness
+    or a proof of infeasibility; numerical or limit failures are refused as
+    indeterminate rather than mislabeled infeasible. A stable-hash linear
+    objective selects reproducibly among feasible witnesses but never changes
+    feasibility (D-115).
+    """
+    import numpy as np
+    from scipy.optimize import Bounds, LinearConstraint, milp
+    from scipy.sparse import lil_matrix
+
+    groups = tuple(order)
+    splits = tuple(CANONICAL_SPLITS)
+    n_vars = len(groups) * len(splits)
+    n_rows = len(groups) + 2 * len(splits) + len(floors)
+    matrix = lil_matrix((n_rows, n_vars), dtype=float)
+    lower = np.full(n_rows, -np.inf, dtype=float)
+    upper = np.full(n_rows, np.inf, dtype=float)
+
+    def column(group_index: int, split_index: int) -> int:
+        return group_index * len(splits) + split_index
+
+    row = 0
+    for gi in range(len(groups)):
+        for si in range(len(splits)):
+            matrix[row, column(gi, si)] = 1.0
+        lower[row] = upper[row] = 1.0
+        row += 1
+
+    for si, split in enumerate(splits):
+        for cls, profile_key in ((ESTIMATION, "n0"),
+                                 (HYPOTHESIS_CLASS, "n1")):
+            for gi, group in enumerate(groups):
+                matrix[row, column(gi, si)] = float(profiles[group][profile_key])
+            lower[row] = float(lo_eff[split][cls])
+            upper[row] = float(ranges[split][cls][1])
+            row += 1
+
+    for split, (min_surviving, _) in sorted(floors.items()):
+        si = splits.index(split)
+        for gi, group in enumerate(groups):
+            matrix[row, column(gi, si)] = float(
+                profiles[group]["n0"] + profiles[group]["n1"]
+            )
+        lower[row] = float(min_surviving)
+        row += 1
+
+    objective = np.array([
+        _stable_key(seed, "complete", group, split) / float(2**64)
+        for group in groups
+        for split in splits
+    ])
+    result = milp(
+        c=objective,
+        integrality=np.ones(n_vars, dtype=np.int8),
+        bounds=Bounds(np.zeros(n_vars), np.ones(n_vars)),
+        constraints=LinearConstraint(matrix.tocsr(), lower, upper),
+        options={"presolve": True},
+    )
+    if result.status == 2:  # HiGHS: proven infeasible.
+        return None
+    if not result.success or result.x is None:
+        raise ValueError(
+            f"complete whole-group allocator ended indeterminate "
+            f"(status={result.status}, message={result.message!r}); refusing "
+            "to call a solver failure infeasible (D-039, D-059)"
+        )
+
+    assignment: dict[str, str] = {}
+    for gi, group in enumerate(groups):
+        values = [result.x[column(gi, si)] for si in range(len(splits))]
+        chosen = [si for si, value in enumerate(values) if value > 0.5]
+        if len(chosen) != 1:
+            raise ValueError(
+                f"complete allocator returned non-integral assignment for "
+                f"group {group!r}: {values!r}; refusing solver drift (D-059)"
+            )
+        assignment[group] = splits[chosen[0]]
+    return assignment
 
 
 def _assert_postconditions(
@@ -779,6 +943,17 @@ def eligible_units(
     """
     validate_candidates(candidates)
     assert_intended_class_purity(candidates)
+    if not isinstance(assignment, Mapping):
+        raise ValueError(
+            f"assignment must be a mapping, got {type(assignment).__name__}; "
+            "unknown join shapes fail closed (D-054)"
+        )
+    if not isinstance(traces_by_unit, Mapping):
+        raise ValueError(
+            f"traces_by_unit must be a mapping, got "
+            f"{type(traces_by_unit).__name__}; unknown join shapes fail closed "
+            "(D-054)"
+        )
     cand_ids = {c.unit_id for c in candidates}
     missing = sorted(cand_ids - set(assignment.keys()))
     if missing:
