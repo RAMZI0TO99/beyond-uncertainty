@@ -92,10 +92,11 @@ with RunLogger.start(cfg) as log:
 df = load_runs("runs")   # every run, long format, identity columns attached
 ```
 
-`RunLogger.start` writes the run record before the first metric, so a log never
-exists without the config, seed, commit hash and package versions that produced
-it. Records flush line by line — a killed Kaggle session loses nothing already
-written.
+`RunLogger.start` writes the run record before the first metric, binding the
+config, seed, Git state and package versions that produced it. Outside Git—or
+when any Git query fails—the record says `UNCOMMITTED`/untrustworthy and
+confirmatory consumers refuse it. Records flush line by line, so a killed
+worker loses nothing already written.
 
 ## Layout
 

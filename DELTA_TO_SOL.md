@@ -20,9 +20,8 @@ These are different anchors; do not apply the series directly to `4e55291`.
 
 **Delta 64 carries a student-obligation progress report only** — the student's
 methodology chapter draft (provenance disclosed, D-132) and the end-of-session
-integrity audit. **No Claude work is claimed and no ruling is requested.** Do
-not add fabricated content; the next Claude-side work needs fresh explicit
-authorisation.
+integrity audit. Later Claude/Codex work is carried separately in deltas 65–67;
+the student explicitly authorised it under DEV-013…015.
 
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
@@ -33,9 +32,9 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 64, 65 and 66 (D-008). Deltas 64
-> and 65 remain byte-for-byte historical blocks below; delta 66 corrects and
-> extends them after the post-Fable audit. Deliver all three together.
+> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 64, 65, 66 and 67 (D-008). Deltas
+> 64–66 remain historical blocks below; delta 67 appends the owner-authorised
+> Sol2 Week-6 readiness work. Deliver all four together.
 >
 > COVERS SESSIONS:
 > - 2026-08-23 (delta-63 certification) · The whole prose closeout is CERTIFIED; base → `4e55291`
@@ -43,6 +42,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
 > - 2026-08-23 (session close) · End-of-session audit; three stale claims fixed; everything committed
 > - 2026-08-29 (student-authorised session) · Sol out of the loop by the student's direction; D-133 guard defect fixed; C-005/C-007 built; thirteen stale claims fixed
 > - 2026-08-30 (post-Fable audit) · C-005/C-007/provenance correction
+> - 2026-08-30 (Sol2 Week-6 readiness) · Provenance hardening and Week 6 blocker discovery
 
 ```
 === UPDATE FOR SOL ===
@@ -114,7 +114,6 @@ NUMBERS (D-011)
 
 === END UPDATE ===
 ```
-
 ```
 === UPDATE FOR SOL ===
 DELTA_ID: 65
@@ -318,6 +317,81 @@ NUMBERS (D-011)
   built/fixed    D-138 exact obligation coverage; D-139 complete splitter and
                  loading-boundary hardening/scope marker; D-140 provenance and
                  portable handoff; DEV-014 filed
+
+=== END UPDATE ===
+```
+
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 67
+PREVIOUS_DELTA_ID: 66
+DATE: 2026-08-30
+BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0003) +
+             SOL_BUNDLE.txt generated in the REAL repository after application
+SUBJECT: D-141..D-143 / DEV-015 — provenance and immutable evidence hardened;
+         Week 6 readiness built without execution; launch blockers quantified.
+
+GOVERNANCE. The student designated the active Codex implementation agent
+"Sol2", asked it to work with you instead of the historical local labels
+Fable/Oups, and authorised pulling Week 6 readiness forward. This name grants
+no review authority: you remain the external adversarial reviewer/certifier.
+DEV-015 records the verification lag. You may accept, amend or void the work.
+
+1. PROVENANCE / EVIDENCE (D-141). Git subprocess failures now mean unknown and
+dirty, provenance defaults to the source repository rather than cwd, and new
+records duplicate fit_id. load_runs reconstructs Config type-sensitively,
+cross-checks all unit/config/run/fit/stage/seed copies, binds exact requested
+inventories and exact Git booleans, while preserving historical schema-v2
+records whose only omission is the reconstructable top-level fit_id. Critic
+wrappers bind mutable frame identities. Serialized gate verdicts carry and
+rehash their source rows; each run record must attest the manifest's clean
+commit. Threshold cells are bound to exact baseline Config, fit, member roster
+and common clean commit. The certified filesystem attempts still recompute;
+no statistic or frozen scalar changed.
+
+2. WEEK-6 READINESS (D-142). Added: a one-unit/one-seed baseline + data repair
++ exactly-one-model-repair harness with one shared scale; Plan Table 2's pure
+four-way label mapping (explicitly NOT an evidence adapter); a physical copied
+X/y/groups critic boundary exposing only allowlisted X; and an immutable,
+append-only, fsynced fit-identity batch layer with per-job isolation, crash
+window recovery, result digests, prefix-only durable sync and divergent-remote
+refusal. The registered Experiment-1 plan is 150 unique fits, not 150 stage
+records. No Kaggle session/API or real launch exists.
+
+3. BLOCKERS FOUND, NOT GUESSED THROUGH (D-143). Of 300 registered units,
+173 have no model-repair arm and 127 have exactly one; among the 15 canonical
+repair-validation units, 7 lack one and 8 have one. Also, 30/150 Experiment-1
+fits discharge both exp1 and repair_validation. The default batch refuses the
+whole launch before compute because the current recorder cannot attest two
+roles from one fit without either duplicating the fit or losing an obligation.
+For ordinary units, 285 exp3_repairs obligations have no matching baseline role,
+so the future run-to-label adapter remains scientifically unspecified.
+
+RULINGS REQUESTED:
+  a. Which registered model repair applies to the 173 units, especially the
+     seven canonical repair-validation units?
+  b. What is the evidence contract for one fit discharging multiple roles?
+  c. Should interrupted within-fit state be quarantined/restarted, or must the
+     runner implement model-level checkpoints before unattended execution?
+  d. After those answers, when may real Week 6 execution begin?
+
+4. WHAT DID NOT HAPPEN. No real data, repair verdict, label, exclusion-rate
+observation, reserve use, threshold action, registered split parameter,
+constants.py change, Kaggle launch or experimental fit. Week 6 is partly
+infrastructure-ready, scientifically launch-blocked, and NOT complete.
+
+NUMBERS: focused gate/threshold 190 passed; combined changed subsystems
+465 passed / 1 skipped; full clean suite 1,205 passed / 4 skipped / 0 failed in
+412.07 s. Experimental compute added: zero. Commits: df84ee2 (provenance),
+65058d7 (Week-6 readiness), plus the governance/handoff commit carrying this
+delta. Apply after exact real target 66edf4a11dce39b91974d5c331cca81424f83b6e;
+review cumulatively from certified BASE=4e55291.
+
+HANDOFF CORRECTION. Delta 66's patch list omitted the prior series' 0009 when
+describing its cumulative directory. Use that directory's README/preimage
+manifest, then apply all three new Sol2 patches in numeric order; never use
+git am --3way and never treat reconstructed local commits as remote ancestry.
 
 === END UPDATE ===
 ```

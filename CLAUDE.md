@@ -1,8 +1,9 @@
 # CLAUDE.md — operational handoff
 
-You are Claude, working on a Bachelor's thesis in AI with a student and a second
-agent called Sol. **You have no memory of previous sessions.** This file and
-`PROJECT_STATE.md` are how you recover. Read both before doing anything.
+You are the active implementation agent (Claude/Codex; the student currently
+calls this role **Sol2**) working on a Bachelor's thesis with the student and an
+external reviewing agent called Sol. **You have no memory of previous sessions.**
+This file and `PROJECT_STATE.md` are how you recover. Read both before acting.
 
 ---
 
@@ -50,8 +51,8 @@ is authoritative for state.
 
 | | |
 |---|---|
-| **You** | Hold the repo. All implementation, run orchestration, logging, prose drafts |
-| **Sol** (ChatGPT, one persistent session) | Adversarial reviewer. Never writes project code. **Remembers everything you forget** |
+| **You / Sol2** | Hold the repo. All implementation, run orchestration, logging, prose drafts. “Sol2” is the owner's label, not review authority |
+| **External Sol** (ChatGPT, one persistent session) | Adversarial reviewer/certifier. Never writes project code. **Remembers everything you forget** |
 | **Student** | Owns the thesis, decides, carries files between the two of you |
 
 **The asymmetry that shapes everything:** Sol is continuous, you are not. It is
@@ -292,26 +293,25 @@ Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
 
-**2026-08-30 UPDATE (read D-133 … D-140 and DEV-013/014 before trusting older
-claims):** Fable's student-authorised, without-Sol session was continued by
-Codex with five parallel read-only audits. Reproduced defects were fixed: the
-C-005 heuristic could falsely call a feasible split infeasible; C-007 wrappers
-could detach metadata from a mutable frame; duplicated stages were not checked;
-git-less execution looked trustworthy; and the handoff named the wrong patch
-preimage. **C-007 is now explicitly loading-boundary-only**, because no real
-run-to-label adapter exists (D-139). **Deltas 64–66 are undelivered.** The exact
-real-repository patch target is `66edf4a11dce39b91974d5c331cca81424f83b6e`;
-Sol's review base remains `4e55291`. Split seed/targets remain unregistered,
-`constants.py` is untouched, and no real data, labels, reserve, threshold,
-expansion or experimental compute was touched.
+**2026-08-30 SOL2 UPDATE (read D-133…D-143 and DEV-013…015 before older
+claims):** exact Config/Git/run/fit provenance and serialized gate/threshold
+evidence were hardened; a one-condition repair harness, pure Table-2 mapper,
+physical X/y/groups leakage boundary and crash-safe fit-identity batch layer
+were built. The registered inventory then exposed the scientific blockers the
+runner now refuses: **173/300 units lack a model-repair arm, and 30/150 Exp1
+fits also discharge repair validation**. C-007 remains loading-boundary-only;
+no evidence adapter exists. **Deltas 64–67 are undelivered.** Exact real patch
+target `66edf4a11dce39b91974d5c331cca81424f83b6e`; Sol review base `4e55291`.
 
-**Verification:** focused post-audit run **302 passed / 1 skipped**; full clean
-suite **1,014 passed / 4 skipped / 0 failed** in 406.28 s on the CPU-only host.
+**Verification:** gate/threshold **190 passed**; combined changed subsystems
+**465 passed / 1 skipped**; full clean suite **1,205 passed / 4 skipped / 0
+failed** in 412.07 s on the CPU-only host.
 
 **Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
-AND CERTIFIED** (D-120, 2026-08-23). **No week is open** — the first time since
-Week 3. The certified base is **`4e55291`**; Sol certified delta 63 (D-131)
-and named that exact commit, and said a later one **must not be inferred**.
+AND CERTIFIED** (D-120, 2026-08-23). Calendar time is Week 2 Sunday; scheduled
+Week 6 begins 2026-09-21. The owner opened Week 6 **readiness** early under
+DEV-015, but it is not complete or launch-ready. Certified base is `4e55291`;
+no later certified commit may be inferred.
 
 **The prose closeout is CERTIFIED** (D-125): D-121 … D-124, with four documents
 accepted **in stated roles**. `docs/method_own_voice.md` is a **student-confirmed
@@ -322,11 +322,11 @@ assisted draft — NOT final independently authored thesis prose**;
 pass, strip the interview/provenance apparatus, and keep only wording they can
 personally explain and defend.**
 
-**Scope now:** Sol's Q-012 ruling still bars scheduled W6+ execution. The
-student nevertheless explicitly authorised the D-133…D-140 implementation
-sessions without Sol; DEV-013/014 disclose that verification lag and delta 66
-requests review. Do not extend that authority into real data, labels, reserve,
-registered split constants, threshold work, expansion or experiment execution.
+**Scope now:** the student authorised reversible Week 6 readiness under
+DEV-013…015; external Sol has not reviewed it. Real data, repair verdicts,
+labels, reserve, registered split constants, threshold work, expansion and
+experiment execution remain stopped. Delta 67 asks Sol for the model-repair,
+multi-role record, checkpoint and launch-authority rulings.
 
 **W4/W5 are now certified complete (D-120), but preserve the lesson:** that
 claim was made prematurely before D-113 checked the schedule's *Done when*
@@ -345,7 +345,7 @@ registered construction and takes no threshold.
 verified the record itself — recomputing from the raw repetitions — and ruled it
 complete under DEV-011. **No fourth timing attempt is required.** The W5
 micro-closeout went back as delta 56, which Sol **certified** (D-120,
-2026-08-23) — **Weeks 4 and 5 are complete; no week is open.**
+2026-08-23) — **Weeks 4 and 5 are complete.**
 
 **Gate 1 = FAIL** (D-098), on the five-point MDE. Reliability PASS, permutation
 calibration PASS. **Condition 2 (compute) is NOT ADJUDICABLE across hosts — it
@@ -438,22 +438,25 @@ development diagnostics and are not included in that official total.
 
 ### Next, in order
 
-1. **Local verification is complete:** 1,014/4 green. Patch application itself
+1. **Local verification is complete:** 1,205/4 green. Patch application itself
    must still be checked in the real repository because this export has no
    remote history.
 2. In the **real** repository, checkout exact target `66edf4a…`, verify the
    committed preimage blobs, apply transferable patches in order, then create
    `SOL_BUNDLE.txt` with `BASE=4e55291`.
-3. Deliver undelivered deltas **64, 65 and 66** to Sol. Sol may accept, amend or
-   void the student-authorised C-005/C-007 work.
-4. Complete the student's explain-and-defend walkthrough for the methodology
-   chapter. Week 6 execution remains closed under Q-004/D-120.
-5. Preserve DEV-012's 0.00 zero-inflation planning convention exactly; it is
+3. Deliver undelivered deltas **64–67** to external Sol. Request the four D-143
+   rulings before changing repair coverage or launching any fit.
+4. After Sol rules, implement one-fit/multi-role records and the chosen model
+   repair coverage; then re-audit the complete Week 6 schedule before launch.
+5. Complete the student's explain-and-defend walkthrough and preserve
+   DEV-012's 0.00 zero-inflation planning convention exactly; it is
    not observed, estimated or pilot-derived.
 
-**Do not, without a fresh Sol ruling:** recalibrate the threshold, expand the
-design, consume reserve units, generate repair labels, or run anything on real
-labelled data. The balancer is synthetic-inputs-only until C-005 exists.
+**Do not, without a fresh Sol ruling:** choose the missing model repair, invent
+baseline roles, duplicate multi-role fits, recalibrate the threshold, expand the
+design, consume reserve units, generate repair labels, or run real experiments.
+The splitter/balancer remains synthetic-inputs-only until registered parameters
+and use are authorised.
 
 ### What exists in Week 3
 
@@ -484,7 +487,7 @@ labelled data. The balancer is synthetic-inputs-only until C-005 exists.
   135 digests and recomputing the percentile to a binary-identical float. This
   bullet described delta 50 as carrying "the only live blocker" for several
   sessions after that was false, then said the live delta was 56 after that too
-  had been certified (D-120) — **the live undelivered deltas are 64–66**.
+  had been certified (D-120) — **the live undelivered deltas are 64–67**.
   Deltas 39–63 are all answered or certified (D-089, D-100 … D-102, D-106,
   D-111, D-118 … D-120, D-125, D-131).
 - **W4 Friday has run** (D-103) and **will not be rerun** — the threshold has
@@ -516,11 +519,11 @@ labelled data. The balancer is synthetic-inputs-only until C-005 exists.
   repair efficacy may need reading on the **activation** task, not position
   alone. Tentative — a whole-pool smoke test with no threshold — but check it
   when real repair validation runs (P§7.3, the failure set needs W4 Friday).
-- **C-005 / C-007** — built early under DEV-013/014 and awaiting Sol. C-005 now
-  has a complete feasibility fallback (D-139). C-007 is a hardened loading
-  boundary only: the real run-to-label adapter remains future work, and the
-  legacy balancer input carries no seed/stage provenance. Everything else on
-  the obligation list is done: C-003, C-006 and C-008…C-011.
+- **C-005 / C-007 / Week 6** — built early under DEV-013…015 and awaiting Sol.
+  C-005 has complete feasibility and positive type/seed guards. C-007 is a
+  hardened loading boundary only; the evidence adapter is future work. Week 6
+  has reversible harness/firewall/batch infrastructure, but 173 missing model
+  repairs and 30 shared-role fits block a truthful launch (D-141…D-143).
 
 Still blocked by Sol, correctly: confirmatory collection, registered split
 seed/targets, real critic splitting, and any use of the early implementation.
