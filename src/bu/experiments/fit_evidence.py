@@ -394,6 +394,10 @@ def run_confirmatory_fit(
     if expected_git_commit is not None:
         _require_current_git_commit(expected_git_commit)
     spec = registered_fit_spec(unit, arm=arm, seed=seed)
+    if spec.execution_stage == "config_sweep" and spec.arm == "baseline":
+        # New sweep anchors must be bound to a launch-selected commit, never to
+        # a source document's own claim. No completed sweep history is changed.
+        _require_current_git_commit(expected_git_commit)
     root = Path(out_dir)
     root.mkdir(parents=True, exist_ok=True)
     completed = run_confirmatory(
@@ -409,10 +413,57 @@ def run_confirmatory_fit(
     verified = load_fit_evidence(
         root, expected_git_commit=expected_git_commit
     )
+    if spec.execution_stage == "config_sweep" and spec.arm == "baseline":
+        from . import pool_anchors as A
+
+        commit = _validate_expected_git_commit(expected_git_commit)
+        digest = _sweep_anchor_digest(verified)
+        A.link_pool_anchors(
+            root / A.POOL_ANCHORS_DIRECTORY, root,
+            expected_unit=unit, expected_seed=seed, expected_stage="config_sweep",
+            expected_source_commit=commit, expected_anchor_sha256=digest,
+        )
+        validate_sweep_pool_anchors(root, expected_git_commit=commit)
     return CompletedFitEvidence(
         physical=completed,
         verified=verified,
         evidence_path=evidence_path,
+    )
+
+
+def _sweep_anchor_digest(fit: VerifiedFitEvidence) -> str:
+    if fit.arm != "baseline" or fit.execution_stage != "config_sweep":
+        raise ValueError("sweep anchor boundary requires a config_sweep baseline")
+    path = fit.fit_dir / fit.execution_run_id / METRICS_FILE
+    rows = [_load_json_text(line, what="sweep metrics")
+            for line in path.read_text(encoding="utf-8").splitlines()]
+    matching = [row for row in rows if row.get("event") == "pool_anchors"]
+    if not rows or len(matching) != 1 or matching[0] is not rows[0]:
+        raise ValueError("sweep baseline must bind exactly one anchor before training")
+    first = matching[0]
+    _require_exact_keys(first, {"i", "event", "pool_anchor_schema_version",
+                                "pool_anchor_sha256"}, what="first anchor metric")
+    if (type(first["i"]) is not int or first["i"] != 0
+            or type(first["pool_anchor_schema_version"]) is not int
+            or first["pool_anchor_schema_version"] != 1):
+        raise ValueError("first sweep anchor metric has wrong index/schema")
+    return _require_digest(first["pool_anchor_sha256"], what="pre-training anchor digest")
+
+
+def validate_sweep_pool_anchors(
+    root: str | Path, *, expected_git_commit: str,
+):
+    """Additional Week-7 recovery boundary; legacy fit reader stays unchanged."""
+    from . import pool_anchors as A
+
+    expected = _validate_expected_git_commit(expected_git_commit)
+    verified = load_fit_evidence(root, expected_git_commit=expected)
+    digest = _sweep_anchor_digest(verified)
+    return A.load_pool_anchor_link(
+        Path(root) / A.POOL_ANCHORS_DIRECTORY, root,
+        expected_unit=verified.unit, expected_seed=verified.seed,
+        expected_stage="config_sweep", expected_source_commit=expected,
+        expected_anchor_sha256=digest,
     )
 
 

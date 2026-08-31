@@ -51,7 +51,7 @@ from typing import NoReturn
 from .. import constants as K
 from ..config import Arm, Config, STAGE_SEEDS, TrainConfig, UnitSpec
 from ..durable import atomic_write_json
-from ..env.collect import collect_pools
+from ..env.collect import collect_pools, collect_pools_with_anchors
 from ..metrics import RunLogger
 from ..models.ensemble import assert_pools_match, train_ensemble
 from ..models.uncertainty import (
@@ -363,7 +363,23 @@ def run_confirmatory(
         )
     train = CONFIRMATORY_TRAIN if arm == "baseline" else REPAIRED_TRAIN
     config = Config(unit=unit, arm=Arm(arm), seed=seed, stage=stage, train=train)
-    pools = collect_pools(unit, stage=stage, seed=seed, arm=arm)
+    # New sweep baselines capture their complete symbolic/encoded inputs before
+    # fitting. This is companion provenance, not a change to any legacy stream,
+    # Config identity or model input. Canonical historical paths stay unchanged.
+    anchor = None
+    if stage == "config_sweep" and arm == "baseline":
+        from . import pool_anchors as A
+
+        captured = collect_pools_with_anchors(unit, stage=stage, seed=seed, arm=arm)
+        pools = captured.pools
+        assert_pools_match(pools, unit=unit, arm=arm, stage=stage, seed=seed)
+        anchor = A.write_pool_anchors(
+            Path(out_dir) / A.POOL_ANCHORS_DIRECTORY, captured,
+            unit=unit, seed=seed, stage=stage, source_commit=git.commit,
+        )
+        A.assert_pools_equal(pools, anchor.pools)
+    else:
+        pools = collect_pools(unit, stage=stage, seed=seed, arm=arm)
     assert_pools_match(pools, unit=unit, arm=arm, stage=stage, seed=seed)
     pool_digest = _digest_pool(pools)
 
@@ -378,6 +394,11 @@ def run_confirmatory(
         "role_run_ids": role_run_ids,
     }
     with RunLogger.start(config, root=root, extra=extra) as logger:
+        if anchor is not None:
+            # The first fsynced metric binds the before-training anchor through
+            # the existing metrics digest, preserving the strict run/fit schema.
+            logger.log(event="pool_anchors", pool_anchor_schema_version=1,
+                       pool_anchor_sha256=anchor.anchor_sha256)
         ensemble = train_ensemble(
             unit, pools, config.train, stage=stage, seed=seed, arm=arm,
             granularity=CONFIRMATORY_GRANULARITY,

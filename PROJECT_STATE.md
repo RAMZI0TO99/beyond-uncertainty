@@ -4,22 +4,13 @@
 
 This is the shared working file for the project. It is written by Claude/Codex, reviewed by Sol only where an entry says so, and carried between sessions by the student. **It travels with `DECISIONS.md`** — the decisions ledger moved there when this file outgrew its paste cap (D-037), and §3 below indexes it. If a fact about this project is not in one of the two, it does not survive the end of a Claude session.
 
-**The memory asymmetry — read this before anything else.** Sol runs in one continuous session and never forgets. Claude is closed and reopened repeatedly and starts each session blank. This file exists primarily so **Claude can reconstruct** what Sol simply remembers. Two consequences:
-
-- Claude reads this file **first, in full**, at the start of every session — before touching code, before answering anything.
-- Sol is **not** re-fed the whole file each time. Sol gets `DELTA_TO_SOL.md`. Re-pasting everything wastes the student's effort and buries new information in text Sol already has.
-
-**Corollary — Sol is the continuity check on Claude.** If Claude returns after a reset and contradicts something settled weeks ago, Sol is the one who will notice. That is a real duty, not a courtesy.
+**The memory asymmetry — read this before anything else.** Sol runs in one continuous session and never forgets. Claude is closed and reopened repeatedly and starts each session blank. This file exists primarily so **Claude can reconstruct** what Sol simply remembers. Two consequences: Claude reads this file **first, in full**, at the start of every session — before touching code, before answering anything. Sol is **not** re-fed the whole file each time. Sol gets `DELTA_TO_SOL.md`. Re-pasting everything wastes the student's effort and buries new information in text Sol already has. **Corollary — Sol is the continuity check on Claude.** If Claude returns after a reset and contradicts something settled weeks ago, Sol is the one who will notice. That is a real duty, not a courtesy.
 
 **Paste rule.** This file must stay small enough to paste into a chat window. Target ≤ 500 lines. When §7 grows past that, move closed phases to `PROJECT_STATE_ARCHIVE.md` and leave a one-line pointer. Never let this file become the thing nobody reads.
 
 **Source of truth.** The two plan documents are authoritative for *design*; this file is authoritative for *state*. Where they conflict on design, the plan wins and the conflict goes in §4 as a deviation. This file never silently overrides the plan.
 
-- Claude's operational handoff, read first at session start: `CLAUDE.md`
-- Plan: `docs/thesis_project_plan_v1_2.docx` (v1.2, design frozen) — cited below as **P§n**
-- Schedule: `docs/thesis_day_by_day_schedule_v1_2.docx` (v1.2, 20 weeks) — cited below as **S§Wn**
-
----
+- Operational handoff, read first at session start: `CLAUDE.md`; plan: `docs/thesis_project_plan_v1_2.docx` (v1.2, design frozen), **P§n**; schedule: `docs/thesis_day_by_day_schedule_v1_2.docx` (v1.2, 20 weeks), **S§Wn**.
 
 ## 0. How to use this file
 
@@ -33,20 +24,18 @@ This is the shared working file for the project. It is written by Claude/Codex, 
 
 **Student.** To Sol: `DELTA_TO_SOL.md` only (first time or after a Sol session loss: `SOL_BRIEF.md` + this whole file). To Claude: the whole file at every session start, then Sol's verdict blocks as they arrive. Keep this file in version control so its own history is diffable.
 
----
-
 ## 1. Snapshot — *rewritten each session, always current*
 
 | | |
 |---|---|
 | **Last updated** | 2026-08-31 |
 | **Updated by** | Codex — owner label **Sol2** (DEV-015); external Sol remains reviewer |
-| **Phase** | **Phase B — Week-7 scientific amendments and reporting, with Week-6 student prose still open**. Phase A (Weeks 1–5) remains complete/certified; Gate 1 FAIL (D-120/D-152) |
+| **Phase** | **Phase B — verified Week-7 execution implementation (D-157/D-158); CPU timing and research runs next, with Week-6/7 student prose still open**. Phase A (Weeks 1–5) remains complete/certified; Gate 1 FAIL (D-120/D-152) |
 | **Current week / day** | Calendar **Week 3 Monday** (2026-08-31); schedule dates unchanged. Owner opened **Week-7 implementation** ahead of external review (D-153/DEV-018). Week-6 machine work: smoke 60/60 plus observed label 0 (D-149), Experiment 1 150/150 complete (D-150), strict >20% correction (D-151). **Week 6 still needs the student's ~400-word own-voice closeout; external certification is separate and pending.** Gate 1 FAIL; compute NOT ADJUDICABLE; no expansion |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | This export is a reconstructed local `master` with no remote; its commits are handoff artefacts, not project history. **Exact real-repository patch target: `66edf4a11dce39b91974d5c331cca81424f83b6e`** (post-D-132 state proved by the existing bundle). **Sol-certified review base remains `4e55291e08396ffe4a903ae73b1390396675643b`** (D-131); use `BASE=4e55291` for Sol's diff after applying the series, but never apply the series directly to that older tree (D-140) |
-| **Tests** | D-154/D-155 full CPU suite: **2,293 passed, 7 expected skips, 0 failures in 1,679.75 s**. XML SHA256 `6b8c98295b9fbb8765d088e52d6363e539884a98dca67ba3ffd148f67f92dab8`; focused runs overlap and are not added. D-153's prior failure/correction remains recorded in the ledger |
+| **Tests** | Full frozen-source CPU suite: **4,037 passed, 8 expected skips, 0 failures in 3,295.48 s**, XML SHA256 `1031c1a5d1202e3fa1160030354db522eb0edd6a3444039de8938a5a30978e7b`. Skips: three CUDA, four Windows symlink-permission checks, one inapplicable identity-field check. Focused and agent runs in `docs/week7_execution_log.md` overlap, not additive |
 | **Compute used** | **0 GPU-hours**. Prior official: 675 CPU member fits. Week 6 adds **210 physical sidecars / 890 member-model trainings**: smoke 60/140 plus Experiment 1 150/750, pending Sol; no retry, timeout or rerun. D-156 analysis reused those 150 fits: 0 fits/labels/GPU, 184.454924 s including preserved finalization correction |
 | **Design scale** | 300 units in **240 comparison groups** · intended balance **150/150**, group counts 125/115 · D-154 adds 638 repair models: **8,835 required model trainings** including 150 ablations. This is not a runtime estimate or proof of label completeness |
 **Hypothesis status**
@@ -58,7 +47,7 @@ This is the shared working file for the project. It is written by Claude/Codex, 
 | H3 | Learned critic beats fitted (error, disagreement) rule by > 5 pts | Not tested | W15 Fri |
 **Done — Weeks 1 and 2, every "Done when" criterion verified rather than asserted.**
 Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and the ledger: Week 1 build and audit (D-005, D-006, D-015, D-016); Week 2 enumerator, policy, collector and audit (D-018 … D-021); Sol's early rulings (D-009, D-012, D-013); all eight 2026-08-16 reviews actioned with every finding independently verified (D-025 … D-057 — 375 phantom fits, the D-042 bound-as-measurement and D-044 estimand-comparison lessons); Week 3 Mon–Wed built then substantially corrected (non-stationary policy, derived split, degenerate N=100 bootstrap — D-046 … D-057); the D-030 named streams verified on their pairing properties (D-038, D-039).
-**Next:** D-156's one authorized source-bound report/figures are complete: all five configurations meet the disagreement criterion; error trends are diagnostic; no new fit/label/GPU. Full H1 is not adjudicated. Build D-155's versioned sweep pairing, forward symbolic anchors, historical-fit reuse and ordinary-label adapter before any new baseline/repair launch. Student Week-6/7 own-voice work and external Sol certification remain open; all writes stay project-local.
+**Next:** save the verified implementation as a clean revision, measure local CPU timing, then execute the exact Week-7 jobs. D-157 preserves 150 old E1 baselines and schedules 474 new physical fits (90 baselines +384 repairs); Exp2A needs 95 new baselines plus five verified historical reuses; first sweep needs three anchored baselines and six paired repairs. All required historical source/copy pairs were reverified; launch reopens them again. No new production fit or label yet. D-156's single report stays unchanged; D-158 is preparation, not H2 adjudication. Student own-voice work and external certification remain open; all writes stay project-local.
 
 **Certified Weeks 1–5 history:** detailed development results, corrections and provenance remain in `PROJECT_STATE_ARCHIVE.md` and D-046–D-120. The W4 gate passed at rung 0; threshold calibration is permanently frozen; no historical fit or result is being replaced.
 
@@ -303,6 +292,9 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-154** | 2026-08-31 | **CHANGE RECORD: fixed width-512 extension and five-configuration H1 reporting/timing** — owner delegates scientific choices; prior exposure disclosed | Owner-authorised — for Sol |
 | **D-155** | 2026-08-31 | **225 sweep baseline/repair stream mismatches reproduced** — fail closed before fitting; no silent historical stream rewrite | Finding + guard — for Sol |
 | **D-156** | 2026-08-31 | **Source-bound Experiment-1 report: 5/5 disagreement criteria met** — amended operational conjunction; full H1 and labels remain open | Result — for Sol |
+| **D-157** | 2026-08-31 | **Week-7 execution order and forward validation scheduling** — unchanged seed budgets; exact historical reuse, anchors and separate label boundaries | Owner-authorised — for Sol |
+| **D-158** | 2026-08-31 | **Secondary H2 diagnostic definition** — per-seed failure-set Pearson, no new H2 decision or repeat trend test | Owner-delegated clarification — for Sol |
+| **D-159** | 2026-08-31 | **Engineering input exposure and fixture isolation** — disclosed registered simulation inputs, untrained doubles only; planned seeds retained without a claim of pristine input blinding | Owner-delegated continuation — for Sol |
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
 Anything not done as written, and why. **The schedule requires several of these to appear in the thesis methodology**: the reliability-gate rung reached, the PPO substitution, any repair-budget or configuration-count reduction, any cut experiment, and the W2 decision on whether the Experiment 2A conditions are drawn from the configuration sweep or are additional to it.
@@ -399,6 +391,14 @@ Format: `Week n Day | what was skipped or substituted | why | goes in methodolog
 ### DEV-019 · 2026-08-31 · Owner delegates scientific amendments before external review
 **Deviation:** D-154 adds a fixed width-512 model-repair arm outside the original width grid, retains all existing conditions/interventions, and specifies five-configuration reporting plus one Week-7 analysis reused at Week 10. Prior data existence, smoke outcome and two exposed Experiment-1 per-fit summaries are disclosed. These are post-collection amendments, not original fully blinded preregistration; external Sol remains reviewer. **Goes in methodology:** yes. Scientific authority is delegated; student authorship is not.
 
+### DEV-020 · 2026-08-31 · Registered Experiment-1 validation jobs brought forward to Week 7
+
+**Deviation:** D-157 moves six already-owed 20-seed validation ladders from D-154's Week-9 timing to satisfy Week-7 labeling. No added seeds, fits, outcome-dependent ordering, altered inference or moved gate; the owner's continuation/scientific delegation covers this scheduling choice. **Goes in methodology:** timing disclosure only; scientific procedure unchanged. External review and human prose remain open.
+
+### DEV-021 · 2026-08-31 · Registered simulation inputs regenerated in engineering fixtures
+
+**Deviation:** three new fixture families regenerated some registered >=1000 simulation pools with fake Git and untrained model doubles. No optimizer-trained study fit entered a result, but this is input exposure and contradicts a blanket claim that all development input access stays below D-034's line. D-159 records it before production, isolates subsequent fixture input RNGs to development seeds, and retains the exact predeclared study seeds/procedures under the owner's delegation; no result-driven exclusion or replacement seeds. **Goes in methodology:** disclose this limited engineering exposure; namespace membership is not proof of blinding. Sol review remains pending.
+
 ## 5. Gate records
 
 A gate is signed off in writing, with the verdict and the evidence behind it, on the day it falls. **Slip is absorbed by catch-up days, never by moving a gate.**
@@ -494,6 +494,6 @@ Closed entries are in `PROJECT_STATE_ARCHIVE.md` in chronological order; §3 ind
 *(All prior sessions through the post-Fable audit are archived in full because this file repeatedly reached its 500-line paste cap, never because their decisions stopped mattering.)*
 *(The completed D-153 implementation session is archived verbatim.)*
 
-### 2026-08-31 (Sol2 scientific decisions) · Fixed repair extension and H1 reporting amendment · Claude
+### 2026-08-31 (Sol2 Week-7 execution) · Verified launch, anchors and registered repairs · Claude
 
-Owner authorization recorded as D-154/DEV-019 before dependent implementation. Two independent reviews supported the fixed extension and separate trend reports. Main reproduced the additional 225-unit sweep stream defect (D-155); canonical evidence is unaffected. New code and synthetic verification began without opening new scientific results or training models. Closeout: full CPU suite **2,293/7/0 in 1,679.75 s**; five independent agents completed their implementation/review assignments. At clean commit `ee02542`, D-156 reopened all 150 source fits and independent project copies, wrote one immutable report plus two visually checked figures, then preserved an orchestration finalization failure caused by comparing different digest payloads. Correct verification found no changed source; report/figures were not recomputed. All 5/5 disagreement intervals are strictly negative; diagnostic error rho is -1 in all five. No fit, label or GPU was added. Full H1, repair labels, student prose and Sol certification remain open. Delta 69 and `docs/week7_experiment_1_results.md` carry the complete record.
+D-157/DEV-020 brings only the six registered Experiment-1 validation ladders forward from Week 9 to satisfy Week-7 labeling, preserving exact seeds and scientific rules. The D-154–D-156 closed session was archived verbatim. Parallel implementation covers before-training sweep anchors, exact Exp2A reuse/launch, ordinary labels, architecture-aware timing and E1 repairs. Initial tests: launch28; sweep integration8; neighboring regression312 passed/1 skip. Counts overlap. No new production fit or label yet; CPU tests only, GPU unused. All work stays project-local. See docs/week7_execution_log.md and delta70; full-week completion, human prose and external certification are not claimed.

@@ -382,3 +382,18 @@ D-156 NUMBERS: fitcommit f036fe0; analysis ee02542; 150existingfits/30conditions
 D-156 EVIDENCE/CORRECTION: same-volume independent artifact copy, contentdigest 31ec89a4cd8de4e6842d3f80d2f6d2c8c3c55c424479618b2793271ad4c04d58. First finalization command exited1 by comparing unlike digest payloads after publishing report/figures; preserved correction reverified all150source-copy attestations, found no source change and did not rerun/overwrite analysis. Two PNGs visually checked; all150 figure/report rows exact. AI results draft provided, not student authorship. External certification pending.
 === END UPDATE ===
 ```
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 70
+PREVIOUS_DELTA_ID: 69
+DATE: 2026-08-31
+SUBJECT: D-157/DEV-020 — Week-7 exact launch, anchors and registered repair execution.
+COVERS SESSIONS: 2026-08-31 (Sol2 Week-7 execution) · Verified launch, anchors and registered repairs
+STATUS: implementation in progress, not week completion or certification; all preceding deltas preserved undelivered.
+SCHEDULE: six existing E1 validation ladders move W9→W7, exact20seeds; other24units retain3seeds. Rederived474newphysicalfits=90baselines+384repairs,834membertrainings;150oldbaselines preserved,102neededbylabels. No added overall obligations. Complete225-group sweep order fixed bygroupID; onlyfirst3fits+95newExp2A enabled initially. FivehistoricalExp2A fits MUSTbe reused, neverreplacement-trained.
+ENGINEERING: beforetrain sweep symbolic/array anchors, firstmetric digest binding andafterfit link; oldfit schemas/keys unchanged. Separate ordinarycanonical9-source labels; legacy20-seed API andD155sweeprepair guard remain. Architecture-aware timing and launch/recovery verification inprogress. Initialtests312pass/1skip plusoverlappingfocusedruns; no newproductionfit/label/GPU yet. Fullcounts/evidence follow inthisdelta anddocs/week7_execution_log.md. Studentownwriting andyourcertification remainopen.
+D-158: originalP4.2/10.3 leaves secondarycorrelation details unspecified. Ownerdelegated clarification fixed before diagnosticimplementation: Pearson percondition/perseed on strictbaselinefailures, existingnormalizedarrays, undefinedforconstant/<2points, emptyfailureblocks; no aggregatecorrelation/pvalue/CI/H2decision. Primaryratio unchanged; mean/sampleSDddof1 acrossseeds, no transitionpooling. Postcollection andafterD156 exposure explicitlydisclosed; no newdiagnosticoutcomes consulted. See docs/week7_secondary_diagnostic_spec.md. Tests pending atregistration; noH2orH1rerun.
+D-159/DEV-021: real-collector fixtures regenerated some registered>=1000inputpools withfakeGit/untraineddoubles; no trainedstudyfit enteredresults, but inputexposure isdisclosed, noterased orcalled pristineblinding. Subsequentfixtures use a tests-only collector RNG remap1000+i→developmenti, keepingfakemetadataonlyforboundarytests. Productionkeys/seedpolicy/constants/artifactsunchanged. Underownerdelegation retainfixedD157jobs/seeds; no outcome-driven exclusion/replacement/tuning. Detailedscope/correction inledger/worklog; yourreviewpending. Engineering checkpoint585pass/1skip; finalorchestration/fullsuite andrealexecution stillpendingatthisentry.
+=== END UPDATE ===
+```

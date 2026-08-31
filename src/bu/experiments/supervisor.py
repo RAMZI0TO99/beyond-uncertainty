@@ -56,6 +56,11 @@ JobCallback = Callable[[Path, Any], Mapping[str, Any]]
 
 _SAFE_COMPONENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}\Z")
 
+# Parent-local ownership guard, not a persistent recovery authority. A process
+# stays here until its death is confirmed and it is joined. Even a second
+# interruption during cleanup must not let a caller's finally release a lease.
+_WORKERS_REQUIRING_REAP: set[Any] = set()
+
 
 class DivergentEvidenceError(ValueError):
     """Raised when a completed attempt conflicts with published evidence."""
@@ -106,6 +111,11 @@ class BatchLease:
     def release(self) -> Path:
         if self._released:
             return self.history_dir / f"{self.name}.{self.token}.released.json"
+        if _WORKERS_REQUIRING_REAP:
+            raise LeaseConflictError(
+                "supervised worker cleanup is incomplete; retaining the active "
+                "lease until worker death is confirmed, never age-only recovery"
+            )
         destination = self.history_dir / (
             f"{self.name}.{self.token}.released.json"
         )
@@ -429,22 +439,33 @@ def _wait_for_worker(
             break
 
     if timed_out:
-        process.terminate()
-        process.join(2.0)
-        if process.is_alive():
-            process.kill()
-            process.join(2.0)
+        _stop_and_join_worker(process)
     else:
         remaining = max(0.0, deadline - time.monotonic())
         process.join(remaining)
         if process.is_alive():
             timed_out = True
-            process.terminate()
-            process.join(2.0)
-            if process.is_alive():
-                process.kill()
-                process.join(2.0)
+            _stop_and_join_worker(process)
     return message, timed_out
+
+
+def _stop_and_join_worker(process: multiprocessing.Process) -> None:
+    """Bound cleanup to four seconds, but never mistake a kill request for death.
+
+    If cleanup itself fails/is interrupted, the parent-local guard retains the
+    lease. This touches only the exact child handle created by this supervisor,
+    never other Python processes on the device.
+    """
+    if process.pid is None:
+        raise RuntimeError("worker start was interrupted before its PID was known; cleanup is unconfirmed")
+    if process.is_alive():
+        process.terminate()
+    process.join(2.0)
+    if process.is_alive():
+        process.kill()
+        process.join(2.0)
+    if process.is_alive() or process.exitcode is None:
+        raise RuntimeError(f"supervised worker {process.pid} did not stop; active lease must be retained")
 
 
 def _quarantine(staging: Path, quarantine_root: Path) -> Path:
@@ -531,14 +552,32 @@ def run_isolated_attempt(
         args=(callback, str(staging), payload, send_connection),
         name=f"bu-job-{safe_job_id[:40]}",
     )
-    process.start()
-    child_pid = process.pid
-    send_connection.close()
+    _WORKERS_REQUIRING_REAP.add(process)
     try:
+        process.start()
+        child_pid = process.pid
+        send_connection.close()
         message, timed_out = _wait_for_worker(
             process, receive_connection, timeout
         )
+        if process.is_alive() or process.exitcode is None:
+            raise RuntimeError("worker wait returned without confirmed process death")
+        _WORKERS_REQUIRING_REAP.discard(process)
+    except BaseException as exc:
+        # KeyboardInterrupt and SystemExit must follow the same child-ownership
+        # cleanup as ordinary exceptions, before any launcher can release.
+        _stop_and_join_worker(process)
+        _WORKERS_REQUIRING_REAP.discard(process)
+        _write_json_exclusive(staging / "parent_interruption.json", {
+            "schema_version": 1, "job_id": safe_job_id,
+            "attempt_token": attempt_token, "parent_pid": os.getpid(),
+            "child_pid": process.pid, "error_type": type(exc).__name__,
+            "error": str(exc), "worker_stopped_and_joined": True,
+            "status": "interrupted_unpublished_attempt", "finished_at": _utc_now(),
+        })
+        raise
     finally:
+        send_connection.close()
         receive_connection.close()
 
     elapsed = time.monotonic() - started_monotonic

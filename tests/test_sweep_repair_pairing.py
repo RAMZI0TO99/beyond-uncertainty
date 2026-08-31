@@ -54,6 +54,7 @@ def boundary_stubs(monkeypatch):
     stubs = {}
     for name in (
         "git_state", "_pin_threading", "torch_threading", "collect_pools",
+        "collect_pools_with_anchors",
         "assert_pools_match", "_digest_pool", "Path", "train_ensemble",
         "_digest_file", "atomic_write_json",
     ):
@@ -82,6 +83,7 @@ def _allow_until_pools(stubs):
         stubs[name].side_effect = None
         stubs[name].return_value = result
     stubs["collect_pools"].side_effect = _ReachedPools
+    stubs["collect_pools_with_anchors"].side_effect = _ReachedPools
 
 
 def _assert_wrong_pairing(error, unit, stage, purposes):
@@ -176,8 +178,8 @@ def test_all_75_canonical_units_keep_valid_registered_repairs(unit, boundary_stu
     assert boundary_stubs["collect_pools"].call_count == len(fits)
 
 
-def test_every_baseline_role_is_untouched(boundary_stubs, monkeypatch):
-    """All 1,350 role executions (1,275 fits), including sweep and shared roles."""
+def test_every_baseline_role_remains_unblocked_by_repair_guard(boundary_stubs, monkeypatch):
+    """All 1,350 roles reach collection; sweep additionally captures anchors."""
     _allow_until_pools(boundary_stubs)
     # Baselines must not even derive a repair-pairing stage or stream key.
     forbidden = Mock(side_effect=AssertionError("baseline entered repair pairing"))
@@ -195,7 +197,9 @@ def test_every_baseline_role_is_untouched(boundary_stubs, monkeypatch):
                     out_dir=OUT_DIR, _fit_roles=fit.roles,
                 )
             count += 1
-    assert count == boundary_stubs["collect_pools"].call_count == 1350
+    assert count == 1350
+    assert boundary_stubs["collect_pools"].call_count == 675
+    assert boundary_stubs["collect_pools_with_anchors"].call_count == 675
     forbidden.assert_not_called()
 
 

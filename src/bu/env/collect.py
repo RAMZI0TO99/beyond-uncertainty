@@ -250,6 +250,27 @@ class TransitionDataset:
         )
 
 
+@dataclass(frozen=True)
+class SymbolicTransition:
+    """Experimenter-only latent anchor; never a model/critic input.
+
+    GridState and GridObject are frozen, so holding these objects at the
+    transition boundary captures their values without copying or RNG draws.
+    """
+
+    state: GridState
+    action: int
+    next_state: GridState
+    episode: int
+    step: int
+
+
+@dataclass(frozen=True)
+class CapturedDataset:
+    dataset: TransitionDataset
+    transitions: tuple[SymbolicTransition, ...]
+
+
 def collect(
     unit: UnitSpec,
     n_transitions: int | None = None,
@@ -288,6 +309,50 @@ def collect(
     condition's held-out data does not depend on how much training data it
     happened to have. **The registered N is training transitions only.**
     """
+    return _collect(
+        unit, n_transitions, seed=seed, stage=stage, arm=arm, pool=pool,
+        episode_length=episode_length, policy=policy, anchors=None,
+    )
+
+
+def collect_with_anchors(
+    unit: UnitSpec,
+    n_transitions: int | None = None,
+    *,
+    seed: int = 0,
+    stage: str = "pilot",
+    arm: str = "baseline",
+    pool: str = "train",
+    episode_length: int = DEFAULT_EPISODE_LENGTH,
+    policy: Policy | None = None,
+) -> CapturedDataset:
+    """Additive symbolic capture through the *same* collection loop.
+
+    All legacy size/policy/seed guards still apply. No callback, second pass
+    through the environment or second policy invocation is involved.
+    Persistence and a baseline-only evidence boundary live in pool_anchors.
+    """
+    anchors: list[SymbolicTransition] = []
+    dataset = _collect(
+        unit, n_transitions, seed=seed, stage=stage, arm=arm, pool=pool,
+        episode_length=episode_length, policy=policy, anchors=anchors,
+    )
+    return CapturedDataset(dataset, tuple(anchors))
+
+
+def _collect(
+    unit: UnitSpec,
+    n_transitions: int | None,
+    *,
+    seed: int,
+    stage: str,
+    arm: str,
+    pool: str,
+    episode_length: int,
+    policy: Policy | None,
+    anchors: list[SymbolicTransition] | None,
+) -> TransitionDataset:
+    """Shared implementation; only the private sink distinguishes capture."""
     if pool not in POOL_PURPOSES:
         raise ValueError(f"unknown pool {pool!r}; expected {sorted(POOL_PURPOSES)}")
     # Episode length is frozen experimental procedure (D-052, D-054): it sets
@@ -366,6 +431,8 @@ def collect(
                 break
             action = pol.act(state)
             nxt = env.transition(state, action)
+            if anchors is not None:
+                anchors.append(SymbolicTransition(state, action, nxt, episode, step))
 
             obs_list.append(env.encoder.encode(state))
             next_list.append(env.encoder.encode(nxt))
@@ -468,6 +535,36 @@ class Pools:
     train: TransitionDataset
     validation: TransitionDataset
     evaluation: TransitionDataset
+
+
+@dataclass(frozen=True)
+class CapturedPools:
+    """Ordinary training pools plus separate, experimenter-only anchors."""
+
+    pools: Pools
+    train: tuple[SymbolicTransition, ...]
+    validation: tuple[SymbolicTransition, ...]
+    evaluation: tuple[SymbolicTransition, ...]
+
+
+def collect_pools_with_anchors(
+    unit: UnitSpec,
+    *,
+    stage: str,
+    seed: int,
+    arm: str = "baseline",
+    n_transitions: int | None = None,
+    episode_length: int = DEFAULT_EPISODE_LENGTH,
+) -> CapturedPools:
+    """Capture all three disjoint pools without changing their generation."""
+    common = dict(stage=stage, seed=seed, arm=arm, episode_length=episode_length)
+    train = collect_with_anchors(unit, n_transitions, pool="train", **common)
+    validation = collect_with_anchors(unit, None, pool="validation", **common)
+    evaluation = collect_with_anchors(unit, None, pool="evaluation", **common)
+    return CapturedPools(
+        Pools(train.dataset, validation.dataset, evaluation.dataset),
+        train.transitions, validation.transitions, evaluation.transitions,
+    )
 
 
 def collect_pools(

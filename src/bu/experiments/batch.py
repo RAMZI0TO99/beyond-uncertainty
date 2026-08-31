@@ -630,6 +630,10 @@ def _validate_fit_evidence(
         raise ValueError("fit evidence disagrees with the batch job identity or roles")
     if result.get("fit_evidence_digest") != verified.execution_digest:
         raise ValueError("job result is not bound to its fit-evidence execution digest")
+    if job.stage == "config_sweep" and job.arm == "baseline":
+        from .fit_evidence import validate_sweep_pool_anchors
+
+        validate_sweep_pool_anchors(job_dir, expected_git_commit=expected_git_commit)
 
 
 def _recover_result(

@@ -154,6 +154,72 @@ def test_success_runs_in_spawned_child_and_parent_publishes_json(tmp_path):
     assert not list((tmp_path / "staging").iterdir())
 
 
+@pytest.mark.parametrize('exception', [KeyboardInterrupt, SystemExit, RuntimeError])
+def test_parent_interruption_stops_and_joins_child_before_lease_release(tmp_path, monkeypatch, exception):
+    lease = acquire_batch_lease(tmp_path, lease_name='interruption-test')
+    observed = []
+    original_stop = supervisor._stop_and_join_worker
+    def stop(process):
+        assert lease.path.exists()
+        original_stop(process)
+        observed.append(process)
+        assert not process.is_alive() and process.exitcode is not None
+    def interrupt(*args):
+        raise exception('planted parent interruption')
+    monkeypatch.setattr(supervisor, '_stop_and_join_worker', stop)
+    monkeypatch.setattr(supervisor, '_wait_for_worker', interrupt)
+    with pytest.raises(exception, match='planted parent interruption'):
+        try:
+            run_isolated_attempt(slow_job, root=tmp_path, job_id='interrupt',
+                                 payload=30, timeout_seconds=60)
+        finally:
+            lease.release()
+    assert len(observed) == 1
+    assert not lease.path.exists()
+    assert not (tmp_path / 'jobs' / 'interrupt').exists()
+    receipt = next((tmp_path / 'staging').glob('*/parent_interruption.json'))
+    record = read_json(receipt)
+    assert record['worker_stopped_and_joined'] is True
+    assert record['error_type'] == exception.__name__
+    assert not supervisor._WORKERS_REQUIRING_REAP
+
+
+def test_unconfirmed_worker_cleanup_cannot_release_lease(tmp_path, monkeypatch):
+    lease = acquire_batch_lease(tmp_path, lease_name='unconfirmed-worker')
+    # A fabricated handle avoids deliberately leaking a real process in a test.
+    monkeypatch.setattr(supervisor, '_WORKERS_REQUIRING_REAP', {object()})
+    with pytest.raises(LeaseConflictError, match='cleanup is incomplete'):
+        lease.release()
+    assert lease.path.exists()
+    assert not list(lease.history_dir.glob('*.released.json'))
+    supervisor._WORKERS_REQUIRING_REAP.clear()
+    lease.release()
+
+
+def test_cleanup_escalates_to_kill_and_still_checks_actual_death():
+    class Worker:
+        pid = 123456
+        exitcode = None
+        alive = True
+        stopped = False
+        def is_alive(self):
+            return self.alive
+        def terminate(self):
+            self.stopped = True
+        def join(self, timeout):
+            assert timeout <= 2
+        def kill(self):
+            assert self.stopped
+            self.alive, self.exitcode = False, -9
+    worker = Worker()
+    supervisor._stop_and_join_worker(worker)
+    assert not worker.is_alive() and worker.exitcode == -9
+    worker = Worker()
+    worker.kill = lambda: None
+    with pytest.raises(RuntimeError, match='did not stop'):
+        supervisor._stop_and_join_worker(worker)
+
+
 def test_separate_staging_root_publishes_only_to_output_root(tmp_path):
     output_root = tmp_path / "output"
     staging_root = tmp_path / "external-staging"
