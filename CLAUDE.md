@@ -6,7 +6,9 @@ implementation log: fixed width-512 extension for 173 previously uncovered
 conditions; separate five-configuration H1 reporting, one Week-7 analysis reused
 at Week 10; prior exposure disclosed. These choices no longer await permission.
 External Sol certification remains pending (deltas 64–69). Full verification:
-2,293 passed, 7 expected skips, 0 failures. The 225-unit sweep repair stream mismatch
+2,293 passed, 7 expected skips, 0 failures. D-156's single source-bound report
+found all 5/5 disagreement criteria met; it is an amended operational result,
+not full H1 adjudication. The 225-unit sweep repair stream mismatch
 must refuse before execution until a versioned baseline-pairing correction is
 verified. Do not silently change old stream meanings or retrain old fits.
 

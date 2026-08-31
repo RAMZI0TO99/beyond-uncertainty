@@ -117,3 +117,36 @@ Main will commit this verified amendment before generating the authorized
 Experiment-1 coefficient report and figures from the existing 150 sources.
 The frozen amendment still hashes to
 `4a856c65b4a0ae2f7b609d6dbf88f97e0489931498c26c165bd38b769a1e1707`.
+
+D-156 ran only after commit `ee02542` was clean. It source-verified all 150
+existing fits/copies and published the immutable report (SHA256
+`82b0277af9be843e46ff7d5b53020e23f5eab4e7c68101bffe457b8a2e37f44b`)
+and two descriptive figures. All five disagreement criteria are met; diagnostic
+error rho is -1 in all five. Exact intervals and atom/mass tables are in
+`week7_experiment_1_results.md`. No label, new fit or GPU was used.
+
+The first finalization command exited 1 after publication because main compared
+a copy/object attestation to a content-only tree digest. This was an orchestration
+check error, not a detected scientific mutation. Main did not rerun or overwrite
+the report/figures. A correction record preserves the false alarm and immutable
+start-field meaning; correctly rederived attestations matched all 150 pre-analysis
+values, figure/report rows matched exactly, and independent artifact files were
+verified. Both PNGs were visually checked for complete panels, legends, labels,
+captions and clipping. Same-volume copies are not an off-device backup. Full H1,
+labels, launches, student prose and external certification remain open.
+
+A sixth, artifact-only reviewer compared the report, support tables, draft and
+handoff without reopening fit sources or recomputing statistics. It reported
+two documentation discrepancies: the current state repeated historical pilot
+support/timing wording, and the delta's earlier in-progress line lacked an
+explicit chronological label. Main corrected both, preserving the original
+pilot ledger and the finalization failure. No numerical discrepancy was reported.
+The 482-word draft remains AI-authored for student rewriting, not human closeout.
+An evidence ZIP (seven byte-verified members) was produced with SHA256
+`800b9a92698817058eeb846e358bb8d2dfd3e8910c1b8d543cbcb31b99ebeef9`.
+The report-doc state gate passed 13 in 0.49 s; production source/tests have not
+changed since the passing full suite and clean analysis commit.
+
+Final corrected-document gate: **13 passed in 0.63 s**; `git diff --check`
+passed. Results documentation is transferred separately from the tested
+implementation as patch 0018; packaging metadata is not scientific history.
