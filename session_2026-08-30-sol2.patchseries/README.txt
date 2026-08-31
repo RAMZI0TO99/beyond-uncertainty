@@ -1,8 +1,8 @@
-Patch series for the 2026-08-30 owner-authorised Sol2 session (DEV-015)
+Patch series for the 2026-08-30/31 owner-authorised Sol2 work (DEV-015..018)
 ========================================================================
 
-This directory contains exactly the fifteen transferable commits described by
-delta 67. The local parent `264138128fe221f9d5fc90d040be877fc2eaa3b9` is only
+This directory contains exactly the sixteen transferable commits described by
+deltas 67-68. The local parent `264138128fe221f9d5fc90d040be877fc2eaa3b9` is only
 reconstructed snapshot history; it is NOT remote ancestry or Sol's review base.
 
 Precondition in the REAL repository:
@@ -17,7 +17,8 @@ Then verify this directory against `PATCH_SHA256SUMS.txt` and apply, in order:
 
     git am 0001-*.patch 0002-*.patch 0003-*.patch 0004-*.patch 0005-*.patch \
         0006-*.patch 0007-*.patch 0008-*.patch 0009-*.patch 0010-*.patch \
-        0011-*.patch 0012-*.patch 0013-*.patch 0014-*.patch 0015-*.patch
+        0011-*.patch 0012-*.patch 0013-*.patch 0014-*.patch 0015-*.patch \
+        0016-*.patch
 
   0001  D-141 provenance, loader, C-005, gate and threshold evidence hardening
   0002  D-142/D-143 Week-6 harness, pure labels, leakage firewall and durable
@@ -48,15 +49,32 @@ Then verify this directory against `PATCH_SHA256SUMS.txt` and apply, in order:
         AI-only Week-6 scaffold/reminder and source-only Week-7 readiness audit
   0015  D-152 phase-one scope audit: scheduled Phase A is complete/certified;
         pipeline PHASE 1 is per-condition and not global launch authority
+  0016  D-153/DEV-018 verified Experiment-1 input and descriptive-figure tools;
+        exact100 Exp2A/675 sweep baseline configuration preparation; synthetic
+        integration/visual QA; project-local Git test isolation and handoff
+
+Patch0016 comes from local implementation commit
+07b5fba51a6016932b476656edd6303a2ddd57dd. The .tmp/ ignore entry is deliberately
+snapshot-local and excluded: the reconstructed .gitignore has no verified real
+repository preimage. Packaging commits are not transferred as project history.
 
 Do not use `git am --3way`. A context mismatch means the precondition is not the
 reviewed tree and must be reconciled explicitly. After application, run the
-full suite. The audited CPU-host result is 1,671 passed / 7 skipped / 0 failed
-in 1,722.04 seconds. Skips were three CUDA checks, three Windows unprivileged-
+full suite. The final D-153 CPU-host result is 1,798 passed / 7 skipped / 0 failed
+in 1,519.40 seconds. Skips were three CUDA checks, three Windows unprivileged-
 symlink cases, and one intentionally vacuous identity-exclusion case.
 The post-execution state/preflight/batch/launch/monitor closeout was 184 passed /
 1 expected skip / 0 failed in 121.95 seconds.
 The documentation-only D-152 state gate was 13 passed / 0 failed in 0.47 seconds.
+The final D-153 state gate was 13 passed / 0 failed in 0.61 seconds.
+The initial D-153 full run1796/7/1 exposed a temporary-directory assumption in
+an existing test. The real-Git fixture was corrected, production was unchanged,
+and the full run above includes the correction and the added composition test.
+
+Keep TEMP, TMP, MPLCONFIGDIR and pytest --basetemp inside the project when
+rechecking this owner's workspace. Week7 remains scientifically incomplete:
+missing repair/H1 decisions and student prose are listed in
+docs/week7_open_decisions.md. No real Exp1 figure or later experiment was run.
 
 Generate `SOL_BUNDLE.txt` only in the REAL repository, cumulatively against
 Sol's unchanged certified review base:
@@ -69,6 +87,9 @@ Sol's unchanged certified review base:
         src/bu/durable.py src/bu/experiments/fit_evidence.py \
         src/bu/experiments/label_evidence.py src/bu/experiments/launch.py \
         src/bu/experiments/monitor.py \
+        src/bu/experiments/experiment_1_evidence.py \
+        src/bu/experiments/experiment_1_figures.py \
+        src/bu/experiments/week7_plan.py src/bu/experiments/make_figures.py \
         src/bu/experiments/preflight.py src/bu/experiments/repair_label_run.py \
         src/bu/experiments/repair_label_preflight.py \
         src/bu/experiments/repair_label_launch.py \
@@ -77,6 +98,6 @@ Sol's unchanged certified review base:
         src/bu/critic/loading.py src/bu/critic/split.py \
         src/bu/critic/dataset.py > SOL_BUNDLE.txt
 
-Deliver DELTA_TO_SOL.md (undelivered deltas 64–67) with that bundle. External
+Deliver DELTA_TO_SOL.md (undelivered deltas 64–68) with that bundle. External
 Sol remains the reviewer/certifier; “Sol2” is the student's implementation-role
 label and does not imply certification.
