@@ -8,7 +8,9 @@ E1 474/834, Exp2A 95/475, first-sweep baselines 3/15 and paired repairs 6/6.
 Historical E1/Exp2A fits must be reverified and reused, never retrained.
 The frozen-source full CPU suite passed 4,037 tests with eight expected skips,
 zero failures, in 3,295.48 seconds. Launch/recovery and label finalization are
-verified; actual CPU timing comes next. No new production fit or benchmark yet.
+verified. CPU timing then completed 17 repair and six baseline cases, 188
+development models, on clean bc89a83. Read `docs/week7_cpu_timing.md` for exact
+pins, estimates and limits. No new production fit or repair label yet.
 Read `docs/week7_execution_log.md`; plans/reuse records are in the project-local
 `week7-execution-preparation-2026-08-31-attempt-001` directory. New sweep repairs
 use a distinct qualified evidence schema; the old D-155 guard stays strict.

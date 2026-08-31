@@ -62,13 +62,15 @@ identity-field check. XML SHA256:
 Focused results, including corrected fixture isolation, are in the chronological
 execution log; overlapping test counts must not be summed.
 
-The fixed CPU route uses four intra-op and four inter-op threads. Before
-production, development timing will cover 17 repair cases and six baseline
-ensemble cases: 188 model trainings, separate from research replication.
+The fixed CPU route uses four intra-op and four inter-op threads. Development
+timing is now complete: 17 repair cases and six baseline ensemble cases,
+188 model trainings, separate from research replication, no retries/failures.
 One warm-up and three measured development repetitions per case are retained.
-Collection and training durations do not include all prediction, evidence,
-process-start, or copy costs; empirical maxima are not runtime guarantees.
-GPU use at this entry: zero.
+The exact new E1 collection/training estimate is 1.1535461419445023 hours using
+median repetitions or 2.120309159473448 hours using observed maxima. These are
+not confidence bounds or guarantees and exclude prediction, evidence,
+process-start and copy overhead, as well as E2A and first-sweep baseline costs.
+Complete pins, accounting and limits: `week7_cpu_timing.md`. GPU use: zero.
 
 ## Results and provenance to append after execution
 

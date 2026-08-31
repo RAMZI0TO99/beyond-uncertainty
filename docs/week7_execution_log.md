@@ -292,3 +292,37 @@ benchmark, label, or hypothesis test was run by this verification phase.
 
 The post-update documentation gate passed **13 tests in 0.46 seconds**;
 state/delta lengths are 499/399 lines, and `git diff --check` is clean.
+
+## Development CPU timing completed
+
+Committed the verified implementation as clean
+`bc89a83783d68bf6cfa45868422dc37d9a718502` (47 files; no unrelated changes).
+The fixed repair timing parent and then the separate baseline parent both
+exited 0. Strict readback verified 17/17 repair cases (68 single models) and
+6/6 baseline cases (24 ensembles, 120 models), all from that same clean source,
+with no failed/retried case. Actual measurements and the independently retained
+SHA256 pins are in `week7_cpu_timing.md`. Total development models:188; research
+fits/labels/hypothesis tests:0. GPU:0. Original E1/smoke evidence is unchanged.
+
+While the code had to remain clean, operational milestones were appended to
+`D:/Aenv/pro/pro/week7-runtime-2026-08-31.md`. A progress-only probe initially
+counted `start.json` among repetition receipts, so conversational partial-trial
+counts were one too high. Main disclosed and corrected the counter to the
+warm-up/measured filename patterns. Completed-case counts and strict final
+timing evidence were unaffected; no artifact or measured value was changed.
+
+E1's exact474newfits/834models project to1.1535461419445023 median-summary CPU
+hours or2.120309159473448 maximum-summary hours for collection/training only.
+These are not a confidence interval or runtime bound and omit launch, scoring,
+anchor/evidence, copy and recovery overhead. The2,310-model gross repair budget
+is not remaining Week7 or whole-project cost. No GPU-hour adjudication follows.
+
+Production operational choices are recorded before its first fit:3,600seconds
+per isolated fit;8GiB free-space floor; exact fixed jobs and no automatic
+failed/unknown retry. Post-timing free space:20,058,066,944bytes. Next: clean
+documentation checkpoint, actual preflight, first-sweep baseline+repair batch
+and label, then E1 and E2A. The separate personal writing obligations remain.
+
+Measured-readiness documentation passed13 consistency tests in0.56seconds;
+state/delta remain499/399lines and the whitespace check is clean. No executable
+source changed after the full-suite/benchmark revision.
