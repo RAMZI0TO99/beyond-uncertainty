@@ -85,7 +85,10 @@ SCHEMA_VERSION = 2
 #: not comparable with v2.
 IDENTITY_VERSION = 2
 
-ARMS = ("baseline", "data_repair", "feature_repair", "capacity_repair")
+ARMS = (
+    "baseline", "data_repair", "feature_repair", "capacity_repair",
+    "capacity_extension_repair",
+)
 
 #: Execution stages, and the seed count each requires (Plan §14.2).
 #:
@@ -284,6 +287,18 @@ class Arm:
                     f"{unit.hidden_size}; there is no capacity to add"
                 )
             return dataclasses.replace(unit, hidden_size=largest)
+        if self.kind == "capacity_extension_repair":
+            # D-154 is additive: the source unit and all old arm meanings stay
+            # unchanged. Only the effective model widens; RNG keys must still
+            # use the unresolved source unit (D-055/D-056).
+            if unit.withheld_features or unit.hidden_size != 256:
+                raise ValueError(
+                    "capacity_extension_repair requires full observation and "
+                    "source hidden_size=256"
+                )
+            return dataclasses.replace(
+                unit, hidden_size=K.CAPACITY_EXTENSION_HIDDEN_SIZE
+            )
         raise AssertionError("unreachable")
 
 

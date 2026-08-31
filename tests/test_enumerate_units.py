@@ -55,6 +55,15 @@ def test_summary_prints_the_count_by_axis():
     assert "distinct statistical units" in text
 
 
+def test_summary_discloses_extension_accounting_without_implying_launch_readiness():
+    text = summarise(design_units())
+    assert "8,835" in text
+    assert "D-154 capacity extension: 638 single-model fits included" in text
+    assert "original fit allowance by ~135" in text
+    assert "not architecture-aware runtime estimates" in text
+    assert "not evidence of paired-label launch readiness" in text
+
+
 # --- counts must agree with Plan §14.2 ------------------------------------
 
 
@@ -77,15 +86,17 @@ def test_design_hits_three_hundred_units():
     assert len(design_units()) == 300
 
 
-def test_compute_stays_within_the_planned_budget():
-    """A design that does not fit the compute budget is not the planned design.
+def test_compute_reports_the_d154_amendment_not_a_budget_pass():
+    """D-154 adds 638 single models without changing baseline accounting.
 
     Repairs cost one model fit, not an ensemble: the Plan §7.3 acceptance test
     compares per-transition error and needs no member spread. Costing them as
     ensembles inflates the estimate five-fold.
     """
     fits = total_model_fits(design_units())
-    assert fits["total"] <= 8700, fits
+    assert fits["total"] == 8835, fits
+    assert fits["total"] - 8700 == 135
+    assert fits["repairs"] == 2310
     # 6,375 rather than 6,750: a repair-validation unit's twenty baseline seeds
     # contain the five its canonical stage needs, and are not run again (D-033).
     assert fits["baseline_ensembles"] == 6375
@@ -220,7 +231,9 @@ def test_missing_feature_units_never_use_zero_confound():
 def test_arms_are_the_meaningful_ones_only():
     """Each repair targets one mechanism, and only where there is one to fix."""
     est = UnitSpec(family="estimation", hidden_size=256)
-    assert arms_for(est) == ("baseline", "data_repair")
+    assert arms_for(est) == (
+        "baseline", "data_repair", "capacity_extension_repair",
+    )
 
     miss = UnitSpec(family="missing_feature", withheld_features=("shape",))
     assert set(arms_for(miss)) == {"baseline", "data_repair", "feature_repair"}
@@ -385,4 +398,4 @@ def test_the_estimate_is_taken_over_the_plan_that_would_run():
     fits = total_model_fits(units)
     assert fits["baseline_ensembles"] == sum(f.members for f in plan if f.arm == "baseline")
     assert fits["repairs"] == sum(f.members for f in plan if f.arm != "baseline")
-    assert fits["total"] == 8197, fits
+    assert fits["total"] == 8835, fits

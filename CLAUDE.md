@@ -1,5 +1,15 @@
 # CLAUDE.md — operational handoff
 
+**2026-08-31 D-154/D-155 update:** the owner expressly delegated the missing
+scientific choices to Sol2. Read `docs/week7_scientific_amendment.md` and its
+implementation log: fixed width-512 extension for 173 previously uncovered
+conditions; separate five-configuration H1 reporting, one Week-7 analysis reused
+at Week 10; prior exposure disclosed. These choices no longer await permission.
+External Sol certification remains pending (deltas 64–69). Full verification:
+2,293 passed, 7 expected skips, 0 failures. The 225-unit sweep repair stream mismatch
+must refuse before execution until a versioned baseline-pairing correction is
+verified. Do not silently change old stream meanings or retrain old fits.
+
 You are the active implementation agent (Claude/Codex; the student currently
 calls this role **Sol2**) working on a Bachelor's thesis with the student and an
 external reviewing agent called Sol. **You have no memory of previous sessions.**
@@ -491,14 +501,13 @@ rerun. These are confirmatory smoke evidence, not development diagnostics.
 3. For further execution, distinguish prepared configurations from outstanding
    work: five Experiment-2A baselines already exist in smoke evidence. Reuse
    source-verified physical fits, preserving roles, rather than rerunning them.
-4. Carry unresolved missing model repairs and pooled H1/timing choices to Sol.
-   Do not infer repair labels from baseline-only fits. Deliver deltas **64–68**
+4. Carry the owner's D-154 scientific amendments and D-155 pairing finding to Sol.
+   Do not infer repair labels from baseline-only fits. Deliver deltas **64–69**
    with the cumulative patches; nothing is certified by the name Sol2.
 
-**Owner authority covers D-151's aid/reminder and D-153's Week-7 implementation
-with deferred review.** This increment is source/synthetic only. Do not open Week-7
-scientific results, choose missing model repairs, invent baseline
-roles, duplicate multi-role fits, recalibrate the threshold, expand the design,
+**Owner authority now also covers D-154's specified scientific choices.** Follow
+its explicit verification and single-report boundary before result access; do not
+invent baseline roles, duplicate multi-role fits, recalibrate the threshold, expand the design,
 consume reserve units, or use the splitter/balancer on real inputs.
 
 ### What exists in Week 3
@@ -584,9 +593,10 @@ consume reserve units, or use the splitter/balancer on real inputs.
   pending (D-141…D-152).
 
 Still scientifically gated: registered split seed/targets, real critic
-splitting, reserve use and later whole-design repair coverage. Owner-authorised
+splitting and reserve use. Whole-design repair assignments are now complete;
+sweep pairing and label execution still need verified engineering. Owner-authorised
 Week-6 collection is DEV-017; Week-7 routine implementation before review is
-DEV-018. The latter does not register an unspecified scientific choice.
+DEV-018; the specifically delegated scientific amendments are DEV-019/D-154.
 **The MDE is not among them — that claim was stale.** Sol ruled on all three
 questions in **D-089**: the simulation is a **diagnostic**, not H3's estimator;
 MDE-vs-margin is a **necessary sensitivity check and explicitly not an

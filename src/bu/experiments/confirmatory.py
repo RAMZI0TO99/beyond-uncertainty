@@ -62,8 +62,13 @@ from ..models.uncertainty import (
 )
 from ..models.world_model import MOVEMENT_ACTIONS
 from ..runrecord import git_state
-from ..streams import assert_roles_share_one_stream, is_confirmatory
-from .enumerate_units import design_units, execution_plan
+from ..streams import (
+    DATA_PURPOSES,
+    assert_roles_share_one_stream,
+    is_confirmatory,
+    stream_key,
+)
+from .enumerate_units import design_units, execution_plan, stage_of
 from .repair import (
     ArmEvaluation,
     REPAIR_ENSEMBLE_SIZE,
@@ -152,6 +157,34 @@ def assert_registered_obligation(unit: UnitSpec, *, arm: str, stage: str, seed: 
             "record indistinguishable from one that does. Check the unit is in the "
             "design, the arm applies, and the seed index is within the stage's "
             "registered seed count"
+        )
+
+
+def _assert_repair_pairing(unit: UnitSpec, *, arm: str, stage: str) -> None:
+    """Refuse unpaired repair execution without changing the registered inventory.
+
+    D-155's safety guard is not a stream correction: sweep-only baselines use
+    unit-keyed data while their repair stages currently select a family group.
+    Compare the original, unresolved unit against its authoritative baseline
+    stage; neither a repaired unit nor the repair's family supplies that stage.
+    """
+    if arm == "baseline":
+        return
+    baseline_stage = stage_of(unit)
+    mismatched = [
+        purpose
+        for purpose in sorted(DATA_PURPOSES)
+        if stream_key(unit, baseline_stage, purpose) != stream_key(unit, stage, purpose)
+    ]
+    if mismatched:
+        raise ValueError(
+            f"Wrong pairing for unit {Config(unit=unit).unit_id}, arm={arm!r}: "
+            f"repair stage {stage!r} and authoritative baseline stage "
+            f"{baseline_stage!r} have mismatched data stream keys for {mismatched}. "
+            "Execution is refused before output, pool collection or training. "
+            "An explicit versioned procedure decision is needed to correct this "
+            "pairing (D-155); registration remains inventory, and this guard "
+            "does not change stream meanings, stage identities or legacy recorded fits."
         )
 
 
@@ -268,6 +301,7 @@ def run_confirmatory(
     """
     check_confirmatory(stage=stage, seed=seed, arm=arm, unit=unit)
     assert_registered_obligation(unit, arm=arm, stage=stage, seed=seed)
+    _assert_repair_pairing(unit, arm=arm, stage=stage)
 
     fit_roles = (stage,) if _fit_roles is None else _fit_roles
     if (

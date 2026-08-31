@@ -63,7 +63,9 @@ LABEL_COUNT_FILE = "label_counts.json"
 # convention, never an empirical estimate.
 REGISTERED_PLANNING_EXCLUSION_RATE = 0.00
 
-_MODEL_REPAIR_ARMS = ("feature_repair", "capacity_repair")
+_MODEL_REPAIR_ARMS = (
+    "feature_repair", "capacity_repair", "capacity_extension_repair",
+)
 _LABEL_VALUES = (0, 1, "ambiguous", "undiagnosed")
 _HEX_DIGEST_LENGTH = 64
 
@@ -442,10 +444,10 @@ def _validate_condition(
             f"seed {seed} data_repair evaluation_pool_digest does not equal the "
             "baseline's independently verified encoded-pool digest"
         )
-    if model_arm == "capacity_repair":
+    if model_arm in ("capacity_repair", "capacity_extension_repair"):
         if model.evaluation_pool_digest != base.evaluation_pool_digest:
             raise ValueError(
-                f"seed {seed} capacity_repair evaluation_pool_digest does not "
+                f"seed {seed} {model_arm} evaluation_pool_digest does not "
                 "equal the baseline's independently verified encoded-pool digest"
             )
     elif model.evaluation_pool_digest == base.evaluation_pool_digest:

@@ -51,7 +51,7 @@ def test_the_accounting_includes_ablations_and_matches_the_design():
     acct = design_accounting()
     reference = total_model_fits(design_units())
     assert acct["ablations_included"] is True
-    assert acct["total_fits"] == reference["total"] == 8_197, (
+    assert acct["total_fits"] == reference["total"] == 8_835, (
         f"{acct['total_fits']} fits against the design's {reference['total']} "
         f"including {reference['ablations']} ablations. Off by 375 means the "
         "accounting has re-acquired D-033's phantom fits"
@@ -61,7 +61,7 @@ def test_the_accounting_includes_ablations_and_matches_the_design():
 
 def test_collection_is_counted_per_condition_not_per_fit():
     acct = design_accounting()
-    assert acct["total_collections"] == 2_947
+    assert acct["total_collections"] == 3_585
     assert acct["total_collections"] < acct["total_fits"]
 
 
@@ -69,6 +69,21 @@ def test_data_repair_is_counted_at_its_ten_times_budget():
     acct = design_accounting()
     assert max(acct["fits_by_size"]) == 50_000
     assert acct["fits_by_size"][50_000] > 0
+
+
+def test_extension_fits_cannot_be_priced_using_legacy_size_only_benchmarks():
+    acct = design_accounting()
+    assert acct["unbenchmarked_capacity_extension_fits"] == 638
+    for how in ("median", "max"):
+        with pytest.raises(ValueError, match="architecture-aware timing"):
+            extrapolate(_flat_bench(acct["fits_by_size"]), acct, how)
+
+
+def test_extension_reconciliation_cannot_use_the_old_width_rates():
+    unit = representative_condition()
+    observed = {"seeds_run": [0], "arms": ["capacity_extension_repair"], "measured_s": 1.0}
+    with pytest.raises(ValueError, match="architecture-aware timing"):
+        reconcile(observed, _flat_bench([5000]), "median", unit=unit)
 
 
 # --- guards -----------------------------------------------------------------
@@ -116,7 +131,9 @@ def test_the_max_summary_is_never_below_the_median():
 def test_reconcile_filters_on_the_unit_not_on_its_size():
     unit = representative_condition()
     plan = execution_plan(design_units())
-    mine = [f for f in plan if f.unit == unit]
+    # Keep the original width-priced arms for this unit-vs-size regression;
+    # extension pricing is separately refused above, never silently discounted.
+    mine = [f for f in plan if f.unit == unit and f.arm != "capacity_extension_repair"]
     same_size = [f for f in plan if f.unit.n_transitions == unit.n_transitions]
     assert len(same_size) > 10 * len(mine), "fixture cannot detect a size filter"
 

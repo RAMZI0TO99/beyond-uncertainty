@@ -183,7 +183,21 @@ def design_accounting() -> dict:
         "ablations": reference["ablations"],
         "ablation_assumed_size": ABLATION_ASSUMED_SIZE,
         "plan_total_model_fits": reference,
+        # D-154: size-only benchmarks cannot price the new width-512 arm.
+        # Historical records lack this field and keep their original totals.
+        "unbenchmarked_capacity_extension_fits": sum(
+            fit.members for fit in plan if fit.arm == "capacity_extension_repair"
+        ),
     }
+
+
+def _require_priced_architectures(acct: dict) -> None:
+    if acct.get("unbenchmarked_capacity_extension_fits", 0) != 0:
+        raise ValueError(
+            "D-154 adds width-512 capacity-extension fits. The legacy size-only "
+            "benchmark cannot price them; architecture-aware timing is required. "
+            "Do not report revised wall-hours using width-256 rates."
+        )
 
 
 def _rate(bench: dict[int, SizeBenchmark], size: int, how: str, kind: str) -> float:
@@ -211,6 +225,7 @@ def _rate(bench: dict[int, SizeBenchmark], size: int, how: str, kind: str) -> fl
 
 def extrapolate(bench: dict[int, SizeBenchmark], acct: dict, how: str) -> dict:
     """Total wall seconds for the whole design, training AND collection."""
+    _require_priced_architectures(acct)
     train = sum(n * _rate(bench, s, how, "fit") for s, n in acct["fits_by_size"].items())
     coll = sum(n * _rate(bench, s, how, "collection")
                for s, n in acct["collections_by_size"].items())
@@ -286,6 +301,11 @@ def reconcile(observed: dict, bench: dict[int, SizeBenchmark], how: str,
             if f.unit == unit
             and f.seed in set(observed["seeds_run"])
             and f.arm in set(observed["arms"])]
+    _require_priced_architectures({
+        "unbenchmarked_capacity_extension_fits": sum(
+            f.members for f in plan if f.arm == "capacity_extension_repair"
+        ),
+    })
     predicted = 0.0
     for fit in plan:
         size = Arm(fit.arm).resolve(fit.unit).n_transitions
@@ -451,6 +471,7 @@ def main() -> None:
         )
 
     acct = design_accounting()
+    _require_priced_architectures(acct)  # refuse BEFORE any timing compute
     sizes = sorted(acct["fits_by_size"])
 
     print(f"W4 FRIDAY TIMING, rebuilt (S§W4 Fri; D-114 refused, D-116)")

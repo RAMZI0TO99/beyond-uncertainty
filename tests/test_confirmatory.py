@@ -416,7 +416,7 @@ def test_every_design_obligation_key_remains_registered():
                 seed=CONF + fit.seed,
             )
     assert seen_arms == {"baseline", "data_repair", "feature_repair",
-                         "capacity_repair"}
+                         "capacity_repair", "capacity_extension_repair"}
     assert max(seen_seed_indices) > 0
 
 

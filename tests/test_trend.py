@@ -84,16 +84,11 @@ def test_a_reversed_trend_fails():
 def test_an_interval_touching_zero_fails():
     """Constructed so the upper bound is exactly 0.0 -- the boundary case.
 
-    One seed falls perfectly, one rises perfectly, one is flat-with-a-kink, so
-    resamples span the whole range and the 97.5th percentile sits at zero.
+    A symmetric, tied-rank curve has exactly zero rho. All five confirmatory
+    curves are identical, so BOTH endpoints equal zero, not merely >= zero.
     """
-    curves = {
-        0: dict(zip(SIZES, [0.9, 0.7, 0.5, 0.4, 0.3, 0.2])),
-        1: dict(zip(SIZES, [0.2, 0.3, 0.4, 0.5, 0.7, 0.9])),
-        2: dict(zip(SIZES, [0.5, 0.5, 0.5, 0.5, 0.5, 0.6])),
-    }
-    result = trend_test(curves, partition="development")
-    assert result.ci_high >= 0
+    result = trend_test(curve([1., 2., 3., 3., 2., 1.], seeds=CONF), partition="confirmatory")
+    assert result.rho == result.ci_low == result.ci_high == 0.0
     assert not result.passed
     assert "contains or touches zero" in result.reason
 
@@ -235,6 +230,36 @@ def test_the_exact_bootstrap_is_deterministic_and_complete():
 
     five = trend_test(curve(values, seeds=CONF, jitter=0.02), partition="confirmatory")
     assert five.n_resamples == 5 ** 5 == 3125
+
+
+def test_exposed_support_is_the_original_ordered_bootstrap_and_not_a_second_estimator():
+    """D-154 only exposes the array already used by the original calculation."""
+    from itertools import product
+    from dataclasses import FrozenInstanceError
+
+    curves = curve([0.6, 0.82, 0.55, 0.42, 0.27, 0.21], jitter=0.02)
+    matrix = np.asarray([[curves[seed][n] for n in SIZES] for seed in sorted(curves)])
+    original = np.asarray([spearman(np.asarray(SIZES), matrix[list(pick)].mean(axis=0))
+                           for pick in product(range(3), repeat=3)])
+    result = trend_test(curves, partition="development")
+    assert type(result.bootstrap_values) is tuple
+    assert result.bootstrap_values == tuple(original)
+    assert result.rho == spearman(np.asarray(SIZES), matrix.mean(axis=0))
+    assert (result.ci_low, result.ci_high) == tuple(np.percentile(
+        original, [100 * (1 - K.CONFIDENCE_LEVEL) / 2, 100 * (1 + K.CONFIDENCE_LEVEL) / 2],
+        method="linear"))
+    assert "bootstrap_values" not in result.as_row()  # legacy evidence unchanged
+    assert "bootstrap_values" not in repr(result)
+    with pytest.raises(FrozenInstanceError):
+        result.bootstrap_values = ()
+
+
+def test_exposed_support_preserves_undefined_resamples():
+    result = trend_test(curve([0.5] * 6), partition="development")
+    assert len(result.bootstrap_values) == 27
+    assert all(np.isnan(value) for value in result.bootstrap_values)
+    assert np.isnan(result.ci_low) and np.isnan(result.ci_high)
+    assert not result.passed
 
 
 # --- the partition boundary (D-034, D-040, D-068) --------------------------

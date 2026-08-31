@@ -32,7 +32,9 @@ REPAIRS = ("data_repair", "feature_repair", "capacity_repair")
 def test_applicable_arms_reports_rather_than_raises():
     assert applicable_arms(UNIT) == REPAIRS
     assert "feature_repair" not in applicable_arms(UnitSpec(hidden_size=64))
-    assert applicable_arms(UnitSpec(hidden_size=max((16, 32, 64, 128, 256)))) == ("data_repair",)
+    assert applicable_arms(UnitSpec(hidden_size=max((16, 32, 64, 128, 256)))) == (
+        "data_repair", "capacity_extension_repair",
+    )
 
 
 # --- what makes the comparison paired, for EVERY arm ----------------------

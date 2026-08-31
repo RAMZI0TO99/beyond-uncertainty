@@ -54,7 +54,7 @@ def _units_with_one_model_repair():
 
 def _model_repair_arm(unit) -> str:
     applicable = []
-    for arm in ("feature_repair", "capacity_repair"):
+    for arm in ("feature_repair", "capacity_repair", "capacity_extension_repair"):
         try:
             Arm(arm).resolve(unit)
         except ValueError:

@@ -1,5 +1,13 @@
 # Week 7 — decisions still needed for scientific completion
 
+**Update 2026-08-31, D-154:** the owner has delegated and Sol2 has resolved the
+repair-assignment and H1 reporting/timing questions below. See
+`week7_scientific_amendment.md` for the fixed rules and prior-exposure disclosure.
+The text below preserves the questions as raised, not current permission stops.
+External review is pending. Remaining engineering includes D-155's reproduced
+sweep stream mismatch, the three-seed label adapter and historical-fit reuse;
+student prose remains open. Scientific decisions do not imply launch readiness.
+
 Prepared by Sol2 on 2026-08-31. These are unresolved choices, not registrations
 or proposed findings. The owner has deferred external Sol's review and opened
 routine implementation (D-153/DEV-018). That permits building the supporting

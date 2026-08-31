@@ -1166,7 +1166,10 @@ def _canonical_array(name: str, value: Any) -> np.ndarray:
 def _expected_diagnostic_names(arm: str) -> tuple[str, ...]:
     if arm == "baseline":
         return _BASELINE_DIAGNOSTICS
-    if arm in {"data_repair", "feature_repair", "capacity_repair"}:
+    if arm in {
+        "data_repair", "feature_repair", "capacity_repair",
+        "capacity_extension_repair",
+    }:
         # A repair is deliberately one model, so member disagreement and
         # predictive variance are undefined rather than fabricated as zero.
         return _REPAIR_DIAGNOSTICS

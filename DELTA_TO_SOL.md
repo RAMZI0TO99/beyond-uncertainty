@@ -360,24 +360,22 @@ PREVIOUS_DELTA_ID: 67
 DATE: 2026-08-31
 SUBJECT: D-153 / DEV-018 — owner continues Week-7 implementation; review deferred.
 BUNDLE_FILE: cumulative session_2026-08-30-sol2.patchseries (0001..0016) plus real-repo SOL_BUNDLE.txt.
-The owner explicitly asked Sol2 to proceed and said you would review later.
-This defers review, not certification. Week-6 own-voice prose remains open.
-NEW: exact source-bound150-fit Experiment-1 adapter; descriptive per-configuration
-figure preparation; immutable100-fit Exp2A/675-fit sweep baseline preparation.
-No configuration pooling, H1 verdict, repair assignment, reserve or launch.
-Five Exp2A baselines overlap the completed smoke: requirements are not new work.
-Every future execution must reconcile those source-verified fits first.
-PREPARATION: project-local week7-preparation-2026-08-31/week7_baseline_preparation.json;
-SHA256 9b380e4bbefa4d3c1c5a52e6ab89f8b63cac42dbfaf90cf5b19419fcc9152044.
-TESTS: preparation24/0 in34.19s; evidence61/0 in134.39s; figures41/0 in11.30s;
-old+new figures48/0 in17.79s; state13/0 in0.64s. Full-suite closeout follows.
-FINAL: 1,798 passed / 7 skipped / 0 failed in1,519.40s. Initial full run1796/7/1
-exposed an old outside-repository scratch assumption; real-Git fixture isolation
-corrected, production unchanged, infrastructure47/1/0. Added real150-source-to-PNG
-composition1/0 passed and is included in the final full suite. Prior failure retained.
-DATA: no real Experiment-1 payload, new fit, label, inference or GPU in this increment.
-Prior deltas remain undelivered and unaltered in substance; delta67 was only reflowed.
-Please review implementation and the existing unresolved repair/inference choices.
-Week7 engineering progressed, not whole-week completion; human prose stays open.
+The owner explicitly asked Sol2 to proceed and said you would review later. This defers review, not certification. Week-6 own-voice prose remains open. NEW: exact source-bound150-fit Experiment-1 adapter; descriptive per-configuration figure preparation; immutable100-fit Exp2A/675-fit sweep baseline preparation. No configuration pooling, H1 verdict, repair assignment, reserve or launch. Five Exp2A baselines overlap the completed smoke: requirements are not new work. Every future execution must reconcile those source-verified fits first. PREPARATION: project-local week7-preparation-2026-08-31/week7_baseline_preparation.json; SHA256 9b380e4bbefa4d3c1c5a52e6ab89f8b63cac42dbfaf90cf5b19419fcc9152044. TESTS: preparation24/0 in34.19s; evidence61/0 in134.39s; figures41/0 in11.30s; old+new figures48/0 in17.79s; state13/0 in0.64s. Full-suite closeout follows. FINAL: 1,798 passed / 7 skipped / 0 failed in1,519.40s. Initial full run1796/7/1 exposed an old outside-repository scratch assumption; real-Git fixture isolation corrected, production unchanged, infrastructure47/1/0. Added real150-source-to-PNG composition1/0 passed and is included in the final full suite. Prior failure retained. DATA: no real Experiment-1 payload, new fit, label, inference or GPU in this increment. Prior deltas remain undelivered and unaltered in substance; delta67 was only reflowed. Please review implementation and the existing unresolved repair/inference choices. Week7 engineering progressed, not whole-week completion; human prose stays open.
+=== END UPDATE ===
+```
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 69
+PREVIOUS_DELTA_ID: 68
+DATE: 2026-08-31
+SUBJECT: D-154/D-155/DEV-019 — owner delegates scientific choices; fixed amendments and sweep-pairing refusal.
+COVERS SESSIONS: 2026-08-31 (Sol2 scientific decisions) · Fixed repair extension and H1 reporting amendment
+The owner expressly permitted Sol2 to resolve the missing scientific choices; this is not your certification. Original plan/history preserved; prior development, smoke label and two exposed Experiment-1 summaries disclosed. No claim of fully blinded preregistration.
+D-154: new capacity_extension_repair is full-observation width256→512 only, one model, all other budgets/settings unchanged; existing capacity→256 untouched. All173 gaps receive one fixed intervention:7×20+166×3=638 extra single-model fits;8,835 planned trainings,300units/240groups unchanged. Not a runtime/realizability/label-completeness claim.
+H1: unchanged per-configuration statistic,5configs×5seeds×6sizes; diagnostic error trends; all-five disagreement summary explicitly amended, not a calibrated global test. One immutable Week7 report; Week10 interpretation reuses it. No pooling, tuning, extra seeds or labels inferred from trends.
+D-155: independent source review found, and main reproduced,225/225sweep-only baseline/repair data-key mismatches,0canonical. Guard before compute; old stream meanings preserved. Baseline-anchored versioned correction/three-seed label adapter remain engineering work. Existing Experiment1/smoke unaffected.
+IMPLEMENTATION/TESTS: in progress; complete record in docs/week7_scientific_amendment_log.md. No new scientific result or training yet. Student own-voice work remains open. Please review the amendment, exposure disclosure and implementation; do not mistake authorization for certification.
+VERIFIED CLOSEOUT: full CPU suite 2,293 passed / 7 expected skips / 0 failed in1,679.75s; XML SHA256 6b8c98295b9fbb8765d088e52d6363e539884a98dca67ba3ffd148f67f92dab8. All2,947old fit-plan rows unchanged; all300units have exactly one model-repair assignment. Current size-only timing refuses to misprice638width512fits. Independent launch/pairing designs now require contemporaneous symbolic anchors for future sweep baselines, qualified repair-procedure identities, original-role reuse and a separate three-seed ordinary-label boundary; these are not yet implemented. The authorized real Experiment1 report follows a clean implementation commit; no retraining is planned.
 === END UPDATE ===
 ```
