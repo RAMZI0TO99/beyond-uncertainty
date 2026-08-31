@@ -327,6 +327,32 @@ Measured-readiness documentation passed13 consistency tests in0.56seconds;
 state/delta remain499/399lines and the whitespace check is clean. No executable
 source changed after the full-suite/benchmark revision.
 
+## 2026-08-31/09-01 — computational closeout continuation
+
+Guarded commit4782c90 passed the complete unchanged-source suite:4085passed,
+8expected skips,51subtests,0failure/error in4137.69s;XML
+f892e4702f0279df88f8c9e9c29e9c564121909da3f6fd58c508b9d754d981c6.
+The preserved first full run's69failures/errors were all the intentional
+outside-repository scratch refusal; a missing-parent probe and Windows
+long-path reproduction are also retained. No guard/test/skip was weakened.
+
+E1474fits/834models completed on1f;30labels independently rederived from
+576source/copy pairs:N0=29,N1=0,ambiguous0,undiagnosed1,all60CIformed.
+Firstsweep3baseline/15models+6repair/6models completed;label undiagnosed.
+Original finalizer tuple-key reporting failure and verify-only recovery stay.
+After old-source readers exited, master fast-forwarded1f→tested4782.
+
+Fresh E2A002 preflight295d32d... bound95newjobs/5reuses/batch03972c022a397aa8.
+Launch reporta4e61a27...:95executed/synced,0resumed/failed/syncfailed,lease
+released;source/copy readback4c4ae415... verified all95 and5reuses plus the
+untouched unlaunched001 attempt. No E2A label/H2 test. CPU only,GPU0.
+
+Final receipt accounting3856368d...:578newfits/1330models,0other/unknown
+attempts,12094.442840200325successful supervised-attempt seconds. Perbatch
+and all source/failure/uncertainty limits are in `week7_execution_results.md`
+and mandatory `week7_sol_closeout.md`. Same-volume copies/packet are not
+off-device backup. Student own-voice work,delivery and external review remain.
+
 ## Production milestone and isolated storage integration
 
 Detailed immutable runtime chronology is in the project-local
@@ -411,3 +437,8 @@ are being frozen together in an isolated commit; full verification will run
 that clean source with a fresh short base `D:/Aenv/pro/pro/.w7qa/full-001`.
 No scientific settings or original run/label evidence changed. E2A remains
 unstarted and unapproved pending the full run and original-source label VERIFY.
+
+Final continuation record above supersedes that dated checkpoint. Documentation
+gate:13passed in0.45s;state500lines,delta400;diff-check clean. XML
+027fdd91016bade7f547e2917a1f3e60cac061d1ac977e6d9ffa9538e2bb6c04.
+Only docs changed after full-tested4782;no src/tests/science mutation.

@@ -19,6 +19,8 @@ which repair is required.
 | `DELTA_TO_SOL.md` | The only thing the student pastes to Sol. Accumulates until delivered |
 | `scripts/sol_bundle.sh` | Generated verification bundle: commit, tree state, tests, diff |
 | `SOL_BRIEF.md` | Operating brief for the reviewing agent |
+| `docs/week7_execution_results.md` | Week7 machine closeout, labels, QA and accounting |
+| `docs/week7_sol_closeout.md` | Mandatory additive delta70 review companion; not certification |
 | `PROJECT_STATE_ARCHIVE.md` | Delivered deltas and closed session history |
 | `docs/thesis_project_plan_v1_2.docx` | The research design. Authoritative for design |
 | `docs/thesis_day_by_day_schedule_v1_2.docx` | The 20-week execution schedule |

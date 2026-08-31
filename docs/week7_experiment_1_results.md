@@ -132,3 +132,12 @@ report = replay_experiment_1_report(
     expected_sha256="82b0277af9be843e46ff7d5b53020e23f5eab4e7c68101bffe457b8a2e37f44b",
 )
 ```
+
+## 2026-09-01 additive label-status pointer
+
+This immutable D156 analysis was not rerun or edited after labels. Its historical
+statement that labels were then pending remains true of this report's creation.
+All30paired-repair labels are now independently verified:N0=29,N1=0,
+ambiguous0,undiagnosed1,min0. The complete distinct seed-t method/effects/CIs
+are in `week7_repair_label_results.md`; do not add those later seeds to the
+five-seed trend bootstrap or treat this pointer as a second statistical look.

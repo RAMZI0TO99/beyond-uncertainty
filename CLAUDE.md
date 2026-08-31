@@ -1,16 +1,15 @@
 # CLAUDE.md — operational handoff
 
-**2026-08-31 D-157/D-158 execution work supersedes the next-step wording below:**
-the owner asked Sol2 to finish Week 7. Six already-owed E1 validation ladders
-move forward with their unchanged 20 seeds; the other 24 E1 labels use three.
-Exact remaining research inventory is 578 physical fits /1,330 member models:
-E1 474/834, Exp2A 95/475, first-sweep baselines 3/15 and paired repairs 6/6.
-Historical E1/Exp2A fits must be reverified and reused, never retrained.
-The frozen-source full CPU suite passed 4,037 tests with eight expected skips,
-zero failures, in 3,295.48 seconds. Launch/recovery and label finalization are
-verified. CPU timing then completed 17 repair and six baseline cases, 188
-development models, on clean bc89a83. Read `docs/week7_cpu_timing.md` for exact
-pins, estimates and limits. No new production fit or repair label yet.
+**2026-09-01 Week7 computational closeout supersedes the next-step wording below:**
+Sol2 completed exact578newfits/1330models on CPU,GPU0,with0failed/resumed/other/
+unknown attempts. E1474/834,E2A95/475,firstsweep3/15+6/6. All30E1labels are
+verified:N0=29,N1=0,ambiguous0,undiagnosed1;firstsweep separately undiagnosed.
+Guarded fullQA4085pass/8skip/51subtests; E2A95+5reuses source-readback passed;
+accounting/report pins and every failure/correction are in
+`docs/week7_execution_results.md` and mandatory `docs/week7_sol_closeout.md`.
+Student~400Week6/~500Week7 own-voice prose, delivery and externalSol review are
+still open. Do not advance dates/run E2Alabels,H2/H3,exclusionrates,reserve or
+the remaining224sweep groups. Same-volume evidence is not off-device backup.
 Read `docs/week7_execution_log.md`; plans/reuse records are in the project-local
 `week7-execution-preparation-2026-08-31-attempt-001` directory. New sweep repairs
 use a distinct qualified evidence schema; the old D-155 guard stays strict.

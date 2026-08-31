@@ -20,8 +20,8 @@ These are different anchors; do not apply the series directly to `4e55291`.
 
 **Delta 64 carries a student-obligation progress report only** — the student's
 methodology chapter draft (provenance disclosed, D-132) and the end-of-session
-integrity audit. Later Claude/Codex work is carried separately in deltas 65–68;
-the student explicitly authorised it under DEV-013…018.
+integrity audit. Later Claude/Codex work is carried separately in deltas65–70;
+the student explicitly authorised it under DEV-013…021.
 
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
@@ -32,9 +32,9 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 64–68 (D-008). Deltas
-> 64–67 remain preserved below; delta 68 adds the owner-authorised
-> Week-7 implementation. Deliver all five together.
+> **Delivered to Sol:** ☐ **NO** — DELTA_IDs64–70(D-008). All seven
+> preserved blocks remain below. Delta70's mandatory additive closeout is
+> `docs/week7_sol_closeout.md`. Deliver all seven and the companion together.
 >
 > COVERS SESSIONS:
 > - 2026-08-23 (delta-63 certification) · The whole prose closeout is CERTIFIED; base → `4e55291`
@@ -48,6 +48,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
 > - 2026-08-31 (Sol2 Week-7 implementation) · Verified evidence and baseline configuration preparation
 
 ```
+DELTA70_ADDITIVE_CLOSEOUT2026-09-01: COVERS the same ongoing Sol2Week7execution session. Mandatory companion `docs/week7_sol_closeout.md` SHA256 `ebfbb3fc8fe65b7679382147608ac9532b180f30d32e2f049c67fc0170ba373c`. NUMBERS:578newfits/1330models; E1474/834,E2A95/475,sweep3/15+6/6;0other/unknownattempts;12094.442840200325s supervised-attempt wall;GPU0. E1labels30:N0=29,N1=0,ambiguous0,undiagnosed1,min0;6units×20seeds,24×3,all60intervalsformed. Sweep:N0=N1=ambiguous0,undiagnosed1,3seeds; exact effects/CIs in companion. GuardedQA4085pass/8skip/51subtests;XMLf892e470...;failedpath/probe history preserved. E2A readback4c4ae415...;accounting3856368d...; all source/exposure/CI support and replay limits in companion/results. Machine-complete only: student~400Week6/~500Week7 own-voice, delivery and externalSol certification remainopen. No E2Alabels,H2/H3,exclusionrates,reserve,extra224sweepgroups,scope/dateadvance. Generated isnotdelivered.
 === UPDATE FOR SOL ===
 DELTA_ID: 64
 PREVIOUS_DELTA_ID: 63
