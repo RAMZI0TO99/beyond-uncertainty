@@ -326,3 +326,88 @@ and label, then E1 and E2A. The separate personal writing obligations remain.
 Measured-readiness documentation passed13 consistency tests in0.56seconds;
 state/delta remain499/399lines and the whitespace check is clean. No executable
 source changed after the full-suite/benchmark revision.
+
+## Production milestone and isolated storage integration
+
+Detailed immutable runtime chronology is in the project-local
+`D:/Aenv/pro/pro/week7-runtime-2026-08-31.md`. First-sweep baselines (3) and
+repairs (6) completed and their source-reverified label is undiagnosed. A
+post-label bookkeeping comparison failed and was preserved; verify-only
+recovery did not retrain or rebuild its label. Its verification receipt is
+SHA256 `0192c18d291e65944a518f68195d3b189e2252db0b8e8c4e7b5054db9a71555f`.
+
+E1's actual whole-plan audit completed at about20:37local:474executed/copied,
+0resumed, no launch/release failure, old fits not retrained. Report SHA256
+`e7c526bda8dcd9d8ae6f94caa79f32e03021503261aeefd5e93b50a3f9ec4c26`.
+An owned-process census confirmed release/no remaining producer. The external
+Windows observer returned null for that producer's exit code; no captured
+parent exit0 is claimed. All records retain their real1f302d1source.
+
+The original-source E1label finalizer is running at this entry. The historical
+preservation audit replay passed under clean1f302d1:155oldsource/copy pairs,
+310trees,5270files and the unchanged7-member D156ZIP. It is a timed snapshot,
+not a promise about future state. No D156analysis or hypothesis was rerun.
+
+To parallelize safely, main created `week7-guard-integration-worktree` inside
+the project, on `sol2-week7-storage-guard` from1f302d1. Original `pro2` stayed
+clean master/1f302d1; only the isolated tree receives the storage patch and
+synthetic test changes. Its import roots were proved in a fresh interpreter.
+No editable install/global Git trust setting was changed. A sandbox ownership
+refusal during a read-only cross-check was repeated with scoped approval.
+See `week7_storage_guard.md` for exact boundaries, limits and the no-switch-
+before-original-label-verification rule. All temporary files remain in-project.
+
+The17package integration cases have been started, not yet claimed passed at
+this entry. The original31isolated cases, affected neighbors and broader suite
+will be recorded from actual results. CPU only; concurrent QA/readback timing
+is not a controlled training benchmark. Future E2A must use genuine readiness
+from the verified new source, never the old unstarted preflight.
+
+## Isolated integration and temporary-path diagnosis
+
+The actual17package-import cases passed in350.57seconds, XML SHA256
+`4f5b50d82ae355546612c1d4663d8115bb047a15457543f135e11c7f2639a05f`.
+Affected launch/foundation neighbors and the shared engine/source group then
+ran in parallel, each with a distinct new project-local test leaf. Those
+groups are still running at this entry; a failure is not hidden by their
+other passing cases.
+
+The shared group reported `test_torn_final_event_is_preserved_then_resume_continues`.
+An isolated unchanged-case replay at the same-length temporary prefix failed
+again in2.16seconds: temporary-file creation in durable journal recovery raised
+FileNotFoundError/DurabilityError. The target path is260characters and its
+temporary spelling274characters. The same unchanged test passed in2.54seconds
+with a shorter `D:/Aenv/pro/pro/.w7qa/torn-001` base. No storage-guard or durable
+source change was made. This is the isolated test-path layout hitting this
+Windows host's long-path behavior, not evidence of a model/fit failure.
+
+Long-path probe XML SHA256:
+`4af5eea1f47836b4b4b6547e322c4e5bc3d0e7dfdb533e7ea45d4ff9b7a3168e`;
+short-path probe XML SHA256:
+`530af50521b51bcbe63eb8d9b5e631c3e1655a4b9627f215840b11e8985b3b56`.
+Both test leaves/results remain preserved. An initial sandbox directory
+readback was access-denied, so its false Test-Path value was not evidence of
+absence; the scoped read was repeated with proper access. Remaining full
+verification will use fresh short project-local test bases. The new revision
+is not approved for E2A until that verification passes.
+
+## Focused guard regression results
+
+The launch/foundation group finished:284passed and51subtests passed in
+1783.38seconds, no failures. XML `launch-neighbors-001.xml` SHA256
+`37644309381214c7fd65a809e1df7f5f958aee46885b3e07af91ea8463d24776`.
+The shared group finished:300passed,2expected Windows privilege skips and
+the one retained long-path failure described above, in894.97seconds. Its XML
+`shared-neighbors-001.xml` SHA256 is
+`f7af6afe630fb7415b519afdc63421fe03b81f920da60288d321d06c9e5e6ff6`.
+The unchanged short-path replay passed; this does not erase the initial
+failure. New integration results and overlapping neighbor runs are not added
+together as an independent test count.
+
+All XML files are retained under the isolated checkout's
+`.pytest_cache/prefit-storage/`. Main rechecked whitespace and the original
+checkout's clean status. The guard, synthetic fixtures and this documentation
+are being frozen together in an isolated commit; full verification will run
+that clean source with a fresh short base `D:/Aenv/pro/pro/.w7qa/full-001`.
+No scientific settings or original run/label evidence changed. E2A remains
+unstarted and unapproved pending the full run and original-source label VERIFY.

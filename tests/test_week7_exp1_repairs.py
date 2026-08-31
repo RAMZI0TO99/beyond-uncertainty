@@ -124,15 +124,54 @@ def old_sources(workspace, monkeypatch):
 
 
 @pytest.fixture
-def checkpoint(workspace, old_sources, environment, monkeypatch):
+def checkpoint(workspace, old_sources, environment, monkeypatch, request):
+    """Genuine pinned storage/preflight metadata; fits and timing remain synthetic.
+
+    An indirect integer parameter changes only this fixture's operational floor.
+    Existing consumers keep zero. Cache the ORIGINAL validated record rather
+    than re-pinning later file contents when the consumer requests it again.
+    """
     ledger = W.write_exp1_reuse_ledger(workspace / "input")
+    plan = W.write_exp1_repair_plan(workspace / "input")
     from bu.experiments import week7_exp1_repair_launch as RL
-    preflight = atomic_write_json(workspace / "input" / "synthetic-preflight.json", {
-        "binding_sha256": "e" * 64, "attempt_timeout_seconds": 17.0,
-        "inputs": {"reuse_ledger": {"path": str(ledger)}}})
-    monkeypatch.setattr(RL, "validate_exp1_repair_preflight", lambda *a, **k:
-        RL.ValidatedExp1Preflight(preflight, sha256_file(preflight), read_json(preflight),
-            {name: workspace / name for name in ("output", "staging", "sync")}, COMMIT))
+    preflight_dir = workspace / "preflight"
+    preflight_dir.mkdir()
+    timings = {name: atomic_write_json(workspace / "input" / f"{name}.json",
+                                      {"synthetic": name})
+               for name in ("repair_timing", "baseline_timing")}
+
+    def timing_loader(projection):
+        def load(path, sha, commit):
+            _, pin = RL._pinned_file(path, sha, commit)
+            return pin, dict(projection)
+        return load
+
+    monkeypatch.setattr(RL, "_repair_timing", timing_loader(
+        {"model_fits": 384, "total_s": 1234.0, "scope": "e1_repairs"}))
+    monkeypatch.setattr(RL, "_baseline_timing", timing_loader(
+        {"physical_fits": 90, "total_s": 2345.0, "synthetic": True}))
+    RL.run_exp1_repair_preflight(
+        plan_path=plan, reuse_ledger_path=ledger,
+        repair_timing_path=timings["repair_timing"],
+        repair_timing_sha256=sha256_file(timings["repair_timing"]),
+        repair_timing_expected_git_commit="a" * 40,
+        baseline_timing_path=timings["baseline_timing"],
+        baseline_timing_sha256=sha256_file(timings["baseline_timing"]),
+        baseline_timing_expected_git_commit="a" * 40,
+        expected_git_commit=COMMIT, preflight_dir=preflight_dir,
+        output_root=workspace / "output", staging_root=workspace / "staging",
+        sync_root=workspace / "sync", attempt_timeout_seconds=17.0,
+        minimum_free_bytes=getattr(request, "param", 0),
+        sync_destination_identity="synthetic-independent-checkpoint-copy",
+    )
+    preflight = preflight_dir / RL.PREFLIGHT_FILE
+    validated = RL.validate_exp1_repair_preflight(
+        preflight, output_root=workspace / "output", sync_root=workspace / "sync",
+        expected_git_commit=COMMIT,
+    )
+    # Consumer tests already isolate this expensive provenance boundary. The
+    # per-fit storage guard is NEVER replaced; it reopens these real bytes.
+    monkeypatch.setattr(RL, "validate_exp1_repair_preflight", lambda *a, **k: validated)
     with acquire_batch_lease(W.COMMON_LEASE_ROOT, lease_name=W.COMMON_LEASE_NAME) as lease:
         path = W.write_exp1_repair_start_checkpoint(
             reuse_ledger_path=ledger, expected_git_commit=COMMIT,
@@ -142,7 +181,7 @@ def checkpoint(workspace, old_sources, environment, monkeypatch):
         )
         yield {"path": path, "sha": sha256_file(path), "ledger": ledger,
                "lease": lease, "doc": read_json(path), "store": old_sources,
-               "workspace": workspace, "preflight": preflight}
+               "workspace": workspace, "preflight": preflight, "validated": validated}
 
 
 def _resign(plan):

@@ -34,6 +34,7 @@ from . import preflight as P
 from . import repair_label_preflight as RF
 from . import repair_timing as RT
 from . import week7_exp1_repairs as W
+from .prefit_storage import check_preflight_storage
 from .supervisor import AttemptOutcome, acquire_batch_lease, run_isolated_attempt
 
 
@@ -372,6 +373,9 @@ def _run_one_job(job, *, validated, checkpoint_path, start, events):
             if any(directory.glob(f"{job.job_id}.*")):
                 raise ValueError("preserved prior attempt requires inspection; automatic retry is prohibited")
     W._environment(validated.git_commit)
+    # New-child-only: refusal must not create attempt history or block the
+    # complete-fit sync branch above. Reopen the original launch-pinned floor.
+    check_preflight_storage(validated.report_path, validated.report_sha256, roots=roots)
     _append_event(roots, start, events, kind="attempt_started", job_id=job.job_id,
                   data={"checkpoint_digest": start["checkpoint_digest"]})
     try:

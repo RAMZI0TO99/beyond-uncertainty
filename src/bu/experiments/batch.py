@@ -48,6 +48,7 @@ from .fit_evidence import (
     run_confirmatory_fit,
 )
 from .supervisor import run_isolated_attempt
+from .prefit_storage import PreflightStorageGuard
 from .enumerate_units import design_units, execution_plan
 
 
@@ -723,6 +724,7 @@ def _run_batch(
     expected_git_commit: str | None = None,
     attempt_timeout_seconds: float | None = None,
     attempt_staging_root: str | Path | None = None,
+    preflight_storage_guard: PreflightStorageGuard | None = None,
 ) -> BatchReport:
     """Internal common engine for registered and explicitly synthetic batches.
 
@@ -734,6 +736,8 @@ def _run_batch(
     still runs.
     """
 
+    if preflight_storage_guard is not None and type(preflight_storage_guard) is not PreflightStorageGuard:
+        raise ValueError("preflight_storage_guard must be the exact source-bound guard")
     if not callable(sync):
         raise ValueError("sync must be a callable; unattended runs require sync-off")
     if not callable(executor):
@@ -890,6 +894,12 @@ def _run_batch(
                 )
 
         if result is None:
+            # A capacity refusal is not an attempted fit. Halt before any new
+            # attempt transition, outside the executor failure/continue block.
+            if preflight_storage_guard is not None:
+                preflight_storage_guard.check(
+                    output_root=root, staging_root=attempt_staging_root,
+                )
             if state and state["status"] == "started":
                 # The prior process stopped before a result or immutable run
                 # directory existed.  Close that incomplete attempt before a

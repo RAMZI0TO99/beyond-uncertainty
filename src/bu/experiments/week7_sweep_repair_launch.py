@@ -34,6 +34,7 @@ from . import repair_label_preflight as RF
 from . import repair_pairing as RP
 from . import repair_timing as RT
 from . import week7_exp1_repairs as W
+from .prefit_storage import check_sweep_context_storage
 from .enumerate_units import arms_for
 from .supervisor import (
     ATTEMPT_FILE, RECEIPT_FILE, RESULT_FILE, SUPERVISOR_SCHEMA_VERSION,
@@ -637,6 +638,11 @@ def _run_one(context, job, start_path, start, events):
         return "resumed"
     if history or os.path.lexists(durable):
         raise ValueError("unknown/partial prior evidence without complete local job; no retraining")
+    # The earlier full revalidation remains; refresh capacity again after
+    # source/history work, against the ORIGINAL start-bound context digest.
+    check_sweep_context_storage(
+        roots["output"] / CONTEXT_FILE, start["execution_context_digest"], roots=roots,
+    )
     _append(context, events, "attempt_started", job.job_id, {"start_digest": start["start_digest"]})
     try:
         outcome = run_isolated_attempt(_fit_worker, root=roots["output"], staging_root=roots["staging"],

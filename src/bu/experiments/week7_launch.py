@@ -19,6 +19,7 @@ from . import monitor as M
 from . import repair_label_preflight as RF
 from . import week7_preflight as PF
 from .supervisor import acquire_batch_lease
+from .prefit_storage import PreflightStorageGuard
 
 
 WEEK7_LAUNCH_SCHEMA_VERSION = 1
@@ -105,6 +106,10 @@ def _run_initial_batch(validated: PF.ValidatedWeek7Preflight, timeout: float):
         expected_git_commit=validated.git_commit,
         attempt_timeout_seconds=timeout,
         attempt_staging_root=validated.roots["staging"],
+        preflight_storage_guard=PreflightStorageGuard(
+            validated.report_path, validated.report_sha256,
+            tuple(sorted(validated.roots.items())),
+        ),
     )
 
 

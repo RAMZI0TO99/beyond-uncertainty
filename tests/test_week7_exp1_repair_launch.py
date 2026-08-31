@@ -35,11 +35,9 @@ def cache_source_enumeration(monkeypatch):
 
 
 def _validated(cp):
-    return L.ValidatedExp1Preflight(cp["preflight"], sha256_file(cp["preflight"]), {
-        "binding_sha256": "e" * 64,
-        "attempt_timeout_seconds": 17.0,
-        "inputs": {"reuse_ledger": {"path": str(cp["ledger"])}}},
-        {name: cp["workspace"] / name for name in ("output", "staging", "sync")}, COMMIT)
+    # Keep the original canonical report, all four roots and the launch pin.
+    # Re-hashing here would let rewritten fixture bytes become new authority.
+    return cp["validated"]
 
 
 @pytest.fixture
