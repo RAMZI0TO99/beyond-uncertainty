@@ -5812,3 +5812,9 @@ The owner designated Codex Sol2 and authorised Week 6 readiness ahead of schedul
 ### 2026-08-30 (Sol2 Week-6 integration) · Persisted evidence, isolated launch and final audit · Claude
 
 The owner extended Sol2 work through a full Week-6 implementation audit. A source-verifying 20-seed repair-label pipeline, one-fit/many-role evidence, durable fresh-process execution, exact preflight and a private registered launch hand-off were built; reproduced procedure, pool, duplicate-fit, wrapper, hard-link and stale-destination gaps were closed. D-144/DEV-016 correct the schedule and scope. No real compute or label ran; execution awaited Sol, authority and durable roots.
+
+## Archived from PROJECT_STATE.md §7 on 2026-08-31 — Week-6 machine closeout
+
+### 2026-08-30 (Sol2 Week-6 execution) · Owner-authorised CPU preflight and registered run · Claude
+
+The owner authorised frozen-CPU compute and kept the device on. D-146…D-149 closed the smoke with 60 immutable fits, label 0 and exact counts. D-150 preflighted and ran Experiment 1 at clean `f036fe0`: 150/150 executed/synchronized in 46m04s, 0 failure/recovery events, 750 member trainings, byte-identical project copy and final validated monitor. An operational raw tail exposed two per-fit summaries mid-run; no adaptation occurred and the inspection is disclosed for Sol. D-151 then supplied an explicitly AI-only 406-word student scaffold/reminder, restored the plan's strict `>20%` repair boundary in both executable checks (smoke unchanged), and documented why Week-7 result work remains unopened. D-152 resolves “phase one”: Phase A is already complete/certified with Gate 1 FAIL, while plan PHASE 1 is a repeated per-condition pipeline, not global launch authority. Week-6 machine work is done; only the student's own-voice Thursday prose/explain-and-defend step prevents local completion, while external certification remains pending.

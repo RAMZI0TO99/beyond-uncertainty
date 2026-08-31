@@ -270,8 +270,16 @@ def test_malformed_commit_identifiers_are_never_trustworthy(commit):
     assert state.trustworthy is False
 
 
-def test_git_state_outside_a_repository_fails_closed(tmp_path):
-    """The real subprocess path must preserve the same property."""
+def test_git_state_outside_a_repository_fails_closed(tmp_path, monkeypatch):
+    """Exercise real Git failure even with project-local pytest scratch.
+
+    --basetemp may live inside this checkout. Prevent Git from discovering the
+    enclosing project instead of assuming pytest always uses an outside path.
+    No subprocess result or production provenance function is mocked.
+    """
+    monkeypatch.delenv("GIT_DIR", raising=False)
+    monkeypatch.delenv("GIT_WORK_TREE", raising=False)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent.resolve()))
     state = git_state(tmp_path)
     assert state.commit == "UNCOMMITTED"
     assert state.dirty is True

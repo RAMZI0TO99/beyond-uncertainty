@@ -20,8 +20,8 @@ These are different anchors; do not apply the series directly to `4e55291`.
 
 **Delta 64 carries a student-obligation progress report only** — the student's
 methodology chapter draft (provenance disclosed, D-132) and the end-of-session
-integrity audit. Later Claude/Codex work is carried separately in deltas 65–67;
-the student explicitly authorised it under DEV-013…017.
+integrity audit. Later Claude/Codex work is carried separately in deltas 65–68;
+the student explicitly authorised it under DEV-013…018.
 
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
@@ -32,9 +32,9 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
 
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
 
-> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 64, 65, 66 and 67 (D-008). Deltas
-> 64–66 remain historical blocks below; delta 67 appends the owner-authorised
-> Sol2 Week-6 readiness work. Deliver all four together.
+> **Delivered to Sol:** ☐ **NO** — DELTA_IDs 64–68 (D-008). Deltas
+> 64–67 remain preserved below; delta 68 adds the owner-authorised
+> Week-7 implementation. Deliver all five together.
 >
 > COVERS SESSIONS:
 > - 2026-08-23 (delta-63 certification) · The whole prose closeout is CERTIFIED; base → `4e55291`
@@ -45,6 +45,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
 > - 2026-08-30 (Sol2 Week-6 readiness) · Provenance hardening and Week 6 blocker discovery
 > - 2026-08-30 (Sol2 Week-6 integration) · Persisted evidence, isolated launch and final audit
 > - 2026-08-30 (Sol2 Week-6 execution) · Owner-authorised CPU preflight and registered run
+> - 2026-08-31 (Sol2 Week-7 implementation) · Verified evidence and baseline configuration preparation
 
 ```
 === UPDATE FOR SOL ===
@@ -116,6 +117,9 @@ NUMBERS (D-011)
 
 === END UPDATE ===
 ```
+
+
+
 ```
 === UPDATE FOR SOL ===
 DELTA_ID: 65
@@ -327,74 +331,53 @@ NUMBERS (D-011)
 DELTA_ID: 67
 PREVIOUS_DELTA_ID: 66
 DATE: 2026-08-30
-BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0015) +
-             SOL_BUNDLE.txt generated in the REAL repository after application
-SUBJECT: D-141..D-152 / DEV-015..017 — Week-6 software integrated and audited;
-         owner-authorised frozen-CPU execution opened before external review.
-GOVERNANCE. The student designated the active Codex implementation agent
-"Sol2", asked it to work with you instead of the historical local labels
-Fable/Oups, and extended the work through Week-6 integration. This name grants
-no review authority: you remain the external reviewer/certifier. DEV-015/016
-record the implementation lag. The owner later authorised real compute, was
-told the frozen route is CPU and agreed to keep the device on (D-145/DEV-017).
-Execution remains uncertified until your review; you may accept, amend or void it.
-1. PROVENANCE / EVIDENCE (D-141). Git failures now fail closed; run/config/fit
-identity copies, exact inventories, package pins and clean-commit attestations
-are cross-checked. Critic wrappers bind their frames. Serialized gate and
-threshold evidence rehashes its source rows. Existing certified evidence still
-recomputes; no statistic or frozen scalar changed.
-2. WEEK-6 IMPLEMENTATION (D-142, corrected and closed in scope by D-144).
-The registered 20-seed repair-label runner persists one immutable plan before
-work, resumes only source-verified fits, uses one baseline scale for all arms,
-and writes a label whose 60 fit sidecars are reopened and exactly rederived.
-Each physical fit can attest multiple registered roles without duplication.
-Full action/episode/step inventories bind latent pairing; encoded-pool digests
-bind arms whose feature schema is unchanged. Duplicate-fit helpers refuse.
-3. PRE-EXECUTION AUDIT (D-146). It stopped launch with every root empty; four
-smoke roots are separated from four Experiment-1 roots to avoid canary collision. Mounted
-sync now stages/fsyncs/atomically publishes before readback; every spawned fit
-is pinned to the preflight commit before pools and on reload; age-only lease
-recovery refuses. The exact 60-fit smoke now has its own no-compute preflight,
-fresh timed processes, lease/staging/incremental sync and label plus four counts
-only—Week-8 exclusion analysis stays closed. Experiment 1 writes matching
-local/durable start evidence and has a strict non-scientific partial monitor.
-4. SCHEDULE CORRECTION (D-144). Missing whole-design repairs are Week 7+, not a
-blocker to this smoke or baseline Experiment 1. Eight of fifteen canonical
-repair units have one registered model repair; seven have none. Multi-role fits
-are represented once; exclusion comparison remains Week 8 and canonical repair
-validation Week 9. DEV-012's 0.00 is planning only, not an observed rate.
-5. FIREWALL / OPEN BOUNDARY. X/y/groups exposes only allowlisted X. C-007 reaches
-persisted labels but lacks the label-to-SplitCandidate bridge; splitter/balancer
-remain synthetic-only pending registered parameters and authority.
-6. EXECUTION / CORRECTION (D-147…D-149). Preflight passed at `750266c7`; 60/60
-sidecars (140 member trainings) completed/synchronized without retry. D-147
-corrected the fail-closed feature digest rule; D-148 made C evidence read-only.
-At clean finalizer `f6833f2`, 60 fits verified/copied, 0 executed/retrained.
-Observed label **0 (data only)** for intended `hypothesis_class` smoke unit.
-NUMBERS: attempted/N0/N1/min/ambiguous/undiagnosed = 1/1/0/0/0/0; confirmatory
-seeds 1000–1019. Paired-seed-cluster 95% t intervals over 20 seed clusters:
-data effect −0.1493043 [−0.1716447,−0.1269639], 22.5413%, PASS; feature effect
-−0.0292878 [−0.0627686,0.0041930], 4.4217%, FAIL; threshold 20%, 191 episodes/
-1,102 failure-set transitions. One-unit smoke, not a rate or hypothesis result.
-Suite 1,669/7/0; GPU zero; historical C aggregate unchanged. Experiment 1 at
-`f036fe0`: 150/150 executed/synced, 0 failed/recovered, 750 member trainings,
-46m03.962s; final validated monitor and byte-identical project copy. A raw-tail
-check exposed two per-fit summaries mid-run; no adaptation—please audit D-150.
-7. D-151: P§7.3 says **>20%**, but creation/reload used `>=`; both now use `>` with exact-boundary tests. Smoke label 0 unchanged; full suite 1,671/7/0. AI-only 406-word scaffold/reminder created; Week 7 source audit opened no results.
-Week-7 label/figure/trend adapters are incomplete; please rule missing repairs and W7/W10 timing. D-152 confirms Phase A is already complete/certified; plan PHASE 1 is per-condition, not global launch authority.
-Closeout 184/1/0 in 121.95s; Week 6 awaits only the student's own-voice Thursday prose. Apply after exact target 66edf4a11dce39b91974d5c331cca81424f83b6e;
-review from BASE=4e55291; never `git am --3way` or infer reconstructed ancestry.
+BUNDLE_FILE: session_2026-08-30-sol2.patchseries (patches 0001..0015) + SOL_BUNDLE.txt generated in the REAL repository after application
+SUBJECT: D-141..D-152 / DEV-015..017 — Week-6 software integrated and audited; owner-authorised frozen-CPU execution opened before external review.
+GOVERNANCE. The student designated the active Codex implementation agent "Sol2", asked it to work with you instead of the historical local labels Fable/Oups, and extended the work through Week-6 integration. This name grants no review authority: you remain the external reviewer/certifier. DEV-015/016 record the implementation lag. The owner later authorised real compute, was told the frozen route is CPU and agreed to keep the device on (D-145/DEV-017). Execution remains uncertified until your review; you may accept, amend or void it.
+1. PROVENANCE / EVIDENCE (D-141). Git failures now fail closed; run/config/fit identity copies, exact inventories, package pins and clean-commit attestations are cross-checked. Critic wrappers bind their frames. Serialized gate and threshold evidence rehashes its source rows. Existing certified evidence still recomputes; no statistic or frozen scalar changed.
+2. WEEK-6 IMPLEMENTATION (D-142, corrected and closed in scope by D-144). The registered 20-seed repair-label runner persists one immutable plan before work, resumes only source-verified fits, uses one baseline scale for all arms, and writes a label whose 60 fit sidecars are reopened and exactly rederived. Each physical fit can attest multiple registered roles without duplication. Full action/episode/step inventories bind latent pairing; encoded-pool digests bind arms whose feature schema is unchanged. Duplicate-fit helpers refuse.
+3. PRE-EXECUTION AUDIT (D-146). It stopped launch with every root empty; four smoke roots are separated from four Experiment-1 roots to avoid canary collision. Mounted sync now stages/fsyncs/atomically publishes before readback; every spawned fit is pinned to the preflight commit before pools and on reload; age-only lease recovery refuses. The exact 60-fit smoke now has its own no-compute preflight, fresh timed processes, lease/staging/incremental sync and label plus four counts only—Week-8 exclusion analysis stays closed. Experiment 1 writes matching local/durable start evidence and has a strict non-scientific partial monitor.
+4. SCHEDULE CORRECTION (D-144). Missing whole-design repairs are Week 7+, not a blocker to this smoke or baseline Experiment 1. Eight of fifteen canonical repair units have one registered model repair; seven have none. Multi-role fits are represented once; exclusion comparison remains Week 8 and canonical repair validation Week 9. DEV-012's 0.00 is planning only, not an observed rate.
+5. FIREWALL / OPEN BOUNDARY. X/y/groups exposes only allowlisted X. C-007 reaches persisted labels but lacks the label-to-SplitCandidate bridge; splitter/balancer remain synthetic-only pending registered parameters and authority.
+6. EXECUTION / CORRECTION (D-147…D-149). Preflight passed at `750266c7`; 60/60 sidecars (140 member trainings) completed/synchronized without retry. D-147 corrected the fail-closed feature digest rule; D-148 made C evidence read-only. At clean finalizer `f6833f2`, 60 fits verified/copied, 0 executed/retrained. Observed label **0 (data only)** for intended `hypothesis_class` smoke unit.
+NUMBERS: attempted/N0/N1/min/ambiguous/undiagnosed = 1/1/0/0/0/0; confirmatory seeds 1000–1019. Paired-seed-cluster 95% t intervals over 20 seed clusters: data effect −0.1493043 [−0.1716447,−0.1269639], 22.5413%, PASS; feature effect −0.0292878 [−0.0627686,0.0041930], 4.4217%, FAIL; threshold 20%, 191 episodes/ 1,102 failure-set transitions. One-unit smoke, not a rate or hypothesis result. Suite 1,669/7/0; GPU zero; historical C aggregate unchanged. Experiment 1 at `f036fe0`: 150/150 executed/synced, 0 failed/recovered, 750 member trainings, 46m03.962s; final validated monitor and byte-identical project copy. A raw-tail check exposed two per-fit summaries mid-run; no adaptation—please audit D-150.
+7. D-151: P§7.3 says **>20%**, but creation/reload used `>=`; both now use `>` with exact-boundary tests. Smoke label 0 unchanged; full suite 1,671/7/0. AI-only 406-word scaffold/reminder created; Week 7 source audit opened no results. Week-7 label/figure/trend adapters are incomplete; please rule missing repairs and W7/W10 timing. D-152 confirms Phase A is already complete/certified; plan PHASE 1 is per-condition, not global launch authority. Closeout 184/1/0 in 121.95s; Week 6 awaits only the student's own-voice Thursday prose. Apply after exact target 66edf4a11dce39b91974d5c331cca81424f83b6e; review from BASE=4e55291; never `git am --3way` or infer reconstructed ancestry.
 
 RULINGS / AUTHORITY REQUESTED:
   a. Review D-141..D-152 and DEV-015..017 plus the cumulative patch series.
-  b. Review the owner's frozen-local-CPU execution choice; no Kaggle/T4 or GPU
-     result may be inferred and the two hosts' compute units stay distinct.
-  c. Approve or amend quarantine-and-restart (no within-fit checkpoint) for an
-     interrupted fit.
-  d. The owner has authorised real Week-6 smoke/Experiment-1 compute under
-     D-145 before your review; audit the resulting exact evidence and counts.
-  e. Rule the seven canonical and 173 whole-design missing model repairs, the
-     W7/W10 trend timing, then the final C-007 bridge. None is guessed here.
+  b. Review the owner's frozen-local-CPU execution choice; no Kaggle/T4 or GPU result may be inferred and the two hosts' compute units stay distinct.
+  c. Approve or amend quarantine-and-restart (no within-fit checkpoint) for an interrupted fit.
+  d. The owner has authorised real Week-6 smoke/Experiment-1 compute under D-145 before your review; audit the resulting exact evidence and counts.
+  e. Rule the seven canonical and 173 whole-design missing model repairs, the W7/W10 trend timing, then the final C-007 bridge. None is guessed here.
 
+=== END UPDATE ===
+```
+
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 68
+PREVIOUS_DELTA_ID: 67
+DATE: 2026-08-31
+SUBJECT: D-153 / DEV-018 — owner continues Week-7 implementation; review deferred.
+BUNDLE_FILE: cumulative session_2026-08-30-sol2.patchseries (0001..0016) plus real-repo SOL_BUNDLE.txt.
+The owner explicitly asked Sol2 to proceed and said you would review later.
+This defers review, not certification. Week-6 own-voice prose remains open.
+NEW: exact source-bound150-fit Experiment-1 adapter; descriptive per-configuration
+figure preparation; immutable100-fit Exp2A/675-fit sweep baseline preparation.
+No configuration pooling, H1 verdict, repair assignment, reserve or launch.
+Five Exp2A baselines overlap the completed smoke: requirements are not new work.
+Every future execution must reconcile those source-verified fits first.
+PREPARATION: project-local week7-preparation-2026-08-31/week7_baseline_preparation.json;
+SHA256 9b380e4bbefa4d3c1c5a52e6ab89f8b63cac42dbfaf90cf5b19419fcc9152044.
+TESTS: preparation24/0 in34.19s; evidence61/0 in134.39s; figures41/0 in11.30s;
+old+new figures48/0 in17.79s; state13/0 in0.64s. Full-suite closeout follows.
+FINAL: 1,798 passed / 7 skipped / 0 failed in1,519.40s. Initial full run1796/7/1
+exposed an old outside-repository scratch assumption; real-Git fixture isolation
+corrected, production unchanged, infrastructure47/1/0. Added real150-source-to-PNG
+composition1/0 passed and is included in the final full suite. Prior failure retained.
+DATA: no real Experiment-1 payload, new fit, label, inference or GPU in this increment.
+Prior deltas remain undelivered and unaltered in substance; delta67 was only reflowed.
+Please review implementation and the existing unresolved repair/inference choices.
+Week7 engineering progressed, not whole-week completion; human prose stays open.
 === END UPDATE ===
 ```

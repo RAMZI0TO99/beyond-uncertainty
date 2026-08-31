@@ -6,6 +6,14 @@
 No Experiment-1 fit payload, result summary, metric row, figure, trend estimate,
 repair verdict, or new label was opened or computed during this audit.
 
+**Prospective update, 2026-08-31 (D-153):** the owner explicitly deferred Sol's
+review and authorised the next implementation step. The historical findings
+and stops below describe D-151, not a continuing prohibition on routine code
+work. See `week7_implementation_log.md` for the new source-bound adapter,
+descriptive figure preparation and exact baseline configuration manifest.
+Student prose and unresolved scientific choices remain open; no scientific
+result has been opened by this implementation increment.
+
 ## Schedule boundary
 
 The Week-7 schedule says:

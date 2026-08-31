@@ -287,11 +287,23 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ## Where the project stands
 
-*Last session: **2026-08-30**. Week 1 Monday was 2026-08-17, so by the calendar
-it is **Week 2 Sunday** — the project runs roughly **3 weeks ahead** (DEV-002).
+*Last session: **2026-08-31**. Week 1 Monday was 2026-08-17, so by the calendar
+it is **Week 3 Monday** — Week-7 implementation is early (DEV-018).
 Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
+
+**2026-08-31 D-153 / DEV-018 overrides the implementation wait below:** the
+owner explicitly said to proceed to the next step and that Sol would review
+later. Week-7 source-bound Experiment-1 inputs/descriptive figures and exact
+Experiment-2A/sweep baseline configuration preparation are built and verified.
+Final full CPU suite: **1,798 passed, 7 skipped, 0 failed in 1,519.40 s**.
+Read `docs/week7_implementation_log.md`. Do not stop
+routine implementation merely because review or the student's Week-6 prose is
+pending. Do not invent missing scientific choices. Deltas **64–68** are
+undelivered; external Sol still owns certification. Phase B is in Week-7
+engineering while Week-6 human prose remains open. Historical execution
+evidence is untouched; all new writes stay inside the project workspace.
 
 **2026-08-30 SOL2 UPDATE (read D-133…D-152 and DEV-013…017 before older
 claims):** exact Config/Git/run/fit provenance and serialized gate/threshold
@@ -303,7 +315,7 @@ monitoring. D-144 corrects the first blocker reading:
 **173/300 units lack a model-repair arm, but that is Week-7+/whole-design work,
 not a blocker to the registered Week-6 smoke unit or baseline Experiment 1**;
 the 30/150 multi-role fits are represented once. C-007 reaches persisted-label evidence
-but still lacks the final label-to-`SplitCandidate` bridge. **Deltas 64–67 are
+but still lacks the final label-to-`SplitCandidate` bridge. **Deltas 64–68 are
 undelivered.** Exact real patch target
 `66edf4a11dce39b91974d5c331cca81424f83b6e`; Sol review base `4e55291`.
 
@@ -329,7 +341,7 @@ work is Phase B Week-6 closeout. Plan §13.6's separate “PHASE 1” is a repea
 per-condition data-generation loop, not authority for a global unattended run.
 
 **Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
-AND CERTIFIED** (D-120, 2026-08-23). Calendar time is Week 2 Sunday; scheduled
+AND CERTIFIED** (D-120, 2026-08-23). Calendar time is Week 3 Monday; scheduled
 Week 6 begins 2026-09-21. The owner opened Week 6 **readiness** early under
 DEV-015/016 and then explicitly authorised real confirmatory execution on the
 disclosed frozen local CPU under D-145/DEV-017. Preflight precedes every fit;
@@ -470,22 +482,21 @@ rerun. These are confirmatory smoke evidence, not development diagnostics.
 
 ### Next, in order
 
-1. Ask the student to rewrite `docs/week6_student_closeout_drafting_aid.md`
-   independently into about 400 words in their own voice on the labelling
-   protocol and fixed 10× data-repair budget; fact-check, never ghost-author.
-2. Package D-152 as patch 0015, run the state gate, then deliver
-   undelivered deltas **64–67** to external Sol. Request review of D-141…D-152,
-   the raw-tail inspection, the strict `>20%` correction, and Week-7/Week-10
-   trend-timing ambiguity.
-3. Only after those rulings, specify and synthetically test the missing
-   Experiment-1 label/figure/trend adapters; do not open results or choose
-   missing model repairs now.
-4. Complete the student's explain-and-defend walkthrough and preserve
-   DEV-012's 0.00 zero-inflation planning convention exactly; it is
-   not observed, estimated or pilot-derived.
+1. D-153 implementation/audit is complete and travels as patch 0016. Read the
+   final verification and `docs/week7_open_decisions.md` before the next step;
+   never repeat the 150 Experiment-1 fits or the 60 smoke fits.
+2. Keep Week-6 student's independent ~400-word rewrite/explain-and-defend task
+   open alongside engineering, not as a substitute for it. Fact-check, never
+   ghost-author that requirement.
+3. For further execution, distinguish prepared configurations from outstanding
+   work: five Experiment-2A baselines already exist in smoke evidence. Reuse
+   source-verified physical fits, preserving roles, rather than rerunning them.
+4. Carry unresolved missing model repairs and pooled H1/timing choices to Sol.
+   Do not infer repair labels from baseline-only fits. Deliver deltas **64–68**
+   with the cumulative patches; nothing is certified by the name Sol2.
 
-**Owner authority now also covers the requested drafting aid, reminder and
-bounded source-only continuation recorded by D-151.** Do not open Week-7
+**Owner authority covers D-151's aid/reminder and D-153's Week-7 implementation
+with deferred review.** This increment is source/synthetic only. Do not open Week-7
 scientific results, choose missing model repairs, invent baseline
 roles, duplicate multi-role fits, recalibrate the threshold, expand the design,
 consume reserve units, or use the splitter/balancer on real inputs.
@@ -572,9 +583,10 @@ consume reserve units, or use the splitter/balancer on real inputs.
   pipeline PHASE 1 is not a global launch. External certification remains
   pending (D-141…D-152).
 
-Still blocked by Sol, correctly: registered split seed/targets, real critic
+Still scientifically gated: registered split seed/targets, real critic
 splitting, reserve use and later whole-design repair coverage. Owner-authorised
-Week-6 smoke/Experiment-1 collection is the disclosed DEV-017 exception.
+Week-6 collection is DEV-017; Week-7 routine implementation before review is
+DEV-018. The latter does not register an unspecified scientific choice.
 **The MDE is not among them — that claim was stale.** Sol ruled on all three
 questions in **D-089**: the simulation is a **diagnostic**, not H3's estimator;
 MDE-vs-margin is a **necessary sensitivity check and explicitly not an
