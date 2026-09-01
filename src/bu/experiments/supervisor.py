@@ -29,6 +29,7 @@ import multiprocessing
 import os
 import pickle
 import re
+import stat
 import time
 import traceback
 import uuid
@@ -167,6 +168,57 @@ def _validate_positive_finite(value: object, *, what: str) -> float:
     return number
 
 
+def _is_link_or_reparse(metadata: os.stat_result) -> bool:
+    attributes = int(getattr(metadata, "st_file_attributes", 0))
+    reparse = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+    return stat.S_ISLNK(metadata.st_mode) or bool(attributes & reparse)
+
+
+def _require_plain_directory_components(path: str | Path, *, what: str) -> Path:
+    """Lexically reject symlink and Windows junction/reparse components."""
+    absolute = Path(os.path.abspath(path))
+    for component in reversed((absolute, *absolute.parents)):
+        if not os.path.lexists(component):
+            continue
+        try:
+            metadata = component.lstat()
+        except OSError as exc:
+            raise ValueError(f"cannot inspect {what} component {component}: {exc}") from exc
+        if _is_link_or_reparse(metadata):
+            raise ValueError(
+                f"{what} contains a symbolic-link/reparse-point component: {component}"
+            )
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError(f"{what} component is not a directory: {component}")
+    return absolute
+
+
+def _require_plain_tree(root: Path, *, what: str) -> None:
+    """Reject every link/reparse point and special descendant."""
+    try:
+        root_metadata = root.lstat()
+    except OSError as exc:
+        raise ValueError(f"cannot inspect {what} root {root}: {exc}") from exc
+    if _is_link_or_reparse(root_metadata) or not stat.S_ISDIR(root_metadata.st_mode):
+        raise ValueError(f"{what} root is not a plain directory: {root}")
+    for current, directory_names, file_names in os.walk(root, followlinks=False):
+        current_path = Path(current)
+        for name in directory_names:
+            child = current_path / name
+            metadata = child.lstat()
+            if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
+                raise ValueError(
+                    f"{what} contains unsupported link/reparse directory: {child}"
+                )
+        for name in file_names:
+            child = current_path / name
+            metadata = child.lstat()
+            if _is_link_or_reparse(metadata) or not stat.S_ISREG(metadata.st_mode):
+                raise ValueError(
+                    f"{what} contains unsupported link/reparse or special file: {child}"
+                )
+
+
 def _paths_overlap(left: Path, right: Path) -> bool:
     return left == right or left in right.parents or right in left.parents
 
@@ -182,12 +234,19 @@ def _attempt_roots(
     output_root: Path, staging_root: str | Path | None
 ) -> tuple[Path, Path]:
     """Resolve staging/quarantine roots and prove atomic publication is safe."""
+    output_root = _require_plain_directory_components(
+        output_root, what="output root"
+    )
     if staging_root is None:
         return output_root / "staging", output_root / "quarantine"
 
     output_root.mkdir(parents=True, exist_ok=True)
-    staging_base = Path(staging_root)
+    _require_plain_directory_components(output_root, what="output root")
+    staging_base = _require_plain_directory_components(
+        staging_root, what="staging root"
+    )
     staging_base.mkdir(parents=True, exist_ok=True)
+    _require_plain_directory_components(staging_base, what="staging root")
     resolved_output = output_root.resolve()
     resolved_staging = staging_base.resolve()
     if _paths_overlap(resolved_output, resolved_staging):
@@ -260,47 +319,51 @@ def _job_tree_inventory(root: Path) -> tuple[dict[str, Any], ...]:
     of the payload identity. Links and special files are refused because
     their targets or contents can change after publication.
     """
-    if not root.is_dir():
-        raise ValueError(f"job tree {root} must be a directory")
+    _require_plain_tree(root, what="job tree")
     inventory: list[dict[str, Any]] = []
-    paths = sorted(
-        root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()
-    )
-    for path in paths:
-        relative = path.relative_to(root).as_posix()
-        if relative in {ATTEMPT_FILE, RECEIPT_FILE}:
-            continue
-        if path.is_symlink():
-            raise ValueError(
-                f"job tree {root} contains unsupported link {relative!r}"
-            )
-        if path.is_dir():
+    for current, directory_names, file_names in os.walk(root, followlinks=False):
+        current_path = Path(current)
+        for name in sorted(directory_names):
+            path = current_path / name
+            metadata = path.lstat()
+            relative = path.relative_to(root).as_posix()
+            if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
+                raise ValueError(
+                    f"job tree {root} contains unsupported link/reparse "
+                    f"directory {relative!r}"
+                )
             inventory.append({"kind": "directory", "path": relative})
-            continue
-        if not path.is_file():
-            raise ValueError(
-                f"job tree {root} contains unsupported entry {relative!r}"
+        for name in sorted(file_names):
+            path = current_path / name
+            relative = path.relative_to(root).as_posix()
+            metadata = path.lstat()
+            if _is_link_or_reparse(metadata) or not stat.S_ISREG(metadata.st_mode):
+                raise ValueError(
+                    f"job tree {root} contains unsupported link/reparse or "
+                    f"special file {relative!r}"
+                )
+            if relative in {ATTEMPT_FILE, RECEIPT_FILE}:
+                continue
+            digest = hashlib.sha256()
+            size = 0
+            with path.open("rb") as handle:
+                while chunk := handle.read(1024 * 1024):
+                    digest.update(chunk)
+                    size += len(chunk)
+            inventory.append(
+                {
+                    "kind": "file",
+                    "path": relative,
+                    "size": size,
+                    "sha256": digest.hexdigest(),
+                }
             )
-        digest = hashlib.sha256()
-        size = 0
-        with path.open("rb") as handle:
-            while chunk := handle.read(1024 * 1024):
-                digest.update(chunk)
-                size += len(chunk)
-        inventory.append(
-            {
-                "kind": "file",
-                "path": relative,
-                "size": size,
-                "sha256": digest.hexdigest(),
-            }
-        )
     if not any(
         entry["kind"] == "file" and entry["path"] == RESULT_FILE
         for entry in inventory
     ):
         raise ValueError(f"job tree {root} has no {RESULT_FILE}")
-    return tuple(inventory)
+    return tuple(sorted(inventory, key=lambda entry: (entry["path"], entry["kind"])))
 
 
 def _job_tree_digest(root: Path) -> str:
@@ -469,14 +532,21 @@ def _stop_and_join_worker(process: multiprocessing.Process) -> None:
 
 
 def _quarantine(staging: Path, quarantine_root: Path) -> Path:
+    _require_plain_tree(staging, what="attempt staging")
+    quarantine_root = _require_plain_directory_components(
+        quarantine_root, what="quarantine root"
+    )
     quarantine_root.mkdir(parents=True, exist_ok=True)
+    _require_plain_directory_components(quarantine_root, what="quarantine root")
     destination = quarantine_root / staging.name
-    if destination.exists():
+    if os.path.lexists(destination):
         raise ValueError(
             f"quarantine destination {destination} already exists; refusing to "
             "overwrite attempt evidence"
         )
     os.replace(staging, destination)
+    _require_plain_directory_components(destination, what="quarantined attempt")
+    _require_plain_tree(destination, what="quarantined attempt")
     return destination
 
 
@@ -521,15 +591,27 @@ def run_isolated_attempt(
             "callback and payload must be picklable for a fresh spawned process"
         ) from exc
 
-    root_path = Path(root)
+    root_path = _require_plain_directory_components(root, what="output root")
+    root_path.mkdir(parents=True, exist_ok=True)
+    _require_plain_directory_components(root_path, what="output root")
+    _require_plain_directory_components(root_path / "jobs", what="jobs root")
     attempt_staging_root, quarantine_root = _attempt_roots(
         root_path, staging_root
     )
     canonical = root_path / "jobs" / safe_job_id
+    _require_plain_directory_components(canonical, what="canonical job path")
+    attempt_staging_root = _require_plain_directory_components(
+        attempt_staging_root, what="attempt staging root"
+    )
+    _require_plain_directory_components(quarantine_root, what="quarantine root")
     attempt_staging_root.mkdir(parents=True, exist_ok=True)
+    _require_plain_directory_components(
+        attempt_staging_root, what="attempt staging root"
+    )
     attempt_token = uuid.uuid4().hex
     staging = attempt_staging_root / f"{safe_job_id}.{attempt_token}"
     staging.mkdir()
+    _require_plain_directory_components(staging, what="attempt staging")
 
     started_at = _utc_now()
     started_monotonic = time.monotonic()
@@ -568,6 +650,7 @@ def run_isolated_attempt(
         # cleanup as ordinary exceptions, before any launcher can release.
         _stop_and_join_worker(process)
         _WORKERS_REQUIRING_REAP.discard(process)
+        _require_plain_tree(staging, what="attempt staging")
         _write_json_exclusive(staging / "parent_interruption.json", {
             "schema_version": 1, "job_id": safe_job_id,
             "attempt_token": attempt_token, "parent_pid": os.getpid(),
@@ -580,6 +663,7 @@ def run_isolated_attempt(
         send_connection.close()
         receive_connection.close()
 
+    _require_plain_tree(staging, what="attempt staging")
     elapsed = time.monotonic() - started_monotonic
     exit_code = process.exitcode
     status: AttemptStatus
@@ -648,6 +732,7 @@ def run_isolated_attempt(
 
     if status != "success":
         _write_json_exclusive(staging / RECEIPT_FILE, receipt)
+        _require_plain_tree(staging, what="attempt staging")
         quarantined = _quarantine(staging, quarantine_root)
         return AttemptOutcome(
             job_id=safe_job_id,
@@ -667,7 +752,9 @@ def run_isolated_attempt(
     receipt["result_digest"] = result_digest
     receipt["job_tree_digest"] = _job_tree_digest(staging)
 
-    if canonical.exists():
+    if os.path.lexists(canonical):
+        _require_plain_directory_components(canonical, what="canonical job path")
+        _require_plain_tree(canonical, what="canonical job tree")
         if _same_published_tree(staging, canonical):
             receipt["published"] = False
             receipt["already_published"] = True
@@ -696,13 +783,18 @@ def run_isolated_attempt(
 
     receipt["published"] = True
     _write_json_exclusive(staging / RECEIPT_FILE, receipt)
+    _require_plain_tree(staging, what="attempt staging")
+    _require_plain_directory_components(canonical.parent, what="jobs root")
     canonical.parent.mkdir(parents=True, exist_ok=True)
+    _require_plain_directory_components(canonical.parent, what="jobs root")
     try:
         os.replace(staging, canonical)
     except OSError as exc:
         # A concurrent publisher may have won after the existence check.  An
         # identical result is safe and retained as a quarantined duplicate;
         # divergent bytes remain a hard refusal.
+        if os.path.lexists(canonical):
+            _require_plain_directory_components(canonical, what="canonical job path")
         if canonical.exists() and _same_published_tree(staging, canonical):
             duplicate = _quarantine(staging, quarantine_root)
             return AttemptOutcome(
@@ -731,6 +823,8 @@ def run_isolated_attempt(
             quarantine_dir=quarantined,
         ) from exc
 
+    _require_plain_directory_components(canonical, what="canonical job path")
+    _require_plain_tree(canonical, what="canonical job tree")
     return AttemptOutcome(
         job_id=safe_job_id,
         attempt_token=attempt_token,

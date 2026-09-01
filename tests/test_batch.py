@@ -650,6 +650,70 @@ def test_directory_sync_rejects_a_symlinked_destination_tree(tmp_path):
         sync_to_directory(remote)(batch_dir, item, result_for(item))
 
 
+def test_batch_rejects_windows_reparse_jobs_component_before_executor(
+    monkeypatch, tmp_path
+):
+    item = job(0)
+    batch_id = B._manifest((item,))["batch_id"]
+    jobs_root = tmp_path / "local" / batch_id / "jobs"
+    jobs_root.mkdir(parents=True)
+    original = Path.lstat
+
+    def marked(path: Path):
+        info = original(path)
+        if path.absolute() == jobs_root.absolute():
+            return SimpleNamespace(
+                st_mode=info.st_mode,
+                st_file_attributes=getattr(
+                    stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
+                ),
+                st_nlink=info.st_nlink,
+            )
+        return info
+
+    monkeypatch.setattr(Path, "lstat", marked)
+    with pytest.raises(ValueError, match="reparse"):
+        run_batch(
+            (item,),
+            root=tmp_path / "local",
+            sync=receipt_sync,
+            executor=lambda selected, out: pytest.fail("executor was called"),
+        )
+    assert not (jobs_root.parent / MANIFEST_FILE).exists()
+
+
+def test_directory_sync_rejects_windows_reparse_descendant(
+    monkeypatch, tmp_path
+):
+    item = job(0)
+    local = tmp_path / "local"
+    report = run_batch(
+        (item,), root=local, sync=receipt_sync, executor=isolated_result_executor
+    )
+    batch_dir = local / report.batch_id
+    remote_jobs = tmp_path / "remote" / report.batch_id / "jobs"
+    remote_jobs.mkdir(parents=True)
+    original = Path.lstat
+
+    def marked(path: Path):
+        info = original(path)
+        if path.absolute() == remote_jobs.absolute():
+            return SimpleNamespace(
+                st_mode=info.st_mode,
+                st_file_attributes=getattr(
+                    stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
+                ),
+                st_nlink=info.st_nlink,
+            )
+        return info
+
+    monkeypatch.setattr(Path, "lstat", marked)
+    with pytest.raises(ValueError, match="reparse"):
+        sync_to_directory(tmp_path / "remote")(
+            batch_dir, item, result_for(item)
+        )
+
+
 def test_directory_sync_rejects_non_regular_source_artifacts(monkeypatch, tmp_path):
     local, remote = tmp_path / "local", tmp_path / "remote"
     item = job(0)

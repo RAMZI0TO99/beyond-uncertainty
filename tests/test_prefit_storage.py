@@ -131,6 +131,22 @@ class StorageCases(unittest.TestCase):
                 self.check()
                 self.assertCountEqual(self.observations, self.roots.values())
 
+    def test_week8_preflight_kind_checks_every_bound_root(self):
+        self.document = {
+            "week8_preflight_schema_version": 1,
+            "status": "ready",
+            "launch_performed": False,
+            "storage": {"minimum_free_bytes": 80, "roots": {
+                name: {"path": str(path), "writable": True, "free_bytes": 1000}
+                for name, path in self.roots.items()}},
+        }
+        self.source = self.roots["preflight"] / "week8_preflight_report.json"
+        self.publish()
+        self.free = 80
+        self.observations.clear()
+        self.check()
+        self.assertCountEqual(self.observations, self.roots.values())
+
     def test_current_low_free_not_old_snapshot_refuses(self):
         self.preflight()
         self.check()
@@ -456,7 +472,13 @@ class StorageCases(unittest.TestCase):
             self.free = 79  # Simulate first fit consuming the reserve; never actual disk fill.
             return types.SimpleNamespace(succeeded=True)
 
-        namespace = {"Path": Path, "json": json, "PreflightStorageGuard": S.PreflightStorageGuard,
+        namespace = {"Path": Path, "json": json, "os": os,
+            "PreflightStorageGuard": S.PreflightStorageGuard,
+            # This AST-only harness isolates storage-guard ordering. The real
+            # batch/supervisor suites exercise the path guards themselves.
+            "_require_plain_directory_components": lambda *args, **kwargs: None,
+            "_require_plain_tree": lambda *args, **kwargs: None,
+            "_lstat_regular_file": lambda *args, **kwargs: None,
             "_manifest": lambda _: {"batch_id": "synthetic-batch"},
             "_write_json_exclusive": lambda *args: None, "MANIFEST_FILE": "manifest.json",
             "EVENTS_FILE": "events.jsonl", "RESULT_FILE": "job_result.json",

@@ -382,39 +382,76 @@ def _expected_git_commit(value: object) -> str:
     return value
 
 
+def _is_link_or_reparse(metadata: os.stat_result) -> bool:
+    attributes = int(getattr(metadata, "st_file_attributes", 0))
+    reparse = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+    return stat.S_ISLNK(metadata.st_mode) or bool(attributes & reparse)
+
+
 def _lstat_regular_file(path: Path) -> os.stat_result:
     """Return immutable-file metadata without following mutable links."""
     try:
         metadata = path.lstat()
     except OSError as exc:
         raise ValueError(f"cannot inspect durable evidence file {path}: {exc}") from exc
-    if stat.S_ISLNK(metadata.st_mode):
-        raise ValueError(f"durable evidence path is a symbolic link: {path}")
+    if _is_link_or_reparse(metadata):
+        raise ValueError(
+            f"durable evidence path is a symbolic-link/reparse-point: {path}"
+        )
     if not stat.S_ISREG(metadata.st_mode):
         raise ValueError(f"durable evidence path is not a regular file: {path}")
-    if metadata.st_nlink != 1:
+    if getattr(metadata, "st_nlink", 1) != 1:
         raise ValueError(f"durable evidence path is hard-linked: {path}")
     return metadata
 
 
 def _require_plain_directory_components(path: Path) -> None:
-    """Reject an existing path reached through any symbolic-link component."""
+    """Reject every existing symlink or Windows reparse/junction component."""
     absolute = Path(os.path.abspath(path))
     components = (absolute, *absolute.parents)
     for component in reversed(components):
         if not os.path.lexists(component):
             continue
-        metadata = component.lstat()
-        if stat.S_ISLNK(metadata.st_mode):
+        try:
+            metadata = component.lstat()
+        except OSError as exc:
             raise ValueError(
-                f"durable sync destination contains a symbolic-link component: "
+                f"cannot inspect plain directory component {component}: {exc}"
+            ) from exc
+        if _is_link_or_reparse(metadata):
+            raise ValueError(
+                f"path contains a symbolic-link/reparse-point component: "
                 f"{component}"
             )
         if not stat.S_ISDIR(metadata.st_mode):
             raise ValueError(
-                f"durable sync destination component is not a directory: "
+                f"plain path component is not a directory: "
                 f"{component}"
             )
+
+
+def _require_plain_tree(root: Path) -> None:
+    """Reject link/reparse and special descendants in an existing tree."""
+    try:
+        root_metadata = root.lstat()
+    except OSError as exc:
+        raise ValueError(f"plain tree cannot be inspected: {root}: {exc}") from exc
+    if _is_link_or_reparse(root_metadata) or not stat.S_ISDIR(root_metadata.st_mode):
+        raise ValueError(f"plain tree root is not a plain directory: {root}")
+    for current, directory_names, file_names in os.walk(root, followlinks=False):
+        current_path = Path(current)
+        for name in directory_names:
+            child = current_path / name
+            try:
+                metadata = child.lstat()
+            except OSError as exc:
+                raise ValueError(f"plain tree entry cannot be inspected: {child}: {exc}") from exc
+            if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
+                raise ValueError(
+                    f"plain tree contains a linked/reparse or special directory: {child}"
+                )
+        for name in file_names:
+            _lstat_regular_file(current_path / name)
 
 
 def _regular_tree_inventory(root: Path) -> list[dict[str, Any]]:
@@ -423,7 +460,7 @@ def _regular_tree_inventory(root: Path) -> list[dict[str, Any]]:
         root_metadata = root.lstat()
     except OSError as exc:
         raise ValueError(f"job evidence directory cannot be inspected: {root}: {exc}") from exc
-    if stat.S_ISLNK(root_metadata.st_mode) or not stat.S_ISDIR(root_metadata.st_mode):
+    if _is_link_or_reparse(root_metadata) or not stat.S_ISDIR(root_metadata.st_mode):
         raise ValueError(f"job evidence root is not a plain directory: {root}")
 
     inventory: list[dict[str, Any]] = []
@@ -432,9 +469,9 @@ def _regular_tree_inventory(root: Path) -> list[dict[str, Any]]:
         for name in directory_names:
             child = current_path / name
             metadata = child.lstat()
-            if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+            if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
                 raise ValueError(
-                    f"job evidence contains a linked or special directory: {child}"
+                    f"job evidence contains a linked/reparse or special directory: {child}"
                 )
         for name in file_names:
             child = current_path / name
@@ -763,11 +800,20 @@ def _run_batch(
         raise ValueError("jobs must be an iterable of exact BatchJob records") from exc
     # Validate the public boundary before reading attributes below.
     manifest = _manifest(job_tuple)
-    batch_dir = Path(root) / manifest["batch_id"]
+    root_path = Path(os.path.abspath(root))
+    _require_plain_directory_components(root_path)
+    root_path.mkdir(parents=True, exist_ok=True)
+    _require_plain_directory_components(root_path)
+    batch_dir = root_path / manifest["batch_id"]
+    _require_plain_directory_components(batch_dir)
     batch_dir.mkdir(parents=True, exist_ok=True)
+    _require_plain_directory_components(batch_dir)
+    _require_plain_tree(batch_dir)
     _write_json_exclusive(batch_dir / MANIFEST_FILE, manifest)
+    _lstat_regular_file(batch_dir / MANIFEST_FILE)
     events_path = batch_dir / EVENTS_FILE
     events_path.touch(exist_ok=True)
+    _lstat_regular_file(events_path)
     recover_unterminated_jsonl(
         events_path,
         evidence_dir=batch_dir / "journal_recovery",
@@ -778,6 +824,9 @@ def _run_batch(
     executed = resumed = synced = failed = sync_failed = 0
     for job in job_tuple:
         job_dir = batch_dir / "jobs" / job.job_id
+        _require_plain_directory_components(job_dir)
+        if os.path.lexists(job_dir):
+            _require_plain_tree(job_dir)
         state = latest.get(job.job_id)
         if state and state["status"] == "synced":
             result = _recover_result(
@@ -914,7 +963,9 @@ def _run_batch(
             _append_transition(events_path, latest, _event(job, "started"))
             try:
                 if attempt_timeout_seconds is None:
+                    _require_plain_directory_components(job_dir)
                     job_dir.mkdir(parents=True, exist_ok=True)
+                    _require_plain_directory_components(job_dir)
                     if require_fit_evidence:
                         raw_result = _default_executor(
                             job,
@@ -923,6 +974,7 @@ def _run_batch(
                         )
                     else:
                         raw_result = executor(job, job_dir)
+                    _require_plain_tree(job_dir)
                 else:
                     child_target: Callable[..., Mapping[str, Any]]
                     child_payload: object
@@ -953,6 +1005,7 @@ def _run_batch(
                             f"{outcome.status}: {outcome.error_type}: "
                             f"{outcome.error}"
                         )
+                    _require_plain_tree(job_dir)
                     raw_result = json.loads(
                         (job_dir / RESULT_FILE).read_text(encoding="utf-8")
                     )
@@ -986,6 +1039,7 @@ def _run_batch(
         digest = _result_digest(result)
 
         try:
+            _require_plain_tree(job_dir)
             receipt = _validate_sync_receipt(
                 sync(batch_dir, job, result),
                 batch_dir=batch_dir,
@@ -1315,6 +1369,7 @@ def sync_to_directory(destination: str | Path) -> SyncCallback:
         _require_plain_directory_components(target_root)
         target = target_root / batch_dir.name
         _durable_directory(target)
+        _require_plain_tree(target)
         source_job = batch_dir / "jobs" / job.job_id
         target_job = target / "jobs" / job.job_id
         _publish_job_tree(source_job, target_job)
@@ -1329,6 +1384,7 @@ def sync_to_directory(destination: str | Path) -> SyncCallback:
             target / EVENTS_FILE,
             append_only_prefix=True,
         )
+        _require_plain_tree(target)
         return SyncReceipt(
             destination=str(target_job.resolve()),
             job_id=job.job_id,

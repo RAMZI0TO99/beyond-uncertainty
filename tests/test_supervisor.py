@@ -5,8 +5,10 @@ from __future__ import annotations
 import errno
 import json
 import os
+import stat
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -128,6 +130,37 @@ def test_worker_authored_symlink_is_refused_before_publication(tmp_path):
     attempts = list((tmp_path / "staging").glob("worker-link-refused.*"))
     assert len(attempts) == 1
     assert (attempts[0] / "worker-link.txt").is_symlink()
+
+
+def test_windows_reparse_jobs_component_is_refused_before_staging_or_spawn(
+    tmp_path, monkeypatch
+):
+    jobs_root = tmp_path / "jobs"
+    jobs_root.mkdir()
+    original = Path.lstat
+
+    def marked(path: Path):
+        info = original(path)
+        if path.absolute() == jobs_root.absolute():
+            return SimpleNamespace(
+                st_mode=info.st_mode,
+                st_file_attributes=getattr(
+                    stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400
+                ),
+                st_nlink=info.st_nlink,
+            )
+        return info
+
+    monkeypatch.setattr(Path, "lstat", marked)
+    with pytest.raises(ValueError, match="link/reparse"):
+        run_isolated_attempt(
+            successful_job,
+            root=tmp_path,
+            job_id="reparse-refused",
+            payload={"seed": 1000},
+            timeout_seconds=10,
+        )
+    assert not (tmp_path / "staging").exists()
 
 
 def test_success_runs_in_spawned_child_and_parent_publishes_json(tmp_path):

@@ -1,5 +1,22 @@
 # CLAUDE.md — operational handoff
 
+**2026-09-01 Week8 bounded start supersedes next-step wording below:** the owner
+opened Week8 during calendar Week3 and deferred personal prose/review, without
+moving dates or Gate2 (D-160/DEV-022). CPU remains the only frozen production
+route; GPU stays unused. Exact new scope is E2A261fits/441models (not316/556:
+all60 smoke fits are reused), E2B125/625 and sweep-0023/15. First-sweep
+exclusion is source-reported before reserve; reserve remains unauthorized.
+Sign consistency is fixed pre-application as the five per-seed observed-class
+ratio contrasts, strict delta<0, 5/5 required; it is not an H2 verdict. The E2A
+smoke label was already known, so this is explicitly post-outcome and
+post-collection; the other19 labels and all E2A H2 ratios remained unopened.
+Retain
+the already frozen/used training batch size128 despite the Word table's256 and
+disclose the departure; changing it would mix procedures under unchanged fit
+identities. Student Week6/7/8 own-voice work and external Sol review remain
+open. Read `docs/week8_readiness_audit.md`, the reporting/sign specifications
+and `docs/week8_production_runbook.md`; delta71 will carry the closeout.
+
 **2026-09-01 Week7 computational closeout supersedes the next-step wording below:**
 Sol2 completed exact578newfits/1330models on CPU,GPU0,with0failed/resumed/other/
 unknown attempts. E1474/834,E2A95/475,firstsweep3/15+6/6. All30E1labels are

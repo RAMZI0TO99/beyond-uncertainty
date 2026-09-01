@@ -5826,6 +5826,13 @@ The owner authorised frozen-CPU compute and kept the device on. D-146…D-149 cl
 The owner explicitly deferred external Sol review and directed the next step (DEV-018/D-153). Week-6 machine work remains complete; the student's independent prose stays open alongside Week-7 engineering. Source-bound Experiment-1 inputs/figures and exact Experiment-2A/sweep baseline preparation are being built and synthetically tested. No new fit, label, inference or real Experiment-1 payload has been opened in this increment. Delta 68 carries the changes and final verification.
 Closeout: D-153 completed the three tools, 775 validated configuration requirements and synthetic visual QA. Final full suite **1,798 passed / 7 skipped / 0 failed in 1,519.40 s**; the earlier fixture failure and recovery are retained in the ledger. No real Experiment-1 payload or new experimental fit was opened; Week 7 is not scientifically complete. Transferable patch 0016 and delta 68 carry the handoff; external review and the human obligations remain open.
 
+## Archived from PROJECT_STATE.md §7 on 2026-09-01 — Week-7 machine closeout
+
+### 2026-08-31 (Sol2 Week-7 execution) · Verified launch, anchors and registered repairs · Claude
+
+D-157/DEV-020 brings only the six registered Experiment-1 validation ladders forward from Week 9 to satisfy Week-7 labeling, preserving exact seeds and scientific rules. The D-154–D-156 closed session was archived verbatim. Parallel implementation covers before-training sweep anchors, exact Exp2A reuse/launch, ordinary labels, architecture-aware timing and E1 repairs. Initial tests: launch28; sweep integration8; neighboring regression312 passed/1 skip. Counts overlap. No new production fit or label yet; CPU tests only, GPU unused. All work stays project-local. See docs/week7_execution_log.md and delta70; full-week completion, human prose and external certification are not claimed.
+Continuation completed2026-09-01: guarded fullQA4085pass/8skip/51subtests;578newfits/1330models independently accounted;E1labels29observed0/0observed1/0ambiguous/1undiagnosed and firstsweep undiagnosed;E2A95plus5reuses read back;GPU0. Detailed NUMBERS/source/failure/accounting in docs/week7_sol_closeout.md and runtime log. Machine work complete; studentownvoice/delivery/externalSol stillopen.
+
 ## Archived from PROJECT_STATE.md §7 on 2026-08-31 — D-154–D-156 closeout
 
 ### 2026-08-31 (Sol2 scientific decisions) · Fixed repair extension and H1 reporting amendment · Claude

@@ -111,6 +111,7 @@ def check_preflight_storage(source_path, source_sha256, *, roots):
     schemas = {
         "week7_exp1_repair_preflight.json": "exp1_repair_preflight_schema_version",
         "week7_preflight_report.json": "week7_preflight_schema_version",
+        "week8_preflight_report.json": "week8_preflight_schema_version",
     }
     schema = schemas.get(path.name)
     if (schema is None or type(document) is not dict or
@@ -136,7 +137,7 @@ def check_preflight_storage(source_path, source_sha256, *, roots):
 class PreflightStorageGuard:
     """Private batch hand-off; no callback, executor or floor override.
 
-    Roots are an immutable tuple captured by the validated Week7 launcher.
+    Roots are an immutable tuple captured by a validated Week-7/8 launcher.
     The common engine also binds its actual output/staging arguments at use.
     Merely constructing this object performs no capacity check, so completed
     fits still reach existing recovery/sync paths without a new-child check.

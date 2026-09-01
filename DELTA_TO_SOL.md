@@ -1,10 +1,7 @@
 # → TO SOL
-
 **This file is what the student pastes to Sol.** Nothing else.
-
 It accumulates until delivered (D-008) and is only then replaced; if the flag
 below reads NO, **append**, never overwrite.
-
 **Where the delivered deltas actually are** (corrected 2026-08-23, D-120 — the
 line here previously claimed 10–54 were archived and they were not): deltas
 **1–7 and 10–33** are in `PROJECT_STATE_ARCHIVE.md`; **8 and 9** never existed
@@ -12,27 +9,21 @@ as delivered blocks (DEV-005); **34–55** were replaced without being archived
 and live only in **git history**, each at the commit that delivered it
 (`git log -S "DELTA_ID: NN" -- DELTA_TO_SOL.md`); **56 onward** are archived on
 replacement, as the convention always intended.
-
 **Send delta + `SOL_BUNDLE.txt`.** For review, `BASE` is **`4e55291`** — Sol
 certified delta 63 on 2026-08-23 (D-131). For patch application, the exact real
 repository target is **`66edf4a11dce39b91974d5c331cca81424f83b6e`** (D-140).
 These are different anchors; do not apply the series directly to `4e55291`.
-
 **Delta 64 carries a student-obligation progress report only** — the student's
 methodology chapter draft (provenance disclosed, D-132) and the end-of-session
-integrity audit. Later Claude/Codex work is carried separately in deltas65–70;
-the student explicitly authorised it under DEV-013…021.
-
+integrity audit. Later Claude/Codex work is carried separately in deltas65–71;
+the student explicitly authorised it under DEV-013…022.
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
     <files changed by the next authorised work> > SOL_BUNDLE.txt
 ```
-
 ---
-
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
-
-> **Delivered to Sol:** ☐ **NO** — DELTA_IDs64–70(D-008). All seven
+> **Delivered to Sol:** ☐ **NO** — DELTA_IDs64–71(D-008). All eight
 > preserved blocks remain below. Delta70's mandatory additive closeout is
 > `docs/week7_sol_closeout.md`. Deliver all seven and the companion together.
 >
@@ -46,6 +37,7 @@ EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh \
 > - 2026-08-30 (Sol2 Week-6 integration) · Persisted evidence, isolated launch and final audit
 > - 2026-08-30 (Sol2 Week-6 execution) · Owner-authorised CPU preflight and registered run
 > - 2026-08-31 (Sol2 Week-7 implementation) · Verified evidence and baseline configuration preparation
+> - 2026-09-01 (Sol2 Week-8 start) · Exact bounded inventory and pre-analysis specification
 
 ```
 DELTA70_ADDITIVE_CLOSEOUT2026-09-01: COVERS the same ongoing Sol2Week7execution session. Mandatory companion `docs/week7_sol_closeout.md` SHA256 `ebfbb3fc8fe65b7679382147608ac9532b180f30d32e2f049c67fc0170ba373c`. NUMBERS:578newfits/1330models; E1474/834,E2A95/475,sweep3/15+6/6;0other/unknownattempts;12094.442840200325s supervised-attempt wall;GPU0. E1labels30:N0=29,N1=0,ambiguous0,undiagnosed1,min0;6units×20seeds,24×3,all60intervalsformed. Sweep:N0=N1=ambiguous0,undiagnosed1,3seeds; exact effects/CIs in companion. GuardedQA4085pass/8skip/51subtests;XMLf892e470...;failedpath/probe history preserved. E2A readback4c4ae415...;accounting3856368d...; all source/exposure/CI support and replay limits in companion/results. Machine-complete only: student~400Week6/~500Week7 own-voice, delivery and externalSol certification remainopen. No E2Alabels,H2/H3,exclusionrates,reserve,extra224sweepgroups,scope/dateadvance. Generated isnotdelivered.
@@ -118,7 +110,6 @@ NUMBERS (D-011)
 
 === END UPDATE ===
 ```
-
 
 
 ```
@@ -396,5 +387,14 @@ SCHEDULE: six existing E1 validation ladders move W9→W7, exact20seeds; other24
 ENGINEERING: beforetrain sweep symbolic/array anchors, firstmetric digest binding andafterfit link; oldfit schemas/keys unchanged. Separate ordinarycanonical9-source labels; legacy20-seed API andD155sweeprepair guard remain. Architecture-aware timing and launch/recovery verification inprogress. Initialtests312pass/1skip plusoverlappingfocusedruns; no newproductionfit/label/GPU yet. Fullcounts/evidence follow inthisdelta anddocs/week7_execution_log.md. Studentownwriting andyourcertification remainopen.
 D-158: originalP4.2/10.3 leaves secondarycorrelation details unspecified. Ownerdelegated clarification fixed before diagnosticimplementation: Pearson percondition/perseed on strictbaselinefailures, existingnormalizedarrays, undefinedforconstant/<2points, emptyfailureblocks; no aggregatecorrelation/pvalue/CI/H2decision. Primaryratio unchanged; mean/sampleSDddof1 acrossseeds, no transitionpooling. Postcollection andafterD156 exposure explicitlydisclosed; no newdiagnosticoutcomes consulted. See docs/week7_secondary_diagnostic_spec.md. Tests pending atregistration; noH2orH1rerun.
 D-159/DEV-021: real-collector fixtures regenerated some registered>=1000inputpools withfakeGit/untraineddoubles; no trainedstudyfit enteredresults, but inputexposure isdisclosed, noterased orcalled pristineblinding. Subsequentfixtures use a tests-only collector RNG remap1000+i→developmenti, keepingfakemetadataonlyforboundarytests. Productionkeys/seedpolicy/constants/artifactsunchanged. Underownerdelegation retainfixedD157jobs/seeds; no outcome-driven exclusion/replacement/tuning. Detailedscope/correction inledger/worklog; yourreviewpending. Engineering checkpoint585pass/1skip; finalorchestration/fullsuite andrealexecution stillpendingatthisentry.
+=== END UPDATE ===
+```
+```
+=== UPDATE FOR SOL ===
+DELTA_ID: 71
+PREVIOUS_DELTA_ID: 70
+DATE: 2026-09-01 · COVERS SESSION: 2026-09-01 (Sol2 Week-8 start) · Exact bounded inventory and pre-analysis specification
+SUBJECT: D-160/DEV-022 — owner opens bounded Week8 early; E2A reuse corrected; sign consistency fixed before application; external review deferred.
+STATUS: implementation in progress. CPU-only exact scope E2A261fits/441models + E2B125/625 + sweep-0023/15; reserve/other groups/H2 verdict closed. Student Week6/7/8 own-voice work remains open. Full evidence, failures, tests and NUMBERS will be appended here before closeout.
 === END UPDATE ===
 ```

@@ -28,10 +28,10 @@ This is the shared working file for the project. It is written by Claude/Codex, 
 
 | | |
 |---|---|
-| **Last updated** | 2026-08-31 |
+| **Last updated** | 2026-09-01 |
 | **Updated by** | Codex — owner label **Sol2** (DEV-015); external Sol remains reviewer |
-| **Phase** | **Phase B — Week-7 computational work complete; student Week-6/7 prose, delivery and external Sol review remain open**. Phase A (Weeks 1–5) remains complete/certified; Gate 1 FAIL (D-120/D-152) |
-| **Current week / day** | Calendar **Week 3 Tuesday** (2026-09-01); schedule dates unchanged. Owner opened and Sol2 completed bounded **Week-7 machine work** early under D-153–D-159/DEV-018…021. Week6 still needs ~400 own-voice words; Week7 needs ~500. External certification is separate/pending. Gate1 FAIL; compute NOT ADJUDICABLE; no expansion |
+| **Phase** | **Phase B — bounded Week-8 machine work in progress under D-160; student Week-6/7/8 prose, delivery and external Sol review remain open**. Phase A (Weeks 1–5) remains complete/certified; Gate 1 FAIL (D-120/D-152) |
+| **Current week / day** | Calendar **Week 3 Tuesday** (2026-09-01); dates unchanged. Owner opened bounded **Week-8 machine work** early under D-160/DEV-022. Exact new scope: E2A261 fits/441 models, E2B125/625, sweep-0023/15; CPU only. Week6/7/8 own-voice work and external certification remain pending. Reserve/real critic split/other sweep groups stay closed |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
 | **Revision** | This export is a reconstructed local `master` with no remote; its commits are handoff artefacts, not project history. **Exact real-repository patch target: `66edf4a11dce39b91974d5c331cca81424f83b6e`** (post-D-132 state proved by the existing bundle). **Sol-certified review base remains `4e55291e08396ffe4a903ae73b1390396675643b`** (D-131); use `BASE=4e55291` for Sol's diff after applying the series, but never apply the series directly to that older tree (D-140) |
@@ -47,7 +47,7 @@ This is the shared working file for the project. It is written by Claude/Codex, 
 | H3 | Learned critic beats fitted (error, disagreement) rule by > 5 pts | Not tested | W15 Fri |
 **Done — Weeks 1 and 2, every "Done when" criterion verified rather than asserted.**
 Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and the ledger: Week 1 build and audit (D-005, D-006, D-015, D-016); Week 2 enumerator, policy, collector and audit (D-018 … D-021); Sol's early rulings (D-009, D-012, D-013); all eight 2026-08-16 reviews actioned with every finding independently verified (D-025 … D-057 — 375 phantom fits, the D-042 bound-as-measurement and D-044 estimand-comparison lessons); Week 3 Mon–Wed built then substantially corrected (non-stationary policy, derived split, degenerate N=100 bootstrap — D-046 … D-057); the D-030 named streams verified on their pairing properties (D-038, D-039).
-**Next:** student writes/defends ~400 Week6 and ~500 Week7 own-voice words, then carries undelivered deltas64–70, mandatory `docs/week7_sol_closeout.md` and the verified review/transfer packet to external Sol. Week7 machine work is complete; D156 unchanged; E2A labels/H2/H3/exclusion rates/reserve/remaining224sweep groups were not run. Do not advance dates or expand scope. All raw dependencies remain project-local; same-volume copies are not off-device backup.
+**Next:** finish D-160's exact Week-8 CPU path, then prepare the student drafting aid/reminder and delta71. Student still owes ~400 Week6, ~500 Week7 and ~500 Week8 own-voice words. D156 is unchanged; no Week-10 H2/H3 verdict, reserve, real critic split or unselected sweep group is authorized. All raw dependencies remain project-local; same-volume copies are not off-device backup.
 
 **Certified Weeks 1–5 history:** detailed development results, corrections and provenance remain in `PROJECT_STATE_ARCHIVE.md` and D-046–D-120. The W4 gate passed at rung 0; threshold calibration is permanently frozen; no historical fit or result is being replaced.
 
@@ -295,6 +295,7 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-157** | 2026-08-31 | **Week-7 execution order and forward validation scheduling** — unchanged seed budgets; exact historical reuse, anchors and separate label boundaries | Owner-authorised — for Sol |
 | **D-158** | 2026-08-31 | **Secondary H2 diagnostic definition** — per-seed failure-set Pearson, no new H2 decision or repeat trend test | Owner-delegated clarification — for Sol |
 | **D-159** | 2026-08-31 | **Engineering input exposure and fixture isolation** — disclosed registered simulation inputs, untrained doubles only; planned seeds retained without a claim of pristine input blinding | Owner-delegated continuation — for Sol |
+| **D-160** | 2026-09-01 | **Bounded Week-8 opening, E2A reuse correction and sign-consistency clarification** — exact 261-fit E2A remainder; 5/5 strict observed-class ratio rule; established batch-size128 retained and disclosed | Owner-delegated continuation — for Sol |
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
 Anything not done as written, and why. **The schedule requires several of these to appear in the thesis methodology**: the reliability-gate rung reached, the PPO substitution, any repair-budget or configuration-count reduction, any cut experiment, and the W2 decision on whether the Experiment 2A conditions are drawn from the configuration sweep or are additional to it.
@@ -398,6 +399,8 @@ Format: `Week n Day | what was skipped or substituted | why | goes in methodolog
 ### DEV-021 · 2026-08-31 · Registered simulation inputs regenerated in engineering fixtures
 
 **Deviation:** three new fixture families regenerated some registered >=1000 simulation pools with fake Git and untrained model doubles. No optimizer-trained study fit entered a result, but this is input exposure and contradicts a blanket claim that all development input access stays below D-034's line. D-159 records it before production, isolates subsequent fixture input RNGs to development seeds, and retains the exact predeclared study seeds/procedures under the owner's delegation; no result-driven exclusion or replacement seeds. **Goes in methodology:** disclose this limited engineering exposure; namespace membership is not proof of blinding. Sol review remains pending.
+### DEV-022 · 2026-09-01 · Bounded Week-8 work pulled into calendar Week 3; established batch size retained
+**Deviation:** the owner opened S§W8 before its calendar date and deferred personal prose/review. D-160 keeps dates/Gate2 fixed and only advances exact E2A, E2B, sweep-002 and the no-compute pre-reserve sweep-001 exclusion report. The plan table's batch size256 conflicts with the already frozen/used `TrainConfig` batch size128; changing it now would mix procedures under unchanged identities, so 128 is retained and disclosed. **Goes in methodology:** yes for timing and batch-size implementation; no claim that this was pristine preregistration. External review remains pending.
 
 ## 5. Gate records
 
@@ -492,9 +495,6 @@ Two conditions:
 
 Closed entries are in `PROJECT_STATE_ARCHIVE.md` in chronological order; §3 indexes every decision regardless of where its session lives. A 2026-08-30 audit counted **93 unique Claude session headings and 98 total**: five duplicate archived headings are preserved pending Sol's ruling rather than silently deleted. Read controlling corrections before historical claims: D-109 before D-108; D-115/D-119 before D-114/DEV-010; D-121/D-122 before affected prose; D-138…D-146 before D-133…D-137.
 *(All prior sessions through the post-Fable audit are archived in full because this file repeatedly reached its 500-line paste cap, never because their decisions stopped mattering.)*
-*(The completed D-153 implementation session is archived verbatim.)*
-
-### 2026-08-31 (Sol2 Week-7 execution) · Verified launch, anchors and registered repairs · Claude
-
-D-157/DEV-020 brings only the six registered Experiment-1 validation ladders forward from Week 9 to satisfy Week-7 labeling, preserving exact seeds and scientific rules. The D-154–D-156 closed session was archived verbatim. Parallel implementation covers before-training sweep anchors, exact Exp2A reuse/launch, ordinary labels, architecture-aware timing and E1 repairs. Initial tests: launch28; sweep integration8; neighboring regression312 passed/1 skip. Counts overlap. No new production fit or label yet; CPU tests only, GPU unused. All work stays project-local. See docs/week7_execution_log.md and delta70; full-week completion, human prose and external certification are not claimed.
-Continuation completed2026-09-01: guarded fullQA4085pass/8skip/51subtests;578newfits/1330models independently accounted;E1labels29observed0/0observed1/0ambiguous/1undiagnosed and firstsweep undiagnosed;E2A95plus5reuses read back;GPU0. Detailed NUMBERS/source/failure/accounting in docs/week7_sol_closeout.md and runtime log. Machine work complete; studentownvoice/delivery/externalSol stillopen.
+*(Completed sessions through Week 7 are archived verbatim.)*
+### 2026-09-01 (Sol2 Week-8 start) · Exact bounded inventory and pre-analysis specification · Claude
+D-160/DEV-022 records the owner's early Week-8 opening, preserves CPU/dates/Gate2, corrects E2A reuse to 261 new fits/441 models, and fixes sign consistency after the known E2A smoke label but before the remaining19 labels/all E2A ratios. Four read-only audits found the exact source, reporting, exclusion and launch gaps. Implementation is parallel and project-local; reserve, other sweep groups and H2 verdict remain closed. See `docs/week8_readiness_audit.md`; delta71 will carry verified results.
