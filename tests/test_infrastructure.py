@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import bu.runrecord as Runrecord
 from bu import constants as K
 from bu.config import (
     IDENTITY_VERSION,
@@ -284,6 +285,59 @@ def test_git_state_outside_a_repository_fails_closed(tmp_path, monkeypatch):
     assert state.commit == "UNCOMMITTED"
     assert state.dirty is True
     assert state.trustworthy is False
+
+
+@pytest.mark.parametrize("configured", [None, "", "git.exe", "missing/git.exe"])
+def test_d161_gate_requires_one_existing_absolute_git_override(
+    configured: str | None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BU_D161_ENTRYPOINT_GATE", "synthetic-gate")
+    if configured is None:
+        monkeypatch.delenv(Runrecord.RUNRECORD_GIT_EXECUTABLE_ENV, raising=False)
+    else:
+        monkeypatch.setenv(Runrecord.RUNRECORD_GIT_EXECUTABLE_ENV, configured)
+    monkeypatch.setattr(
+        Runrecord.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("Git ran before override validation"),
+    )
+    with pytest.raises(ValueError, match="captured Git"):
+        git_state(tmp_path)
+
+
+def test_git_state_uses_absolute_captured_executable_for_every_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "captured-git.exe"
+    executable.write_bytes(b"synthetic executable")
+    monkeypatch.setenv("BU_D161_ENTRYPOINT_GATE", "synthetic-gate")
+    monkeypatch.setenv(
+        Runrecord.RUNRECORD_GIT_EXECUTABLE_ENV, str(executable.resolve())
+    )
+    commands: list[list[str]] = []
+
+    def fake_run(command, *, cwd, capture_output, check):
+        commands.append(command)
+        outputs = {
+            ("rev-parse", "HEAD"): b"a" * 40,
+            ("rev-parse", "--abbrev-ref", "HEAD"): b"main",
+            ("status", "--porcelain"): b"",
+        }
+        return SimpleNamespace(stdout=outputs[tuple(command[1:])], returncode=0)
+
+    monkeypatch.setattr(Runrecord.subprocess, "run", fake_run)
+    state = git_state(tmp_path)
+
+    assert state.trustworthy is True
+    assert [command[1:] for command in commands] == [
+        ["rev-parse", "HEAD"],
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        ["status", "--porcelain"],
+    ]
+    assert all(command[0] == str(executable.resolve()) for command in commands)
 
 
 @pytest.mark.parametrize(

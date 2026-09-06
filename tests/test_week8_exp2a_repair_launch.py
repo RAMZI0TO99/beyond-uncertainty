@@ -10,6 +10,7 @@ import pytest
 
 from bu.durable import atomic_write_json, read_json, sha256_file
 from bu.experiments import week8_exp2a_repair_launch as X
+from bu.experiments import week8_exp2a_recovery as Recovery
 from bu.experiments import week8_exp2a_repairs as W
 from bu.experiments import week8_exp2a_sources as S
 from bu.experiments.supervisor import AttemptOutcome, LeaseConflictError, acquire_batch_lease
@@ -19,6 +20,74 @@ from test_week8_exp2a_sources import authority, source_trees
 
 
 COMMIT = "b" * 40
+
+
+def test_historical_lease_uses_only_the_exact_d161_orphan_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    control = tmp_path / "week7-production-control"
+    (control / "leases" / "history").mkdir(parents=True)
+    monkeypatch.setattr(W, "WORKSPACE_ROOT", tmp_path)
+    monkeypatch.setattr(W, "COMMON_LEASE_ROOT", control)
+    expected = {
+        "path": str(control / "leases" / "week7-production.lease.json"),
+        "sha256": "a" * 64,
+        "name": W.COMMON_LEASE_NAME,
+        "token": Recovery.OLD_LEASE_TOKEN,
+        "started_at": "2026-09-01T00:00:00Z",
+    }
+    calls: list[str] = []
+    monkeypatch.setattr(
+        Recovery,
+        "historical_orphan_lease_record",
+        lambda token: calls.append(token) or expected,
+    )
+    assert X._historical_lease_record(Recovery.OLD_LEASE_TOKEN) == expected
+    assert calls == [Recovery.OLD_LEASE_TOKEN]
+
+    active = control / "leases" / f"{W.COMMON_LEASE_NAME}.lease.json"
+    atomic_write_json(
+        active,
+        {
+            "schema_version": 1,
+            "lease_name": W.COMMON_LEASE_NAME,
+            "pid": 48_960,
+            "token": Recovery.OLD_LEASE_TOKEN,
+            "timestamp": 0.0,
+            "timestamp_utc": "2026-09-01T00:00:00Z",
+        },
+    )
+    monkeypatch.setattr(
+        X,
+        "_lease_record",
+        lambda token: pytest.fail("the D-161 token reached generic active handling"),
+    )
+    assert X._historical_lease_record(Recovery.OLD_LEASE_TOKEN) == expected
+    assert calls == [Recovery.OLD_LEASE_TOKEN, Recovery.OLD_LEASE_TOKEN]
+
+    forged_history = (
+        control
+        / "leases"
+        / "history"
+        / f"{W.COMMON_LEASE_NAME}.{Recovery.OLD_LEASE_TOKEN}.released.json"
+    )
+    atomic_write_json(
+        forged_history,
+        {
+            "schema_version": 1,
+            "lease_name": W.COMMON_LEASE_NAME,
+            "pid": 48_960,
+            "token": Recovery.OLD_LEASE_TOKEN,
+            "timestamp": 0.0,
+            "timestamp_utc": "2026-09-01T00:00:00Z",
+        },
+    )
+    with pytest.raises(ValueError, match="forbidden normal release history"):
+        X._historical_lease_record(Recovery.OLD_LEASE_TOKEN)
+    assert calls == [Recovery.OLD_LEASE_TOKEN, Recovery.OLD_LEASE_TOKEN]
+
+    with pytest.raises(ValueError, match="project evidence path is unavailable"):
+        X._historical_lease_record("f" * 32)
 
 
 @pytest.fixture

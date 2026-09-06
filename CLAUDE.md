@@ -1,4 +1,59 @@
+# 2026-09-06 release-preparation checkpoint
+
+Full implementation QA is reconciled: 5193 passed, 18 expected skips, 51 passing subtests; 5,211 distinct collected nodes, zero remaining failures/errors.
+One extra base-Python json.tool bytecode cache was preserved in quarantine;
+removing only that file restored the original frozen runtime inventory exactly.
+The native startup smoke now passes. No source, dependency or pin was changed.
+See delta79 and D:/Aenv/pro2/resume-2026-09-05 for the explicit failed-run/rerun
+history. Check this documentation-only update, relocate ignored QA residue,
+commit the release, create receipt V2/stage audits and require independent status
+before consuming the sole recovery. No production recovery has run yet.
+
+# 2026-09-05 continuation checkpoint
+
+The owner authorized resuming Week8. The original operational paths under
+D:/Aenv/pro/pro have been restored and verified after their absence was
+discovered. The preserved collection remains at D:/Aenv/pro2/project 2(ongoing).
+Pinned executables and source/evidence hashes were checked; one verified
+duplicate QA scratch tree was removed with explicit approval. Operational
+receipts and the resumed release tests are in D:/Aenv/pro2/resume-2026-09-05.
+No recovery authority was consumed. Complete the existing D-168 release
+gate and independent status before production. Delta78 records restoration.
+
 # CLAUDE.md — operational handoff
+
+**2026-09-02 D-161–D-168 E2A recovery supersedes the Week8 next-step wording below:**
+the first E2A launch at execution commit `4515d516` was externally terminated
+after150starts/149syncs, with0failure events. One complete local-only job
+`178f4ef3ae1e-s1001` and its interrupted 11/15-file durable partial are
+preserved;111jobs are untouched. Do not release the stale lease, delete the
+partial, rerun the ordinary wrapper, run a live monitor, or expose outcomes.
+D-161 authorizes exactly one outcome-blind recovery after committed tests:
+kernel-backed liveness proof (the Windows controller is only the exact stable
+pinned venv-launcher/direct base-interpreter pair), twin incident seal, explicit orphan-lease archive,
+partial quarantine+copy, reuse150, execute only111 from clean old source, then
+require counts111executed/150resumed/261synced and523events. Any second
+interruption is terminal. Recovery code/finalization use a later separately
+pinned commit; scientific fitting remains old commit. External Sol review and
+student Week6/7/8 own-voice work remain open; GPU remains prohibited.
+Cross-account Git trust is exact and process-local; never add global
+`safe.directory` state (D-163). D-168 supersedes D-167's startup mechanics:
+all recovery and E2A downstream commands must use the fixed compressed stage-0
+source, exact cleared `cmd.exe` environment, strict release receipt V2, tracked
+native launcher and externally hash-checked outer `-c` bootstrap. Every
+authority-bearing Python process receives exact `-I -S -B -X utf8 -c`; no
+startup `PYTHON*` variable is trusted. Never invoke the entrypoint path,
+controller or E2A module directly, and never execute a stage audit record—the
+only executable stage payload is renderer stdout retained in memory. The raw
+verifier must accept and retain handles for every controller/execution/Git/site
+file before captured project/dependency imports and propagate schema-4 stage
+and startup bindings. Each nested fit uses a fresh one-use verified context,
+the captured fixed child/helper, exact retained launcher/base-interpreter
+ownership, a raw-authority historical Git adapter, no native `multiprocessing`
+spawn and no pickle serialization. Worker
+terminal and lower-complete postmortem publication share the persistent
+lease-transition lock; a partial twin, replaced runtime/guard, incomplete
+lower epoch or identity drift is permanent stop evidence (D-164).
 
 **2026-09-01 Week8 bounded start supersedes next-step wording below:** the owner
 opened Week8 during calendar Week3 and deferred personal prose/review, without

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -44,6 +45,34 @@ TRACKED_PACKAGES = (
 #: In an editable install this is the project checkout; in a built install it
 #: deliberately fails closed unless that installed tree is itself in Git.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+RUNRECORD_GIT_EXECUTABLE_ENV = "BU_RUNRECORD_GIT_EXECUTABLE"
+_D161_GATE_ENV = "BU_D161_ENTRYPOINT_GATE"
+
+
+def _git_argv(*arguments: str) -> list[str]:
+    """Use the D-166 captured Git executable or the ordinary host fallback."""
+
+    configured = os.environ.get(RUNRECORD_GIT_EXECUTABLE_ENV)
+    gated = os.environ.get(_D161_GATE_ENV) is not None
+    if configured is None:
+        if gated:
+            raise ValueError("D-161 provenance requires an absolute captured Git")
+        return ["git", *arguments]
+    if not configured or "\x00" in configured:
+        raise ValueError("captured Git executable path is malformed")
+    path = Path(configured)
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("captured Git executable is unavailable") from exc
+    if (
+        not path.is_absolute()
+        or path != Path(os.path.abspath(path))
+        or resolved != path
+        or not resolved.is_file()
+    ):
+        raise ValueError("captured Git executable is not one exact absolute file")
+    return [str(resolved), *arguments]
 
 
 @dataclass(frozen=True)
@@ -91,7 +120,7 @@ def git_state(repo: str | Path | None = None) -> GitState:
 
     def run(*args: str) -> tuple[str, bool]:
         completed = subprocess.run(
-            ["git", *args],
+            _git_argv(*args),
             cwd=str(repo_path),
             capture_output=True,
             check=False,
@@ -199,7 +228,7 @@ def write_run_record(
     # A dirty tree is recoverable only if we keep the diff.
     if git.dirty:
         diff = subprocess.run(
-            ["git", "diff", "HEAD"], cwd=str(repo_path), capture_output=True,
+            _git_argv("diff", "HEAD"), cwd=str(repo_path), capture_output=True,
             check=False,
         ).stdout
         # Preserve the exact Git bytes. In particular, never ask the host's

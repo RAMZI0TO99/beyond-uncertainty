@@ -5,13 +5,13 @@ Experiment-2A operating sequence.  It delegates all scientific work to the
 existing certified layers and adds only immutable preparation/control receipts,
 fixed attempt-001 paths and an outcome-blind operational monitor.
 
-The monitor is intentionally independent of
-``week8_exp2a_repair_launch._load_events``.  It never heals evidence and never
-opens fit, label, scientific-report or figure files.  It reads only the
-independently copied control receipt, start checkpoint, event stream and
-terminal operational launch report, then publishes an independently copied
-snapshot containing operational counts.  Failure text is represented only by
-a SHA-256 digest.
+The ordinary monitor is intentionally independent of
+``week8_exp2a_repair_launch._load_events``.  It never heals evidence and reads
+only the independently copied control receipt, start checkpoint, event stream
+and terminal operational launch report.  D-161 terminal monitoring delegates
+to the recovery validator, which mechanically rehashes completed fit trees but
+does not interpret or emit their scientific values.  Both routes publish only
+operational counts; failure text is represented only by a SHA-256 digest.
 """
 
 from __future__ import annotations
@@ -95,6 +95,34 @@ _HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 _TOKEN_FILE = re.compile(r"([0-9a-f]{32})\.json\Z")
 _EVENT_FILE = re.compile(r"[0-9]{6}\.json\Z")
+
+# D-166 owns every downstream operation for the registered, interrupted E2A
+# attempt.  This process-local object is intentionally unavailable through the
+# lower CLI parser: only the already authority-validated recovery controller
+# passes it in process.  It is an accidental/procedural bypass guard, not a
+# claim of protection against arbitrary code execution by the same user.
+_D166_CONTROLLER_CAPABILITY = object()
+
+
+def _d166_controller_capability_required() -> bool:
+    """Return whether this is the one registered D-161/D-166 attempt."""
+
+    return Path(os.path.abspath(WORKSPACE_ROOT)) == Path(
+        os.path.abspath(_REGISTERED_WORKSPACE_ROOT)
+    )
+
+
+def _require_d166_controller_capability(capability: object | None) -> None:
+    """Refuse registered downstream work outside the captured controller."""
+
+    if (
+        _d166_controller_capability_required()
+        and capability is not _D166_CONTROLLER_CAPABILITY
+    ):
+        raise ValueError(
+            "the registered interrupted E2A attempt requires the D-166 "
+            "captured controller capability"
+        )
 
 
 def _canonical(value: object) -> bytes:
@@ -1031,8 +1059,30 @@ def launch(*, expected_git_commit: str) -> dict[str, Any]:
 
 def _load_launch(expected_commit: str | None = None) -> dict[str, Any]:
     receipt = _load_receipt("launch")
+    raw_payload = receipt["payload"]
+    if type(raw_payload) is dict and "recovery" in raw_payload:
+        # D-161 is an additive, incident-specific handoff.  Its validator
+        # reopens the two checkpoints, cross-epoch event chain, preserved old
+        # trees, orphan archive, quarantine twins and normal continuation
+        # release.  Ordinary single-epoch receipts continue through the
+        # original exact-shape validator below.
+        from . import week8_exp2a_recovery as Recovery
+
+        if (
+            receipt["status"] != "complete"
+            or receipt["purpose"]
+            != "bind_d161_recovered_261_fit_e2a_repair_launch"
+        ):
+            raise ValueError("recovery launch handoff purpose/status differs")
+        validated_recovery = Recovery.validate_completed_recovery(raw_payload)
+        commit = _commit(raw_payload.get("expected_git_commit"))
+        if commit != _commit(validated_recovery.get("execution_commit")):
+            raise ValueError("recovery launch execution commit differs from D-161")
+        if expected_commit is not None and commit != _commit(expected_commit):
+            raise ValueError("launch handoff commit differs from requested commit")
+        return receipt
     payload = _expect_keys(
-        receipt["payload"],
+        raw_payload,
         {
             "expected_git_commit",
             "control_receipt_sha256",
@@ -1262,9 +1312,31 @@ def _events_material(
 
 
 def _monitor_material() -> dict[str, Any]:
-    """Recompute one operational view without opening any scientific file."""
+    """Recompute one operational view without interpreting scientific values."""
 
     _validate_fixed_layout()
+    # Once D-161 incident evidence exists, the single-checkpoint monitor is no
+    # longer a valid view.  The recovery validator refuses every live or
+    # incomplete epoch and returns only the stable two-checkpoint terminal
+    # snapshot.
+    from . import week8_exp2a_recovery as Recovery
+
+    recovery_record_names = (
+        Recovery.INCIDENT_FILE,
+        Recovery.EPOCH001_TERMINAL_FILE,
+        Recovery.TRANSITION_INTENT_FILE,
+        Recovery.TRANSITION_COMPLETION_FILE,
+        Recovery.BOOTSTRAP_INVOCATION_FILE,
+        Recovery.BOOTSTRAP_CLAIM_FILE,
+        Recovery.BOOTSTRAP_TERMINAL_FILE,
+        Recovery.RECOVERY_COMPLETION_FILE,
+    )
+    if WORKSPACE_ROOT.resolve() == Recovery.WORKSPACE_ROOT.resolve() and any(
+        os.path.lexists(path)
+        for name in recovery_record_names
+        for path in Recovery._record_paths(name)
+    ):
+        return Recovery.recovery_monitor_material()
     control = _load_control(monitor_only=True)
     terminal = _lower_launch_report_material(control)
     checkpoint, checkpoint_sha = _checkpoint_material(control)
@@ -1358,9 +1430,10 @@ def _monitor_paths(snapshot_digest: str) -> tuple[Path, Path]:
     return MONITOR_ROOT / name, MONITOR_COPY_ROOT / name
 
 
-def monitor() -> dict[str, Any]:
+def monitor(*, _d166_capability: object | None = None) -> dict[str, Any]:
     """Publish a read-only, independently copied operational snapshot."""
 
+    _require_d166_controller_capability(_d166_capability)
     document = _monitor_material()
     local_root = _ensure_directory(MONITOR_ROOT)
     copy_root = _ensure_directory(MONITOR_COPY_ROOT)
@@ -1685,12 +1758,33 @@ def _validated_reporting_binding(
     return {name: counts[name] for name in _REPORTING_COUNTS}
 
 
-def finalize(*, expected_git_commit: str) -> dict[str, Any]:
-    """Finalize labels with automatic checkpoint pins; print no label outcome."""
+def finalize(
+    *,
+    expected_git_commit: str,
+    expected_execution_commit: str | None = None,
+    _d166_capability: object | None = None,
+) -> dict[str, Any]:
+    """Finalize labels with distinct execution/finalizer commits when needed.
 
+    Ordinary one-epoch execution keeps the historical single-commit behavior.
+    D-161 recovery passes the immutable epoch-001 execution commit explicitly
+    while the finalizer runs from the later committed recovery controller.
+    """
+
+    _require_d166_controller_capability(_d166_capability)
     _validate_fixed_layout()
     commit = _commit(expected_git_commit)
-    launched = _load_launch(commit)
+    execution_commit = (
+        commit
+        if expected_execution_commit is None
+        else _commit(expected_execution_commit)
+    )
+    launched = _load_launch(execution_commit)
+    _validate_execution_finalizer_pair(
+        launched,
+        execution_commit=execution_commit,
+        finalizer_commit=commit,
+    )
     inputs = _finalization_inputs(launched, commit)
     record = Finalize.finalize_exp2a_labels(
         inputs,
@@ -1730,6 +1824,38 @@ def finalize(*, expected_git_commit: str) -> dict[str, Any]:
     return _operational("finalize", receipt, status="complete")
 
 
+def _validate_execution_finalizer_pair(
+    launch_receipt: Mapping[str, Any],
+    *,
+    execution_commit: str,
+    finalizer_commit: str,
+) -> None:
+    """Limit the two-commit path to the exact completed D-161 recovery."""
+
+    execution = _commit(execution_commit)
+    finalizer = _commit(finalizer_commit)
+    payload = launch_receipt.get("payload")
+    if type(payload) is not dict:
+        raise ValueError("launch receipt payload is not an exact object")
+    if "recovery" not in payload:
+        if execution != finalizer:
+            raise ValueError(
+                "ordinary E2A launch requires identical execution/finalizer commits"
+            )
+        return
+
+    from . import week8_exp2a_recovery as Recovery
+
+    validated = Recovery.validate_completed_recovery(payload)
+    if (
+        execution != _commit(validated.get("execution_commit"))
+        or finalizer != _commit(validated.get("controller_commit"))
+    ):
+        raise ValueError(
+            "recovered E2A launch requires the exact execution/controller commit pair"
+        )
+
+
 def _load_finalize(expected_commit: str | None = None) -> dict[str, Any]:
     receipt = _load_receipt("finalize")
     payload = _expect_keys(
@@ -1750,6 +1876,11 @@ def _load_finalize(expected_commit: str | None = None) -> dict[str, Any]:
     if expected_commit is not None and commit != _commit(expected_commit):
         raise ValueError("finalization commit differs from requested reporting commit")
     launched = _load_launch(payload["expected_execution_commit"])
+    _validate_execution_finalizer_pair(
+        launched,
+        execution_commit=payload["expected_execution_commit"],
+        finalizer_commit=commit,
+    )
     if payload["launch_receipt_sha256"] != launched["_file_sha256"]:
         raise ValueError("finalization handoff does not bind the released launch")
     local = LABEL_EXPORT_ROOT / Finalize.MANIFEST_FILE
@@ -1778,9 +1909,14 @@ def _load_finalize(expected_commit: str | None = None) -> dict[str, Any]:
     return receipt
 
 
-def report(*, expected_git_commit: str) -> dict[str, Any]:
+def report(
+    *,
+    expected_git_commit: str,
+    _d166_capability: object | None = None,
+) -> dict[str, Any]:
     """Publish the source-bound report using only automatic upstream pins."""
 
+    _require_d166_controller_capability(_d166_capability)
     _validate_fixed_layout()
     commit = _commit(expected_git_commit)
     finalized = _load_finalize(commit)
@@ -1965,9 +2101,14 @@ def _validated_figure_manifest(
     return {"units": 20, "seeds": 5, "figures": 3}
 
 
-def figures(*, expected_git_commit: str) -> dict[str, Any]:
+def figures(
+    *,
+    expected_git_commit: str,
+    _d166_capability: object | None = None,
+) -> dict[str, Any]:
     """Render offline figures using the report SHA from its immutable handoff."""
 
+    _require_d166_controller_capability(_d166_capability)
     _validate_fixed_layout()
     commit = _commit(expected_git_commit)
     before_environment = Launch._environment(commit)
@@ -2032,15 +2173,22 @@ def _operational(command: str, receipt: Mapping[str, Any], *, status: str) -> di
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for name in ("prepare", "preflight", "launch", "finalize", "report", "figures"):
+    for name in ("prepare", "preflight", "launch", "report", "figures"):
         child = subparsers.add_parser(name)
         child.add_argument("--expected-git-commit", required=True)
+    finalize_parser = subparsers.add_parser("finalize")
+    finalize_parser.add_argument("--expected-git-commit", required=True)
+    finalize_parser.add_argument("--expected-execution-commit")
     subparsers.add_parser("monitor")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    arguments = vars(_parser().parse_args(argv))
+    arguments = {
+        key: value
+        for key, value in vars(_parser().parse_args(argv)).items()
+        if value is not None
+    }
     command = arguments.pop("command")
     handlers = {
         "prepare": prepare,

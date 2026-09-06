@@ -15,6 +15,7 @@ import pytest
 
 from bu.durable import atomic_write_json, read_json, sha256_bytes, sha256_file
 from bu.experiments import week8_exp2a_production as P
+from bu.experiments import week8_exp2a_recovery as Recovery
 
 
 COMMIT = "c" * 40
@@ -814,6 +815,193 @@ def test_finalize_automatically_carries_plan_ledger_checkpoint_and_commits(
     assert inputs.expected_finalizer_commit == COMMIT
     assert "secret_observed_label" not in json.dumps(result)
 
+    loaded_finalize = P._load_receipt("finalize")
+    forged_body = {
+        key: value
+        for key, value in loaded_finalize.items()
+        if key not in {"_file_sha256", "receipt_digest"}
+    }
+    forged_payload = dict(forged_body["payload"])
+    forged_payload["expected_finalizer_commit"] = "d" * 40
+    forged_body["payload"] = forged_payload
+    forged = P.Plan._seal(forged_body, "receipt_digest")
+    forged["_file_sha256"] = loaded_finalize["_file_sha256"]
+    load_receipt = P._load_receipt
+    monkeypatch.setattr(
+        P,
+        "_load_receipt",
+        lambda phase: forged if phase == "finalize" else load_receipt(phase),
+    )
+    with pytest.raises(ValueError, match="ordinary E2A launch requires identical"):
+        P._load_finalize("d" * 40)
+
+
+def test_finalize_rejects_cross_commit_pair_for_ordinary_launch(
+    fixed_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _synthetic_launch(monkeypatch)
+    finalizer_commit = "d" * 40
+    with pytest.raises(ValueError, match="ordinary E2A launch requires identical"):
+        P.finalize(
+            expected_git_commit=finalizer_commit,
+            expected_execution_commit=COMMIT,
+        )
+    assert not P._receipt_present("finalize")
+
+
+def test_execution_finalizer_pair_exception_is_exactly_d161_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    controller_commit = "d" * 40
+    ordinary = {"payload": {"expected_git_commit": COMMIT}}
+    with pytest.raises(ValueError, match="ordinary E2A launch requires identical"):
+        P._validate_execution_finalizer_pair(
+            ordinary,
+            execution_commit=COMMIT,
+            finalizer_commit=controller_commit,
+        )
+
+    recovery_payload = {
+        "expected_git_commit": COMMIT,
+        "recovery": {"decision_id": "D-161"},
+    }
+    recovered = {"payload": recovery_payload}
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        Recovery,
+        "validate_completed_recovery",
+        lambda value: calls.append(dict(value))
+        or {
+            "status": "complete",
+            "execution_commit": COMMIT,
+            "controller_commit": controller_commit,
+        },
+    )
+    P._validate_execution_finalizer_pair(
+        recovered,
+        execution_commit=COMMIT,
+        finalizer_commit=controller_commit,
+    )
+    assert calls == [recovery_payload]
+    with pytest.raises(ValueError, match="exact execution/controller commit pair"):
+        P._validate_execution_finalizer_pair(
+            recovered,
+            execution_commit=COMMIT,
+            finalizer_commit="e" * 40,
+        )
+
+
+def test_load_launch_delegates_exact_recovery_payload(
+    fixed_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = {
+        "expected_git_commit": COMMIT,
+        "recovery": {"decision_id": "D-161"},
+    }
+    receipt = P._publish_receipt(
+        "launch",
+        status="complete",
+        purpose="bind_d161_recovered_261_fit_e2a_repair_launch",
+        payload=payload,
+    )
+    seen: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        Recovery,
+        "validate_completed_recovery",
+        lambda value: seen.append(dict(value))
+        or {
+            "status": "complete",
+            "execution_commit": COMMIT,
+            "controller_commit": "d" * 40,
+        },
+    )
+    assert P._load_launch(COMMIT) == receipt
+    assert seen == [payload]
+
+
+@pytest.mark.parametrize(
+    "record_name",
+    [
+        Recovery.INCIDENT_FILE,
+        Recovery.EPOCH001_TERMINAL_FILE,
+        Recovery.TRANSITION_INTENT_FILE,
+        Recovery.TRANSITION_COMPLETION_FILE,
+        Recovery.BOOTSTRAP_INVOCATION_FILE,
+        Recovery.BOOTSTRAP_CLAIM_FILE,
+        Recovery.BOOTSTRAP_TERMINAL_FILE,
+        Recovery.RECOVERY_COMPLETION_FILE,
+    ],
+)
+@pytest.mark.parametrize("twin_index", [0, 1])
+def test_monitor_routes_every_one_sided_recovery_record_to_recovery_validator(
+    fixed_workspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_name: str,
+    twin_index: int,
+) -> None:
+    monkeypatch.setattr(Recovery, "RECOVERY_ROOT", fixed_workspace / "recovery")
+    monkeypatch.setattr(
+        Recovery, "RECOVERY_COPY_ROOT", fixed_workspace / "recovery-copy"
+    )
+    monkeypatch.setattr(Recovery, "WORKSPACE_ROOT", fixed_workspace)
+    path = Recovery._record_paths(record_name)[twin_index]
+    path.parent.mkdir(parents=True)
+    path.write_text("present", encoding="utf-8")
+    expected = {
+        "week8_exp2a_monitor_schema_version": P.MONITOR_SCHEMA_VERSION,
+        "status": "complete",
+        "snapshot_digest": "f" * 64,
+    }
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        Recovery,
+        "recovery_monitor_material",
+        lambda: calls.append(True) or expected,
+    )
+    assert P._monitor_material() == expected
+    assert calls == [True]
+
+
+def test_monitor_real_recovery_validator_refuses_partial_bootstrap_twin(
+    fixed_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(Recovery, "RECOVERY_ROOT", fixed_workspace / "recovery")
+    monkeypatch.setattr(
+        Recovery, "RECOVERY_COPY_ROOT", fixed_workspace / "recovery-copy"
+    )
+    monkeypatch.setattr(Recovery, "WORKSPACE_ROOT", fixed_workspace)
+    claim, _ = Recovery._record_paths(Recovery.BOOTSTRAP_CLAIM_FILE)
+    claim.parent.mkdir(parents=True)
+    claim.write_text("partial", encoding="utf-8")
+    monkeypatch.setattr(
+        P,
+        "_load_control",
+        lambda *args, **kwargs: pytest.fail("ordinary monitor path was entered"),
+    )
+    with pytest.raises(Recovery.RecoveryRefused):
+        P._monitor_material()
+
+
+def test_relocated_monitor_ignores_recovery_records_from_another_workspace(
+    fixed_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    foreign = fixed_workspace / "foreign"
+    monkeypatch.setattr(Recovery, "WORKSPACE_ROOT", foreign)
+    monkeypatch.setattr(Recovery, "RECOVERY_ROOT", foreign / "recovery")
+    monkeypatch.setattr(Recovery, "RECOVERY_COPY_ROOT", foreign / "recovery-copy")
+    incident, _ = Recovery._record_paths(Recovery.INCIDENT_FILE)
+    incident.parent.mkdir(parents=True)
+    incident.write_text("foreign", encoding="utf-8")
+    monkeypatch.setattr(
+        Recovery,
+        "recovery_monitor_material",
+        lambda: pytest.fail("foreign recovery evidence was consulted"),
+    )
+    control = _arm_control(monkeypatch)
+    document = P._monitor_material()
+    assert document["status"] == "awaiting_checkpoint"
+    assert document["control"]["sha256"] == control["_file_sha256"]
+
 
 def test_finalize_rejects_lower_manifest_with_wrong_384_accounting(
     fixed_workspace: Path, monkeypatch: pytest.MonkeyPatch
@@ -1003,6 +1191,67 @@ def test_main_dispatches_each_command_without_path_or_scientific_output(
     assert "label" not in output.lower()
     assert "ratio" not in output.lower()
     assert "scientific" not in output.lower()
+
+
+def test_main_forwards_recovery_execution_commit_only_to_finalize(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    controller_commit = "d" * 40
+    calls: list[dict[str, object]] = []
+
+    def handler(**kwargs: object) -> dict[str, object]:
+        calls.append(kwargs)
+        return {"command": "finalize", "status": "complete"}
+
+    monkeypatch.setattr(P, "finalize", handler)
+    assert (
+        P.main(
+            [
+                "finalize",
+                "--expected-git-commit",
+                controller_commit,
+                "--expected-execution-commit",
+                COMMIT,
+            ]
+        )
+        == 0
+    )
+    assert calls == [
+        {
+            "expected_git_commit": controller_commit,
+            "expected_execution_commit": COMMIT,
+        }
+    ]
+    assert "label" not in capsys.readouterr().out.lower()
+
+
+@pytest.mark.parametrize(
+    ("command", "kwargs"),
+    [
+        ("monitor", {}),
+        ("finalize", {"expected_git_commit": COMMIT}),
+        ("report", {"expected_git_commit": COMMIT}),
+        ("figures", {"expected_git_commit": COMMIT}),
+    ],
+)
+def test_registered_e2a_downstream_functions_refuse_without_d166_capability(
+    command: str,
+    kwargs: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(P, "_d166_controller_capability_required", lambda: True)
+    handler = getattr(P, command)
+    with pytest.raises(ValueError, match="captured controller capability"):
+        handler(**kwargs)
+
+
+def test_exact_d166_capability_is_identity_checked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(P, "_d166_controller_capability_required", lambda: True)
+    P._require_d166_controller_capability(P._D166_CONTROLLER_CAPABILITY)
+    with pytest.raises(ValueError, match="captured controller capability"):
+        P._require_d166_controller_capability(object())
 
 
 def test_main_sanitizes_exception_text_and_returns_nonzero(

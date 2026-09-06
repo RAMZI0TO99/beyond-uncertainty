@@ -25,21 +25,19 @@ This is the shared working file for the project. It is written by Claude/Codex, 
 **Student.** To Sol: `DELTA_TO_SOL.md` only (first time or after a Sol session loss: `SOL_BRIEF.md` + this whole file). To Claude: the whole file at every session start, then Sol's verdict blocks as they arrive. Keep this file in version control so its own history is diffable.
 
 ## 1. Snapshot — *rewritten each session, always current*
-
 | | |
 |---|---|
-| **Last updated** | 2026-09-01 |
+| **Last updated** | 2026-09-06 |
 | **Updated by** | Codex — owner label **Sol2** (DEV-015); external Sol remains reviewer |
-| **Phase** | **Phase B — bounded Week-8 machine work in progress under D-160; student Week-6/7/8 prose, delivery and external Sol review remain open**. Phase A (Weeks 1–5) remains complete/certified; Gate 1 FAIL (D-120/D-152) |
-| **Current week / day** | Calendar **Week 3 Tuesday** (2026-09-01); dates unchanged. Owner opened bounded **Week-8 machine work** early under D-160/DEV-022. Exact new scope: E2A261 fits/441 models, E2B125/625, sweep-0023/15; CPU only. Week6/7/8 own-voice work and external certification remain pending. Reserve/real critic split/other sweep groups stay closed |
+| **Phase** | **Phase B — Week-8 E2A epoch001 externally interrupted; original operational paths restored and verified; D-161–D-168 full implementation QA is reconciled; pinned runtime restored by quarantining one extra cache file; clean release and independent status remain before lease mutation**. Student Week-6/7/8 prose, delivery and external Sol review remain open. Phase A (Weeks1–5) complete/certified; Gate1 FAIL |
+| **Current week / day** | Calendar **Week 3 Sunday** (2026-09-06); dates/Gate2 unchanged. D-160 scope remains E2A261fits/441models, E2B125/625 and sweep-0023/15, CPU only. Reserve/real critic split/other sweep groups/H2 verdict stay closed |
 | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
 | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
-| **Revision** | This export is a reconstructed local `master` with no remote; its commits are handoff artefacts, not project history. **Exact real-repository patch target: `66edf4a11dce39b91974d5c331cca81424f83b6e`** (post-D-132 state proved by the existing bundle). **Sol-certified review base remains `4e55291e08396ffe4a903ae73b1390396675643b`** (D-131); use `BASE=4e55291` for Sol's diff after applying the series, but never apply the series directly to that older tree (D-140) |
-| **Tests** | Final guarded-source CPU suite: **4,085 passed,8 expected skips,51 subtests,0 failures/errors in4,137.69s**, XML `f892e4702f0279df88f8c9e9c29e9c564121909da3f6fd58c508b9d754d981c6`. Three CUDA/four symlink/one inapplicable-identity skips are not passing claims. Earlier failures/path corrections are preserved; focused counts overlap |
-| **Compute used** | **0 GPU-hours**. Prior official675CPU member fits; Week6 adds210physical/890models. Week7 adds exact **578physical fits/1,330models**,0failed/resumed/other/unknown attempts: E1474/834,E2A95/475,first sweep3/15+6/6. Receipt wall sum12094.442840200325s, not core-hours/training-only. Development timing188models excluded. All30E1labels:29observed0,0observed1,0ambiguous,1undiagnosed; sweep label separately undiagnosed |
+| **Revision** | Reconstructed local history; commits are handoff artefacts. Frozen E2A fitting source is the clean detached `week8-e2a-execution-4515-worktree` at `4515d5165756c8d1669d38d2ee854fa1051b1017`; D-161–D-168 controller work is uncommitted on `sol2-week8-recovery` in `week8-recovery-controller-worktree` and must receive a clean exact commit before adjudication. Real-repository patch target remains `66edf4a11dce39b91974d5c331cca81424f83b6e`; Sol-certified review base remains `4e55291e08396ffe4a903ae73b1390396675643b` (D-131/D-140) |
+| **Tests** | Recovery implementation gate: **5193 passed, 18 expected skips, 51 passing subtests; 5,211 distinct collected nodes, zero remaining failures/errors**. One native-startup failure was corrected by quarantining an extra bytecode cache; its passing targeted rerun is explicitly reconciled. Same source candidate throughout; original failed/interrupted reports retained. Combined JUnit `4d4eea58e7987dc9d7e277c74c70c7e2148b8afd0e76958720a2611ab5193f97`. Documentation-only governance check is next. Historical pre-interruption gate remains4,554/11/51 |
+| **Compute used** | **0 GPU-hours**. Prior official675CPU member fits; Week6 adds210physical/890models; Week7 exact578physical/1,330models. Week8 E2A epoch001 generated150complete physical fits/270models:149 independently synced, one complete local-only;111 untouched,0explicit failure events. No outcome used in D-161 recovery choice |
 | **Design scale** | 300 units in **240 comparison groups** · intended balance **150/150**, group counts 125/115 · D-154 adds 638 repair models: **8,835 required model trainings** including 150 ablations. This is not a runtime estimate or proof of label completeness |
 **Hypothesis status**
-
 | | Claim | Status | Decided at |
 |---|---|---|---|
 | H1 | Ensemble disagreement tracks estimation failure | **D-156 amended operational component: all5/5 meet the criterion;30E1 repair labels now verified29/0/0/1**. Post-collection/partially exposed, no pooled/global test; full interpretation still W10 using the same artifact | Gate check W4 done; same D-156 artifact reviewed W10 Mon |
@@ -47,20 +45,14 @@ This is the shared working file for the project. It is written by Claude/Codex, 
 | H3 | Learned critic beats fitted (error, disagreement) rule by > 5 pts | Not tested | W15 Fri |
 **Done — Weeks 1 and 2, every "Done when" criterion verified rather than asserted.**
 Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and the ledger: Week 1 build and audit (D-005, D-006, D-015, D-016); Week 2 enumerator, policy, collector and audit (D-018 … D-021); Sol's early rulings (D-009, D-012, D-013); all eight 2026-08-16 reviews actioned with every finding independently verified (D-025 … D-057 — 375 phantom fits, the D-042 bound-as-measurement and D-044 estimand-comparison lessons); Week 3 Mon–Wed built then substantially corrected (non-stationary policy, derived split, degenerate N=100 bootstrap — D-046 … D-057); the D-030 named streams verified on their pairing properties (D-038, D-039).
-**Next:** finish D-160's exact Week-8 CPU path, then prepare the student drafting aid/reminder and delta71. Student still owes ~400 Week6, ~500 Week7 and ~500 Week8 own-voice words. D156 is unchanged; no Week-10 H2/H3 verdict, reserve, real critic split or unselected sweep group is authorized. All raw dependencies remain project-local; same-volume copies are not off-device backup.
-
+**Next:** check the documentation-only checkpoint, relocate ignored QA residue, commit, create release-receipt V2 plus non-executable stage records and run one independent read-only status; then publish the immutable incident/epoch-001 records, preserve the interrupted partial, run exactly one recovery epoch (reuse150/execute111) and seal it. A second interruption stops. After E2A sealing, continue exclusion, E2B and sweep-002. Student still owes ~400 Week6, ~500 Week7 and ~500 Week8 own-voice words; no H2/H3 verdict, reserve, real critic split or unselected sweep group is authorized.
 **Certified Weeks 1–5 history:** detailed development results, corrections and provenance remain in `PROJECT_STATE_ARCHIVE.md` and D-046–D-120. The W4 gate passed at rung 0; threshold calibration is permanently frozen; no historical fit or result is being replaced.
-
 **GATE 1 IS SIGNED OFF: FAIL** (D-098, §5). Reliability **PASS** (rung 0, certified). Compute **NOT ADJUDICABLE across hosts** (D-119 — local wall-hours vs a GPU-hour trigger; §5's signed "PASS — contingent" is superseded). Permutation calibration **PASS** (D-094). Five-point MDE **FAIL** — never rename it a pass; H1's machinery works, power failed. The unchanged **300-unit design continues** under a recorded power limitation, **Direction C authorised**; expansion to the 1,500–2,000 held-out units five points would need is refused. The 18–22 table stays **uncertified and optimistic** until the simulation uses H3's final group-level inference with null size validated at .05.
-
 **Two things the thesis must carry, recorded now because a reset loses them** (D-075):
 - **Never print a zero-width interval bare.** It reflects **quantile discreteness, not zero sampling uncertainty**. D-075's historical pilot had 2–3 support values; D-156's ten results have **1–4**. The applicable atom/mass table must always accompany the interval; the old pilot example does not describe every new configuration.
 - **Historical pilot instruction, still binding:** clustered development seed 4 was reported, not investigated (14/15 pilot curves peaked at N=250; that one at N=500). No extra seeds, smoothing, reruns or estimator changes follow inspected outcomes. D-156 now contains the already-collected confirmatory seeds 1000–1004; **Week 10 interprets that same report, without new seeds or retesting**.
-
 **No open Q-questions.** All twelve are closed (§6); the auxiliary head is a **non-decisional diagnostic** (D-047/D-063 — barred from the trunk, selection, the failure set, repair labels and the critic's residual).
-
 **Standing watch — Sol's tripwire on D-001.** Sol endorsed the role split conditionally, and DEV-005/013/014/015 hit that condition. The student now calls the implementation agent Sol2, but **external Sol retains review/certification**. Consequential design choices are stopped at explicit refusals and carried in delta 67; the D-030 named-stream work is built and verified (D-038/D-039), not open.
-
 ---
 ## 2. Frozen constants — *changing any of these requires a §3 Change Record and a Sol review*
 
@@ -296,6 +288,14 @@ The index below carries every id, so a decision cannot go missing from view.
 | **D-158** | 2026-08-31 | **Secondary H2 diagnostic definition** — per-seed failure-set Pearson, no new H2 decision or repeat trend test | Owner-delegated clarification — for Sol |
 | **D-159** | 2026-08-31 | **Engineering input exposure and fixture isolation** — disclosed registered simulation inputs, untrained doubles only; planned seeds retained without a claim of pristine input blinding | Owner-delegated continuation — for Sol |
 | **D-160** | 2026-09-01 | **Bounded Week-8 opening, E2A reuse correction and sign-consistency clarification** — exact 261-fit E2A remainder; 5/5 strict observed-class ratio rule; established batch-size128 retained and disclosed | Owner-delegated continuation — for Sol |
+| **D-161** | 2026-09-02 | **CHANGE RECORD: one outcome-blind E2A recovery epoch** — external parent termination; preserve partial/orphan lease, reuse150, execute only111, second interruption stops | Owner-authorized — for Sol |
+| **D-162** | 2026-09-02 | **CHANGE RECORD: exact Windows controller pair** — only the stable pinned venv-launcher/direct base-interpreter pair shares the D-161 controller identity; every other Python/PyPy still blocks | Owner-authorized clarification — for Sol |
+| **D-163** | 2026-09-02 | **CHANGE RECORD: exact process-local Git trust** — cross-account recovery uses only fixed per-command/process worktree authorization; never global config; refused inspector probes retained | Owner-authorized operational amendment — for Sol |
+| **D-164** | 2026-09-02 | **CHANGE RECORD: serialized lower-complete postmortem** — one stable lock orders worker terminal versus controller postmortem; incomplete epochs never re-enter | Owner-authorized operational amendment — for Sol |
+| **D-165** | 2026-09-02 | **CHANGE RECORD: pre-import raw authority** — command-bound standard-library gate, raw Git/tree/runtime identity before project import | Owner-authorized operational amendment — for Sol |
+| **D-166** | 2026-09-02 | **CHANGE RECORD: externally anchored release and verified nested children** — hard-coded commit/hash gate, retained execution bytes, captured importers, no-pickle/no-native-spawn fit boundary and gated E2A downstream | Owner-authorized operational amendment — for Sol |
+| **D-167** | 2026-09-02 | **CHANGE RECORD: native startup, exact Git executable and two-process nested ownership** — inbox PowerShell trust root, retained CPython startup trees, release ceremony, exact Git and launcher/base handles | Owner-authorized operational amendment — for Sol |
+| **D-168** | 2026-09-02 | **CHANGE RECORD: immutable stage root and one-use fit authority** — fixed source/receipt V2/stage binding, isolated `-I -S -B -X utf8`, fresh fit contexts, historical Git adapter and pre-ack child cleanup | Owner-authorized operational amendment — for Sol |
 ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
 
 Anything not done as written, and why. **The schedule requires several of these to appear in the thesis methodology**: the reliability-gate rung reached, the PPO substitution, any repair-budget or configuration-count reduction, any cut experiment, and the W2 decision on whether the Experiment 2A conditions are drawn from the configuration sweep or are additional to it.
@@ -401,6 +401,8 @@ Format: `Week n Day | what was skipped or substituted | why | goes in methodolog
 **Deviation:** three new fixture families regenerated some registered >=1000 simulation pools with fake Git and untrained model doubles. No optimizer-trained study fit entered a result, but this is input exposure and contradicts a blanket claim that all development input access stays below D-034's line. D-159 records it before production, isolates subsequent fixture input RNGs to development seeds, and retains the exact predeclared study seeds/procedures under the owner's delegation; no result-driven exclusion or replacement seeds. **Goes in methodology:** disclose this limited engineering exposure; namespace membership is not proof of blinding. Sol review remains pending.
 ### DEV-022 · 2026-09-01 · Bounded Week-8 work pulled into calendar Week 3; established batch size retained
 **Deviation:** the owner opened S§W8 before its calendar date and deferred personal prose/review. D-160 keeps dates/Gate2 fixed and only advances exact E2A, E2B, sweep-002 and the no-compute pre-reserve sweep-001 exclusion report. The plan table's batch size256 conflicts with the already frozen/used `TrainConfig` batch size128; changing it now would mix procedures under unchanged identities, so 128 is retained and disclosed. **Goes in methodology:** yes for timing and batch-size implementation; no claim that this was pristine preregistration. External review remains pending.
+### DEV-023 · 2026-09-02 · One incident-specific recovery after external E2A parent termination
+**Deviation:** D-146/D-160's blanket no-reentry rule is narrowed once for a host-killed batch with150 complete fits,0failure events and111 untouched jobs. D-161 requires process-liveness proof, immutable incident evidence, explicit orphan lease/partial preservation and no completed-fit retraining. Scientific procedure is unchanged. **Goes in methodology:** disclose operational recovery/provenance; external review pending.
 
 ## 5. Gate records
 
@@ -457,9 +459,7 @@ Two conditions:
 ---
 
 ## 6. Open questions
-
 **For Sol** — questions Claude wants adversarially reviewed. Sol answers in verdict-block format; answered items move to §3 as decisions.
-
 | # | Question | Raised | Status |
 |---|---|---|---|
 | Q-001 | Is the Claude/Sol split in D-001 the right one, or does it under-use Sol? | 2026-08-13 | **Closed.** Sol: keep as written, high confidence. Would revisit if implementation or methodological decisions are repeatedly completed before Sol can review them — a standing tripwire, see §1 |
@@ -474,9 +474,7 @@ Two conditions:
 | Q-008 | Seed independence across units: shared environment streams at the same seed. | 2026-08-15 | **Closed and built** → D-030/D-038/D-039. Named streams are independent across sweep units and preserve common random numbers inside registered comparison groups; `arm` never enters the failure-set stream |
 | Q-007 | Plan/schedule contradiction on whether the no-statistics critic variant sees error history. | 2026-08-15 | **Closed** → D-029. Sol: P§12.1 and P§13.5.1 are internally inconsistent; keep the schema, rename the variant **"no explicit statistics"**, and tighten the W13 negative control to exclude `predicted_vs_actual_state` as well |
 | Q-012 | **W4 and W5 both close on delta 56. What is authorised next?** | 2026-08-23 | **Sol's ruling remains D-120.** The owner later authorised implementation under DEV-013…016 and real Week-6 CPU execution under D-145/DEV-017 before external review. This is disclosed verification lag, **not a Sol ruling**; reserve and scientific registration remain stopped |
-
 **For Claude** — things Sol or the student wants implemented, checked or measured.
-
 | # | Item | Raised by | Status |
 |---|---|---|---|
 | C-001 | File decisions for Q-007, Q-008, the fifteen-condition repair subset and class replenishment; correct the twenty-seed repair schedule and compute estimate; add cross-attribute transition-aliasing tests. Blocking for training, not for implementation | Sol, 2026-08-16 | **Done** → D-025 … D-031, `tests/test_aliasing.py` |
@@ -492,9 +490,11 @@ Two conditions:
 | C-010 | **W4 runner call-site invariants**, required tests: build the `NormalisationScale` from the full movement evaluation pool **before** the failure mask exists, and reuse **that object** for the whole-pool and masked statistics; and select **one immutable attempt** explicitly rather than loading a tree. Exact reproduction of the pilot does not validate the masked call site (D-064) | Sol, 2026-08-17 | **Done** → D-076: `ScaledEvaluation` is the call site — `from_pool` takes no mask so the scale precedes any mask structurally, `masked()` reuses that identical object, and `select_attempt()` refuses to guess. Sol cleared it — deltas 39–42 ruled (D-089) — and W4 Friday has since run on it (D-103); the threshold it calibrated is frozen and certified (D-107, D-109) |
 
 ## 7. Session log — *append-only, newest last*
+### 2026-09-02 (Sol2 Week-8 recovery) · Externally anchored recovery release gate · Claude
+D-161…D-168 retain epoch001 at150complete/149durable/111untouched and authorize one outcome-blind continuation only. Exact launcher liveness, process-local Git, serialized postmortem, raw authority, retained execution bytes, fixed stage-0 receipt V2, isolated CPython and fresh verified nested children are built. Independent audits and four focused partitions are green; final full gate, residue relocation, clean commit, receipt/stage records and independent status remain before recovery. Production/GPU/results unchanged; external Sol review, student prose, reserve, critic split and H2 remain open. Deltas72–77 carry the handoff.
 
-Closed entries are in `PROJECT_STATE_ARCHIVE.md` in chronological order; §3 indexes every decision regardless of where its session lives. A 2026-08-30 audit counted **93 unique Claude session headings and 98 total**: five duplicate archived headings are preserved pending Sol's ruling rather than silently deleted. Read controlling corrections before historical claims: D-109 before D-108; D-115/D-119 before D-114/DEV-010; D-121/D-122 before affected prose; D-138…D-146 before D-133…D-137.
-*(All prior sessions through the post-Fable audit are archived in full because this file repeatedly reached its 500-line paste cap, never because their decisions stopped mattering.)*
-*(Completed sessions through Week 7 are archived verbatim.)*
-### 2026-09-01 (Sol2 Week-8 start) · Exact bounded inventory and pre-analysis specification · Claude
-D-160/DEV-022 records the owner's early Week-8 opening, preserves CPU/dates/Gate2, corrects E2A reuse to 261 new fits/441 models, and fixes sign consistency after the known E2A smoke label but before the remaining19 labels/all E2A ratios. Four read-only audits found the exact source, reporting, exclusion and launch gaps. Implementation is parallel and project-local; reserve, other sweep groups and H2 verdict remain closed. See `docs/week8_readiness_audit.md`; delta71 will carry verified results.
+### 2026-09-05 (Sol2 resumed workspace) · Verified restoration and recovery release preparation · Claude
+Owner authorized continuation. Original directories were absent after relocation; pinned Python/Git executable hashes and all55,924 collection-manifest files were verified. Approved removal of one byte-identical327,644-file test-scratch duplicate retained the collection copy; main repository and54siblings were restored at the original paths, with 55921 restored manifest files verified. No scientific evidence/path/constant was rewritten and no recovery command or fit ran during restoration. Final repository-wide gate, clean release commit, V2 receipt/stage records and independent status remain before one recovery. See delta78 and D:/Aenv/pro2/resume-2026-09-05.
+
+### 2026-09-06 (Sol2 recovery release) · Full QA and pinned-runtime restoration · Claude
+Full implementation QA: 5193 passed, 18 expected skips, 51 passing subtests; 5,211 distinct collected nodes, zero remaining failures/errors. Batch08 routing was corrected for four legacy timing fixtures; batch09's sole native-startup failure was traced to one extra4413-byte json.tool cache datedSept3. Excluding it reproduced the original complete runtime hash exactly; approved quarantine preserved it, and the native smoke passed on unchanged source/pins. Prior non-green evidence and the targeted rerun remain explicit in D:/Aenv/pro2/resume-2026-09-05. No production command, new fit, outcome consultation or GPU use occurred. Clean commit, V2 receipt/stage records and independent status remain before the single recovery; external review and student prose remain open. Delta79 carries this checkpoint.

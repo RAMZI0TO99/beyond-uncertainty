@@ -5838,3 +5838,18 @@ Continuation completed2026-09-01: guarded fullQA4085pass/8skip/51subtests;578new
 ### 2026-08-31 (Sol2 scientific decisions) · Fixed repair extension and H1 reporting amendment · Claude
 
 Owner authorization recorded as D-154/DEV-019 before dependent implementation. Two independent reviews supported the fixed extension and separate trend reports. Main reproduced the additional 225-unit sweep stream defect (D-155); canonical evidence is unaffected. New code and synthetic verification began without opening new scientific results or training models. Closeout: full CPU suite **2,293/7/0 in 1,679.75 s**; five independent agents completed their implementation/review assignments. At clean commit `ee02542`, D-156 reopened all 150 source fits and independent project copies, wrote one immutable report plus two visually checked figures, then preserved an orchestration finalization failure caused by comparing different digest payloads. Correct verification found no changed source; report/figures were not recomputed. All 5/5 disagreement intervals are strictly negative; diagnostic error rho is -1 in all five. No fit, label or GPU was added. Full H1, repair labels, student prose and Sol certification remain open. Delta 69 and `docs/week7_experiment_1_results.md` carry the complete record.
+
+## Archived from PROJECT_STATE.md §7 on 2026-09-02 — Week-8 bounded start
+
+### 2026-09-01 (Sol2 Week-8 start) · Exact bounded inventory and pre-analysis specification · Claude
+D-160/DEV-022 records the owner's early Week-8 opening, preserves CPU/dates/Gate2, corrects E2A reuse to 261 new fits/441 models, and fixes sign consistency after the known E2A smoke label but before the remaining19 labels/all E2A ratios. Four read-only audits found the exact source, reporting, exclusion and launch gaps. Implementation is parallel and project-local; reserve, other sweep groups and H2 verdict remain closed. See `docs/week8_readiness_audit.md`; delta71 will carry verified results.
+
+## Archived from PROJECT_STATE.md §7 on 2026-09-02 — D-161 recovery freeze
+
+### 2026-09-02 (Sol2 Week-8 recovery) · Outcome-blind E2A interruption recovery · Claude
+D-161/DEV-023 freezes the host-killed E2A state at150starts/149syncs, one complete local-only job with a preserved partial,111 untouched and0failure events. Recovery code/tests/docs must be committed before mutation in a separate worktree; original fit source stays4515d516. Exactly one epoch may reuse150/execute111; second interruption stops. Delta72 carries the incident and protocol; no scientific outcome was consulted and no GPU/reserve/H2 was opened.
+
+## Archived from PROJECT_STATE.md §7 on 2026-09-02 — D-162–D-168 recovery hardening
+
+### 2026-09-02 (Sol2 Week-8 release) · Exact liveness, raw authority and immutable startup chain · Claude
+D-162–D-168 close the pre-production recovery trust boundary without changing the D-161 incident or scientific plan. The controller now proves the exact Windows launcher/base-interpreter pair, uses process-local Git trust, serializes terminal/postmortem publication, retains every admitted source/runtime byte, starts from a fixed compressed stage-0 source plus strict receipt V2, and runs every Python boundary with exact isolated options. Each permitted historical fit receives a fresh one-use context, retained two-process ownership and a no-Git authority adapter. Independent startup and process audits found no remaining P0/P1 after final digest pins; one P2 dynamic-alias restoration gap was also closed. Production remains frozen pending the clean release commit and post-commit status. Deltas73–77 carry the full handoff; external Sol review remains pending.

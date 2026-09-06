@@ -2,8 +2,10 @@
 
 Date: 2026-09-01 (Asia/Riyadh)
 
-Status: **GO for the clean implementation commit.**  Production was not
-opened during verification.
+Status: **historical GO for the pre-interruption implementation only; current
+NO-GO until the D-161–D-168 recovery commit and its authoritative repository-wide
+artifacts are recorded below.**  Production was unopened during the original
+verification, but E2A epoch 001 has since produced 150 complete fits.
 
 ## Why the suite is partitioned
 
@@ -83,7 +85,7 @@ or GPU operation occurred in any verification attempt.  No failed test was
 retried as production, and no scientific boundary was weakened to make QA
 pass.
 
-## Release decision
+## Pre-interruption release decision
 
 The exhaustive current-tree test gate is satisfied.  The next permitted
 actions are the focused post-documentation state/driver tests, validated
@@ -96,3 +98,105 @@ and zero errors).  Its JUnit SHA-256 is
 `bd66c987721178cf88cc80dad37abc56ccd943b1fea83965465f2f996798b9cc`.
 It covered `test_project_state.py` and all three fixed production wrappers.
 The clean implementation commit is therefore the next gate.
+
+## D-161–D-168 recovery addendum
+
+The release gate above covered the pre-interruption implementation.  After an
+external host termination left E2A at 150 starts/149 syncs, D-161 requires a
+separate focused gate before any lease or evidence mutation.  That gate must
+cover the kernel-backed liveness helper, exact incident classifier, hidden
+partial preservation, transition-lock ordering, old-lease orphan archive,
+old-commit bootstrap isolation, 149 reuse + one sync-only +111 execute
+accounting, two-checkpoint/523-event validation, second-interruption refusal,
+stable terminal monitor, D-162's exact Windows launcher/interpreter-pair rule,
+D-163's process-local Git trust, D-164's serialized lower-complete postmortem,
+D-165's pre-import raw authority and distinct execution/finalizer commits, and
+D-166's externally supplied controller commit, outer-bootstrap hash gate,
+retained file handles, captured project/dependency importers, exact downstream
+E2A routing and verified no-pickle nested fit child.  Synthetic tests are not
+permission to mutate production; the committed recovery commit, release
+receipt and final test artifact hashes will be recorded before `adjudicate`.
+
+The latest pre-release integration run passed 211 tests before encountering
+one stale synthetic inspector fixture; after that fixture was updated, the
+inspector/raw-authority tail passed 49 tests with two expected Windows
+link-privilege skips.  The separately delegated D-166 nested-boundary suite
+then passed 24/24 tests, and two additional exact-environment/canonical-
+invocation tests were added afterward.  The latest combined working-copy
+matrix then passed **286 tests with two expected Windows link-privilege skips
+in 158.60 seconds**.  Its JUnit SHA-256 is
+`0ee8462227b1738372a5cd2b42e3b08335c03b798555932addcfda43dc1d74ff`.
+These are working-copy checks only.
+The authoritative release gate remains the clean-tree combined run plus an
+independent read-only inspector after the final commit.
+
+### D-167/D-168 candidate evidence
+
+D-167 added the fixed native trust root, complete retained CPython startup
+inventories, exact Git executable and retained two-process nested ownership.
+D-168 then closed six fresh P1s before first use: inherited CLR startup
+controls, CPython registry/environment startup, mutable executable stage bytes,
+reused one-shot fit authority, historical bare Git and incomplete malformed-
+startup cleanup.  The final candidate uses receipt V2, a fixed compressed stage
+payload, exact cleared `cmd.exe` and native environments, exact
+`-I -S -B -X utf8 -c`, schema 4 stage/startup propagation, fresh verified fit
+contexts, authority-derived historical Git and retained launcher/base-child
+cleanup.  No scientific condition, expected count or output was changed.
+
+Two independent audits found no P0.  After pinning the raw helper to
+`dd40628b2ab13507d741d597190606b108b48589372204edf342e6d628ef137d`
+and outer literal to
+`52a4d90f242fe58af53cf95985660f548d14047e838a463ac329aa63f047840e`,
+all five consumers match.  The only process-audit P2—dynamic imported-alias
+rebinding—was also fixed and gained direct adversarial coverage.
+
+Four non-overlapping CPU-only working-copy gates are green:
+
+| Partition | Passed | Skipped | Seconds | JUnit SHA-256 |
+|---|---:|---:|---:|---|
+| stage/receipt/native/raw | 86 | 3 | 47.38 | `e2b8b81572e72474607f52a2579bcdaf0399a3c22e3b14ca255d657a928c8734` |
+| worker/nested/controller/inspector | 277 | 0 | 77.70 | `7990ea32eb83ed4ad1a574ef2af7672880d7be255d896201039c2c59b615b456` |
+| entrypoint/startup | 47 | 0 | 323.98 | `fbde9658d55cb9425caaec32e7c1d78f69e939bc52b43da53a07148d94da02d4` |
+| infrastructure/liveness/finalization/postmortem | 320 | 5 | 207.30 | `409217a5c14e1a1b3027a8bb9a768f3791d7ea3d71cc246b4d38303cfcb68d1a` |
+
+These partitions overlap neither as a claim of repository-wide coverage nor as
+permission to mutate production.  The final exact-tree full suite and its
+artifact are the remaining software gate, followed by residue relocation,
+clean commit, receipt V2, non-executable stage audit and independent status.
+GPU, production mutation and scientific-output access remain zero.
+
+## 2026-09-06 resumed implementation gate
+
+The implementation gate is now reconciled: **5193 passed, 18 expected skips, 51 passing subtests; 5,211 distinct collected nodes, zero remaining failures/errors**. Every collected
+identity has exactly one accepted terminal result. All runs used the same
+source candidate; a documentation-only governance check follows this entry.
+The clean commit, receipt V2, stage audits and independent status remain before
+production. No recovery authority has been consumed at this checkpoint.
+
+- Candidate manifest SHA-256: `cb103e0b92d91b9873f0989c570308c9bdf5c421cc5a5daf20c5d2e171948090`.
+- Combined JUnit SHA-256: `4d4eea58e7987dc9d7e277c74c70c7e2148b8afd0e76958720a2611ab5193f97`.
+- Complete provenance, per-partition hashes, skip reasons and targeted-rerun
+  mapping: `D:/Aenv/pro2/resume-2026-09-05/qa/release-verification.json`.
+
+The original batch08 attempt stopped before terminal publication;
+four setup errors arose from timing fixtures requiring repository-local scratch.
+The corrected disjoint routing moved those four nodes to the legacy partition.
+Batch09 completed with257passes/4skips and one native-startup failure. An
+independent whole-tree inventory found only an extra4413-byte
+`Lib/json/__pycache__/tool.cpython-313.pyc`, dated2026-09-03. Omitting precisely
+that entry reproduced the original frozen runtime hash exactly. With approval,
+the file was moved to verified quarantine; no Python source, dependency, frozen
+pin or project code changed. The targeted startup smoke then passed1/1.
+
+The derived combined XML substitutes only that failed case with its passing,
+same-candidate rerun. Its provenance explicitly retains the original nonzero
+exit, original XML hash and replacement XML hash. Original XML files remain
+unchanged; skips cannot replace failed cases. Batch03 wall time includes an
+overnight Windows suspension. JUnit suite test counters include the51 passing
+unittest subtests; primary testcase elements cover the5,211 collected nodes.
+This corrects the historical wording that described those counters as extra
+testcase elements. No scientific output was consulted during this QA.
+
+The runbook's native runtime-directory spelling is corrected to the actual
+tested `week8-d167-native-runtime-attempt-001`; the stage0 runtime remains d168.
+This is documentation only. All existing scientific and one-use stop rules hold.

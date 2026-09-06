@@ -384,6 +384,20 @@ def _historical_lease_record(token: str) -> dict[str, Any]:
         / "history"
         / f"{W.COMMON_LEASE_NAME}.{token}.released.json"
     )
+    # D-161 preserves the externally orphaned epoch-001 lease under an
+    # explicitly different classification.  Reserve its exact token before
+    # every ordinary active/released-history branch so neither a stale active
+    # owner record nor a forged normal release can bypass the transition and
+    # orphan-archive validator.
+    from . import week8_exp2a_recovery as Recovery
+
+    if token == Recovery.OLD_LEASE_TOKEN:
+        if os.path.lexists(history):
+            raise ValueError("D-161 orphan token has forbidden normal release history")
+        try:
+            return Recovery.historical_orphan_lease_record(token)
+        except Recovery.RecoveryRefused as exc:
+            raise ValueError("D-161 orphan lease history is invalid") from exc
     if active.exists() and read_json(W._project_path(active, directory=False)).get("token") == token:
         return _lease_record(token)
     path = W._project_path(history, directory=False)

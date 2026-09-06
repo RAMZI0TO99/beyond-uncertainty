@@ -1,10 +1,13 @@
 # Week 8 readiness audit
 
-**Status:** pre-production implementation complete; final repository-wide
-verification is in progress and no Week 8 fit has been launched by this
-record.  **Calendar:** Week 3 Tuesday, 2026-09-01.  Week 8 is being pulled
-forward under the owner's instruction; the schedule dates are not being
-rewritten.  External Sol review remains pending.
+**Current status (supersedes the pre-interruption readiness finding below):
+NO-GO pending the final D-161–D-168 repository-wide gate and a clean recovery
+commit.**
+The original readiness audit was completed before production opened.  E2A
+epoch 001 has since generated 150 complete fits and was externally interrupted;
+the preserved incident is described in the final section.  **Calendar:** Week 3
+Wednesday, 2026-09-02.  Week 8 is being pulled forward under the owner's
+instruction; schedule dates are unchanged and external Sol review is pending.
 
 ## Scope fixed before the remaining Week 8 outcomes
 
@@ -50,9 +53,11 @@ but machine work must not claim that the student wrote it.
   comparison-group id `029dd4484382`.  It remains disjoint from the completed
   first group.
 
-If all scheduled non-reserve work is executed, Week 8 adds 389 physical fits
-and 1,081 member-model trainings: 261/441 for Experiment 2A, 125/625 for
-Experiment 2B, and 3/15 for sweep batch 2.
+The original scheduled non-reserve scope was 389 physical fits and 1,081
+member-model trainings: 261/441 for Experiment 2A, 125/625 for Experiment 2B,
+and 3/15 for sweep batch 2.  After the 150/270 complete E2A fits in epoch 001,
+the remaining executable scope is 239 physical fits and 811 member-model
+trainings: E2A 111/171, E2B 125/625 and sweep-002 3/15.
 
 ## Frozen execution boundaries
 
@@ -102,12 +107,14 @@ are now implemented and adversarially tested before production:
   sweep batch 2;
 - a fully specified and tested sign-consistency summary.
 
-The public production surface is now three fixed wrappers: one for the seven
-E2A phases, one for no-compute exclusion publication, and one for the serial
-E2B/sweep-002 baseline sequence.  They pin all attempt-001 roots, the common
-lease, CPU 4/4 execution, the exact 8 GiB floor and 3,600-second fit timeout;
-they refuse partial or failed attempt history instead of retrying it.  Lower
-generic launch CLIs are not an authorized Week 8 operator surface.
+The public production surface is now four fixed wrappers: the ordinary E2A
+wrapper, the one-incident-only D-161 recovery controller, the no-compute
+exclusion publisher, and the serial E2B/sweep-002 baseline wrapper.  They pin
+all attempt-001 roots, the common lease, CPU 4/4 execution, the exact 8 GiB
+floor and 3,600-second fit timeout.  The three ordinary wrappers refuse partial
+or failed attempt history instead of retrying it; the fourth recognizes only
+the one exact D-161 incident under its one-use record protocol.  Lower generic
+launch CLIs are not an authorized Week 8 operator surface.
 
 Current-tree scoped verification includes 583 passed, 5 expected skips and 51
 subtests in the integrated Week 8 matrix, plus 32/0 in the final E2A wrapper
@@ -116,8 +123,104 @@ long 416-source report composition was also exercised independently; the final
 full repository release gate is now complete: 4,565 collected nodes yielded
 4,554 passed, 11 expected skips, 51 subtests, zero failures and zero errors
 across six authoritative JUnit files.  The exact partition/routing proof and
-SHA-256 manifest are in `docs/week8_release_verification.md`.  A clean
-implementation commit remains required before any production-root creation.
+SHA-256 manifest are in `docs/week8_release_verification.md`.  Those results
+govern the pre-interruption tree.  A separate authoritative recovery gate and
+clean recovery commit are required before any D-161 production mutation.
 
 These implementations do not grant permission to change constants, labels,
 seeds, the sweep order, or the scientific estimand.
+
+## 2026-09-02 D-161/D-162 recovery gate
+
+The first fixed E2A launch was externally terminated after its host process
+had run for about 64 minutes.  Normal `finally` handling did not publish a
+terminal lower report or release the common lease.  The stable outcome-blind
+snapshot proves 299 matching events: 150 unique starts, 149 unique syncs, no
+failure/sync-pending event and no completion.  The one unresolved job,
+`178f4ef3ae1e-s1001`, has a complete successful local canonical tree and no
+durable canonical tree.  Its interrupted durable publication left one hidden
+eleven-file partial whose bytes are a strict equal subset of the fifteen-file
+local tree.  There are 111 wholly untouched jobs.  No metric, label, ratio or
+H2 value was consulted in deriving this classification.
+
+The ordinary fixed wrapper correctly refuses this state.  D-161 authorizes a
+single, incident-specific recovery only after a committed controller passes
+kernel-backed process-liveness checks, exact twin/control validation, stable
+double inventory, partial preservation and adversarial tests.  The controller
+must archive—not normally release—the old lease, preserve the partial in two
+independent quarantine roots, reuse all 150 complete fits, and allow only the
+111 untouched jobs to reach a worker.  A one-sided or partial bootstrap
+invocation, worker claim or worker terminal twin is permanent stop evidence;
+it is never deleted, repaired, republished or rerun.  Expected terminal lower counts are
+111 executed, 150 resumed and 261 synchronized.  Any second interruption,
+failure, ambiguous process query or evidence drift is terminal.  Live E2A
+monitoring is disabled while recovery events change; one stable terminal
+monitor is required afterward.
+
+This incident does not change the E2A scientific inventory, CPU 4/4 route,
+batch size 128, timeout, storage floor, sources, roots, estimands or downstream
+scope.  The original execution source remains clean at
+`4515d5165756c8d1669d38d2ee854fa1051b1017` in a dedicated project-local
+worktree; the recovery implementation receives its own later commit identity.
+
+## D-164–D-168 release-hardening gate
+
+The recovery now has two further mandatory boundaries discovered before any
+recovery mutation.  Worker-terminal publication and a lower-complete
+controller postmortem share one persistent identity-checked finalization lock.
+The postmortem is admissible only after the entire lower completion, worker
+claim, exact current controller, worker death and unchanged empty runtime
+directory are re-proved while that lock is held.  An incomplete lower epoch,
+one-sided terminal/postmortem evidence or a replaced guard/runtime object is a
+permanent stop; no missing worker terminal is fabricated.
+
+Recovery must also enter through the fixed absolute D-165 standard-library
+script under the pinned interpreter and literal `-S -s -P`, with no startup
+`PYTHONPATH`.  Before importing project code or site-packages, its hash-pinned
+helper proves both worktrees from raw Git plumbing plus two exact filesystem
+and byte inventories, as well as the exact Python/Git executables.  The sealed
+gate is command-bound and is revalidated by the controller and, before claim,
+the worker.  Ignored/untracked files, links, unstable bytes, wrong commands,
+path admission or environment drift all refuse.
+
+D-166 strengthens that path before first use.  The direct script is no longer
+an operator surface: an externally hash-checked outer `-c` bootstrap receives
+the entrypoint/helper hashes and final controller commit as hard-coded release
+arguments under a fully cleared environment.  Raw authority retains read
+handles for every admitted controller, execution, Git-runtime and site file;
+captured project/dependency loaders execute verified Python bytes.  Every
+nested fit repeats static authority under pinned `-S -s -P`, bypasses native
+`multiprocessing` spawn and pickle serialization, calls only the historical
+fixed fit worker, and returns the historical protocol through an atomic
+no-overwrite result file.  All four post-recovery E2A commands use the same
+outer gate.  The final commit is recorded in a separate post-commit release
+receipt because a commit cannot contain its own identity.
+
+Focused tests for these boundaries are green, but readiness remains **NO-GO**
+until the fresh combined recovery/integration/governance matrix is complete,
+its artifacts are hashed, all ignored QA residue is moved outside the
+controller worktree, the exact tree is clean and committed, and the final
+read-only production inspector succeeds from that clean commit.  None of the
+hardening work changed epoch 001, opened a scientific value or used the GPU.
+
+D-167 and D-168 supersede only the unconsumed startup mechanics above.  The
+first executable authority is now a fixed compressed stage source run through
+absolute `cmd.exe` with an exact cleared ten-entry environment, strict receipt
+V2 and the inbox PowerShell host.  The native launcher creates an exact
+twelve-entry controller environment.  Every Python boundary—including nested
+fits—uses exact `-I -S -B -X utf8 -c`; raw/gate schema 4 binds the stage and
+startup aggregate through the controller, inspector, worker and fit child.
+Each historical fit receives a fresh verified context; retained launcher and
+base-interpreter handles are cleaned before any malformed-start refusal; and
+frozen historical Git calls are served from sealed authority without starting
+Git or consulting repository-local configuration.
+
+Two independent D-168 audits found no P0.  Their two deferred P1 digest pins
+and one runbook-contract P2 are closed, and the process audit's non-blocking P2
+dynamic-alias edge is also fixed and tested.  Current focused evidence is
+86/3 stage/receipt/native/raw, 277/0 worker/nested/controller/inspector, 47/0
+entrypoint/startup and 320/5 neighboring regression, all CPU-only and green.
+These remain working-copy evidence until the exact repository-wide candidate
+passes, ignored QA residue is removed from the worktree, and the release commit
+plus post-commit receipt/status prove the clean revision.  Production remains
+299 events, 150 starts, 149 syncs and 111 untouched jobs; GPU use remains zero.
