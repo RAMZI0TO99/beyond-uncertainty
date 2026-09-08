@@ -1314,20 +1314,27 @@ def test_sanitized_environment_uses_fixed_empty_project_temp_and_no_python_path(
         R._prepare_empty_runtime_temp(runtime, what="synthetic recovery runtime")
 
 
+@pytest.mark.parametrize(
+    ("unexpected_name", "unexpected_value"),
+    [
+        ("PYTHONSTARTUP", "hostile.py"),
+        ("PYTHONHASHSEED", "0"),
+        ("PYTHONDONTWRITEBYTECODE", "1"),
+        ("PYTHONIOENCODING", "utf-8"),
+        ("PYTHONNOUSERSITE", "1"),
+        ("PYTHONSAFEPATH", "1"),
+        ("PYTHONUTF8", "1"),
+    ],
+)
 def test_controller_runtime_requires_exact_pinned_isolated_launch(
-    relocated: Path, monkeypatch: pytest.MonkeyPatch
+    relocated: Path, monkeypatch: pytest.MonkeyPatch,
+    unexpected_name: str, unexpected_value: str,
 ) -> None:
     site_packages = R.PINNED_SITE_PACKAGES
     site_packages.mkdir(exist_ok=True)
     source = (R.CONTROLLER_WORKTREE / "src").resolve()
     expected_environment = {
-        "PYTHONHASHSEED": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONIOENCODING": "utf-8",
-        "PYTHONNOUSERSITE": "1",
         "PYTHONPATH": f"{source}{R.os.pathsep}{site_packages.resolve()}",
-        "PYTHONSAFEPATH": "1",
-        "PYTHONUTF8": "1",
     }
     for name in tuple(R.os.environ):
         if name.upper().startswith("PYTHON"):
@@ -1377,7 +1384,7 @@ def test_controller_runtime_requires_exact_pinned_isolated_launch(
     }
     monkeypatch.setattr(R, "_validate_entrypoint_gate", lambda: gate)
     assert R._validate_controller_runtime() is gate
-    monkeypatch.setenv("PYTHONSTARTUP", "hostile.py")
+    monkeypatch.setenv(unexpected_name, unexpected_value)
     with pytest.raises(R.RecoveryRefused, match="environment is not exact"):
         R._validate_controller_runtime()
 

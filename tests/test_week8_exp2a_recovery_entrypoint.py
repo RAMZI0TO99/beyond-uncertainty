@@ -466,8 +466,15 @@ def _write_stub_controller(
         "    revalidated = raw.revalidate_admitted_authority(\n"
         "        authority, config, helper_path=helper_path, helper_sha256=helper_sha256\n"
         "    )\n"
+        "    controller_runtime = {\n"
+        "        'executable': sys.executable, 'base_executable': sys._base_executable,\n"
+        "        'sys_path': list(sys.path),\n"
+        "        'python_environment': {name: value for name, value in os.environ.items() if name.upper().startswith('PYTHON')},\n"
+        "        'flags': {name: bool(getattr(sys.flags, name)) for name in ('dont_write_bytecode', 'ignore_environment', 'isolated', 'no_site', 'no_user_site', 'safe_path')},\n"
+        "    }\n"
+        "    controller_runtime['flags']['utf8_mode'] = int(sys.flags.utf8_mode)\n"
         "    _CONTROLLER_MARKER.write_text(\n"
-        "        json.dumps({'argv': argv, 'gate': gate, 'loader': loader_record, 'revalidated': revalidated}, sort_keys=True),\n"
+        "        json.dumps({'argv': argv, 'gate': gate, 'loader': loader_record, 'revalidated': revalidated, 'controller_runtime': controller_runtime}, sort_keys=True),\n"
         "        encoding='utf-8',\n"
         "    )\n"
         "    return 0\n",
@@ -746,6 +753,42 @@ def _commit_embedded_config_change(
     scenario["embedded_config"] = changed_config
     scenario["config"][field] = value
     scenario["config"]["controller_commit"] = controller_commit
+
+
+def test_admitted_entrypoint_runtime_satisfies_real_controller_contract(
+    synthetic_launch: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replay the real isolated entrypoint's runtime through the controller guard."""
+    from bu.experiments import week8_exp2a_recovery as recovery
+
+    completed = _run_entrypoint(synthetic_launch)
+    assert completed.returncode == 0, (completed.stdout, completed.stderr)
+    record = json.loads(synthetic_launch["controller_marker"].read_text(encoding="utf-8"))
+    runtime = record["controller_runtime"]
+    config = synthetic_launch["config"]
+    for constant, field in (
+        ("PINNED_PYTHON", "pinned_python"),
+        ("PINNED_BASE_PYTHON", "pinned_base_python"),
+        ("PINNED_SITE_PACKAGES", "pinned_site_packages"),
+        ("CONTROLLER_WORKTREE", "controller_root"),
+    ):
+        monkeypatch.setattr(recovery, constant, Path(config[field]))
+    monkeypatch.setattr(recovery, "EXPECTED_PINNED_PYTHON_SHA256", config["pinned_python_sha256"])
+    monkeypatch.setattr(recovery, "EXPECTED_PINNED_BASE_PYTHON_SHA256", config["pinned_base_python_sha256"])
+    for name in tuple(os.environ):
+        if name.upper().startswith("PYTHON"):
+            monkeypatch.delenv(name)
+    for name, value in runtime["python_environment"].items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(recovery.sys, "executable", runtime["executable"])
+    monkeypatch.setattr(recovery.sys, "_base_executable", runtime["base_executable"])
+    monkeypatch.setattr(recovery.sys, "path", runtime["sys_path"])
+    monkeypatch.setattr(recovery, "_controller_runtime_flags", lambda: runtime["flags"])
+    # The child really validated its private raw capability. It cannot be
+    # revalidated in this pytest process; replay only the runtime boundary here.
+    assert record["revalidated"] == record["gate"]["raw_authority"]
+    monkeypatch.setattr(recovery, "_validate_entrypoint_gate", lambda: record["gate"])
+    assert recovery._validate_controller_runtime() is record["gate"]
 
 
 def test_positive_exact_checkouts_reach_only_the_stub_controller(

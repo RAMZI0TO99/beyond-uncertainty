@@ -375,3 +375,53 @@ inspection occurred. Documentation governance, residue relocation, clean commit,
 receipt/stage records and independent status remain before production. Delta79
 carries this checkpoint; reviewer certification and student own-voice work remain
 open. This entry is a software-release checkpoint, not a scientific result.
+
+## 2026-09-08 controller contract correction (D-169)
+
+Release `50251fb3cc63479677c2e19fc242cb6d809c9d05` passed its full gate, but
+the independent stage-0 status refused before recovery with error SHA256
+`92746c99701434df542af912a0c1b8b70b7a41f3cc35dc716c2085e7f4720323`:
+`controller Python path/environment is not exact`. The controller required
+six stale PYTHON names that the D-168 isolated launch deliberately omits.
+The verified entrypoint adds only PYTHONPATH after admission. The controller
+now validates that exact environment; isolation flags, pins, path digest and
+unexpected-name rejection remain strict. No bootstrap file or pin changed.
+
+The new real-entrypoint contract replay failed on the old guard with the same
+error, then passed with all seven unexpected-variable cases after correction.
+This is a real isolated producer/runtime replay into the controller guard;
+the child validates its raw capability, while replay mocks only that private
+capability validation in the parent. It is not a live production recovery test.
+Fresh full gate: **5200 passed, 18 expected skips, 51 passing subtests; 5,218 distinct nodes, zero remaining failures/errors**.
+The owner requested a quota pause on September6 during batch07attempt001.
+That unfinished attempt is preserved and contributes no gate coverage;
+September8 continuation verifies the same candidate and uses batch07attempt002.
+Batch09 had one native-startup failure:25 extra bytecode caches had accumulated
+in the shared base runtime on September6–7. Independent inventory found no
+changed/missing file; excluding only those extras reproduced the original pin.
+Approved quarantine preserved all25 files and restored the full frozen runtime
+hash exactly. The one-node native smoke then passed on unchanged source. The
+reconciler retains the original nonzero report and links its exact passing
+replacement case; raw XML remains untouched. Proofs are in runtime-drift-2026-09-08
+and runtime-drift-2026-09-08-restored. No interpreter source or pin changed.
+Batch10attempt001 had22 failures at its required-empty stage0 fixture assertion.
+The runtime contained only two DesktopCentral logs, timestamped during the
+first September6 status invocation. Their process of origin was not observed.
+Approved preservation moved those2 files (2630bytes) byte-identically into
+`stage0-residue-2026-09-08`, leaving the same runtime parent empty. No agent
+setting, startup environment, guard or production evidence changed. Full
+batch10attempt002 passed284/3skip on unchanged source; the original failed
+partition is explicitly disclosed and does not contribute duplicate coverage.
+Separately, storage blocked the tail gate until an approved copy/hash/verify
+relocation preserved77,616 retired first-release QA files (1,565,074,820bytes)
+under `C:/Aenv/beyond-uncertainty-retired-qa-2026-09-08`. Only the verified old
+scratch copies were removed from D:. The receipt and three inventories are in
+`controller-contract-fix/retired-qa-relocation-2026-09-08`; this is synthetic QA,
+not scientific evidence or an off-device backup. The 8GiB floor was unchanged.
+Combined JUnit SHA256: `ade0273e0dda2436a2705fa8552daafb86c4a6e9fefb7f4556b4f023cbb290b0`.
+Candidate manifest: `9266f9db1cecdb8bde4f0469d19b36fc0b28151e3cfc59481317f1fdf8530d48`.
+Reports: `D:/Aenv/pro2/resume-2026-09-05/qa-cfix`; red/green regressions in `qa`.
+The first release receipt and refused invocation remain intact; no recovery,
+lease mutation, new fit, scientific-value consultation or GPU use occurred.
+New documentation governance, clean commit, immutable attempt002 receipt/audit
+and independent status remain before the sole D-161 recovery.

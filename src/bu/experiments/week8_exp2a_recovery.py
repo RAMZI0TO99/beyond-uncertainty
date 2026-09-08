@@ -1011,14 +1011,11 @@ def _validate_controller_runtime() -> dict[str, Any]:
             "controller requires the exact pinned Python under -I -S -B -X utf8"
         )
     expected_pythonpath = os.pathsep.join((str(source), str(site_packages)))
+    # D-168 clears all PYTHON* names before startup; the exact flags above
+    # govern isolation. The verified entrypoint adds only PYTHONPATH as
+    # post-admission metadata after explicitly installing the admitted paths.
     required_environment = {
-        "PYTHONHASHSEED": "0",
-        "PYTHONDONTWRITEBYTECODE": "1",
-        "PYTHONIOENCODING": "utf-8",
-        "PYTHONNOUSERSITE": "1",
         "PYTHONPATH": expected_pythonpath,
-        "PYTHONSAFEPATH": "1",
-        "PYTHONUTF8": "1",
     }
     observed_python_names = {
         name for name in os.environ if name.upper().startswith("PYTHON")

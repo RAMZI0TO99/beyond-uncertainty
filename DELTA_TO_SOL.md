@@ -2,17 +2,14 @@
 **Paste this file to Sol. It accumulates until delivered (D-008); while NO, append and never replace undelivered blocks.**
 **Archive correction (D-120):** deltas1–7 and10–33 are in `PROJECT_STATE_ARCHIVE.md`;8/9 never existed as delivered blocks (DEV-005). Deltas34–55 were replaced without archive and remain only in Git history (`git log -S "DELTA_ID: NN" -- DELTA_TO_SOL.md`). Delta56 onward is archived upon replacement.
 **Review base:** Sol-certified `4e55291` (D-131). **Real-repository patch target:** `66edf4a11dce39b91974d5c331cca81424f83b6e` (D-140). Do not apply the patch series directly to the review base.
-Delta64 carries the student's provenance-disclosed methodology chapter/progress report and session audit (D-132). Deltas65–79 carry separately owner-authorized implementation under DEV-013…023.
+Delta64 carries the student's provenance-disclosed methodology chapter/progress report and session audit (D-132). Deltas65–80 carry separately owner-authorized implementation under DEV-013…023.
 **Send this delta and `SOL_BUNDLE.txt`; generated is not delivered.** Preserve delta70's mandatory companion `docs/week7_sol_closeout.md`.
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh <files changed by the next authorised work> > SOL_BUNDLE.txt
 ```
 ---
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
-> **Delivered to Sol:** ☐ **NO** — DELTA_IDs64–79(D-008). All sixteen
-> preserved blocks remain below. Delta70's mandatory additive closeout is
-> `docs/week7_sol_closeout.md`. Deliver all sixteen and the companion together.
->
+> **Delivered to Sol:** ☐ **NO** — DELTA_IDs64–80(D-008). All seventeen preserved blocks remain below. Delta70's mandatory additive closeout is `docs/week7_sol_closeout.md`. Deliver all seventeen and the companion together.
 > COVERS SESSIONS:
 > - 2026-08-23 (delta-63 certification) · The whole prose closeout is CERTIFIED; base → `4e55291`
 > - 2026-08-23 (student chapter) · The first full methodology chapter arrives; provenance disclosed
@@ -388,4 +385,14 @@ NUMBERS (operational only): 5193 passed, 18 expected skips, 51 passing subtests;
 DISCLOSURE: batch08 attempt001 stopped before terminal publication with four timing-fixture setup errors; four nodes were routed to repository-local scratch. Batch09 had257pass/4skip/1native-startup failure. The installed base runtime differed by one4413-byte json.tool cache datedSept3; excluding it reproduced frozen hash0a5aff918e4a46fae2427a593261f8e3640ba439ba4ffebf5081b15eb7df6760 exactly. Approved quarantine preserved the file, changed no Python source/dependency/pin, and the targeted startup smoke passed1/1. The combined report records the original nonzero run and the exact passing replacement case; original XML is untouched. Batch03 wall time includes overnight Windows suspension.
 No production command/new fit/GPU/scientific-value consultation occurred. The documentation-only governance check, clean commit, V2 receipt/stage records and independent status remain before the one-use recovery. Epoch001 remains150complete/149durable/111untouched; scientific limits, external Sol review and student prose remain unchanged. Full receipts are at D:/Aenv/pro2/resume-2026-09-05.
 === END UPDATE ===
+=== UPDATE FOR SOL ===
+DELTA_ID: 80
+PREVIOUS_DELTA_ID: 79
+DATE: 2026-09-08 · SUBJECT: D-169 — first release startup refusal and controller contract correction.
+COVERS SESSIONS: 2026-09-08 (Sol2 controller contract correction) · First release refusal and verified correction
+Release50251fb3cc63479677c2e19fc242cb6d809c9d05 passed its5211-node gate; first V2 receipt6a1fb77e...76b2d and stage audit remain immutable. Independent status refused before mutation with error92746c99...0323: controller Python path/environment is not exact. D-168 clears Python startup variables, but the controller still expected six legacy names besides the entrypoint's post-admission PYTHONPATH. A real isolated-entrypoint contract replay reproduced the exact refusal, then passed with seven extra-variable rejection cases after the minimal controller correction. Flags, executable/runtime pins, admitted paths, scientific rules and frozen fitting source are unchanged.
+Owner-requested quota pause stopped batch07attempt001 onSeptember6; it remains preserved and contributes no gate coverage. September8 continuation verifies the same candidate and uses batch07attempt002. NUMBERS (operational only): focused8/8; new full gate 5200 passed, 18 expected skips, 51 passing subtests; 5,218 distinct nodes, zero remaining failures/errors; JUnit SHA256=ade0273e0dda2436a2705fa8552daafb86c4a6e9fefb7f4556b4f023cbb290b0. First release/refusal and red regression are preserved separately. No recovery/lease mutation/new fit/GPU/scientific-value consultation. New clean release, attempt002 receipt/stage audit and independent status remain before D-161's unconsumed sole recovery. External Sol review and student prose remain open.
+QA environment history: batch09's one native-startup failure cleared after preserving25 extra base-runtime bytecode caches and restoring the original whole-runtime pin; its exact one-node rerun passed. Batch10attempt001 had22 fixture failures because the required-empty stage0 runtime held two DesktopCentral logs from the first status period. Both logs were preserved byte-identically, the same runtime parent was emptied, and batch10attempt002 passed284/3skip on unchanged source. All original reports remain; reconciliation explicitly discloses these replacements. Approved relocation of77,616 retired first-release QA files to C:/Aenv/beyond-uncertainty-retired-qa-2026-09-08 preserved every hash and restored D: headroom; production/current-candidate/interrupted QA evidence was untouched.
+=== END UPDATE ===
+
 ```

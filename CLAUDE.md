@@ -1,3 +1,12 @@
+# 2026-09-08 controller correction checkpoint
+
+Release50251fb3 passed its full gate but independent status refused a stale
+Python environment requirement before recovery. D-169 fixes the controller
+contract; the real-entrypoint regression and fresh full gate are green.
+The prior release/refusal remain preserved. Finish documentation governance,
+clean commit, a fresh attempt002 receipt/audit and independent status before
+the unconsumed sole recovery. See delta80 and qa-cfix; no science or pins changed.
+
 # 2026-09-06 release-preparation checkpoint
 
 Full implementation QA is reconciled: 5193 passed, 18 expected skips, 51 passing subtests; 5,211 distinct collected nodes, zero remaining failures/errors.
