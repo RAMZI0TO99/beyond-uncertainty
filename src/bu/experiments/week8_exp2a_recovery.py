@@ -268,6 +268,68 @@ class RecoveryRefused(ValueError):
     """The one-use D-161 state machine cannot safely advance."""
 
 
+class _InspectorProcessRefused(RecoveryRefused):
+    """Retain operational fingerprints without exposing captured child output."""
+
+    def __init__(self, stdout: bytes, stderr: bytes, returncode: int) -> None:
+        stdout_sha = sha256_bytes(stdout)
+        stderr_sha = sha256_bytes(stderr)
+        super().__init__(
+            "old-source inspector refused; "
+            f"stdout SHA256={stdout_sha}, stderr SHA256={stderr_sha}"
+        )
+        self.inspector_failure: dict[str, Any] = {
+            "returncode": returncode,
+            "stdout": {"bytes": len(stdout), "sha256": stdout_sha},
+            "stderr": {"bytes": len(stderr), "sha256": stderr_sha},
+            "inspector_refusal": None,
+        }
+        if len(stdout) > 4096:
+            return
+        try:
+            refusal = _strict_json_line(stdout.decode("utf-8"), what="inspector refusal")
+        except (UnicodeError, ValueError, TypeError):
+            return
+        keys = {
+            "inspector_schema_version", "status", "error_type", "reason_sha256",
+            "scientific_values_emitted", "production_mutation_performed",
+        }
+        if (
+            type(refusal) is not dict or set(refusal) != keys
+            or type(refusal["inspector_schema_version"]) is not int
+            or refusal["inspector_schema_version"] != 1
+            or refusal["status"] != "refused"
+            or refusal["scientific_values_emitted"] is not False
+            or refusal["production_mutation_performed"] is not False
+            or type(refusal["reason_sha256"]) is not str
+            or _HEX64.fullmatch(refusal["reason_sha256"]) is None
+            or type(refusal["error_type"]) is not str
+            or refusal["error_type"] not in {
+                "InspectorRefused", "AuthorityRefused", "ValueError", "TypeError",
+                "RuntimeError", "OSError", "PermissionError", "FileNotFoundError",
+                "ImportError", "ModuleNotFoundError", "AttributeError", "KeyError",
+                "NameError", "AssertionError", "UnicodeDecodeError", "JSONDecodeError",
+            }
+        ):
+            return
+        self.inspector_failure["inspector_refusal"] = {
+            "error_type": refusal["error_type"],
+            "reason_sha256": refusal["reason_sha256"],
+        }
+
+
+def _controller_refusal_locations(exc: BaseException) -> list[dict[str, Any]]:
+    """Report only fixed controller source locations, never messages or locals."""
+    locations = []
+    trace = exc.__traceback__
+    while trace is not None:
+        code = trace.tb_frame.f_code
+        if Path(code.co_filename) == Path(__file__):
+            locations.append({"function": code.co_name, "line": trace.tb_lineno})
+        trace = trace.tb_next
+    return locations[-8:]
+
+
 def _canonical(value: object) -> bytes:
     try:
         return json.dumps(
@@ -2057,17 +2119,14 @@ def _run_old_source_inspector() -> dict[str, Any]:
         )
     except OSError as exc:
         raise RecoveryRefused("could not start fixed old-source inspector") from exc
-    stdout_digest = sha256_bytes(completed.stdout)
-    stderr_digest = sha256_bytes(completed.stderr)
     try:
         stdout = completed.stdout.decode("utf-8", errors="strict")
         stderr = completed.stderr.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
         raise RecoveryRefused("old-source inspector emitted non-UTF-8 bytes") from exc
     if completed.returncode != 0 or stderr:
-        raise RecoveryRefused(
-            "old-source inspector refused; "
-            f"stdout SHA256={stdout_digest}, stderr SHA256={stderr_digest}"
+        raise _InspectorProcessRefused(
+            completed.stdout, completed.stderr, completed.returncode
         )
     result = _validate_inspector_material(
         _strict_json_line(stdout, what="old-source inspector")
@@ -5759,9 +5818,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "status": "refused",
             "error_type": type(exc).__name__,
             "error_sha256": sha256_bytes(str(exc).encode("utf-8")),
+            "controller_locations": _controller_refusal_locations(exc),
             "automatic_retry_allowed": False,
             "scientific_values_emitted": False,
         }
+        if isinstance(exc, _InspectorProcessRefused):
+            refusal["inspector_failure"] = exc.inspector_failure
         print(json.dumps(refusal, sort_keys=True, separators=(",", ":")))
         return 2
     print(json.dumps(result, sort_keys=True, separators=(",", ":"), allow_nan=False))

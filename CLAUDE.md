@@ -1,3 +1,11 @@
+# 2026-09-09 inspector diagnostic checkpoint
+
+D-170 adds bounded operational fingerprints for inspector refusals. The fresh
+5226-node gate is complete; finish governance/new clean commit/attempt004 status.
+Releasea9fba937 status003 still represents an unresolved recovery refusal;
+Git runtime was separately restored to its unchanged frozen pin. No adjudication
+or recovery has run. Preserve all attempts; see delta81 and release-verification.
+
 # 2026-09-08 controller correction checkpoint
 
 Release50251fb3 passed its full gate but independent status refused a stale

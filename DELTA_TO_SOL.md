@@ -2,21 +2,16 @@
 **Paste this file to Sol. It accumulates until delivered (D-008); while NO, append and never replace undelivered blocks.**
 **Archive correction (D-120):** deltas1–7 and10–33 are in `PROJECT_STATE_ARCHIVE.md`;8/9 never existed as delivered blocks (DEV-005). Deltas34–55 were replaced without archive and remain only in Git history (`git log -S "DELTA_ID: NN" -- DELTA_TO_SOL.md`). Delta56 onward is archived upon replacement.
 **Review base:** Sol-certified `4e55291` (D-131). **Real-repository patch target:** `66edf4a11dce39b91974d5c331cca81424f83b6e` (D-140). Do not apply the patch series directly to the review base.
-Delta64 carries the student's provenance-disclosed methodology chapter/progress report and session audit (D-132). Deltas65–80 carry separately owner-authorized implementation under DEV-013…023.
+Delta64 carries the student's provenance-disclosed methodology chapter/progress report and session audit (D-132). Deltas65–81 carry separately owner-authorized implementation under DEV-013…023.
 **Send this delta and `SOL_BUNDLE.txt`; generated is not delivered.** Preserve delta70's mandatory companion `docs/week7_sol_closeout.md`.
 ```bash
 EXCLUDE="PROJECT_STATE_ARCHIVE.md" BASE=4e55291 ./scripts/sol_bundle.sh <files changed by the next authorised work> > SOL_BUNDLE.txt
 ```
 ---
 ## 8. → TO SOL — *accumulates until delivered (D-008), then overwritten*
-> **Delivered to Sol:** ☐ **NO** — DELTA_IDs64–80(D-008). All seventeen preserved blocks remain below. Delta70's mandatory additive closeout is `docs/week7_sol_closeout.md`. Deliver all seventeen and the companion together.
+> **Delivered to Sol:** ☐ **NO** — DELTA_IDs64–81(D-008). All eighteen preserved blocks remain below. Delta70's mandatory additive closeout is `docs/week7_sol_closeout.md`. Deliver all eighteen and the companion together.
 > COVERS SESSIONS:
-> - 2026-08-23 (delta-63 certification) · The whole prose closeout is CERTIFIED; base → `4e55291`
-> - 2026-08-23 (student chapter) · The first full methodology chapter arrives; provenance disclosed
-> - 2026-08-23 (session close) · End-of-session audit; three stale claims fixed; everything committed
-> - 2026-08-29 (student-authorised session) · Sol out of the loop by the student's direction; D-133 guard defect fixed; C-005/C-007 built; thirteen stale claims fixed
-> - 2026-08-30 (post-Fable audit) · C-005/C-007/provenance correction
-> - 2026-08-30 (Sol2 Week-6 readiness) · Provenance hardening and Week 6 blocker discovery
+> - 2026-08-23 (delta-63 certification) · The whole prose closeout is CERTIFIED; base → `4e55291`; 2026-08-23 (student chapter) · The first full methodology chapter arrives; provenance disclosed; 2026-08-23 (session close) · End-of-session audit; three stale claims fixed; everything committed; 2026-08-29 (student-authorised session) · Sol out of the loop by the student's direction; D-133 guard defect fixed; C-005/C-007 built; thirteen stale claims fixed; 2026-08-30 (post-Fable audit) · C-005/C-007/provenance correction; 2026-08-30 (Sol2 Week-6 readiness) · Provenance hardening and Week 6 blocker discovery
 > - 2026-08-30 (Sol2 Week-6 integration) · Persisted evidence, isolated launch and final audit
 > - 2026-08-30 (Sol2 Week-6 execution) · Owner-authorised CPU preflight and registered run
 > - 2026-08-31 (Sol2 Week-7 implementation) · Verified evidence and baseline configuration preparation
@@ -395,4 +390,11 @@ Owner-requested quota pause stopped batch07attempt001 onSeptember6; it remains p
 QA environment history: batch09's one native-startup failure cleared after preserving25 extra base-runtime bytecode caches and restoring the original whole-runtime pin; its exact one-node rerun passed. Batch10attempt001 had22 fixture failures because the required-empty stage0 runtime held two DesktopCentral logs from the first status period. Both logs were preserved byte-identically, the same runtime parent was emptied, and batch10attempt002 passed284/3skip on unchanged source. All original reports remain; reconciliation explicitly discloses these replacements. Approved relocation of77,616 retired first-release QA files to C:/Aenv/beyond-uncertainty-retired-qa-2026-09-08 preserved every hash and restored D: headroom; production/current-candidate/interrupted QA evidence was untouched.
 === END UPDATE ===
 
+=== UPDATE FOR SOL ===
+DELTA_ID: 81
+PREVIOUS_DELTA_ID: 80
+DATE: 2026-09-09 · SUBJECT: D-170 — restored Git runtime and bounded inspector-refusal diagnostics.
+COVERS SESSIONS: 2026-09-09 (Sol2 inspector diagnostics) · Restored Git runtime and blinded inspector refusal diagnostics
+Releasea9fba937 passed5218-node QA/governance13, but status002 refused a changed shared Git runtime. Approved preservation of94files/restoration of29official same-version files retained65 includinggit.exe and reproduced original94/0/66573247 hash3c30659f...e984 in two observations; pins unchanged. New status003 refused at2026-09-08T16:31:54Z with RecoveryRefused hash274f2b08...a73a09; static checks did not identify its cause. All receipts/audits/logs remain. D-170 exposes at most8fixed controller function/line locations and inspector exitcode, stream byte counts/hashes and allowlisted category/reason hash from a bounded canonical exact-shape safe refusal; raw/private values never emitted. Failed/invalid/oversized responses still refuse; no automatic retry, authority weakening or scientific change. It is a diagnostic correction, not a claim that the underlying recovery refusal is fixed. NUMBERS (operational): regression8red then11green; fresh gate 5208 passed, 18 expected skips, 51 passing subtests; 5,226 unique nodes, zero remaining failures/errors; JUnitSHA=15ffcb6806c73192fd76b57f9f2f5c287d3405b39bbecdca27c3e4e2b2bbc8e9. Details and restoration receipts in the release-verification addendum and D:/Aenv/pro2/resume-2026-09-05. Next: documentation governance, new clean commit, immutable attempt004 receipt/status, then investigate any refusal before adjudication. No production recovery/new fit/lease mutation/GPU/outcome consultation; sole reuse150/execute111 recovery unconsumed. External Sol review/student prose remain open.
+=== END UPDATE ===
 ```

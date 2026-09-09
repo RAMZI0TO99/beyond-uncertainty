@@ -1232,6 +1232,67 @@ def test_inspector_child_uses_verified_stdin_and_dash_c_not_script_execution(
     assert R._run_old_source_inspector() == expected
 
 
+@pytest.mark.parametrize(
+    "case", ["valid", "stderr", "malformed", "extra", "duplicate", "unsafe_flags", "oversized", "unknown_type"]
+)
+def test_inspector_process_refusal_exposes_only_bounded_operational_fingerprints(
+    relocated: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str], case: str,
+) -> None:
+    secret = "SYNTHETIC_PRIVATE_VALUE_MUST_NOT_ESCAPE"
+    reason_sha = R.sha256_bytes(secret.encode())
+    child = {
+        "inspector_schema_version": 1, "status": "refused",
+        "error_type": "InspectorRefused", "reason_sha256": reason_sha,
+        "scientific_values_emitted": False, "production_mutation_performed": False,
+    }
+    if case == "extra":
+        child["value"] = secret
+    elif case == "unsafe_flags":
+        child["scientific_values_emitted"] = True
+    elif case == "unknown_type":
+        child["error_type"] = secret
+    stdout = (json.dumps(child, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    if case == "malformed":
+        stdout = secret.encode()
+    elif case == "duplicate":
+        stdout = stdout.replace(b'{', b'{"status":"refused",', 1)
+    elif case == "oversized":
+        stdout = secret.encode() * 200
+    stderr = secret.encode() if case == "stderr" else b""
+    returncode = 0 if case == "stderr" else 2
+    monkeypatch.setattr(R, "_validate_controller_runtime", lambda: {"command": "status"})
+    monkeypatch.setattr(R, "status", R._run_old_source_inspector)
+    monkeypatch.setattr(R, "_prepare_empty_runtime_temp", lambda path, what: relocated)
+    monkeypatch.setattr(R, "_verified_child_bundle", lambda **kwargs: (b"fixture", {"bundle_sha256": "1" * 64}))
+    monkeypatch.setattr(R, "_sanitized_subprocess_environment", lambda *args, **kwargs: {})
+    monkeypatch.setattr(R.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(
+        returncode=returncode, stdout=stdout, stderr=stderr
+    ))
+    assert R.main(["status"]) == 2
+    output = capsys.readouterr().out
+    assert secret not in output
+    result = json.loads(output)
+    assert result["status"] == "refused"
+    assert result["automatic_retry_allowed"] is False
+    assert result["scientific_values_emitted"] is False
+    old_message = (
+        f"old-source inspector refused; stdout SHA256={R.sha256_bytes(stdout)}, "
+        f"stderr SHA256={R.sha256_bytes(stderr)}"
+    )
+    assert result["error_sha256"] == R.sha256_bytes(old_message.encode())
+    assert 1 <= len(result["controller_locations"]) <= 8
+    assert any(row["function"] == "_run_old_source_inspector" for row in result["controller_locations"])
+    assert all(set(row) == {"function", "line"} and type(row["line"]) is int and row["line"] > 0 for row in result["controller_locations"])
+    assert result["inspector_failure"] == {
+        "returncode": returncode,
+        "stdout": {"bytes": len(stdout), "sha256": R.sha256_bytes(stdout)},
+        "stderr": {"bytes": len(stderr), "sha256": R.sha256_bytes(stderr)},
+        "inspector_refusal": {"error_type": "InspectorRefused", "reason_sha256": reason_sha}
+            if case in {"valid", "stderr"} else None,
+    }
+
+
 def test_spawned_worker_identity_binds_pid_and_controller_parent() -> None:
     class Process:
         pid = 1234
@@ -2791,6 +2852,7 @@ def test_cli_normalizes_validation_oserror_without_message_or_traceback(
     document = json.loads(output)
     assert document["status"] == "refused"
     assert document["error_type"] == "OSError"
+    assert [row["function"] for row in document["controller_locations"]] == ["main"]
     assert len(document["error_sha256"]) == 64
     assert document["scientific_values_emitted"] is False
 

@@ -250,3 +250,54 @@ The first release receipt and refused invocation remain intact; no recovery,
 lease mutation, new fit, scientific-value consultation or GPU use occurred.
 New documentation governance, clean commit, immutable attempt002 receipt/audit
 and independent status remain before the sole D-161 recovery.
+
+## 2026-09-09 inspector diagnostic release checkpoint (D-170)
+
+Clean releasea9fba93729272e8d4c4369182ea19a0381691474 passed the corrected
+5218-node gate and13 documentation checks. Its status attempt002 refused
+before mutation because the shared Git runtime differed from its frozen pin.
+Approved restoration preserved all94 existing files, restored29 entries from
+the official Git2.53.0(3) MinGit64 archive and retained65 unchanged entries,
+including git.exe. Two independent stable observations reproduced the original
+94-file/0-directory/66,573,247-byte hash exactly:
+`3c30659fe0591a527183f3f57951a3d2243d178fe606a9756edfed5eaa89e984`.
+Official ZIP SHA256: `0d7c85a26e45668b35d0d0aeb763289376cfc039e55e0938a617ed0dfa32e433`.
+Source: https://github.com/git-for-windows/git/releases/tag/v2.53.0.windows.3
+Proofs, prior runtime and ZIP: `D:/Aenv/pro2/resume-2026-09-05/git-runtime-drift-2026-09-08`.
+No pin, fitting source, scientific setting or Git executable changed.
+
+Fresh status attempt003 then reached later checks and refused at2026-09-08
+16:31:54Z with RecoveryRefused hash
+`274f2b081a06958eea15df82d71a1f129824c0c1a63bc8984acabadafaa73a09`.
+Direct/nested static-string and operational-template checks did not identify
+its underlying cause. No adjudication, lease mutation or recovery occurred.
+The refused receipts, audits and logs remain intact in attempt002/003 and
+the corresponding `stage-results-002`/`stage-results-003` folders.
+
+D-170 adds at most eight fixed controller function/line locations to CLI
+refusals, without raw messages, traceback text or frame-local values. It also
+adds operational diagnostics to inspector process refusals: exit code,
+stdout/stderr byte counts and hashes, plus the exception category/reason hash
+only from a bounded, exact-shape, canonical inspector refusal with both safety
+flags false and an allowlisted exception category. Raw streams and scientific
+values are never emitted. Invalid/extra/duplicate/oversized/unsafe responses
+yield only stream fingerprints. Exit2, no automatic retry and all authority,
+evidence, liveness and scientific checks remain unchanged. The original outer
+error hash is retained. This improves diagnosis; it does not claim to fix the
+unknown recovery refusal or certify production readiness.
+
+The eight synthetic regression cases failed before the change, then passed
+with three existing launch/refusal guard checks:11/11. The first partial
+diagnostic gate passed2023/5skip through governance and batches01–04, then its
+QA-only tree was stopped during batch05 to finish source-location diagnostics.
+Those attempts remain preserved and contribute no coverage to this candidate.
+Nine location-regression cases then failed before the final addition; all11
+focused checks passed afterward. Fresh full gate:
+**5208 passed, 18 expected skips, 51 passing subtests; 5,226 unique nodes, zero remaining failures/errors**. Combined JUnit: `15ffcb6806c73192fd76b57f9f2f5c287d3405b39bbecdca27c3e4e2b2bbc8e9`.
+Candidate manifest: `cb26a2e7ee71fc93d75de5fa4e5c36afe476fbd2d4a6d1ea0a81f0fb88fe2185`.
+Reports: `D:/Aenv/pro2/resume-2026-09-05/qa-inspector-diagnostics-v2`.
+No earlier gate contributes coverage to this changed candidate.
+Finish documentation governance, a new clean commit and fresh attempt004
+receipt/status through the unchanged native ceremony. Preserve all earlier
+attempts. The sole D-161 recovery remains unconsumed; external Sol review and
+student own-voice prose remain open. GPU remains unused.

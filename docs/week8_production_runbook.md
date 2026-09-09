@@ -10,7 +10,7 @@ remains unused.
 D-169 correction checkpoint: release50251fb3 status refused a stale controller
 environment requirement before recovery. Preserve attempt001 release records.
 The corrected controller requires a new clean tested commit, V2 receipt/audits
-under `.tmp/week8-d168-release-attempt-002`, and independent status. Required
+under `.tmp/week8-d168-release-attempt-004`, and independent status. Required
 stage/native runtime paths and all D-161 evidence identities stay unchanged.
 
 ## Clean-revision prerequisite
@@ -110,14 +110,14 @@ Require `stage0_source_sha256=f076b94a3318dd0d4c9344381a9c5005946c119014e0351b15
 `stage0_encoded_sha256=ba7d5bb992a6f66dbb6f825c911eefbf9f94fc62e0f5577d3d441b06fd5e130c`,
 and `stage0_environment_policy_sha256=13ded44c5df93186af2fa8c7cdc714d74941d91fc14102d5c80b05e0c5b021f3`.
 Create the external release directory once at
-`D:\Aenv\pro\pro\.tmp\week8-d168-release-attempt-002`; it is outside both
+`D:\Aenv\pro\pro\.tmp\week8-d168-release-attempt-004`; it is outside both
 worktrees and must be empty.  Then invoke the standalone renderer with literal,
 reviewed values (never values dynamically parsed from Git or result evidence):
 
 ```powershell
 & 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
   'D:\Aenv\pro\pro\week8-recovery-controller-worktree\scripts\week8_recovery_release_receipt.py' `
-  --output 'D:\Aenv\pro\pro\.tmp\week8-d168-release-attempt-002\release-receipt-v2.txt' `
+  --output 'D:\Aenv\pro\pro\.tmp\week8-d168-release-attempt-004\release-receipt-v2.txt' `
   --controller-commit 'FINAL_CONTROLLER_COMMIT' `
   --native-launcher-sha256 'FINAL_NATIVE_LAUNCHER_SHA256' `
   --outer-sha256 'FINAL_OUTER_SHA256' `
@@ -136,9 +136,9 @@ with `week8_recovery_stage0.py`; for example, the first is:
 ```powershell
 & 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
   'D:\Aenv\pro\pro\week8-recovery-controller-worktree\scripts\week8_recovery_stage0.py' `
-  --output 'D:\Aenv\pro\pro\.tmp\week8-d168-release-attempt-002\stage0-status-audit.txt' `
+  --output 'D:\Aenv\pro\pro\.tmp\week8-d168-release-attempt-004\stage0-status-audit.txt' `
   --launcher-path 'D:\Aenv\pro\pro\week8-recovery-controller-worktree\scripts\week8_recovery_native_launcher.ps1' `
-  --receipt-path 'D:\Aenv\pro\pro\.tmp\week8-d168-release-attempt-002\release-receipt-v2.txt' `
+  --receipt-path 'D:\Aenv\pro\pro\.tmp\week8-d168-release-attempt-004\release-receipt-v2.txt' `
   --launcher-sha256 'FINAL_NATIVE_LAUNCHER_SHA256' `
   --receipt-sha256 'FINAL_RECEIPT_SHA256' `
   --command status
@@ -229,7 +229,7 @@ Experiment 2A owns:
   `week8-d168-stage0-runtime-attempt-001` and required-empty native startup
   directory `week8-d167-native-runtime-attempt-001`; and the external,
   no-overwrite release/audit records under ignored project-local
-  `.tmp/week8-d168-release-attempt-002`, outside both worktrees.
+  `.tmp/week8-d168-release-attempt-004`, outside both worktrees.
 
 The exclusion publication reopens the historical
 `week7-first-sweep-label-2026-08-31-attempt-001` and its `-project-evidence`
@@ -376,3 +376,13 @@ disable the endpoint agent, relax the empty-directory check or change the
 frozen startup environment. Housekeeping does not authorize retrying a failed
 stage or another recovery. Preserve every attempt and follow the existing
 nonzero-result stop rule.
+
+## 2026-09-09 diagnostic release prerequisite (D-170)
+
+Preserve attempts001–003. Attempt002 refused Git runtime drift, restored to the
+original pin; attempt003 then refused an unresolved recovery check. The
+new tested controller adds only bounded exit/stream/error fingerprints; these
+are diagnostic evidence and never authorization to retry or consume recovery.
+After a new clean commit and attempt004 receipt/status, inspect any refusal
+fingerprints and resolve their cause. Every existing exact-count/liveness gate,
+empty runtime check, native ceremony and one-use recovery rule still applies.
