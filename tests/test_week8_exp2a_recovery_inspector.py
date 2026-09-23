@@ -212,6 +212,60 @@ def test_all_loaded_bu_modules_must_resolve_inside_detached_source(
         I._verify_loaded_bu_modules(gate, finder, dependency_finder)
 
 
+def test_only_pinned_six_virtual_importer_may_follow_verified_finders(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_path = SCRIPT.with_name("week8_recovery_raw_authority.py")
+    raw_spec = importlib.util.spec_from_file_location("_raw_inspector_six_test", raw_path)
+    assert raw_spec is not None and raw_spec.loader is not None
+    raw_module = importlib.util.module_from_spec(raw_spec)
+    raw_spec.loader.exec_module(raw_module)
+
+    source = (I.PINNED_SITE_PACKAGES / "six.py").read_bytes()
+    site = tmp_path / "site-packages"
+    site.mkdir()
+    path = site / "six.py"
+    path.write_bytes(source)
+    site = site.resolve(strict=True)
+    monkeypatch.setattr(I, "PINNED_SITE_PACKAGES", site)
+    row = {"kind": "file", "size": len(source), "sha256": I._sha_bytes(source)}
+    digest = "4" * 64
+    dependency_finder = raw_module.VerifiedDependencyFinder(
+        site_root=site, inventory_digest=digest, rows={"six.py": row},
+        python_sources={"six.py": source}, retained_paths=frozenset({str(path)}),
+    )
+    finder = object()
+    monkeypatch.setattr(sys, "meta_path", [
+        finder, dependency_finder, importlib.machinery.BuiltinImporter,
+        importlib.machinery.FrozenImporter, importlib.machinery.PathFinder,
+    ])
+    loader = raw_module.VerifiedDependencyLoader(
+        fullname="six", path=path, source=source, is_package=False,
+        authority_tree_digest=digest, site_root=site, rows={"six.py": row},
+    )
+    six_spec = importlib.util.spec_from_loader("six", loader, origin=str(path))
+    assert six_spec is not None
+    six = importlib.util.module_from_spec(six_spec)
+    monkeypatch.setitem(sys.modules, "six", six)
+    loader.exec_module(six)
+    assert sys.meta_path[-1] is six._importer
+    I._verify_import_finders(raw_module, finder, dependency_finder)
+
+    sys.meta_path.insert(0, object())
+    with pytest.raises(I.InspectorRefused, match="finders are not installed exactly"):
+        I._verify_import_finders(raw_module, finder, dependency_finder)
+    sys.meta_path.pop(0)
+
+    loader._source = b"changed"
+    with pytest.raises(I.InspectorRefused, match="finders are not installed exactly"):
+        I._verify_import_finders(raw_module, finder, dependency_finder)
+    loader._source = source
+
+    sys.meta_path.append(object())
+    with pytest.raises(I.InspectorRefused, match="finders are not installed exactly"):
+        I._verify_import_finders(raw_module, finder, dependency_finder)
+
+
 def _synthetic_job_fixture(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[Any, Any, Any, Any, Any, list[dict[str, Any]], Any]:

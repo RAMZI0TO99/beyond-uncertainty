@@ -530,6 +530,56 @@ def _install_old_source(gate: Mapping[str, Any]) -> tuple[object, object]:
     return finder, dependency_finder
 
 
+def _verify_import_finders(raw_module: ModuleType, finder: object, dependency_finder: object) -> None:
+    expected = (
+        finder,
+        dependency_finder,
+        importlib.machinery.BuiltinImporter,
+        importlib.machinery.FrozenImporter,
+        importlib.machinery.PathFinder,
+    )
+    observed = tuple(sys.meta_path)
+    if observed == expected:
+        return
+    # The pinned pandas import loads dateutil/six. Its captured six.py appends
+    # one virtual six.moves finder after the verified source finders.
+    six = sys.modules.get("six")
+    if len(observed) != len(expected) + 1 or observed[:len(expected)] != expected or type(six) is not ModuleType:
+        raise InspectorRefused("verified execution finders are not installed exactly")
+    site = PINNED_SITE_PACKAGES.resolve(strict=True)
+    path = site / "six.py"
+    loader = getattr(getattr(six, "__spec__", None), "loader", None)
+    sources = getattr(dependency_finder, "_python_sources", None)
+    rows = getattr(dependency_finder, "_rows", None)
+    source_bytes = sources.get("six.py") if type(sources) is dict else None
+    row = rows.get("six.py") if type(rows) is dict else None
+    six_class = vars(six).get("_SixMetaPathImporter")
+    if not (
+        type(loader) is getattr(raw_module, "VerifiedDependencyLoader", None)
+        and type(source_bytes) is bytes
+        and type(row) is dict
+        and row.get("kind") == "file"
+        and row.get("size") == len(source_bytes)
+        and row.get("sha256") == _sha_bytes(source_bytes)
+        and getattr(dependency_finder, "site_root", None) == site
+        and getattr(loader, "name", None) == "six"
+        and getattr(loader, "path", None) == str(path)
+        and getattr(loader, "_site_root", None) == site
+        and getattr(loader, "_source", None) == source_bytes
+        and getattr(loader, "tree_kind", None) == "pinned_site_packages"
+        and getattr(loader, "source_sha256", None) == row["sha256"]
+        and getattr(loader, "authority_tree_digest", None)
+        == getattr(dependency_finder, "authority_tree_digest", None)
+        and getattr(six, "__file__", None) == str(path)
+        and getattr(six, "__loader__", None) is loader
+        and type(six_class) is type
+        and getattr(six_class, "__module__", None) == "six"
+        and type(observed[-1]) is six_class
+        and observed[-1] is vars(six).get("_importer")
+    ):
+        raise InspectorRefused("verified execution finders are not installed exactly")
+
+
 def _verify_loaded_bu_modules(
     gate: Mapping[str, Any], finder: object, dependency_finder: object
 ) -> list[dict[str, str]]:
@@ -540,15 +590,7 @@ def _verify_loaded_bu_modules(
     admitted_blob = getattr(raw_module, "admitted_git_blob", None)
     if not callable(admitted_source) or not callable(admitted_blob):
         raise InspectorRefused("raw execution-source APIs are unavailable")
-    expected_meta = (
-        finder,
-        dependency_finder,
-        importlib.machinery.BuiltinImporter,
-        importlib.machinery.FrozenImporter,
-        importlib.machinery.PathFinder,
-    )
-    if tuple(sys.meta_path) != expected_meta:
-        raise InspectorRefused("verified execution finders are not installed exactly")
+    _verify_import_finders(raw_module, finder, dependency_finder)
     rows: list[dict[str, str]] = []
     for name, module in sorted(sys.modules.items()):
         if name != "bu" and not name.startswith("bu."):

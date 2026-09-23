@@ -1,3 +1,20 @@
+# 2026-09-23 D-172 fixed-candidate gate
+
+D-172 gate003 reconciled all 22 fixed-candidate partitions: 5537 passed, 19 expected skips, 51 passing subtests across 5,556 unique nodes, with zero remaining failures/errors. Combined JUnit SHA256 ae7bfe5c1fb2bb624147a2fd3efc8eca3ec704ced9612939c34bea37b7400aa7. The native batch03-001 stack-overflow attempt contributes no coverage; fresh batch03-002 passed all 640 nodes. Its crash dumps and event records are preserved. The crash's exact root cause is unproved. Verifier002 stopped before report creation on a BOM-prefixed PowerShell JSON record; distinct verifier003 decoded those preserved bytes and reconciled the complete gate. Documentation governance, runtime audit, clean local release and distinct native attempt006 status/counts/liveness remain before the sole unconsumed D-161 recovery. No push, publication, deployment or external message. Read resume-2026-09-23-001/full-gate-003/release-verification.json and the current state/delta.
+
+# 2026-09-23 native status005 refusal and D-172 candidate
+
+The clean local D-171 release is b84b6b35caf9f6043e859531e6ce5cb71bcc8ab8.
+Native stage0 status005 was invoked once and refused in the old-source inspector
+before counts or liveness. Preserve attempt005, receipt, audit and streams; never
+replay it. Its bounded reason digest identifies the exact import-finder check.
+A pinned pandas import reproduces one appended six finder. D-172's uncommitted
+inspector correction admits only that pinned finder; focused QA passed2+34,
+but a fresh complete gate, governance, runtime audit, clean local release and
+distinct attempt006 status remain before the unconsumed sole recovery. Keep
+all work local/private; no adjudication, fit, lease transition or public action.
+Read resume-2026-09-23-001/STATUS005_FINDING.md and the latest state/delta.
+
 # 2026-09-23 owner-resumed local release checkpoint
 
 Owner explicitly resumed the September20 stop. The controller's263 reviewed files and clean frozen4515 checkout matched the stop handoff; runtime-release-004 freshly verified all four pinned inventories. The active runbook now states the production child's original C:user LOCALAPPDATA pin. Fresh governance, local release inspection/commit and independent native status remain before the one-use recovery. Preserve every earlier attempt and evidence byte; keep work local/private with no push, deployment, publication or external message. Read resume-2026-09-23-001 and the September20 owner-stop receipt before proceeding.

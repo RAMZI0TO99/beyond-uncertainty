@@ -2615,3 +2615,9 @@ restored exactly, allfour runtime inventories reverified, with pins unchanged.
 Gate001/focused001 native-copy failures and injected-DLP stack evidence remain
 disclosed in release-verification; no security software/scientific source changed.
 Fresh fullgate and independent native admission are still mandatory before D-161.
+
+### D-172 · 2026-09-23 · Operational correction — pinned six virtual import finder
+
+The clean local D-171 release `b84b6b35caf9f6043e859531e6ce5cb71bcc8ab8` passed its reviewed QA and documentation checks, but its independent native status attempt005 refused in the old-source inspector before counts or liveness. The bounded refusal reason hashes exactly to the inspector's five-entry import-finder assertion. An isolated import from the pinned runtime shows pandas loads pinned `six.py`, which appends one virtual `six.moves` finder. The status process did not record its finder list, so that mechanism remains a strong inference rather than an observed status005 value. Preserve release b84 and every attempt005 receipt, audit and stream; never replay it.
+
+The next candidate may admit only this one trailing `six` finder after the unchanged two verified and three standard finders, and only when its identity, class, loader, captured source, path and SHA256 match the dependency finder's pinned `six.py` authority. All other finder changes still refuse. This corrects an operational admission rule and does not change the frozen fitting source, dependency bytes, runtime pins, scientific procedure, lease ownership or D-161's one-use/no-retry limit. Require a fresh exact-candidate full gate, governance, runtime revalidation, clean local release and distinct attempt006 native status with original counts and liveness before adjudication or recovery. External Sol review remains pending; no public action is authorized.

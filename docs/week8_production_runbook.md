@@ -7,12 +7,7 @@ order; it is not a result or substitute for immutable evidence.  Every path is
 below `D:/Aenv/pro2`, every fit uses the frozen CPU 4/4 route, and the GPU
 remains unused.
 
-D-171 relocation checkpoint: the controller and dependencies now live below
-D:/Aenv/pro2 with explicit historical/current provenance. Preserve release
-attempts001-004 and their refusals. A fresh complete gate and clean local commit
-are required before V2 receipt/audits under `.tmp/week8-d168-release-attempt-005`
-and independent native status. The relocated stage0 policy literals below apply;
-original evidence bytes and historical identities remain separately preserved.
+D-172 current checkpoint: clean local D-171 release b84b6b35 passed its gate but native status005 refused before counts/liveness. The corrected fixed candidate passed fullgate003: 5537 passed/19 expected skips/51 passing subtests across 5,556 nodes; crashed batch03-001 is excluded and preserved. Fresh documentation governance, runtime verification, clean local commit and distinct attempt006 native status remain before any adjudication/recovery. Original evidence, lease ownership and the one-use recovery limit remain unchanged.
 
 ## Clean-revision prerequisite
 
@@ -111,14 +106,14 @@ Require `stage0_source_sha256=29183177378884857c03f37e8da1bd64f1643bca4e32ff56fb
 `stage0_encoded_sha256=401bfeb512de0233a1663365cda68f8f733cdf96682561a20f8ce6d1c48a5001`,
 and `stage0_environment_policy_sha256=759d257d3842052eeb2f38bcea5ede02b9ddff617979f486ca6fa1c280a7af49`.
 Create the external release directory once at
-`D:\Aenv\pro2\.tmp\week8-d168-release-attempt-005`; it is outside both
+`D:\Aenv\pro2\.tmp\week8-d168-release-attempt-006`; it is outside both
 worktrees and must be empty.  Then invoke the standalone renderer with literal,
 reviewed values (never values dynamically parsed from Git or result evidence):
 
 ```powershell
 & 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
   'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_release_receipt.py' `
-  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-005\release-receipt-v2.txt' `
+  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-006\release-receipt-v2.txt' `
   --controller-commit 'FINAL_CONTROLLER_COMMIT' `
   --native-launcher-sha256 'FINAL_NATIVE_LAUNCHER_SHA256' `
   --outer-sha256 'FINAL_OUTER_SHA256' `
@@ -137,9 +132,9 @@ with `week8_recovery_stage0.py`; for example, the first is:
 ```powershell
 & 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
   'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_stage0.py' `
-  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-005\stage0-status-audit.txt' `
+  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-006\stage0-status-audit.txt' `
   --launcher-path 'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_native_launcher.ps1' `
-  --receipt-path 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-005\release-receipt-v2.txt' `
+  --receipt-path 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-006\release-receipt-v2.txt' `
   --launcher-sha256 'FINAL_NATIVE_LAUNCHER_SHA256' `
   --receipt-sha256 'FINAL_RECEIPT_SHA256' `
   --command status
@@ -230,7 +225,7 @@ Experiment 2A owns:
   `week8-d168-stage0-runtime-attempt-001` and required-empty native startup
   directory `week8-d167-native-runtime-attempt-001`; and the external,
   no-overwrite release/audit records under ignored project-local
-  `.tmp/week8-d168-release-attempt-005`, outside both worktrees.
+  `.tmp/week8-d168-release-attempt-006`, outside both worktrees.
 
 The exclusion publication reopens the historical
 `week7-first-sweep-label-2026-08-31-attempt-001` and its `-project-evidence`
@@ -425,3 +420,7 @@ Do not run ordinary E2A launch or directly invoke the controller/worker/inspecto
 Successful native status/counts/liveness must precede adjudication and the sole
 recovery. Original lease restoration did not grant ownership. Do not regenerate
 attestation to accept drift. No publication/push/deployment/external messages.
+
+## 2026-09-23 D-172 status005 refusal and next release
+
+The September23 clean b84b6b35 release has an immutable refused native status005 at D:/Aenv/pro2/.tmp/week8-d168-release-attempt-005. Its inspector reason digest identifies the exact import-finder assertion; an isolated pinned pandas import reproduces one appended six virtual finder, but the actual status process did not record its finder list. Preserve every attempt005 file and do not replay it. D-172 permits only the pinned captured six finder after the original verified chain. Focused checks passed2 and34, but are not a full gate. The active commands above are for a distinct attempt006 only after a fresh exact-candidate complete gate, documentation governance, runtime verification and clean local commit. Refusal or failed counts/liveness still stops before adjudication. The D-161 recovery remains one-use and unconsumed; no publication, push, deployment or external message. D-172 gate003 reconciled all 22 fixed-candidate partitions: 5537 passed, 19 expected skips, 51 passing subtests across 5,556 unique nodes, with zero remaining failures/errors. Combined JUnit SHA256 ae7bfe5c1fb2bb624147a2fd3efc8eca3ec704ced9612939c34bea37b7400aa7. The native batch03-001 stack-overflow attempt contributes no coverage; fresh batch03-002 passed all 640 nodes. Its crash dumps and event records are preserved. The crash's exact root cause is unproved. Verifier002 stopped before report creation on a BOM-prefixed PowerShell JSON record; distinct verifier003 decoded those preserved bytes and reconciled the complete gate. Documentation governance, runtime audit, clean local release and distinct native attempt006 status/counts/liveness remain before the sole unconsumed D-161 recovery.
