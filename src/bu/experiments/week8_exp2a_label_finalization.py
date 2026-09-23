@@ -133,6 +133,20 @@ def _collect_sources(inputs: Exp2AFinalizationInputs) -> dict[str, Any]:
     ):
         raise ValueError("released verifier must return explicit source and pending lists")
 
+    relocated = (
+        "relocation" in verified or "source_provenance" in verified
+        or "relocation" in start or start.get("exp2a_repair_start_schema_version") == 2
+    )
+    if relocated:
+        from . import week8_exp2a_recovery as Recovery
+
+        Recovery.validate_relocated_finalization_inventory(
+            verified, ledger, checkpoint_path=checkpoint_path,
+            checkpoint_sha256=inputs.checkpoint_sha256,
+            ledger_sha256=inputs.source_ledger_sha256,
+            expected_execution_commit=inputs.expected_execution_commit,
+        )
+
     all_jobs = {job.job_id: job for job in W.registered_exp2a_jobs()}
     existing_ids = {job.job_id for job in W.existing_exp2a_jobs()}
     new_ids = {job.job_id for job in W.new_exp2a_jobs()}
@@ -169,7 +183,7 @@ def _collect_sources(inputs: Exp2AFinalizationInputs) -> dict[str, Any]:
         )
         if row["expected_git_commit"] != expected_commit:
             raise ValueError("released source changed its historical/new execution commit")
-        if job_id in existing_ids:
+        if job_id in existing_ids and not relocated:
             _same(row, ledger_rows[job_id], "pinned historical ledger source")
         _verify_pair(job, row)
         by_id[job_id] = dict(row)

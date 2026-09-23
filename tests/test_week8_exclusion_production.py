@@ -170,19 +170,19 @@ def fixed_layout(
 
 
 def test_constants_pin_exact_attempt_001_authorities() -> None:
-    assert P.WORKSPACE_ROOT == Path("D:/Aenv/pro/pro")
+    assert P.WORKSPACE_ROOT == Path("D:/Aenv/pro2")
     assert P.LABEL_ORIGINAL_ROOT == Path(
-        "D:/Aenv/pro/pro/week7-first-sweep-label-2026-08-31-attempt-001"
+        "D:/Aenv/pro2/week7-first-sweep-label-2026-08-31-attempt-001"
     )
     assert P.LABEL_COPY_ROOT == Path(
-        "D:/Aenv/pro/pro/"
+        "D:/Aenv/pro2/"
         "week7-first-sweep-label-2026-08-31-attempt-001-project-evidence"
     )
     assert P.OUTPUT_ROOT == Path(
-        "D:/Aenv/pro/pro/week8-exclusion-2026-09-01-attempt-001"
+        "D:/Aenv/pro2/week8-exclusion-2026-09-01-attempt-001"
     )
     assert P.OUTPUT_COPY_ROOT == Path(
-        "D:/Aenv/pro/pro/week8-exclusion-2026-09-01-attempt-001-project-evidence"
+        "D:/Aenv/pro2/week8-exclusion-2026-09-01-attempt-001-project-evidence"
     )
     assert P.EXPECTED_LABEL_SHA256 == (
         "bf96e423a9e41d811683b58adc9a51136210d4664c0a4cec040096f06217e9f6"

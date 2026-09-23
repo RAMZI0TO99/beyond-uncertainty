@@ -24,7 +24,7 @@ R = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(R)
 assert isinstance(R, ModuleType)
 
-PROJECT_ROOT = Path("D:/Aenv/pro/pro")
+PROJECT_ROOT = Path("D:/Aenv/pro2")
 COMMIT = "1" * 40
 NATIVE = "2" * 64
 OUTER = "3" * 64
@@ -176,7 +176,7 @@ def test_outside_project_path_refuses_without_writing() -> None:
     arguments = _arguments(PROJECT_ROOT / ".tmp" / "unused-receipt.txt")
     arguments["output"] = str(outside)
 
-    with pytest.raises(R.ReleaseReceiptRefused, match="outside D:/Aenv/pro/pro"):
+    with pytest.raises(R.ReleaseReceiptRefused, match="outside D:/Aenv/pro2"):
         R.create_release_receipt(**arguments)
 
     assert not os.path.lexists(outside)

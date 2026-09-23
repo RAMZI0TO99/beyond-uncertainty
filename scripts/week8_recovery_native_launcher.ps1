@@ -17,21 +17,21 @@ $ErrorActionPreference = 'Stop'
 # non-Windows file that can supply CPython startup code is hashed and held open
 # with read-only sharing until the child exits.  Windows itself, the kernel DLL
 # loader, PowerShell/.NET, and Microsoft system DLLs remain explicit trust roots.
-$Python = 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe'
-$BasePython = 'C:\Users\aladdin-alyanai\AppData\Local\Programs\Python\Python313\python.exe'
-$BaseRuntime = 'C:\Users\aladdin-alyanai\AppData\Local\Programs\Python\Python313'
-$Pyvenv = 'D:\Aenv\pro\pro\pro2\.venv\pyvenv.cfg'
-$VenvScripts = 'D:\Aenv\pro\pro\pro2\.venv\Scripts'
-$OuterPath = 'D:\Aenv\pro\pro\week8-recovery-controller-worktree\scripts\week8_recovery_outer_bootstrap.txt'
-$EntryPath = 'D:\Aenv\pro\pro\week8-recovery-controller-worktree\scripts\week8_exp2a_recovery_entrypoint.py'
-$HelperPath = 'D:\Aenv\pro\pro\week8-recovery-controller-worktree\scripts\week8_recovery_raw_authority.py'
-$Runtime = 'D:\Aenv\pro\pro\week8-d167-native-runtime-attempt-001'
-$Stage0Runtime = 'D:\Aenv\pro\pro\week8-d168-stage0-runtime-attempt-001'
+$Python = 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe'
+$BasePython = 'D:\Aenv\pro2\runtimes\week8-python313-frozen-001\python.exe'
+$BaseRuntime = 'D:\Aenv\pro2\runtimes\week8-python313-frozen-001'
+$Pyvenv = 'D:\Aenv\pro2\pro2\.venv\pyvenv.cfg'
+$VenvScripts = 'D:\Aenv\pro2\pro2\.venv\Scripts'
+$OuterPath = 'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_outer_bootstrap.txt'
+$EntryPath = 'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_exp2a_recovery_entrypoint.py'
+$HelperPath = 'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_raw_authority.py'
+$Runtime = 'D:\Aenv\pro2\week8-d167-native-runtime-attempt-001'
+$Stage0Runtime = 'D:\Aenv\pro2\week8-d168-stage0-runtime-attempt-001'
 $Stage0EnvelopeEnvironmentName = 'WEEK8_D168_STAGE0_ENVELOPE'
 $ExpectedPowerShell = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
 $ExpectedPythonSha256 = '935016795f3e6908e75acbc2040a01e2e4cdb494a57c42f63a0d6eedb2372256'
 $ExpectedBasePythonSha256 = '5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed'
-$ExpectedPyvenvSha256 = 'be7ef6e263b1f7242a8ce45cf329e96896d2d5d54e7fc565acb94fb722f66d71'
+$ExpectedPyvenvSha256 = 'e4d43703e6bfd6ad7296ee63e3441af275a4b8a89d72796b316f6458f120e418'
 
 # Filled from this script's deterministic MeasureRuntime mode before release.
 $ExpectedBaseRuntimeFileCount = 5368
@@ -40,8 +40,8 @@ $ExpectedBaseRuntimeTotalBytes = 155022742
 $ExpectedBaseRuntimeInventorySha256 = '0a5aff918e4a46fae2427a593261f8e3640ba439ba4ffebf5081b15eb7df6760'
 $ExpectedVenvScriptsFileCount = 22
 $ExpectedVenvScriptsDirectoryCount = 0
-$ExpectedVenvScriptsTotalBytes = 2145386
-$ExpectedVenvScriptsInventorySha256 = '1b9814979baf41e16ba3f9a7e754e55fd650bd786338e6ebb3b88441e0ef4c56'
+$ExpectedVenvScriptsTotalBytes = 2145329
+$ExpectedVenvScriptsInventorySha256 = 'baa95b3f7e3e50a9b388fca6c4fd238fb55fc2e62f4cdc07c1b7c57caa9a54ad'
 
 $Utf8 = New-Object System.Text.UTF8Encoding -ArgumentList @($false, $true)
 $HeldStreams = New-Object 'System.Collections.Generic.List[System.IO.FileStream]'
@@ -413,7 +413,7 @@ function Assert-Week8PyvenvSemantics {
         'include-system-site-packages = false',
         'version = 3.13.5',
         "executable = $BasePython",
-        "command = $BasePython -m venv D:\Aenv\pro\pro\pro2\.venv"
+        "command = $BasePython -m venv D:\Aenv\pro2\pro2\.venv"
     ) -join "`r`n") + "`r`n"
     if ($Text -cne $Expected) {
         throw 'pyvenv.cfg startup semantics differ'
@@ -497,13 +497,13 @@ try {
         [void] (Assert-Week8FixedHash $HelperPath $Receipt.HelperSha256 'raw helper')
     }
 
-    $WorkspaceItem = Assert-Week8PlainPath 'D:\Aenv\pro\pro' $true
+    $WorkspaceItem = Assert-Week8PlainPath 'D:\Aenv\pro2' $true
     if ($StartupSmoke) {
         if ([string]::IsNullOrWhiteSpace($SmokeRuntime)) {
             throw 'native startup smoke requires an explicit runtime path'
         }
         $RuntimeFullPath = [IO.Path]::GetFullPath($SmokeRuntime)
-        $SmokeRoot = Assert-Week8PlainPath 'D:\Aenv\pro\pro\.tmp' $true
+        $SmokeRoot = Assert-Week8PlainPath 'D:\Aenv\pro2\.tmp' $true
         $SmokePrefix = $SmokeRoot.FullName.TrimEnd('\') + '\'
         if (-not $RuntimeFullPath.StartsWith(
             $SmokePrefix, [StringComparison]::OrdinalIgnoreCase

@@ -33,7 +33,7 @@ from types import FunctionType, ModuleType
 from typing import Any
 
 
-FIT_CHILD_INVOCATION_SCHEMA_VERSION = 2
+FIT_CHILD_INVOCATION_SCHEMA_VERSION = 3
 FIT_CHILD_STARTUP_SCHEMA_VERSION = 1
 FIT_CHILD_STARTUP_TIMEOUT_SECONDS = 300.0
 ENTRYPOINT_GATE_SCHEMA_VERSION = 4
@@ -47,7 +47,7 @@ ENTRYPOINT_GATE_ENVIRONMENT_NAME = "BU_D161_ENTRYPOINT_GATE"
 CHILD_BUNDLE_ENVIRONMENT_NAME = "BU_D161_CHILD_BUNDLE_SHA256"
 RAW_AUTHORITY_MODULE_NAME = "_bu_week8_d161_raw_authority"
 
-WORKSPACE_ROOT = Path("D:/Aenv/pro/pro")
+WORKSPACE_ROOT = Path("D:/Aenv/pro2")
 CONTROLLER_WORKTREE = WORKSPACE_ROOT / "week8-recovery-controller-worktree"
 EXECUTION_WORKTREE = WORKSPACE_ROOT / "week8-e2a-execution-4515-worktree"
 CONTROLLER_SOURCE = CONTROLLER_WORKTREE / "src"
@@ -63,7 +63,7 @@ RAW_AUTHORITY_HELPER = (
 )
 PINNED_PYTHON = WORKSPACE_ROOT / "pro2" / ".venv" / "Scripts" / "python.exe"
 PINNED_BASE_PYTHON = Path(
-    "C:/Users/aladdin-alyanai/AppData/Local/Programs/Python/Python313/python.exe"
+    "D:/Aenv/pro2/runtimes/week8-python313-frozen-001/python.exe"
 )
 PINNED_BASE_RUNTIME = PINNED_BASE_PYTHON.parent
 PINNED_PYVENV = WORKSPACE_ROOT / "pro2" / ".venv" / "pyvenv.cfg"
@@ -77,8 +77,8 @@ PINNED_SITE_PACKAGES = (
     WORKSPACE_ROOT / "pro2" / ".venv" / "Lib" / "site-packages"
 )
 PINNED_GIT = Path(
-    "C:/Users/aladdin-alyanai/.cache/codex-runtimes/codex-primary-runtime/"
-    "dependencies/native/git/mingw64/bin/git.exe"
+    "D:/Aenv/pro2/runtimes/"
+    "git/mingw64/bin/git.exe"
 )
 PINNED_GIT_RUNTIME_ROOT = PINNED_GIT.parent
 STAGING_ATTEMPT_ROOT = (
@@ -95,7 +95,7 @@ EXPECTED_PINNED_BASE_PYTHON_SHA256 = (
     "5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed"
 )
 EXPECTED_PINNED_PYVENV_SHA256 = (
-    "be7ef6e263b1f7242a8ce45cf329e96896d2d5d54e7fc565acb94fb722f66d71"
+    "e4d43703e6bfd6ad7296ee63e3441af275a4b8a89d72796b316f6458f120e418"
 )
 EXPECTED_PINNED_BASE_RUNTIME_INVENTORY_SHA256 = (
     "0a5aff918e4a46fae2427a593261f8e3640ba439ba4ffebf5081b15eb7df6760"
@@ -104,11 +104,11 @@ EXPECTED_PINNED_BASE_RUNTIME_FILE_COUNT = 5_368
 EXPECTED_PINNED_BASE_RUNTIME_DIRECTORY_COUNT = 504
 EXPECTED_PINNED_BASE_RUNTIME_TOTAL_BYTES = 155_022_742
 EXPECTED_PINNED_VENV_SCRIPTS_INVENTORY_SHA256 = (
-    "1b9814979baf41e16ba3f9a7e754e55fd650bd786338e6ebb3b88441e0ef4c56"
+    "baa95b3f7e3e50a9b388fca6c4fd238fb55fc2e62f4cdc07c1b7c57caa9a54ad"
 )
 EXPECTED_PINNED_VENV_SCRIPTS_FILE_COUNT = 22
 EXPECTED_PINNED_VENV_SCRIPTS_DIRECTORY_COUNT = 0
-EXPECTED_PINNED_VENV_SCRIPTS_TOTAL_BYTES = 2_145_386
+EXPECTED_PINNED_VENV_SCRIPTS_TOTAL_BYTES = 2_145_329
 EXPECTED_PINNED_GIT_SHA256 = (
     "c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9"
 )
@@ -119,20 +119,20 @@ EXPECTED_PINNED_GIT_RUNTIME_FILE_COUNT = 94
 EXPECTED_PINNED_GIT_RUNTIME_DIRECTORY_COUNT = 0
 EXPECTED_PINNED_GIT_RUNTIME_TOTAL_BYTES = 66_573_247
 EXPECTED_PINNED_SITE_PACKAGES_INVENTORY_DIGEST = (
-    "ec8a9ffd7ec91e6fb0234a3e2545a8ab4f41758ada574f5e1a7471409cd6febb"
+    "b113ca128ef007b485fd458c88a780226872fe957d71a9a988442db4f012855b"
 )
 EXPECTED_PINNED_SITE_PACKAGES_FILE_COUNT = 34_514
 EXPECTED_PINNED_SITE_PACKAGES_DIRECTORY_COUNT = 3_183
-EXPECTED_PINNED_SITE_PACKAGES_TOTAL_BYTES = 1_019_096_855
+EXPECTED_PINNED_SITE_PACKAGES_TOTAL_BYTES = 1_019_075_506
 
 # These two values are replaced and frozen by the controller release step
 # after this new tracked source has settled.  Until then every live invocation
 # fails closed while ordinary syntax and unit-test collection remain possible.
 EXPECTED_RAW_AUTHORITY_HELPER_SHA256 = (
-    "dd40628b2ab13507d741d597190606b108b48589372204edf342e6d628ef137d"
+    "20a9be7eb663c8431f975dd0de3c822817e31a3b07001221ee0b6de5973483e3"
 )
 EXPECTED_OUTER_BOOTSTRAP_LITERAL_SHA256 = (
-    "52a4d90f242fe58af53cf95985660f548d14047e838a463ac329aa63f047840e"
+    "73d6f0e5cb126ffde136a3746b620236c847b3791a3eec688ddbd649ab304a3e"
 )
 
 _HEX40 = re.compile(r"[0-9a-f]{40}\Z")
@@ -153,6 +153,8 @@ _INVOCATION_KEYS = {
     "startup_ack_path",
     "entrypoint_gate_digest",
     "child_bundle_sha256",
+    "relocation",
+    "orphan_transition",
     "invocation_digest",
 }
 _GATE_KEYS = {
@@ -398,6 +400,12 @@ def _validate_invocation(document: dict[str, Any]) -> tuple[Path, dict[str, Any]
         or type(document["payload"]) is not dict
     ):
         raise FitChildRefused("fit-child invocation policy differs")
+    if type(document["relocation"]) is not dict:
+        raise FitChildRefused("fit-child relocation binding is not an object")
+    transition = _expect_keys(document["orphan_transition"], {"record_digest", "file_sha256"},
+                              what="fit-child orphan transition")
+    for name in transition:
+        _expect_sha256(transition[name], what=f"fit-child orphan transition {name}")
     for key in (
         "entrypoint_gate_digest",
         "child_bundle_sha256",
@@ -1432,6 +1440,48 @@ def _silence_standard_streams() -> None:
         raise FitChildRefused("fit-child stdout/stderr cannot be sealed") from exc
 
 
+@contextmanager
+def _fit_relocation_scope(raw_module: ModuleType, raw: Mapping[str, Any],
+                          invocation: Mapping[str, Any], callback: Any):
+    if type(raw_module) is not ModuleType or sys.modules.get(RAW_AUTHORITY_MODULE_NAME) is not raw_module:
+        raise FitChildRefused("fit-child relocation raw module differs")
+    helpers = raw_module.load_verified_relocation_helpers(raw)
+    helper_binding = helpers.validate(raw)
+    metadata = helpers.modules["metadata"]
+    access = metadata.load_registered_access(helpers.modules["provenance"])
+    binding = {
+        "relocation_schema_version": 1, "attestation_sha256": access.attestation_sha256,
+        "policy_sha256": metadata.POLICY_SHA256, "pair_count": metadata.EXPECTED_PAIR_COUNT,
+        "document_count": metadata.EXPECTED_DOCUMENT_COUNT, "helpers": helper_binding,
+    }
+    if _canonical_ascii(binding) != _canonical_ascii(invocation["relocation"]):
+        raise FitChildRefused("fit-child own relocation admission differs from worker")
+    Launch = importlib.import_module("bu.experiments.week8_exp2a_repair_launch")
+    Storage = importlib.import_module("bu.experiments.prefit_storage")
+    if Launch._fit_worker is not callback:
+        raise FitChildRefused("relocation scope received another scientific callback")
+    history = metadata.OrphanLeaseReader(access, Launch, invocation["orphan_transition"])
+    sources = metadata.SourceReaders(access, Launch.W, Launch.S)
+    preflight = metadata.PreflightReaders(access, sources, Launch, Storage)
+    checkpoints = metadata.CheckpointReaders(access, preflight)
+    completed = metadata.CompletedJobReaders(access, checkpoints)
+    try:
+        with history.installed(), sources.installed(), preflight.installed(), checkpoints.installed(), completed.installed():
+            history.lookup(metadata.OLD_LEASE_TOKEN)
+            try:
+                yield
+            finally:
+                history.lookup(metadata.OLD_LEASE_TOKEN)
+    finally:
+        if (
+            sys.modules.get(RAW_AUTHORITY_MODULE_NAME) is not raw_module
+            or helpers.validate(raw) != helper_binding
+            or access.attestation_sha256 != binding["attestation_sha256"]
+            or Launch._fit_worker is not callback
+        ):
+            raise FitChildRefused("fit-child relocation authority changed across fit")
+
+
 def main() -> int:
     _silence_standard_streams()
     _validate_isolated_runtime()
@@ -1453,7 +1503,8 @@ def main() -> int:
             raise FitChildRefused("historical runrecord import refused") from exc
         with _verified_historical_git_state(raw, allow_imports=True):
             callback = _import_fixed_fit_worker(source_finder)
-            message = _success_message(callback(Path(attempt_dir), payload))
+            with _fit_relocation_scope(raw_module, raw, invocation, callback):
+                message = _success_message(callback(Path(attempt_dir), payload))
     except Exception as exc:
         message = _exception_message(exc)
     _publish_protocol(result_path, message)

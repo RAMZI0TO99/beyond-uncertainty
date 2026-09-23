@@ -1,3 +1,35 @@
+# 2026-09-23 owner-resumed local release checkpoint
+
+Owner explicitly resumed the September20 stop. The controller's263 reviewed files and clean frozen4515 checkout matched the stop handoff; runtime-release-004 freshly verified all four pinned inventories. The active runbook now states the production child's original C:user LOCALAPPDATA pin. Fresh governance, local release inspection/commit and independent native status remain before the one-use recovery. Preserve every earlier attempt and evidence byte; keep work local/private with no push, deployment, publication or external message. Read resume-2026-09-23-001 and the September20 owner-stop receipt before proceeding.
+
+# 2026-09-20 complete relocation QA checkpoint
+
+Fresh fullgate002 reconciled all22partitions: 5536 passed, 19 expected skips, 51 passing subtests; 5,555 unique nodes, zero remaining failures/errors. Combined JUnit SHA256=a26ce16652ce08271a06ac334d2613d445a6c549a2f4cfee13cf36e0369360d2. The failed batch09attempt001 (163pass/1child-exit timeout) contributes no gate coverage; diagnostic15pass/2hostskips is separate, and fresh262-node batch09attempt002 passed258/4hostskips on the unchanged candidate. The timeout cause remains unproved. The first continuation helper stopped before QA because LF/CRLF manifest serialization differed; all263rows were identical, and continuation002 corrected only that orchestration comparison. All failed/diagnostic attempts remain preserved. Final documentation governance, fresh runtime verification, clean local commit and immutable native attempt005 status/counts/liveness remain before the unconsumed sole recovery. No production fit, adjudication, ownership transition, outcome consultation, GPU or public action; external Sol review/student prose remain open.
+
+Use full-gate-002/release-verification.json and the latest external SESSION/RELEASE_NEXT handoff. Earlier checkpoints below are preserved history. Do not replay any attempt or treat this passing gate as production admission. The local/private autonomous window ends2026-09-20T06:51:05UTC.
+
+# 2026-09-20 QA runtime continuation
+
+The first fresh5555-node gate stopped on an intermittent native CopyFile2 crash.
+Preserve its results. One test's child launch now passes-B;90runtime caches were
+restored to exact pins, and allfour runtime inventories verified. Focused122-node
+checks passed with both original and diagnostic profiles; no production profile
+or security-software change is justified by that comparison. See the new
+release-verification disclosure and latest external SESSION.md. Fresh fullgate002,
+clean local release and native status remain; no production recovery or public
+action. The owner's autonomous local/private window ends06:51:05UTC.
+
+# 2026-09-20 consolidated provenance checkpoint
+
+D-171/DEV-024 binds current relocated files independently of preserved historical
+identity claims. Workspace/dependencies are under D:/Aenv/pro2; do not recreate
+old paths. Captured metadata scopes, two-epoch final validation and downstream
+provenance are implemented with focused QA. Fresh fullgate/governance/clean local
+release/native status remain before the sole recovery. No public actions or new
+production fit/outcome consultation. Read delta82, release-verification, and the
+latest START_HERE/SESSION handoff outside this repo. Frozen4515science is unchanged;
+external Sol review/student prose remain open. Earlier checkpoints follow.
+
 # 2026-09-09 inspector diagnostic checkpoint
 
 D-170 adds bounded operational fingerprints for inspector refusals. The fresh

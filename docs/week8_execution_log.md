@@ -476,3 +476,119 @@ Finish documentation governance, a new clean commit and fresh attempt004
 receipt/status through the unchanged native ceremony. Preserve all earlier
 attempts. The sole D-161 recovery remains unconsumed; external Sol review and
 student own-voice prose remain open. GPU remains unused.
+
+## 2026-09-20 local relocation and recovery integration checkpoint (D-171)
+
+The owner requested all project files/dependencies under D:/Aenv/pro2 and
+authorized local-only continuation, including the disclosed provenance amendment.
+The earlier5c0daa2 release/status004 and interrupted diagnostic/profile gates are
+preserved. No old attempt supplies QA coverage for this changed candidate. The
+old D:/Aenv/pro/pro namespace is not recreated: strings in original evidence are
+logical historical identities, resolved only through the explicit pinned map.
+
+Relocation audits found304/304 source pairs content-identical and independent,
+but0/304 reproduced historical filesystem-copy identities. The September19
+same-volume rename separately preserved its before/after identities; the earlier
+mismatch cause/time remains unknown. The amended contract preserves old claims
+and records present observations separately. Attestation002 binds155 earlier
+source pairs plus149synced E2A pairs,9700files and629documents. RecordSHA256:
+dd3f546bfa05c4df1cef653fc2ea7e3602cb50ad5506775286d50b79b6f6d187;
+policySHA256:a25fa279a5ccce335ac04b31ecba209c38f2fa77a3f67db14356e228348095dc.
+No original evidence is rewritten to make old identities appear current.
+
+The consolidated venv retains its exact versions; the documented29 relocation
+edits to launch/config/package records are explicit new runtime bindings, not
+package upgrades. Base Python and Git bytes remain unchanged. Frozen detached
+4515scientific source remains clean. Shared child LOCALAPPDATA is explicit and
+project-local. Bounded nested diagnostics preserve status004's refusal without
+raw exception data. Restored operational lease namespace contains original
+lease bytes/ownership; restoration was not a liveness proof or ownership change.
+
+Two stdlib helpers load only from raw-authority captured controller bytes under
+fixed non-bu names. Parent, inspector, worker and fit child independently admit
+the pinned attestation and scoped metadata readers. Original scientific source
+validators, fit callback, parameters and supervised process protocol remain.
+Worker-authorized transition bindings are sealed into child invocation3; child
+reopens exact transition twins and orphan archive, forbids ordinary old release,
+and delegates other lease tokens. Parent uses its existing full transition proof.
+Initial inspection remains outcome-blind. Final validation proves original
+schema1/new schema2 checkpoints, distinct contexts,299old/224new events,150old/
+111new starts,261syncs and1completion. The149original sync identities remain
+historical; orphan+111new copies require current identities. All150old trees and
+receipt/result bindings remain checked. Label collection independently reopens
+the released inventory through parent admission before its original per-pair
+validation;416obligations/384labels/32nonlabel existing fits remain unchanged.
+
+Focused QA is recorded in resume-2026-09-05/qa-relocation and the autonomous
+session handoff. Latest labels/entrypoint check: 78 passed in 1348.55s (0:22:28). Parent final checks
+had141passes then an existing30s isolated-profile timeout; unchanged isolated
+recheck3passed. Finaljob identity checks10passed. Child protocol212, frozenchild22,
+capturedhelper19 and other focused tests are separate overlapping evidence, not
+a complete gate. Failed fixtures and attempts are retained with their corrections.
+The synthetic profile-routing test now waits at most120seconds instead of30;
+its path/output assertions and all production timeouts are unchanged. This
+accommodates observed host delays and does not diagnose their underlying cause.
+Current rawhelperSHA20a9be7eb663c8431f975dd0de3c822817e31a3b07001221ee0b6de5973483e3
+is pinned by all five consumers. OuterSHA73d6f0e5cb126ffde136a3746b620236c847b3791a3eec688ddbd649ab304a3e.
+
+A fresh complete exact-candidate gate, governance, clean local commit, immutable
+V2 receipt/stage audits and fresh native status remain required. No production
+status005,adjudication,leaseownershiptransition,recovery,new scientific fit,outcome
+consultation or public action has occurred in this continuation. The sole recovery
+is unconsumed. PreserveCPU4/4,GPU0,batch128,timeout3600,8GiB floor and one recovery/
+no automatic retry. External Sol certification and student prose remain open;
+this record is not a scientific verdict. Do not push, publish, deploy or send.
+
+
+## 2026-09-20 QA runtime correction and native-copy investigation
+
+Fresh collection contained5555nodes. Gate001 accepted governance13, batch01
+401pass/4host-capability skips and batch02539pass, with unchanged candidate bytes.
+Batch03 terminated with Windows0xc00000fd during a synthetic fixture's
+shutil.copy2/CopyFile2 call. Its252progress markers have no terminal JUnit and
+are not accepted coverage. All failed output remains. The attempted driver-stop
+command found the driver already gone and did not terminate any process.
+
+A separate full runtime audit found90changed standard-library pyc files, with
+no added/missing files or changes in Scripts/Git/site. The critic-balance
+cross-process test replaced its environment and omitted-B, dropping inherited
+no-bytecode protection. It now passes-B explicitly without changing its seed
+comparison or assertions. Changed caches were preserved and exact originals
+restored; no cache was regenerated as authority and no runtime pin changed.
+runtime-release-002 independently verified allfour trees twice against their
+reviewed inventories and the29declared venv relocation edits. The original
+shared C: installation was read only. Post-focused checks also prove all5368
+base files remain exact. Frozen4515science and all production evidence unchanged.
+
+Focused qa-environment-repair-001 reproduced the native fault after101markers;
+no complete focused result is claimed. Two fresh identical122-node selections
+then passed:002 with a diagnostic project-local LOCALAPPDATA in492.78s,003 with
+the original C:user profile in401.43s; both candidate inventories unchanged.
+Thus the evidence does not establish a profile cause or justify changing the
+production profile/copy implementation. The native failure remains intermittent.
+Windows crash metadata identifies KERNELBASE; both captured stacks contain
+thousands of repeated addresses in ManageEngine Endpoint DLP's injected library.
+This is strong diagnostic evidence, not a symbolized/unwound stack or proof of
+root-cause elimination. No security software was disabled, patched or removed.
+Two independent synthetic copy probes each verified100copies/27200files with
+unchanged sources, with and without CPU4/4 PyTorch; they are not release gates.
+
+Eight dumps were proved to belong to project processes and moved from C: into
+autonomous-2026-09-19-185105/crash-dumps-001 and002 with every hash verified.
+Diagnostics and all receipts remain private. Active runbook stage0 literals now
+match the relocated policy; historical records keep their original values.
+Clarification to D-171's preceding wording: the production child's explicit
+LOCALAPPDATA is C:/Users/aladdin-alyanai/AppData/Local, outside its execution
+tree; it was not moved into the project. Diagnostic002's profile was temporary.
+
+Fresh complete exact-candidate gate002, final governance, clean local release,
+immutable attempt005 native status and all original liveness/count guards remain
+required. No status005,adjudication,ownershiptransition,recovery,newfit,outcome
+consultation or public action has occurred. D-161 remains exactly one recovery.
+
+
+## 2026-09-20 complete relocation gate and preserved failure history
+
+Fresh fullgate002 reconciled all22partitions: 5536 passed, 19 expected skips, 51 passing subtests; 5,555 unique nodes, zero remaining failures/errors. Combined JUnit SHA256=a26ce16652ce08271a06ac334d2613d445a6c549a2f4cfee13cf36e0369360d2. The failed batch09attempt001 (163pass/1child-exit timeout) contributes no gate coverage; diagnostic15pass/2hostskips is separate, and fresh262-node batch09attempt002 passed258/4hostskips on the unchanged candidate. The timeout cause remains unproved. The first continuation helper stopped before QA because LF/CRLF manifest serialization differed; all263rows were identical, and continuation002 corrected only that orchestration comparison. All failed/diagnostic attempts remain preserved. Final documentation governance, fresh runtime verification, clean local commit and immutable native attempt005 status/counts/liveness remain before the unconsumed sole recovery. No production fit, adjudication, ownership transition, outcome consultation, GPU or public action; external Sol review/student prose remain open.
+
+Gate receipts: resume-2026-09-05/autonomous-2026-09-19-185105/full-gate-002/release-verification.json and release-junit.xml; individual immutable reports are under resume-2026-09-05/qa-relocation. Every accepted partition matches candidate manifest 08651ad1dece659f29cc128886613040ee301aac0e1b01a865db43a09470644a. Gate001 and the earlier native-copy diagnostic crash remain disclosed above; green QA does not establish elimination of the injected-library/native-copy intermittence. Production profile, security software, frozen4515science, evidence and scientific rules are unchanged. Only seven documentation files change after this gate; their before/after bytes are preserved in docs-final-gate002-001 outside the controller. Separate final governance/runtime/commit receipts must establish each subsequent milestone; this document does not claim them.

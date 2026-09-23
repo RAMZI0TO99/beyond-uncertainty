@@ -31,7 +31,7 @@ def _load(name: str, path: Path) -> ModuleType:
 
 S = _load("d168_stage0_under_test", STAGE0_SCRIPT)
 R = _load("d168_receipt_under_test", RECEIPT_SCRIPT)
-PROJECT_ROOT = Path("D:/Aenv/pro/pro")
+PROJECT_ROOT = Path("D:/Aenv/pro2")
 
 
 def _sha(path: Path) -> str:

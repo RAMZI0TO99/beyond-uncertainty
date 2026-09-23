@@ -15,7 +15,7 @@ import json
 import os
 import subprocess
 import sys
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -38,6 +38,22 @@ def _load_script(name: str, path: Path) -> Any:
 
 W = _load_script("d166_nested_worker_under_test", WORKER_PATH)
 F = _load_script("d166_fit_child_under_test", FIT_CHILD_PATH)
+
+
+def _synthetic_relocation() -> dict[str, Any]:
+    return {"relocation_schema_version": 1, "attestation_sha256": "1" * 64,
+            "policy_sha256": "2" * 64, "pair_count": 304, "document_count": 629,
+            "helpers": {"helper_schema_version": 1, "synthetic": True}}
+
+
+@pytest.fixture(autouse=True)
+def synthetic_worker_relocation_authority(monkeypatch):
+    # This module exercises the native child protocol; admission and its fixed
+    # evidence reads have separate real-reader/adversarial integration suites.
+    monkeypatch.setattr(W, "_admitted_relocation", lambda: (None, None, _synthetic_relocation()))
+    monkeypatch.setattr(W, "_admitted_orphan_transition", lambda: {
+        "record_digest": "3" * 64, "file_sha256": "4" * 64})
+    monkeypatch.setattr(W, "_worker_relocation_readers", lambda launch: nullcontext())
 
 
 def _sha(value: bytes) -> str:
@@ -68,7 +84,7 @@ def _fit_protocol_paths(root: Path, token: str = "a" * 64) -> dict[str, Path]:
     }
 
 
-def _invocation_v2(
+def _invocation_v3(
     root: Path,
     *,
     token: str = "a" * 64,
@@ -77,7 +93,7 @@ def _invocation_v2(
 ) -> dict[str, Any]:
     paths = _fit_protocol_paths(root, token)
     document: dict[str, Any] = {
-        "fit_child_invocation_schema_version": 2,
+        "fit_child_invocation_schema_version": 3,
         "record_type": "week8_d161_verified_fit_child_invocation",
         "attempt_dir": str(attempt_dir or (root / "attempt")),
         "payload": {} if payload is None else payload,
@@ -86,6 +102,8 @@ def _invocation_v2(
         "result_path": str(paths["result_path"]),
         "entrypoint_gate_digest": "b" * 64,
         "child_bundle_sha256": "c" * 64,
+        "relocation": _synthetic_relocation(),
+        "orphan_transition": {"record_digest": "3" * 64, "file_sha256": "4" * 64},
     }
     document["invocation_digest"] = _sha(_canonical(document))
     return document
@@ -421,7 +439,7 @@ def test_fit_child_rejects_noncanonical_invocation_json_before_authority(
 ) -> None:
     runtime = tmp_path.resolve()
     monkeypatch.setattr(F, "RUNTIME_TEMP", runtime)
-    document = _invocation_v2(runtime)
+    document = _invocation_v3(runtime)
     encoded = json.dumps(document, sort_keys=False, indent=1).encode("ascii")
     monkeypatch.setenv(
         F.INVOCATION_BASE64_ENVIRONMENT_NAME,
@@ -440,7 +458,7 @@ def test_fit_child_accepts_exact_schema_v2_startup_paths(
     attempt = staging / "job.synthetic"
     runtime.mkdir()
     attempt.mkdir(parents=True)
-    invocation = _invocation_v2(runtime, attempt_dir=attempt, payload={"seed": 1000})
+    invocation = _invocation_v3(runtime, attempt_dir=attempt, payload={"seed": 1000})
     encoded = _canonical(invocation)
     monkeypatch.setattr(F, "RUNTIME_TEMP", runtime)
     monkeypatch.setattr(F, "STAGING_ATTEMPT_ROOT", staging)
@@ -471,7 +489,7 @@ def test_fit_child_refuses_schema_v2_protocol_path_with_a_different_token(
     attempt = staging / "job.synthetic"
     runtime.mkdir()
     attempt.mkdir(parents=True)
-    invocation = _invocation_v2(runtime, attempt_dir=attempt)
+    invocation = _invocation_v3(runtime, attempt_dir=attempt)
     prefix = {
         "startup_path": "fit-child-startup-",
         "startup_ack_path": "fit-child-startup-ack-",
@@ -1005,7 +1023,9 @@ def test_verified_fit_process_uses_only_pinned_isolated_literal_invocation(
     ]
     invocation = json.loads(invocation_bytes.decode("ascii"))
     assert invocation_bytes == _canonical(invocation)
-    assert invocation["fit_child_invocation_schema_version"] == 2
+    assert invocation["fit_child_invocation_schema_version"] == 3
+    assert invocation["relocation"] == _synthetic_relocation()
+    assert invocation["orphan_transition"] == {"record_digest": "3" * 64, "file_sha256": "4" * 64}
     assert invocation["startup_path"] == str(protocol_paths["startup_path"])
     assert invocation["startup_ack_path"] == str(protocol_paths["startup_ack_path"])
     assert invocation["result_path"] == str(protocol_paths["result_path"])
@@ -1953,7 +1973,14 @@ def test_fit_child_main_installs_verified_finders_before_fixed_bu_import(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     events: list[str] = []
-    invocation = _invocation_v2(tmp_path, payload={"seed": 1000})
+    @contextmanager
+    def relocation_scope(module, raw, value, callback):
+        assert module is raw_module and raw == {"raw": True} and value is invocation
+        events.append("relocation-enter")
+        try: yield
+        finally: events.append("relocation-exit")
+    monkeypatch.setattr(F, "_fit_relocation_scope", relocation_scope)
+    invocation = _invocation_v3(tmp_path, payload={"seed": 1000})
     hello = _startup_hello(invocation)
     ack = _startup_ack(invocation, hello)
     source_finder = object()
@@ -2040,6 +2067,8 @@ def test_fit_child_main_installs_verified_finders_before_fixed_bu_import(
         "transport",
         "install",
         "import-bu",
+        "relocation-enter",
+        "relocation-exit",
     ]
     assert published == [
         (
@@ -2052,7 +2081,7 @@ def test_fit_child_main_installs_verified_finders_before_fixed_bu_import(
 def test_fit_child_no_ack_stops_before_gate_import_or_callback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    invocation = _invocation_v2(tmp_path, payload={"seed": 1000})
+    invocation = _invocation_v3(tmp_path, payload={"seed": 1000})
     hello = _startup_hello(invocation)
     events: list[str] = []
     published: list[dict[str, str]] = []
@@ -2134,7 +2163,7 @@ def test_fit_child_no_ack_stops_before_gate_import_or_callback(
 def test_fit_child_refuses_malformed_startup_ack_before_callback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str
 ) -> None:
-    invocation = _invocation_v2(tmp_path)
+    invocation = _invocation_v3(tmp_path)
     hello = _startup_hello(invocation)
     ack = _startup_ack(invocation, hello)
     startup_path = Path(invocation["startup_path"])
@@ -2166,7 +2195,7 @@ def test_fit_child_refuses_malformed_startup_ack_before_callback(
 def test_fit_child_refuses_linked_startup_ack_before_callback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    invocation = _invocation_v2(tmp_path)
+    invocation = _invocation_v3(tmp_path)
     hello = _startup_hello(invocation)
     ack = _startup_ack(invocation, hello)
     startup_path = Path(invocation["startup_path"])

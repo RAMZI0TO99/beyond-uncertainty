@@ -15,7 +15,7 @@ import os
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -29,6 +29,7 @@ from bu.experiments import week8_exp2a_recovery as R
 
 NEW_TOKEN = "d" * 32
 CONTEXT = "c" * 64
+NEW_CONTEXT = "d" * 64
 OLD_CHECKPOINT_DIGEST = "a" * 64
 NEW_CHECKPOINT_DIGEST = "b" * 64
 
@@ -1242,7 +1243,7 @@ def test_inspector_process_refusal_exposes_only_bounded_operational_fingerprints
     secret = "SYNTHETIC_PRIVATE_VALUE_MUST_NOT_ESCAPE"
     reason_sha = R.sha256_bytes(secret.encode())
     child = {
-        "inspector_schema_version": 1, "status": "refused",
+        "inspector_schema_version": 2, "status": "refused",
         "error_type": "InspectorRefused", "reason_sha256": reason_sha,
         "scientific_values_emitted": False, "production_mutation_performed": False,
     }
@@ -1262,6 +1263,7 @@ def test_inspector_process_refusal_exposes_only_bounded_operational_fingerprints
     stderr = secret.encode() if case == "stderr" else b""
     returncode = 0 if case == "stderr" else 2
     monkeypatch.setattr(R, "_validate_controller_runtime", lambda: {"command": "status"})
+    monkeypatch.setattr(R, "_parent_relocation", lambda gate: nullcontext())
     monkeypatch.setattr(R, "status", R._run_old_source_inspector)
     monkeypatch.setattr(R, "_prepare_empty_runtime_temp", lambda path, what: relocated)
     monkeypatch.setattr(R, "_verified_child_bundle", lambda **kwargs: (b"fixture", {"bundle_sha256": "1" * 64}))
@@ -1291,6 +1293,45 @@ def test_inspector_process_refusal_exposes_only_bounded_operational_fingerprints
         "inspector_refusal": {"error_type": "InspectorRefused", "reason_sha256": reason_sha}
             if case in {"valid", "stderr"} else None,
     }
+
+
+@pytest.mark.parametrize("case", [
+    "valid", "extra", "unknown_source", "unknown_type", "bad_hash",
+    "too_many_causes", "too_many_locations", "invalid_line", "deeply_nested",
+])
+def test_inspector_authority_diagnostics_validate_each_nested_field(case: str) -> None:
+    secret = "SYNTHETIC_PRIVATE_NESTED_DETAIL"
+    error = {"error_type": "OSError", "reason_sha256": R.sha256_bytes(secret.encode()),
+             "locations": [{"source": "raw_authority", "line": 321}]}
+    chain = [error]
+    if case == "extra":
+        error["message"] = secret
+    elif case == "unknown_source":
+        error["locations"][0]["source"] = secret
+    elif case == "unknown_type":
+        error["error_type"] = secret
+    elif case == "bad_hash":
+        error["reason_sha256"] = secret
+    elif case == "too_many_causes":
+        chain = [error] * 5
+    elif case == "too_many_locations":
+        error["locations"] *= 5
+    elif case == "invalid_line":
+        error["locations"][0]["line"] = True
+    child = {"inspector_schema_version": 2, "status": "refused", "error_type": "InspectorRefused",
+             "reason_sha256": R.sha256_bytes(b"inspector raw authority revalidation refused"),
+             "scientific_values_emitted": False, "production_mutation_performed": False,
+             "authority_failure": chain}
+    stdout = (json.dumps(child, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    if case == "deeply_nested":
+        stdout = b"[" * 1500 + b"]" * 1500
+    parsed = R._InspectorProcessRefused(stdout, b"", 2).inspector_failure
+    assert parsed["stdout"] == {"bytes": len(stdout), "sha256": R.sha256_bytes(stdout)}
+    assert secret not in json.dumps(parsed)
+    if case == "valid":
+        assert parsed["inspector_refusal"]["authority_failure"] == chain
+    else:
+        assert parsed["inspector_refusal"] is None
 
 
 def test_spawned_worker_identity_binds_pid_and_controller_parent() -> None:
@@ -2273,7 +2314,7 @@ def _event(
             "event_schema_version": 1,
             "sequence": sequence,
             "previous_digest": previous,
-            "execution_context_digest": CONTEXT,
+            "execution_context_digest": CONTEXT if sequence < 299 else NEW_CONTEXT,
             "kind": kind,
             "job_id": job_id,
             "data": data,
@@ -2340,6 +2381,22 @@ def _write_final_event_fixture(
     expected["old_event_stream"] = R._event_chain_digest(events[:299])
     expected["old_event_tail_file"] = sha256_file(local_dir / "000298.json")
     monkeypatch.setattr(R, "EXPECTED_HASHES", expected)
+    # Accounting tests use independent snapshots of the preserved prefix;
+    # actual metadata admission and twin readers have separate integration tests.
+    original_prefix = [json.loads(json.dumps(row)) for row in events[:299]]
+    def current_twins(relative):
+        left, right = R.P.OUTPUT_ROOT / relative, R.P.SYNC_ROOT / relative
+        R._same_bytes(left, right, what="synthetic current event")
+        return read_json(left), left.read_bytes()
+    readers = {
+        "events": SimpleNamespace(
+            historical_event=lambda index: original_prefix[index],
+            _original_validate=R.Launch._validate_event,
+            _inventory=lambda: tuple(sorted(path.name for path in local_dir.iterdir())),
+        ),
+        "checkpoints": SimpleNamespace(_current_twins=current_twins),
+    }
+    monkeypatch.setattr(R, "_parent_readers", lambda: readers)
     checkpoints = {
         R.OLD_LEASE_TOKEN: (
             {
@@ -2351,7 +2408,7 @@ def _write_final_event_fixture(
         NEW_TOKEN: (
             {
                 "checkpoint_digest": NEW_CHECKPOINT_DIGEST,
-                "execution_context_digest": CONTEXT,
+                "execution_context_digest": NEW_CONTEXT,
             },
             "2" * 64,
         ),
@@ -2381,6 +2438,30 @@ def test_duplicate_start_in_continuation_is_retraining_and_refuses(
         relocated, monkeypatch, duplicate_new_start=True
     )
     with pytest.raises(R.RecoveryRefused, match="duplicate/unknown start"):
+        R._final_events(checkpoints)
+
+
+@pytest.mark.parametrize("damage", ["same_context", "old_context_in_tail", "new_context_in_prefix", "wrong_checkpoint", "third_checkpoint", "different_twin"])
+def test_final_events_refuse_epoch_substitution(relocated, monkeypatch, damage):
+    checkpoints, _ = _write_final_event_fixture(relocated, monkeypatch)
+    if damage == "same_context":
+        checkpoints[NEW_TOKEN][0]["execution_context_digest"] = CONTEXT
+    elif damage == "third_checkpoint":
+        checkpoints["e" * 32] = checkpoints[NEW_TOKEN]
+    else:
+        index = 298 if damage == "new_context_in_prefix" else 300
+        path = R.P.OUTPUT_ROOT / R.Launch.EVENT_DIRECTORY / f"{index:06d}.json"
+        row = read_json(path)
+        if damage == "wrong_checkpoint":
+            row["data"]["checkpoint_digest"] = OLD_CHECKPOINT_DIGEST
+        else:
+            row["execution_context_digest"] = NEW_CONTEXT if index < 299 else CONTEXT
+        row = R.Plan._seal({k: v for k, v in row.items() if k != "event_digest"}, "event_digest")
+        raw = R.Launch.L._pretty_json_bytes(row)
+        path.write_bytes(raw)
+        if damage != "different_twin":
+            (R.P.SYNC_ROOT / R.Launch.EVENT_DIRECTORY / path.name).write_bytes(raw)
+    with pytest.raises(ValueError):
         R._final_events(checkpoints)
 
 
@@ -2842,6 +2923,7 @@ def test_cli_normalizes_validation_oserror_without_message_or_traceback(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     secret = "synthetic-validation-detail-must-not-be-emitted"
+    monkeypatch.setattr(R, "_parent_relocation", lambda gate: nullcontext())
     monkeypatch.setattr(
         R, "_validate_controller_runtime", lambda: {"command": "status"}
     )
@@ -2873,3 +2955,39 @@ def test_cli_refuses_entrypoint_gate_for_another_command(
     assert document["command"] == "recover"
     assert document["status"] == "refused"
     assert document["automatic_retry_allowed"] is False
+
+@pytest.mark.parametrize("ambient", [None, "relative-profile", "absolute-profile"])
+def test_child_profile_routes_logs_outside_execution_tree(
+    relocated: Path, monkeypatch: pytest.MonkeyPatch, ambient: str | None
+) -> None:
+    """Exercise actual isolated-child expansion with a cleared/hostile parent."""
+    profile = relocated / "fixed-local-appdata"
+    monkeypatch.setattr(R, "PINNED_LOCAL_APPDATA", profile, raising=False)
+    for name in list(os.environ):
+        if name.upper() == "LOCALAPPDATA":
+            monkeypatch.delenv(name)
+    if ambient is not None:
+        value = str(relocated / ambient) if ambient == "absolute-profile" else ambient
+        monkeypatch.setenv("LocalAppData", value)
+    environment = R._sanitized_subprocess_environment(R.RUNTIME_TEMP)
+    # Model the agent's percent-variable expansion; no production code or data
+    # is executed in the child, and every possible write stays in this fixture.
+    child = (
+        "import ntpath, os; from pathlib import Path; "
+        "root=Path(ntpath.expandvars('%LOCALAPPDATA%').replace('\\\\', os.sep)); "
+        "logs=root/'DesktopCentral_Agent'; logs.mkdir(parents=True, exist_ok=True); "
+        "(logs/'synthetic.log').write_text('synthetic', encoding='utf-8')"
+    )
+    completed = R.subprocess.run(
+        [sys.executable, "-I", "-S", "-B", "-X", "utf8", "-c", child],
+        cwd=R.EXECUTION_WORKTREE, env=environment,
+        # This asserts profile routing, not interpreter startup performance.
+        # Full-suite host delays twice exceeded 30s; fresh isolated cases passed.
+        # Keep a bounded test wait without changing any production timeout.
+        capture_output=True, text=True, timeout=120, check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert (profile / "DesktopCentral_Agent/synthetic.log").is_file()
+    assert not list(R.EXECUTION_WORKTREE.iterdir())
+    assert {name: value for name, value in environment.items()
+            if name.upper() == "LOCALAPPDATA"} == {"LOCALAPPDATA": str(profile)}

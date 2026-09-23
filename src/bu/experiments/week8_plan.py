@@ -31,7 +31,7 @@ WEEK8_PLAN_FILE = "week8_baseline_launch_plan.json"
 WEEK7_PREPARATION_PATH = W7L.PREPARATION_PATH
 WEEK7_PREPARATION_SHA256 = W7L.PREPARATION_SHA256
 WEEK7_LAUNCH_PLAN_PATH = Path(
-    "D:/Aenv/pro/pro/week7-execution-preparation-2026-08-31-attempt-001/"
+    "D:/Aenv/pro2/week7-execution-preparation-2026-08-31-attempt-001/"
     "week7_baseline_launch_plan.json"
 )
 WEEK7_LAUNCH_PLAN_SHA256 = (

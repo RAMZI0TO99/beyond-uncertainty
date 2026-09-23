@@ -31,7 +31,7 @@ from . import week7_launch_plan as P
 
 WEEK7_SOURCE_LEDGER_SCHEMA_VERSION = 1
 WEEK7_SOURCE_LEDGER_FILE = "week7_source_reuse_ledger.json"
-PROJECT_ROOT = Path("D:/Aenv/pro/pro")
+PROJECT_ROOT = Path("D:/Aenv/pro2")
 HISTORICAL_OUTPUT_ROOT = PROJECT_ROOT / "week6-smoke-2026-08-30-attempt-001-output"
 HISTORICAL_COPY_ROOT = PROJECT_ROOT / "week6-smoke-2026-08-30-attempt-001-project-evidence"
 HISTORICAL_PREFLIGHT_ROOT = PROJECT_ROOT / "week6-smoke-2026-08-30-attempt-001-preflight"

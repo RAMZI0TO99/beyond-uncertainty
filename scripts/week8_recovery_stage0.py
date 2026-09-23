@@ -20,11 +20,11 @@ from pathlib import Path
 from typing import Sequence
 
 
-PROJECT_ROOT = Path("D:/Aenv/pro/pro")
+PROJECT_ROOT = Path("D:/Aenv/pro2")
 CMD = Path("C:/Windows/System32/cmd.exe")
 POWERSHELL = Path("C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe")
 STAGE0_RUNTIME = Path(
-    "D:/Aenv/pro/pro/week8-d168-stage0-runtime-attempt-001"
+    "D:/Aenv/pro2/week8-d168-stage0-runtime-attempt-001"
 )
 STAGE0_ENVELOPE_ENVIRONMENT = "WEEK8_D168_STAGE0_ENVELOPE"
 STAGE0_ENVELOPE_HEADER = "WEEK8_D168_STAGE0_ENVELOPE_V1"

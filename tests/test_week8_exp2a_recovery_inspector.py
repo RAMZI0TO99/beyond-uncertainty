@@ -214,7 +214,7 @@ def test_all_loaded_bu_modules_must_resolve_inside_detached_source(
 
 def _synthetic_job_fixture(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Any, Any, Any, Any, Any, list[dict[str, Any]], list[str]]:
+) -> tuple[Any, Any, Any, Any, Any, list[dict[str, Any]], Any]:
     workspace = tmp_path / "workspace"
     output = workspace / "output"
     sync = workspace / "sync"
@@ -252,6 +252,9 @@ def _synthetic_job_fixture(
     }
     copy_digests = {
         job_id: f"{index + 2000:064x}" for index, job_id in enumerate(jobs)
+    }
+    historical_copy_digests = {
+        job_id: f"{index + 5000:064x}" for index, job_id in enumerate(jobs)
     }
     local_calls: list[str] = []
     durable_calls: list[str] = []
@@ -314,7 +317,7 @@ def _synthetic_job_fixture(
             "data": {
                 "execution_digest": execution_digests[job_id],
                 "source_tree_digest": tree_digests[job_id],
-                "copy_evidence_digest": copy_digests[job_id],
+                "copy_evidence_digest": historical_copy_digests[job_id],
             },
         }
         for job_id in synced
@@ -329,13 +332,23 @@ def _synthetic_job_fixture(
         }
 
     monkeypatch.setattr(I, "_attempt_row", attempt_row)
-    return P, Plan, Launch, B, Supervisor, events, [*local_calls, *durable_calls]
+    pair_calls = []
+    def historical_pair_at(local,durable):
+        assert local.parent == local_root and durable.parent == durable_root and local.name == durable.name
+        job_id = local.name
+        assert job_id in synced
+        pair_calls.append(job_id)
+        return SimpleNamespace(historical_copy_digest=historical_copy_digests[job_id],
+            observed_copy_digest=copy_digests[job_id],
+            policy=SimpleNamespace(key='epoch001-'+job_id,content_digest=tree_digests[job_id]))
+    access = SimpleNamespace(historical_pair_at=historical_pair_at,calls=pair_calls)
+    return P, Plan, Launch, B, Supervisor, events, access
 
 
 def test_old_launch_validators_cover_exact_150_local_and_149_durable_jobs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    P, Plan, Launch, B, Supervisor, events, _ = _synthetic_job_fixture(
+    P, Plan, Launch, B, Supervisor, events, access = _synthetic_job_fixture(
         tmp_path, monkeypatch
     )
     local_calls: list[str] = []
@@ -354,7 +367,7 @@ def test_old_launch_validators_cover_exact_150_local_and_149_durable_jobs(
     Launch.validate_local_completed_exp2a_job = staticmethod(local)
     Launch.reconcile_completed_exp2a_job = staticmethod(durable)
     result = I._inspect_jobs(
-        P, Plan, Launch, B, Supervisor, lambda path: {}, {}, events
+        P, Plan, Launch, B, Supervisor, lambda path: {}, {}, events, relocation_access=access
     )
     assert len(local_calls) == 150
     assert len(set(local_calls)) == 150
@@ -363,17 +376,43 @@ def test_old_launch_validators_cover_exact_150_local_and_149_durable_jobs(
     assert result["hidden_partial"]["file_count"] == 11
     assert result["hidden_partial"]["orphan_local_file_count"] == 15
     assert len(result["untouched_job_ids"]) == 111
+    assert len(access.calls) == 298 and len(set(access.calls)) == 149
+    assert all(row['historical_copy_evidence_digest'] != row['copy_evidence_digest']
+               for row in result['durable_completed'])
 
 
 def test_inspector_refuses_orphan_local_tree_other_than_fifteen_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    P, Plan, Launch, B, Supervisor, events, _ = _synthetic_job_fixture(
+    P, Plan, Launch, B, Supervisor, events, access = _synthetic_job_fixture(
         tmp_path, monkeypatch
     )
     (I.OUTPUT_ROOT / "jobs" / I.ORPHAN_JOB_ID / "f14.bin").unlink()
     with pytest.raises(I.InspectorRefused, match="hidden partial"):
-        I._inspect_jobs(P, Plan, Launch, B, Supervisor, lambda path: {}, {}, events)
+        I._inspect_jobs(P, Plan, Launch, B, Supervisor, lambda path: {}, {}, events,relocation_access=access)
+
+
+@pytest.mark.parametrize('damage',['historical','observed','content','copy-tree','changed-during-read'])
+def test_inspector_independently_rejects_relocation_pair_drift(tmp_path,monkeypatch,damage):
+    P,Plan,Launch,B,Supervisor,events,access = _synthetic_job_fixture(tmp_path,monkeypatch)
+    original = access.historical_pair_at
+    if damage == 'copy-tree':
+        reconcile = Launch.reconcile_completed_exp2a_job
+        monkeypatch.setattr(Launch,'reconcile_completed_exp2a_job',
+                            lambda job_id,**request:{**reconcile(job_id,**request),'copy_tree_digest':'f'*64})
+    else:
+        calls = []
+        def damaged(local,durable):
+            row = original(local,durable)
+            calls.append(local.name)
+            if damage == 'historical':row.historical_copy_digest = 'f'*64
+            elif damage == 'observed':row.observed_copy_digest = row.historical_copy_digest
+            elif damage == 'content':row.policy.content_digest = 'f'*64
+            elif len(calls) % 2 == 0:row.policy.key = 'changed-pair'
+            return row
+        access.historical_pair_at = damaged
+    with pytest.raises(I.InspectorRefused):
+        I._inspect_jobs(P,Plan,Launch,B,Supervisor,lambda path:{},{},events,relocation_access=access)
 
 
 def test_cli_emits_one_canonical_json_line_and_never_raw_refusal(
@@ -410,3 +449,63 @@ def test_cli_rejects_every_argument() -> None:
         assert I.main() == 2
     finally:
         sys.argv = original
+
+
+def test_authority_refusal_reaches_controller_as_bounded_fingerprints(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from bu.experiments import week8_exp2a_recovery as R
+
+    secret = "SYNTHETIC_PRIVATE_AUTHORITY_DETAIL"
+    namespace = {"secret": secret}
+    source = (
+        "def _nested_read():\n    raise OSError(secret)\n"
+        "def revalidate_admitted_authority(*args, **kwargs):\n"
+        "    try:\n        _nested_read()\n"
+        "    except OSError as exc:\n        raise ValueError('synthetic authority wrapper') from exc\n"
+    )
+    exec(compile(source, str(I.RAW_AUTHORITY_HELPER), "exec"), namespace)
+    raw = SimpleNamespace(revalidate_admitted_authority=namespace["revalidate_admitted_authority"])
+    monkeypatch.setattr(I, "_load_bound_raw_authority", lambda: raw)
+    monkeypatch.setenv(I.ENTRYPOINT_GATE_ENVIRONMENT_NAME, I._canonical_ascii(_entrypoint_gate("status")).decode("ascii"))
+    monkeypatch.setattr(I, "_run", I._validate_entrypoint_authority)
+    monkeypatch.setattr(sys, "argv", [str(SCRIPT)])
+    assert I.main() == 2
+    output = capsys.readouterr().out
+    assert secret not in output and "synthetic authority wrapper" not in output
+    assert len(output.encode()) <= 4096
+    refusal = json.loads(output)
+    assert refusal["error_type"] == "InspectorRefused"
+    assert refusal["reason_sha256"] == I._sha_bytes(b"inspector raw authority revalidation refused")
+    assert refusal["scientific_values_emitted"] is False
+    assert refusal["production_mutation_performed"] is False
+    chain = refusal["authority_failure"]
+    assert [row["error_type"] for row in chain] == ["ValueError", "OSError"]
+    assert chain[0]["reason_sha256"] == I._sha_bytes(b"synthetic authority wrapper")
+    assert chain[1]["reason_sha256"] == I._sha_bytes(secret.encode())
+    assert any(row == {"source": "raw_authority", "line": 2} for row in chain[1]["locations"])
+    assert all(set(location) == {"source", "line"} for row in chain for location in row["locations"])
+    parsed = R._InspectorProcessRefused(output.encode(), b"", 2).inspector_failure
+    assert parsed["inspector_refusal"]["authority_failure"] == chain
+    assert secret not in json.dumps(parsed)
+
+
+@pytest.mark.parametrize("case", ["long", "cycle", "unknown_type"])
+def test_authority_cause_diagnostics_are_bounded_and_allowlisted(case: str) -> None:
+    secret = "SYNTHETIC_PRIVATE_EXCEPTION_NAME"
+    root = ValueError("root")
+    if case == "long":
+        for index in range(12):
+            parent = ValueError(str(index))
+            parent.__cause__ = root
+            root = parent
+    elif case == "cycle":
+        root.__cause__ = root
+    else:
+        root = type(secret, (ValueError,), {})(secret)
+    rows = I._authority_failure_fingerprints(root)
+    assert len(rows) == (4 if case == "long" else 1)
+    assert all(row["locations"] == [] for row in rows)
+    assert secret not in json.dumps(rows)
+    if case == "unknown_type":
+        assert rows[0]["error_type"] == "Exception"

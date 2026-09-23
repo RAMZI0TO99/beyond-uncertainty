@@ -266,8 +266,8 @@ def _literal_assignment(path: Path, name: str) -> object:
 
 def _git_executable() -> Path:
     fixed = Path(
-        "C:/Users/aladdin-alyanai/.cache/codex-runtimes/"
-        "codex-primary-runtime/dependencies/native/git/mingw64/bin/git.exe"
+        "D:/Aenv/pro2/runtimes/"
+        "git/mingw64/bin/git.exe"
     )
     if fixed.is_file():
         return fixed.resolve()

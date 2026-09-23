@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Sequence
 
 
-PROJECT_ROOT = Path("D:/Aenv/pro/pro")
+PROJECT_ROOT = Path("D:/Aenv/pro2")
 RECEIPT_HEADER = "WEEK8_D168_RELEASE_RECEIPT_V2"
 RECEIPT_FIELDS = (
     "controller_commit",
@@ -115,9 +115,9 @@ def _fixed_project_output(value: object) -> Path:
     try:
         relative = lexical.relative_to(Path(os.path.abspath(PROJECT_ROOT)))
     except ValueError as exc:
-        raise ReleaseReceiptRefused("output path is outside D:/Aenv/pro/pro") from exc
+        raise ReleaseReceiptRefused("output path is outside D:/Aenv/pro2") from exc
     if not relative.parts:
-        raise ReleaseReceiptRefused("output must be a file below D:/Aenv/pro/pro")
+        raise ReleaseReceiptRefused("output must be a file below D:/Aenv/pro2")
     return lexical
 
 

@@ -45,7 +45,7 @@ from .ordinary_sweep_label_evidence import (
 
 PRODUCTION_SCHEMA_VERSION = 1
 ATTEMPT = "2026-09-01-attempt-001"
-WORKSPACE_ROOT = Path("D:/Aenv/pro/pro")
+WORKSPACE_ROOT = Path("D:/Aenv/pro2")
 LABEL_ORIGINAL_ROOT = (
     WORKSPACE_ROOT / "week7-first-sweep-label-2026-08-31-attempt-001"
 )

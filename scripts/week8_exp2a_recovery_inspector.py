@@ -27,7 +27,7 @@ from types import ModuleType
 from typing import Any, Mapping
 
 
-INSPECTOR_SCHEMA_VERSION = 1
+INSPECTOR_SCHEMA_VERSION = 2
 EXECUTION_COMMIT = "4515d5165756c8d1669d38d2ee854fa1051b1017"
 OLD_LEASE_TOKEN = "c66ea75437c043ba9a1113e0a31d2f8d"
 OLD_LEASE_PID = 48_960
@@ -35,13 +35,13 @@ ORPHAN_JOB_ID = "178f4ef3ae1e-s1001"
 ORPHAN_CHILD_PID = 29_480
 HIDDEN_PARTIAL_NAME = ".178f4ef3ae1e-s1001.19rl_x0_.partial"
 
-WORKSPACE_ROOT = Path("D:/Aenv/pro/pro")
+WORKSPACE_ROOT = Path("D:/Aenv/pro2")
 CONTROLLER_WORKTREE = WORKSPACE_ROOT / "week8-recovery-controller-worktree"
 EXECUTION_WORKTREE = WORKSPACE_ROOT / "week8-e2a-execution-4515-worktree"
 EXECUTION_SOURCE = EXECUTION_WORKTREE / "src"
 PINNED_PYTHON = WORKSPACE_ROOT / "pro2" / ".venv" / "Scripts" / "python.exe"
 PINNED_BASE_PYTHON = Path(
-    "C:/Users/aladdin-alyanai/AppData/Local/Programs/Python/Python313/python.exe"
+    "D:/Aenv/pro2/runtimes/week8-python313-frozen-001/python.exe"
 )
 PINNED_BASE_RUNTIME = PINNED_BASE_PYTHON.parent
 PINNED_PYVENV = WORKSPACE_ROOT / "pro2" / ".venv" / "pyvenv.cfg"
@@ -55,8 +55,8 @@ PINNED_SITE_PACKAGES = (
     WORKSPACE_ROOT / "pro2" / ".venv" / "Lib" / "site-packages"
 )
 PINNED_GIT = Path(
-    "C:/Users/aladdin-alyanai/.cache/codex-runtimes/codex-primary-runtime/"
-    "dependencies/native/git/mingw64/bin/git.exe"
+    "D:/Aenv/pro2/runtimes/"
+    "git/mingw64/bin/git.exe"
 )
 RAW_AUTHORITY_HELPER = (
     CONTROLLER_WORKTREE / "scripts" / "week8_recovery_raw_authority.py"
@@ -70,7 +70,7 @@ EXPECTED_PINNED_BASE_PYTHON_SHA256 = (
     "5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed"
 )
 EXPECTED_PINNED_PYVENV_SHA256 = (
-    "be7ef6e263b1f7242a8ce45cf329e96896d2d5d54e7fc565acb94fb722f66d71"
+    "e4d43703e6bfd6ad7296ee63e3441af275a4b8a89d72796b316f6458f120e418"
 )
 EXPECTED_PINNED_BASE_RUNTIME_INVENTORY_SHA256 = (
     "0a5aff918e4a46fae2427a593261f8e3640ba439ba4ffebf5081b15eb7df6760"
@@ -79,11 +79,11 @@ EXPECTED_PINNED_BASE_RUNTIME_FILE_COUNT = 5_368
 EXPECTED_PINNED_BASE_RUNTIME_DIRECTORY_COUNT = 504
 EXPECTED_PINNED_BASE_RUNTIME_TOTAL_BYTES = 155_022_742
 EXPECTED_PINNED_VENV_SCRIPTS_INVENTORY_SHA256 = (
-    "1b9814979baf41e16ba3f9a7e754e55fd650bd786338e6ebb3b88441e0ef4c56"
+    "baa95b3f7e3e50a9b388fca6c4fd238fb55fc2e62f4cdc07c1b7c57caa9a54ad"
 )
 EXPECTED_PINNED_VENV_SCRIPTS_FILE_COUNT = 22
 EXPECTED_PINNED_VENV_SCRIPTS_DIRECTORY_COUNT = 0
-EXPECTED_PINNED_VENV_SCRIPTS_TOTAL_BYTES = 2_145_386
+EXPECTED_PINNED_VENV_SCRIPTS_TOTAL_BYTES = 2_145_329
 EXPECTED_PINNED_GIT_SHA256 = (
     "c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9"
 )
@@ -95,16 +95,16 @@ EXPECTED_PINNED_GIT_RUNTIME_FILE_COUNT = 94
 EXPECTED_PINNED_GIT_RUNTIME_DIRECTORY_COUNT = 0
 EXPECTED_PINNED_GIT_RUNTIME_TOTAL_BYTES = 66_573_247
 EXPECTED_PINNED_SITE_PACKAGES_INVENTORY_DIGEST = (
-    "ec8a9ffd7ec91e6fb0234a3e2545a8ab4f41758ada574f5e1a7471409cd6febb"
+    "b113ca128ef007b485fd458c88a780226872fe957d71a9a988442db4f012855b"
 )
 EXPECTED_PINNED_SITE_PACKAGES_FILE_COUNT = 34_514
 EXPECTED_PINNED_SITE_PACKAGES_DIRECTORY_COUNT = 3_183
-EXPECTED_PINNED_SITE_PACKAGES_TOTAL_BYTES = 1_019_096_855
+EXPECTED_PINNED_SITE_PACKAGES_TOTAL_BYTES = 1_019_075_506
 EXPECTED_OUTER_BOOTSTRAP_LITERAL_SHA256 = (
-    "52a4d90f242fe58af53cf95985660f548d14047e838a463ac329aa63f047840e"
+    "73d6f0e5cb126ffde136a3746b620236c847b3791a3eec688ddbd649ab304a3e"
 )
 EXPECTED_RAW_AUTHORITY_HELPER_SHA256 = (
-    "dd40628b2ab13507d741d597190606b108b48589372204edf342e6d628ef137d"
+    "20a9be7eb663c8431f975dd0de3c822817e31a3b07001221ee0b6de5973483e3"
 )
 PREPARATION_ORIGINAL_ROOT = (
     WORKSPACE_ROOT
@@ -157,6 +157,46 @@ _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
 
 class InspectorRefused(ValueError):
     """Historical source or frozen incident evidence is not exact."""
+
+
+_DIAGNOSTIC_ERROR_TYPES = frozenset({
+    "InspectorRefused", "AuthorityRefused", "ValueError", "TypeError",
+    "RuntimeError", "OSError", "PermissionError", "FileNotFoundError",
+    "ImportError", "ModuleNotFoundError", "AttributeError", "KeyError",
+    "NameError", "AssertionError", "UnicodeDecodeError", "JSONDecodeError",
+})
+
+
+def _authority_failure_fingerprints(exc: BaseException) -> list[dict[str, Any]]:
+    """Bound cause diagnostics to hashes and line numbers in two fixed sources."""
+    records = []
+    seen = set()
+    sources = {Path(__file__): "inspector", RAW_AUTHORITY_HELPER: "raw_authority"}
+    while exc is not None and id(exc) not in seen and len(records) < 4:
+        seen.add(id(exc))
+        locations = []
+        trace = exc.__traceback__
+        while trace is not None:
+            source = sources.get(Path(trace.tb_frame.f_code.co_filename))
+            if source is not None and 0 < trace.tb_lineno <= 1_000_000:
+                locations.append({"source": source, "line": trace.tb_lineno})
+            trace = trace.tb_next
+        category = type(exc).__name__
+        records.append({
+            "error_type": category if category in _DIAGNOSTIC_ERROR_TYPES else "Exception",
+            "reason_sha256": _sha_bytes(str(exc).encode("utf-8")),
+            "locations": locations[-4:],
+        })
+        exc = exc.__cause__ if exc.__cause__ is not None else (
+            None if exc.__suppress_context__ else exc.__context__
+        )
+    return records
+
+
+class _InspectorAuthorityRefused(InspectorRefused):
+    def __init__(self, cause: BaseException) -> None:
+        super().__init__("inspector raw authority revalidation refused")
+        self.authority_failure = _authority_failure_fingerprints(cause)
 
 
 def _canonical(value: object) -> bytes:
@@ -338,7 +378,7 @@ def _validate_entrypoint_authority() -> dict[str, Any]:
             helper_sha256=EXPECTED_RAW_AUTHORITY_HELPER_SHA256,
         )
     except (OSError, TypeError, ValueError) as exc:
-        raise InspectorRefused("inspector raw authority revalidation refused") from exc
+        raise _InspectorAuthorityRefused(exc) from exc
     if _canonical_ascii(observed) != _canonical_ascii(gate["raw_authority"]):
         raise InspectorRefused("inspector raw authority changed")
     return gate
@@ -723,7 +763,8 @@ def _attempt_row(Supervisor: Any, read_json: Any, job_id: str, local: Path) -> d
     }
 
 
-def _inspect_jobs(P: Any, Plan: Any, Launch: Any, B: Any, Supervisor: Any, read_json: Any, checkpoint: dict[str, Any], events: list[dict[str, Any]]) -> dict[str, Any]:
+def _inspect_jobs(P: Any, Plan: Any, Launch: Any, B: Any, Supervisor: Any, read_json: Any,
+                  checkpoint: dict[str, Any], events: list[dict[str, Any]], *, relocation_access: Any) -> dict[str, Any]:
     roster = [job.job_id for job in Plan.new_exp2a_jobs()]
     if len(roster) != 261 or len(set(roster)) != 261:
         raise InspectorRefused("historical roster is not exactly 261 jobs")
@@ -784,12 +825,14 @@ def _inspect_jobs(P: Any, Plan: Any, Launch: Any, B: Any, Supervisor: Any, read_
 
     durable_rows: list[dict[str, Any]] = []
     for job_id, event in sorted(synced.items()):
+        local = local_root / job_id
+        durable = durable_root / job_id
+        observation = relocation_access.historical_pair_at(local, durable)
         reconciled = Launch.reconcile_completed_exp2a_job(job_id, **request)
         if type(reconciled) is not dict:
             raise InspectorRefused(f"historical durable validator failed for {job_id}")
-        # The public reconciler returns the complete source-pair attestation;
-        # ``job_synced`` intentionally stores only these three digest fields.
-        # Compare the exact event projection, not unlike record shapes.
+        # Current filesystem identity and the preserved event's original identity
+        # are separate claims linked by the independently verified relocation pair.
         event_projection = {
             name: reconciled.get(name)
             for name in (
@@ -798,17 +841,19 @@ def _inspect_jobs(P: Any, Plan: Any, Launch: Any, B: Any, Supervisor: Any, read_
                 "copy_evidence_digest",
             )
         }
+        event_projection['copy_evidence_digest'] = observation.historical_copy_digest
         if event_projection != event["data"]:
             raise InspectorRefused(f"historical durable validator differs for {job_id}")
-        local = local_root / job_id
-        durable = durable_root / job_id
         local_digest = B._job_tree_digest(local)
         durable_digest = B._job_tree_digest(durable)
         copy_digest = B._copy_evidence_digest(local, durable)
         if (
             local_digest != durable_digest
+            or local_digest != observation.policy.content_digest
             or reconciled.get("source_tree_digest") != local_digest
+            or reconciled.get("copy_tree_digest") != durable_digest
             or reconciled.get("copy_evidence_digest") != copy_digest
+            or copy_digest != observation.observed_copy_digest
         ):
             raise InspectorRefused(f"historical durable tree differs for {job_id}")
         durable_rows.append(
@@ -817,8 +862,12 @@ def _inspect_jobs(P: Any, Plan: Any, Launch: Any, B: Any, Supervisor: Any, read_
                 "tree_digest": local_digest,
                 "execution_digest": reconciled["execution_digest"],
                 "copy_evidence_digest": copy_digest,
+                "historical_copy_evidence_digest": observation.historical_copy_digest,
+                "relocation_pair_key": observation.policy.key,
             }
         )
+        if relocation_access.historical_pair_at(local, durable) != observation:
+            raise InspectorRefused(f"relocation pair changed during inspection: {job_id}")
 
     untouched = sorted(set(roster) - set(started))
     if len(untouched) != EXPECTED_COUNTS["untouched"]:
@@ -886,6 +935,48 @@ def _run() -> dict[str, Any]:
     gate = _validate_entrypoint_authority()
     _validate_execution_source(gate)
     finder, dependency_finder = _install_old_source(gate)
+    raw_module = _load_bound_raw_authority()
+    loader = getattr(raw_module, 'load_verified_relocation_helpers', None)
+    if not callable(loader):
+        raise InspectorRefused('verified relocation helper loader is unavailable')
+    raw = gate['raw_authority']
+    helpers = loader(raw)
+    binding = helpers.validate(raw)
+    metadata = helpers.modules['metadata']
+    access = metadata.load_registered_access(helpers.modules['provenance'])
+    # Establish the existing verified Git seam before any scientific module can
+    # capture an alias of historical bare git_state.
+    __import__('bu.runrecord')
+    with metadata.verified_historical_git_state(raw, allow_imports=True):
+        from bu.experiments import week8_exp2a_production as P
+        from bu.experiments import week8_exp2a_repair_launch as Launch
+        from bu.experiments import week8_exp2a_repairs as Plan
+        from bu.experiments import prefit_storage as Storage
+
+        sources = metadata.SourceReaders(access, Plan, Launch.S)
+        preflight = metadata.PreflightReaders(access, sources, Launch, Storage)
+        checkpoints = metadata.CheckpointReaders(access, preflight)
+        completed = metadata.CompletedJobReaders(access, checkpoints)
+        events = metadata.EventReaders(access, checkpoints)
+        controls = metadata.ControlReaders(access, P, events)
+        with sources.installed(), preflight.installed(), checkpoints.installed(), completed.installed(), events.installed(), controls.installed():
+            material = _run_material(gate, finder, dependency_finder, access)
+    if helpers.validate(raw) != binding:
+        raise InspectorRefused('relocation helper bindings changed during inspection')
+    if _verify_loaded_bu_modules(gate, finder, dependency_finder) != material['loaded_bu_modules']:
+        raise InspectorRefused('historical import inventory changed after reader restoration')
+    fresh_gate = _validate_entrypoint_authority()
+    if fresh_gate['record_digest'] != gate['record_digest']:
+        raise InspectorRefused('raw authority changed across relocation scope')
+    payload = {key:value for key,value in material.items() if key != 'inspector_digest'}
+    payload['relocation'] = {'relocation_schema_version':1,'attestation_sha256':access.attestation_sha256,
+        'policy_sha256':metadata.POLICY_SHA256,'pair_count':metadata.EXPECTED_PAIR_COUNT,
+        'document_count':metadata.EXPECTED_DOCUMENT_COUNT,'helpers':binding}
+    return {**payload,'inspector_digest':_sha_bytes(_canonical(payload))}
+
+
+def _run_material(gate: Mapping[str, Any], finder: object, dependency_finder: object,
+                  relocation_access: Any) -> dict[str, Any]:
 
     from bu import durable  # type: ignore[import-not-found]
     from bu.experiments import batch as B  # type: ignore[import-not-found]
@@ -905,6 +996,7 @@ def _run() -> dict[str, Any]:
         durable.read_json,
         checkpoint,
         events,
+        relocation_access=relocation_access,
     )
     staging = _validate_empty_staging(P)
     report_root = OUTPUT_ROOT / Launch.REPORT_DIRECTORY
@@ -990,11 +1082,13 @@ def main() -> int:
         refusal = {
             "inspector_schema_version": INSPECTOR_SCHEMA_VERSION,
             "status": "refused",
-            "error_type": type(exc).__name__,
+            "error_type": "InspectorRefused" if isinstance(exc, _InspectorAuthorityRefused) else type(exc).__name__,
             "reason_sha256": _sha_bytes(str(exc).encode("utf-8")),
             "scientific_values_emitted": False,
             "production_mutation_performed": False,
         }
+        if isinstance(exc, _InspectorAuthorityRefused):
+            refusal["authority_failure"] = exc.authority_failure
         print(json.dumps(refusal, sort_keys=True, separators=(",", ":")))
         return 2
     print(json.dumps(result, sort_keys=True, separators=(",", ":"), allow_nan=False))

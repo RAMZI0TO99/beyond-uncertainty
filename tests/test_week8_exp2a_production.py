@@ -417,8 +417,8 @@ def _write_reporting_binding(
 
 
 def test_production_constants_are_exact_attempt_001() -> None:
-    assert P._REGISTERED_WORKSPACE_ROOT == Path("D:/Aenv/pro/pro")
-    assert P.WORKSPACE_ROOT == Path("D:/Aenv/pro/pro")
+    assert P._REGISTERED_WORKSPACE_ROOT == Path("D:/Aenv/pro2")
+    assert P.WORKSPACE_ROOT == Path("D:/Aenv/pro2")
     assert {name: path.name for name, path in P._fixed_roots().items()} == {
         "preparation": "week8-execution-preparation-2026-09-01-attempt-001",
         "preparation_original": "exp2a-original",

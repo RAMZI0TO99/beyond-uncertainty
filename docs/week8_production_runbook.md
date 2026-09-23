@@ -4,14 +4,15 @@
 authorized but not yet consumed.  D-168 supersedes the earlier startup chain
 before that authority is consumed.  This runbook records the fixed operational
 order; it is not a result or substitute for immutable evidence.  Every path is
-below `D:/Aenv/pro/pro`, every fit uses the frozen CPU 4/4 route, and the GPU
+below `D:/Aenv/pro2`, every fit uses the frozen CPU 4/4 route, and the GPU
 remains unused.
 
-D-169 correction checkpoint: release50251fb3 status refused a stale controller
-environment requirement before recovery. Preserve attempt001 release records.
-The corrected controller requires a new clean tested commit, V2 receipt/audits
-under `.tmp/week8-d168-release-attempt-004`, and independent status. Required
-stage/native runtime paths and all D-161 evidence identities stay unchanged.
+D-171 relocation checkpoint: the controller and dependencies now live below
+D:/Aenv/pro2 with explicit historical/current provenance. Preserve release
+attempts001-004 and their refusals. A fresh complete gate and clean local commit
+are required before V2 receipt/audits under `.tmp/week8-d168-release-attempt-005`
+and independent native status. The relocated stage0 policy literals below apply;
+original evidence bytes and historical identities remain separately preserved.
 
 ## Clean-revision prerequisite
 
@@ -102,30 +103,30 @@ entrypoint, raw helper, stage-0 source, encoded payload and exact environment
 policy.  First verify the registered stage-0 constants:
 
 ```powershell
-& 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
-  'D:\Aenv\pro\pro\week8-recovery-controller-worktree\scripts\week8_recovery_stage0.py' --policy
+& 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
+  'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_stage0.py' --policy
 ```
 
-Require `stage0_source_sha256=f076b94a3318dd0d4c9344381a9c5005946c119014e0351b15109c94f41c0cb5`,
-`stage0_encoded_sha256=ba7d5bb992a6f66dbb6f825c911eefbf9f94fc62e0f5577d3d441b06fd5e130c`,
-and `stage0_environment_policy_sha256=13ded44c5df93186af2fa8c7cdc714d74941d91fc14102d5c80b05e0c5b021f3`.
+Require `stage0_source_sha256=29183177378884857c03f37e8da1bd64f1643bca4e32ff56fb9899ef26b25f48`,
+`stage0_encoded_sha256=401bfeb512de0233a1663365cda68f8f733cdf96682561a20f8ce6d1c48a5001`,
+and `stage0_environment_policy_sha256=759d257d3842052eeb2f38bcea5ede02b9ddff617979f486ca6fa1c280a7af49`.
 Create the external release directory once at
-`D:\Aenv\pro\pro\.tmp\week8-d168-release-attempt-004`; it is outside both
+`D:\Aenv\pro2\.tmp\week8-d168-release-attempt-005`; it is outside both
 worktrees and must be empty.  Then invoke the standalone renderer with literal,
 reviewed values (never values dynamically parsed from Git or result evidence):
 
 ```powershell
-& 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
-  'D:\Aenv\pro\pro\week8-recovery-controller-worktree\scripts\week8_recovery_release_receipt.py' `
-  --output 'D:\Aenv\pro\pro\.tmp\week8-d168-release-attempt-004\release-receipt-v2.txt' `
+& 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
+  'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_release_receipt.py' `
+  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-005\release-receipt-v2.txt' `
   --controller-commit 'FINAL_CONTROLLER_COMMIT' `
   --native-launcher-sha256 'FINAL_NATIVE_LAUNCHER_SHA256' `
   --outer-sha256 'FINAL_OUTER_SHA256' `
   --entry-sha256 'FINAL_ENTRYPOINT_SHA256' `
   --helper-sha256 'FINAL_HELPER_SHA256' `
-  --stage0-source-sha256 'f076b94a3318dd0d4c9344381a9c5005946c119014e0351b15109c94f41c0cb5' `
-  --stage0-encoded-sha256 'ba7d5bb992a6f66dbb6f825c911eefbf9f94fc62e0f5577d3d441b06fd5e130c' `
-  --stage0-environment-policy-sha256 '13ded44c5df93186af2fa8c7cdc714d74941d91fc14102d5c80b05e0c5b021f3'
+  --stage0-source-sha256 '29183177378884857c03f37e8da1bd64f1643bca4e32ff56fb9899ef26b25f48' `
+  --stage0-encoded-sha256 '401bfeb512de0233a1663365cda68f8f733cdf96682561a20f8ce6d1c48a5001' `
+  --stage0-environment-policy-sha256 '759d257d3842052eeb2f38bcea5ede02b9ddff617979f486ca6fa1c280a7af49'
 ```
 
 The renderer uses OS-level exclusive creation and refuses an existing path.
@@ -134,11 +135,11 @@ Hash the completed receipt once and substitute that literal as
 with `week8_recovery_stage0.py`; for example, the first is:
 
 ```powershell
-& 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
-  'D:\Aenv\pro\pro\week8-recovery-controller-worktree\scripts\week8_recovery_stage0.py' `
-  --output 'D:\Aenv\pro\pro\.tmp\week8-d168-release-attempt-004\stage0-status-audit.txt' `
-  --launcher-path 'D:\Aenv\pro\pro\week8-recovery-controller-worktree\scripts\week8_recovery_native_launcher.ps1' `
-  --receipt-path 'D:\Aenv\pro\pro\.tmp\week8-d168-release-attempt-004\release-receipt-v2.txt' `
+& 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
+  'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_stage0.py' `
+  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-005\stage0-status-audit.txt' `
+  --launcher-path 'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_native_launcher.ps1' `
+  --receipt-path 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-005\release-receipt-v2.txt' `
   --launcher-sha256 'FINAL_NATIVE_LAUNCHER_SHA256' `
   --receipt-sha256 'FINAL_RECEIPT_SHA256' `
   --command status
@@ -198,7 +199,7 @@ retained handles, exact inventories, and fail-closed postconditions.
 
 ## Exact root inventory
 
-All paths below are direct children of `D:\Aenv\pro\pro` except the two named
+All paths below are direct children of `D:\Aenv\pro2` except the two named
 preparation children.  Every `project-evidence` path is an independent
 same-volume copy, not an off-device backup.
 
@@ -229,7 +230,7 @@ Experiment 2A owns:
   `week8-d168-stage0-runtime-attempt-001` and required-empty native startup
   directory `week8-d167-native-runtime-attempt-001`; and the external,
   no-overwrite release/audit records under ignored project-local
-  `.tmp/week8-d168-release-attempt-004`, outside both worktrees.
+  `.tmp/week8-d168-release-attempt-005`, outside both worktrees.
 
 The exclusion publication reopens the historical
 `week7-first-sweep-label-2026-08-31-attempt-001` and its `-project-evidence`
@@ -283,9 +284,9 @@ The controller commit below is the same hard-coded final release commit; do
 not derive it by parsing incident or result evidence.
 
 ```powershell
-Set-Location 'D:\Aenv\pro\pro\week8-recovery-controller-worktree'
+Set-Location 'D:\Aenv\pro2\week8-recovery-controller-worktree'
 $RecoveryCommit = 'FINAL_CONTROLLER_COMMIT'
-$env:TEMP = 'D:\Aenv\pro\pro\week8-downstream-runtime-2026-09-02-attempt-001'
+$env:TEMP = 'D:\Aenv\pro2\week8-downstream-runtime-2026-09-02-attempt-001'
 $env:TMP = $env:TEMP
 $env:TMPDIR = $env:TEMP
 New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
@@ -299,14 +300,36 @@ $env:PYTHONDONTWRITEBYTECODE = '1'
 $env:PYTHONNOUSERSITE = '1'
 $env:PYTHONSAFEPATH = '1'
 Remove-Item Env:PYTHONHOME -ErrorAction SilentlyContinue
-$env:PYTHONPATH = 'D:\Aenv\pro\pro\week8-recovery-controller-worktree\src'
+$env:PYTHONPATH = 'D:\Aenv\pro2\week8-recovery-controller-worktree\src'
+# Process-local Git controls for these later direct wrappers; no global config.
+Get-ChildItem Env: | Where-Object { $_.Name -like 'GIT_*' } | ForEach-Object { Remove-Item -LiteralPath ('Env:' + $_.Name) }
+$env:BU_RUNRECORD_GIT_EXECUTABLE = 'D:\Aenv\pro2\runtimes\git\mingw64\bin\git.exe'
+$env:GIT_EXEC_PATH = 'D:\Aenv\pro2\runtimes\git\mingw64\bin'
+$env:GIT_CONFIG_GLOBAL = 'NUL'
+$env:GIT_CONFIG_SYSTEM = 'NUL'
+$env:GIT_CONFIG_NOSYSTEM = '1'
+$env:GIT_ATTR_NOSYSTEM = '1'
+$env:GIT_NO_REPLACE_OBJECTS = '1'
+$env:GIT_OPTIONAL_LOCKS = '0'
+$env:GIT_TERMINAL_PROMPT = '0'
+$env:GIT_CONFIG_COUNT = '5'
+$env:GIT_CONFIG_KEY_0 = 'safe.directory'
+$env:GIT_CONFIG_VALUE_0 = 'D:/Aenv/pro2/week8-recovery-controller-worktree'
+$env:GIT_CONFIG_KEY_1 = 'core.fsmonitor'
+$env:GIT_CONFIG_VALUE_1 = 'false'
+$env:GIT_CONFIG_KEY_2 = 'core.untrackedCache'
+$env:GIT_CONFIG_VALUE_2 = 'false'
+$env:GIT_CONFIG_KEY_3 = 'core.hooksPath'
+$env:GIT_CONFIG_VALUE_3 = 'NUL'
+$env:GIT_CONFIG_KEY_4 = 'core.attributesFile'
+$env:GIT_CONFIG_VALUE_4 = 'NUL'
 ```
 
 Next publish the no-compute pre-reserve exclusion report; this command has no
 route to reserve selection or fitting:
 
 ```powershell
-& 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_exclusion_production publish --expected-git-commit $RecoveryCommit
+& 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_exclusion_production publish --expected-git-commit $RecoveryCommit
 if ($LASTEXITCODE -ne 0) { throw "Pre-reserve exclusion publication refused" }
 ```
 
@@ -314,19 +337,19 @@ Finally run the baseline wrapper serially.  E2B must finish before sweep-002
 preflight starts:
 
 ```powershell
-& 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production prepare --expected-git-commit $RecoveryCommit
+& 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production prepare --expected-git-commit $RecoveryCommit
 if ($LASTEXITCODE -ne 0) { throw "Baseline preparation refused" }
-& 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production preflight-exp2b
+& 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production preflight-exp2b
 if ($LASTEXITCODE -ne 0) { throw "E2B preflight refused" }
-& 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production launch-exp2b
+& 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production launch-exp2b
 if ($LASTEXITCODE -ne 0) { throw "E2B launch refused or was interrupted; do not continue" }
-& 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production monitor-exp2b
+& 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production monitor-exp2b
 if ($LASTEXITCODE -ne 0) { throw "E2B terminal monitor refused" }
-& 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production preflight-sweep-002
+& 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production preflight-sweep-002
 if ($LASTEXITCODE -ne 0) { throw "Sweep-002 preflight refused" }
-& 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production launch-sweep-002
+& 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production launch-sweep-002
 if ($LASTEXITCODE -ne 0) { throw "Sweep-002 launch refused or was interrupted; do not continue" }
-& 'D:\Aenv\pro\pro\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production monitor-sweep-002
+& 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -s -P -m bu.experiments.week8_baseline_production monitor-sweep-002
 if ($LASTEXITCODE -ne 0) { throw "Sweep-002 terminal monitor refused" }
 ```
 
@@ -386,3 +409,19 @@ are diagnostic evidence and never authorization to retry or consume recovery.
 After a new clean commit and attempt004 receipt/status, inspect any refusal
 fingerprints and resolve their cause. Every existing exact-count/liveness gate,
 empty runtime check, native ceremony and one-use recovery rule still applies.
+
+## 2026-09-20 D-171 relocation release prerequisite
+
+All operator paths above now refer to the consolidated workspace. Original JSON
+still records old logical paths; the fixed attestation resolves them without
+editing bytes or claiming historical identities were reproduced. See
+week8_relocation_provenance.md. Production child LOCALAPPDATA remains pinned to C:/Users/aladdin-alyanai/AppData/Local; only the diagnostic qa-environment-repair-002 used a project-local profile.
+Preserve attempts001–004 and all failed/interrupted gates. Fresh complete QA,
+governance and a clean controller commit are required before creating attempt005
+V2 receipt/audits with the new exact release hashes. If an attempt path is already
+occupied, preserve it and choose a fresh explicitly documented attempt; never
+overwrite. Execute only renderer stdout retained in memory, never an audit file.
+Do not run ordinary E2A launch or directly invoke the controller/worker/inspector.
+Successful native status/counts/liveness must precede adjudication and the sole
+recovery. Original lease restoration did not grant ownership. Do not regenerate
+attestation to accept drift. No publication/push/deployment/external messages.

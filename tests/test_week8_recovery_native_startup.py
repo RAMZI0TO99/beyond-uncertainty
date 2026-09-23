@@ -191,7 +191,7 @@ def test_inbox_powershell_smoke_binds_exact_argv_environment_and_prefixes(
     ]
     original = report["orig_argv"]
     assert Path(original[0]).samefile(
-        Path("D:/Aenv/pro/pro/pro2/.venv/Scripts/python.exe")
+        Path("D:/Aenv/pro2/pro2/.venv/Scripts/python.exe")
     )
     assert original[1:7] == ["-I", "-S", "-B", "-X", "utf8", "-c"]
     assert original[8:] == [
@@ -205,10 +205,10 @@ def test_inbox_powershell_smoke_binds_exact_argv_environment_and_prefixes(
     assert isinstance(original[7], str) and "native_environment" in original[7]
     assert Path(report["cwd"]).samefile(runtime)
     assert Path(report["executable"]).samefile(
-        Path("D:/Aenv/pro/pro/pro2/.venv/Scripts/python.exe")
+        Path("D:/Aenv/pro2/pro2/.venv/Scripts/python.exe")
     )
     base = Path(
-        "C:/Users/aladdin-alyanai/AppData/Local/Programs/Python/Python313"
+        "D:/Aenv/pro2/runtimes/week8-python313-frozen-001"
     )
     assert Path(report["base_executable"]).samefile(base / "python.exe")
     assert Path(report["prefix"]).samefile(base)

@@ -74,6 +74,13 @@ def _replace_twins(name: str, document: dict[str, Any]) -> tuple[dict[str, Any],
 
 @pytest.fixture
 def scenario(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
+    # Lifecycle/transport tests isolate relocation admission; real captured-loader
+    # and frozen reader scopes have their own adversarial integration fixtures.
+    relocation = {"relocation_schema_version": 1, "attestation_sha256": "a" * 64,
+                  "policy_sha256": "b" * 64, "pair_count": 304, "document_count": 629,
+                  "helpers": {"helper_schema_version": 1, "synthetic": True}}
+    monkeypatch.setattr(W, "_worker_relocation_admission", lambda authority: nullcontext())
+    monkeypatch.setattr(W, "_admitted_relocation", lambda: (None, None, copy.deepcopy(relocation)))
     # The worker starts under ``-I -S -B -X utf8`` before any execution-tree ``bu`` import.
     # Keep this fixture order-independent when another test module imported the
     # controller-tree package earlier in the same pytest interpreter.
@@ -378,7 +385,7 @@ def scenario(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace
         path.write_bytes(checkpoint_bytes)
 
     lease = {
-        "schema_version": 1,
+        "schema_version": W.EXECUTION_LEASE_SCHEMA_VERSION,
         "lease_name": "week7-production",
         "pid": W.OLD_LEASE_PID,
         "token": W.OLD_LEASE_TOKEN,
@@ -785,8 +792,9 @@ def scenario(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace
     }
     inventory = W._seal(
         {
-            "inventory_schema_version": 1,
+            "inventory_schema_version": 2,
             "execution_commit": W.EXECUTION_COMMIT,
+            "relocation": copy.deepcopy(relocation),
             "control": {"synthetic": True},
             "lease": {
                 "path": str(W._active_lease_path().resolve()),
@@ -987,6 +995,78 @@ def _successful_lower() -> dict[str, Any]:
     }
 
 
+@pytest.mark.parametrize("mutation", [None, "missing_process", "pid", "executable", "relocation", "legacy_inventory"])
+def test_parent_published_incident_roundtrips_through_both_consumers(scenario, monkeypatch, mutation):
+    from bu.experiments import week8_exp2a_recovery as C
+
+    monkeypatch.setattr(C, "RECOVERY_ROOT", scenario.workspace / "parent-publication")
+    monkeypatch.setattr(C, "RECOVERY_COPY_ROOT", scenario.workspace / "parent-publication-copy")
+    monkeypatch.setattr(C.Plan, "WORKSPACE_ROOT", scenario.workspace)
+    monkeypatch.setattr(C.Plan, "COMMON_LEASE_ROOT", scenario.workspace / "week7-production-control")
+    hashes = {**C.EXPECTED_HASHES, "old_checkpoint": W.EXPECTED_OLD_CHECKPOINT_SHA256,
+              "old_lease": W.EXPECTED_OLD_LEASE_SHA256}
+    monkeypatch.setattr(C, "EXPECTED_HASHES", hashes)
+    monkeypatch.setattr(C, "_controller_authority", lambda: scenario.authority)
+    monkeypatch.setattr(C, "_capture_twice", lambda: (copy.deepcopy(scenario.incident["inventory"]), {}))
+    monkeypatch.setattr(C, "_relocation_state", lambda: (None, W._admitted_relocation()[2]))
+    monkeypatch.setattr(C, "_quiescent_liveness", lambda: scenario.incident["liveness_stability_reports"][0]["report"])
+    # Only the OS observer is doubled; the actual parent process attestation
+    # hashes the fixture interpreter and validates its exact record shape.
+    monkeypatch.setattr(C.windows_liveness, "capture_windows_process_identity", lambda: {
+        "pid": os.getpid(), "kernel_executable_path": scenario.authority["base_python"]["path"],
+        "creation_time_100ns": 123456789,
+    })
+    result = C.adjudicate()
+    assert result["status"] == "adjudicated"
+    paths = C._record_paths(C.INCIDENT_FILE)
+    document = C.read_json(paths[0])
+    assert paths[0].read_bytes() == paths[1].read_bytes()
+    C._validate_incident_contract(document)
+    W._validate_incident(document)
+    assert document["controller_process"]["pid"] == os.getpid()
+    assert document["inventory"]["inventory_schema_version"] == 2
+    if mutation is None:
+        return
+    if mutation == "missing_process": del document["controller_process"]
+    elif mutation == "pid": document["controller_process"]["pid"] = True
+    elif mutation == "executable": document["controller_process"]["kernel_executable_sha256"] = "f" * 64
+    else:
+        inventory = document["inventory"]
+        if mutation == "relocation": inventory["relocation"]["policy_sha256"] = "f" * 64
+        else: inventory["inventory_schema_version"] = 1
+        document["inventory"] = C._seal({k: v for k, v in inventory.items() if k != "inventory_digest"}, "inventory_digest")
+        document["inventory_digest"] = document["inventory"]["inventory_digest"]
+    document = C._seal({k: v for k, v in document.items() if k != "record_digest"})
+    for validate in (C._validate_incident_contract, W._validate_incident):
+        with pytest.raises(ValueError):
+            validate(document)
+
+
+@pytest.mark.parametrize("mutation", [None, "return_copy", "body", "changed_twin", "wrong_binding"])
+def test_worker_retains_only_its_verified_transition_for_children(scenario, mutation):
+    chain = W._validate_full_chain(scenario.invocation, scenario.invocation_sha)
+    invocation = copy.deepcopy(scenario.invocation)
+    if mutation == "wrong_binding": invocation["transition_completion"]["file_sha256"] = "f" * 64
+    def run():
+        with W._authorized_orphan_transition(invocation, chain):
+            assert W._admitted_orphan_transition() == scenario.invocation["transition_completion"]
+            with pytest.raises(W.BootstrapRefused, match="already active"):
+                with W._authorized_orphan_transition(invocation, chain):
+                    pytest.fail("nested transition admission accepted")
+            if mutation == "return_copy":
+                observed = W._admitted_orphan_transition()
+                observed["file_sha256"] = "f" * 64
+                assert W._admitted_orphan_transition() == invocation["transition_completion"]
+            if mutation == "body": raise ValueError("synthetic lower refusal")
+            if mutation == "changed_twin": W._record_paths(W.TRANSITION_COMPLETION_FILE)[1].write_bytes(b"changed")
+    if mutation in {None, "return_copy"}: run()
+    else:
+        with pytest.raises(ValueError): run()
+    assert W._AUTHORIZED_ORPHAN_TRANSITION is None
+    with pytest.raises(W.BootstrapRefused, match="not authorized"):
+        W._admitted_orphan_transition()
+
+
 def _install_synthetic_supervisor(
     launch: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[object, object]:
@@ -1010,6 +1090,7 @@ def _install_synthetic_supervisor(
     monkeypatch.setattr(
         W, "_verified_historical_git_state", lambda authority: nullcontext()
     )
+    monkeypatch.setattr(W, "_worker_relocation_readers", lambda launch: nullcontext())
     return original_run_isolated, original_get_context
 
 
@@ -1528,7 +1609,7 @@ def test_every_prior_continuation_artifact_refuses_before_lower_launch(
         _write_json(
             W._active_lease_path(),
             {
-                "schema_version": 1,
+                "schema_version": W.EXECUTION_LEASE_SCHEMA_VERSION,
                 "lease_name": "week7-production",
                 "pid": 999,
                 "token": "9" * 32,
@@ -1551,6 +1632,48 @@ def test_every_prior_continuation_artifact_refuses_before_lower_launch(
     assert W._any_record_path(W.BOOTSTRAP_CLAIM_FILE)
     terminal, _ = W._load_record(W.BOOTSTRAP_TERMINAL_FILE, record_type="bootstrap_terminal")
     assert terminal["status"] == "refused"
+
+
+@pytest.mark.parametrize('target',['archive','active'])
+@pytest.mark.parametrize('version',[1,2.0,True,'2',None])
+def test_orphan_and_active_lease_require_exact_execution_schema(
+    scenario: SimpleNamespace, monkeypatch: pytest.MonkeyPatch, target: str, version: object,
+) -> None:
+    archive = W._orphan_archive_path()
+    row = json.loads(archive.read_bytes())
+    assert row['schema_version'] == 2
+    if target == 'active':
+        row.update({'token':'9'*32,'pid':os.getpid()})
+        path = W._active_lease_path()
+    else:path = archive
+    row['schema_version'] = version
+    _write_json(path,row)
+    if target == 'archive':
+        # Prove semantic rejection independently of the external file pin.
+        monkeypatch.setattr(W,'EXPECTED_OLD_LEASE_SHA256',W._sha_file(path))
+    with pytest.raises(W.BootstrapRefused,match='lease.*identity'):
+        W._validate_orphan_archive(require_active_absent=False)
+
+
+def test_orphan_reader_accepts_real_supervisor_lease_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from bu.experiments.supervisor import acquire_batch_lease, SUPERVISOR_SCHEMA_VERSION
+    root = tmp_path/'workspace'
+    root.mkdir()
+    monkeypatch.setattr(W,'WORKSPACE_ROOT',root)
+    with acquire_batch_lease(root/'lease-producer',lease_name='week7-production') as lease:
+        row = json.loads(lease.path.read_bytes())
+        assert row['schema_version'] == SUPERVISOR_SCHEMA_VERSION == W.EXECUTION_LEASE_SCHEMA_VERSION == 2
+        monkeypatch.setattr(W,'OLD_LEASE_TOKEN',row['token'])
+        monkeypatch.setattr(W,'OLD_LEASE_PID',row['pid'])
+        archive = W._orphan_archive_path()
+        archive.parent.mkdir(parents=True)
+        archive.write_bytes(lease.path.read_bytes())
+        monkeypatch.setattr(W,'EXPECTED_OLD_LEASE_SHA256',W._sha_file(archive))
+        assert W._validate_orphan_archive() == row
+        with acquire_batch_lease(root/'week7-production-control',lease_name='week7-production'):
+            assert W._validate_orphan_archive(require_active_absent=False) == row
 
 
 @pytest.mark.parametrize("prior", ["claim", "terminal"])
@@ -2246,7 +2369,7 @@ def test_exact_token_monkeypatch_delegates_others_and_restores(
         _write_json(
             W._active_lease_path(),
             {
-                "schema_version": 1,
+                "schema_version": W.EXECUTION_LEASE_SCHEMA_VERSION,
                 "lease_name": "week7-production",
                 "pid": 12345,
                 "token": new_token,

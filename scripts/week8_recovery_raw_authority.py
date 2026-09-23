@@ -19,7 +19,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import FunctionType, ModuleType
 from typing import Any, Mapping, Sequence
 
 
@@ -1628,6 +1628,143 @@ def admitted_execution_sources(
     return admitted_sources(authority, "execution")
 
 
+_RELOCATION_HELPERS = (
+    ('provenance', '_week8_d161_relocation_provenance',
+     'src/bu/experiments/week8_relocation_provenance.py'),
+    ('metadata', '_week8_d161_relocation_metadata', 'scripts/week8_relocation_metadata.py'),
+)
+
+
+def _helper_constant(value: object) -> object:
+    """Snapshot only literal policy values, preserving exact numeric types."""
+    if value is None or type(value) in (bool, int, float, str):
+        return [type(value).__name__, value]
+    if isinstance(value, Path):
+        return [type(value).__name__, str(value)]
+    if type(value) in (tuple, list, set, frozenset):
+        rows = [_helper_constant(item) for item in value]
+        if type(value) in (set, frozenset):rows.sort(key=canonical_json_bytes)
+        return [type(value).__name__, rows]
+    if type(value) is dict:
+        return ['dict', sorted([[_helper_constant(key), _helper_constant(item)]
+                               for key, item in value.items()], key=canonical_json_bytes)]
+    # Other objects (compiled patterns/types/imports) are checked by identity.
+    return ['identity', id(value)]
+
+
+class VerifiedRelocationHelpers:
+    """Two captured non-bu modules; validate before and after adapter scopes."""
+
+    def __init__(self, authority: Mapping[str, Any], modules: dict[str, ModuleType]) -> None:
+        self.modules = dict(modules)
+        self._modules = dict(modules)
+        self._namespaces: list[tuple[object, dict[str, object]]] = []
+        self._functions: list[tuple[FunctionType, tuple[object, ...]]] = []
+        self._constants: list[tuple[object, str, bytes]] = []
+        self._rows: list[dict[str, str]] = []
+        self._loaders: dict[str, VerifiedSourceLoader] = {}
+        for role, name, relative in _RELOCATION_HELPERS:
+            module = modules[role]
+            self._loaders[role] = module.__loader__
+            self._rows.append(self._row(authority, role, name, relative))
+            namespaces: list[object] = [module]
+            namespaces.extend(value for value in vars(module).values()
+                              if isinstance(value, type) and value.__module__ == name)
+            for namespace in namespaces:
+                values = dict(vars(namespace))
+                self._namespaces.append((namespace, values))
+                for key, value in values.items():
+                    function = value.__func__ if isinstance(value, (staticmethod, classmethod)) else value
+                    if type(function) is FunctionType and function.__module__ == name:
+                        self._functions.append((function, self._function_state(function)))
+                    if key.isupper():
+                        self._constants.append((namespace, key, canonical_json_bytes(_helper_constant(value))))
+        self.validate(authority)
+
+    @staticmethod
+    def _function_state(function: FunctionType) -> tuple[object, ...]:
+        return (function.__code__, function.__defaults__,
+                canonical_json_bytes(_helper_constant(function.__kwdefaults__)),
+                canonical_json_bytes(_helper_constant(function.__annotations__)))
+
+    def _row(self, authority: Mapping[str, Any], role: str, name: str, relative: str) -> dict[str, str]:
+        recorded, _ = _observed_worktree(authority, 'controller')
+        source = admitted_source_bytes(authority, 'controller', relative)
+        return {'role':role, 'module_id':name, 'path':str(Path(recorded['path'])/relative),
+                'source_sha256':sha256_bytes(source),
+                'git_blob':admitted_git_blob(authority, 'controller', relative),
+                'controller_tree_digest':recorded['worktree_inventory_digest']}
+
+    def validate(self, authority: Mapping[str, Any]) -> dict[str, Any]:
+        if set(self.modules) != set(self._modules) or any(
+                self.modules[key] is not value for key, value in self._modules.items()):
+            raise AuthorityRefused('relocation helper bundle modules changed')
+        rows = []
+        for role, name, relative in _RELOCATION_HELPERS:
+            row = self._row(authority, role, name, relative)
+            module, loader = self._modules[role], self._loaders[role]
+            spec = getattr(module, '__spec__', None)
+            if (type(module) is not ModuleType or sys.modules.get(name) is not module
+                    or module.__name__ != name or module.__file__ != row['path']
+                    or getattr(spec, 'name', None) != name or getattr(spec, 'origin', None) != row['path']
+                    or getattr(spec, 'loader', None) is not loader or module.__loader__ is not loader
+                    or type(loader) is not VerifiedSourceLoader or loader.name != name
+                    or loader.path != row['path'] or loader.tree_kind != 'controller'
+                    or loader.git_blob != row['git_blob'] or loader.source_sha256 != row['source_sha256']
+                    or loader.authority_tree_digest != row['controller_tree_digest']
+                    or loader._source != admitted_source_bytes(authority, 'controller', relative)):
+                raise AuthorityRefused('relocation helper loaded identity differs from captured authority')
+            rows.append(row)
+        if rows != self._rows:
+            raise AuthorityRefused('relocation helper controller authority changed')
+        for namespace, expected in self._namespaces:
+            current = vars(namespace)
+            if set(current) != set(expected) or any(current[key] is not value for key, value in expected.items()):
+                raise AuthorityRefused('relocation helper namespace changed')
+        if any(self._function_state(function) != expected for function, expected in self._functions):
+            raise AuthorityRefused('relocation helper function changed')
+        if any(canonical_json_bytes(_helper_constant(getattr(namespace, key))) != expected
+               for namespace, key, expected in self._constants):
+            raise AuthorityRefused('relocation helper policy constant changed')
+        return {'helper_schema_version':1, 'controller_commit':authority['controller']['git_commit'],
+                'modules':[dict(row) for row in rows]}
+
+
+def load_verified_relocation_helpers(authority: Mapping[str, Any]) -> VerifiedRelocationHelpers:
+    """Load only the approved relocation helpers, never controller bu imports."""
+    recorded, _ = _observed_worktree(authority, 'controller')
+    admission = authority.get('admission')
+    if type(admission) is not dict or admission.get('controller_source') != str(Path(recorded['path'])/'src'):
+        raise AuthorityRefused('relocation helper controller source admission differs')
+    captured = []
+    for role, name, relative in _RELOCATION_HELPERS:
+        if name in sys.modules:
+            raise AuthorityRefused('relocation helper module name is already occupied')
+        captured.append((role, name, relative, admitted_source_bytes(authority, 'controller', relative),
+                         admitted_git_blob(authority, 'controller', relative)))
+    before_bu = {name:module for name,module in sys.modules.items() if name == 'bu' or name.startswith('bu.')}
+    modules: dict[str, ModuleType] = {}
+    try:
+        for role, name, relative, source, blob in captured:
+            loader = VerifiedSourceLoader(fullname=name, path=Path(recorded['path'])/relative,
+                source=source, is_package=False, tree_kind='controller', git_blob=blob,
+                authority_tree_digest=recorded['worktree_inventory_digest'])
+            spec = importlib.util.spec_from_loader(name, loader, origin=loader.path)
+            if spec is None:raise AuthorityRefused('relocation helper specification is unavailable')
+            module = importlib.util.module_from_spec(spec)
+            modules[role] = module
+            sys.modules[name] = module
+            loader.exec_module(module)
+        after_bu = {name:module for name,module in sys.modules.items() if name == 'bu' or name.startswith('bu.')}
+        if set(after_bu) != set(before_bu) or any(after_bu[name] is not value for name,value in before_bu.items()):
+            raise AuthorityRefused('relocation helpers changed the admitted bu module inventory')
+        return VerifiedRelocationHelpers(authority, modules)
+    except BaseException:
+        for module in modules.values():
+            if sys.modules.get(module.__name__) is module:del sys.modules[module.__name__]
+        raise
+
+
 def verified_source_finder(
     authority: Mapping[str, Any], which: str
 ) -> VerifiedSourceFinder:
@@ -2788,5 +2925,6 @@ __all__ = [
     "verify_plain_tree",
     "verified_dependency_finder",
     "verified_source_finder",
+    "load_verified_relocation_helpers",
     "verify_worktree",
 ]

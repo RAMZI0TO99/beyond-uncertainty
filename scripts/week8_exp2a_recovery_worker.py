@@ -54,6 +54,8 @@ RECOVERY_SCHEMA_VERSION = 3
 RECOVERY_ID = "week8-exp2a-d161-2026-09-02-attempt-001"
 DECISION_ID = "D-161"
 EXECUTION_COMMIT = "4515d5165756c8d1669d38d2ee854fa1051b1017"
+# supervisor.py at the exact frozen execution commit, also used by epoch001.
+EXECUTION_LEASE_SCHEMA_VERSION = 2
 INVOCATION_ENV = "BU_D161_INVOCATION_DIGEST"
 ENTRYPOINT_GATE_ENVIRONMENT_NAME = "BU_D161_ENTRYPOINT_GATE"
 CHILD_BUNDLE_ENVIRONMENT_NAME = "BU_D161_CHILD_BUNDLE_SHA256"
@@ -61,7 +63,7 @@ FIT_CHILD_INVOCATION_ENVIRONMENT_NAME = "BU_D161_FIT_CHILD_INVOCATION_BASE64"
 FIT_CHILD_INVOCATION_DIGEST_ENVIRONMENT_NAME = "BU_D161_FIT_CHILD_INVOCATION_SHA256"
 RAW_AUTHORITY_MODULE_NAME = "_bu_week8_d161_raw_authority"
 CHILD_TRANSPORT_SCHEMA_VERSION = 1
-FIT_CHILD_INVOCATION_SCHEMA_VERSION = 2
+FIT_CHILD_INVOCATION_SCHEMA_VERSION = 3
 FIT_CHILD_STARTUP_SCHEMA_VERSION = 1
 FIT_CHILD_STARTUP_TIMEOUT_SECONDS = 300.0
 EXPECTED_CHILD_BOOTSTRAP_LITERAL_SHA256 = (
@@ -105,12 +107,12 @@ ORPHAN_JOB_ID = "178f4ef3ae1e-s1001"
 ORPHAN_CHILD_PID = 29_480
 HIDDEN_PARTIAL_NAME = ".178f4ef3ae1e-s1001.19rl_x0_.partial"
 
-WORKSPACE_ROOT = Path("D:/Aenv/pro/pro")
+WORKSPACE_ROOT = Path("D:/Aenv/pro2")
 CONTROLLER_WORKTREE = WORKSPACE_ROOT / "week8-recovery-controller-worktree"
 EXECUTION_WORKTREE = WORKSPACE_ROOT / "week8-e2a-execution-4515-worktree"
 PINNED_PYTHON = WORKSPACE_ROOT / "pro2" / ".venv" / "Scripts" / "python.exe"
 PINNED_BASE_PYTHON = Path(
-    "C:/Users/aladdin-alyanai/AppData/Local/Programs/Python/Python313/python.exe"
+    "D:/Aenv/pro2/runtimes/week8-python313-frozen-001/python.exe"
 )
 PINNED_BASE_RUNTIME = PINNED_BASE_PYTHON.parent
 PINNED_PYVENV = WORKSPACE_ROOT / "pro2" / ".venv" / "pyvenv.cfg"
@@ -121,8 +123,8 @@ NATIVE_POWERSHELL = Path(
 )
 NATIVE_RUNTIME = WORKSPACE_ROOT / "week8-d167-native-runtime-attempt-001"
 PINNED_GIT = Path(
-    "C:/Users/aladdin-alyanai/.cache/codex-runtimes/codex-primary-runtime/"
-    "dependencies/native/git/mingw64/bin/git.exe"
+    "D:/Aenv/pro2/runtimes/"
+    "git/mingw64/bin/git.exe"
 )
 EXPECTED_PINNED_PYTHON_SHA256 = (
     "935016795f3e6908e75acbc2040a01e2e4cdb494a57c42f63a0d6eedb2372256"
@@ -131,7 +133,7 @@ EXPECTED_PINNED_BASE_PYTHON_SHA256 = (
     "5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed"
 )
 EXPECTED_PINNED_PYVENV_SHA256 = (
-    "be7ef6e263b1f7242a8ce45cf329e96896d2d5d54e7fc565acb94fb722f66d71"
+    "e4d43703e6bfd6ad7296ee63e3441af275a4b8a89d72796b316f6458f120e418"
 )
 EXPECTED_PINNED_BASE_RUNTIME_INVENTORY_SHA256 = (
     "0a5aff918e4a46fae2427a593261f8e3640ba439ba4ffebf5081b15eb7df6760"
@@ -140,11 +142,11 @@ EXPECTED_PINNED_BASE_RUNTIME_FILE_COUNT = 5_368
 EXPECTED_PINNED_BASE_RUNTIME_DIRECTORY_COUNT = 504
 EXPECTED_PINNED_BASE_RUNTIME_TOTAL_BYTES = 155_022_742
 EXPECTED_PINNED_VENV_SCRIPTS_INVENTORY_SHA256 = (
-    "1b9814979baf41e16ba3f9a7e754e55fd650bd786338e6ebb3b88441e0ef4c56"
+    "baa95b3f7e3e50a9b388fca6c4fd238fb55fc2e62f4cdc07c1b7c57caa9a54ad"
 )
 EXPECTED_PINNED_VENV_SCRIPTS_FILE_COUNT = 22
 EXPECTED_PINNED_VENV_SCRIPTS_DIRECTORY_COUNT = 0
-EXPECTED_PINNED_VENV_SCRIPTS_TOTAL_BYTES = 2_145_386
+EXPECTED_PINNED_VENV_SCRIPTS_TOTAL_BYTES = 2_145_329
 EXPECTED_PINNED_GIT_SHA256 = (
     "c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9"
 )
@@ -156,13 +158,13 @@ EXPECTED_PINNED_GIT_RUNTIME_FILE_COUNT = 94
 EXPECTED_PINNED_GIT_RUNTIME_DIRECTORY_COUNT = 0
 EXPECTED_PINNED_GIT_RUNTIME_TOTAL_BYTES = 66_573_247
 EXPECTED_PINNED_SITE_PACKAGES_INVENTORY_DIGEST = (
-    "ec8a9ffd7ec91e6fb0234a3e2545a8ab4f41758ada574f5e1a7471409cd6febb"
+    "b113ca128ef007b485fd458c88a780226872fe957d71a9a988442db4f012855b"
 )
 EXPECTED_PINNED_SITE_PACKAGES_FILE_COUNT = 34_514
 EXPECTED_PINNED_SITE_PACKAGES_DIRECTORY_COUNT = 3_183
-EXPECTED_PINNED_SITE_PACKAGES_TOTAL_BYTES = 1_019_096_855
+EXPECTED_PINNED_SITE_PACKAGES_TOTAL_BYTES = 1_019_075_506
 EXPECTED_OUTER_BOOTSTRAP_LITERAL_SHA256 = (
-    "52a4d90f242fe58af53cf95985660f548d14047e838a463ac329aa63f047840e"
+    "73d6f0e5cb126ffde136a3746b620236c847b3791a3eec688ddbd649ab304a3e"
 )
 PINNED_SITE_PACKAGES = (
     WORKSPACE_ROOT / "pro2" / ".venv" / "Lib" / "site-packages"
@@ -186,7 +188,7 @@ RAW_AUTHORITY_HELPER = (
     CONTROLLER_WORKTREE / "scripts" / "week8_recovery_raw_authority.py"
 )
 EXPECTED_RAW_AUTHORITY_HELPER_SHA256 = (
-    "dd40628b2ab13507d741d597190606b108b48589372204edf342e6d628ef137d"
+    "20a9be7eb663c8431f975dd0de3c822817e31a3b07001221ee0b6de5973483e3"
 )
 RUNTIME_TEMP = WORKSPACE_ROOT / "week8-exp2a-recovery-runtime-2026-09-02-attempt-001"
 
@@ -1856,6 +1858,118 @@ def _quarantine_paths() -> tuple[Path, Path]:
     return RECOVERY_ROOT / "quarantine" / HIDDEN_PARTIAL_NAME, RECOVERY_COPY_ROOT / "quarantine" / HIDDEN_PARTIAL_NAME
 
 
+_ACTIVE_RELOCATION: tuple[Any, ...] | None = None
+_AUTHORIZED_ORPHAN_TRANSITION: tuple[bytes, dict[str, str]] | None = None
+
+
+def _admitted_orphan_transition() -> dict[str, str]:
+    state = _AUTHORIZED_ORPHAN_TRANSITION
+    if type(state) is not tuple or len(state) != 2:
+        raise BootstrapRefused("orphan transition is not authorized for child launch")
+    canonical, binding = state
+    document, file_sha = _load_record(TRANSITION_COMPLETION_FILE, record_type="transition_completion")
+    if (
+        _canonical(document) != canonical
+        or {"record_digest": document["record_digest"], "file_sha256": file_sha} != binding
+        or document.get("status") != "ownership_transition_complete"
+    ):
+        raise BootstrapRefused("authorized orphan transition changed before child launch")
+    return dict(binding)
+
+
+@contextmanager
+def _authorized_orphan_transition(invocation: Mapping[str, Any], chain: Mapping[str, Any]):
+    """Retain only the transition already verified by this worker's full chain."""
+    global _AUTHORIZED_ORPHAN_TRANSITION
+    if _AUTHORIZED_ORPHAN_TRANSITION is not None:
+        raise BootstrapRefused("orphan transition authorization is already active")
+    binding = _expect_keys(invocation["transition_completion"], {"record_digest", "file_sha256"},
+                           what="authorized orphan transition binding")
+    for name in binding: _expect_sha(binding[name], what=f"orphan transition {name}")
+    _AUTHORIZED_ORPHAN_TRANSITION = (_canonical(chain["transition_completion"]), dict(binding))
+    try:
+        _admitted_orphan_transition()
+        yield
+    finally:
+        try:
+            _admitted_orphan_transition()
+        finally:
+            _AUTHORIZED_ORPHAN_TRANSITION = None
+
+
+def _admitted_relocation() -> tuple[Any, Any, dict[str, Any]]:
+    state = _ACTIVE_RELOCATION
+    if type(state) is not tuple or len(state) != 5:
+        raise BootstrapRefused("worker relocation helpers are not admitted")
+    raw_module, raw, helpers, access, binding = state
+    if sys.modules.get(RAW_AUTHORITY_MODULE_NAME) is not raw_module:
+        raise BootstrapRefused("worker relocation raw authority module changed")
+    metadata = helpers.modules["metadata"]
+    observed = {
+        "relocation_schema_version": 1,
+        "attestation_sha256": access.attestation_sha256,
+        "policy_sha256": metadata.POLICY_SHA256,
+        "pair_count": metadata.EXPECTED_PAIR_COUNT,
+        "document_count": metadata.EXPECTED_DOCUMENT_COUNT,
+        "helpers": helpers.validate(raw),
+    }
+    if _canonical(observed) != _canonical(binding):
+        raise BootstrapRefused("worker relocation helper or evidence binding changed")
+    return metadata, access, observed
+
+
+@contextmanager
+def _worker_relocation_admission(authority: Mapping[str, Any]):
+    """Verify captured stdlib-only helpers before consuming the sole claim."""
+    global _ACTIVE_RELOCATION
+    if _ACTIVE_RELOCATION is not None:
+        raise BootstrapRefused("worker relocation admission is already active")
+    gate = _validate_entrypoint_gate()
+    raw = gate["raw_authority"]
+    if _canonical(raw) != _canonical(authority.get("preimport_authority_record")):
+        raise BootstrapRefused("worker relocation raw authority differs from invocation")
+    raw_module = _load_raw_authority_module()
+    helpers = raw_module.load_verified_relocation_helpers(raw)
+    helper_binding = helpers.validate(raw)
+    metadata = helpers.modules["metadata"]
+    access = metadata.load_registered_access(helpers.modules["provenance"])
+    binding = {
+        "relocation_schema_version": 1,
+        "attestation_sha256": access.attestation_sha256,
+        "policy_sha256": metadata.POLICY_SHA256,
+        "pair_count": metadata.EXPECTED_PAIR_COUNT,
+        "document_count": metadata.EXPECTED_DOCUMENT_COUNT,
+        "helpers": helper_binding,
+    }
+    _ACTIVE_RELOCATION = (raw_module, raw, helpers, access, binding)
+    try:
+        _admitted_relocation()
+        yield
+    finally:
+        try:
+            _admitted_relocation()
+        finally:
+            _ACTIVE_RELOCATION = None
+
+
+@contextmanager
+def _worker_relocation_readers(Launch: Any):
+    metadata, access, binding = _admitted_relocation()
+    Storage = importlib.import_module("bu.experiments.prefit_storage")
+    sources = metadata.SourceReaders(access, Launch.W, Launch.S)
+    preflight = metadata.PreflightReaders(access, sources, Launch, Storage)
+    checkpoints = metadata.CheckpointReaders(access, preflight)
+    completed = metadata.CompletedJobReaders(access, checkpoints)
+    events = metadata.EventReaders(access, checkpoints)
+    reuse = metadata.ReuseReader(access, completed, events)
+    try:
+        with sources.installed(), preflight.installed(), checkpoints.installed(), completed.installed(), events.installed(), reuse.installed():
+            yield
+    finally:
+        if _canonical(_admitted_relocation()[2]) != _canonical(binding):
+            raise BootstrapRefused("worker relocation binding changed across lower launch")
+
+
 def _validate_incident(document: Mapping[str, Any]) -> None:
     _expect_keys(
         document,
@@ -1874,11 +1988,11 @@ def _validate_incident(document: Mapping[str, Any]) -> None:
         raise BootstrapRefused("incident inventory binding differs")
     _expect_keys(
         inventory,
-        {"inventory_schema_version", "execution_commit", "control", "lease", "checkpoint", "events", "jobs", "staging", "lower_report_count", "production_launch_receipt_present", "mechanical_source_validation_performed", "scientific_outcomes_consulted", "scientific_values_emitted", "inventory_digest"},
+        {"inventory_schema_version", "execution_commit", "relocation", "control", "lease", "checkpoint", "events", "jobs", "staging", "lower_report_count", "production_launch_receipt_present", "mechanical_source_validation_performed", "scientific_outcomes_consulted", "scientific_values_emitted", "inventory_digest"},
         what="incident inventory",
     )
     if (
-        inventory["inventory_schema_version"] != 1
+        inventory["inventory_schema_version"] != 2
         or inventory["execution_commit"] != EXECUTION_COMMIT
         or inventory["lower_report_count"] != 0
         or inventory["production_launch_receipt_present"] is not False
@@ -1887,6 +2001,8 @@ def _validate_incident(document: Mapping[str, Any]) -> None:
         or inventory["scientific_values_emitted"] is not False
     ):
         raise BootstrapRefused("incident inventory fixed state differs")
+    if _canonical(inventory["relocation"]) != _canonical(_admitted_relocation()[2]):
+        raise BootstrapRefused("incident relocation admission differs from worker")
     lease = _expect_keys(inventory["lease"], {"path", "sha256", "pid", "token", "timestamp", "timestamp_utc"}, what="incident lease")
     if lease["path"] != str(_active_lease_path().resolve()) or lease["sha256"] != EXPECTED_OLD_LEASE_SHA256 or lease["pid"] != OLD_LEASE_PID or lease["token"] != OLD_LEASE_TOKEN:
         raise BootstrapRefused("incident lease differs from D-161")
@@ -2022,7 +2138,7 @@ def _validate_orphan_archive(*, require_active_absent: bool = True) -> dict[str,
     if _sha_file(archive) != EXPECTED_OLD_LEASE_SHA256:
         raise BootstrapRefused("orphan lease archive hash differs")
     record = _expect_keys(_read_json(archive), {"schema_version", "lease_name", "pid", "token", "timestamp", "timestamp_utc"}, what="orphan lease archive")
-    if record["schema_version"] != 1 or record["lease_name"] != "week7-production" or record["pid"] != OLD_LEASE_PID or record["token"] != OLD_LEASE_TOKEN or type(record["timestamp_utc"]) is not str:
+    if type(record["schema_version"]) is not int or record["schema_version"] != EXECUTION_LEASE_SCHEMA_VERSION or record["lease_name"] != "week7-production" or record["pid"] != OLD_LEASE_PID or record["token"] != OLD_LEASE_TOKEN or type(record["timestamp_utc"]) is not str:
         raise BootstrapRefused("orphan lease archive identity differs")
     active = _active_lease_path()
     if os.path.lexists(active):
@@ -2034,7 +2150,8 @@ def _validate_orphan_archive(*, require_active_absent: bool = True) -> dict[str,
             what="continuation active lease",
         )
         if (
-            active_record["schema_version"] != 1
+            type(active_record["schema_version"]) is not int
+            or active_record["schema_version"] != EXECUTION_LEASE_SCHEMA_VERSION
             or active_record["lease_name"] != "week7-production"
             or type(active_record["pid"]) is not int
             or active_record["pid"] <= 0
@@ -3396,6 +3513,8 @@ class _VerifiedFitProcess:
             "startup_ack_path": str(self.context.startup_ack_path),
             "entrypoint_gate_digest": self.context.gate["record_digest"],
             "child_bundle_sha256": self.context.bundle_sha256,
+            "relocation": _admitted_relocation()[2],
+            "orphan_transition": _admitted_orphan_transition(),
         }
         invocation["invocation_digest"] = _sha_bytes(_canonical_ascii(invocation))
         invocation_bytes = _canonical_ascii(invocation)
@@ -3898,7 +4017,7 @@ def _launch_once(authority: Mapping[str, Any]) -> dict[str, Any]:
         _validate_execution_source_tree(authority)
         _validate_loaded_bu_modules(authority)
         def lower_with_verified_git() -> object:
-            with _verified_historical_git_state(authority):
+            with _verified_historical_git_state(authority), _worker_relocation_readers(Launch):
                 return Launch.launch_exp2a_repairs(
                     preflight_report=P.PREFLIGHT_ROOT / Launch.PREFLIGHT_FILE,
                     output_root=P.OUTPUT_ROOT,
@@ -4074,6 +4193,11 @@ def _terminalize_failure(
 
 def _run() -> dict[str, Any]:
     invocation, invocation_sha = _load_authorized_invocation()
+    with _worker_relocation_admission(invocation["authority"]):
+        return _run_authorized(invocation, invocation_sha)
+
+
+def _run_authorized(invocation: Mapping[str, Any], invocation_sha: str) -> dict[str, Any]:
     claim_payload = _claim_payload(invocation, invocation_sha)
     intended_claim = _seal(claim_payload)
     try:
@@ -4118,14 +4242,15 @@ def _run() -> dict[str, Any]:
         if _canonical(published_claim) != _canonical(claim) or published_sha != claim_sha:
             raise BootstrapRefused("claim publication result differs from actual claim files")
         _validate_claim(claim, invocation=invocation, invocation_sha=invocation_sha)
-        _validate_full_chain(invocation, invocation_sha)
+        chain = _validate_full_chain(invocation, invocation_sha)
         if _any_record_path(BOOTSTRAP_TERMINAL_FILE) or _any_record_path(
             BOOTSTRAP_POSTMORTEM_FILE
         ):
             raise BootstrapRefused(
                 "bootstrap terminal or postmortem exists before lower launch"
             )
-        result = _launch_once(invocation["authority"])
+        with _authorized_orphan_transition(invocation, chain):
+            result = _launch_once(invocation["authority"])
         output_capture = _validate_output_capture(result.get("output_capture"))
         operational = {
             "counts": dict(result["counts"]), "lease_token": result["lease_token"],

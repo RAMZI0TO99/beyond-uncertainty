@@ -72,8 +72,8 @@ def test_native_environment_reader_preserves_mis_cased_control_names(
 
 def _git_executable() -> Path:
     fixed = Path(
-        "C:/Users/aladdin-alyanai/.cache/codex-runtimes/"
-        "codex-primary-runtime/dependencies/native/git/mingw64/bin/git.exe"
+        "D:/Aenv/pro2/runtimes/"
+        "git/mingw64/bin/git.exe"
     )
     if fixed.is_file():
         return fixed.resolve()
@@ -604,3 +604,115 @@ def test_captured_execution_sources_survive_identical_reobservation(
     assert second_identity == first_identity
     assert A.admitted_execution_sources(second_authority) == expected
     _assert_no_hostile_marker(markers)
+
+
+@pytest.fixture
+def relocation_helper_repo(tmp_path):
+    repo = tmp_path/'helper-repository'
+    repo.mkdir()
+    _setup_git(repo,'init','-q')
+    _setup_git(repo,'config','user.name','Synthetic Helper Authority')
+    _setup_git(repo,'config','user.email','helper@example.invalid')
+    for _,name,relative in A._RELOCATION_HELPERS:
+        assert name not in sys.modules
+        path = repo/relative
+        path.parent.mkdir(parents=True,exist_ok=True)
+        path.write_bytes((ROOT/relative).read_bytes())
+    _setup_git(repo,'add','--','.')
+    _setup_git(repo,'commit','-q','-m','synthetic helper sources')
+    commit = _setup_git(repo,'rev-parse','HEAD').decode('ascii').strip()
+    _setup_git(repo,'checkout','-q','--detach',commit)
+    markers = _install_hostile_local_config(repo,tmp_path/'helper-hostile-markers')
+    identity = _verify_with_captured_python(repo,commit)
+    authority = {'controller':identity,'admission':{'controller_source':str(repo/'src')}}
+    try:yield repo,authority,markers
+    finally:
+        for _,name,_ in A._RELOCATION_HELPERS:sys.modules.pop(name,None)
+
+
+def test_relocation_helpers_load_only_captured_non_bu_bytes(relocation_helper_repo,tmp_path):
+    repo,authority,markers = relocation_helper_repo
+    before = {name:module for name,module in sys.modules.items() if name == 'bu' or name.startswith('bu.')}
+    marker = tmp_path/'changed-disk.executed'
+    captured = {role:A.admitted_source_bytes(authority,'controller',relative)
+                for role,_,relative in A._RELOCATION_HELPERS}
+    for _,_,relative in A._RELOCATION_HELPERS:
+        (repo/relative).write_text(f"from pathlib import Path\nPath({str(marker)!r}).write_text('bad')\n",encoding='utf-8')
+    bundle = A.load_verified_relocation_helpers(authority)
+    binding = bundle.validate(authority)
+    assert not marker.exists()
+    assert binding['helper_schema_version'] == 1
+    assert binding['controller_commit'] == authority['controller']['git_commit']
+    assert [row['role'] for row in binding['modules']] == ['provenance','metadata']
+    for row in binding['modules']:
+        module = bundle.modules[row['role']]
+        assert row['source_sha256'] == A.sha256_bytes(captured[row['role']])
+        assert module.__loader__.tree_kind == 'controller'
+        assert module.__loader__.binding_marker == 'week8_d161_verified_source_v2'
+        assert not module.__name__.startswith('bu')
+    assert callable(bundle.modules['metadata'].load_registered_access)
+    assert callable(bundle.modules['provenance'].EvidenceAccess)
+    after = {name:module for name,module in sys.modules.items() if name == 'bu' or name.startswith('bu.')}
+    assert after == before
+    binding['modules'][0]['source_sha256'] = 'f'*64
+    assert bundle.validate(authority)['modules'][0]['source_sha256'] != 'f'*64
+    _assert_no_hostile_marker(markers)
+
+
+@pytest.mark.parametrize('role',['provenance','metadata'])
+def test_relocation_helper_collision_refuses_before_loading_either_module(relocation_helper_repo,monkeypatch,role):
+    _,authority,_ = relocation_helper_repo
+    name = next(name for key,name,_ in A._RELOCATION_HELPERS if key == role)
+    occupied = ModuleType(name)
+    monkeypatch.setitem(sys.modules,name,occupied)
+    with pytest.raises(A.AuthorityRefused,match='already occupied'):
+        A.load_verified_relocation_helpers(authority)
+    assert sys.modules[name] is occupied
+    assert all(other == name or other not in sys.modules for _,other,_ in A._RELOCATION_HELPERS)
+
+
+@pytest.mark.parametrize('damage',['missing-capture','missing-blob','authority-digest','admission'])
+def test_relocation_helper_admission_refuses_before_execution(relocation_helper_repo,monkeypatch,damage):
+    repo,authority,_ = relocation_helper_repo
+    observed = A._OBSERVED_WORKTREES[str(repo)]
+    relative = A._RELOCATION_HELPERS[1][2]
+    if damage == 'missing-capture':monkeypatch.delitem(observed['python_sources'],relative)
+    elif damage == 'missing-blob':monkeypatch.delitem(observed['tree'],relative)
+    elif damage == 'authority-digest':authority['controller']['worktree_inventory_digest'] = 'f'*64
+    else:authority['admission']['controller_source'] = str(repo/'unapproved')
+    with pytest.raises(A.AuthorityRefused):A.load_verified_relocation_helpers(authority)
+    assert all(name not in sys.modules for _,name,_ in A._RELOCATION_HELPERS)
+
+
+@pytest.mark.parametrize('damage',['registry','namespace','class-method','function-code','function-defaults',
+                                    'constant','nested-constant','loader','origin','bundle','authority'])
+def test_relocation_helpers_refuse_loaded_binding_changes(relocation_helper_repo,monkeypatch,damage):
+    _,authority,_ = relocation_helper_repo
+    bundle = A.load_verified_relocation_helpers(authority)
+    module = bundle.modules['metadata']
+    if damage == 'registry':monkeypatch.setitem(sys.modules,module.__name__,ModuleType(module.__name__))
+    elif damage == 'namespace':monkeypatch.setattr(module,'require',lambda *args:None)
+    elif damage == 'class-method':monkeypatch.setattr(module.EventReaders,'load_events',lambda *args:[])
+    elif damage == 'function-code':
+        def replacement(condition,message):return None
+        monkeypatch.setattr(module.require,'__code__',replacement.__code__)
+    elif damage == 'function-defaults':monkeypatch.setattr(module.ControlReaders.load_prepare,'__defaults__',('f'*40,))
+    elif damage == 'constant':monkeypatch.setattr(module,'OLD_EVENT_COUNT',299.0)
+    elif damage == 'nested-constant':monkeypatch.setitem(module.ControlReaders.PHASE_PINS,'prepare','f'*64)
+    elif damage == 'loader':monkeypatch.setattr(module.__loader__,'source_sha256','f'*64)
+    elif damage == 'origin':monkeypatch.setattr(module.__spec__,'origin',str(ROOT/'unapproved.py'))
+    elif damage == 'bundle':bundle.modules['metadata'] = ModuleType('replacement')
+    else:authority['controller']['worktree_inventory_digest'] = 'f'*64
+    with pytest.raises(A.AuthorityRefused):bundle.validate(authority)
+
+
+def test_relocation_helpers_allow_instances_but_refuse_repeat_load(relocation_helper_repo):
+    _,authority,_ = relocation_helper_repo
+    bundle = A.load_verified_relocation_helpers(authority)
+    verifier = bundle.modules['provenance']
+    original = bundle.validate(authority)
+    document = verifier.Document('synthetic.json','a'*64)
+    assert document.path == 'synthetic.json'
+    assert bundle.validate(authority) == original
+    with pytest.raises(A.AuthorityRefused,match='already occupied'):
+        A.load_verified_relocation_helpers(authority)

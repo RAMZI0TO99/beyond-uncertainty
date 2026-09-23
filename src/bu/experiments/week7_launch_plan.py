@@ -31,7 +31,7 @@ from .enumerate_units import stage_of
 WEEK7_LAUNCH_PLAN_SCHEMA_VERSION = 1
 WEEK7_LAUNCH_PLAN_FILE = "week7_baseline_launch_plan.json"
 PREPARATION_PATH = Path(
-    "D:/Aenv/pro/pro/week7-preparation-2026-08-31/week7_baseline_preparation.json"
+    "D:/Aenv/pro2/week7-preparation-2026-08-31/week7_baseline_preparation.json"
 )
 PREPARATION_SHA256 = "9b380e4bbefa4d3c1c5a52e6ab89f8b63cac42dbfaf90cf5b19419fcc9152044"
 REUSED_FIT_IDS = tuple(f"f011e07e0a65-s{seed}" for seed in range(1000, 1005))

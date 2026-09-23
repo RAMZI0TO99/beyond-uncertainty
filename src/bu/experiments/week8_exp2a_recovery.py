@@ -77,13 +77,14 @@ ORPHAN_JOB_ID = "178f4ef3ae1e-s1001"
 ORPHAN_CHILD_PID = 29_480
 HIDDEN_PARTIAL_NAME = ".178f4ef3ae1e-s1001.19rl_x0_.partial"
 
-WORKSPACE_ROOT = Path("D:/Aenv/pro/pro")
+WORKSPACE_ROOT = Path("D:/Aenv/pro2")
 CONTROLLER_WORKTREE = WORKSPACE_ROOT / "week8-recovery-controller-worktree"
 EXECUTION_WORKTREE = WORKSPACE_ROOT / "week8-e2a-execution-4515-worktree"
 PINNED_PYTHON = WORKSPACE_ROOT / "pro2" / ".venv" / "Scripts" / "python.exe"
 PINNED_BASE_PYTHON = Path(
-    "C:/Users/aladdin-alyanai/AppData/Local/Programs/Python/Python313/python.exe"
+    "D:/Aenv/pro2/runtimes/week8-python313-frozen-001/python.exe"
 )
+PINNED_LOCAL_APPDATA = Path("C:/Users/aladdin-alyanai/AppData/Local")
 PINNED_BASE_RUNTIME = PINNED_BASE_PYTHON.parent
 PINNED_PYVENV = WORKSPACE_ROOT / "pro2" / ".venv" / "pyvenv.cfg"
 PINNED_VENV_SCRIPTS = PINNED_PYTHON.parent
@@ -96,8 +97,8 @@ NATIVE_POWERSHELL = Path(
 NATIVE_RUNTIME = WORKSPACE_ROOT / "week8-d167-native-runtime-attempt-001"
 PINNED_SITE_PACKAGES = WORKSPACE_ROOT / "pro2" / ".venv" / "Lib" / "site-packages"
 PINNED_GIT = Path(
-    "C:/Users/aladdin-alyanai/.cache/codex-runtimes/codex-primary-runtime/"
-    "dependencies/native/git/mingw64/bin/git.exe"
+    "D:/Aenv/pro2/runtimes/"
+    "git/mingw64/bin/git.exe"
 )
 EXPECTED_PINNED_PYTHON_SHA256 = (
     "935016795f3e6908e75acbc2040a01e2e4cdb494a57c42f63a0d6eedb2372256"
@@ -106,7 +107,7 @@ EXPECTED_PINNED_BASE_PYTHON_SHA256 = (
     "5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed"
 )
 EXPECTED_PINNED_PYVENV_SHA256 = (
-    "be7ef6e263b1f7242a8ce45cf329e96896d2d5d54e7fc565acb94fb722f66d71"
+    "e4d43703e6bfd6ad7296ee63e3441af275a4b8a89d72796b316f6458f120e418"
 )
 EXPECTED_PINNED_BASE_RUNTIME_INVENTORY_SHA256 = (
     "0a5aff918e4a46fae2427a593261f8e3640ba439ba4ffebf5081b15eb7df6760"
@@ -115,11 +116,11 @@ EXPECTED_PINNED_BASE_RUNTIME_FILE_COUNT = 5_368
 EXPECTED_PINNED_BASE_RUNTIME_DIRECTORY_COUNT = 504
 EXPECTED_PINNED_BASE_RUNTIME_TOTAL_BYTES = 155_022_742
 EXPECTED_PINNED_VENV_SCRIPTS_INVENTORY_SHA256 = (
-    "1b9814979baf41e16ba3f9a7e754e55fd650bd786338e6ebb3b88441e0ef4c56"
+    "baa95b3f7e3e50a9b388fca6c4fd238fb55fc2e62f4cdc07c1b7c57caa9a54ad"
 )
 EXPECTED_PINNED_VENV_SCRIPTS_FILE_COUNT = 22
 EXPECTED_PINNED_VENV_SCRIPTS_DIRECTORY_COUNT = 0
-EXPECTED_PINNED_VENV_SCRIPTS_TOTAL_BYTES = 2_145_386
+EXPECTED_PINNED_VENV_SCRIPTS_TOTAL_BYTES = 2_145_329
 EXPECTED_PINNED_GIT_SHA256 = (
     "c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9"
 )
@@ -131,16 +132,16 @@ EXPECTED_PINNED_GIT_RUNTIME_FILE_COUNT = 94
 EXPECTED_PINNED_GIT_RUNTIME_DIRECTORY_COUNT = 0
 EXPECTED_PINNED_GIT_RUNTIME_TOTAL_BYTES = 66_573_247
 EXPECTED_PINNED_SITE_PACKAGES_INVENTORY_DIGEST = (
-    "ec8a9ffd7ec91e6fb0234a3e2545a8ab4f41758ada574f5e1a7471409cd6febb"
+    "b113ca128ef007b485fd458c88a780226872fe957d71a9a988442db4f012855b"
 )
 EXPECTED_PINNED_SITE_PACKAGES_FILE_COUNT = 34_514
 EXPECTED_PINNED_SITE_PACKAGES_DIRECTORY_COUNT = 3_183
-EXPECTED_PINNED_SITE_PACKAGES_TOTAL_BYTES = 1_019_096_855
+EXPECTED_PINNED_SITE_PACKAGES_TOTAL_BYTES = 1_019_075_506
 EXPECTED_OUTER_BOOTSTRAP_LITERAL_SHA256 = (
-    "52a4d90f242fe58af53cf95985660f548d14047e838a463ac329aa63f047840e"
+    "73d6f0e5cb126ffde136a3746b620236c847b3791a3eec688ddbd649ab304a3e"
 )
 EXPECTED_RAW_AUTHORITY_HELPER_SHA256 = (
-    "dd40628b2ab13507d741d597190606b108b48589372204edf342e6d628ef137d"
+    "20a9be7eb663c8431f975dd0de3c822817e31a3b07001221ee0b6de5973483e3"
 )
 ENTRYPOINT_GATE_ENVIRONMENT_NAME = "BU_D161_ENTRYPOINT_GATE"
 CHILD_BUNDLE_ENVIRONMENT_NAME = "BU_D161_CHILD_BUNDLE_SHA256"
@@ -268,6 +269,41 @@ class RecoveryRefused(ValueError):
     """The one-use D-161 state machine cannot safely advance."""
 
 
+_INSPECTOR_DIAGNOSTIC_ERROR_TYPES = frozenset({
+    "InspectorRefused", "AuthorityRefused", "ValueError", "TypeError",
+    "RuntimeError", "OSError", "PermissionError", "FileNotFoundError",
+    "ImportError", "ModuleNotFoundError", "AttributeError", "KeyError",
+    "NameError", "AssertionError", "UnicodeDecodeError", "JSONDecodeError",
+    "Exception",
+})
+
+
+def _valid_authority_failure_fingerprints(value: object) -> bool:
+    if type(value) is not list or not 1 <= len(value) <= 4:
+        return False
+    for error in value:
+        if (
+            type(error) is not dict
+            or set(error) != {"error_type", "reason_sha256", "locations"}
+            or type(error["error_type"]) is not str
+            or error["error_type"] not in _INSPECTOR_DIAGNOSTIC_ERROR_TYPES
+            or type(error["reason_sha256"]) is not str
+            or _HEX64.fullmatch(error["reason_sha256"]) is None
+            or type(error["locations"]) is not list or len(error["locations"]) > 4
+        ):
+            return False
+        for location in error["locations"]:
+            if (
+                type(location) is not dict or set(location) != {"source", "line"}
+                or type(location["source"]) is not str
+                or location["source"] not in {"inspector", "raw_authority"}
+                or type(location["line"]) is not int
+                or not 0 < location["line"] <= 1_000_000
+            ):
+                return False
+    return True
+
+
 class _InspectorProcessRefused(RecoveryRefused):
     """Retain operational fingerprints without exposing captured child output."""
 
@@ -288,34 +324,32 @@ class _InspectorProcessRefused(RecoveryRefused):
             return
         try:
             refusal = _strict_json_line(stdout.decode("utf-8"), what="inspector refusal")
-        except (UnicodeError, ValueError, TypeError):
+        except (UnicodeError, ValueError, TypeError, RecursionError):
             return
         keys = {
             "inspector_schema_version", "status", "error_type", "reason_sha256",
             "scientific_values_emitted", "production_mutation_performed",
         }
         if (
-            type(refusal) is not dict or set(refusal) != keys
+            type(refusal) is not dict or set(refusal) not in (keys, keys | {"authority_failure"})
             or type(refusal["inspector_schema_version"]) is not int
-            or refusal["inspector_schema_version"] != 1
+            or refusal["inspector_schema_version"] != 2
             or refusal["status"] != "refused"
             or refusal["scientific_values_emitted"] is not False
             or refusal["production_mutation_performed"] is not False
             or type(refusal["reason_sha256"]) is not str
             or _HEX64.fullmatch(refusal["reason_sha256"]) is None
             or type(refusal["error_type"]) is not str
-            or refusal["error_type"] not in {
-                "InspectorRefused", "AuthorityRefused", "ValueError", "TypeError",
-                "RuntimeError", "OSError", "PermissionError", "FileNotFoundError",
-                "ImportError", "ModuleNotFoundError", "AttributeError", "KeyError",
-                "NameError", "AssertionError", "UnicodeDecodeError", "JSONDecodeError",
-            }
+            or refusal["error_type"] not in _INSPECTOR_DIAGNOSTIC_ERROR_TYPES
+            or ("authority_failure" in refusal and not _valid_authority_failure_fingerprints(refusal["authority_failure"]))
         ):
             return
         self.inspector_failure["inspector_refusal"] = {
             "error_type": refusal["error_type"],
             "reason_sha256": refusal["reason_sha256"],
         }
+        if "authority_failure" in refusal:
+            self.inspector_failure["inspector_refusal"]["authority_failure"] = refusal["authority_failure"]
 
 
 def _controller_refusal_locations(exc: BaseException) -> list[dict[str, Any]]:
@@ -1627,7 +1661,6 @@ def _sanitized_subprocess_environment(
         in {
             "APPDATA",
             "COMSPEC",
-            "LOCALAPPDATA",
             "NUMBER_OF_PROCESSORS",
             "OS",
             "PATHEXT",
@@ -1641,6 +1674,9 @@ def _sanitized_subprocess_environment(
         }
     }
     fixed = {
+        # The native parent clears profile variables. Keep injected OS-agent
+        # logs out of the exact execution tree, including nested fit children.
+        "LOCALAPPDATA": str(PINNED_LOCAL_APPDATA),
         "CUDA_VISIBLE_DEVICES": "-1",
         # The detached execution worktree was created by the sandbox identity,
         # while the pinned interpreter runs as the host account.  Authorize
@@ -1843,6 +1879,163 @@ def _validate_output_capture(value: object, *, what: str) -> dict[str, Any]:
     return capture
 
 
+_ACTIVE_RELOCATION: tuple[Any, ...] | None = None
+
+
+def _relocation_state() -> tuple[Any, dict[str, Any]]:
+    """Return this parent's admitted provenance, never a child's assertion."""
+    state = _ACTIVE_RELOCATION
+    if type(state) is not tuple or len(state) != 6:
+        raise RecoveryRefused("parent relocation readers are not admitted")
+    raw_module, raw, helpers, access, binding, _ = state
+    if sys.modules.get(RAW_AUTHORITY_MODULE_NAME) is not raw_module:
+        raise RecoveryRefused("parent relocation raw authority module changed")
+    metadata = helpers.modules["metadata"]
+    observed = {
+        "relocation_schema_version": 1,
+        "attestation_sha256": access.attestation_sha256,
+        "policy_sha256": metadata.POLICY_SHA256,
+        "pair_count": metadata.EXPECTED_PAIR_COUNT,
+        "document_count": metadata.EXPECTED_DOCUMENT_COUNT,
+        "helpers": helpers.validate(raw),
+    }
+    if _canonical(observed) != _canonical(binding):
+        raise RecoveryRefused("parent relocation helper or evidence binding changed")
+    return access, observed
+
+
+def _parent_readers() -> dict[str, Any]:
+    _relocation_state()
+    state = _ACTIVE_RELOCATION
+    if state is None:
+        raise RecoveryRefused("parent relocation scope disappeared")
+    readers = state[5]
+    if type(readers) is not dict or set(readers) != {"sources", "preflight", "checkpoints", "completed", "events", "controls", "released"}:
+        raise RecoveryRefused("parent admitted reader inventory differs")
+    for reader in readers.values():
+        reader._assert_installed()
+    return dict(readers)
+
+
+def validate_relocated_finalization_inventory(
+    verified: object,
+    ledger: Mapping[str, Any],
+    *,
+    checkpoint_path: Path,
+    checkpoint_sha256: str,
+    ledger_sha256: str,
+    expected_execution_commit: str,
+) -> None:
+    """Independently bind downstream current rows to this parent's provenance.
+
+    A released inventory's origin assertions cannot authorize themselves. Reopen
+    the exact checkpoint and all pairs through the parent's captured readers;
+    the finalizer still performs its original independent per-pair validation.
+    """
+    readers = _parent_readers()
+    if (
+        expected_execution_commit != EXECUTION_COMMIT
+        or ledger_sha256 != readers["sources"].ledger_sha256
+    ):
+        raise RecoveryRefused("finalization execution or historical ledger pin differs")
+    document = _expect_keys(
+        verified,
+        {"start", "ledger", "roots", "sources", "pending_new_fit_ids", "relocation", "source_provenance"},
+        what="relocated finalization inventory",
+    )
+    start = document["start"]
+    if (
+        type(start) is not dict
+        or type(start.get("exp2a_repair_start_schema_version")) is not int
+        or start["exp2a_repair_start_schema_version"] != 2
+        or _canonical(start.get("relocation")) != _canonical(readers["checkpoints"].relocation_binding())
+        or _canonical(document["relocation"]) != _canonical(start["relocation"])
+        or _canonical(document["ledger"]) != _canonical(ledger)
+    ):
+        raise RecoveryRefused("finalization inventory differs from admitted relocation or ledger")
+    fresh = readers["released"].load_inventory(
+        checkpoint_path=checkpoint_path,
+        checkpoint_sha256=checkpoint_sha256,
+        expected_execution_commit=expected_execution_commit,
+    )
+    roots = document["roots"]
+    if (
+        type(roots) is not dict or set(roots) != set(fresh["roots"])
+        or any(type(roots[key]) is not type(path) or roots[key] != path
+               for key, path in fresh["roots"].items())
+        or _canonical({k:v for k,v in document.items() if k != "roots"})
+        != _canonical({k:v for k,v in fresh.items() if k != "roots"})
+    ):
+        raise RecoveryRefused("finalization inventory differs from independently reopened provenance")
+    _parent_readers()
+
+
+@contextmanager
+def _parent_orphan_history() -> Iterator[None]:
+    original = Launch._historical_lease_record
+    if not callable(original):
+        raise RecoveryRefused("parent historical lease lookup is unavailable")
+    def exact_lookup(token: str) -> dict[str, Any]:
+        if token == OLD_LEASE_TOKEN:
+            return historical_orphan_lease_record(token)
+        return original(token)
+    Launch._historical_lease_record = exact_lookup
+    try:
+        yield
+    finally:
+        changed = Launch._historical_lease_record is not exact_lookup
+        Launch._historical_lease_record = original
+        if changed or Launch._historical_lease_record is not original:
+            raise RecoveryRefused("parent historical lease lookup changed or failed restoration")
+
+
+@contextmanager
+def _parent_relocation(gate: Mapping[str, Any]) -> Iterator[None]:
+    """Install captured metadata readers only after native runtime admission."""
+    global _ACTIVE_RELOCATION
+    if _ACTIVE_RELOCATION is not None:
+        raise RecoveryRefused("parent relocation scope is already active")
+    raw_module = sys.modules.get(RAW_AUTHORITY_MODULE_NAME)
+    if type(raw_module) is not ModuleType or type(gate.get("raw_authority")) is not dict:
+        raise RecoveryRefused("parent relocation raw authority is unavailable")
+    raw = gate["raw_authority"]
+    helpers = raw_module.load_verified_relocation_helpers(raw)
+    helper_binding = helpers.validate(raw)
+    metadata = helpers.modules["metadata"]
+    access = metadata.load_registered_access(helpers.modules["provenance"])
+    from . import prefit_storage as Storage
+
+    sources = metadata.SourceReaders(access, Plan, Launch.S)
+    preflight = metadata.PreflightReaders(access, sources, Launch, Storage)
+    checkpoints = metadata.CheckpointReaders(access, preflight)
+    completed = metadata.CompletedJobReaders(access, checkpoints)
+    events = metadata.EventReaders(access, checkpoints)
+    controls = metadata.ControlReaders(access, P, events)
+    released = metadata.ReleasedInventoryReader(access, completed)
+    binding = {
+        "relocation_schema_version": 1,
+        "attestation_sha256": access.attestation_sha256,
+        "policy_sha256": metadata.POLICY_SHA256,
+        "pair_count": metadata.EXPECTED_PAIR_COUNT,
+        "document_count": metadata.EXPECTED_DOCUMENT_COUNT,
+        "helpers": helper_binding,
+    }
+    with _parent_orphan_history(), sources.installed(), preflight.installed(), checkpoints.installed(), completed.installed(), events.installed(), controls.installed(), released.installed():
+        readers = {"sources": sources, "preflight": preflight, "checkpoints": checkpoints,
+                   "completed": completed, "events": events, "controls": controls, "released": released}
+        _ACTIVE_RELOCATION = (raw_module, raw, helpers, access, binding, readers)
+        try:
+            _relocation_state()
+            yield
+        finally:
+            try:
+                _relocation_state()
+            finally:
+                _ACTIVE_RELOCATION = None
+    if helpers.validate(raw) != helper_binding:
+        raise RecoveryRefused("parent relocation helpers changed after restoration")
+
+
 def _validate_inspector_material(value: object) -> dict[str, Any]:
     document = _expect_keys(
         value,
@@ -1850,6 +2043,7 @@ def _validate_inspector_material(value: object) -> dict[str, Any]:
             "inspector_schema_version",
             "status",
             "execution_commit",
+            "relocation",
             "control",
             "events",
             "jobs",
@@ -1873,8 +2067,11 @@ def _validate_inspector_material(value: object) -> dict[str, Any]:
     }
     if digest != sha256_bytes(_canonical(payload)):
         raise RecoveryRefused("old-source inspector content digest differs")
+    _, relocation = _relocation_state()
+    if _canonical(document["relocation"]) != _canonical(relocation):
+        raise RecoveryRefused("parent/old-source relocation admission differs")
     if (
-        document["inspector_schema_version"] != 1
+        document["inspector_schema_version"] != 2
         or document["status"] != "complete"
         or document["execution_commit"] != EXECUTION_COMMIT
         or document["lower_report_count"] != 0
@@ -2038,6 +2235,8 @@ def _validate_inspector_material(value: object) -> dict[str, Any]:
                 "tree_digest",
                 "execution_digest",
                 "copy_evidence_digest",
+                "historical_copy_evidence_digest",
+                "relocation_pair_key",
             },
             what="old-source inspector durable row",
         )
@@ -2045,12 +2244,15 @@ def _validate_inspector_material(value: object) -> dict[str, Any]:
             type(row["job_id"]) is not str
             or not row["job_id"]
             or row["job_id"] in seen_durable
+            or type(row["relocation_pair_key"]) is not str
+            or not row["relocation_pair_key"]
             or any(
                 _HEX64.fullmatch(str(row[name])) is None
                 for name in (
                     "tree_digest",
                     "execution_digest",
                     "copy_evidence_digest",
+                    "historical_copy_evidence_digest",
                 )
             )
         ):
@@ -2491,6 +2693,46 @@ def _validate_lease(active: Path) -> dict[str, Any]:
     }
 
 
+def _validate_preserved_durable_pair(
+    job_id: str, event: Mapping[str, Any], inspected: Mapping[str, Any],
+    local: Path, durable: Path, access: Any,
+) -> dict[str, Any]:
+    observation = access.historical_pair_at(local, durable)
+    local_inventory = _plain_tree_inventory(local, what=f"durable source tree {job_id}")
+    durable_inventory = _plain_tree_inventory(durable, what=f"durable copy tree {job_id}")
+    local_digest = B._job_tree_digest(local)
+    durable_digest = B._job_tree_digest(durable)
+    if local_digest != durable_digest or local_inventory != durable_inventory:
+        raise RecoveryRefused(f"local/durable tree digest differs for {job_id}")
+    copy_digest = B._copy_evidence_digest(local, durable)
+    operational = {
+        "execution_digest": inspected.get("execution_digest"),
+        "source_tree_digest": inspected.get("tree_digest"),
+        "copy_evidence_digest": observation.historical_copy_digest,
+    }
+    if (
+        event["data"] != operational
+        or inspected.get("tree_digest") != local_digest
+        or local_digest != observation.policy.content_digest
+        or copy_digest != inspected.get("copy_evidence_digest")
+        or copy_digest != observation.observed_copy_digest
+        or inspected.get("historical_copy_evidence_digest") != observation.historical_copy_digest
+        or inspected.get("relocation_pair_key") != observation.policy.key
+    ):
+        raise RecoveryRefused(f"copy evidence digest differs for {job_id}")
+    if access.historical_pair_at(local, durable) != observation:
+        raise RecoveryRefused(f"relocation pair changed during parent rehash: {job_id}")
+    return {
+        "job_id": job_id,
+        "tree_digest": local_digest,
+        "tree_inventory_digest": _tree_digest(local_inventory),
+        "execution_digest": inspected["execution_digest"],
+        "copy_evidence_digest": copy_digest,
+        "historical_copy_evidence_digest": observation.historical_copy_digest,
+        "relocation_pair_key": observation.policy.key,
+    }
+
+
 def _capture_outcome_blind_inventory(
     inspection: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -2498,6 +2740,7 @@ def _capture_outcome_blind_inventory(
     if inspection is None:
         inspection = _run_old_source_inspector()
     inspection = _validate_inspector_material(dict(inspection))
+    access, relocation = _relocation_state()
     inspector_local = {
         row["job_id"]: row for row in inspection["jobs"]["local_completed"]
     }
@@ -2580,36 +2823,8 @@ def _capture_outcome_blind_inventory(
             raise RecoveryRefused(f"old-source durable row is missing for {job_id}")
         local = local_jobs_root / job_id
         durable = durable_jobs_root / job_id
-        local_inventory = _plain_tree_inventory(
-            local, what=f"durable source tree {job_id}"
-        )
-        durable_inventory = _plain_tree_inventory(
-            durable, what=f"durable copy tree {job_id}"
-        )
-        local_digest = B._job_tree_digest(local)
-        durable_digest = B._job_tree_digest(durable)
-        if local_digest != durable_digest or local_inventory != durable_inventory:
-            raise RecoveryRefused(f"local/durable tree digest differs for {job_id}")
-        copy_digest = B._copy_evidence_digest(local, durable)
-        operational = {
-            "execution_digest": inspected.get("execution_digest"),
-            "source_tree_digest": inspected.get("tree_digest"),
-            "copy_evidence_digest": inspected.get("copy_evidence_digest"),
-        }
-        if (
-            event["data"] != operational
-            or inspected.get("tree_digest") != local_digest
-            or copy_digest != inspected.get("copy_evidence_digest")
-        ):
-            raise RecoveryRefused(f"copy evidence digest differs for {job_id}")
         durable_rows.append(
-            {
-                "job_id": job_id,
-                "tree_digest": local_digest,
-                "tree_inventory_digest": _tree_digest(local_inventory),
-                "execution_digest": inspected["execution_digest"],
-                "copy_evidence_digest": copy_digest,
-            }
+            _validate_preserved_durable_pair(job_id, event, inspected, local, durable, access)
         )
 
     untouched = sorted(set(job_ids) - set(started))
@@ -2655,8 +2870,9 @@ def _capture_outcome_blind_inventory(
         raise RecoveryRefused("orphan lease archive exists before transition")
 
     inventory = {
-        "inventory_schema_version": 1,
+        "inventory_schema_version": 2,
         "execution_commit": EXECUTION_COMMIT,
+        "relocation": relocation,
         "control": {
             "hashes": dict(EXPECTED_HASHES),
             "plan_digest": EXPECTED_PLAN_DIGEST,
@@ -2774,6 +2990,7 @@ def _validate_incident_contract(document: Mapping[str, Any]) -> None:
             "status",
             "automatic_retry_allowed",
             "authority",
+            "controller_process",
             "inventory",
             "inventory_digest",
             "liveness_stability_reports",
@@ -2786,6 +3003,10 @@ def _validate_incident_contract(document: Mapping[str, Any]) -> None:
         or document["automatic_retry_allowed"] is not False
     ):
         raise RecoveryRefused("incident status or retry policy differs")
+    _validate_controller_process_attestation(
+        document["controller_process"], base=document["authority"]["base_python"],
+        what="incident controller process",
+    )
     inventory = _validate_seal(
         document["inventory"], field="inventory_digest", what="incident inventory"
     )
@@ -2796,6 +3017,7 @@ def _validate_incident_contract(document: Mapping[str, Any]) -> None:
         {
             "inventory_schema_version",
             "execution_commit",
+            "relocation",
             "control",
             "lease",
             "checkpoint",
@@ -2812,7 +3034,7 @@ def _validate_incident_contract(document: Mapping[str, Any]) -> None:
         what="incident inventory",
     )
     if (
-        inventory["inventory_schema_version"] != 1
+        inventory["inventory_schema_version"] != 2
         or inventory["execution_commit"] != EXECUTION_COMMIT
         or inventory["lower_report_count"] != 0
         or inventory["production_launch_receipt_present"] is not False
@@ -2821,6 +3043,9 @@ def _validate_incident_contract(document: Mapping[str, Any]) -> None:
         or inventory["scientific_values_emitted"] is not False
     ):
         raise RecoveryRefused("incident inventory fixed state differs")
+    _, relocation = _relocation_state()
+    if _canonical(inventory["relocation"]) != _canonical(relocation):
+        raise RecoveryRefused("incident relocation admission differs")
     lease = _expect_keys(
         inventory["lease"],
         {"path", "sha256", "pid", "token", "timestamp", "timestamp_utc"},
@@ -2948,13 +3173,12 @@ def adjudicate() -> dict[str, Any]:
     if _canonical(authority) != _canonical(authority_before):
         raise RecoveryRefused("controller authority changed during adjudication")
     liveness = _quiescent_liveness()
-    incident = _publish_twins(
-        INCIDENT_FILE,
-        {
+    payload = {
             **_base_record("incident"),
             "status": "outcome_blind_interruption_adjudicated",
             "automatic_retry_allowed": False,
             "authority": authority,
+            "controller_process": _controller_process_attestation(authority),
             "inventory": inventory,
             "inventory_digest": inventory["inventory_digest"],
             "liveness_stability_reports": [
@@ -2963,8 +3187,9 @@ def adjudicate() -> dict[str, Any]:
                     "report": liveness,
                 }
             ],
-        },
-    )
+        }
+    _validate_incident_contract(_seal(payload))
+    incident = _publish_twins(INCIDENT_FILE, payload)
     _validate_incident_contract(incident)
     incident_sha = sha256_file(_record_paths(INCIDENT_FILE)[0])
     terminal = _publish_epoch001_terminal(incident, incident_sha)
@@ -4837,131 +5062,81 @@ def recover() -> dict[str, Any]:
 
 
 def _checkpoint_documents() -> dict[str, tuple[dict[str, Any], str]]:
+    readers = _parent_readers()
+    checkpoint_reader, controls = readers["checkpoints"], readers["controls"]
+    # Completion is a released-state operation; an active token must not be
+    # accepted through the ordinary historical lookup's active-lease branch.
+    Launch._no_active_lease()
     local_dir = P.OUTPUT_ROOT / Plan.START_DIRECTORY
     copy_dir = P.SYNC_ROOT / Plan.START_DIRECTORY
     local = {path.name: path for path in _directory_entries(local_dir, what="checkpoints")}
     copied = {path.name: path for path in _directory_entries(copy_dir, what="checkpoint copies")}
-    if set(local) != set(copied):
+    names = set(local)
+    old_name = f"{OLD_LEASE_TOKEN}.json"
+    if names != set(copied):
         raise RecoveryRefused("checkpoint original/copy inventories differ")
-    if len(local) != EXPECTED_FINAL_COUNTS["checkpoints"]:
-        raise RecoveryRefused("completed recovery must contain exactly two checkpoints")
-    result: dict[str, tuple[dict[str, Any], str]] = {}
-    for name in sorted(local):
-        match = _TOKEN_FILE.fullmatch(name)
-        if match is None:
-            raise RecoveryRefused("checkpoint filename is not a canonical token")
-        digest = _same_bytes(local[name], copied[name], what=f"checkpoint {name}")
-        document = read_json(local[name])
-        document = _expect_keys(
-            document,
-            {
-                "exp2a_repair_start_schema_version",
-                "purpose",
-                "plan_digest",
-                "preflight",
-                "source_ledger",
-                "environment",
-                "roots",
-                "attempt_timeout_seconds",
-                "lease",
-                "fixed_worker",
-                "supervisor_required",
-                "automatic_retry_allowed",
-                "execution_context_digest",
-                "checkpoint_digest",
-            },
-            what="recovery checkpoint",
-        )
-        expected = Plan._seal(
-            {key: value for key, value in document.items() if key != "checkpoint_digest"},
-            "checkpoint_digest",
-        )
-        preflight = _expect_keys(
-            document["preflight"],
-            {"path", "sha256", "binding_sha256"},
-            what="recovery checkpoint preflight",
-        )
-        source = _expect_keys(
-            document["source_ledger"],
-            {"path", "sha256", "ledger_digest"},
-            what="recovery checkpoint source ledger",
-        )
-        roots = _expect_keys(
-            document["roots"],
-            {"output", "staging", "sync"},
-            what="recovery checkpoint roots",
-        )
-        lease = _expect_keys(
-            document["lease"],
-            {"path", "sha256", "name", "token", "started_at"},
-            what="recovery checkpoint lease",
-        )
-        if (
-            document != expected
-            or document["execution_context_digest"]
-            != Launch._execution_context(document)["execution_context_digest"]
-            or lease["token"] != match.group(1)
-            or lease["name"] != Plan.COMMON_LEASE_NAME
-            or _HEX64.fullmatch(str(lease["sha256"])) is None
-            or type(lease["started_at"]) is not str
-            or not lease["started_at"]
-            or Path(lease["path"]).resolve()
-            != (
-                Plan.COMMON_LEASE_ROOT
-                / "leases"
-                / f"{Plan.COMMON_LEASE_NAME}.lease.json"
-            ).resolve()
-            or document["environment"].get("git_commit") != EXECUTION_COMMIT
-            or P._route_payload(document["environment"])
-            != {
-                "device": "cpu",
-                "num_threads": 4,
-                "num_interop_threads": 4,
-                "gpu_used": False,
-            }
-            or document["plan_digest"] != EXPECTED_PLAN_DIGEST
-            or preflight["path"]
-            != str((P.PREFLIGHT_ROOT / Launch.PREFLIGHT_FILE).resolve())
-            or preflight["sha256"] != EXPECTED_HASHES["preflight_report"]
-            or source["path"]
-            != str(
-                (
-                    P.PREPARATION_ORIGINAL_ROOT
-                    / P.Sources.SOURCE_LEDGER_FILE
-                ).resolve()
-            )
-            or source["sha256"] != EXPECTED_HASHES["source_ledger_file"]
-            or roots
-            != {
-                "output": str(P.OUTPUT_ROOT.resolve()),
-                "staging": str(P.STAGING_ROOT.resolve()),
-                "sync": str(P.SYNC_ROOT.resolve()),
-            }
-            or document["attempt_timeout_seconds"] != P.ATTEMPT_TIMEOUT_SECONDS
-            or document["fixed_worker"]
-            != "bu.experiments.week8_exp2a_repair_launch._fit_worker"
-            or document["supervisor_required"]
-            != "bu.experiments.supervisor.run_isolated_attempt"
-            or document["automatic_retry_allowed"] is not False
-        ):
-            raise RecoveryRefused("recovery checkpoint identity/digest differs")
-        result[match.group(1)] = (document, digest)
+    if len(names) != EXPECTED_FINAL_COUNTS["checkpoints"] or old_name not in names:
+        raise RecoveryRefused("completed recovery must contain exactly the original and one new checkpoint")
+    if any(_TOKEN_FILE.fullmatch(name) is None for name in names):
+        raise RecoveryRefused("checkpoint filename is not a canonical token")
+    new_name = next(iter(names - {old_name}))
+    new_token = Path(new_name).stem
+    control = P._load_control(EXECUTION_COMMIT, monitor_only=True)
+    old, old_sha = controls.historical_checkpoint_material(control)
     if (
-        OLD_LEASE_TOKEN not in result
-        or result[OLD_LEASE_TOKEN][1] != EXPECTED_HASHES["old_checkpoint"]
-        or result[OLD_LEASE_TOKEN][0]["checkpoint_digest"]
-        != EXPECTED_OLD_CHECKPOINT_DIGEST
+        old_sha != EXPECTED_HASHES["old_checkpoint"]
+        or old["checkpoint_digest"] != EXPECTED_OLD_CHECKPOINT_DIGEST
+        or old["exp2a_repair_start_schema_version"] != 1
+        or old["plan_digest"] != EXPECTED_PLAN_DIGEST
+        or old["preflight"]["sha256"] != EXPECTED_HASHES["preflight_report"]
+        or old["source_ledger"]["sha256"] != EXPECTED_HASHES["source_ledger_file"]
+        or old["lease"]["token"] != OLD_LEASE_TOKEN
+        or old["lease"]["sha256"] != EXPECTED_HASHES["old_lease"]
+        or _same_bytes(local[old_name], copied[old_name], what="original checkpoint") != old_sha
+        or _canonical(read_json(local[old_name])) != _canonical(old)
     ):
         raise RecoveryRefused("original checkpoint is not preserved exactly")
-    contexts = {document[0]["execution_context_digest"] for document in result.values()}
-    if len(contexts) != 1:
-        raise RecoveryRefused("two recovery checkpoints do not share one execution context")
-    return result
-
+    lease = Launch._historical_lease_record(new_token)
+    expected, expected_context = checkpoint_reader._new_document(old, lease)
+    document, raw = checkpoint_reader._current_twins(Path(Plan.START_DIRECTORY) / new_name)
+    context_name = checkpoint_reader.relocation_binding()["context_file"]
+    context, _ = checkpoint_reader._current_twins(Path(context_name))
+    if (
+        _canonical(document) != _canonical(expected)
+        or _canonical(context) != _canonical(expected_context)
+        or document["execution_context_digest"] == old["execution_context_digest"]
+        or lease["token"] != new_token
+        or document["exp2a_repair_start_schema_version"] != 2
+    ):
+        raise RecoveryRefused("relocated checkpoint/context differs from original scientific settings or admitted provenance")
+    digest = _same_bytes(local[new_name], copied[new_name], what="relocated checkpoint")
+    if digest != sha256_bytes(raw):
+        raise RecoveryRefused("relocated checkpoint changed during independent validation")
+    if (
+        {p.name for p in _directory_entries(local_dir, what="checkpoints")} != names
+        or {p.name for p in _directory_entries(copy_dir, what="checkpoint copies")} != names
+        or controls.historical_checkpoint_material(control) != (old, old_sha)
+        or checkpoint_reader._current_twins(Path(Plan.START_DIRECTORY) / new_name) != (document, raw)
+        or checkpoint_reader._current_twins(Path(context_name))[0] != context
+        or Launch._historical_lease_record(new_token) != lease
+    ):
+        raise RecoveryRefused("two-epoch checkpoint evidence changed during validation")
+    Launch._no_active_lease()
+    return {OLD_LEASE_TOKEN: (old, old_sha), new_token: (document, digest)}
 
 def _final_events(
     checkpoints: Mapping[str, tuple[Mapping[str, Any], str]]
 ) -> tuple[list[dict[str, Any]], str, str, dict[str, str]]:
+    readers = _parent_readers()
+    event_reader, checkpoint_reader = readers["events"], readers["checkpoints"]
+    new_tokens = set(checkpoints) - {OLD_LEASE_TOKEN}
+    if OLD_LEASE_TOKEN not in checkpoints or len(checkpoints) != 2 or len(new_tokens) != 1:
+        raise RecoveryRefused("recovery has other than one original and one continuation token")
+    new_token = next(iter(new_tokens))
+    contexts = {token: _expect_sha(row[0]["execution_context_digest"], what="recovery event context")
+                for token, row in checkpoints.items()}
+    if contexts[OLD_LEASE_TOKEN] == contexts[new_token]:
+        raise RecoveryRefused("relocated event epoch must have a distinct verified context")
     local_dir = P.OUTPUT_ROOT / Launch.EVENT_DIRECTORY
     copy_dir = P.SYNC_ROOT / Launch.EVENT_DIRECTORY
     local = {path.name: path for path in _directory_entries(local_dir, what="events")}
@@ -4971,7 +5146,6 @@ def _final_events(
         f"{index:06d}.json" for index in range(EXPECTED_FINAL_COUNTS["events"])
     ]:
         raise RecoveryRefused("completed recovery event stream is not exact/contiguous")
-    context = next(iter(checkpoints.values()))[0]["execution_context_digest"]
     checkpoint_digests = {
         token: row[0]["checkpoint_digest"] for token, row in checkpoints.items()
     }
@@ -4985,11 +5159,18 @@ def _final_events(
     for index, name in enumerate(names):
         _same_bytes(local[name], copied[name], what=f"event {name}")
         row = read_json(local[name])
-        Launch._validate_event(
+        expected_token = OLD_LEASE_TOKEN if index < 299 else new_token
+        observed = (event_reader.historical_event(index) if index < 299 else
+                    checkpoint_reader._current_twins(Path(Launch.EVENT_DIRECTORY) / name)[0])
+        if _canonical(row) != _canonical(observed):
+            raise RecoveryRefused("parent event differs from its independently verified epoch document")
+        # Use the same original seal/schema primitive with the independently
+        # verified epoch context. No fitting/environment admission is performed.
+        event_reader._original_validate(
             row,
             index=index,
             previous=previous,
-            context_digest=context,
+            context_digest=contexts[expected_token],
         )
         kind = row["kind"]
         job_id = row["job_id"]
@@ -4998,6 +5179,8 @@ def _final_events(
             token = digest_to_token.get(row["data"]["checkpoint_digest"])
             if token is None or job_id in started or job_id not in all_jobs:
                 raise RecoveryRefused("recovery event has duplicate/unknown start")
+            if token != expected_token:
+                raise RecoveryRefused("recovery start binds the wrong checkpoint epoch")
             started[job_id] = token
         elif kind == "job_synced":
             if job_id not in started or job_id in synced:
@@ -5018,10 +5201,6 @@ def _final_events(
     if dict(kinds) != expected_kinds or set(started) != all_jobs or synced != all_jobs:
         raise RecoveryRefused("final event accounting differs from 261/261/1")
     old_started = {job_id for job_id, token in started.items() if token == OLD_LEASE_TOKEN}
-    new_tokens = set(checkpoints) - {OLD_LEASE_TOKEN}
-    if len(new_tokens) != 1:
-        raise RecoveryRefused("recovery has other than one continuation token")
-    new_token = next(iter(new_tokens))
     if (
         len(old_started) != 150
         or ORPHAN_JOB_ID not in old_started
@@ -5032,6 +5211,13 @@ def _final_events(
         raise RecoveryRefused("epoch-001 event prefix changed during recovery")
     if sha256_file(local_dir / "000298.json") != EXPECTED_HASHES["old_event_tail_file"]:
         raise RecoveryRefused("epoch-001 event tail changed during recovery")
+    if event_reader._inventory() != tuple(names):
+        raise RecoveryRefused("final event inventory changed during parent validation")
+    for index, name in enumerate(names):
+        observed = (event_reader.historical_event(index) if index < 299 else
+                    checkpoint_reader._current_twins(Path(Launch.EVENT_DIRECTORY) / name)[0])
+        if _canonical(observed) != _canonical(events[index]):
+            raise RecoveryRefused("final event changed during parent validation")
     return events, _event_chain_digest(events), new_token, started
 
 
@@ -5151,6 +5337,14 @@ def _validate_final_job_trees(
         row["job_id"]: row["tree_digest"]
         for row in incident["inventory"]["jobs"]["local_completed"]
     }
+    old_durable = {row["job_id"]: row for row in incident["inventory"]["jobs"]["durable_completed"]}
+    if (
+        len(old_digests) != 150 or len(old_durable) != 149
+        or set(old_digests) - set(old_durable) != {ORPHAN_JOB_ID}
+        or set(old_durable) != set(incident["inventory"]["events"]["synced_job_ids"])
+    ):
+        raise RecoveryRefused("preserved final job inventory differs from the exact incident")
+    access, _ = _relocation_state()
     synced = {
         event["job_id"]: event["data"]
         for event in events
@@ -5160,15 +5354,23 @@ def _validate_final_job_trees(
     for job_id in sorted(all_ids):
         local = local_root / job_id
         durable = durable_root / job_id
-        local_digest = B._job_tree_digest(local)
-        if B._job_tree_digest(durable) != local_digest:
-            raise RecoveryRefused(f"final local/durable tree differs for {job_id}")
-        copy_digest = B._copy_evidence_digest(local, durable)
         sync = synced.get(job_id)
-        if type(sync) is not dict or sync.get("source_tree_digest") != local_digest:
-            raise RecoveryRefused(f"final sync event tree digest differs for {job_id}")
-        if sync.get("copy_evidence_digest") != copy_digest:
-            raise RecoveryRefused(f"final sync copy digest differs for {job_id}")
+        if type(sync) is not dict:
+            raise RecoveryRefused(f"final sync event is missing for {job_id}")
+        if job_id in old_durable:
+            preserved = _validate_preserved_durable_pair(job_id, {"data": sync}, old_durable[job_id], local, durable, access)
+            if _canonical(preserved) != _canonical(old_durable[job_id]):
+                raise RecoveryRefused(f"preserved copy evidence changed from the incident: {job_id}")
+            local_digest = preserved["tree_digest"]
+        else:
+            local_digest = B._job_tree_digest(local)
+            if B._job_tree_digest(durable) != local_digest:
+                raise RecoveryRefused(f"final local/durable tree differs for {job_id}")
+            copy_digest = B._copy_evidence_digest(local, durable)
+            if sync.get("source_tree_digest") != local_digest:
+                raise RecoveryRefused(f"final sync event tree digest differs for {job_id}")
+            if sync.get("copy_evidence_digest") != copy_digest:
+                raise RecoveryRefused(f"final sync copy digest differs for {job_id}")
         checkpoint_token = started.get(job_id)
         if checkpoint_token not in checkpoints:
             raise RecoveryRefused(f"final job lacks one checkpoint-bound start: {job_id}")
@@ -5811,7 +6013,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "report": lambda: _run_postrecovery_command("report", gate=gate),
             "figures": lambda: _run_postrecovery_command("figures", gate=gate),
         }
-        result = handlers[arguments.command]()
+        with _parent_relocation(gate):
+            result = handlers[arguments.command]()
     except (OSError, TypeError, ValueError) as exc:
         refusal = {
             "command": arguments.command,
