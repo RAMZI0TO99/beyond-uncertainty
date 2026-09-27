@@ -22,6 +22,7 @@ $BasePython = 'D:\Aenv\pro2\runtimes\week8-python313-frozen-001\python.exe'
 $BaseRuntime = 'D:\Aenv\pro2\runtimes\week8-python313-frozen-001'
 $Pyvenv = 'D:\Aenv\pro2\pro2\.venv\pyvenv.cfg'
 $VenvScripts = 'D:\Aenv\pro2\pro2\.venv\Scripts'
+$PinnedLocalAppData = 'C:\Users\aladdin-alyanai\AppData\Local'
 $OuterPath = 'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_outer_bootstrap.txt'
 $EntryPath = 'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_exp2a_recovery_entrypoint.py'
 $HelperPath = 'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_raw_authority.py'
@@ -225,6 +226,7 @@ function Get-Week8StartupEnvironment([string] $RuntimePath) {
     return ,@(
         @('CUDA_VISIBLE_DEVICES', '-1'),
         @('HIP_VISIBLE_DEVICES', '-1'),
+        @('LOCALAPPDATA', $PinnedLocalAppData),
         @('MKL_NUM_THREADS', '4'),
         @('NUMEXPR_NUM_THREADS', '4'),
         @('OMP_NUM_THREADS', '4'),

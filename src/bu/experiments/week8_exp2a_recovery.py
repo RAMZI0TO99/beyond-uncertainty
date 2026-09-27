@@ -141,7 +141,7 @@ EXPECTED_OUTER_BOOTSTRAP_LITERAL_SHA256 = (
     "73d6f0e5cb126ffde136a3746b620236c847b3791a3eec688ddbd649ab304a3e"
 )
 EXPECTED_RAW_AUTHORITY_HELPER_SHA256 = (
-    "20a9be7eb663c8431f975dd0de3c822817e31a3b07001221ee0b6de5973483e3"
+    "9067c7572692a4f0bc779488613c0e81f82233d8145bc1bb795e34f176e523aa"
 )
 ENTRYPOINT_GATE_ENVIRONMENT_NAME = "BU_D161_ENTRYPOINT_GATE"
 CHILD_BUNDLE_ENVIRONMENT_NAME = "BU_D161_CHILD_BUNDLE_SHA256"
@@ -772,6 +772,7 @@ def _raw_authority_config(
         "native_launcher": str(NATIVE_LAUNCHER),
         "native_powershell": str(NATIVE_POWERSHELL),
         "native_runtime": str(NATIVE_RUNTIME),
+        "pinned_local_appdata": str(PINNED_LOCAL_APPDATA),
         "pinned_site_packages": str(PINNED_SITE_PACKAGES),
         "pinned_git": str(PINNED_GIT),
         "pinned_git_runtime_root": str(PINNED_GIT_RUNTIME_ROOT),

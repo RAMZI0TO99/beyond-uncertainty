@@ -216,6 +216,7 @@ def test_inbox_powershell_smoke_binds_exact_argv_environment_and_prefixes(
     expected_environment = [
         "CUDA_VISIBLE_DEVICES=-1",
         "HIP_VISIBLE_DEVICES=-1",
+        "LOCALAPPDATA=C:\\Users\\aladdin-alyanai\\AppData\\Local",
         "MKL_NUM_THREADS=4",
         "NUMEXPR_NUM_THREADS=4",
         "OMP_NUM_THREADS=4",

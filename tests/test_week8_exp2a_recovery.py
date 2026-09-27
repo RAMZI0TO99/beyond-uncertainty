@@ -118,6 +118,7 @@ def test_raw_authority_config_binds_git_runtime_and_dependency_tree() -> None:
         "native_launcher",
         "native_powershell",
         "native_runtime",
+        "pinned_local_appdata",
         "pinned_site_packages",
         "pinned_git",
         "pinned_git_runtime_root",

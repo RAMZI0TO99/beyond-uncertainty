@@ -108,10 +108,12 @@ def _startup_environment_pairs(
     config: dict[str, object],
 ) -> tuple[tuple[str, str], ...]:
     base_runtime = str(config["pinned_base_runtime"])
+    local_appdata = str(config["pinned_local_appdata"])
     native_runtime = str(config["native_runtime"])
     pairs = (
         ("CUDA_VISIBLE_DEVICES", "-1"),
         ("HIP_VISIBLE_DEVICES", "-1"),
+        ("LOCALAPPDATA", local_appdata),
         ("MKL_NUM_THREADS", "4"),
         ("NUMEXPR_NUM_THREADS", "4"),
         ("OMP_NUM_THREADS", "4"),
@@ -128,8 +130,8 @@ def _startup_environment_pairs(
         ("TMPDIR", native_runtime),
         ("WINDIR", "C:\\Windows"),
     )
-    assert len(pairs) == 12
-    assert len({name for name, _ in pairs}) == 12
+    assert len(pairs) == 13
+    assert len({name for name, _ in pairs}) == 13
     return pairs
 
 
@@ -279,7 +281,7 @@ def _git_executable() -> Path:
 
 def _clean_environment(config: dict[str, object]) -> dict[str, str]:
     environment = dict(_startup_environment_pairs(config))
-    assert len(environment) == 12
+    assert len(environment) == 13
     assert "PYTHONPATH" not in environment
     assert not any(name.startswith("GIT_") for name in environment)
     assert E.GATE_ENVIRONMENT_NAME not in environment
@@ -498,12 +500,14 @@ def synthetic_launch(
     execution = tmp_path / "execution"
     site_packages = tmp_path / "pinned-site-packages"
     native_runtime = tmp_path / "native-runtime"
+    local_appdata = tmp_path / "local-appdata"
     mode_file = tmp_path / "revalidation-mode.txt"
     controller_marker = tmp_path / "controller-reached.json"
     controller.mkdir()
     execution.mkdir()
     site_packages.mkdir()
     native_runtime.mkdir()
+    local_appdata.mkdir()
     (site_packages / "empty_namespace").mkdir()
     (site_packages / "synthetic_dependency.py").write_text(
         "VALUE = 'pinned dependency'\n", encoding="utf-8"
@@ -550,6 +554,7 @@ def synthetic_launch(
         "native_launcher": str(native_launcher.resolve()),
         "native_powershell": str(powershell),
         "native_runtime": str(native_runtime.resolve()),
+        "pinned_local_appdata": str(local_appdata.resolve()),
         "pinned_site_packages": str(site_packages.resolve()),
         "pinned_git": str(git),
         "pinned_git_runtime_root": str(git.parent),
@@ -873,7 +878,8 @@ def test_positive_exact_checkouts_reach_only_the_stub_controller(
     ]
     assert "PYTHONPATH" not in record["revalidated"]["runtime"]["python_environment"]
     assert runtime["startup_environment"] == _clean_environment(config)
-    assert len(runtime["startup_environment"]) == 12
+    assert len(runtime["startup_environment"]) == 13
+    assert runtime["startup_environment"]["LOCALAPPDATA"] == config["pinned_local_appdata"]
     assert runtime["working_directory"] == str(synthetic_launch["native_runtime"])
     assert runtime["active_runtime"] == {
         "executable": config["pinned_python"],
@@ -972,6 +978,7 @@ def test_raw_and_gate_schema_v4_have_one_exact_configuration_contract() -> None:
         "native_launcher",
         "native_powershell",
         "native_runtime",
+        "pinned_local_appdata",
         "pinned_pyvenv_sha256",
         "pinned_base_runtime_inventory_sha256",
         "pinned_base_runtime_file_count",
@@ -1101,6 +1108,23 @@ def test_complete_environment_refuses_an_unregistered_name(
     completed = _run_entrypoint(synthetic_launch, environment=environment)
     assert completed.returncode == 2
     assert json.loads(completed.stdout)["status"] == "refused"
+    assert not synthetic_launch["controller_marker"].exists()
+
+
+def test_native_local_appdata_requires_the_pinned_profile(
+    synthetic_launch: dict[str, Any], tmp_path: Path
+) -> None:
+    other_profile = tmp_path / "other-local-appdata"
+    other_profile.mkdir()
+    environment = _clean_environment(synthetic_launch["config"])
+    environment["LOCALAPPDATA"] = str(other_profile.resolve())
+    completed = _run_entrypoint(synthetic_launch, environment=environment)
+    assert completed.returncode == 2
+    refused = json.loads(completed.stdout)
+    assert refused["error_sha256"] in {
+        _sha256_bytes(b"native Python startup tree differs from fixed config"),
+        _sha256_bytes(b"entrypoint complete startup environment differs"),
+    }
     assert not synthetic_launch["controller_marker"].exists()
 
 

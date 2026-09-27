@@ -7,7 +7,7 @@ order; it is not a result or substitute for immutable evidence.  Every path is
 below `D:/Aenv/pro2`, every fit uses the frozen CPU 4/4 route, and the GPU
 remains unused.
 
-D-172 current checkpoint: clean local D-171 release b84b6b35 passed its gate but native status005 refused before counts/liveness. The corrected fixed candidate passed fullgate003: 5537 passed/19 expected skips/51 passing subtests across 5,556 nodes; crashed batch03-001 is excluded and preserved. Fresh documentation governance, runtime verification, clean local commit and distinct attempt006 native status remain before any adjudication/recovery. Original evidence, lease ownership and the one-use recovery limit remain unchanged.
+D-173 current checkpoint: clean local D-172 release 1e14ef696c6d80cbc81a659a2032e9775ad7e799 invoked native status006 once; it refused before counts/liveness. The corrected fixed candidate passed gate004: 5538 passed/19 expected skips/51 passing subtests across 5,557 nodes; three host stack-overflow attempts and one batch09 timeout are excluded; continuation008 completed the final eleven exact groups. Documentation governance, runtime verification, clean local commit and distinct attempt007 native status remain before adjudication/recovery. Original evidence, lease ownership and the one-use recovery limit remain unchanged.
 
 ## Clean-revision prerequisite
 
@@ -35,7 +35,7 @@ command (`status`, `adjudicate`, `recover`, `seal`, `monitor`, `finalize`,
 `report`, or `figures`) starts through the fixed D-168 stage-0 renderer, the
 reviewed inbox Windows PowerShell host, the tracked native launcher, and the
 externally hash-checked contents of `scripts/week8_recovery_outer_bootstrap.txt`.
-The native launcher supplies an exact twelve-entry environment, and every
+The native launcher supplies an exact thirteen-entry environment, and every
 Python boundary in this recovery chain receives literal
 `-I -S -B -X utf8 -c`.  The outer literal receives the externally approved
 entrypoint SHA-256, raw-helper SHA-256, clean controller commit, one allowlisted
@@ -87,7 +87,7 @@ receipt and native launcher before creating a `ScriptBlock`, and retain
 deny-write/delete handles until the controller exits.  Stage 0 runs through
 `C:\Windows\System32\cmd.exe /d /q /v:off` under an exact ten-entry environment
 (nine fixed host values plus the authenticated envelope).  The native launcher
-then constructs an exact twelve-entry controller environment.  Neither boundary
+then constructs an exact thirteen-entry controller environment.  Neither boundary
 inherits `PYTHON*`, CLR profiling, PowerShell policy, module, or user-startup
 variables.
 
@@ -106,14 +106,14 @@ Require `stage0_source_sha256=29183177378884857c03f37e8da1bd64f1643bca4e32ff56fb
 `stage0_encoded_sha256=401bfeb512de0233a1663365cda68f8f733cdf96682561a20f8ce6d1c48a5001`,
 and `stage0_environment_policy_sha256=759d257d3842052eeb2f38bcea5ede02b9ddff617979f486ca6fa1c280a7af49`.
 Create the external release directory once at
-`D:\Aenv\pro2\.tmp\week8-d168-release-attempt-006`; it is outside both
+`D:\Aenv\pro2\.tmp\week8-d168-release-attempt-007`; it is outside both
 worktrees and must be empty.  Then invoke the standalone renderer with literal,
 reviewed values (never values dynamically parsed from Git or result evidence):
 
 ```powershell
 & 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
   'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_release_receipt.py' `
-  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-006\release-receipt-v2.txt' `
+  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-007\release-receipt-v2.txt' `
   --controller-commit 'FINAL_CONTROLLER_COMMIT' `
   --native-launcher-sha256 'FINAL_NATIVE_LAUNCHER_SHA256' `
   --outer-sha256 'FINAL_OUTER_SHA256' `
@@ -132,9 +132,9 @@ with `week8_recovery_stage0.py`; for example, the first is:
 ```powershell
 & 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
   'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_stage0.py' `
-  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-006\stage0-status-audit.txt' `
+  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-007\stage0-status-audit.txt' `
   --launcher-path 'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_native_launcher.ps1' `
-  --receipt-path 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-006\release-receipt-v2.txt' `
+  --receipt-path 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-007\release-receipt-v2.txt' `
   --launcher-sha256 'FINAL_NATIVE_LAUNCHER_SHA256' `
   --receipt-sha256 'FINAL_RECEIPT_SHA256' `
   --command status
@@ -225,7 +225,7 @@ Experiment 2A owns:
   `week8-d168-stage0-runtime-attempt-001` and required-empty native startup
   directory `week8-d167-native-runtime-attempt-001`; and the external,
   no-overwrite release/audit records under ignored project-local
-  `.tmp/week8-d168-release-attempt-006`, outside both worktrees.
+  `.tmp/week8-d168-release-attempt-007`, outside both worktrees.
 
 The exclusion publication reopens the historical
 `week7-first-sweep-label-2026-08-31-attempt-001` and its `-project-evidence`
@@ -410,7 +410,7 @@ empty runtime check, native ceremony and one-use recovery rule still applies.
 All operator paths above now refer to the consolidated workspace. Original JSON
 still records old logical paths; the fixed attestation resolves them without
 editing bytes or claiming historical identities were reproduced. See
-week8_relocation_provenance.md. Production child LOCALAPPDATA remains pinned to C:/Users/aladdin-alyanai/AppData/Local; only the diagnostic qa-environment-repair-002 used a project-local profile.
+week8_relocation_provenance.md. Native controller and nested production child LOCALAPPDATA remain pinned to C:/Users/aladdin-alyanai/AppData/Local; only the diagnostic qa-environment-repair-002 used a project-local profile.
 Preserve attempts001–004 and all failed/interrupted gates. Fresh complete QA,
 governance and a clean controller commit are required before creating attempt005
 V2 receipt/audits with the new exact release hashes. If an attempt path is already
@@ -423,4 +423,8 @@ attestation to accept drift. No publication/push/deployment/external messages.
 
 ## 2026-09-23 D-172 status005 refusal and next release
 
-The September23 clean b84b6b35 release has an immutable refused native status005 at D:/Aenv/pro2/.tmp/week8-d168-release-attempt-005. Its inspector reason digest identifies the exact import-finder assertion; an isolated pinned pandas import reproduces one appended six virtual finder, but the actual status process did not record its finder list. Preserve every attempt005 file and do not replay it. D-172 permits only the pinned captured six finder after the original verified chain. Focused checks passed2 and34, but are not a full gate. The active commands above are for a distinct attempt006 only after a fresh exact-candidate complete gate, documentation governance, runtime verification and clean local commit. Refusal or failed counts/liveness still stops before adjudication. The D-161 recovery remains one-use and unconsumed; no publication, push, deployment or external message. D-172 gate003 reconciled all 22 fixed-candidate partitions: 5537 passed, 19 expected skips, 51 passing subtests across 5,556 unique nodes, with zero remaining failures/errors. Combined JUnit SHA256 ae7bfe5c1fb2bb624147a2fd3efc8eca3ec704ced9612939c34bea37b7400aa7. The native batch03-001 stack-overflow attempt contributes no coverage; fresh batch03-002 passed all 640 nodes. Its crash dumps and event records are preserved. The crash's exact root cause is unproved. Verifier002 stopped before report creation on a BOM-prefixed PowerShell JSON record; distinct verifier003 decoded those preserved bytes and reconciled the complete gate. Documentation governance, runtime audit, clean local release and distinct native attempt006 status/counts/liveness remain before the sole unconsumed D-161 recovery.
+The September23 clean b84b6b35 release has an immutable refused native status005 at D:/Aenv/pro2/.tmp/week8-d168-release-attempt-005. Its inspector reason digest identifies the exact import-finder assertion; an isolated pinned pandas import reproduces one appended six virtual finder, but the actual status process did not record its finder list. Preserve every attempt005 file and do not replay it. D-172 permits only the pinned captured six finder after the original verified chain. Focused checks passed2 and34, but are not a full gate. At that checkpoint, the commands above were for a distinct attempt006 only after a fresh exact-candidate complete gate, documentation governance, runtime verification and clean local commit. Refusal or failed counts/liveness still stops before adjudication. The D-161 recovery remains one-use and unconsumed; no publication, push, deployment or external message. D-172 gate003 reconciled all 22 fixed-candidate partitions: 5537 passed, 19 expected skips, 51 passing subtests across 5,556 unique nodes, with zero remaining failures/errors. Combined JUnit SHA256 ae7bfe5c1fb2bb624147a2fd3efc8eca3ec704ced9612939c34bea37b7400aa7. The native batch03-001 stack-overflow attempt contributes no coverage; fresh batch03-002 passed all 640 nodes. Its crash dumps and event records are preserved. The crash's exact root cause is unproved. Verifier002 stopped before report creation on a BOM-prefixed PowerShell JSON record; distinct verifier003 decoded those preserved bytes and reconciled the complete gate. Documentation governance, runtime audit, clean local release and distinct native attempt006 status/counts/liveness remain before the sole unconsumed D-161 recovery.
+
+## 2026-09-27 D-173 status006 refusal and attempt007
+
+The clean local D-172 release 1e14ef696c6d80cbc81a659a2032e9775ad7e799 invoked native status006 once. It refused before counts/liveness with exact reason digest 8654e6c2d919f2d75a54777db1bf565061ff698ab78a4d2f3825441a3a444b92 for a nonempty native startup runtime. Injected DesktopCentral/Endpoint DLP logs appeared under a literal `%LOCALAPPDATA%` directory when the native launcher's exact environment omitted that variable; the logs and attempt006 streams are preserved. D-173 pins native `LOCALAPPDATA` to the already reviewed original C user profile and admits exactly 13 native environment rows. The required-empty startup check and original liveness, evidence, lease and one-use recovery guards remain in force. This is an operational correction; status007 has not yet established production acceptance. D-173 gate004 reconciled 5,557 distinct nodes across 45 accepted QA operations: 5538 passed, 19 expected Windows symlink-privilege skips, 51 passing subtests and zero remaining failures/errors. Combined JUnit SHA256 f5e62413492e43faabadfb0d273e5b2ea999f57d9e3393271804f8a7c088d3ad. The Windows stack-overflow attempts batch01-001, batch03-001 and the final test_gate_evidence file group have no accepted coverage; their reports and host events are preserved, and the fault's exact cause remains unproved. Continuation002 paused before batch08 solely for the 10 GiB start buffer; its 18 prior accepted receipts were retained. Continuation003 accepted batch08, then a 3,500-second batch09 timeout was excluded. Continuation004 accepted the isolated long test, then paused for disk space; continuation005 completed the other two exact batch09 groups and untouched nodes through new02-00 before another disk-buffer pause. Continuation006 accepted new02-01 through new02-03, then paused for disk space. Continuation007 accepted new03 through new06, then its final 66-node file group crashed during fixture copying; continuation008 covered those 66 nodes in eleven fresh six-node groups. The same fixed source candidate was checked throughout. The active command examples above now use the distinct attempt007 directory. Render its stage0 records once only after a clean new local release and fresh runtime, residue, empty-startup and global Python-liveness checks. A refusal ends attempt007; no automatic replay. Post-gate documentation governance14/14, four-tree pinned runtime audit, QA residue preservation, clean local release, distinct immutable attempt007 and independent native status with original counts/liveness remain before adjudication or the sole D-161 recovery. No fit, scientific outcome consultation, push, publication, deployment or external message occurred in this gate.

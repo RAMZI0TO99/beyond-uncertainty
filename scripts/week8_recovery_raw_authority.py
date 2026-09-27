@@ -43,6 +43,7 @@ _CONFIG_KEYS = frozenset(
         "pinned_python",
         "pinned_base_python",
         "pinned_base_runtime",
+        "pinned_local_appdata",
         "pinned_pyvenv",
         "pinned_venv_scripts",
         "native_launcher",
@@ -516,9 +517,13 @@ def _startup_environment_pairs(
     native_runtime = str(
         _absolute_path(config["native_runtime"], what="native startup runtime")
     )
+    local_appdata = str(
+        _absolute_path(config["pinned_local_appdata"], what="pinned local appdata")
+    )
     return (
         ("CUDA_VISIBLE_DEVICES", "-1"),
         ("HIP_VISIBLE_DEVICES", "-1"),
+        ("LOCALAPPDATA", local_appdata),
         ("MKL_NUM_THREADS", "4"),
         ("NUMEXPR_NUM_THREADS", "4"),
         ("OMP_NUM_THREADS", "4"),
