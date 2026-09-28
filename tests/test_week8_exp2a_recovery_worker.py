@@ -1161,7 +1161,12 @@ def test_schema_and_preimport_contract_is_current_and_complete(
     assert scenario.authority["git_runtime"] == scenario.raw_authority["git_runtime"]
     controller_commit = scenario.raw_authority["controller"]["git_commit"]
     native_startup = scenario.raw_authority["native_startup"]
-    assert set(W._raw_authority_config(controller_commit, native_startup)) == {
+    config = W._raw_authority_config(controller_commit, native_startup)
+    assert set(config) == scenario.raw_module._CONFIG_KEYS
+    assert config["pinned_local_appdata"] == str(
+        Path("C:/Users/aladdin-alyanai/AppData/Local")
+    )
+    assert set(config) == {
         "controller_root",
         "controller_commit",
         "stage0_binding_sha256",
@@ -1178,6 +1183,7 @@ def test_schema_and_preimport_contract_is_current_and_complete(
         "native_launcher",
         "native_powershell",
         "native_runtime",
+        "pinned_local_appdata",
         "pinned_site_packages",
         "pinned_git",
         "pinned_git_runtime_root",

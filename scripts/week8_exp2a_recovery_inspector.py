@@ -44,6 +44,7 @@ PINNED_BASE_PYTHON = Path(
     "D:/Aenv/pro2/runtimes/week8-python313-frozen-001/python.exe"
 )
 PINNED_BASE_RUNTIME = PINNED_BASE_PYTHON.parent
+PINNED_LOCAL_APPDATA = Path("C:/Users/aladdin-alyanai/AppData/Local")
 PINNED_PYVENV = WORKSPACE_ROOT / "pro2" / ".venv" / "pyvenv.cfg"
 PINNED_VENV_SCRIPTS = PINNED_PYTHON.parent
 NATIVE_LAUNCHER = CONTROLLER_WORKTREE / "scripts" / "week8_recovery_native_launcher.ps1"
@@ -279,6 +280,7 @@ def _raw_authority_config(
         "native_launcher": str(NATIVE_LAUNCHER),
         "native_powershell": str(NATIVE_POWERSHELL),
         "native_runtime": str(NATIVE_RUNTIME),
+        "pinned_local_appdata": str(PINNED_LOCAL_APPDATA),
         "pinned_site_packages": str(PINNED_SITE_PACKAGES),
         "pinned_git": str(PINNED_GIT),
         "pinned_git_runtime_root": str(PINNED_GIT_RUNTIME_ROOT),

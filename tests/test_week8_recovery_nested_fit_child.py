@@ -40,6 +40,24 @@ W = _load_script("d166_nested_worker_under_test", WORKER_PATH)
 F = _load_script("d166_fit_child_under_test", FIT_CHILD_PATH)
 
 
+def test_fit_child_raw_authority_config_matches_exact_contract() -> None:
+    raw_module = _load_script(
+        "d166_fit_child_raw_config_contract",
+        ROOT / "scripts" / "week8_recovery_raw_authority.py",
+    )
+    native_startup = {
+        "release_receipt_sha256": "1" * 64,
+        "native_launcher": {"sha256": "2" * 64},
+        "stage0_binding_sha256": "3" * 64,
+        "startup_binding_sha256": "4" * 64,
+    }
+    config = F._raw_authority_config("a" * 40, native_startup)
+    assert set(config) == raw_module._CONFIG_KEYS
+    assert config["pinned_local_appdata"] == str(
+        Path("C:/Users/aladdin-alyanai/AppData/Local")
+    )
+
+
 def _synthetic_relocation() -> dict[str, Any]:
     return {"relocation_schema_version": 1, "attestation_sha256": "1" * 64,
             "policy_sha256": "2" * 64, "pair_count": 304, "document_count": 629,

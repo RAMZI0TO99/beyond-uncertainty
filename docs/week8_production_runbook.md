@@ -7,7 +7,7 @@ order; it is not a result or substitute for immutable evidence.  Every path is
 below `D:/Aenv/pro2`, every fit uses the frozen CPU 4/4 route, and the GPU
 remains unused.
 
-D-173 current checkpoint: clean local D-172 release 1e14ef696c6d80cbc81a659a2032e9775ad7e799 invoked native status006 once; it refused before counts/liveness. The corrected fixed candidate passed gate004: 5538 passed/19 expected skips/51 passing subtests across 5,557 nodes; three host stack-overflow attempts and one batch09 timeout are excluded; continuation008 completed the final eleven exact groups. Documentation governance, runtime verification, clean local commit and distinct attempt007 native status remain before adjudication/recovery. Original evidence, lease ownership and the one-use recovery limit remain unchanged.
+D-174 current checkpoint: clean local D-173 release 50e6a789153b0454b8808bf4e9fa9979853a22bb invoked native status007 once; it refused during inspector raw-authority config revalidation before counts/liveness. Its final attempt007 evidence is preserved. D-174 corrects the three child config builders; D-174 gate005 reconciled 5,559 distinct nodes across 45 accepted QA operations: 5,540 passed, 19 expected Windows symlink-privilege skips, 51 passing subtests and zero failures/errors. Combined JUnit SHA256 042a7628388b3745682421cd89966cf011bc15b225008d88788e5d18348229c3; candidate manifest SHA256 2dff5f7d5a5faae9b8646d4b9982c373e046befb8e6462df0927be07c2cdd094. Documentation governance, runtime verification, clean local commit and distinct attempt008 status remain before adjudication/recovery. The original evidence, lease ownership and one-use recovery limit remain unchanged.
 
 ## Clean-revision prerequisite
 
@@ -65,8 +65,10 @@ refuses before mutation.
 Epoch 001 remains bound to detached execution commit
 `4515d5165756c8d1669d38d2ee854fa1051b1017`.  A nonzero or ambiguous result
 stops progression.  D-161 permits one continuation only after `adjudicate`.
-After epoch 002 starts, only `seal` may be attempted, and only to prove an
-already complete lower epoch; it executes zero fits.
+After epoch 002 starts, do not retry recovery. A normal `seal` requires an
+independently verified first clean `recover` response and pre-seal proof; it
+executes zero fits. If that response is lost, stop and preserve all evidence
+pending a separately reviewed exceptional proof, transport and owner approval.
 
 ## D-161 one-use E2A recovery
 
@@ -106,14 +108,14 @@ Require `stage0_source_sha256=29183177378884857c03f37e8da1bd64f1643bca4e32ff56fb
 `stage0_encoded_sha256=401bfeb512de0233a1663365cda68f8f733cdf96682561a20f8ce6d1c48a5001`,
 and `stage0_environment_policy_sha256=759d257d3842052eeb2f38bcea5ede02b9ddff617979f486ca6fa1c280a7af49`.
 Create the external release directory once at
-`D:\Aenv\pro2\.tmp\week8-d168-release-attempt-007`; it is outside both
+`D:\Aenv\pro2\.tmp\week8-d168-release-attempt-008`; it is outside both
 worktrees and must be empty.  Then invoke the standalone renderer with literal,
 reviewed values (never values dynamically parsed from Git or result evidence):
 
 ```powershell
 & 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
   'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_release_receipt.py' `
-  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-007\release-receipt-v2.txt' `
+  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-008\release-receipt-v2.txt' `
   --controller-commit 'FINAL_CONTROLLER_COMMIT' `
   --native-launcher-sha256 'FINAL_NATIVE_LAUNCHER_SHA256' `
   --outer-sha256 'FINAL_OUTER_SHA256' `
@@ -124,27 +126,61 @@ reviewed values (never values dynamically parsed from Git or result evidence):
   --stage0-environment-policy-sha256 '759d257d3842052eeb2f38bcea5ede02b9ddff617979f486ca6fa1c280a7af49'
 ```
 
+Before any status008 transport starts, preserve the create-once
+`retire-legacy-router-002.refused.json` receipt from verifier002's
+snapshot-one refusal on six unrelated Python processes; its SHA256 is
+`9ba4087e8bf0f49b9e472e23011b8ac64aab25dccb7a56c5e4610b080c5a09d1`.
+That refusal is final and supplies no retirement success. Verifier003 was
+staged but never run after review found a receipt-time hash gap. Bind and
+verify the distinct `retire-legacy-router-004.verified.json` receipt against
+its reviewed SHA256. Require its explicit retirement001 partial-failure and
+verifier002 refusal lineage, proof that verifier003 produced no output, two
+clean snapshots, the still-Disabled router task, absent bound process tree,
+and a fresh global no-unrelated-Python/PyPy check. The transport requires
+that exact verified004 receipt before launch; a missing or refused receipt
+stops.
+
 The renderer uses OS-level exclusive creation and refuses an existing path.
-Hash the completed receipt once and substitute that literal as
-`FINAL_RECEIPT_SHA256`.  Generate one no-overwrite stage-0 record per command
-with `week8_recovery_stage0.py`; for example, the first is:
-
-```powershell
-& 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -I -S -B -X utf8 `
-  'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_stage0.py' `
-  --output 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-007\stage0-status-audit.txt' `
-  --launcher-path 'D:\Aenv\pro2\week8-recovery-controller-worktree\scripts\week8_recovery_native_launcher.ps1' `
-  --receipt-path 'D:\Aenv\pro2\.tmp\week8-d168-release-attempt-007\release-receipt-v2.txt' `
-  --launcher-sha256 'FINAL_NATIVE_LAUNCHER_SHA256' `
-  --receipt-sha256 'FINAL_RECEIPT_SHA256' `
-  --command status
-```
-
-The audit record deliberately contains no executable command, payload, or
-envelope.  Review that audit record and the renderer's terminal output, then
-copy and run the complete terminal `stage0_cmd_payload=` value exactly.  Do not
-parse or execute the audit file, persist the executable payload as a script,
-reconstruct its encoded command, or route it through `subprocess.list2cmdline`.
+Hash the completed V2 receipt, then bind the three `FINAL_*` literals in
+`D:/Aenv/pro2/resume-2026-09-28-001/run-native-status-008-router-lineage-007.ps1.template`:
+`FINAL_CONTROLLER_COMMIT` to the reviewed clean D-174 commit,
+`FINAL_NATIVE_LAUNCHER_SHA256` to the tracked native launcher hash,
+and `FINAL_RECEIPT_SHA256` to the reviewed V2 receipt hash. The template
+already hard-pins the independently reviewed `retire-legacy-router-004.verified.json`
+success receipt SHA256
+`8a640121a93373b055a0bb71c27adb5a1f003dd1671b2c8d3e3d87ea390c5ce5`;
+do not substitute it. The transport also pins the final verifier002 refusal,
+superseded unrun verifier003, and successful verifier004 source SHA256 and checks
+their lineage in that receipt.
+Never bind the failed retirement001 result or refused verifier002 result as
+verification. After all three substitutions,
+hash the final bound script and supply that SHA256 as `-ExpectedScriptSha256`
+when launching it. The tracked `scripts/week8_recovery_native_launcher.ps1`
+is the native launcher bound by its SHA256. Review the complete bound
+diff and launch that distinct transport once, with only the receipt
+in the attempt008 directory. The transport invokes
+`week8_recovery_stage0.py` and creates `stage0-status-audit.txt` exactly
+once. Do not run a separate status stage-0 renderer first. At its
+`STATUS008_READY` pause, independently verify the audit SHA256 and ten exact
+fields, the receipt and the receipt-plus-audit-only file set. Recheck
+startup, liveness, space and release guards; type `GO` only after that
+review. The transport checks the owner record's exact 2026-09-28 17:46 UTC
+deadline after `GO` and immediately before `CreateProcessW`; a late `GO`
+refuses this one-use attempt. Launch it in a fresh PowerShell host; its
+type guard refuses a preloaded capture or link-counter type. Launch the
+bound copy with its exact SHA256 in `-ExpectedScriptSha256`; the transport
+rehashes itself after `GO` and immediately before `CreateProcessW`, and
+checks every existing path ancestor for reparse. The executable
+payload stays in transport memory. Its hash-pinned
+`native-createprocess-binary-capture-001.cs` helper launches the exact
+command line with `CreateProcessW`, writes native stdout and stderr as
+raw bytes to exclusive files, and creates the exit-code file exclusively.
+A refusal is final for attempt008. See
+`D:/Aenv/pro2/resume-2026-09-28-001/STATUS008_ROUTER_LINEAGE_007_PREP.md` for
+the exact binding, review and independent status verification sequence.
+The audit record deliberately contains no executable command or payload.
+Do not execute the audit, persist the payload as a script, reconstruct
+its encoded command, or route it through `subprocess.list2cmdline`.
 Generate analogous immutable records for `adjudicate`, `recover`, `seal`,
 `monitor`, `finalize`, `report`, and `figures`.  The candidate renderers are not
 authority: stage 0 rehashes both inputs, the native launcher rechecks the
@@ -156,7 +192,7 @@ stage-0 aggregate through the controller, worker, inspector and every nested fit
 A wrong hash, linked/reparse
 path, runtime residue, changed byte, extra tree entry, or nonzero exit refuses.
 
-Run the four calls below in order.  Require `status` to report
+Run status008 through the bound transport and review its result before the remaining calls. Require `status` to report
 `not_adjudicated`, `independent_inspection_performed=true`,
 `mechanical_source_validation_performed=true`, `liveness_verdict=pass`, and
 the exact counts `events=299`, `started=150`, `synced=149`,
@@ -166,20 +202,55 @@ call repeats the fixed old-source inspector and the full outcome-blind
 inventory twice without publishing an adjudication record or changing any
 production evidence.
 
-```powershell
-# Run the complete terminal stage0_cmd_payload= value emitted while creating
-# stage0-status-audit.txt; inspect its output.  Then run, one at a time, the
-# complete in-memory terminal payloads emitted for:
-# stage0-adjudicate-audit.txt
-# stage0-recover-audit.txt
-# stage0-seal-audit.txt
-```
+After the independent status008 verifier accepts all exact counts and
+guards, stop before adjudication unless the owner has confirmed an
+uninterrupted supervised window long enough for adjudication, the 4--6-hour
+blocking recovery and verification/sealing. Confirm the router task remains
+Disabled and repeat the original global no-unrelated-Python/PyPy liveness
+gate before each later native command throughout that window. Status alone
+neither reserves the lease nor authorizes the sole one-use recovery.
 
-`recover` is blocking.  Do
-not monitor concurrently and keep the device on.  Expected accounting is
-`executed=111`, `resumed=150`, `synced=261`, `total=261`.  If the lower epoch
-completed but the controller response was lost, invoke only `seal` with the
-same frozen launcher.  If epoch 002 is incomplete, `seal` refuses permanently.
+Immediately before each later native command, recheck the exact clean
+controller and frozen-source pins, both empty startup roots, at least
+8 GiB free, stable global no-unrelated-Python/PyPy liveness, and the
+phase-correct evidence, lease and transition-lock state. Before
+`adjudicate`, require the status008 baseline: unchanged original and
+copied evidence, the old lease, no incident/epoch-001 terminal twins
+and no transition. Before `recover`, require those original bytes
+and old lease unchanged, plus the newly published incident and
+epoch-001 terminal twins matching the adjudication result; no
+transition or epoch-002 invocation may exist. Before `seal`, do not
+require the old live lease or pre-recovery tree inventory: independently
+verify the archived orphan lease, transition twins, preserved original
+and quarantined partial bytes, new-lease ownership history and
+completed epoch-002 records, including normal terminal release.
+An incomplete or ambiguous recovery state stops. Each phase
+requires its own fresh
+stage-0 audit by exclusive creation; execute only its complete
+in-memory payload once. Run `adjudicate` first. Independently review its
+zero exit, `status=adjudicated`, passing liveness and `event_count=299`,
+then verify the immutable incident and epoch-001 terminal twins and
+their digests against the adjudication result. Missing, refused, divergent
+or ambiguous evidence stops before recovery; an attempted adjudication
+does not count as a successful one.
+
+Only after that successful review, with fresh exact guards and enough
+of the owner-supervised window remaining, may the sole D-161 `recover`
+begin. No automatic replay is permitted. Use `seal` only under the
+epoch-002 rule below, with its own create-once audit and fresh preflight.
+A nonzero or ambiguous stage stops progression. The later separate
+audit names are `stage0-adjudicate-audit.txt`,
+`stage0-recover-audit.txt` and `stage0-seal-audit.txt`; naming them
+does not authorize a stage before its gates pass.
+
+`recover` is blocking. Do not monitor concurrently and keep the device on.
+Expected accounting is `executed=111`, `resumed=150`, `synced=261`,
+`total=261`. Normal `seal` follows only a verified first clean `recover`
+response and an independent pre-seal proof. If the lower epoch appears
+complete but that response was lost, stop and preserve all evidence. Do not
+invoke the normal seal transport. Exceptional response-loss sealing requires
+a distinct independent proof, separately reviewed transport, and fresh owner
+approval before any attempt. An incomplete epoch 002 cannot be sealed.
 
 Worker-terminal and postmortem publication share the persistent one-byte
 `.week7-production.lease-transition.lock`.  Never delete, replace, truncate,
@@ -225,7 +296,7 @@ Experiment 2A owns:
   `week8-d168-stage0-runtime-attempt-001` and required-empty native startup
   directory `week8-d167-native-runtime-attempt-001`; and the external,
   no-overwrite release/audit records under ignored project-local
-  `.tmp/week8-d168-release-attempt-007`, outside both worktrees.
+  `.tmp/week8-d168-release-attempt-008`, outside both worktrees.
 
 The exclusion publication reopens the historical
 `week7-first-sweep-label-2026-08-31-attempt-001` and its `-project-evidence`
@@ -428,3 +499,7 @@ The September23 clean b84b6b35 release has an immutable refused native status005
 ## 2026-09-27 D-173 status006 refusal and attempt007
 
 The clean local D-172 release 1e14ef696c6d80cbc81a659a2032e9775ad7e799 invoked native status006 once. It refused before counts/liveness with exact reason digest 8654e6c2d919f2d75a54777db1bf565061ff698ab78a4d2f3825441a3a444b92 for a nonempty native startup runtime. Injected DesktopCentral/Endpoint DLP logs appeared under a literal `%LOCALAPPDATA%` directory when the native launcher's exact environment omitted that variable; the logs and attempt006 streams are preserved. D-173 pins native `LOCALAPPDATA` to the already reviewed original C user profile and admits exactly 13 native environment rows. The required-empty startup check and original liveness, evidence, lease and one-use recovery guards remain in force. This is an operational correction; status007 has not yet established production acceptance. D-173 gate004 reconciled 5,557 distinct nodes across 45 accepted QA operations: 5538 passed, 19 expected Windows symlink-privilege skips, 51 passing subtests and zero remaining failures/errors. Combined JUnit SHA256 f5e62413492e43faabadfb0d273e5b2ea999f57d9e3393271804f8a7c088d3ad. The Windows stack-overflow attempts batch01-001, batch03-001 and the final test_gate_evidence file group have no accepted coverage; their reports and host events are preserved, and the fault's exact cause remains unproved. Continuation002 paused before batch08 solely for the 10 GiB start buffer; its 18 prior accepted receipts were retained. Continuation003 accepted batch08, then a 3,500-second batch09 timeout was excluded. Continuation004 accepted the isolated long test, then paused for disk space; continuation005 completed the other two exact batch09 groups and untouched nodes through new02-00 before another disk-buffer pause. Continuation006 accepted new02-01 through new02-03, then paused for disk space. Continuation007 accepted new03 through new06, then its final 66-node file group crashed during fixture copying; continuation008 covered those 66 nodes in eleven fresh six-node groups. The same fixed source candidate was checked throughout. The active command examples above now use the distinct attempt007 directory. Render its stage0 records once only after a clean new local release and fresh runtime, residue, empty-startup and global Python-liveness checks. A refusal ends attempt007; no automatic replay. Post-gate documentation governance14/14, four-tree pinned runtime audit, QA residue preservation, clean local release, distinct immutable attempt007 and independent native status with original counts/liveness remain before adjudication or the sole D-161 recovery. No fit, scientific outcome consultation, push, publication, deployment or external message occurred in this gate.
+
+## 2026-09-27 D-174 status007 refusal and attempt008
+
+Clean local D-173 release `50e6a789153b0454b8808bf4e9fa9979853a22bb` invoked native status007 once. Attempt007 is final: it refused before counts/liveness with exact reason SHA256 `55e1fb7027ffa46e70b455b071caf7f12adf612a5d48a4f1e4c7f5a07b0d63f5` for `authority config keys differ from the fixed contract`. The refusal occurred while the inspector revalidated the sealed entrypoint gate, before static authority re-observation; no scientific values were emitted. Its receipt, audit, stdout, stderr and exit code are preserved. D-174 adds the already pinned original C user `LOCALAPPDATA` path as `pinned_local_appdata` in the inspector, bootstrap worker and nested fit child raw-authority config builders, with contract regressions for all three. This corrects their missing config key without relaxing the raw authority mapping, changing the path, or altering scientific settings. D-174 gate005 reconciled 5,559 distinct nodes across 45 accepted QA operations: 5,540 passed, 19 expected Windows symlink-privilege skips, 51 passing subtests and zero failures/errors. Combined JUnit SHA256 042a7628388b3745682421cd89966cf011bc15b225008d88788e5d18348229c3; candidate manifest SHA256 2dff5f7d5a5faae9b8646d4b9982c373e046befb8e6462df0927be07c2cdd094. The active status008 procedure above uses the bound transport: it creates the audit from the receipt, pauses at `STATUS008_READY` for independent audit and guard review, and launches only after `GO`. Attempt007 remains immutable. The original empty-startup and global Python-liveness guards remain binding. The complete exact-candidate gate005 is the prerequisite; documentation governance, all four pinned runtime inventories, controller QA-residue preservation and a clean local release remain required before distinct native attempt008. Recheck the original empty-startup, 8 GiB, evidence, lease and global no-unrelated-Python liveness guards. Any attempt008 refusal is final. No adjudication, lease transition, recovery, fit, outcome consultation or public action has occurred. D-161's sole recovery remains unconsumed.

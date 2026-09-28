@@ -56,6 +56,25 @@ def _entrypoint_gate(command: str) -> dict[str, Any]:
     return payload
 
 
+def test_inspector_raw_authority_config_matches_exact_contract() -> None:
+    raw_path = SCRIPT.with_name("week8_recovery_raw_authority.py")
+    raw_spec = importlib.util.spec_from_file_location(
+        "d161_inspector_raw_config_contract", raw_path
+    )
+    assert raw_spec is not None and raw_spec.loader is not None
+    raw_module = importlib.util.module_from_spec(raw_spec)
+    raw_spec.loader.exec_module(raw_module)
+
+    raw = _entrypoint_gate("status")["raw_authority"]
+    config = I._raw_authority_config(
+        raw["controller"]["git_commit"], raw["native_startup"]
+    )
+    assert set(config) == raw_module._CONFIG_KEYS
+    assert config["pinned_local_appdata"] == str(
+        Path("C:/Users/aladdin-alyanai/AppData/Local")
+    )
+
+
 @pytest.mark.parametrize("command", ("status", "adjudicate", "recover"))
 def test_inspector_accepts_exactly_recovery_read_commands(
     command: str, monkeypatch: pytest.MonkeyPatch
