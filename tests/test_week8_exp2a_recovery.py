@@ -282,6 +282,126 @@ def test_controller_modules_require_bound_loader_marker_and_source_digest(
         R._validate_loaded_controller_modules({}, raw_module)
 
 
+def test_controller_modules_admit_only_active_captured_relocation_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    controller = tmp_path / "controller"
+    source = controller / "src"
+    package = source / "bu"
+    experiments = package / "experiments"
+    experiments.mkdir(parents=True)
+    root_file = package / "__init__.py"
+    recovery_file = experiments / "week8_exp2a_recovery.py"
+    provenance_file = experiments / "week8_relocation_provenance.py"
+    for path in (root_file, recovery_file, provenance_file):
+        atomic_write_bytes(path, (f"# {path.name}\n").encode("ascii"))
+    sources = {
+        path.relative_to(controller).as_posix(): path.read_bytes()
+        for path in (root_file, recovery_file, provenance_file)
+    }
+    monkeypatch.setattr(R, "CONTROLLER_WORKTREE", controller)
+    for name in tuple(sys.modules):
+        if name == "bu" or name.startswith("bu."):
+            monkeypatch.delitem(sys.modules, name, raising=False)
+
+    def bound_bu(name: str, path: Path) -> ModuleType:
+        loader = SimpleNamespace(
+            binding_marker="week8_d161_verified_source_v2",
+            name=name,
+            path=str(path),
+            source_sha256=R.sha256_bytes(sources[path.relative_to(controller).as_posix()]),
+        )
+        module = ModuleType(name)
+        module.__file__ = str(path)
+        module.__loader__ = loader
+        module.__spec__ = SimpleNamespace(origin=str(path), loader=loader)
+        monkeypatch.setitem(sys.modules, name, module)
+        return module
+
+    bound_bu("bu", root_file)
+    bound_bu("bu.experiments.week8_exp2a_recovery", recovery_file)
+    alias = "_week8_d161_relocation_provenance"
+    provenance = ModuleType(alias)
+    provenance.__file__ = str(provenance_file)
+    loader = SimpleNamespace(
+        name=alias,
+        path=str(provenance_file),
+        source_sha256=R.sha256_bytes(provenance_file.read_bytes()),
+        git_blob="a" * 40,
+        _source=provenance_file.read_bytes(),
+    )
+    provenance.__loader__ = loader
+    provenance.__spec__ = SimpleNamespace(origin=str(provenance_file), loader=loader)
+    monkeypatch.setitem(sys.modules, alias, provenance)
+    raw_module = ModuleType(R.RAW_AUTHORITY_MODULE_NAME)
+    raw_module.admitted_git_blob = lambda raw, tree, relative: "a" * 40
+    raw_module.admitted_source_bytes = lambda raw, tree, relative: sources[relative]
+    monkeypatch.setitem(sys.modules, R.RAW_AUTHORITY_MODULE_NAME, raw_module)
+    active_raw = {"controller": {"git_commit": "c" * 40}}
+    fresh_raw = json.loads(json.dumps(active_raw))
+    assert fresh_raw is not active_raw
+    metadata = ModuleType("_week8_d161_relocation_metadata")
+    metadata.POLICY_SHA256 = "d" * 64
+    metadata.EXPECTED_PAIR_COUNT = 1
+    metadata.EXPECTED_DOCUMENT_COUNT = 1
+    observed_calls: list[object] = []
+    helper_binding = {"modules": [{"module_id": alias, "git_blob": "a" * 40}]}
+
+    def validate_helpers(raw: object) -> dict[str, object]:
+        observed_calls.append(raw)
+        if (
+            raw is not active_raw
+            or sys.modules.get(alias) is not provenance
+            or provenance.__loader__ is not loader
+            or loader.source_sha256 != R.sha256_bytes(sources["src/bu/experiments/week8_relocation_provenance.py"])
+            or loader.git_blob != "a" * 40
+            or loader._source != sources["src/bu/experiments/week8_relocation_provenance.py"]
+        ):
+            raise R.RecoveryRefused("relocation helper identity changed")
+        return helper_binding
+
+    helpers = SimpleNamespace(
+        modules={"provenance": provenance, "metadata": metadata},
+        validate=validate_helpers,
+    )
+    access = SimpleNamespace(attestation_sha256="e" * 64)
+    binding = {
+        "relocation_schema_version": 1,
+        "attestation_sha256": access.attestation_sha256,
+        "policy_sha256": metadata.POLICY_SHA256,
+        "pair_count": metadata.EXPECTED_PAIR_COUNT,
+        "document_count": metadata.EXPECTED_DOCUMENT_COUNT,
+        "helpers": helper_binding,
+    }
+    monkeypatch.setattr(
+        R, "_ACTIVE_RELOCATION", (raw_module, active_raw, helpers, access, binding, {})
+    )
+    rows = R._validate_loaded_controller_modules(fresh_raw, raw_module)
+    assert [row["module_id"] for row in rows] == [
+        "bu",
+        "bu.experiments.week8_exp2a_recovery",
+    ]
+    assert observed_calls == [active_raw]
+
+    loader.source_sha256 = "b" * 64
+    with pytest.raises(R.RecoveryRefused, match="relocation helper identity changed"):
+        R._validate_loaded_controller_modules(fresh_raw, raw_module)
+    loader.source_sha256 = R.sha256_bytes(provenance_file.read_bytes())
+
+    impostor = ModuleType(alias)
+    impostor.__file__ = str(provenance_file)
+    monkeypatch.setitem(sys.modules, alias, impostor)
+    with pytest.raises(R.RecoveryRefused, match="loaded non-bu module"):
+        R._validate_loaded_controller_modules(fresh_raw, raw_module)
+    monkeypatch.setitem(sys.modules, alias, provenance)
+
+    other_alias = ModuleType("_week8_unbound_relocation_provenance")
+    other_alias.__file__ = str(provenance_file)
+    monkeypatch.setitem(sys.modules, other_alias.__name__, other_alias)
+    with pytest.raises(R.RecoveryRefused, match="loaded non-bu module"):
+        R._validate_loaded_controller_modules(fresh_raw, raw_module)
+
+
 @pytest.fixture(scope="module")
 def recovery_worker() -> Any:
     """Load the actual sibling worker so contract records have one producer."""

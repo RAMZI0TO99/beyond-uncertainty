@@ -789,3 +789,9 @@ still 150/150. Power is **simulated** at W5 — there is deliberately no `n_eff(
 
 **Comparison groups.** Units sharing one were *given* related data by design, so
 a group must never span a critic split or a CV fold (D-039).
+
+### D-175 proposed operational correction after adjudicate010
+
+The clean D-174 controller release c0e97606a20f66b8b379bd42666b3a3e392d146f produced a mechanically verified status010, but the sole adjudicate010 invocation finally refused before transition or recovery. The refusal record SHA256 is 409cf5248f7c7a392d7136667d9d0909ae39a1f64d9695af04160269a1f29ad9; the exact error SHA256 28fe21d125fe37ca07a99d284433d3dda3d68f012885150237847facad1d20c6 identifies a non-bu relocation provenance helper loaded from the controller source root. Preserve attempt010's ten files and both refused adjudication transports without replay. D-175 proposes an exception only for the exact active provenance helper already validated by relocation admission. It does not admit unrelated source-root modules.
+
+The full exact-candidate gate006 result must be bound from its verified report: D-175 gate006 reconciled 5,560 distinct nodes across 45 accepted QA operations: 5,541 passed, 19 expected Windows symlink-privilege skips, 51 passing subtests and zero failures/errors. Combined JUnit SHA256 8609635798966799bdf6c24320f98f7e6621e608c06723649a0331cda7cc7ced; candidate manifest SHA256 fc05526d22b99fb6c52e0977a8aa29c8b9a506ffe7e9b76986af7489e8999c23. Documentation governance, unchanged pinned runtime inventories, QA-residue preservation, clean local release and a distinct reviewed status011 and adjudicate011 remain required before the sole D-161 recovery. The owner-supervised local/private window ends 2026-09-29 08:00 UTC; it does not authorize public action. Retain the original evidence, lease, 8 GiB, empty-startup, two-snapshot liveness, global no-unrelated-Python and no-retry guards. Frozen scientific source and values remain untouched.

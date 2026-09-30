@@ -1165,6 +1165,26 @@ def _validate_loaded_controller_modules(
         except OSError:
             continue
         if path.is_relative_to(source_root):
+            # The parent relocation scope loads this one captured source under
+            # a private, non-bu name before the command handler runs.  Its
+            # bundle validates the exact module, loader, source bytes and Git
+            # identity against raw authority at every use.
+            state = _ACTIVE_RELOCATION
+            if (
+                name == "_week8_d161_relocation_provenance"
+                and path
+                == (source_root / "bu/experiments/week8_relocation_provenance.py").resolve(
+                    strict=True
+                )
+                and type(state) is tuple
+                and len(state) == 6
+                and state[0] is raw_module
+                and _canonical_ascii(state[1]) == _canonical_ascii(raw_authority)
+                and type(getattr(state[2], "modules", None)) is dict
+                and state[2].modules.get("provenance") is module
+            ):
+                _relocation_state()
+                continue
             raise RecoveryRefused(
                 f"loaded non-bu module {name} came from controller source root"
             )
