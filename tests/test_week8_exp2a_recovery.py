@@ -550,6 +550,8 @@ def _worker_contract_invocation(
         "preimport_authority": compact_binding,
         "preimport_authority_record": {
             "raw_authority_schema_version": 4,
+            "record_digest": "e" * 64,
+            "runtime": {"command": "recover"},
             "native_startup": native_startup,
         },
         "pinned_python": {
@@ -1145,6 +1147,19 @@ def test_bootstrap_rechecks_authority_immediately_before_safe_spawn(
             "path": str(Path(sys._base_executable).resolve()),
             "sha256": "f" * 64,
         },
+        "preimport_authority": {
+            "raw_authority_record_digest": "b" * 64,
+            "stage0_binding_sha256": "c" * 64,
+            "startup_binding_sha256": "d" * 64,
+        },
+        "preimport_authority_record": {
+            "record_digest": "e" * 64,
+            "runtime": {"command": "recover"},
+            "native_startup": {
+                "stage0_binding_sha256": "6" * 64,
+                "startup_binding_sha256": "2" * 64,
+            },
+        },
     }
     incident = {"authority": authority}
     invocation = {"record_digest": "1" * 64}
@@ -1732,7 +1747,22 @@ def test_recovery_mutation_order_is_intent_archive_quarantine_completion_then_wo
     relocated: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     actions: list[str] = []
-    authority = {"controller": "synthetic"}
+    authority = {
+        "controller": "synthetic",
+        "preimport_authority": {
+            "raw_authority_record_digest": "b" * 64,
+            "stage0_binding_sha256": "c" * 64,
+            "startup_binding_sha256": "d" * 64,
+        },
+        "preimport_authority_record": {
+            "record_digest": "e" * 64,
+            "runtime": {"command": "recover"},
+            "native_startup": {
+                "stage0_binding_sha256": "6" * 64,
+                "startup_binding_sha256": "2" * 64,
+            },
+        },
+    }
     inventory = {"jobs": {"hidden_partial": {"inventory": []}}}
     incident = {
         "authority": authority,
@@ -3112,3 +3142,63 @@ def test_child_profile_routes_logs_outside_execution_tree(
     assert not list(R.EXECUTION_WORKTREE.iterdir())
     assert {name: value for name, value in environment.items()
             if name.upper() == "LOCALAPPDATA"} == {"LOCALAPPDATA": str(profile)}
+
+
+def _projection_authority(command: str) -> dict:
+    return {
+        "controller_worktree": {"git_commit": "e" * 40},
+        "preimport_authority": {
+            "entrypoint_sha256": "1" * 64,
+            "raw_authority_record_digest": "d" * 64,
+            "stage0_binding_sha256": "2" * 64,
+            "startup_binding_sha256": "3" * 64,
+            "startup_environment_sha256": "4" * 64,
+        },
+        "preimport_authority_record": {
+            "record_digest": "5" * 64,
+            "runtime": {"command": command, "flags": ["-I"]},
+            "native_startup": {
+                "stage0_binding_sha256": "6" * 64,
+                "startup_binding_sha256": "7" * 64,
+                "release_receipt_sha256": "8" * 64,
+            },
+        },
+    }
+
+
+def test_cross_launch_authority_projection_ignores_command_bound_fields() -> None:
+    adjudicate = _projection_authority("adjudicate")
+    recover = _projection_authority("recover")
+    for document in (adjudicate, recover):
+        for key, value in (
+            ("raw_authority_record_digest", "a" * 64),
+            ("stage0_binding_sha256", "b" * 64),
+            ("startup_binding_sha256", "c" * 64),
+        ):
+            document["preimport_authority"][key] = value
+    recover["preimport_authority_record"]["record_digest"] = "9" * 64
+    for key, value in (
+        ("stage0_binding_sha256", "a" * 64),
+        ("startup_binding_sha256", "b" * 64),
+    ):
+        recover["preimport_authority_record"]["native_startup"][key] = value
+    assert (
+        R._cross_launch_authority_projection(adjudicate)
+        == R._cross_launch_authority_projection(recover)
+    )
+
+
+def test_cross_launch_authority_projection_detects_real_drift() -> None:
+    adjudicate = _projection_authority("adjudicate")
+    drifted = _projection_authority("recover")
+    drifted["preimport_authority"]["entrypoint_sha256"] = "0" * 64
+    assert (
+        R._cross_launch_authority_projection(adjudicate)
+        != R._cross_launch_authority_projection(drifted)
+    )
+    tree_drift = _projection_authority("adjudicate")
+    tree_drift["controller_worktree"]["git_commit"] = "f" * 40
+    assert (
+        R._cross_launch_authority_projection(_projection_authority("adjudicate"))
+        != R._cross_launch_authority_projection(tree_drift)
+    )

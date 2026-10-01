@@ -1,3 +1,23 @@
+# D-176 release verification — 2026-10-01
+
+**STAGED DOCUMENTATION.** This section supersedes stale D-174/D-175 queues below while preserving their original bytes. It records requirements and observed history; it is not a governance019 result, clean release, postcommit admission or native013 verdict. See [production runbook](week8_production_runbook.md), [current state](../PROJECT_STATE.md) and [decisions](../DECISIONS.md).
+
+## Preserved predecessor and failed candidate evidence
+
+D-175 is locally released at `ea9c28aa82a1e8559e9c67e62b06dac7f5cea9b7` with release007/proposal016 record SHA256 `1be0b739a9d9a66fe857a6a9b59b9ece7421d4e146ee2eac8b95f2bb6f90a75d` and released 263-row manifest `e0364b12684c4a03df4993d716d7003fb56ec356f263de3aa8c4e4c42112fe6a`. Its complete gate006 and release checks do not certify later source. Attempt012 status/adjudicate/pre-recover passed; recover refused pre-mutation and is spent. Original schema-3 incident/terminal and byte-identical twins retain `30607bbcc65c4bef9ba1857c89c2c0c97c9f8b4230189191c2a8ebcc4a5d6e8b` / `a4334cd6308d1f8c8cf6a6b95a25624e62e08fd0a4066a45481267ee5d4dc749`. The existing epoch-001→002 transition is not authorization to create another epoch.
+
+## Exact D-176 candidate acceptance
+
+**Gate007: COMPLETE over the exact two-file candidate.** The driver (`72a3fe51e0783ecad5bdb6bf2daab0ca39461c259abbca67d6c441f92762ed4c`) accepted 45/45 partitions and 5,562 collected nodes: **5,543 passed, 19 expected Windows symlink-privilege skips, 51 passing subtests, zero failures/errors**. Release-verification report SHA256 `469aa1c1d89d10235bd43d003b656054e5fe16d985c2eecc04b2dc7f910127c5`; combined JUnit `508f6456846da066fe7045aa6c99bfc51eefa933442010f1b482582ee19dd312`; plan `a680ecd1073f329056ea8d0043219e565b571978468f6f441f2b83898104b6d1`; collection r32-collect-003 result `25e054f9734771828b44b26759771a2293a891ba3f57059f5b9bde59b816b1a0` with candidate-before == candidate-after; candidate manifest `e83cbc6666aecb0e896530a1164c9d30f418583bd74f02715e0cdcfd11f60dd9` == live worktree; prior gate006 report `12bfde2c9999f2c4d532341cbdde65d49130e1747f21b68960feaac64857caa3`. The two added nodes (`test_cross_launch_authority_projection_detects_real_drift`, `test_cross_launch_authority_projection_ignores_command_bound_fields`) pass. Gate007 ran under the historical Oct2 owner record `0e90115586f4bc427258f08842123de50ea83226afc83c5910d36b20de99c0bb`; it confers no post-gate authority by itself.
+
+Remaining acceptance: reviewed proposal017 docs apply, fresh 14-case governance019, runtime015, residue016, inspection008, commit008 and the independently reviewed postcommit admission each require separate fresh reviewed one-use helpers. The final 263-row manifest may differ from `e83cbc6666aecb0e896530a1164c9d30f418583bd74f02715e0cdcfd11f60dd9` only in the seven documentation rows; both D-176 source/test rows stay byte-identical. Frozen4515 science, evidence trees, relocation policy, runtime/flags/env and modes stay exact.
+
+## Fresh013 native acceptance and scope
+
+After the clean release and independent postcommit review, distinct wrappers must bind the actual reviewed facts plus the current owner record `3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff`, deadline **2026-10-02T22:36:15Z**. Retain historical pins separately. Original seven-hour adjudication/390-minute recovery reserves impose strict GO cutoffs **2026-10-02T15:36:15Z** / **2026-10-02T16:06:15Z**. Whole-ceremony coordinated quiet global Python/PyPy host, original empty-startup, 8 GiB disk, exact evidence/lease/transition state, two-snapshot PID liveness and all native runtime controls remain. The planned reuse150/execute111 recovery has not completed; 150 local-complete/149 synced/111 untouched/299 events are unchanged. Gate1 remains FAIL on power; H2/H3 untested, external Sol review and student prose open. No outcomes consulted, science changed or public action.
+
+---
+
 # Week 8 release verification
 
 Date: 2026-09-01 (Asia/Riyadh)

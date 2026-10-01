@@ -1062,6 +1062,56 @@ def _preimport_authority_binding(gate: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+_CROSS_LAUNCH_COMMAND_BOUND_BINDINGS = (
+    "raw_authority_record_digest",
+    "stage0_binding_sha256",
+    "startup_binding_sha256",
+)
+
+
+def _cross_launch_authority_projection(authority: Mapping[str, Any]) -> bytes:
+    """Canonical command-invariant view of a controller authority record.
+
+    The pre-import authority binds the launch command: ``runtime.command``
+    plus the command-derived stage0/startup binding digests and the record
+    digest that covers them.  The incident authority is written by the
+    adjudicate launch, so a later recover, seal or post-recovery launch can
+    only be attested against it after projecting those fields away.  Each
+    record's own integrity stays fully verified: the sealed record digest
+    is checked when the entrypoint gate is parsed, so removing the
+    launch-command variance removes no verification.
+    """
+    binding = {
+        key: value
+        for key, value in authority["preimport_authority"].items()
+        if key not in _CROSS_LAUNCH_COMMAND_BOUND_BINDINGS
+    }
+    raw = authority["preimport_authority_record"]
+    startup = {
+        key: value
+        for key, value in raw["native_startup"].items()
+        if key not in _CROSS_LAUNCH_COMMAND_BOUND_BINDINGS[1:]
+    }
+    runtime = {
+        key: value for key, value in raw["runtime"].items() if key != "command"
+    }
+    record = {
+        key: value
+        for key, value in raw.items()
+        if key not in {"runtime", "native_startup", "record_digest"}
+    }
+    record["runtime"] = runtime
+    record["native_startup"] = startup
+    projected = {
+        key: value
+        for key, value in authority.items()
+        if key not in {"preimport_authority", "preimport_authority_record"}
+    }
+    projected["preimport_authority"] = binding
+    projected["preimport_authority_record"] = record
+    return _canonical(projected)
+
+
 def _controller_runtime_flags() -> dict[str, bool | int]:
     return {
         "dont_write_bytecode": bool(sys.flags.dont_write_bytecode),
@@ -1356,7 +1406,9 @@ def _assert_current_controller_authority(
     """Re-attest the clean controller before any completion is trusted."""
 
     current = _controller_authority()
-    if _canonical(current) != _canonical(incident["authority"]):
+    if _cross_launch_authority_projection(
+        current
+    ) != _cross_launch_authority_projection(incident["authority"]):
         raise RecoveryRefused("current controller authority differs from the incident")
     return current
 
@@ -4810,7 +4862,9 @@ def _invoke_bootstrap() -> dict[str, Any]:
     if _bootstrap_state()["state"] != "not_invoked":
         raise RecoveryRefused("the one-use bootstrap invocation was already consumed")
     authority = _controller_authority()
-    if _canonical(authority) != _canonical(incident["authority"]):
+    if _cross_launch_authority_projection(
+        authority
+    ) != _cross_launch_authority_projection(incident["authority"]):
         raise RecoveryRefused("controller authority differs before bootstrap invocation")
     bundle, child_transport = _verified_child_bundle(
         relative_path="scripts/week8_exp2a_recovery_worker.py",
@@ -5003,7 +5057,9 @@ def recover() -> dict[str, Any]:
         }
 
     initial_authority = _controller_authority()
-    if _canonical(initial_authority) != _canonical(incident["authority"]):
+    if _cross_launch_authority_projection(
+        initial_authority
+    ) != _cross_launch_authority_projection(incident["authority"]):
         raise RecoveryRefused("controller authority differs from the incident record")
     active = (
         Plan.COMMON_LEASE_ROOT
@@ -5025,7 +5081,8 @@ def recover() -> dict[str, Any]:
         final_authority = _controller_authority()
         if (
             _canonical(final_authority) != _canonical(initial_authority)
-            or _canonical(final_authority) != _canonical(incident["authority"])
+            or _cross_launch_authority_projection(final_authority)
+            != _cross_launch_authority_projection(incident["authority"])
         ):
             raise RecoveryRefused("controller authority changed before transition intent")
         liveness = _quiescent_liveness()

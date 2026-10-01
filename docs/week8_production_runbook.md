@@ -1,3 +1,25 @@
+# D-176 release procedure — 2026-10-01
+
+**STAGED DOCUMENTATION; no operational approval by itself.** This section supersedes the earlier attempt/window queue below; earlier procedures and failed attempts remain unchanged historical evidence. Use [release verification](week8_release_verification.md) and [current state](../PROJECT_STATE.md) together.
+
+D-175 release `ea9c28aa82a1e8559e9c67e62b06dac7f5cea9b7` is local-only. Attempt012 status, adjudication and pre-recover verification passed; adjudication wrote the existing epoch-001→002 lease transition and immutable incident `30607bbcc65c4bef9ba1857c89c2c0c97c9f8b4230189191c2a8ebcc4a5d6e8b` / epoch-001 terminal `a4334cd6308d1f8c8cf6a6b95a25624e62e08fd0a4066a45481267ee5d4dc749` and their twins. The sole attempt012 recover command finally refused before recovery mutations. It is spent; never rerun it or reuse a consumed renderer, transport, verifier, wrapper, QA attempt or one-use release helper.
+
+## Required release sequence
+
+1. The D-176 candidate is exactly the two live files `src/bu/experiments/week8_exp2a_recovery.py` and `tests/test_week8_exp2a_recovery.py`; complete gate007 already covers them (45/45, 5,562 nodes, 5,543 passed, 19 expected skips, 51 subtests, zero failures/errors). Do not edit them.
+2. Apply the independently reviewed proposal017 documentation supplement (seven docs) through its one-use apply helper only after its exact bound review.
+3. Run fresh 14-case documentation governance019 against the applied docs; the final 263-row manifest may differ from the gate007 candidate manifest `e83cbc6666aecb0e896530a1164c9d30f418583bd74f02715e0cdcfd11f60dd9` only in the seven documentation rows.
+4. Run reviewed runtime015, residue016, inspection008 and commit008 once each for the clean local D-176 release; no push or publication. Frozen4515 science, evidence, relocation policy, runtime/flags/env and modes stay exact.
+5. After the clean commit, independently prove and review the postcommit admission evidence before binding fresh attempt013 native wrappers.
+
+## Fresh attempt013 native gates
+
+The reviewed supervised local/private owner interval is **2026-10-01T16:36:15Z → 2026-10-02T22:36:15Z**; owner SHA256 `3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff`. New wrappers must bind this separately from historical owner pins; old helpers' deadlines do not extend. The original seven-hour adjudication reserve requires GO strictly before **2026-10-02T15:36:15Z**; the original 390-minute recover reserve requires GO strictly before **2026-10-02T16:06:15Z**. Recheck the actual clock and every guard immediately before each one-use command.
+
+Agree a durable quiet host with other agent owners for the entire native chain, not merely the READY snapshot. Original global Python/PyPy exclusions, empty startup roots, exact evidence/lease/transition/hidden-partial identity, two-snapshot Windows PID liveness, 8 GiB disk floor and unchanged runtime checks remain. Do not terminate another project's processes. Fresh013 status must pass independent original counts/liveness verification before any later action; recover must admit before intent and every mutation. Supply **GO through piped stdin** after exact READY/audit review; never use `-NonInteractive`. Any refusal is final; never replay automatically. The authorized recovery itself executes 111 fits after its admission and lower-launch proofs; verify completion and seal before downstream E2B/sweep fits. No second recovery epoch, scientific change, outcome consultation, public push, publication, deployment or external message is authorized by this section.
+
+---
+
 # Week 8 production runbook
 
 **Status:** E2A epoch 001 externally interrupted; one D-161 recovery epoch is
