@@ -1,116 +1,222 @@
 # Beyond Uncertainty
 
-Diagnosing when embodied world models need more data or a different model.
+**When a world model makes a bad prediction, does it need more data or a
+different model?**
 
-Bachelor's thesis code. When a model-based RL agent's world model mispredicts,
-should it gather more experience (estimation failure, f\* ∈ H) or change the
-model class (hypothesis-class failure, f\* ∉ H)? This repository builds the
-environments, the failure families, the counterfactual repair protocol that
-establishes ground-truth labels, and the learned diagnosis critic that predicts
-which repair is required.
+This research project studies that question in controlled gridworld
+environments. It distinguishes **estimation failure**, which more experience
+may repair, from **hypothesis-class failure**, which may require restoring a
+missing feature or increasing model capacity.
 
-## Orientation
+The research design uses counterfactual repairs to establish diagnosis labels:
+run the candidate repairs and measure what actually improves. Its eventual goal
+is a learned diagnosis critic that predicts the required repair. The repository
+currently contains the experimental infrastructure and development evidence;
+the learned critic and final hypothesis evaluations remain future work.
 
-| File | What it is |
+## Research status
+
+The latest recorded [project snapshot](PROJECT_STATE.md) is dated **2026-08-23**
+and reports completion of Weeks 4–5 of the infrastructure phase. These are
+documented project milestones, not a fresh execution or independent validation
+of the experiments.
+
+| Research question | Recorded status |
 |---|---|
-| `CLAUDE.md` | **Claude starts here.** Operational handoff: checklist, commands, hard rules, traps |
-| `PROJECT_STATE.md` | Project state: snapshot, frozen constants, deviations, gates, open questions |
-| `DECISIONS.md` | The decisions ledger, append-only. `PROJECT_STATE.md` §3 indexes it |
-| `DELTA_TO_SOL.md` | The only thing the student pastes to Sol. Accumulates until delivered |
-| `scripts/sol_bundle.sh` | Generated verification bundle: commit, tree state, tests, diff |
-| `SOL_BRIEF.md` | Operating brief for the reviewing agent |
-| `PROJECT_STATE_ARCHIVE.md` | Delivered deltas and closed session history |
-| `docs/thesis_project_plan_v1_2.docx` | The research design. Authoritative for design |
-| `docs/thesis_day_by_day_schedule_v1_2.docx` | The 20-week execution schedule |
-| `src/bu/constants.py` | **The preregistration, in code.** Changing anything here needs a Change Record |
+| **H1:** Does ensemble disagreement track estimation failure? | Development reliability gate passed; confirmatory hypothesis not tested |
+| **H2:** Is the disagreement-to-error ratio low under hypothesis-class failure? | Not tested |
+| **H3:** Can a learned critic outperform a fitted error/disagreement rule by more than five percentage points? | Not tested; critic training and evaluation remain planned |
 
-## Install
+The project record also reports **Gate 1 failed its minimum detectable effect
+condition**, with its second condition not adjudicable. A development reliability
+gate passing does not establish H1 or remove the broader design constraints.
+See the [decision ledger](DECISIONS.md) for the recorded reasoning.
+
+## What is implemented
+
+- **Controlled failure conditions:** a gridworld, factored observations, feature
+  masking, model-capacity variations, and a scripted data-collection policy.
+- **World models and uncertainty:** PyTorch MLPs, episode bootstrap ensembles,
+  explicit prediction policies, and disagreement/error measurements.
+- **Repair infrastructure:** paired baseline and repair runs, fixed evaluation
+  pools, acceptance tests, and threshold-calibration support.
+- **Experimental controls:** separate development and confirmatory seeds,
+  named random-number streams, group-aware analysis, and immutable evidence
+  attempts with manifests and provenance.
+- **Statistical tooling:** trend tests, repair acceptance, minimum detectable
+  effect simulations, and reproduction of figures from stored logs.
+- **Critic preparation:** a frozen feature whitelist and a balancing procedure
+  exercised on synthetic labelled inputs. These do not constitute a trained
+  diagnosis model or a completed real-label dataset.
+
+## Experimental workflow
+
+```mermaid
+flowchart TD
+    A[Configuration-condition matrix] --> B[Gridworld and episode collection]
+    B --> C[World model and bootstrap ensemble]
+    C --> D[Prediction error and disagreement]
+    D --> E[Paired counterfactual repairs]
+    E --> F[Repair acceptance and diagnosis labels]
+    C --> G[Run records and evidence manifests]
+    E --> G
+    G --> H[Statistical checks and figures]
+    F -. Planned .-> I[Learned diagnosis critic]
+    I -. Planned .-> J[Held-out H3 evaluation]
+```
+
+The enumerator defines a pool of **300 configuration-conditions in 240 comparison
+groups**. These are design units, not 300 completed or successfully labelled
+experiments. Actual labels depend on the counterfactual repair results;
+ambiguous and undiagnosed conditions can reduce the usable dataset.
+
+## Install and inspect
+
+Requires **Python 3.11 or newer**. Exact dependencies, including PyTorch,
+Gymnasium, NumPy, SciPy, pandas, and pytest, are pinned in
+[pyproject.toml](pyproject.toml). The commands below use a Unix-style shell;
+on Windows, use the corresponding `.venv\Scripts\python.exe` path.
 
 ```bash
-python3 -m venv --system-site-packages .venv
-.venv/bin/pip install -e ".[dev]"
+git clone https://github.com/RAMZI0TO99/beyond-uncertainty.git
+cd beyond-uncertainty
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
 .venv/bin/python -m pytest -q
 ```
 
-Then see the design matrix the experiments draw on:
+The original research environment uses
+`python3 -m venv --system-site-packages .venv` to reuse an installed CUDA-enabled
+PyTorch when it satisfies the pinned version. A fully isolated environment is
+the default above. Choose a compatible Python/platform combination for the
+pinned packages; installation and the full suite have not been re-run as part
+of this README update.
+
+Inspect the design matrix without running model training:
 
 ```bash
 .venv/bin/python -m bu.experiments.enumerate_units
 ```
 
-`--system-site-packages` reuses an existing CUDA-enabled torch rather than
-downloading one. For a fully isolated environment drop the flag; `pyproject.toml`
-pins every version.
+The report distinguishes construction families from measured diagnosis labels,
+lists stage obligations, and accounts for model fits shared across stages.
 
-## The four identities
+## Reproduce figures from existing evidence
 
-Most of the analysis discipline in this project follows from these distinctions,
-so they are worth understanding before reading any other module:
+From the repository root:
 
-```python
-from bu import Config, UnitSpec, Arm
-
-unit = UnitSpec(family="missing_feature", withheld_features=("shape",), n_transitions=500)
-
-Config(unit=unit, arm=Arm("baseline")).unit_id        # ─┐
-Config(unit=unit, arm=Arm("data_repair")).unit_id     #  ├─ identical
-Config(unit=unit, arm=Arm("feature_repair")).unit_id  # ─┘
+```bash
+.venv/bin/python -m bu.experiments.make_figures
 ```
 
-- **`unit_id`** — the configuration-condition. This is the statistical unit for
-  every confidence interval in the thesis, and the level at which class
-  balancing happens. A failure condition and its repairs share one, which is
-  what makes a ground-truth label assignable to it.
-- **`config_id`** — `unit_id` plus which arm (baseline, or which repair).
-- **`run_id`** — `config_id` plus **stage** and seed, so a record states which
-  experimental obligation it discharges.
-- **`fit_id`** — `config_id` plus the seed, with **no stage**: the identity of the
-  *computation*. One unit can owe 5 seeds to an H1/H2 claim and 20 to repair
-  validation, and the twenty **contain** the five — one set of fits wearing two
-  roles, not 25 runs. Conflating `run_id` with `fit_id` once cost 375 phantom fits.
+This reads the tracked Week 3 pilot summaries and Week 4 gate evidence and
+writes the registered figures under `figures/`. It does not train models and
+fails if required logs are absent. Figure generation does not turn development
+results into confirmatory claims.
 
-Confidence intervals are taken over `unit_id`, never over transitions. Units that
-share a **comparison group** were deliberately given related data, so a group must
-never span a train/test split — see `src/bu/streams.py`.
+| Evidence | What it contains |
+|---|---|
+| [Week 3 pilot](runs/w3_pilot/attempt-001/) | Development sweep summary and manifest |
+| [Week 4 reliability gate](runs/w4_gate/) | Rung-specific evidence, records, metrics, and verdict |
+| [Threshold calibration](runs/w4_threshold/attempt-001/) | Calibration record, arrays, and source run records |
+| [Timing evidence](runs/w4_timing/attempt-003/) | Timing record and its schema correction note |
+| [Tests](tests/) | Checks for identities, pairing, seeds, evidence contracts, models, and statistics |
 
-## Seeds
+The Week 3 pilot records a useful complication: prediction error falls as
+training data increases, while ensemble disagreement peaks at an intermediate
+data size. The evidence and development/confirmatory boundary are retained so
+that this observation can be examined without presenting it as a final result.
 
-Confirmatory runs use seeds ≥ `CONFIRMATORY_SEED_BASE` (1000). **Every seed below
-it is development data**, permanently excluded from confirmatory runs, threshold
-calibration, repair acceptance and the critic. Analyses that reach the thesis pass
-`require_confirmatory=True` to `load_runs()`.
+Most generated outputs are ignored by Git. Selected evidence is explicitly
+tracked so a fresh clone can inspect the records behind the documented claims;
+see [.gitignore](.gitignore) for the evidence allowlist.
 
-## Running something
+## Reproducibility model
+
+### Four identities
 
 ```python
-from bu import Config, UnitSpec, RunLogger, load_runs
+from bu import Arm, Config, UnitSpec
+
+unit = UnitSpec(
+    family="missing_feature",
+    withheld_features=("shape",),
+    n_transitions=500,
+)
+baseline = Config(unit=unit, arm=Arm("baseline"))
+repaired = Config(unit=unit, arm=Arm("feature_repair"))
+assert baseline.unit_id == repaired.unit_id
+```
+
+| Identity | Meaning |
+|---|---|
+| `unit_id` | Configuration-condition shared by a failure condition and its repair arms |
+| `config_id` | Unit plus the baseline or repair arm |
+| `run_id` | Configuration plus stage and seed: the experimental obligation |
+| `fit_id` | Configuration plus seed, without stage: the underlying computation |
+
+Keeping fits separate from experimental obligations prevents double-counting
+shared work. Statistical analyses use configuration-conditions rather than
+treating transitions as independent observations. Comparison groups contain
+deliberately related data, so splitting and resampling must respect them.
+
+### Seeds and provenance
+
+Seeds below `CONFIRMATORY_SEED_BASE` (`1000`) are development data and are
+excluded from confirmatory analyses, threshold calibration, repair acceptance,
+and the critic. Use `require_confirmatory=True` when loading runs for
+confirmatory claims; the seed boundary alone is not evidence that a hypothesis
+was tested.
+
+Run records store the configuration, seed, Git revision, dirty-tree flag, and
+package versions. JSONL metrics flush line by line. For example, this writes a
+**synthetic logging example**, not an experimental result:
+
+```python
+from bu import Config, RunLogger, UnitSpec, load_runs
 
 cfg = Config(unit=UnitSpec(n_transitions=1000), seed=0)
 with RunLogger.start(cfg) as log:
     log.log(epoch=0, split="val", mse=0.42)
 
-df = load_runs("runs")   # every run, long format, identity columns attached
+df = load_runs("runs")
 ```
 
-`RunLogger.start` writes the run record before the first metric, so a log never
-exists without the config, seed, commit hash and package versions that produced
-it. Records flush line by line — a killed Kaggle session loses nothing already
-written.
+## Code and research documents
 
-## Layout
+| Path | Purpose |
+|---|---|
+| [src/bu/env/](src/bu/env/) | Gridworld, observations, policy, episode collection |
+| [src/bu/models/](src/bu/models/) | World models, training, ensembles, uncertainty |
+| [src/bu/experiments/](src/bu/experiments/) | Design matrix, evidence drivers, repairs, figures |
+| [src/bu/stats/](src/bu/stats/) | Trend, gate, acceptance, and power-analysis tools |
+| [src/bu/critic/](src/bu/critic/) | Feature schema and synthetic-input balancing infrastructure |
+| [src/bu/constants.py](src/bu/constants.py) | Preregistered constants; changes require a recorded decision |
+| [Research design](docs/thesis_project_plan_v1_2.docx) | Authoritative study design |
+| [Execution schedule](docs/thesis_day_by_day_schedule_v1_2.docx) | Planned 20-week schedule |
+| [Methodology draft](docs/methodology_chapter.md) | Developing thesis methodology |
 
-```
-src/bu/
-  constants.py    preregistered values; one file, deliberately
-  config.py       Config / UnitSpec / Arm and the three identities
-  runrecord.py    provenance: config, seed, git commit, dirty flag, packages
-  metrics.py      JSONL logging and load_runs()
-  streams.py      named RNG streams: env / policy / bootstrap / init / batch
-  env/            gridworld, masking encoder, policy, collector   (Weeks 1–2)
-  models/         world model, training loop, bootstrap ensemble  (Week 3)
-  stats/          trend test, acceptance test                     (Weeks 4–5)
-  critic/         diagnosis critic and baselines                  (Weeks 11–12)
-  experiments/    the 300-unit design matrix and drivers
-runs/             run outputs — gitignored, regenerable
-figures/          all regenerated from logs — gitignored
-```
+## Limits and ongoing work
+
+This is a controlled research environment. Results should not be generalized
+to deployed robots, unrelated model classes, or arbitrary data distributions.
+The recorded development experiments, threshold calibration, and infrastructure
+checks have different purposes from final H1–H3 evaluations. The remaining work
+includes the permitted confirmatory experiments, real repair-based labels,
+grouped critic training, and held-out comparisons, subject to the recorded gates.
+
+## Maintainer and review handoff
+
+Operational material is kept separately from the visitor-facing overview:
+
+- [PROJECT_STATE.md](PROJECT_STATE.md): dated snapshot, gates, deviations, and open questions.
+- [DECISIONS.md](DECISIONS.md): append-only decision ledger.
+- [CLAUDE.md](CLAUDE.md) and [SOL_BRIEF.md](SOL_BRIEF.md): existing operational and reviewer handoffs.
+- [DELTA_TO_SOL.md](DELTA_TO_SOL.md): review handoff updates.
+- [PROJECT_STATE_ARCHIVE.md](PROJECT_STATE_ARCHIVE.md): archived session history.
+- [scripts/sol_bundle.sh](scripts/sol_bundle.sh): verification bundle tooling.
+- [scripts/sol_evidence_archive.sh](scripts/sol_evidence_archive.sh): tracked threshold-evidence archive tooling.
+
+## License
+
+See [LICENSE](LICENSE) for the repository's existing license.
