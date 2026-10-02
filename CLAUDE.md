@@ -1,3 +1,17 @@
+# 2026-10-02 D-177 status — complete gate008 on the two-file lineage candidate
+
+**STAGED DOCUMENTATION.** This block records the D-177 cycle state; earlier checkpoints below remain unchanged history. Nothing here authorizes a release, native action or public step by itself.
+
+The current local released controller is D-176 `597eb048a1bc441030bfcd88b70fdf9c56f882d0` (2026-10-01; release008/proposal017, parent `ea9c28aa82a1e8559e9c67e62b06dac7f5cea9b7`). Attempt012 remains terminal: its status, adjudication and pre-recover phases passed, the existing epoch-001→002 lease transition was performed, and its sole recover invocation refused before recovery mutations because the incident authority record embeds seven command-bound fields a recover launch cannot reproduce. It is spent; no resumed fit or new scientific result followed.
+
+The D-177 candidate is the live two-file change on that release: `src/bu/experiments/week8_exp2a_recovery.py` `a5ca433fb4a49d6e516c8da91c7fe546dce520ab3c153c1c9ef754640adadf11` adds a succession-aware cross-launch authority lineage that records and verifies each controller succession's commit, candidate manifest, loaded-module inventory and sealed authority fields, and `tests/test_week8_exp2a_recovery.py` `07f075f4d6794231fd803f17f80533a88ad4f8a59812b2f168f02fa5b3c8e6b3` adds the seven focused lineage tests. Complete gate008 over this exact candidate reconciled 5,569 distinct nodes across 45 accepted QA operations: 5,550 passed, 19 expected Windows symlink-privilege skips, 51 passing subtests, zero failures/errors (report `7153cd8c9a94306bad97741a259bb50144f2d1918d1e5ba9efd0fd897e11547c`, manifest `4e9bcede341db914feae2b80607295a5fbea30ea90386bf8defca28c7350ed30`).
+
+Next: apply the reviewed proposal018 documentation supplement, run fresh 14-case governance021, runtime016, residue017, inspection009 and commit009 for a clean local D-177 release, then a distinct attempt013 native front and D-161's still-unconsumed sole recovery. Supervised local/private authority runs under the reviewed 30-hour owner record `3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff` and ends **2026-10-02T22:36:15Z**. Distinct attempt013 requires original guards, a durable coordinated Python-free host, seven-hour/390-minute reserves and piped GO; never `-NonInteractive`. No replay, automatic retry, second recovery epoch, changed science or public action.
+
+Read [PROJECT_STATE.md](PROJECT_STATE.md), [DECISIONS.md](DECISIONS.md), [production runbook](docs/week8_production_runbook.md) and [release verification](docs/week8_release_verification.md).
+
+---
+
 # 2026-10-01 D-176 status — complete gate007 on the two-file projection candidate
 
 **STAGED DOCUMENTATION.** This block records the D-176 cycle state; earlier checkpoints below remain unchanged history. Nothing here authorizes a release, native action or public step by itself.

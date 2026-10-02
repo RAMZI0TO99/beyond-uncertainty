@@ -1,3 +1,25 @@
+# D-177 release procedure — 2026-10-02
+
+**STAGED DOCUMENTATION; no operational approval by itself.** This section supersedes the earlier D-176 release procedure below; earlier procedures and failed attempts remain unchanged historical evidence. Use [release verification](week8_release_verification.md) and [current state](../PROJECT_STATE.md) together.
+
+D-176 release `597eb048a1bc441030bfcd88b70fdf9c56f882d0` is local-only. Attempt012 status, adjudication and pre-recover verification passed; its sole recover command finally refused before recovery mutations. It is spent; never rerun it or reuse a consumed renderer, transport, verifier, wrapper, QA attempt or one-use release helper.
+
+## Required release sequence
+
+1. The D-177 candidate is exactly the two live files `src/bu/experiments/week8_exp2a_recovery.py` and `tests/test_week8_exp2a_recovery.py`; complete gate008 already covers them (45/45, 5,569 nodes, 5,550 passed, 19 expected skips, 51 subtests, zero failures/errors). Do not edit them.
+2. Apply the independently reviewed proposal018 documentation supplement (seven docs) through its one-use apply helper only after its exact bound review.
+3. Run fresh 14-case documentation governance021 against the applied docs; the final 263-row manifest may differ from the gate008 candidate manifest `4e9bcede341db914feae2b80607295a5fbea30ea90386bf8defca28c7350ed30` only in the seven documentation rows.
+4. Run reviewed runtime016, residue017, inspection009 and commit009 once each for the clean local D-177 release; no push or publication. Frozen4515 science, evidence, relocation policy, runtime/flags/env and modes stay exact.
+5. After the clean commit, independently prove and review the postcommit admission evidence before binding fresh attempt013 native wrappers.
+
+## Fresh attempt013 native gates
+
+The reviewed supervised local/private owner interval runs to **2026-10-02T22:36:15Z**; owner SHA256 `3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff`. New wrappers must bind this separately from historical owner pins; old helpers' deadlines do not extend. The original seven-hour adjudication reserve requires GO strictly before **2026-10-02T15:36:15Z**; the original 390-minute recover reserve requires GO strictly before **2026-10-02T16:06:15Z**. Recheck the actual clock and every guard immediately before each one-use command.
+
+Agree a durable quiet host with other agent owners for the entire native chain, not merely the READY snapshot. Original global Python/PyPy exclusions, empty startup roots, exact evidence/lease/transition/hidden-partial identity, two-snapshot Windows PID liveness, 8 GiB disk floor and unchanged runtime checks remain. Do not terminate another project's processes. Fresh013 status must pass independent original counts/liveness verification before any later action; recover must admit before intent and every mutation. Supply **GO through piped stdin** after exact READY/audit review; never use `-NonInteractive`. Any refusal is final; never replay automatically. The authorized recovery itself executes 111 fits after its admission and lower-launch proofs; verify completion and seal before downstream E2B/sweep fits. No second recovery epoch, scientific change, outcome consultation, public push, publication, deployment or external message is authorized by this section.
+
+---
+
 # D-176 release procedure — 2026-10-01
 
 **STAGED DOCUMENTATION; no operational approval by itself.** This section supersedes the earlier attempt/window queue below; earlier procedures and failed attempts remain unchanged historical evidence. Use [release verification](week8_release_verification.md) and [current state](../PROJECT_STATE.md) together.

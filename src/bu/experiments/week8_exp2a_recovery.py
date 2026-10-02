@@ -176,6 +176,20 @@ RECOVERY_COPY_ROOT = (
     / "week8-exp2a-recovery-2026-09-02-attempt-001-project-evidence"
 )
 
+# D-177 reviewed controller-succession pins.  The incident authority was
+# recorded by the D-175 controller commit; recovery can only run from its
+# verified reviewed successor.  The succession is admitted only through this
+# exact release record, its reviewed candidate manifest, and a fresh walk of
+# the current controller worktree that equals that manifest's rows.
+RELEASE_SESSION_ROOT = WORKSPACE_ROOT / "resume-2026-09-28-001"
+RELEASE008_RECORD = "controller-release-008-proposal017.json"
+RELEASE008_SHA256 = (
+    "8ba1ce7e8f802cc6df1235d28b1b13b6b84ac995215d8c6393d5b794564d5569"
+)
+RELEASE008_MANIFEST = (
+    RELEASE_SESSION_ROOT / "d175-doc-proposal-017" / "candidate-after.json"
+)
+
 INCIDENT_FILE = "incident.json"
 EPOCH001_TERMINAL_FILE = "epoch-001-terminal.json"
 TRANSITION_INTENT_FILE = "transition-intent.json"
@@ -1112,6 +1126,412 @@ def _cross_launch_authority_projection(authority: Mapping[str, Any]) -> bytes:
     return _canonical(projected)
 
 
+# Controller-identity fields that a reviewed controller release legitimately
+# rotates.  They are stripped from BOTH sides of the second, succession-only
+# projection; every remaining field must still match exactly.  Stripping more
+# than this set would silently accept unrelated authority drift.
+_SUCCESSION_RECORD_IDENTITY_KEYS = frozenset(
+    {
+        "controller",
+        "execution",
+        "git",
+        "git_runtime",
+        "raw_authority_helper",
+    }
+)
+_SUCCESSION_TOP_LEVEL_IDENTITY_KEYS = frozenset(
+    {
+        "controller_module",
+        "bootstrap_worker",
+        "recovery_inspector",
+        "recovery_entrypoint",
+        "raw_authority_helper",
+        "controller_worktree",
+        "execution_worktree",
+        "git_runtime",
+        "loaded_controller_modules",
+    }
+)
+# Release-rotated controller-identity digests that live inside the compact
+# pre-import binding and the raw record's native-startup/runtime sections.
+# Each is derived from the controller's own commit, release receipt or
+# tracked source bytes, so a reviewed succession rotates it; every one is
+# independently re-attested by the pinned release record, the reviewed
+# manifest walk, Git ancestry and the current side's own live gate.
+_SUCCESSION_BINDING_IDENTITY_KEYS = frozenset(
+    {
+        "controller_tree_digest",
+        "release_receipt_sha256",
+        "native_launcher_sha256",
+        "entrypoint_sha256",
+        "raw_authority_helper_sha256",
+    }
+)
+_SUCCESSION_STARTUP_IDENTITY_KEYS = frozenset(
+    {
+        "release_receipt_sha256",
+        "native_launcher",
+    }
+)
+_SUCCESSION_RUNTIME_IDENTITY_KEYS = frozenset(
+    {
+        "entrypoint_source_sha256",
+        "outer_bootstrap_literal_sha256",
+    }
+)
+_RECOVERY_CONTROLLER_MODULE_ID = "bu.experiments.week8_exp2a_recovery"
+_RELEASE_CANDIDATE_FOLDERS = ("src", "tests", "scripts", "docs")
+
+
+def _succession_authority_projection(authority: Mapping[str, Any]) -> bytes:
+    """Canonical controller-succession view of a controller authority record.
+
+    Same shape as the cross-launch projection, with the controller-identity
+    fields also projected away from both sides: the raw-record controller,
+    execution, Git and helper identities; the top-level captured source
+    identities, worktree rows, Git runtime and loaded-module inventory; and
+    the release-rotated controller digests inside the compact binding and
+    the raw record's native-startup/runtime sections.  The loaded-module
+    inventory is attested separately because its recovery-module row is
+    legitimately derived from each side's own controller source.
+    """
+
+    binding = {
+        key: value
+        for key, value in authority["preimport_authority"].items()
+        if key not in _CROSS_LAUNCH_COMMAND_BOUND_BINDINGS
+        and key not in _SUCCESSION_BINDING_IDENTITY_KEYS
+    }
+    raw = authority["preimport_authority_record"]
+    startup = {
+        key: value
+        for key, value in raw["native_startup"].items()
+        if key not in _CROSS_LAUNCH_COMMAND_BOUND_BINDINGS[1:]
+        and key not in _SUCCESSION_STARTUP_IDENTITY_KEYS
+    }
+    runtime = {
+        key: value
+        for key, value in raw["runtime"].items()
+        if key != "command" and key not in _SUCCESSION_RUNTIME_IDENTITY_KEYS
+    }
+    record = {
+        key: value
+        for key, value in raw.items()
+        if key not in {"runtime", "native_startup", "record_digest"}
+    }
+    record["runtime"] = runtime
+    record["native_startup"] = startup
+    record = {
+        key: value
+        for key, value in record.items()
+        if key not in _SUCCESSION_RECORD_IDENTITY_KEYS
+    }
+    projected = {
+        key: value
+        for key, value in authority.items()
+        if key not in {"preimport_authority", "preimport_authority_record"}
+    }
+    projected = {
+        key: value
+        for key, value in projected.items()
+        if key not in _SUCCESSION_TOP_LEVEL_IDENTITY_KEYS
+    }
+    projected["preimport_authority"] = binding
+    projected["preimport_authority_record"] = record
+    return _canonical(projected)
+
+
+def _lineage_git_is_ancestor(incident_commit: str, current_commit: str) -> bool:
+    """One read-only ancestry query against the controller's own pinned Git.
+
+    Uses the same isolated pinned-Git subprocess discipline as the verified
+    raw-authority helper: exact executable hash, fixed ``-c`` controls with
+    ``safe.directory`` scoped to the controller worktree, a minimal inherited
+    environment, and refusal on any stderr or failed exit.  ``merge-base
+    --is-ancestor`` exits zero only when the incident commit is an ancestor
+    of the current commit.
+    """
+
+    if (
+        type(incident_commit) is not str
+        or _HEX40.fullmatch(incident_commit) is None
+        or type(current_commit) is not str
+        or _HEX40.fullmatch(current_commit) is None
+    ):
+        return False
+    try:
+        executable = PINNED_GIT.resolve(strict=True)
+        runtime = PINNED_GIT_RUNTIME_ROOT.resolve(strict=True)
+        safe_root = CONTROLLER_WORKTREE.resolve(strict=True)
+        if sha256_file(executable) != EXPECTED_PINNED_GIT_SHA256:
+            return False
+        windows_root = Path("C:/Windows").resolve(strict=True)
+        system32 = (windows_root / "System32").resolve(strict=True)
+        environment = {
+            "GIT_ATTR_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_EXEC_PATH": str(runtime),
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_PAGER": "cat",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_TEMPLATE_DIR": os.devnull,
+            "LC_ALL": "C",
+            "PATH": os.pathsep.join(
+                (str(runtime), str(system32), str(windows_root))
+            ),
+            "SystemRoot": str(windows_root),
+            "WINDIR": str(windows_root),
+        }
+        command = [
+            str(executable),
+            "--no-pager",
+            "--no-optional-locks",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            "core.untrackedCache=false",
+            "-c",
+            f"core.hooksPath={os.devnull}",
+            "-c",
+            f"core.attributesFile={os.devnull}",
+            "-c",
+            f"safe.directory={safe_root}",
+            "-C",
+            str(safe_root),
+            "merge-base",
+            "--is-ancestor",
+            incident_commit,
+            current_commit,
+        ]
+        completed = subprocess.run(
+            command,
+            check=False,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment,
+            cwd=str(runtime),
+            shell=False,
+        )
+    except (OSError, ValueError):
+        return False
+    return completed.returncode == 0 and completed.stderr == b""
+
+
+def _release_candidate_rows() -> list[list[str]]:
+    """Fresh reviewed-release candidate walk of the controller worktree.
+
+    Mirrors the reviewed D-175 proposal walk exactly: every plain file under
+    ``src``, ``tests``, ``scripts`` and ``docs`` except ``__pycache__``
+    entries, plus every plain top-level file except ``.git``, each row a
+    ``[posix-relative-path, sha256]`` pair in the reviewed order.
+    """
+
+    root = CONTROLLER_WORKTREE.resolve(strict=True)
+    rows: list[list[str]] = []
+    for folder in _RELEASE_CANDIDATE_FOLDERS:
+        inventory = _plain_tree_inventory(
+            root / folder, what=f"D-177 release candidate {folder}"
+        )
+        file_rows = [
+            row
+            for row in _file_rows(inventory)
+            if "__pycache__" not in row["path"].split("/")
+        ]
+        # The reviewed proposal walk enumerates ``sorted(base.rglob("*"))``,
+        # whose pathlib ordering case-folds on Windows; mirror that order.
+        file_rows.sort(key=lambda row: row["path"].casefold())
+        for row in file_rows:
+            rows.append([f"{folder}/{row['path']}", row["sha256"]])
+    reparse = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+    for child in sorted(root.iterdir()):
+        if child.name == ".git" or not child.is_file():
+            continue
+        info = child.lstat()
+        if (
+            stat.S_ISLNK(info.st_mode)
+            or not stat.S_ISREG(info.st_mode)
+            or int(getattr(info, "st_file_attributes", 0)) & reparse
+            or info.st_nlink != 1
+        ):
+            raise RecoveryRefused(
+                "D-177 release candidate top-level entry is not plain"
+            )
+        rows.append([child.name, sha256_file(child)])
+    if len(rows) != len({row[0] for row in rows}):
+        raise RecoveryRefused("D-177 release candidate walk repeats a path")
+    return rows
+
+
+def _pinned_release_record() -> dict[str, Any]:
+    """Load the one pinned controller release record by exact hash."""
+
+    data, _identity = _read_bound_plain_bytes(
+        RELEASE_SESSION_ROOT / RELEASE008_RECORD,
+        expected_sha256=RELEASE008_SHA256,
+        what="D-177 pinned controller release record",
+    )
+    record = json.loads(data.decode("utf-8", errors="strict"))
+    if type(record) is not dict:
+        raise RecoveryRefused("D-177 pinned release record is not an object")
+    return record
+
+
+def _release_manifest_binds_current_worktree(
+    record: Mapping[str, Any],
+) -> bool:
+    """Bind the reviewed manifest bytes to a fresh walk of this worktree."""
+
+    expected_manifest_sha256 = record.get("FinalCandidateManifestSha256")
+    if (
+        type(expected_manifest_sha256) is not str
+        or _HEX64.fullmatch(expected_manifest_sha256) is None
+    ):
+        return False
+    data, _identity = _read_bound_plain_bytes(
+        RELEASE008_MANIFEST,
+        expected_sha256=expected_manifest_sha256,
+        what="D-177 reviewed release candidate manifest",
+    )
+    rows = json.loads(data.decode("utf-8", errors="strict"))
+    if type(rows) is not list or not rows:
+        return False
+    for row in rows:
+        if (
+            type(row) is not list
+            or len(row) != 2
+            or not all(type(item) is str for item in row)
+            or _HEX64.fullmatch(row[1]) is None
+        ):
+            return False
+    return _release_candidate_rows() == rows
+
+
+def _succession_loaded_modules_attestation(
+    current_authority: Mapping[str, Any],
+    incident_authority: Mapping[str, Any],
+) -> bool:
+    """Attest the loaded-module inventories across a controller succession.
+
+    Both inventories must have the same shape and length, every module row
+    other than the recovery controller module itself must be byte-identical,
+    and each side's recovery-module row must carry that side's own captured
+    controller-module digest.
+    """
+
+    inventories = (
+        current_authority["loaded_controller_modules"],
+        incident_authority["loaded_controller_modules"],
+    )
+    authorities = (current_authority, incident_authority)
+    parsed: list[dict[str, dict[str, Any]]] = []
+    for rows in inventories:
+        if type(rows) is not list or not rows:
+            return False
+        by_id: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            if (
+                type(row) is not dict
+                or set(row) != {"module_id", "source_path", "source_sha256", "git_blob"}
+                or type(row["module_id"]) is not str
+                or not row["module_id"]
+                or row["module_id"] in by_id
+                or type(row["source_path"]) is not str
+                or type(row["source_sha256"]) is not str
+                or _HEX64.fullmatch(row["source_sha256"]) is None
+                or type(row["git_blob"]) is not str
+                or _HEX40.fullmatch(row["git_blob"]) is None
+            ):
+                return False
+            by_id[row["module_id"]] = row
+        parsed.append(by_id)
+    if len(parsed[0]) != len(parsed[1]) or set(parsed[0]) != set(parsed[1]):
+        return False
+    for module_id, row in parsed[0].items():
+        if module_id == _RECOVERY_CONTROLLER_MODULE_ID:
+            continue
+        if row != parsed[1][module_id]:
+            return False
+    for by_id, authority in zip(parsed, authorities):
+        recovery_row = by_id.get(_RECOVERY_CONTROLLER_MODULE_ID)
+        controller_module = authority.get("controller_module")
+        if (
+            type(recovery_row) is not dict
+            or type(controller_module) is not dict
+            or recovery_row["source_sha256"] != controller_module.get("sha256")
+        ):
+            return False
+    return True
+
+
+def _reviewed_controller_succession(
+    current_authority: Mapping[str, Any],
+    incident_authority: Mapping[str, Any],
+) -> bool:
+    """Accept exactly one reviewed controller-succession step, or nothing.
+
+    The current controller must descend from the incident controller in the
+    controller worktree's own Git, the pinned release record must prove that
+    exact parent/child succession with no remote push and committed blobs
+    matching the reviewed worktree bytes, its reviewed candidate manifest
+    must bind byte-for-byte to a fresh walk of the current worktree, every
+    non-controller-identity authority field must still match exactly, and
+    the loaded-module inventories must satisfy the succession attestation.
+    Any anomaly refuses.
+    """
+
+    incident_commit = incident_authority["controller_worktree"]["git_commit"]
+    current_commit = current_authority["controller_worktree"]["git_commit"]
+    if incident_commit == current_commit:
+        return False
+    if not _lineage_git_is_ancestor(incident_commit, current_commit):
+        return False
+    record = _pinned_release_record()
+    if (
+        record.get("ParentCommit") != incident_commit
+        or record.get("ControllerCommit") != current_commit
+        or record.get("RemotePushPerformed") is not False
+        or record.get("CommittedBlobsMatchReviewedWorktreeBytes") is not True
+    ):
+        return False
+    if not _release_manifest_binds_current_worktree(record):
+        return False
+    if _succession_authority_projection(
+        current_authority
+    ) != _succession_authority_projection(incident_authority):
+        return False
+    return _succession_loaded_modules_attestation(
+        current_authority, incident_authority
+    )
+
+
+def _authority_lineage_matches(
+    current_authority: Mapping[str, Any],
+    incident_authority: Mapping[str, Any],
+) -> bool:
+    """Cross-launch authority gate for the D-177 reviewed-succession era.
+
+    Accepts the same controller unchanged (the D-176 command-invariant
+    projection equality) or exactly the reviewed controller succession
+    proved by the pinned release record, the worktree's own Git ancestry,
+    the reviewed candidate manifest, exact equality of every remaining
+    authority field, and the loaded-module succession attestation.  Any
+    anomaly returns False so callers keep their unchanged refusal.
+    """
+
+    try:
+        if _cross_launch_authority_projection(
+            current_authority
+        ) == _cross_launch_authority_projection(incident_authority):
+            return True
+        return _reviewed_controller_succession(current_authority, incident_authority)
+    except (KeyError, IndexError, TypeError, ValueError, OSError, RecursionError):
+        return False
+
+
 def _controller_runtime_flags() -> dict[str, bool | int]:
     return {
         "dont_write_bytecode": bool(sys.flags.dont_write_bytecode),
@@ -1406,9 +1826,7 @@ def _assert_current_controller_authority(
     """Re-attest the clean controller before any completion is trusted."""
 
     current = _controller_authority()
-    if _cross_launch_authority_projection(
-        current
-    ) != _cross_launch_authority_projection(incident["authority"]):
+    if not _authority_lineage_matches(current, incident["authority"]):
         raise RecoveryRefused("current controller authority differs from the incident")
     return current
 
@@ -4862,9 +5280,7 @@ def _invoke_bootstrap() -> dict[str, Any]:
     if _bootstrap_state()["state"] != "not_invoked":
         raise RecoveryRefused("the one-use bootstrap invocation was already consumed")
     authority = _controller_authority()
-    if _cross_launch_authority_projection(
-        authority
-    ) != _cross_launch_authority_projection(incident["authority"]):
+    if not _authority_lineage_matches(authority, incident["authority"]):
         raise RecoveryRefused("controller authority differs before bootstrap invocation")
     bundle, child_transport = _verified_child_bundle(
         relative_path="scripts/week8_exp2a_recovery_worker.py",
@@ -4907,7 +5323,10 @@ def _invoke_bootstrap() -> dict[str, Any]:
     # rechecks Git state and every tracked source/interpreter hash after the
     # one-use invocation is durable.
     final_authority = _controller_authority()
-    if _canonical(final_authority) != _canonical(incident["authority"]):
+    if (
+        _canonical(final_authority) != _canonical(authority)
+        or not _authority_lineage_matches(final_authority, incident["authority"])
+    ):
         raise RecoveryRefused("controller authority changed before bootstrap spawn")
     try:
         process = subprocess.Popen(
@@ -5057,9 +5476,7 @@ def recover() -> dict[str, Any]:
         }
 
     initial_authority = _controller_authority()
-    if _cross_launch_authority_projection(
-        initial_authority
-    ) != _cross_launch_authority_projection(incident["authority"]):
+    if not _authority_lineage_matches(initial_authority, incident["authority"]):
         raise RecoveryRefused("controller authority differs from the incident record")
     active = (
         Plan.COMMON_LEASE_ROOT
@@ -5081,8 +5498,9 @@ def recover() -> dict[str, Any]:
         final_authority = _controller_authority()
         if (
             _canonical(final_authority) != _canonical(initial_authority)
-            or _cross_launch_authority_projection(final_authority)
-            != _cross_launch_authority_projection(incident["authority"])
+            or not _authority_lineage_matches(
+                final_authority, incident["authority"]
+            )
         ):
             raise RecoveryRefused("controller authority changed before transition intent")
         liveness = _quiescent_liveness()

@@ -3202,3 +3202,345 @@ def test_cross_launch_authority_projection_detects_real_drift() -> None:
         R._cross_launch_authority_projection(_projection_authority("adjudicate"))
         != R._cross_launch_authority_projection(tree_drift)
     )
+
+
+D177_INCIDENT_COMMIT = "ea9c28aa82a1e8559e9c67e62b06dac7f5cea9b7"
+D177_CURRENT_COMMIT = "597eb048a1bc441030bfcd88b70fdf9c56f882d0"
+D177_INCIDENT_MODULE_SHA256 = (
+    "80b521a99d0a3e926a2c669921cfea73e7e41e260156b48d94b1786205657c63"
+)
+D177_CURRENT_MODULE_SHA256 = (
+    "08a1a01d6f50861c3ce756a79554307213e0d389a9781815763dc80be8dd411d"
+)
+
+
+def _lineage_succession_authority(
+    *, git_commit: str, module_sha256: str, command: str
+) -> dict[str, Any]:
+    """Synthetic full authority differing per controller era as pinned."""
+
+    native_startup = _synthetic_native_startup()
+    return {
+        "controller_worktree": {
+            "path": "C:/synthetic/controller",
+            "git_commit": git_commit,
+            "detached": False,
+        },
+        "execution_worktree": {
+            "path": "C:/synthetic/execution",
+            "git_commit": R.EXECUTION_COMMIT,
+            "detached": True,
+        },
+        "controller_module": {
+            "path": "C:/synthetic/controller/src/bu/experiments/week8_exp2a_recovery.py",
+            "sha256": module_sha256,
+        },
+        "bootstrap_worker": {"path": "C:/synthetic/worker.py", "sha256": "1" * 64},
+        "recovery_inspector": {"path": "C:/synthetic/inspector.py", "sha256": "2" * 64},
+        "recovery_entrypoint": {"path": "C:/synthetic/entrypoint.py", "sha256": "3" * 64},
+        "raw_authority_helper": {"path": "C:/synthetic/helper.py", "sha256": "4" * 64},
+        "preimport_authority": {
+            "raw_authority_schema_version": 4,
+            "entrypoint_schema_version": 4,
+            "entrypoint_sha256": "5" * 64,
+            "raw_authority_helper_sha256": "4" * 64,
+            "raw_authority_record_digest": "6" * 64,
+            "controller_tree_digest": "7" * 64,
+            "execution_tree_digest": "8" * 64,
+            "git_runtime_inventory_digest": "9" * 64,
+            "site_packages_inventory_digest": "a" * 64,
+            "release_receipt_sha256": native_startup["release_receipt_sha256"],
+            "native_launcher_sha256": native_startup["native_launcher"]["sha256"],
+            "stage0_binding_sha256": native_startup["stage0_binding_sha256"],
+            "startup_binding_sha256": native_startup["startup_binding_sha256"],
+            "startup_environment_sha256": native_startup[
+                "startup_environment_sha256"
+            ],
+            "base_runtime_inventory_sha256": "b" * 64,
+            "venv_scripts_inventory_sha256": "c" * 64,
+        },
+        "preimport_authority_record": {
+            "raw_authority_schema_version": 4,
+            "record_digest": "d" * 64,
+            "runtime": {"command": command, "preimport_sys_path_digest": "e" * 64},
+            "native_startup": dict(native_startup),
+            "controller": {
+                "path": "C:/synthetic/controller",
+                "git_commit": git_commit,
+                "detached": False,
+                "worktree_inventory_digest": "f" * 64,
+            },
+            "execution": {
+                "path": "C:/synthetic/execution",
+                "git_commit": R.EXECUTION_COMMIT,
+                "detached": True,
+                "worktree_inventory_digest": "0" * 64,
+            },
+            "git": {"path": "C:/synthetic/git.exe", "sha256": "1" * 64},
+            "git_runtime": {"inventory_digest": "2" * 64},
+            "raw_authority_helper": {
+                "path": "C:/synthetic/helper.py",
+                "sha256": "4" * 64,
+            },
+            "admission": {"verified": True},
+        },
+        "pinned_python": {"path": "C:/synthetic/python.exe", "sha256": "3" * 64},
+        "base_python": {"path": "C:/synthetic/base.exe", "sha256": "4" * 64},
+        "git_executable": {"path": "C:/synthetic/git.exe", "sha256": "5" * 64},
+        "git_runtime": {"inventory_digest": "6" * 64},
+        "loaded_controller_modules": [
+            {
+                "module_id": "bu",
+                "source_path": "C:/synthetic/controller/src/bu/__init__.py",
+                "source_sha256": "7" * 64,
+                "git_blob": "8" * 40,
+            },
+            {
+                "module_id": "bu.experiments.week8_exp2a_recovery",
+                "source_path": (
+                    "C:/synthetic/controller/src/bu/experiments/"
+                    "week8_exp2a_recovery.py"
+                ),
+                "source_sha256": module_sha256,
+                "git_blob": "9" * 40,
+            },
+        ],
+    }
+
+
+def _stage_reviewed_succession(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    record_fields: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], Path]:
+    """Stage a synthetic controller worktree, release record and manifest."""
+
+    controller = tmp_path / "controller"
+    session = tmp_path / "session"
+    files = {
+        "src/bu/__init__.py": b"# synthetic package\n",
+        "tests/test_synthetic.py": b"# synthetic test\n",
+        "scripts/synthetic_helper.py": b"# synthetic script\n",
+        "docs/synthetic.md": b"# synthetic doc\n",
+        "README.md": b"# synthetic controller\n",
+    }
+    for name, data in files.items():
+        target = controller / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_bytes(target, data)
+    atomic_write_bytes(controller / ".git", b"gitdir: ../main/worktrees/controller\n")
+    manifest_rows = [
+        ["src/bu/__init__.py", R.sha256_bytes(files["src/bu/__init__.py"])],
+        ["tests/test_synthetic.py", R.sha256_bytes(files["tests/test_synthetic.py"])],
+        [
+            "scripts/synthetic_helper.py",
+            R.sha256_bytes(files["scripts/synthetic_helper.py"]),
+        ],
+        ["docs/synthetic.md", R.sha256_bytes(files["docs/synthetic.md"])],
+        ["README.md", R.sha256_bytes(files["README.md"])],
+    ]
+    manifest_directory = session / "d175-doc-proposal-017"
+    manifest_directory.mkdir(parents=True)
+    manifest_bytes = (json.dumps(manifest_rows, indent=2) + "\n").encode("utf-8")
+    atomic_write_bytes(
+        manifest_directory / "candidate-after.json", manifest_bytes
+    )
+    record: dict[str, Any] = {
+        "ControllerCommit": D177_CURRENT_COMMIT,
+        "ParentCommit": D177_INCIDENT_COMMIT,
+        "RemotePushPerformed": False,
+        "CommittedBlobsMatchReviewedWorktreeBytes": True,
+        "FinalCandidateManifestSha256": R.sha256_bytes(manifest_bytes),
+    }
+    if record_fields is not None:
+        record.update(record_fields)
+    record_bytes = (json.dumps(record, indent=2) + "\n").encode("utf-8")
+    atomic_write_bytes(session / R.RELEASE008_RECORD, record_bytes)
+    monkeypatch.setattr(R, "RELEASE_SESSION_ROOT", session)
+    monkeypatch.setattr(
+        R, "RELEASE008_MANIFEST", manifest_directory / "candidate-after.json"
+    )
+    monkeypatch.setattr(R, "RELEASE008_SHA256", R.sha256_bytes(record_bytes))
+    monkeypatch.setattr(R, "CONTROLLER_WORKTREE", controller)
+    git_executable = tmp_path / "git-runtime" / "git.exe"
+    atomic_write_bytes(git_executable, b"synthetic-lineage-git")
+    monkeypatch.setattr(R, "PINNED_GIT", git_executable)
+    monkeypatch.setattr(R, "PINNED_GIT_RUNTIME_ROOT", git_executable.parent)
+    monkeypatch.setattr(
+        R, "EXPECTED_PINNED_GIT_SHA256", R.sha256_bytes(b"synthetic-lineage-git")
+    )
+    incident = _lineage_succession_authority(
+        git_commit=D177_INCIDENT_COMMIT,
+        module_sha256=D177_INCIDENT_MODULE_SHA256,
+        command="adjudicate",
+    )
+    current = _lineage_succession_authority(
+        git_commit=D177_CURRENT_COMMIT,
+        module_sha256=D177_CURRENT_MODULE_SHA256,
+        command="recover",
+    )
+    return incident, current, controller
+
+
+def _recorded_lineage_git(
+    returncode: int, stderr: bytes = b""
+) -> tuple[Any, list[list[str]]]:
+    commands: list[list[str]] = []
+
+    def run(command: Any, **kwargs: Any) -> SimpleNamespace:
+        commands.append(list(command))
+        return SimpleNamespace(returncode=returncode, stdout=b"", stderr=stderr)
+
+    return run, commands
+
+
+def test_lineage_matches_same_controller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    authority = _lineage_succession_authority(
+        git_commit="e" * 40, module_sha256="a" * 64, command="recover"
+    )
+    monkeypatch.setattr(
+        R.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("same-controller match must not run git"),
+    )
+    twin = json.loads(json.dumps(authority))
+    assert twin is not authority
+    assert R._authority_lineage_matches(twin, authority) is True
+
+
+def test_lineage_matches_reviewed_succession(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    incident, current, controller = _stage_reviewed_succession(tmp_path, monkeypatch)
+    run, commands = _recorded_lineage_git(0)
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current, incident) is True
+    assert len(commands) == 1
+    command = commands[0]
+    assert command[-4:] == [
+        "merge-base",
+        "--is-ancestor",
+        D177_INCIDENT_COMMIT,
+        D177_CURRENT_COMMIT,
+    ]
+    resolved_controller = str(controller.resolve())
+    assert command[command.index("-C") + 1] == resolved_controller
+    assert f"safe.directory={resolved_controller}" in command
+    assert command[0] == str((tmp_path / "git-runtime" / "git.exe").resolve())
+
+
+def test_lineage_refuses_unrelated_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    incident, current, _controller = _stage_reviewed_succession(tmp_path, monkeypatch)
+    run, commands = _recorded_lineage_git(1)
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current, incident) is False
+    assert len(commands) == 1
+    noisy_run, noisy_commands = _recorded_lineage_git(0, stderr=b"refused")
+    monkeypatch.setattr(R.subprocess, "run", noisy_run)
+    assert R._authority_lineage_matches(current, incident) is False
+    assert len(noisy_commands) == 1
+
+
+def test_lineage_refuses_tampered_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    incident, current, _controller = _stage_reviewed_succession(
+        tmp_path,
+        monkeypatch,
+        record_fields={"ParentCommit": "0" * 40},
+    )
+    run, _commands = _recorded_lineage_git(0)
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current, incident) is False
+
+    incident2, current2, _controller2 = _stage_reviewed_succession(
+        tmp_path / "second", monkeypatch
+    )
+    session = tmp_path / "second" / "session"
+    tampered = json.loads((session / R.RELEASE008_RECORD).read_text(encoding="utf-8"))
+    tampered["RemotePushPerformed"] = True
+    (session / R.RELEASE008_RECORD).write_bytes(
+        (json.dumps(tampered, indent=2) + "\n").encode("utf-8")
+    )
+    run2, _commands2 = _recorded_lineage_git(0)
+    monkeypatch.setattr(R.subprocess, "run", run2)
+    assert R._authority_lineage_matches(current2, incident2) is False
+
+
+def test_lineage_refuses_manifest_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    incident, current, controller = _stage_reviewed_succession(tmp_path, monkeypatch)
+    run, _commands = _recorded_lineage_git(0)
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current, incident) is True
+    original = (controller / "README.md").read_bytes()
+    (controller / "README.md").write_bytes(b"# drifted controller\n")
+    assert R._authority_lineage_matches(current, incident) is False
+    (controller / "README.md").write_bytes(original)
+    assert R._authority_lineage_matches(current, incident) is True
+    atomic_write_bytes(controller / "EXTRA.md", b"# unreviewed addition\n")
+    assert R._authority_lineage_matches(current, incident) is False
+
+
+def test_lineage_refuses_extra_field_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    incident, current, _controller = _stage_reviewed_succession(tmp_path, monkeypatch)
+    run, _commands = _recorded_lineage_git(0)
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current, incident) is True
+    original_python = current["pinned_python"]["sha256"]
+    current["pinned_python"]["sha256"] = "0" * 64
+    assert R._authority_lineage_matches(current, incident) is False
+    current["pinned_python"]["sha256"] = original_python
+    original_digest = current["preimport_authority_record"]["runtime"][
+        "preimport_sys_path_digest"
+    ]
+    current["preimport_authority_record"]["runtime"][
+        "preimport_sys_path_digest"
+    ] = "1" * 64
+    assert R._authority_lineage_matches(current, incident) is False
+    current["preimport_authority_record"]["runtime"][
+        "preimport_sys_path_digest"
+    ] = original_digest
+    original_admission = current["preimport_authority_record"]["admission"]
+    current["preimport_authority_record"]["admission"] = {"verified": False}
+    assert R._authority_lineage_matches(current, incident) is False
+    current["preimport_authority_record"]["admission"] = original_admission
+    assert R._authority_lineage_matches(current, incident) is True
+
+
+def test_lineage_refuses_loaded_module_inventory_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    incident, current, _controller = _stage_reviewed_succession(tmp_path, monkeypatch)
+    run, _commands = _recorded_lineage_git(0)
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current, incident) is True
+    recovery_index = 1
+    original_row = dict(current["loaded_controller_modules"][recovery_index])
+    current["loaded_controller_modules"][recovery_index]["source_sha256"] = "0" * 64
+    assert R._authority_lineage_matches(current, incident) is False
+    current["loaded_controller_modules"][recovery_index] = original_row
+    package_index = 0
+    original_blob = current["loaded_controller_modules"][package_index]["git_blob"]
+    current["loaded_controller_modules"][package_index]["git_blob"] = "7" * 40
+    assert R._authority_lineage_matches(current, incident) is False
+    current["loaded_controller_modules"][package_index]["git_blob"] = original_blob
+    current["loaded_controller_modules"].append(
+        {
+            "module_id": "bu.experiments.synthetic_extra",
+            "source_path": "C:/synthetic/controller/src/bu/experiments/extra.py",
+            "source_sha256": "2" * 64,
+            "git_blob": "3" * 40,
+        }
+    )
+    assert R._authority_lineage_matches(current, incident) is False
+    current["loaded_controller_modules"].pop()
+    assert R._authority_lineage_matches(current, incident) is True
