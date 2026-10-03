@@ -1,0 +1,80 @@
+"""Stdlib AST/text staging, preserving effective pre-recover003 mechanical checks."""
+import ast
+from pathlib import Path
+FRONT=Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-attempt013-front-001')
+path=FRONT/'verify-adjudication-evidence-before-recover-013-window30h-001.py.template'
+old=path.read_text();tree=ast.parse(old)
+functions='\n\n'.join(ast.get_source_segment(old,n) for n in tree.body
+                      if isinstance(n,ast.FunctionDef) and n.name in ('incident_and_terminal','pre_recovery_evidence'))
+functions=functions.replace('== CONTROLLER_COMMIT,','== HISTORICAL_CONTROLLER_COMMIT,')
+status=(FRONT/'verify-native-status-013-window30h-success-001.py.template').read_text()
+header=status[status.index('# ATTEMPT013 ACTIVE INTERFACE.'):status.index('def main():',status.index('# ATTEMPT013 ACTIVE INTERFACE.'))]
+header=header.replace("module.__file__ = str(FRONT_HELPER)","module.__file__ = str(FRONT_HELPER)\n    if module.__name__ in sys.modules:\n        raise ValueError('front module name occupied')\n    sys.modules[module.__name__] = module")
+for existing in FRONT.glob('verify-native-*-013-window30h-success-001.py.template'):
+    text=existing.read_text()
+    if 'def load_front()' in text:
+        text=text.replace("module.__file__ = str(FRONT_HELPER)","module.__file__ = str(FRONT_HELPER)\n    if module.__name__ in sys.modules:\n        raise ValueError('front module name occupied')\n    sys.modules[module.__name__] = module")
+        text=text.replace("command = 'status'", "command = 'status'\n    C.require(type(CURRENT_AUDIT_SHA256) is str and C.HEX64.fullmatch(CURRENT_AUDIT_SHA256) is not None, 'audit first-capture pin unbound')")
+        text=text.replace("command = 'adjudicate'", "command = 'adjudicate'\n    C.require(all(type(pin) is str and C.HEX64.fullmatch(pin) is not None for pin in (CURRENT_AUDIT_SHA256,CURRENT_LAUNCH_INTENT_SHA256)), 'audit/intent first-capture pins unbound')")
+        ast.parse(text);existing.write_text(text,encoding='utf-8',newline='\n')
+main='''
+def main():
+    global E,HISTORICAL_CONTROLLER_COMMIT
+    C=load_front();F=FRONT_BINDINGS
+    HISTORICAL_CONTROLLER_COMMIT=C.PROGRAMMATIC_FACTS['predecessor']['controller_commit']
+    E=C.load_phase(F)
+    output=C.FRONT/'adjudication-evidence-before-recover-013.json'
+    C.absent(output)
+    first_boundary=C.boundary(F,reserve=390)
+    prior=C.validate_ready_verdict('adjudicate',PRIOR_ADJUDICATE_VERDICT_SHA256,F)
+    status=C.validate_ready_verdict('status',PRIOR_STATUS_VERDICT_SHA256,F)
+    C.require(prior['prior_status_verdict_sha256']==PRIOR_STATUS_VERDICT_SHA256,
+              'current adjudicate verifier does not bind current status')
+    E.require({path.name for path in E.entries(C.ATTEMPT)}==C.STATUS_FILES|C.ADJUDICATE_FILES,
+              'pre-recover exact ten-file native inventory differs')
+    attempt_hashes={name:C.sha(C.read(C.ATTEMPT/name)) for name in sorted(C.STATUS_FILES|C.ADJUDICATE_FILES)}
+    witness=dict(first_boundary['witness_file_sha256'])
+    incident,_,incident_sha,terminal_sha=incident_and_terminal(witness,prior['result'])
+    C.require(prior['historical_inventory_digest']==status['historical_inventory_digest']==incident['inventory_digest']
+              and prior['historical_inspector_digest']==status['historical_inspector_digest']
+              ==incident['inventory']['control']['old_source_inspector']['inspector_digest'],
+              'preserved inventory/inspector admission backbone differs')
+    accounting,liveness,absent_paths,directory_map,runtime_precondition,directory_identity=pre_recovery_evidence(incident,witness)
+    file_identity=E.file_identity_witness(witness)
+    for row in incident['inventory']['jobs']['durable_completed']:
+        job_id=row['job_id']
+        E.require(E.copy_digest_from_identity_maps(E.OUTPUT/'jobs'/job_id,E.DURABLE/'jobs'/job_id,
+                  witness,file_identity)==row['copy_evidence_digest'], 'old current copy identity changed before recover')
+    quiet=C.quiet_host_twice()
+    document={
+        'schema':'pro2_native_phase_evidence_v2','phase':'pre_recover','operation':'recover','verdict':'pass',
+        'controller_commit':F['controller_commit'],'receipt_sha256':F['receipt_sha256'],
+        'prior_verdict_sha256':PRIOR_ADJUDICATE_VERDICT_SHA256,'status_verdict_sha256':PRIOR_STATUS_VERDICT_SHA256,
+        'owner_record_sha256':C.PROGRAMMATIC_FACTS['owner_sha256'],'attempt_file_sha256':attempt_hashes,
+        'witness_file_sha256':dict(sorted(witness.items())),'witness_file_identity':file_identity,
+        'witness_absent_paths':absent_paths,'witness_historical_absent_paths':E.historical_absence_witness(),
+        'witness_directory_entries':directory_map,'witness_directory_identity':directory_identity,
+        'runtime_temp_precondition':runtime_precondition,
+        'old_pid_absence':{'root_pids':[E.OLD_PID,E.ORPHAN_PID],'known_descendant_pids':[],
+                          'method':liveness['method'],'verdict':liveness['verdict'],'snapshots':liveness['snapshots']},
+        'incident_sha256':incident_sha,'epoch001_terminal_sha256':terminal_sha,
+        'event_count':accounting['event_count'],'resumed':accounting['resumed'],
+        'remaining':accounting['remaining'],'old_complete':accounting['old_complete'],
+        'old_process_liveness':liveness,'verified_utc':datetime.now(timezone.utc).isoformat(),
+        'historical_admission':prior['historical_admission'],'successor_admission_sha256':F['admission_sha256'],
+        'external_proof_sha256':F['external_proof_sha256'],'full_controller_row_count':742,
+        'global_python_quiet':quiet,
+    }
+    document['record_digest']=C.sha(C.canonical(document))
+    C.validate_pre_recover_document(document,F,reobserve=True)
+    C.quiet_host_twice()
+    print('adjudication_evidence_before_recover_sha256='+C.publish_verdict(output,document,F,reserve=390))
+
+if __name__=='__main__':
+    main()
+'''
+result='''"""Attempt013 pre-recover proof. Effective pre-recover003 mechanical checks remain exact.
+All future bindings are None; this template is unbound and never executed.
+"""\nfrom __future__ import annotations\nimport hashlib,json,os,re,stat,types,sys\nfrom datetime import datetime,timedelta,timezone\nfrom pathlib import Path\n'''+header+'\n'+functions+'\n'+main
+ast.parse(result);path.write_text(result,encoding='utf-8',newline='\n')
+print('pre-recover003 mechanical backbone migrated to preserved historical and actual current admission')

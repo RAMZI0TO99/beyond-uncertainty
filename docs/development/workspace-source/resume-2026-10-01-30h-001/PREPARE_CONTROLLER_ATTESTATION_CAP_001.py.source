@@ -1,0 +1,186 @@
+"""Create a separate source-only capture-bound draft; never import project code."""
+from pathlib import Path
+import ast
+import datetime
+import hashlib
+import json
+
+ROOT = Path(r"D:\Aenv\pro2")
+BASE = ROOT / "resume-2026-10-01-30h-001"
+OUT = BASE / "controller-attestation-cap-revision001"
+REL = Path("src/bu/experiments/week8_exp2a_recovery.py")
+OLD = BASE / "successor-candidate-001" / REL
+RAW = BASE / "successor-candidate-raw-revision003"
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+def write(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as stream:
+        stream.write(data)
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, ensure_ascii=True, indent=2) + "\n").encode("ascii")
+
+def replace_once(source, before, after):
+    if source.count(before) != 1:
+        raise ValueError("source substitution is not unique")
+    return source.replace(before, after, 1)
+
+if OUT.exists():
+    raise ValueError("draft output already exists")
+original = OLD.read_bytes()
+if sha(original) != "bf5cb8c1357522615b2960e60e645a572411d163349eca73d10406e8230001f2":
+    raise ValueError("frozen controller source pin differs")
+raw_manifest = RAW / "RAW_POLICY_STAGED_MANIFEST_003.json"
+manifest_bytes = raw_manifest.read_bytes()
+if sha(manifest_bytes) != "c81a5db3540c0484db83cce6e5fd496c4025dab0b4b4a032d67db70628912305":
+    raise ValueError("raw source-only draft manifest differs")
+source = original.decode("utf-8")
+changes = [
+    ('''    path: Path, *, expected_sha256: str, what: str
+) -> tuple[bytes, dict[str, Any]]:
+    """Capture exactly the one-link bytes that were identity-checked."""
+''', '''    path: Path, *, expected_sha256: str, what: str,
+    maximum_bytes: int | None = None,
+) -> tuple[bytes, dict[str, Any]]:
+    """Capture identity-checked bytes, enforcing a supplied bound before read."""
+
+    if maximum_bytes is not None and (
+        type(maximum_bytes) is not int or maximum_bytes <= 0
+    ):
+        raise RecoveryRefused(f"{what} capture bound is invalid")
+'''),
+    ('''        raise RecoveryRefused(f"{what} is not a one-link plain file")
+    try:
+        with path.open("rb", buffering=0) as stream:
+            opened = os.fstat(stream.fileno())
+            data = stream.read()
+            after_open = os.fstat(stream.fileno())
+''', '''        raise RecoveryRefused(f"{what} is not a one-link plain file")
+    if maximum_bytes is not None and not 0 <= before.st_size <= maximum_bytes:
+        raise RecoveryRefused(f"{what} exceeds its capture bound")
+    fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink")
+    try:
+        with path.open("rb", buffering=0) as stream:
+            opened = os.fstat(stream.fileno())
+            if maximum_bytes is not None and (
+                not 0 <= opened.st_size <= maximum_bytes
+                or any(getattr(before, name, None) != getattr(opened, name, None)
+                       for name in fields)
+            ):
+                raise RecoveryRefused(f"{what} exceeds or changed before bounded capture")
+            data = stream.read() if maximum_bytes is None else stream.read(maximum_bytes + 1)
+            after_open = os.fstat(stream.fileno())
+'''),
+    ('''        raise RecoveryRefused(f"{what} cannot be captured") from exc
+    fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink")
+    if (
+        len(data) != before.st_size
+''', '''        raise RecoveryRefused(f"{what} cannot be captured") from exc
+    if maximum_bytes is not None and len(data) > maximum_bytes:
+        raise RecoveryRefused(f"{what} exceeds its capture bound")
+    if (
+        len(data) != before.st_size
+'''),
+    ('''    if not callable(admit):
+        raise RecoveryRefused("successor admission API is unavailable")
+    incident, incident_sha, terminal, terminal_sha = _load_adjudication()
+''', '''    if not callable(admit):
+        raise RecoveryRefused("successor admission API is unavailable")
+    attestation_maximum = getattr(module, "SUCCESSOR_ADMISSION_MAX_BYTES", None)
+    if type(attestation_maximum) is not int or attestation_maximum <= 0:
+        raise RecoveryRefused("verified raw helper admission capture bound is unavailable")
+    incident, incident_sha, terminal, terminal_sha = _load_adjudication()
+'''),
+    ('''    observations: list[tuple[Path, bytes, tuple[Any, ...]]] = []
+    identity_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink")
+
+    def capture(path: Path, digest: str, what: str) -> bytes:
+        data, _ = _read_bound_plain_bytes(path, expected_sha256=digest, what=what)
+''', '''    observations: list[tuple[Path, bytes, tuple[Any, ...], int | None]] = []
+    identity_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink")
+
+    def capture(
+        path: Path, digest: str, what: str, maximum_bytes: int | None = None,
+    ) -> bytes:
+        data, _ = _read_bound_plain_bytes(
+            path, expected_sha256=digest, what=what, maximum_bytes=maximum_bytes,
+        )
+'''),
+    ('''        observations.append((path, data, tuple(getattr(observed, key, None)
+                                               for key in identity_fields)))
+''', '''        observations.append((path, data, tuple(getattr(observed, key, None)
+                                               for key in identity_fields), maximum_bytes))
+'''),
+    ('''        inputs[name] = capture(path, digest, name)
+''', '''        inputs[name] = capture(
+            path, digest, name,
+            attestation_maximum if name.startswith("attestation.") else None,
+        )
+'''),
+    ('''    for path, original, identity in observations:
+        current, _ = _read_bound_plain_bytes(
+            path, expected_sha256=sha256_bytes(original), what="successor admission input",
+        )
+''', '''    for path, original, identity, maximum_bytes in observations:
+        current, _ = _read_bound_plain_bytes(
+            path, expected_sha256=sha256_bytes(original), what="successor admission input",
+            maximum_bytes=maximum_bytes,
+        )
+'''),
+]
+for before, after in changes:
+    source = replace_once(source, before, after)
+modified = source.encode("utf-8")
+old_ast, new_ast = ast.parse(original), ast.parse(modified)
+assert len(old_ast.body) == len(new_ast.body)
+changed = []
+for left, right in zip(old_ast.body, new_ast.body):
+    if ast.dump(left, include_attributes=False) != ast.dump(right, include_attributes=False):
+        assert isinstance(left, ast.FunctionDef) and left.name == right.name
+        changed.append(left.name)
+assert changed == ["_read_bound_plain_bytes", "_successor_admission_context"]
+
+write(OUT / "before" / "controller-source.bytes", original)
+write(OUT / "before" / "raw003-manifest.bytes", manifest_bytes)
+for name in ("ATTESTATION_BYTE_BOUND_DERIVATION_003.json", "CONSTANT_AND_CAPTURE_MAP_003.json"):
+    write(OUT / "before" / name, (RAW / name).read_bytes())
+write(OUT / REL, modified)
+write(OUT / "EXACT_SUBSTITUTIONS_001.json", encoded({"schema_version":1,
+    "original_sha256":sha(original), "draft_sha256":sha(modified),
+    "substitutions":[{"before":a, "after":b} for a,b in changes],
+    "changed_top_level_functions":changed, "all_other_top_level_ASTs_exact":True}))
+write(OUT / "HANDOFF.md", (
+    "# Controller attestation capture-bound draft001\n\n"
+    "SOURCE-ONLY UNINTEGRATED DRAFT; independent review and tests pending. "
+    "No project import, test run, live apply, release or native action.\n\n"
+    "Both attestation inputs obtain their bound from the freshly source-verified "
+    "raw module before capturing bytes. Path and descriptor sizes are checked "
+    "before reading; bounded reads consume at most cap+1 bytes, and overflow "
+    "refuses before hashing. Post-proof rereads retain each input's same cap. "
+    "Other identity/SHA checks remain; other existing callers use the default.\n\n"
+    "Only two top-level function ASTs change. The original raw digest in this "
+    "controller is deliberately preserved pending the whole five-consumer "
+    "dependency integration; this draft alone cannot run with raw002, which "
+    "has no new bound. Raw003 static/runtime acceptance, locked-module constant "
+    "mutation/reuse tests, caller fixture updates, meaningful pre-read overflow "
+    "and post-proof twin tests, and final closure repin remain required.\n\n"
+    "The two raw-derived bounds are345810/schema1 and395799/schema2; the public "
+    "combined cap is395799. Readiness response383105 is separate. No arbitrary "
+    "large-file reader or OS write sandbox claim. Root coordination/owner and "
+    "all consumed-attempt rules remain in force.\n"
+).encode("utf-8"))
+files=[]
+for p in sorted(OUT.rglob("*")):
+    if p.is_file():
+        b=p.read_bytes();files.append({"path":p.relative_to(OUT).as_posix(),"bytes":len(b),"sha256":sha(b)})
+record={"schema_version":1,"frozen_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "status":"SOURCE_ONLY_UNINTEGRATED_DRAFT", "files":files,
+    "raw003_author_manifest_sha256":sha(manifest_bytes),
+    "independent_review":"pending", "test_execution":False,
+    "live_edits":False,"project_imports":False,"dependency_repin":False,
+    "owner_end_utc":"2026-10-02T22:36:15Z"}
+write(OUT / "STAGED_MANIFEST_001.json", encoded(record))
+print(json.dumps({"draft_sha256":sha(modified),"manifest_sha256":sha(encoded(record)),"changed":changed}))

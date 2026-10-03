@@ -1,0 +1,105 @@
+"""Root's distinct metadata-only source audit; never execute the reviewed composer."""
+from pathlib import Path
+from datetime import datetime, timezone
+import ast, hashlib, json, os
+root = Path('D:/Aenv/pro2')
+base = root / 'resume-2026-10-01-30h-001'
+q = base / 'guard005-actual-record-review-prep002'
+out = base / 'root-gg5-packet-composer-source-audit001'
+assert not out.exists()
+source = q / 'compose-root-review-packet-001.py'
+sha = lambda data: hashlib.sha256(data).hexdigest()
+data = source.read_bytes()
+assert sha(data) == '71d02ebe727a19748843c27ae92bbe4021454fb5f7f7e92518445b2977d01556'
+tree = ast.parse(data)
+values = {}
+for node in tree.body:
+    if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+        try:
+            values[node.targets[0].id] = ast.literal_eval(node.value)
+        except (ValueError, TypeError):
+            pass
+def nominal(value, expected):
+    assert type(value) is type(expected) and value == expected
+    if type(expected) is dict:
+        for key in expected: nominal(value[key], expected[key])
+    elif type(expected) in (tuple, list):
+        for a, b in zip(value, expected): nominal(a, b)
+selected = {}
+def load(path, pin=None):
+    path = Path(path)
+    content = path.read_bytes()
+    if pin is not None: assert sha(content) == pin
+    if path in selected: assert selected[path] == content
+    else: selected[path] = content
+    return content
+load(source, sha(data))
+srpath = base / 'guard005-root-metadata-prep002/INDEPENDENT_METADATA_STATIC_REVIEW_005.json'
+sr = json.loads(load(srpath, values['SOURCE_REVIEW_SHA']))
+assert set(sr) == set(values['SOURCE_REVIEW_KEYS']) and len(sr) == 36
+for key, expected in values['SOURCE_CORE_VALUES'].items(): nominal(sr[key], expected)
+nominal(sr['source_checks'], values['SOURCE_CHECKS'])
+for path, pin, cap in values['FIXED_INPUTS']:
+    content = load(Path(path), pin)
+    assert len(content) <= cap
+for role, pointer in values['SOURCE_CLOSURE'].items():
+    content = load(Path(pointer['path']), pointer['sha256'])
+    assert len(content) <= 65536
+for row in values['PHASE_ROWS']:
+    load(Path(row['path']), row['sha256'])
+phase = json.loads(load(Path(values['SOURCE_CLOSURE']['phase_source_binding']['path'])))
+assert set(phase) == set(values['PHASE_BINDING_KEYS'])
+nominal(phase['sources'], values['PHASE_ROWS'])
+nominal(values['PACKET_KEYS'], ['schema_version','record_type','phase','roles','producer_roles','approval_cores'])
+assert len(values['ROLE_KEYS']) == 13 and len(values['PRODUCER_KEYS']) == 5 and len(values['CORE12']) == 12
+assert set(values['KNOWN_ROLES']) == set(values['ROLE_KEYS']) - {'ack','whole_acceptance','whole_auth','metadata_before_review','whole_phase_review','bound_review','root_launcher'}
+for role, pointer in values['KNOWN_ROLES'].items(): load(Path(pointer['path']), pointer['sha256'])
+imports = []
+for node in ast.walk(tree):
+    if isinstance(node, ast.Import): imports.extend(a.name.split('.')[0] for a in node.names)
+    elif isinstance(node, ast.ImportFrom): imports.append(node.module.split('.')[0])
+assert set(imports) <= {'ast','datetime','hashlib','json','math','os','re','stat','pathlib','argparse','sys'}
+assert not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in {'exec','eval','compile','__import__'} for node in ast.walk(tree))
+assert len([node for node in tree.body if isinstance(node, ast.If)]) == 1
+for path in values['FUTURE_ABSENT']: assert not Path(path).exists()
+assert not (base / 'guard005-root-metadata-prep002/ROOT_METADATA_AUTHORIZATION_BEFORE_005.json').exists()
+assert not (q / 'ROOT_SELECTED_BOUND_PACKET_001.json').exists()
+assert not (q / 'ROOT_SELECTED_LATE_PACKET_001.json').exists()
+for name in ('READINESS_PREPARATION_MANIFEST_001.json','BOUND_LATE_READINESS_001.json','BOUND_LATE_READINESS_001.md'):
+    load(q / name)
+stamp = datetime.now(timezone.utc).isoformat(timespec='microseconds')
+assert datetime.now(timezone.utc) < datetime(2026,10,2,22,36,15,tzinfo=timezone.utc)
+out.mkdir()
+def once(path, content):
+    with path.open('xb') as stream:
+        stream.write(content); stream.flush(); os.fsync(stream.fileno())
+rows = []
+for index, (path, content) in enumerate(selected.items()):
+    for _ in range(3): assert path.read_bytes() == content
+    copy = out / ('input-%03d.bytes' % index)
+    once(copy, content)
+    assert copy.read_bytes() == content
+    rows.append(dict(path=str(path), copy=str(copy), bytes=len(content), sha256=sha(content)))
+record = dict(schema_version=1, reviewer='/root', source_author='/root/keepawake_stage',
+              created_utc=stamp, verdict='PASS_STATIC_ROOT_METADATA_PACKET_COMPOSER_ONLY',
+              source_sha256=sha(data), source_bytes=len(data), selected_inputs=rows,
+              source_semantic_review_tool_chunk='7d30b3',
+              source_checks=dict(authentic_Source36_nominals_and_Root_writer_reversal=True,
+                                 exact_selection6_roles13_producers5_approval4=True,
+                                 actual_Core12_and_detail8_crypto_binding=True,
+                                 explicit_source_closure_five_nodes_four_PS=True,
+                                 original_context_runtime_age90_resource60_no_retimestamp=True,
+                                 late_exact_three_slot_reversal_createonce=True,
+                                 no_target_import_exec_compile_subprocess_Git_FFI=True),
+              limitations=['Metadata producer emits selection, not approval; actual utility enforces remaining ACK decision/bindings/source/current742/runtime guards.',
+                           'Genuine producer and physical tool provenance must be Root-reconciled before selecting actual Core12 data.',
+                           'Bounded ordinary reads/same-API checks do not prove physical I/O deadline, OS sandbox, loaded closure, retained lock or descendant cleanup.',
+                           'Source preparation never supplies actual review, Root GO, live authority, native readiness or a resource lease.'],
+              composer_main_executed=False, actual_packet_or_approval_created=False,
+              operational_authority_granted=False, target_executed=False)
+enc = lambda value: (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True, allow_nan=False)+'\n').encode('ascii')
+once(out / 'ROOT_COMPOSER_SOURCE_REVIEW_001.json', enc(record))
+for path, content in selected.items(): assert path.read_bytes() == content
+print(json.dumps(dict(verdict=record['verdict'], source_sha256=sha(data),
+                      review_sha256=sha(enc(record)), selected_inputs=len(rows),
+                      composer_main_executed=False, actual_packet_created=False)))

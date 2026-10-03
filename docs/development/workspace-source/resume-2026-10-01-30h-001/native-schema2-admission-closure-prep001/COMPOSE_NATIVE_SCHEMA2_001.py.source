@@ -1,0 +1,221 @@
+"""Author source with AST/data only; this script imports no project helper."""
+import ast
+import copy
+import datetime
+import difflib
+import hashlib
+import json
+from pathlib import Path
+
+STAGE = Path(__file__).resolve().parent
+TARGET = STAGE / 'native_successor_front_common_013_001.py.template'
+BEFORE = STAGE / 'before/front/native_successor_front_common_013_001.py.template'
+PUBLISHER = STAGE / 'inputs/publisher-schema2-revision003/verify-successor-admission-schema2-003.py.template'
+WORKER = STAGE / 'inputs/raw-consumer-binding-integration-prep001/scripts/week8_exp2a_recovery_worker.py'
+RAW = STAGE / 'inputs/successor-candidate-raw-revision003/scripts/week8_recovery_raw_authority.py'
+INTERFACE = STAGE / 'inputs/publisher-schema2-revision003/PUBLICATION_SCHEMA2_INTERFACE_003.json'
+sha = lambda data: hashlib.sha256(data).hexdigest()
+encode = lambda value: json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False)
+sources = {key: path.read_text(encoding='utf-8') for key, path in
+           [('before', BEFORE), ('publisher', PUBLISHER), ('worker', WORKER), ('raw', RAW)]}
+trees = {key: ast.parse(value) for key, value in sources.items()}
+
+def assignment(tree, name):
+    matches = [node.value for node in tree.body if isinstance(node, ast.Assign)
+               and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)]
+    assert len(matches) == 1, name
+    return matches[0]
+
+def literal(node, env=None):
+    env = {} if env is None else env
+    if isinstance(node, ast.Name):
+        assert node.id in env, node.id
+        return env[node.id]
+    if isinstance(node, ast.Call):
+        assert not node.keywords
+        if isinstance(node.func, ast.Attribute):
+            assert isinstance(node.func.value, ast.Name) and node.func.value.id == 'json' and node.func.attr == 'loads'
+            assert len(node.args) == 1
+            return json.loads(ast.literal_eval(node.args[0]))
+        assert isinstance(node.func, ast.Name) and node.func.id in ('MappingProxyType', 'frozenset', 'tuple')
+        assert len(node.args) == 1
+        value = literal(node.args[0], env)
+        return value if node.func.id == 'MappingProxyType' else sorted(value) if node.func.id == 'frozenset' else list(value)
+    if isinstance(node, ast.GeneratorExp):
+        assert len(node.generators) == 1
+        generator = node.generators[0]
+        assert isinstance(generator.target, ast.Name) and not generator.ifs and not generator.is_async
+        return [literal(node.elt, {**env, generator.target.id: item}) for item in literal(generator.iter, env)]
+    try:
+        value = ast.literal_eval(node)
+    except (ValueError, TypeError):
+        raise AssertionError('nonliteral AST outside fixed raw policy')
+    if isinstance(value, (set, frozenset)):
+        return sorted(value)
+    return value
+
+def normalized(value):
+    return json.loads(encode(value))
+
+policy = literal(assignment(trees['publisher'], 'COMPILED_POLICY'))
+interface = json.loads(INTERFACE.read_bytes())
+assert len(policy) == 20 and sorted(policy) == interface['policy_constant_names']
+for name, value in policy.items():
+    assert normalized(literal(assignment(trees['raw'], name))) == normalized(value), name
+assert sha(RAW.read_bytes()) == '7fe7dc1989b882f6ef2cb22caaa5975b0b7d5d2907d84ee3c1b858facd57f267'
+historical = literal(assignment(trees['publisher'], 'HISTORICAL'))
+middle_inputs = literal(assignment(trees['publisher'], 'MIDDLE_INPUTS'))
+facts = literal(assignment(trees['before'], 'PROGRAMMATIC_FACTS'))
+assert facts['predecessor'] == policy['SUCCESSOR_PREDECESSOR_FACTS']
+assert set(facts['allowed_paths']) == set(policy['SUCCESSOR_ALLOWED_CHANGED_PATHS'])
+assert facts['release_keys'] == policy['_SUCCESSOR_RELEASE_KEYS']
+
+class Rename(ast.NodeTransformer):
+    def __init__(self, mapping):
+        self.mapping = mapping
+    def visit_Name(self, node):
+        node.id = self.mapping.get(node.id, node.id)
+        return node
+    def visit_FunctionDef(self, node):
+        node.name = self.mapping.get(node.name, node.name)
+        return self.generic_visit(node)
+
+def functions(tree):
+    return {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+
+borrow = []
+mapping = {'schema2_file_rows': '_native_file_rows', 'schema2_commit_object': '_native_commit_object',
+           'schema2_diffs': '_native_diffs', 'schema2_middle': '_native_middle',
+           'schema2_qa': '_native_grouped_qa', 'exact': '_native_exact', 'relative': '_native_relative',
+           'hex_value': '_native_hex', 'strict_json': 'parse', 'row_identity': '_native_row_identity',
+           'Refused': 'ValueError', 'HISTORICAL': '_NATIVE_HISTORICAL'}
+for name in ('schema2_file_rows', 'schema2_commit_object', 'schema2_diffs', 'schema2_middle'):
+    node = Rename(mapping).visit(copy.deepcopy(functions(trees['publisher'])[name]))
+    borrow.append(ast.unparse(node))
+guard = []
+for name in ('_raw_helper_value_identity', '_raw_helper_function_state', '_validate_raw_helper_executable_identity'):
+    node = Rename({'BootstrapRefused': 'ValueError'}).visit(copy.deepcopy(functions(trees['worker'])[name]))
+    guard.append(ast.unparse(node))
+
+replacement_source = (STAGE / 'native_schema2_replacements_001.FRAGMENT.py').read_text(encoding='utf-8')
+replacements = {name: ast.get_source_segment(replacement_source, node)
+                for name, node in functions(ast.parse(replacement_source)).items()}
+old_functions = functions(trees['before'])
+checked = ast.get_source_segment(sources['before'], old_functions['checked_bindings'])
+checked = checked.replace("item == str(PROJECT / NATIVE_REVIEW_RELATIVE) if name == 'native_review_path'",
+    "type(NATIVE_REVIEW_RELATIVE) is str and item == str(PROJECT / NATIVE_REVIEW_RELATIVE) if name == 'native_review_path'")
+checked = checked.replace("type(item) is int and 0 < item <= 25", "type(item) is int and item == 25")
+checked = checked.replace("type(item) is str and item == str(PROJECT / relative)",
+                          "type(relative) is str and type(item) is str and item == str(PROJECT / relative)")
+checked = checked.replace("value['controller_commit'] != PROGRAMMATIC_FACTS['predecessor']['controller_commit']",
+    "value['controller_commit'] not in (PROGRAMMATIC_FACTS['predecessor']['controller_commit'], NATIVE_SCHEMA2_POLICY['SUCCESSOR_INTERMEDIATE_FACTS']['controller_commit'])")
+replacements['checked_bindings'] = checked
+release = ast.get_source_segment(sources['before'], old_functions['release_and_sources'])
+release = release.replace("doc['ParentCommit'] == PROGRAMMATIC_FACTS['predecessor']['controller_commit']",
+    "doc['ParentCommit'] == NATIVE_SCHEMA2_POLICY['SUCCESSOR_INTERMEDIATE_FACTS']['controller_commit']")
+release = release.replace("set(changed).issubset(PROGRAMMATIC_FACTS['allowed_paths'])",
+    "set(changed) == set(NATIVE_SCHEMA2_POLICY['SUCCESSOR_ALLOWED_CHANGED_PATHS'])")
+start = release.index('    manifest = parse(')
+end = release.index('    for binding, relative in SOURCE_BINDINGS.items():', start)
+release = release[:start] + '''    require(git(['cat-file', '-t', bindings['controller_commit']], REPO) == b'commit\\n',
+            'native final typed object is not one Git commit')
+    final_object = git(['cat-file', 'commit', bindings['controller_commit']], REPO)
+    _native_commit_object(final_object, commit=bindings['controller_commit'],
+        parent=NATIVE_SCHEMA2_POLICY['SUCCESSOR_INTERMEDIATE_FACTS']['controller_commit'])
+    table = {row['path']: row for row in rows}
+    old_manifest = read(Path(NATIVE_HISTORICAL_INPUTS['predecessor_manifest']['path']),
+                        NATIVE_HISTORICAL_INPUTS['predecessor_manifest']['sha256'], witness)
+    old_sequence = [pair[0] for pair in _native_grouped_qa(old_manifest, old)]
+    _native_grouped_qa(read(MANIFEST, bindings['candidate_manifest_sha256'], witness), rows, old_sequence)
+''' + release[end:]
+replacements['release_and_sources'] = release
+review = ast.get_source_segment(sources['before'], old_functions['validate_native_review'])
+review = review.replace("        pin_reference(document['focused_native_behavior'],witness)",
+    "        behavior = pin_reference(document['focused_native_behavior'],witness)\n        _native_behavior_runtime_evidence(behavior, document['focused_native_behavior'], bindings)")
+replacements['validate_native_review'] = review
+
+future_paths = ('RELEASE', 'MANIFEST', 'EXTERNAL_PROOF', 'RAW_REVIEW',
+                'NATIVE_REVIEW_RELATIVE', 'PRE_RENDER_REVIEW_RELATIVE')
+edits = []
+lines = sources['before'].splitlines(keepends=True)
+for name, text in replacements.items():
+    node = old_functions[name]
+    edits.append((node.lineno-1, node.end_lineno, text + '\n'))
+for node in trees['before'].body:
+    if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+        name = node.targets[0].id
+        if name in future_paths:
+            edits.append((node.lineno-1, node.end_lineno, name + ' = None\n'))
+for start, end, text in sorted(edits, reverse=True):
+    lines[start:end] = [text]
+result = ''.join(lines)
+result = result.replace('import argparse\n', 'import argparse\nimport ast\nimport binascii\nimport types\nfrom collections.abc import Mapping\n', 1)
+runtime = {}
+for target, source in [('base_runtime', historical['native_startup']['pinned_base_runtime']),
+                       ('venv_scripts', historical['native_startup']['pinned_venv_scripts']),
+                       ('git_runtime', historical['git_runtime'])]:
+    runtime[target] = {key: value for key, value in source.items()
+                       if key in ('file_count', 'directory_count', 'total_bytes', 'inventory_sha256', 'inventory_digest')}
+assert all(len(row) == 4 for row in runtime.values())
+constants = {'NATIVE_SCHEMA2_POLICY': policy,
+    '_NATIVE_HISTORICAL': {'release': historical['release']},
+    'NATIVE_HISTORICAL_INPUTS': historical['inputs'], 'NATIVE_MIDDLE_INPUTS': middle_inputs,
+    'NATIVE_PUBLICATION_RUNTIME_FACTS': runtime,
+    'NATIVE_EXTERNAL_PROOF_KEYS': interface['publication_receipt_keysets']['successor_verification_pass'],
+    'NATIVE_PUBLICATION_RECEIPT_KEYS': interface['publication_receipt_keysets']}
+blocks = ['# Native schema2 data derived from immutable raw003/publisher AST; no helper import.']
+for name, value in constants.items():
+    blocks.append(name + ' = json.loads(' + repr(encode(value)) + ')')
+blocks.extend(['NATIVE_RAW_SOURCE_SHA256 = ' + repr(sha(RAW.read_bytes())),
+               'NATIVE_RAW_SOURCE_BYTES = ' + str(len(RAW.read_bytes())),
+               'RAW_AUTHORITY_HELPER = RAW_HELPER',
+               "RAW_AUTHORITY_MODULE_NAME = '_week8_attempt013_external_raw_authority'",
+               'EXPECTED_RAW_AUTHORITY_HELPER_SHA256 = NATIVE_RAW_SOURCE_SHA256',
+               '_RAW_HELPER_EXECUTABLE_STATE = None', '_NATIVE_RAW_MODULE = None'])
+future = ('EXTERNAL_PROOF_MAX_BYTES', 'EXTERNAL_PROOF_BOUND_DERIVATION_SHA256',
+          'EXTERNAL_VERIFIER_SHA256', 'EXTERNAL_VERIFIER_SOURCE', 'PUBLISHER_SHA256', 'PUBLISHER_SOURCE',
+          'PUBLICATION_END_SHA256', 'PUBLICATION_END', 'VERIFICATION_INTENT_SHA256', 'VERIFICATION_INTENT',
+          'NATIVE_BEHAVIOR_TYPED_CONTRACT')
+blocks.extend(name + ' = None' for name in future)
+blocks.extend(guard)
+blocks.extend(borrow)
+fragment = (STAGE/'native_schema2_additions_001.FRAGMENT.py').read_text(encoding='utf-8')
+fragment_tree = ast.parse(fragment)
+blocks.extend(ast.get_source_segment(fragment, node) for node in fragment_tree.body if isinstance(node, ast.FunctionDef))
+entry = "if __name__ == '__main__':\n    main()"
+assert result.count(entry) == 1
+result = result.replace(entry, '\n\n'.join(blocks) + '\n\n' + entry)
+new_tree = ast.parse(result)
+assert sha(TARGET.read_bytes()) == 'a0a3dd01a4dd7345e0abd147e792734c1299ed2b821b358ef9dcf4e646616f57', 'author revision drift'
+assert (STAGE/'author-revision002/native_successor_front_common_013_001.py.template').read_bytes() == TARGET.read_bytes()
+TARGET.write_bytes(result.encode('utf-8'))
+new_functions = functions(new_tree)
+unchanged = sorted(set(old_functions) - set(replacements))
+assert all(ast.dump(old_functions[name], include_attributes=False) == ast.dump(new_functions[name], include_attributes=False)
+           for name in unchanged)
+assert len(new_functions['admission_for_authority'].args.kwonlyargs) == 1
+call = [node for node in ast.walk(new_functions['admission_for_authority']) if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute) and node.func.attr == 'admit_recorded_predecessor']
+assert len(call) == 1 and [node.arg for node in call[0].keywords] == interface['raw_pure_api']['keyword_only_arguments']
+patch = ''.join(difflib.unified_diff(sources['before'].splitlines(keepends=True), result.splitlines(keepends=True),
+                                    fromfile='before/front/native_successor_front_common_013_001.py.template',
+                                    tofile='native_successor_front_common_013_001.py.template'))
+(STAGE/'NATIVE_SCHEMA2_SOURCE_DIFF_001.patch').write_text(patch, encoding='utf-8', newline='\n')
+record = {'schema':1, 'created_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    'state':'UNBINDABLE_PENDING_TYPED_BEHAVIOR_CONTRACT',
+    'source_sha256':sha(TARGET.read_bytes()), 'source_bytes':len(TARGET.read_bytes()),
+    'before_sha256':sha(BEFORE.read_bytes()), 'before_bytes':len(BEFORE.read_bytes()),
+    'policy_constants':sorted(policy), 'new_schema2_constant_count':16,
+    'borrowed_publisher_functions':list(mapping.keys())[:4],
+    'worker_guard_functions':['_raw_helper_value_identity','_raw_helper_function_state','_validate_raw_helper_executable_identity'],
+    'changed_existing_functions':sorted(replacements), 'unchanged_existing_functions':unchanged,
+    'new_functions':sorted(set(new_functions)-set(old_functions)),
+    'future_none_constants':sorted(set(future_paths)|set(future)),
+    'raw_api_keywords':[node.arg for node in call[0].keywords],
+    'imports_or_definitions_executed':False, 'runtime_acceptance':False,
+    'independent_review':None, 'operational_authority':False}
+(STAGE/'AUTHOR_AST_COMPOSITION_001.json').write_text(json.dumps(record, sort_keys=True, indent=2)+'\n', encoding='utf-8')
+print(json.dumps({'source_sha256':record['source_sha256'], 'bytes':record['source_bytes'],
+                  'changed_existing_functions':record['changed_existing_functions'],
+                  'unchanged_existing_functions':len(unchanged), 'new_functions':len(record['new_functions']),
+                  'future_none_count':len(record['future_none_constants'])}))

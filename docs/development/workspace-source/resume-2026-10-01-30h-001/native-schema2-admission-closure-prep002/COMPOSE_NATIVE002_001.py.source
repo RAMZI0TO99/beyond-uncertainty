@@ -1,0 +1,117 @@
+"""Author metadata utility: source text/AST only; never execute target definitions."""
+from pathlib import Path
+import ast
+import hashlib
+import json
+import os
+
+ROOT = Path(__file__).parent
+ADD = ('publisher_sha256','external_verifier_sha256','publication_end_sha256','verification_intent_sha256')
+
+def replace_node(text, node, replacement):
+    lines = text.splitlines(keepends=True)
+    return ''.join(lines[:node.lineno-1]) + replacement.rstrip() + '\n' + ''.join(lines[node.end_lineno:])
+
+def mutate(path, text):
+    before = path.read_bytes()
+    backup = ROOT / 'before/composition001' / path.relative_to(ROOT)
+    backup.parent.mkdir(parents=True, exist_ok=True)
+    with backup.open('xb') as stream:
+        stream.write(before);stream.flush();os.fsync(stream.fileno())
+    data = text.encode('utf-8')
+    if path.name.endswith('.py.template'): ast.parse(data)
+    path.write_bytes(data)
+    assert path.read_bytes() == data
+    return {'path':str(path.relative_to(ROOT)), 'before_sha256':hashlib.sha256(before).hexdigest(),
+            'after_sha256':hashlib.sha256(data).hexdigest(),'before_size':len(before),'after_size':len(data)}
+
+changes = []
+schema_file = ROOT / 'front/native_successor_front_common_013_001.py.template'
+common = schema_file.read_text(encoding='utf-8')
+tree = ast.parse(common)
+old_guard = next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name == '_validate_raw_helper_executable_identity')
+worker = (ROOT / 'inputs/accepted-worker-guard003.py').read_text(encoding='utf-8')
+guard = next(n for n in ast.parse(worker).body if isinstance(n,ast.FunctionDef) and n.name == old_guard.name)
+replacement = '\n'.join(worker.splitlines()[guard.lineno-1:guard.end_lineno]).replace('BootstrapRefused(', 'ValueError(')
+common = replace_node(common,old_guard,replacement)
+tree = ast.parse(common)
+old_adapter = next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name == '_native_behavior_runtime_evidence')
+common = replace_node(common,old_adapter,(ROOT / 'native_behavior_adapter_002.FRAGMENT.py').read_text(encoding='utf-8'))
+for name in ('EXTERNAL_VERIFIER_SHA256','PUBLISHER_SHA256','PUBLICATION_END_SHA256','VERIFICATION_INTENT_SHA256','NATIVE_BEHAVIOR_TYPED_CONTRACT'):
+    tree = ast.parse(common)
+    node = next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets))
+    common = replace_node(common,node,'')
+for old,new in [('EXTERNAL_VERIFIER_SHA256',"bindings['external_verifier_sha256']"),
+                ('PUBLISHER_SHA256',"bindings['publisher_sha256']"),
+                ('PUBLICATION_END_SHA256',"bindings['publication_end_sha256']"),
+                ('VERIFICATION_INTENT_SHA256',"bindings['verification_intent_sha256']")]:
+    common = common.replace(old,new)
+tree = ast.parse(common)
+node = next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='BINDING_SCHEMA' for t in n.targets))
+schema = json.loads(ast.literal_eval(node.value.args[0]))
+assert len(schema) == 40
+schema.update({key:'sha256' for key in ADD})
+common = replace_node(common,node,'BINDING_SCHEMA = json.loads(' + repr(json.dumps(schema,sort_keys=True,separators=(',',':'))) + ')')
+old = "'native_review_path','native_review_sha256','renderer_action_sha256','renderer_transport_sha256'}"
+assert common.count(old) == 1
+common = common.replace(old,"'native_review_path','native_review_sha256','renderer_action_sha256','renderer_transport_sha256',\n" +
+    "                'publisher_sha256','external_verifier_sha256','publication_end_sha256','verification_intent_sha256'}")
+old = "    read(Path(__file__).absolute(), args.expected_script_sha256)"
+assert common.count(old) == 1
+common = common.replace(old,"    captured = read(Path(__file__).absolute(), args.expected_script_sha256, maximum=196605)\n" +
+    "    authenticate_common_capture(args.expected_script_sha256, captured)")
+old = "        behavior = pin_reference(document['focused_native_behavior'],witness)\n        _native_behavior_runtime_evidence(behavior, document['focused_native_behavior'], bindings)\n        pin_reference(document['source_validation'],witness)"
+assert common.count(old) == 1
+common = common.replace(old,"        validation_bytes = pin_reference(document['source_validation'],witness)\n"+
+    "        validation_ref = dict(document['source_validation'],size=len(validation_bytes))\n"+
+    "        validation = _native_behavior_source_validation(validation_bytes,validation_ref,bindings,witness)\n"+
+    "        behavior = pin_reference(document['focused_native_behavior'],witness)\n"+
+    "        _native_behavior_runtime_evidence(behavior,document['focused_native_behavior'],bindings,witness,validation=validation)")
+common = common.replace('_native_capture_limit(path, None)','_native_capture_limit(path, len(data))')
+changes.append(mutate(schema_file, common))
+tables = []
+for group in ('front','postseal'):
+    for path in sorted((ROOT/group).iterdir()):
+        if path == schema_file or path.suffix != '.template': continue
+        text = path.read_text(encoding='utf-8')
+        original = text
+        if path.name.endswith('.py.template'):
+            tree = ast.parse(text)
+            for node in reversed(tree.body):
+                if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='FRONT_BINDINGS' for t in node.targets):
+                    value = ast.literal_eval(node.value)
+                    assert type(value) is dict and len(value) == 40
+                    value.update({key:None for key in ADD})
+                    text = replace_node(text,node,'FRONT_BINDINGS = ' + repr(value))
+                    tables.append(str(path.relative_to(ROOT)))
+            anchor = '    module.read(FRONT_HELPER, FRONT_HELPER_SHA256)'
+            if anchor in text:
+                assert text.count(anchor) == 1
+                text = text.replace(anchor, '    module.authenticate_common_capture(FRONT_HELPER_SHA256,raw)')
+            anchor = "        require(module.read(FRONT_HELPER,expected)==captured,'final front read guard refuses captured bridge')"
+            if anchor not in text:
+                anchor = "        require(module.read(FRONT_HELPER, expected) == captured, 'final front read guard refuses captured bridge')"
+            if anchor in text:
+                text = text.replace(anchor,anchor+'\n        module.authenticate_common_capture(expected,captured)')
+        else:
+            marker = '$FrontBindings = [ordered]@{'
+            if marker in text:
+                assert text.count(marker) == 1
+                start = text.index(marker)
+                end = text.index('\n}',start)
+                text = text[:end] + ''.join('\n    '+key+' = $null' for key in ADD) + text[end:]
+                tables.append(str(path.relative_to(ROOT)))
+            text = text.replace("globals()[''__file__'']=p; exec(compile(d,p,''exec'',dont_inherit=True),globals())",
+                                "globals()[''__file__'']=p; globals()[''__source_sha256__'']=h; globals()[''__source_bytes__'']=d; exec(compile(d,p,''exec'',dont_inherit=True),globals())")
+        if text != original: changes.append(mutate(path,text))
+assert len(tables) == 21
+audit = {'schema_version':1,'record_type':'native002_source_composition_checkpoint',
+    'author':'/root/bootstrap_stage','literal_tables':tables,'literal_table_count':len(tables),
+    'schema_count':len(schema),'changes':changes,'source_only':True,
+    'definitions_imports_tests_binding_native_executed':False,
+    'caps_results_driver_ACK_bindings':None,'final_freeze':False}
+data = (json.dumps(audit,sort_keys=True,indent=2,ensure_ascii=True)+'\n').encode('ascii')
+with (ROOT/'COMPOSITION_CHECKPOINT_001.json').open('xb') as stream:stream.write(data)
+print('CHECKPOINT',hashlib.sha256(data).hexdigest(),'changed',len(changes),'tables',len(tables))
+raw=schema_file.read_bytes()
+print('COMMON_BYTES',len(raw),'BASE64_BYTES',4*((len(raw)+2)//3),'RAW_HEADROOM',196605-len(raw))

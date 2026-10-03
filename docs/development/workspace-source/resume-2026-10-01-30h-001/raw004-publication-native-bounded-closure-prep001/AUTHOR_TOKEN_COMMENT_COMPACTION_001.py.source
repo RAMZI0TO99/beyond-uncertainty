@@ -1,0 +1,27 @@
+"""Tokenizer-only metadata compaction; AST/string equality, no target execution."""
+import ast,hashlib,io,json,tokenize
+from pathlib import Path
+stage=Path(__file__).absolute().parent
+path=stage/'front/native_successor_front_common_013_001.py.template'
+before=path.read_bytes();source=before.decode('utf8')
+with(stage/'COMMON_BEFORE_TOKEN_COMMENT_COMPACTION_001.bytes').open('xb')as f:f.write(before)
+tokens=list(tokenize.generate_tokens(io.StringIO(source).readline))
+lines=source.splitlines(keepends=True)
+string_lines={line for token in tokens if token.type==tokenize.STRING for line in range(token.start[0],token.end[0]+1)}
+comments={token.start[0]:token for token in tokens if token.type==tokenize.COMMENT}
+out=[]
+for number,line in enumerate(lines,1):
+ token=comments.get(number)
+ if token is not None:
+  line=line[:token.start[1]]+line[token.end[1]:]
+ if number not in string_lines and not line.strip():continue
+ out.append(line)
+after=''.join(out).encode('utf8')
+assert ast.dump(ast.parse(before),include_attributes=False)==ast.dump(ast.parse(after),include_attributes=False)
+strings=lambda data:[t.string for t in tokenize.generate_tokens(io.StringIO(data.decode('utf8')).readline)if t.type==tokenize.STRING]
+assert strings(before)==strings(after)
+assert len(after)<len(before)and len(after)<=184317
+path.write_bytes(after)
+result={'schema_version':1,'scope':'author token/AST metadata only; no target execution','before_bytes':len(before),'before_sha256':hashlib.sha256(before).hexdigest(),'after_bytes':len(after),'after_sha256':hashlib.sha256(after).hexdigest(),'bytes_removed':len(before)-len(after),'full_AST_equal':True,'exact_ordered_STRING_tokens_equal':True,'comment_tokens_removed':len(comments),'target_code_executed':False}
+with(stage/'TOKEN_COMMENT_COMPACTION_AUDIT_001.json').open('x',encoding='utf8')as f:json.dump(result,f,indent=2);f.write('\n')
+print(result)

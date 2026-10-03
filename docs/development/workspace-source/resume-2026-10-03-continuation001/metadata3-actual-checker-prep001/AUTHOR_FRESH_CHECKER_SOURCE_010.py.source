@@ -1,0 +1,61 @@
+"""Source-only literal successor; never executes checker/test definitions."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+OWN=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001/metadata3-actual-checker-prep001')
+OLD_SHA='3c02e9898ed5fde8cf74f91ff780093ed66ca2a8807a1be2dfe1c9e8976d14e6'
+old=(OWN/'review-metadata3-actual006-corrected009.TEMPLATE.py').read_bytes()
+assert hashlib.sha256(old).hexdigest()==OLD_SHA
+replacements=[('review-metadata3-actual006-corrected009.TEMPLATE.py','review-metadata3-actual006-corrected010.TEMPLATE.py',1),
+    ('INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_002.json','INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_003.json',2),
+    ('ACTUAL_CHECKER_BINDING_001.json','ACTUAL_CHECKER_BINDING_002.json',2),
+    ('ROOT_PIPELINE_TRUST_SELECTION_001.json','ROOT_PIPELINE_TRUST_SELECTION_002.json',1),
+    ('RUN_ROOT_METADATA_PIPELINE_006.BOUND.ps1','RUN_ROOT_METADATA_PIPELINE_007.BOUND.ps1',1),
+    ('SOURCE_REVIEW_ROOT_PIPELINE_001.json','SOURCE_REVIEW_ROOT_PIPELINE_002.json',1),
+    ('ROOT_PIPELINE_INIT_TRACE_001.json','ROOT_PIPELINE_INIT_TRACE_002.json',2)]
+new=old
+for original,fresh,count in replacements:
+    assert old.count(original.encode('ascii'))==count
+    new=new.replace(original.encode('ascii'),fresh.encode('ascii'))
+assert sum(count for _,_,count in replacements)==10
+back=new
+for original,fresh,count in replacements:
+    assert new.count(fresh.encode('ascii'))==count
+    back=back.replace(fresh.encode('ascii'),original.encode('ascii'))
+assert back==old
+oldtree=ast.parse(old);newtree=ast.parse(new)
+functions=lambda tree:{node.name:ast.dump(node,include_attributes=False) for node in tree.body if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))}
+oldfunc=functions(oldtree);newfunc=functions(newtree)
+changed=[name for name in oldfunc if oldfunc[name]!=newfunc[name]]
+assert len(oldfunc)==len(newfunc)==69 and changed==['configure','root_trust_preflight','decision']
+nonfunc=lambda tree:[ast.dump(node,include_attributes=False) for node in tree.body if not isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))]
+assert nonfunc(oldtree)==nonfunc(newtree)
+assert oldfunc['main']==newfunc['main']
+new_sha=hashlib.sha256(new).hexdigest()
+with (OWN/'review-metadata3-actual006-corrected010.TEMPLATE.py').open('xb') as stream:stream.write(new)
+config=json.loads((OWN/'ACTUAL_CHECKER_BINDING_009.TEMPLATE.json').read_bytes())
+config['checker_template_sha256']=new_sha
+config['root_pipeline_source']['path']=str(Path(config['root_pipeline_source']['path']).with_name('RUN_ROOT_METADATA_PIPELINE_007.BOUND.ps1'))
+config['root_pipeline_source']['source_peer_path']=str(Path(config['root_pipeline_source']['source_peer_path']).with_name('SOURCE_REVIEW_ROOT_PIPELINE_002.json'))
+for key in ('metadata_sources','phase_sources','whole_sources','guard_sources'):
+    for row in config[key].values():row['path']=str(Path(row['path']))
+config['metadata_input_paths']={key:None if value is None else str(Path(value)) for key,value in config['metadata_input_paths'].items()}
+assert config['checker_source_peer_sha256'] is None and config['execution_launch_witness']['nonce'] is None
+assert config['root_pipeline_source']['sha256'] is None and config['root_pipeline_source']['source_peer_sha256'] is None
+with (OWN/'ACTUAL_CHECKER_BINDING_010.TEMPLATE.json').open('x',encoding='ascii') as stream:json.dump(config,stream,indent=2,ensure_ascii=True,allow_nan=False);stream.write('\n')
+delta=dict(schema_version=1,record_type='metadata3_checker010_literal_source_delta',source_author='/root/actual_record_checker',
+    old_source_sha256=OLD_SHA,new_source_sha256=new_sha,new_source_bytes=len(new),exact_literal_occurrences=10,
+    replacements=[dict(original=a,selected=b,occurrences=count) for a,b,count in replacements],
+    changed_functions=changed,exact_remaining_function_count=66,actual_main_AST_exact=True,module_nonfunction_AST_exact=True,
+    exact_source_reversal_to009=True,all_validation_lossless_proof_caps_and_scope_preserved=True,
+    method_name_precision='The changed function at former lines1554/1555 is decision, not main. Actual main AST is exact.',
+    fresh_roles=dict(checker_source_peer='metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_003.json',
+        actual_checker_config='ACTUAL_CHECKER_BINDING_002.json',root_pipeline_source='RUN_ROOT_METADATA_PIPELINE_007.BOUND.ps1',
+        root_pipeline_source_peer='root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_002.json',
+        root_trust='ROOT_PIPELINE_TRUST_SELECTION_002.json',root_init='ROOT_PIPELINE_INIT_TRACE_002.json'),
+    old_source009_and_spent_actual25_preserved=True,actual_source_peer=None,actual_binding=None,actual_execution_nonce=None,actual_tests=None,
+    helper_test_definitions_imports_mains_compiler_executed=False,operational_authority=False)
+with (OWN/'CHECKER010_LITERAL_DELTA_AND_FRESH_ROLES_001.json').open('x',encoding='ascii') as stream:json.dump(delta,stream,indent=2);stream.write('\n')
+print(json.dumps(dict(path=str(OWN/'review-metadata3-actual006-corrected010.TEMPLATE.py'),sha256=new_sha,bytes=len(new),changed_functions=changed,executed=False),separators=(',',':')))

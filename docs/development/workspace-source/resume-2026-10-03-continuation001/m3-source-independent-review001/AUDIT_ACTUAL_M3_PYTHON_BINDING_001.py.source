@@ -1,0 +1,120 @@
+"""Own metadata review of observed source bindings; no target calls or imports."""
+import argparse,ast,datetime,hashlib,json,os,re,stat
+from pathlib import Path
+BASE=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001'); META=BASE/'metadata3-producer-core-prep001'
+OUT=BASE/'m3-source-independent-review001'; SCOPE='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+def sha(b):return hashlib.sha256(b).hexdigest()
+def utc():return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+def enc(v):return (json.dumps(v,indent=2,sort_keys=True,allow_nan=False)+'\n').encode('ascii')
+def pairs(rows):
+ d={}
+ for k,v in rows:assert k not in d;d[k]=v
+ return d
+def bad(x):raise ValueError(x)
+def parse(b):
+ assert not b.startswith(b'\xef\xbb\xbf')
+ return json.loads(b.decode('utf8','strict'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def raw(s):return [getattr(s,k) for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+def read(p):
+ s=p.lstat();assert stat.S_ISREG(s.st_mode) and s.st_nlink==1 and not s.st_file_attributes&1024
+ with p.open('rb',buffering=0) as f:
+  a=os.fstat(f.fileno());b=f.read(s.st_size+1);z=os.fstat(f.fileno())
+ assert raw(s)==raw(p.lstat()) and raw(a)==raw(z) and len(b)==s.st_size
+ assert [raw(s)[i] for i in (0,1,2,3,5,6,7,8)]==[raw(a)[i] for i in (0,1,2,3,5,6,7,8)]
+ return b,dict(path=str(p),sha256=sha(b),bytes=len(b),path_raw9=raw(s),descriptor_raw9=raw(a),observed_utc=utc())
+def once(p,b):
+ with p.open('xb') as f:assert f.write(b)==len(b);f.flush();os.fsync(f.fileno())
+def literal_nodes(b,names):
+ rows={}
+ for n in ast.parse(b).body:
+  if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in names:
+   assert n.targets[0].id not in rows;rows[n.targets[0].id]=n.value
+ assert set(rows)==set(names);return rows
+def funcs(b):return [ast.dump(n,include_attributes=False) for n in ast.parse(b).body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))]
+def ticks(s):
+ assert type(s) is str and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}\+00:00',s)
+ short=s[:26]+s[27:];d=datetime.datetime.fromisoformat(short);assert d.isoformat(timespec='microseconds')==short
+ delta=d-datetime.datetime(1970,1,1,tzinfo=datetime.timezone.utc)
+ return (delta.days*86400+delta.seconds)*10000000+delta.microseconds*10+int(s[26])
+def exact(v,keys):assert type(v) is dict and set(v)==set(keys)
+def nominal(v,expected):
+ for k,x in expected.items():assert type(v[k]) is type(x) and v[k]==x,k
+parser=argparse.ArgumentParser()
+for n in ('plan','binding','bound','lease','root-observation'):parser.add_argument('--'+n,required=True)
+args=parser.parse_args();assert all(re.fullmatch('[0-9a-f]{64}',getattr(args,n)) for n in ('plan','binding','bound','lease'))
+mp=META/'STAGED_MANIFEST_005.json';manifest=parse(mp.read_bytes());assert sha(mp.read_bytes())=='df54adc4ef8303124590fc5c8f1191815ceff6c61f7db56a511390f9de9f7e5a'
+sourcepeer=OUT/'INDEPENDENT_M3_SOURCE_REVIEW_002.json';peer=parse(sourcepeer.read_bytes());assert sha(sourcepeer.read_bytes())=='78bc1b1a7a3e06e6752283e632651faac1b07f8f307f1612ceac4b1bd015bf30'
+planp=META/'SOURCE_BINDING_PLAN_003.json';plan=parse(planp.read_bytes());assert sha(planp.read_bytes())==args.plan
+exact(plan,('schema_version','source_author','scope','bindings','role_selections','lease_selection','actual_binding'))
+nominal(plan,dict(schema_version=1,source_author='/root/renewal_runtime_inventory',scope=SCOPE,actual_binding=None))
+bindingp=META/'ACTUAL_SOURCE_BINDING_003.json';boundp=META/'capture-root-metadata003.BOUND.py';leasep=BASE/'EXECUTION_LEASE_GG6_M3_001.json'
+pins={mp:'df54adc4ef8303124590fc5c8f1191815ceff6c61f7db56a511390f9de9f7e5a',sourcepeer:'78bc1b1a7a3e06e6752283e632651faac1b07f8f307f1612ceac4b1bd015bf30',planp:args.plan,bindingp:args.binding,boundp:args.bound,leasep:args.lease}
+producerp=META/'ROOT_PYTHON_SOURCE_BINDING_PRODUCER_OBSERVATION_003.json'
+pins[producerp]='d2e9c563ef41d5924348d5046818ff3a9128893a32bfa9296f0b454905e665b1'
+masterp=BASE/'OWNER_CONTINUATION_20261003_001.json';ownerpeerp=BASE/'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json'
+pins[masterp]='de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'
+pins[ownerpeerp]='56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0'
+for row in manifest['payloads']:pins[META/row['path']]=row['sha256']
+known={'guard_profile_sha256':('consumer005-guard006-runtime-prep001/GUARD_RUNTIME_PROFILE_006-rev003.json','70d4d658ff993181eb4056bdd276763cc8ff6a12b7281637e9332a00fb2fa030'),
+ 'source_projection_sha256':('consumer005-guard006-runtime-prep001/SOURCE_INPUTS_PROJECTION_006.json','aa5e63a985ceda562be395f8f85c8e71baeafd102a3854f5b2299b153f836072'),
+ 'raw_source_sha256':('consumer005-guard006-runtime-prep001/inputs/raw004-source.bytes','da64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211'),
+ 'source_manifest_sha256':('consumer005-guard006-runtime-prep001/inputs/SOURCE_STAGED_MANIFEST_005.json','169d559bdb54c32dce439bd815dd1e28e895b65826db3e7d4310315b8a5edabc'),
+ 'source_peer_sha256':('consumer005-guard006-runtime-prep001/inputs/ACTUAL_SOURCE_CAPSULE_005.json','4c81e41d926eea61805eac23b5c616931fa3c86b4db1e794f8f28a2f04c26fa8'),
+ 'guard_harness_static_review_sha256':('consumer005-guard006-runtime-prep001/INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_006.json','787a60b216f1ac00e7e78f1f0c20d232e0656793cc8c4c02fb646c1aa7d21292'),
+ 'preparer_static_review_sha256':('m3-source-independent-review001/INDEPENDENT_M3_SOURCE_REVIEW_002.json','78bc1b1a7a3e06e6752283e632651faac1b07f8f307f1612ceac4b1bd015bf30')}
+exact(plan['bindings'],set(known)|{'coordination_peer_reply_sha256','coordination_root_response_sha256'})
+for k,(p,h) in known.items():assert plan['bindings'][k]==h;pins[BASE/p]=h
+roles=plan['role_selections'];exact(roles,('UNIT_TERMINAL_RELATIVE','COORDINATION_PEER_REPLY_RELATIVE','COORDINATION_ROOT_RESPONSE_RELATIVE'));assert roles['UNIT_TERMINAL_RELATIVE']=='ROOT_LAUNCH_TERMINAL_006.json'
+for role,key in (('COORDINATION_PEER_REPLY_RELATIVE','coordination_peer_reply_sha256'),('COORDINATION_ROOT_RESPONSE_RELATIVE','coordination_root_response_sha256')):
+ value=roles[role];assert type(value) is str and 0<len(value)<=399 and '\\' not in value and not value.startswith('/') and all(v not in ('','.','..') and ':' not in v for v in value.split('/'))
+ assert re.fullmatch('[0-9a-f]{64}',plan['bindings'][key]);pins[BASE.joinpath(*value.split('/'))]=plan['bindings'][key]
+observations=[];data=None
+for phase in range(3):
+ current={};rows=[]
+ for p in sorted(pins,key=str):
+  b,r=read(p);assert sha(b)==pins[p],str(p);current[p]=b;rows.append(r)
+ if data is None:data=current
+ else:assert current==data
+ observations.append(dict(phase=phase+1,rows=rows))
+binding=parse(data[bindingp]);exact(binding,('schema_version','binder','template_sha256','actual_script_sha256','bindings','role_selections','exact_six_assignment_reversal','exact_function_ASTs','actual_before_authorization','actual_after_authorization','target_capture_executed'))
+producer=parse(data[producerp]);nominal(producer,dict(schema_version=1,record_type='root_m3_python_source_binding_producer_observation',author='/root',scope=SCOPE,source_author='/root/renewal_runtime_inventory',source_binder_sha256='3b565b5e7a13b5b8c03754ae347d9d9ae626d44b3878022de8729259da54db56',source_peer_sha256=pins[sourcepeer],stage='python_source_only',capture_timer_started=False,authorization_created=False,current_tests_run=False,independent_acceptance=False,operational_authority=False))
+nominal(producer['root_tool'],dict(chunk_id='7952f8',exit_code=0,complete_tool_return=True,session_id=None));assert producer['root_plan_creation_tool']=='7bbc31';ticks(producer['created_utc'])
+for p,h in ((planp,args.plan),(bindingp,args.binding),(boundp,args.bound)):
+ row=producer['selected_sources'][p.name];exact(row,('path','sha256','bytes'));nominal(row,dict(path=str(p),sha256=h,bytes=len(data[p])))
+nominal(binding,dict(schema_version=1,binder='/root',template_sha256='c874f620f7f342e3b04ce7bf6c88969d51ed73d9f5801a45b851563eb8eebdc6',actual_script_sha256=args.bound,bindings=plan['bindings'],role_selections=roles,exact_six_assignment_reversal=True,exact_function_ASTs=True,actual_before_authorization=None,actual_after_authorization=None,target_capture_executed=False))
+lease=parse(data[leasep]);exact(lease,('schema_version','record_type','author','scope','created_utc','lease_end_utc','owner_master_sha256','owner_review_sha256','decision','maximum_lease_seconds','lease_is_owner_deadline','operational_authority'))
+nominal(lease,dict(schema_version=1,record_type='root_local_private_execution_lease',author='/root',scope=SCOPE,owner_master_sha256='de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583',owner_review_sha256='56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0',decision='authorize_bounded_selected_unit_metadata_and_copied_tests_once',maximum_lease_seconds=43200,lease_is_owner_deadline=False,operational_authority=False))
+nominal(plan['lease_selection'],dict(path=str(leasep),sha256=args.lease,lease_end_utc=lease['lease_end_utc']))
+start,end=ticks(lease['created_utc']),ticks(lease['lease_end_utc']);assert 0<end-start<=43200*10000000
+master=parse(data[masterp]);ownerpeer=parse(data[ownerpeerp]);assert len(master)==27 and master['work_end_utc'] is None and master['fixed_deadline_invented'] is False and len(ownerpeer)==19 and ownerpeer['reviewer']=='owner_docs_review' and ownerpeer['old_artifacts_renewed'] is False
+assert start>=ticks(master['record_created_utc'])
+coord=parse(data[BASE/roles['COORDINATION_PEER_REPLY_RELATIVE']]);response=parse(data[BASE/roles['COORDINATION_ROOT_RESPONSE_RELATIVE']])
+assert coord['state']=='conditional_ack_pending_concrete_interval_and_root_go' and coord['window_start_utc'] is None and coord['window_end_utc'] is None and coord['whole_host_quiet_or_exclusive_lease_attested'] is False and coord['no_pro3_compute_grant_inferred'] is True
+assert response['concrete_execution_interval'] is None and response['Root_GO'] is None and response['capture_timer_started'] is False and response['current_tests_started'] is False and response['sole_executor_resource_lease_or_host_quiet'] is False
+nominal(response['peer_source'],dict(copied_path=str(BASE/roles['COORDINATION_PEER_REPLY_RELATIVE']),sha256=plan['bindings']['coordination_peer_reply_sha256'],bytes=len(data[BASE/roles['COORDINATION_PEER_REPLY_RELATIVE']])))
+now=datetime.datetime.now(datetime.timezone.utc);delta=now-datetime.datetime(1970,1,1,tzinfo=datetime.timezone.utc);assert start<=(delta.days*86400+delta.seconds)*10000000+delta.microseconds*10<end
+template=data[META/'capture-root-metadata003-corrected005.TEMPLATE.py'];bound=data[boundp]
+values=dict(BINDINGS=plan['bindings'],OWNER_SHA=args.lease,OWNER_END=lease['lease_end_utc'],**roles)
+original=literal_nodes(template,values);actual=literal_nodes(bound,values);edits=[];lines=bound.splitlines(keepends=True);oldlines=template.splitlines(keepends=True)
+for name,value in values.items():
+ assert type(ast.literal_eval(actual[name])) is type(value) and ast.literal_eval(actual[name])==value
+ expected={k:None for k in plan['bindings']} if name=='BINDINGS' else None;assert ast.literal_eval(original[name])==expected
+ n=actual[name];o=original[name];s=sum(map(len,lines[:n.lineno-1]))+n.col_offset;e=sum(map(len,lines[:n.end_lineno-1]))+n.end_col_offset
+ os_=sum(map(len,oldlines[:o.lineno-1]))+o.col_offset;oe=sum(map(len,oldlines[:o.end_lineno-1]))+o.end_col_offset;edits.append((s,e,template[os_:oe]))
+reverse=bound
+for s,e,v in sorted(edits,reverse=True):reverse=reverse[:s]+v+reverse[e:]
+assert reverse==template and funcs(bound)==funcs(template) and len(bound)<=65536
+for row in manifest['payloads']:assert len(data[META/row['path']])==row['bytes']
+cpdir=OUT/'actual-python-binding-before001';assert not cpdir.exists();cpdir.mkdir();preserved=[]
+for i,p in enumerate(sorted(data,key=str)):
+ cp=cpdir/f'{i:03d}.bytes';once(cp,data[p]);assert read(cp)[0]==data[p];preserved.append(dict(path=str(p),copy=str(cp),sha256=sha(data[p]),bytes=len(data[p])))
+pre=[]
+for p in sorted(data,key=str):b,r=read(p);assert b==data[p];pre.append(r)
+report=dict(schema_version=1,record_type='independent_actual_m3_python_source_binding_details',reviewer='/root/owner_docs_review',source_author='/root/renewal_runtime_inventory',binding_author='/root',scope=SCOPE,created_utc=utc(),verdict='PASS_STATIC_ACTUAL_PYTHON_SOURCE_BINDING_ONLY',root_producer_observation_attributed=args.root_observation,independent_physical_tool_attestation=False,finite_input_count=len(data),observations=observations,preserved_inputs=preserved,prepublication_observations=pre,source_binding_sha256=args.binding,source_plan_sha256=args.plan,actual_script_sha256=args.bound,lease_sha256=args.lease,complete_six_literal_byte_reversal=True,complete_function_class_ASTs_unchanged=True,source_checks=['All12 selected manifest payloads and all6 active source bytes authenticate prior fullsource005 acceptance.','Observed Python source binding11 matches exact nine selections and canonical three roles; full six-literal byte reversal recovers selected template and every function/class AST unchanged.','Actual lease12 original PS7 seventh ticks and bounded interval retained; separate ongoing owner authorization is not a new overall deadline.','Coordination selections are authentic source bytes only; no sole executor, resource lease, quiet or runtime readiness follows.'],findings=[],actual_authorization=None,actual_capture=None,tests_executed=False,target_definitions_executed=False,runtime_acceptance=False,operational_authority=False)
+rp=OUT/'INDEPENDENT_ACTUAL_M3_PYTHON_SOURCE_DETAILS_001.json';once(rp,enc(report))
+peer9=dict(schema_version=1,record_type='guard006_root_metadata_bound_source_review',reviewer='/root/owner_docs_review',source_author='/root/renewal_runtime_inventory',verdict='PASS_STATIC_BOUND_METADATA_ONLY',actual_script_sha256=args.bound,source_bindings=plan['bindings'],phase_set=['before','after'],metadata_only=True);assert len(peer9)==9
+pp=META/'INDEPENDENT_BOUND_METADATA_REVIEW_003.json';once(pp,enc(peer9))
+post=[]
+for p in sorted(data,key=str):b,r=read(p);assert b==data[p];post.append(r)
+postp=OUT/'INDEPENDENT_ACTUAL_M3_PYTHON_SOURCE_POST_001.json';once(postp,enc(dict(schema_version=1,created_utc=utc(),detail_sha256=sha(rp.read_bytes()),bound_review_sha256=sha(pp.read_bytes()),source_post_observations=post)))
+print(json.dumps(dict(verdict=report['verdict'],finite_input_count=len(data),outputs=[dict(path=str(p),sha256=sha(p.read_bytes()),bytes=len(p.read_bytes())) for p in (rp,pp,postp)])))

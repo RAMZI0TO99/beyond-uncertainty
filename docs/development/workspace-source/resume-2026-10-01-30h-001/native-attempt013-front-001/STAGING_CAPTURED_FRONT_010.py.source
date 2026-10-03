@@ -1,0 +1,26 @@
+"""One-use stdlib staging editor: captured-source helper stdin transport."""
+from pathlib import Path
+
+root=Path(__file__).parent
+bootstrap=("import base64,hashlib,sys; p=sys.argv.pop(1); h=sys.argv.pop(1); "
+           "b=sys.stdin.buffer.read(262145); assert len(b)<=262144; "
+           "b=b[:-2] if b.endswith(b'\\r\\n') else b[:-1] if b.endswith(b'\\n') else b; "
+           "d=base64.b64decode(b,validate=True); assert base64.b64encode(d)==b; "
+           "assert hashlib.sha256(d).hexdigest()==h; sys.argv[0]=p; "
+           "globals()['__file__']=p; exec(compile(d,p,'exec',dont_inherit=True),globals())")
+for path in sorted(root.glob('*.ps1.template')):
+    if path.name.startswith('native-poststatus-'):
+        continue
+    text=path.read_text(encoding='utf-8')
+    old="    $frontArgs = @('-I','-S','-B','-X','utf8',$FrontHelper,'--expected-script-sha256',$FrontHelperSha,'--bindings-base64',$frontBase64,'--phase',$Phase)"
+    assert text.count(old)==1
+    new=("    $frontBootstrap = '"+bootstrap.replace("'","''")+"'\n"
+         "    $frontPayload = [Convert]::ToBase64String($frontSourceBytes)\n"
+         "    if ($frontPayload.Length -gt 262142) { throw 'Captured front source exceeds reviewed transport bound' }\n"
+         "    $frontArgs = @('-I','-S','-B','-X','utf8','-c',$frontBootstrap,$FrontHelper,$FrontHelperSha,'--expected-script-sha256',$FrontHelperSha,'--bindings-base64',$frontBase64,'--phase',$Phase)")
+    text=text.replace(old,new)
+    old='    $frontReply = @(& $Python @frontArgs)'
+    assert text.count(old)==1
+    text=text.replace(old,'    $frontReply = @($frontPayload | & $Python @frontArgs)')
+    path.write_text(text,encoding='utf-8',newline='\n')
+print('Captured reviewed helper stdin transport staged; no helper run.')

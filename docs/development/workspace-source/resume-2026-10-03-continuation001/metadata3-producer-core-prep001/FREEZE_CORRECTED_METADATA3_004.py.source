@@ -1,0 +1,48 @@
+"""Author-only bounded source inventory and AST inspection; no definitions run."""
+import ast
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001/metadata3-producer-core-prep001')
+def sha(data): return hashlib.sha256(data).hexdigest()
+def once(name,obj):
+    data=(json.dumps(obj,sort_keys=True,indent=2)+'\n').encode()
+    with (ROOT/name).open('xb') as stream: stream.write(data)
+    return data
+old_bytes=(ROOT/'STAGED_MANIFEST_003.json').read_bytes()
+old=json.loads(old_bytes)
+preserved=[]
+for row in old['payloads']:
+    a=(ROOT/row['path']).read_bytes();b=(ROOT/row['path']).read_bytes()
+    if a!=b or len(a)!=row['bytes'] or sha(a)!=row['sha256']: raise ValueError('Frozen003 history drift')
+    preserved.append(row)
+selected=(
+    'capture-root-metadata003-corrected004.TEMPLATE.py','BIND_SOURCE_AND_PHASES_003-corrected004.TEMPLATE.py',
+    'WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_003.TEMPLATE.ps1','SUPERVISE_ROOT_METADATA_BEFORE_003-corrected004.TEMPLATE.ps1',
+    'WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_003.TEMPLATE.ps1','SUPERVISE_ROOT_METADATA_AFTER_003-corrected004.TEMPLATE.ps1')
+functions=lambda data:{node.name:ast.dump(node,include_attributes=False) for node in ast.parse(data).body if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef))}
+before=functions((ROOT/'capture-root-metadata003.TEMPLATE.py').read_bytes())
+after=functions((ROOT/selected[0]).read_bytes())
+if len(before)!=20 or len(after)!=20 or not all(before[name]==after[name] for name in before if name!='main'): raise ValueError('Capture non-main AST preservation')
+ast.parse((ROOT/selected[1]).read_bytes())
+once('AUTHOR_CORRECTED_AST_PRESERVATION_004.json',dict(schema_version=1,capture_function_count=20,unchanged_non_main_function_count=19,
+    old_and_new_non_main_ASTs_match=True,binder_AST_parsed=True,target_definitions_or_compile_executed=False,actual_results=None))
+names=selected+('PREPARE_METADATA3_CORRECTED_SOURCES_004.py','SOURCE_SCHEMA_AND_REVIEW_CONTRACT_004.json',
+    'AUTHOR_CORRECTED_POWERSHELL_SYNTAX_004.json','AUTHOR_CORRECTED_AST_PRESERVATION_004.json','HANDOFF_CORRECTED_004.md',
+    'FREEZE_CORRECTED_METADATA3_004.py')
+rows=[]
+for name in names:
+    a=(ROOT/name).read_bytes();b=(ROOT/name).read_bytes()
+    if a!=b: raise ValueError('Fresh source bytes drift')
+    rows.append(dict(path=name,bytes=len(a),sha256=sha(a),two_read_match=True))
+manifest=dict(schema_version=1,record_type='metadata3_corrected_source_preparation_manifest',source_author='/root/renewal_runtime_inventory',
+    created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),payload_count=len(rows),payloads=rows,
+    active_source_count=6,selected_source_paths=list(selected),preserved_first_manifest=dict(path='STAGED_MANIFEST_003.json',sha256=sha(old_bytes),bytes=len(old_bytes)),
+    preserved_first_payload_count=len(preserved),preserved_first_payloads=preserved,
+    source_peer_expected_path=str(ROOT.parent/'m3-source-independent-review001/INDEPENDENT_M3_SOURCE_REVIEW_002.json'),
+    runtime_bound_paths_unchanged=True,actual_bindings=None,actual_lease=None,actual_authorization=None,actual_capture=None,
+    target_or_phase_or_binding_execution=False,source_approval_issued=False)
+data=once('STAGED_MANIFEST_004.json',manifest)
+print(json.dumps(dict(manifest_sha256=sha(data),payload_count=len(rows),active_source_rows=[dict(path=str(ROOT/row['path']),bytes=row['bytes'],sha256=row['sha256']) for row in rows[:6]],preserved_first_count=len(preserved)),indent=2))

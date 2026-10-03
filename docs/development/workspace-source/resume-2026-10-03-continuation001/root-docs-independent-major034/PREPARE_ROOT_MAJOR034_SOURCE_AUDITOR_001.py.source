@@ -1,0 +1,101 @@
+"""UNRUN optional Root Source inspection of the prepared Major034 auditor.
+
+This program only reads and parses the auditor source; it never imports,
+compiles, calls or executes it. It does not create a Source-review receipt or
+permit publication. Root may inspect directly and run the auditor separately.
+"""
+import argparse
+import ast
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+
+ROOT = Path('D:/Aenv/pro2')
+OWN = ROOT / 'resume-2026-10-03-continuation001/root-docs-independent-major034'
+AUDITOR = OWN / 'ROOT_REVIEW_MAJOR034_SOURCE_001.py'
+AUDITOR_SHA = 'eeae450dccc4d248b558c1996b178a3b4b937a89e5e1d9f25bb9f163ebea7411'
+MANIFEST = ROOT / 'resume-2026-10-03-continuation001/root-docs-major034/STAGED_DOCUMENTATION_MANIFEST_034_001.json'
+MANIFEST_SHA = '1a73af8a6e5dd49dde9446ff6355c2fe230140971bfe0853ce5f2ed82e03d34d'
+MAX_FILE = 8388608
+
+def need(value, message):
+    if not value:
+        raise ValueError(message)
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+def raw(info):
+    return tuple(getattr(info, key) for key in (
+        'st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns',
+        'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns'))
+
+def read(path, expected, size=None):
+    parents = []
+    for item in reversed(path.parents):
+        info = item.lstat()
+        need(stat.S_ISDIR(info.st_mode) and not info.st_file_attributes & 1024,
+             'plain ancestor required')
+        parents.append((str(item), info.st_dev, info.st_ino))
+    before = path.lstat()
+    need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+         and not before.st_file_attributes & 1024 and before.st_size <= MAX_FILE,
+         'bounded plain Source file')
+    with path.open('rb', buffering=0) as handle:
+        opened = os.fstat(handle.fileno())
+        a, b = raw(before), raw(opened)
+        need(a[:4] + a[5:] == b[:4] + b[5:] and a[4] == a[8],
+             'crossAPI8/path birth identity')
+        data = handle.read(before.st_size + 1)
+        need(raw(opened) == raw(os.fstat(handle.fileno())), 'same-handle raw9')
+    need(raw(before) == raw(path.lstat()) and len(data) == before.st_size
+         and sha(data) == expected and (size is None or len(data) == size),
+         'path/bytes/pin/read drift')
+    after = []
+    for item in reversed(path.parents):
+        info = item.lstat()
+        need(stat.S_ISDIR(info.st_mode) and not info.st_file_attributes & 1024,
+             'plain ancestor required after read')
+        after.append((str(item), info.st_dev, info.st_ino))
+    need(parents == after, 'ancestor drift')
+    return data
+
+def main():
+    options = argparse.ArgumentParser()
+    options.add_argument('--expected-self-sha256', required=True)
+    args = options.parse_args()
+    need(Path(__file__).absolute() == OWN / 'PREPARE_ROOT_MAJOR034_SOURCE_AUDITOR_001.py',
+         'fixed preparation path')
+    read(Path(__file__), args.expected_self_sha256)
+    source = read(AUDITOR, AUDITOR_SHA, 42435)
+    read(MANIFEST, MANIFEST_SHA, 48370)
+    tree = ast.parse(source)
+    functions = [node.name for node in tree.body if type(node) is ast.FunctionDef]
+    imports = [alias.name for node in tree.body if type(node) is ast.Import for alias in node.names]
+    imports += [node.module for node in tree.body if type(node) is ast.ImportFrom]
+    need(set(imports) == {'argparse', 'ast', 'hashlib', 'json', 'os', 're',
+                         'stat', 'datetime', 'decimal', 'pathlib'},
+         'auditor stdlib-only imports')
+    need('main' in functions and b'--expected-self-sha256' in source
+         and b'MAX_INPUTS = 600' in source and b'MAX_FILE = 8388608' in source,
+         'bounded explicit Root Source audit entry')
+    receipt = OWN / 'INDEPENDENT_MAJOR034_PREPUBLICATION_SOURCE_REVIEW_001.json'
+    try:
+        receipt.lstat()
+    except FileNotFoundError:
+        pass
+    else:
+        raise ValueError('Source peer already exists; do not replay prepared auditor')
+    print(json.dumps(dict(schema_version=1,
+        record_type='root_prepared_major034_auditor_source_inspection_only',
+        preparer='/root/architecture', executing_inspector='/root',
+        auditor_sha256=AUDITOR_SHA, auditor_bytes=len(source),
+        manifest_sha256=MANIFEST_SHA, auditor_function_names=functions,
+        AST_parse_only=True, auditor_executed=False,
+        source_review_created=False, publication_performed=False,
+        target_execution=False, operational_authority=False), sort_keys=True))
+
+if __name__ == '__main__':
+    main()

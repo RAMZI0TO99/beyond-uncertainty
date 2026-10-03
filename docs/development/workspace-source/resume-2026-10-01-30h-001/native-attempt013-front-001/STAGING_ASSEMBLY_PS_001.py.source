@@ -1,0 +1,146 @@
+"""Staging editor only: reads before copies and writes these four staged templates.
+This is not an operational helper and must never be part of a native ceremony.
+"""
+import json
+import pathlib
+import re
+
+ROOT = pathlib.Path('D:/Aenv/pro2')
+D = ROOT / 'resume-2026-10-01-30h-001/native-attempt013-front-001'
+BASELINE = D / 'before'
+BINDINGS = json.loads((D / 'FRONT_BINDINGS_UNBOUND_001.json').read_text())['bindings']
+OWNER = json.loads((ROOT / 'resume-2026-10-01-30h-001/OWNER_WORK_WINDOW_30H_20261001_001.json').read_text())
+OWNER_SHA = json.loads((D / 'FRONT_BINDINGS_UNBOUND_001.json').read_text())['owner_sha256']
+
+
+def replace_function(text, name, body):
+    match = re.search(r'(?ms)^function ' + re.escape(name) + r'\b.*?(?=^function |\Z)', text)
+    assert match, name
+    return text[:match.start()] + body + '\n\n' + text[match.end():]
+
+
+def inject(text, name, line):
+    match = re.search(r'(?m)^function ' + re.escape(name) + r'\b', text)
+    assert match, name
+    offset = text.index('{', match.start()) + 1
+    return text[:offset] + '\n    ' + line + text[offset:]
+
+
+HEADER = '''# D-176 attempt013 FRONT, unbound/unrun. Bind every None/$null value in a
+# distinct reviewed copy. Historical attempt012 bytes remain immutable.
+$CurrentSession = Join-Path $Project 'resume-2026-10-01-30h-001'
+$Front = Join-Path $CurrentSession 'native-attempt013-front-001'
+$FrontHelper = Join-Path $Front 'native_successor_front_common_013_001.py'
+$FrontHelperSha = $null # FINAL_REVIEWED_FRONT_HELPER_SHA256
+$FrontOwnerRecord = Join-Path $CurrentSession 'OWNER_WORK_WINDOW_30H_20261001_001.json'
+$FrontOwnerSha = ''' + repr(OWNER_SHA) + '''
+$FrontOwnerEndUtc = ''' + repr(OWNER['work_end_utc']) + '''
+$FrontBindings = [ordered]@{
+''' + ''.join('    ' + key + ' = $null # FINAL_' + key.upper() + '\n' for key in sorted(BINDINGS)) + '''}
+$FrontStagePins = [ordered]@{
+    status_verdict_sha256 = $null # FINAL_STATUS013_VERDICT_SHA256
+    adjudicate_verdict_sha256 = $null # FINAL_ADJUDICATE013_VERDICT_SHA256
+    prerecover_verdict_sha256 = $null # FINAL_PRERECOVER013_VERDICT_SHA256
+    poststatus_common_sha256 = $null # FINAL_REVIEWED_POSTSTATUS_COMMON_SHA256
+}
+$ControllerCommit = $FrontBindings.controller_commit
+$ReleaseRecordSha = $FrontBindings.release_record_sha256
+$CandidateManifestSha = $FrontBindings.candidate_manifest_sha256
+$LauncherSha = $FrontBindings.launcher_sha256
+$RendererSha = $FrontBindings.renderer_sha256
+$OuterSha = $FrontBindings.outer_sha256
+$EntrySha = $FrontBindings.entry_sha256
+$HelperSha = $FrontBindings.helper_sha256
+$Stage0FileSha = $FrontBindings.stage0_file_sha256
+$SourceSha = $FrontBindings.stage0_source_sha256
+$EncodedSha = $FrontBindings.stage0_encoded_sha256
+$EnvironmentSha = $FrontBindings.stage0_environment_policy_sha256
+$ReceiptSha = $FrontBindings.receipt_sha256
+$StatusVerdictSha = $FrontStagePins.status_verdict_sha256
+$ReleaseRecord = Join-Path $CurrentSession 'release-008-proposal017\\controller-release-008-proposal017.json'
+$CandidateManifest = Join-Path $CurrentSession 'proposal017\\candidate-after.json'
+function Assert-FrontBoundary([string] $Phase) {
+    if ($FrontHelperSha -cnotmatch '^[0-9a-f]{64}$') { throw 'Front helper SHA is unbound' }
+    $frontSourceBytes = [IO.File]::ReadAllBytes($FrontHelper)
+    $frontSourceSha = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($frontSourceBytes)).Replace('-','').ToLowerInvariant()
+    if ($frontSourceSha -cne $FrontHelperSha) { throw 'Reviewed front helper changed' }
+    $frontJson = $FrontBindings | ConvertTo-Json -Depth 8 -Compress
+    $frontBase64 = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false,$true).GetBytes($frontJson))
+    $frontReply = @(& $Python -I -S -B -X utf8 $FrontHelper --expected-script-sha256 $FrontHelperSha --bindings-base64 $frontBase64 --phase $Phase)
+    if ($LASTEXITCODE -ne 0 -or $frontReply.Count -ne 1 -or $frontReply[0] -cne 'ATTEMPT013_BOUNDARY_PASS') { throw 'Fresh release/history/admission boundary proof refused' }
+}
+'''
+
+FILES = [
+    ('render-status013-receipt-window30h-001.ps1.template', 'renderer'),
+    ('run-native-status-013-window30h-001.ps1.template', 'status'),
+    ('run-native-adjudicate-013-window30h-001.ps1.template', 'adjudicate'),
+    ('run-native-recover-013-window30h-001.ps1.template', 'recover'),
+]
+for name, phase in FILES:
+    text = (BASELINE / name).read_text(encoding='utf-8')
+    text = text.replace('week8-d168-release-attempt-012', 'week8-d168-release-attempt-013').replace('STATUS012_', 'STATUS013_').replace('NativeAttemptDirectory012', 'NativeAttemptDirectory013')
+    position = text.index('\nfunction ') if '\nfunction ' in text else text.index('\n$config =')
+    text = text[:position] + '\n' + HEADER + text[position:]
+    text = text.replace("$StatusVerdict = Join-Path $Session 'native-status-012-verification-001.json'", "$StatusVerdict = Join-Path $Project 'resume-2026-10-01-30h-001\\native-attempt013-front-001\\native-status-013-verification-001.json'")
+    if phase == 'renderer':
+        text = inject(text, 'Assert-OwnerWindow', "Assert-FrontBoundary 'renderer'")
+        text = text.replace('[DateTimeOffset]::UtcNow -ge $deadline', '[DateTimeOffset]::UtcNow -ge [DateTimeOffset]::Parse($FrontOwnerEndUtc)')
+        text = replace_function(text, 'Assert-LocalRelease', "function Assert-LocalRelease {\n    Assert-EntryAbsent (Join-Path $Session 'controller-release-006-proposal014.json')\n    Assert-FrontBoundary 'renderer'\n}")
+    elif phase == 'status':
+        text = inject(text, 'Assert-OwnerWindow', "Assert-FrontBoundary 'status'")
+        text = text.replace('Assert-BeforeOwnerDeadline ([DateTimeOffset]::UtcNow) $deadline', 'Assert-BeforeOwnerDeadline ([DateTimeOffset]::UtcNow) ([DateTimeOffset]::Parse($FrontOwnerEndUtc))')
+        text = replace_function(text, 'Assert-LocalRelease', "function Assert-LocalRelease {\n    Assert-EntryAbsent (Join-Path $Session 'controller-release-006-proposal014.json')\n    Assert-FrontBoundary 'status'\n}")
+        text = text.replace("'--command','status')", "'--command','status','--successor-admission-sha256',$FrontBindings.admission_sha256)")
+        text = text.replace('$exitCode = [NativeStage0BinaryCapture001]::Run(', "Assert-FrontBoundary 'status'\n$exitCode = [NativeStage0BinaryCapture001]::Run(")
+        marker = '[pscustomobject]@{\n    ExitCode = $exitCode'
+        text = text.replace(marker, "Assert-OwnerWindow\nAssert-OtherProjectQuiet # Durable quiet must hold through the complete native capture.\nAssert-FrontBoundary 'status'\n" + marker)
+    elif phase == 'adjudicate':
+        text = inject(text, 'Assert-WindowAndHost', "Assert-FrontBoundary 'adjudicate'")
+        text = text.replace('$end = [DateTimeOffset]::Parse($OwnerDeadlineUtc)', '$end = [DateTimeOffset]::Parse($FrontOwnerEndUtc)')
+        text = text.replace('[DateTimeOffset]::Parse($OwnerDeadlineUtc))', '[DateTimeOffset]::Parse($FrontOwnerEndUtc))')
+        text = text.replace("@('incident.json','epoch-001-terminal.json',", '@(')
+        text = text.replace("'--command','adjudicate')", "'--command','adjudicate','--successor-admission-sha256',$FrontBindings.admission_sha256)")
+        text = text.replace('owner_work_end_utc = $OwnerDeadlineUtc', 'owner_work_end_utc = $FrontOwnerEndUtc').replace('owner_record_sha256 = $OwnerExtensionOct02Sha', 'owner_record_sha256 = $FrontOwnerSha')
+        text = text.replace('$exitCode = [NativeStage0BinaryCapture001]::Run(', "Assert-FrontBoundary 'adjudicate'\n$exitCode = [NativeStage0BinaryCapture001]::Run(")
+        marker = '[pscustomobject]@{\n    ExitCode = $exitCode'
+        text = text.replace(marker, "Assert-WindowAndHost\nAssert-FrontBoundary 'adjudicate'\n" + marker)
+    else:
+        block = text[text.index('\n# D-176 attempt013 FRONT'):text.index('\n$config =')]
+        text = text.replace(block, '')
+        position = text.index('\n$self =')
+        text = text[:position] + block + text[position:]
+        text = text.replace("$Common = Join-Path $Session 'native-poststatus-transport-common-011-oct02-003.ps1.template'", "$Common = Join-Path $Project 'resume-2026-10-01-30h-001\\native-attempt013-front-001\\native-poststatus-transport-common-013-window30h-001.ps1'")
+        text = re.sub(r"(?m)^\$CommonSha = '[0-9a-f]{64}'$", '$CommonSha = $null # FINAL_REVIEWED_POSTSTATUS_COMMON_SHA256', text)
+        text = text.replace("'native-adjudicate-012-verification-001.json'", "'native-adjudicate-013-verification-001.json'").replace("'adjudication-evidence-before-recover-012.json'", "'adjudication-evidence-before-recover-013.json'")
+        footer = '''
+$config.Commit = $FrontBindings.controller_commit
+$config.ReceiptSha = $FrontBindings.receipt_sha256
+$config.LauncherSha = $FrontBindings.launcher_sha256
+$config.Stage0FileSha = $FrontBindings.stage0_file_sha256
+$config.SourceSha = $FrontBindings.stage0_source_sha256
+$config.EncodedSha = $FrontBindings.stage0_encoded_sha256
+$config.EnvironmentSha = $FrontBindings.stage0_environment_policy_sha256
+$config.OwnerEndUtc = $FrontOwnerEndUtc
+$config.OwnerRecord = $FrontOwnerRecord
+$config.OwnerRecordSha = $FrontOwnerSha
+$config.ReleaseRecord = $ReleaseRecord
+$config.ReleaseRecordSha = $FrontBindings.release_record_sha256
+$config.CandidateManifest = $CandidateManifest
+$config.CandidateManifestSha = $FrontBindings.candidate_manifest_sha256
+$config.PriorVerdict = Join-Path $Front 'native-adjudicate-013-verification-001.json'
+$config.PriorVerdictSha = $FrontStagePins.adjudicate_verdict_sha256
+$config.PhaseEvidence = Join-Path $Front 'adjudication-evidence-before-recover-013.json'
+$config.PhaseEvidenceSha = $FrontStagePins.prerecover_verdict_sha256
+$config.SuccessorAdmissionSha = $FrontBindings.admission_sha256
+'''
+        text = text.replace('Invoke-PoststatusStage $config', footer + '\nInvoke-PoststatusStage $config')
+    if phase in ('status', 'adjudicate'):
+        text = text.replace('WEEK8_D168_STAGE0_AUDIT_RECORD_V2', 'WEEK8_D176_STAGE0_AUDIT_V3')
+        text = text.replace('$lines.Count -ne 12', '$lines.Count -ne 13').replace('$lines[11] -cne', '$lines[12] -cne')
+        text = text.replace('$i -le 10', '$i -le 11').replace('$fields.Count -ne 10', '$fields.Count -ne 11')
+        # Only audit expected values gain the pin. Receipt stays exact V2.
+        audit_start = text.index('function Assert-Audit')
+        text = text[:audit_start] + text[audit_start:].replace('stage0_environment_policy_sha256 = $EnvironmentSha', 'stage0_environment_policy_sha256 = $EnvironmentSha\n        successor_admission_sha256 = $FrontBindings.admission_sha256', 1)
+    (D / name).write_bytes(text.encode('utf-8'))
+print('Four staged PS wrappers edited; parser/integration checks pending.')

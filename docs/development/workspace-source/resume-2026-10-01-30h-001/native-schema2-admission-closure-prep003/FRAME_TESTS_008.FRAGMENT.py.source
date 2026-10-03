@@ -1,0 +1,211 @@
+class NativeFrameFamilies(unittest.TestCase):
+    """Pure captured definitions and byte/stream/AST doubles; no child/FFI/PS execution."""
+    @classmethod
+    def setUpClass(cls):
+        cls.frame = source_namespace({'_native_frame_binding_shape', '_native_frame_decode', '_native_frame_encode', '_native_frame_read'})
+        cls.schema = cls.frame['BINDING_SCHEMA']
+        cls.provenance = cls.frame['PROGRAMMATIC_FACTS']['provenance_fields']
+
+    def setUp(self):
+        self.source = b'# inert source bytes, never compiled or executed\n'
+        self.pin = sha(self.source)
+        self.bindings = {key: ('0' * 64 if kind == 'sha256' else '1' * 40 if kind == 'commit' else 25 if kind == 'count' else r'D:\Aenv\pro2\synthetic-frame\review.json' if kind == 'path' else {field: {'path': 'D:\\Aenv\\pro2\\synthetic-frame\\' + field + '.json', 'sha256': '2' * 64} for field in self.provenance}) for key, kind in self.schema.items()}
+
+    def good(self):
+        frame = self.frame['_native_frame_encode'](self.source, self.bindings, self.pin)
+        result = self.frame['_native_frame_decode'](frame, self.pin)
+        self.assertEqual(result[0], self.source)
+        self.assertEqual(result[2], self.bindings)
+        return frame
+
+    def bad(self, operation, label):
+        self.good()
+        with self.subTest(frame_refusal=label):
+            with self.assertRaises(ValueError):
+                operation()
+        self.good()
+
+    def raw(self, binding_bytes=None, *, source=None):
+        body = self.source if source is None else source
+        payload = json.dumps(self.bindings, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('ascii') if binding_bytes is None else binding_bytes
+        return base64.b64encode(body) + b'\n' + base64.b64encode(payload) + b'\n'
+
+    def test_f01_canonical_two_line_frame_has_healthy_retained_control(self):
+        frame = self.good()
+        self.assertEqual(frame.count(b'\n'), 2)
+        self.assertEqual(frame.split(b'\n')[-1], b'')
+        self.bad(lambda: self.frame['_native_frame_decode'](frame + b' ', self.pin), 'trailing data')
+
+    def test_f02_maximum_representable_canonical262142_is_healthy(self):
+        binding = self.good().split(b'\n')[1]
+        source_size = ((262140 - len(binding)) // 4) * 3
+        source = b'x' * source_size
+        frame = self.frame['_native_frame_encode'](source, self.bindings, sha(source))
+        self.assertEqual(len(frame), 262142)
+        self.assertEqual(self.frame['_native_frame_decode'](frame, sha(source))[0], source)
+        self.bad(lambda: self.frame['_native_frame_decode'](frame + b'AA', sha(source)), 'raw262144 is not canonical')
+
+    def test_f03_raw262144_is_only_a_negative_framing_witness(self):
+        raw = b'A' * 262142 + b'\n\n'
+        self.assertEqual(len(raw), 262144)
+        self.bad(lambda: self.frame['_native_frame_decode'](raw, self.pin), 'raw length does not imply valid frame')
+
+    def test_f04_raw262145_sentinel_refuses_without_decoder(self):
+        namespace = self.frame
+        def negative():
+            with patch.object(namespace['base64'], 'b64decode', side_effect=AssertionError('predecode cap bypass')) as decoder:
+                try:
+                    namespace['_native_frame_decode'](b'A' * 262145, self.pin)
+                finally:
+                    self.assertEqual(decoder.call_count, 0)
+        self.bad(negative, 'receiver size before Base64')
+
+    def test_f05_empty_source_token_is_not_an_inherited_empty_line(self):
+        frame = self.good()
+        self.bad(lambda: self.frame['_native_frame_decode'](b'\n' + frame.split(b'\n')[1] + b'\n', self.pin), 'empty source')
+
+    def test_f06_empty_binding_token_refuses(self):
+        frame = self.good()
+        self.bad(lambda: self.frame['_native_frame_decode'](frame.split(b'\n')[0] + b'\n\n', self.pin), 'empty bindings')
+
+    def test_f07_crlf_is_not_silently_trimmed(self):
+        frame = self.good()
+        self.bad(lambda: self.frame['_native_frame_decode'](frame.replace(b'\n', b'\r\n'), self.pin), 'CRLF')
+
+    def test_f08_missing_final_lf_refuses(self):
+        frame = self.good()
+        self.bad(lambda: self.frame['_native_frame_decode'](frame[:-1], self.pin), 'missing EOF line delimiter')
+
+    def test_f09_extra_lf_or_third_component_refuses(self):
+        frame = self.good()
+        self.bad(lambda: self.frame['_native_frame_decode'](frame + b'\n', self.pin), 'third LF')
+
+    def test_f10_base64_alphabet_is_strict(self):
+        frame = self.good()
+        self.bad(lambda: self.frame['_native_frame_decode'](b'!' + frame[1:], self.pin), 'nonalphabet')
+
+    def test_f11_noncanonical_pad_bits_cannot_pass_same_source_hash(self):
+        frame = self.raw(source=b'x')
+        self.assertEqual(frame[:4], b'eA==')
+        self.assertEqual(base64.b64decode(b'eB==', validate=True), b'x')
+        self.assertEqual(self.frame['_native_frame_decode'](frame, sha(b'x'))[0], b'x')
+        self.bad(lambda: self.frame['_native_frame_decode'](b'eB==' + frame[4:], sha(b'x')), 'noncanonical pad bits')
+        self.assertEqual(self.frame['_native_frame_decode'](frame, sha(b'x'))[0], b'x')
+
+    def test_f12_missing_base64_padding_refuses(self):
+        frame = self.raw(source=b'x')
+        self.bad(lambda: self.frame['_native_frame_decode'](b'eA' + frame[4:], sha(b'x')), 'missing padding')
+
+    def test_f13_binding_component_cap_precedes_base64_allocation(self):
+        frame = self.good().split(b'\n')[0] + b'\n' + b'A' * 16385 + b'\n'
+        namespace = self.frame
+        def negative():
+            with patch.object(namespace['base64'], 'b64decode', side_effect=AssertionError('component cap bypass')) as decoder:
+                try:
+                    namespace['_native_frame_decode'](frame, self.pin)
+                finally:
+                    self.assertEqual(decoder.call_count, 0)
+        self.bad(negative, 'binding16385')
+
+    def test_f14_encoder_source_cap_precedes_base64_allocation(self):
+        namespace = self.frame
+        def negative():
+            with patch.object(namespace['base64'], 'b64encode', side_effect=AssertionError('source cap bypass')) as encoder:
+                try:
+                    namespace['_native_frame_encode'](b'x' * 196606, self.bindings, self.pin)
+                finally:
+                    self.assertEqual(encoder.call_count, 0)
+        self.bad(negative, 'source196606')
+
+    def test_f15_external_source_pin_cannot_be_derived_from_frame(self):
+        frame = self.good()
+        self.bad(lambda: self.frame['_native_frame_decode'](frame, 'f' * 64), 'trusted source pin mismatch')
+
+    def test_f16_source_bom_is_refused_before_any_source_execution(self):
+        source = b'\xef\xbb\xbfpass\n'
+        self.bad(lambda: self.frame['_native_frame_decode'](self.raw(source=source), sha(source)), 'source BOM')
+
+    def test_f17_nested_duplicate_json_key_is_refused(self):
+        binding = json.dumps(self.bindings, sort_keys=True, separators=(',', ':')).encode('ascii')
+        needle = b'"sha256":"' + b'2' * 64 + b'"'
+        self.assertIn(needle, binding)
+        duplicate = binding.replace(needle, needle + b',' + needle, 1)
+        self.bad(lambda: self.frame['_native_frame_decode'](self.raw(duplicate), self.pin), 'duplicate provenance key')
+
+    def test_f18_json_exponent_overflow_is_not_a_finite_float(self):
+        binding = json.dumps(self.bindings, sort_keys=True, separators=(',', ':')).encode('ascii')
+        malformed = binding.replace(b'"changed_file_count":25', b'"changed_file_count":1e999', 1)
+        self.bad(lambda: self.frame['_native_frame_decode'](self.raw(malformed), self.pin), 'overflow float')
+
+    def test_f19_legacy42_bus_has_no_compatibility_fallback(self):
+        binding = dict(self.bindings)
+        del binding['publisher_sha256']; del binding['external_verifier_sha256']
+        self.bad(lambda: self.frame['_native_frame_encode'](self.source, binding, self.pin), 'legacy42')
+
+    def test_f20_unknown45th_field_cannot_choose_another_role(self):
+        binding = dict(self.bindings, arbitrary_role='0' * 64)
+        self.bad(lambda: self.frame['_native_frame_encode'](self.source, binding, self.pin), 'unknown45th')
+
+    def test_f21_boolean_count_is_not_integer25(self):
+        binding = dict(self.bindings, changed_file_count=True)
+        self.bad(lambda: self.frame['_native_frame_encode'](self.source, binding, self.pin), 'boolean count')
+
+    def test_f22_provenance_rows_keep_exact14_fields_and_two_keys(self):
+        binding = copy.deepcopy(self.bindings)
+        binding['native_review_path'] += chr(127)
+        healthy = self.frame['_native_frame_encode'](self.source, binding, self.pin)
+        self.assertEqual(self.frame['_native_frame_decode'](healthy, self.pin)[2], binding)
+        self.assertIn(b'\\u007f', base64.b64decode(healthy.split(b'\n')[1], validate=True))
+        field = next(iter(binding['release_provenance']))
+        binding['release_provenance'][field]['unexpected'] = 'extra'
+        self.bad(lambda: self.frame['_native_frame_encode'](self.source, binding, self.pin), 'provenance extra key')
+
+    def test_f23_renderer_phase_only_allows_the_fixed_late_nulls(self):
+        binding = dict(self.bindings)
+        for key in ('publisher_sha256','external_verifier_sha256','publication_end_sha256','verification_intent_sha256'):
+            binding[key] = None
+        frame = self.frame['_native_frame_encode'](self.source, binding, self.pin, renderer=True)
+        self.assertEqual(self.frame['_native_frame_decode'](frame, self.pin, renderer=True)[2], binding)
+        self.bad(lambda: self.frame['_native_frame_decode'](frame, self.pin, renderer=False), 'nonrenderer late nulls')
+
+    def test_f24_partial_reader_handles_short_byte_chunks_and_requires_eof(self):
+        namespace = self.frame
+        frame = self.good()
+        class Reader:
+            def __init__(self, body): self.body=body; self.requests=[]
+            def read(self, count):
+                self.requests.append(count)
+                result,self.body=self.body[:min(count,7)],self.body[min(count,7):]
+                return result
+        reader = Reader(frame)
+        self.assertEqual(namespace['_native_frame_read'](reader, self.pin)[0], self.source)
+        self.assertLessEqual(max(reader.requests), 16384)
+        self.bad(lambda: namespace['_native_frame_read'](Reader(frame[:-1]), self.pin), 'truncated partial stream')
+
+    def test_f25_reader_cannot_return_more_bytes_than_requested(self):
+        class OversizedReader:
+            def read(self, count): return b'A' * (count + 1)
+        self.bad(lambda: self.frame['_native_frame_read'](OversizedReader(), self.pin), 'reader contract')
+
+    def test_f26_bootstrap_capture_precedes_internal_argv_and_never_executes_in_test(self):
+        tree = ast.parse(NATIVE_FRAME_BOOTSTRAP_TEST_SOURCE)
+        common_tree = ast.parse(common_bytes())
+        names = {'_native_frame_binding_shape','_native_frame_decode','_native_frame_read'}
+        expected = {node.name: ast.dump(node,include_attributes=False) for node in common_tree.body if isinstance(node,ast.FunctionDef) and node.name in names}
+        actual = {node.name: ast.dump(node,include_attributes=False) for node in tree.body if isinstance(node,ast.FunctionDef) and node.name in names}
+        self.assertEqual(actual,expected)
+        def ordering(source_tree):
+            q_call = next(index for index,node in enumerate(source_tree.body) if isinstance(node,ast.Assign) and isinstance(node.value,ast.Call) and isinstance(node.value.func,ast.Name) and node.value.func.id=='q')
+            frame_call = next(index for index,node in enumerate(source_tree.body) if isinstance(node,ast.Assign) and isinstance(node.value,ast.Call) and isinstance(node.value.func,ast.Name) and node.value.func.id=='_native_frame_read')
+            insertion = next(index for index,node in enumerate(source_tree.body) if isinstance(node,ast.Assign) and any(isinstance(target,ast.Subscript) and isinstance(target.value,ast.Attribute) and target.value.attr=='argv' for target in node.targets) and isinstance(node.value,ast.List))
+            execution = next(index for index,node in enumerate(source_tree.body) if isinstance(node,ast.Expr) and isinstance(node.value,ast.Call) and isinstance(node.value.func,ast.Name) and node.value.func.id=='exec')
+            if not q_call < frame_call < insertion < execution:
+                raise ValueError('physical capture/frame validation must precede internal argv and execution')
+            return insertion
+        insertion = ordering(tree)
+        # Metadata ordering double only; no ctypes/kernel/child witness is created.
+        altered = copy.deepcopy(tree)
+        moved = altered.body.pop(insertion)
+        altered.body.insert(0,moved)
+        self.bad(lambda: ordering(altered), 'AST capture ordering')
+        ordering(tree)

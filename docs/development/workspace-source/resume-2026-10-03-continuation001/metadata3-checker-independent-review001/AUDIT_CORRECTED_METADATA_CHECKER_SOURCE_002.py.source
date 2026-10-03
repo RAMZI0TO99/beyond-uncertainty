@@ -1,0 +1,143 @@
+"""Own finite source metadata only; never execute reviewed definitions or tests."""
+import ast, datetime, hashlib, json, os
+from pathlib import Path
+BASE=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001')
+SOURCE=BASE/'metadata3-actual-checker-prep001';OUT=BASE/'metadata3-checker-independent-review001'
+SCOPE='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+MANIFEST_SHA='93f8754ed186873cba93960ce027558b86f70fbb2a9f9ee37a3c18fde7b5d4ee'
+CHECKER_SHA='c097c756d8cf55b1ac98a68313f5e406455b9306af63bd48a6e1cb3add70d3c1'
+REFUSAL_SHA='92937a787276a18e3d36b012d99febda84fcac5c5f8b2ca5db14dd7e14a419d3'
+def sha(b):return hashlib.sha256(b).hexdigest()
+def utc():return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+def enc(x):return (json.dumps(x,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('ascii')
+def pairs(rows):
+ d={}
+ for k,v in rows:assert k not in d;d[k]=v
+ return d
+def invalid(x):raise ValueError(x)
+def parse(b):return json.loads(b.decode('utf8','strict'),object_pairs_hook=pairs,parse_float=invalid,parse_constant=invalid)
+def raw(s):return [getattr(s,k) for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+def read(p):
+ a=p.lstat();assert a.st_nlink==1 and not a.st_file_attributes&1024
+ b=p.read_bytes();z=p.lstat();assert raw(a)==raw(z)
+ return b,dict(path=str(p),sha256=sha(b),bytes=len(b),raw9=raw(z),observed_utc=utc())
+def once(p,b):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open('xb') as f:assert f.write(b)==len(b);f.flush();os.fsync(f.fileno())
+def literals(t):
+ result={}
+ for n in t.body:
+  if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+   try:result[n.targets[0].id]=ast.literal_eval(n.value)
+   except (ValueError,TypeError):pass
+ return result
+def functions(t):return {n.name:ast.dump(n,include_attributes=False) for n in t.body if isinstance(n,ast.FunctionDef)}
+def methods(t):return {n.name:ast.dump(n,include_attributes=False) for c in t.body if isinstance(c,ast.ClassDef) for n in c.body if isinstance(n,ast.FunctionDef) and n.name.startswith('test_')}
+mp=SOURCE/'AUTHOR_FROZEN_SOURCE_MANIFEST_008.json';b=mp.read_bytes();assert sha(b)==MANIFEST_SHA;m=parse(b)
+oldp=OUT/'INDEPENDENT_METADATA3_CHECKER_SOURCE_DETAILS_001.json';b=oldp.read_bytes();assert sha(b)==REFUSAL_SHA;old=parse(b)
+assert m['payload_count']==40 and len(m['payloads'])==40 and len({r['path'] for r in m['payloads']})==40
+assert m['independent_source007_refusal_sha256']==REFUSAL_SHA and len(old['findings'])==9
+assert all(m[k] is None for k in ('different_corrected_source_review','actual_source_binding','actual_lease','actual_ready','actual_before','actual_after','actual_results'))
+assert m['runtime_acceptance'] is False and m['operational_authority'] is False and m['reviewed_definitions_imports_mains_tests_Git_FFI_PS_native_executed'] is False
+pins={mp:MANIFEST_SHA,oldp:REFUSAL_SHA}
+for r in m['payloads']:assert Path(r['path']).name==r['path'];pins[SOURCE/r['path']]=r['sha256']
+for r in old['observations'][0]['rows']:pins[Path(r['path'])]=r['sha256']
+extra=[
+ (BASE/'gg6-source-independent-review001/INDEPENDENT_GG6_SOURCE_REVIEW_003.json','82b9643b78e4d4c388781e53b79c8a0546f9b07afca641ccfa71ff677483dae1'),
+ (BASE/'m3-source-independent-review001/INDEPENDENT_M3_SOURCE_REVIEW_002.json','78bc1b1a7a3e06e6752283e632651faac1b07f8f307f1612ceac4b1bd015bf30'),
+ (BASE/'root-pipeline-independent-review001/INDEPENDENT_ROOT_PIPELINE_ARCHITECTURE_REVIEW_001.json','32bdaae92a400d1d117ca7eaa6274d7cb069a79c8abfd62cd7745c7d0a087a57'),
+ (BASE/'root-pipeline-independent-review001/INDEPENDENT_ROOT_PIPELINE_BINDER_SOURCE_REVIEW_001.json','389b8131c675637bd91188d0d240deaf0370beacf768d3f64b3ce0d60988f863'),
+ (BASE/'root-guard006-pipeline-prep001/RUN_ROOT_METADATA_PIPELINE_006.TEMPLATE.ps1','9b7dbc059cc51601e08bbf4ff748123b53034533173dca5a6254352e47f997e8')]
+for p,h in extra:pins[p]=h
+observations=[];data=None
+for phase in range(1,4):
+ current={};rows=[]
+ for p in sorted(pins,key=str):
+  b,r=read(p);assert sha(b)==pins[p],str(p);current[p]=b;rows.append(r)
+ if data is None:data=current
+ else:assert current==data
+ observations.append(dict(phase=phase,rows=rows))
+for r in m['payloads']:assert len(data[SOURCE/r['path']])==r['bytes']
+sp=SOURCE/'review-metadata3-actual006-corrected008.TEMPLATE.py';assert sha(data[sp])==CHECKER_SHA and len(data[sp])==137182
+t=ast.parse(data[sp],filename=str(sp));code=compile(data[sp],str(sp),'exec',dont_inherit=True,optimize=0);v=literals(t);fn=functions(t)
+oldtree=ast.parse(data[SOURCE/'review-metadata3-actual006.TEMPLATE.py']);oldfn=functions(oldtree)
+changed=sorted(n for n in fn if oldfn.get(n)!=fn[n]);unchanged=sorted(n for n in fn if oldfn.get(n)==fn[n])
+assert len(fn)==65 and fn['read']==oldfn['read'] and fn['typed_equal']==oldfn['typed_equal']
+protocol=parse(data[SOURCE/'SOURCE_PROTOCOL_AND_REVIEW_CONTRACT_008.json'])
+for key,names in protocol['closed_source_literal_schemas'].items():assert list(v[key])==names,key
+assert list(v['PHASE_PEER_KEYS'])==protocol['phase_peer20_keys'] and len(v['PHASE_PEER_KEYS'])==20 and 'scope' not in v['PHASE_PEER_KEYS']
+assert len(v['M3_SOURCE_PEER_KEYS'])==22 and len(v['LEASE_KEYS'])==12 and len(v['CORE_KEYS'])==12
+assert v['M3_MANIFEST_SHA']=='df54adc4ef8303124590fc5c8f1191815ceff6c61f7db56a511390f9de9f7e5a'
+assert v['SELF_SHA'] is None if 'SELF_SHA' in v else True
+text=data[sp].decode('utf8')
+segments={n.name:ast.get_source_segment(text,n) for n in t.body if isinstance(n,ast.FunctionDef)}
+assert 'preflight_ready(trust_pin)' in segments['main'] and segments['main'].index('preflight_ready(trust_pin)')<segments['main'].index('once(ready')
+assert 'fixed()' in segments['preflight_ready'] and 'root_trust_preflight(trust_pin)' in segments['preflight_ready']
+assert "read(PIPELINE/'WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.BOUND.ps1'" in segments['whole_bridge']
+assert 'PREP/\'WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.ps1\'' not in segments['whole_bridge']
+assert 'WHOLE_REOBSERVATIONS' in segments['final_reobserve'] and 'key in runtime_roles and key in fixed_exes' in segments['final_reobserve']
+assert 'own_output_read' in segments['once'] and 'read(' not in segments['once'].replace('own_output_read(', '')
+assert "record_type='guard006_root_metadata_bound_source_review'" in segments['bound_metadata_review']
+assert 'python_source_reversal' in segments['fixed'] and 'phase_source_review' in segments['fixed']
+assert 'binding[\'template_sha256\']==digest(template)' in segments['fixed']
+assert 'typed_equal(first,trees[role+\'-second\'])' in segments['whole_before_result'] and 'register_whole_rows(validated_whole_rows)' in segments['whole_before_result']
+assert 'register_whole_rows(validated_whole_rows)' in segments['whole_after_result'] and 'exact_raw9' in segments['current_stream_file']
+assert "else r'\.[0-9]{6}'" in segments['stamp'] and "timespec='microseconds'" in segments['now_exact']
+for call in ast.walk(t):
+ if isinstance(call,ast.Call) and isinstance(call.func,ast.Attribute) and call.func.attr=='isoformat':assert any(k.arg=='timespec' and isinstance(k.value,ast.Constant) and k.value.value=='microseconds' for k in call.keywords)
+tp=SOURCE/'test_metadata3_actual_checker_preparation_002.py';tt=ast.parse(data[tp],filename=str(tp));tc=compile(data[tp],str(tp),'exec',dont_inherit=True,optimize=0)
+tests=methods(tt);oldtests=methods(ast.parse(data[SOURCE/'test_metadata3_actual_checker_preparation_001.py']))
+assert len(tests)==19 and len(oldtests)==9 and all(tests[k]==value for k,value in oldtests.items())
+syntax=[]
+for p in sorted(data,key=str):
+ if p.suffix=='.py' or p.name.endswith('.py.source'):
+  tree=ast.parse(data[p],filename=str(p));inert=compile(data[p],str(p),'exec',dont_inherit=True,optimize=0)
+  syntax.append(dict(path=str(p),sha256=sha(data[p]),function_names=list(functions(tree)),inert_code_flags=inert.co_flags,execution=False))
+fixes=[
+ dict(id='MC007-01',status='CORRECTED_SOURCE_ONLY',evidence='main calls preflight_ready before once READY; fixed full source closure, Root trust8/INIT8/peer/argv preflight and lease check precede readiness; repeated fixed/provenance per decision.'),
+ dict(id='MC007-02',status='CORRECTED_SOURCE_ONLY',evidence='whole_bridge reads exact PIPELINE WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.BOUND.ps1 at selected SHA; no alias.'),
+ dict(id='MC007-03',status='CORRECTED_SOURCE_ONLY',evidence='WHOLE membership registered only after both complete pinned tree proofs, with same typed emitted row; final_reread uses current_stream_file only for matching membership. Runtime exception requires authenticated runtime4 path/SHA and one of three exact known path/SHA pairs. Ordinary read AST remains exact.'),
+ dict(id='MC007-04',status='CORRECTED_SOURCE_ONLY',evidence='own_output_cap/read derives exact compiled output or publishing twin, detail16MiB and other65536; strict paired raw9/birth/mode/full SHA readback. General input cap8MiB is unchanged.'),
+ dict(id='MC007-05',status='CORRECTED_SOURCE_ONLY',evidence='bound_metadata_review enforces authentic closed9 record_type, native typed nominals, canonical reviewer/author, ordered phase_set and exact source bindings.'),
+ dict(id='MC007-06',status='CORRECTED_SOURCE_ONLY',evidence='PHASE_PEER_KEYS exact20 without scope; four aggregate source pins and native flags/parser0/reversal; ordered peer rows closed6, binding rows closed4 and exact links/bytes/reversal.'),
+ dict(id='MC007-07',status='CORRECTED_SOURCE_ONLY',evidence='m3_source_review consumes all12 final manifest005 payloads and exact ordered6 source rows; authentic closed22 list/count/observation domains. fixed links SourceBinding11 template pin, six assignment literal byte reversal and function ASTs, plus all four unique exact PS literal reversals.'),
+ dict(id='MC007-08',status='CORRECTED_SOURCE_ONLY',evidence='exact_raw9 requires builtin list9 of exact ints; whole root/files/descriptors/directories/map/identity/counts use native validation and typed_equal. Independent same-API metadata and observer restricted cross-API policy retained.'),
+ dict(id='MC007-09',status='CORRECTED_SOURCE_ONLY',evidence='stamp mandates exact Py6 or PS7 grammar; now_exact and record writers use explicit microseconds. moment_exact preserves original seventh tick via Decimal, never retimestamps old records.')]
+assert [x['id'] for x in fixes]==[x['id'] for x in old['findings']]
+before=OUT/'selected-before002';assert not before.exists();before.mkdir();preserved=[]
+for i,p in enumerate(sorted(data,key=str)):
+ copy=before/f'{i:02d}.bytes';once(copy,data[p]);assert copy.read_bytes()==data[p]
+ preserved.append(dict(path=str(p),copy=str(copy),sha256=sha(data[p]),bytes=len(data[p])))
+pre=[]
+for p in sorted(data,key=str):b,r=read(p);assert b==data[p];pre.append(r)
+checks=[
+ 'Complete corrected008 137182-byte selected helper and protocol/config008 plus all40 selected payloads audited with exact old007/history preserved, three observations/exact input copies/prepublication and post reads; genuine different refusal001 nine groups reviewed, each correction verified as source.',
+ 'All65 active function bodies reviewed: inherited source guard, source selectors and every before/after metadata/whole/auth/unit bridge route remain in scope, with changed and unchanged ASTs recorded. Ordinary read and typed_equal ASTs exactly preserved; no mode/cap/type guard weakened.',
+ 'Authentic master/peer pins, ongoing owner without invented end, native PS7 finite lease12 max43200 and Decimal seventh-tick chronology; mandatory Py6 writers; original600, both90 at separate unit GO,450+after60/resource60/510 remain source constraints, never refreshed.',
+ 'Root trust8/init8 and reviewed source/phaseargv8 complete preflight before READY; external physical tool token is Root-correlated only, not independent OS/tool attestation. Each actual ticket22 trace10 output/parent links and Core12/detail15 role nominal remain cryptobound and exact.',
+ 'SourceBinding11 six primitive literal values/selected template SHA/source hash/three roles/full function AST and complete byte reversal; M3 active6 and manifest005/all12 payloads independently consumed; genuine Bound9 and phasePeer20/row6/binding7/row4 faithfully linked with no scope invented.',
+ 'Whole membership confined to full authenticated base/scripts dual-stream trees, raw9 exact int grammar, directory maps/identity/counts typed; current_stream_file retains observer cross-API policy. Final reobservation preserves narrow runtime3 and registered whole policies rather than relaxing arbitrary input reads.',
+ 'Own atomic one-use detail16MiB and other65536 outputs use separately compiled role/staging readback; general input8MiB unchanged. All outputs are absent-first/nonreplace/fsynced/readback; spent or partial failures cannot replay.',
+ 'Recorded actual24 proof reconstructs exact ordered full IDs, starts/successes/subtest parents and methods, healthy/no diagnostic events, finite combined32 chunks/4MiB/4096rows/1024LF, complete transcript, evidence26 and current driver20 versus physical Root18 bridge. No synthetic fixture is treated as a genuine approval.',
+ 'All19 planned test method ASTs audited, exact9 prior methods plus10 causal controls using healthy-refusal-healthy for corrected routes. Tests explicitly load only the new helper in a future isolated namespace; no test or reviewed helper code was executed here.',
+ 'The new canonical compact15 reviewer output is distinct from runtime configure input policy: configure authenticates the entire externally selected SHA and consumes four nominal authority fields. It does not claim independent enforcement of all15 envelope fields; Root must select this genuine receipt and source-only full report.'
+]
+conditions=[
+ 'Source acceptance only. No reviewed definition/import/main/test/binder/lease/capture/Root producer/unit/Git/FFI/PS/native action executed by this audit; only source AST and inert new CodeType metadata.',
+ 'Root must externally select the authentic canonical peer SHA and separately review the actual checker config18, full immutable source bindings and actual P16 after C, Root INIT/trust and physical reviewer launch identity before starting this checker. The compact15 is not binding or runtime acceptance.',
+ 'Runtime configure is intentionally credited only for its existing externally hash-pinned four-auth-nominal boundary; this report does not infer a new15 reader ABI. Any additional closed15 enforcement requires a separately authorized distinct source successor.',
+ 'Root owns producers and separate unit GO; checker decisions accept only bounded recorded metadata. Actual original context/runtime deadlines, finite lease, source freshness, resource60 through spawn and caller original after60 budget must remain unchanged, with no replay/retimestamp/old record renewal.',
+ 'Future planned19 fixture tests need separate reviewed isolated helper scope and lease. Source fixture records are not physical Root approvals, source-peer provenance, live host snapshots or test results.',
+ 'No loaded-site/atomic lock/OS Job/memory/descendant/hard physical deadline, sole executor/quiet, operational/native/public/science/epoch/release/fullQA authority follows. Preserve old refusal001/source007 and all unused source variants.'
+]
+report=dict(schema_version=1,record_type='independent_metadata3_checker_complete_source_review',source_author='/root/actual_record_checker',reviewer='/root/owner_docs_review',created_utc=utc(),scope=SCOPE,verdict='PASS_COMPLETE_CORRECTED_METADATA3_CHECKER_SOURCE_ONLY',source_manifest_sha256=MANIFEST_SHA,checker_template_sha256=CHECKER_SHA,manifest_payload_count=40,finite_input_count=len(data),observations=observations,preserved_inputs=preserved,prepublication_observations=pre,syntax_and_inert_metadata=syntax,active_function_count=65,changed_function_names=changed,unchanged_function_names=unchanged,planned_test_methods=list(tests),planned_test_results=None,prior_refusal_sha256=REFUSAL_SHA,nine_correction_reviews=fixes,source_checks=checks,findings=[],blocking_finding_count=0,implementation_conditions=conditions,actual_binding=None,actual_results=None,runtime_acceptance=False,operational_authority=False,post_capture_reference=None)
+assert len(enc(report))<=2097152
+rp=OUT/'INDEPENDENT_METADATA3_CHECKER_SOURCE_DETAILS_002.json';once(rp,enc(report))
+peer=dict(schema_version=1,record_type='independent_metadata3_checker_source_review',created_utc=utc(),reviewer='/root/owner_docs_review',source_author='/root/actual_record_checker',scope=SCOPE,verdict='PASS_STATIC_METADATA3_CHECKER_SOURCE_ONLY',checker_template_sha256=CHECKER_SHA,source_manifest_sha256=MANIFEST_SHA,full_source_details_sha256=sha(rp.read_bytes()),target_execution=False,actual_binding=None,tests_executed=False,runtime_acceptance=False,operational_authority=False)
+assert len(peer)==15 and len(enc(peer))<=65536
+pp=OUT/'INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_001.json';once(pp,enc(peer))
+md=OUT/'INDEPENDENT_METADATA3_CHECKER_SOURCE_DETAILS_002.md';once(md,b'Corrected008 source accepted after complete finite audit and verification of all nine independent Source007 refusal groups. All65 helper functions and19 planned test methods reviewed; prior nine test ASTs exact. Canonical compact15 source receipt is externally selected; its full report remains distinct. No definitions, tests, actual binding, lease, capture, unit or runtime result accepted.\n')
+post=[]
+for p in sorted(data,key=str):b,r=read(p);assert b==data[p];post.append(r)
+postp=OUT/'POST_CAPTURE_PRESERVATION_002.json';once(postp,enc(dict(schema_version=1,created_utc=utc(),full_review_sha256=sha(rp.read_bytes()),canonical_source_core_sha256=sha(pp.read_bytes()),input_post_observations=post)))
+print(json.dumps(dict(verdict=report['verdict'],finite_input_count=len(data),outputs=[dict(path=str(p),sha256=sha(p.read_bytes()),bytes=len(p.read_bytes())) for p in (rp,pp,md,postp)])))

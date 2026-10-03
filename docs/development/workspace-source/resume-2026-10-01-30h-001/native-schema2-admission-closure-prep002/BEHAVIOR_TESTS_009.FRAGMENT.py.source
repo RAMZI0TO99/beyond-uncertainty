@@ -1,0 +1,380 @@
+# UNEXECUTED test source fragment. All files/processes/runtime evidence below are
+# in-memory doubles. The future driver supplies authenticated source bytes.
+BEHAVIOR_FUNCTIONS = {
+    '_native_uint','_native_identity_domain','_native_source_identity','_native_utc',
+    'authenticate_common_capture','_native_current_common','_native_behavior_cap',
+    '_native_behavior_reference','_native_behavior_scope','_native_behavior_header',
+    '_native_behavior_manifest','_native_behavior_sources','_native_behavior_runtime',
+    '_native_behavior_source_validation','_native_behavior_runtime_evidence',
+    '_native_exact','_native_hex','require','sha','canonical','parse','unique','finite_float',
+}
+
+class SyntheticBehaviorFixture:
+    """Exercises real validators; fresh authority/OS/source IO are explicit doubles."""
+    def __init__(self):
+        self.n = source_namespace(BEHAVIOR_FUNCTIONS)
+        n = self.n; self.files = {}; self.inodes = {}; self.events = []
+        n['PROGRAMMATIC_FACTS'] = copy.deepcopy(n['PROGRAMMATIC_FACTS'])
+        self.bindings = {key: '1'*64 for key,kind in n['BINDING_SCHEMA'].items() if kind=='sha256'}
+        self.scope = {key:False for key in n['BEHAVIOR_FALSE_FIELDS']}
+        n['NATIVE_BEHAVIOR_CAPS'] = {role:1000000 for role in n['BEHAVIOR_ROLES']}
+        n['NATIVE_BEHAVIOR_CAP_DERIVATION_SHA256'] = 'e'*64
+        def plain(path):
+            path = str(path); data = self.files[path]
+            return types.SimpleNamespace(st_dev=1,st_ino=self.inodes[path],st_size=len(data),
+                st_mtime_ns=30,st_ctime_ns=20,st_mode=0o100600,st_nlink=1,
+                st_file_attributes=32,st_birthtime_ns=20)
+        def identity(info):
+            return (info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns,info.st_ctime_ns,
+                    info.st_mode,info.st_nlink,info.st_file_attributes,info.st_birthtime_ns)
+        def read(path, expected=None, witness=None, *, maximum=None):
+            key=str(path); value=self.files[key]
+            if maximum is not None and len(value)>maximum:raise ValueError('synthetic read cap before hash')
+            if expected is not None and sha(value)!=expected:raise ValueError('synthetic independent byte pin')
+            self.events.append(('read',key,maximum))
+            if witness is not None:witness[key]=(value,identity(plain(path)))
+            return value
+        def repeat(witness):
+            for path,(data,info) in witness.items():
+                if self.files[path]!=data or identity(plain(Path(path)))!=info:
+                    raise ValueError('synthetic fresh reobservation drift')
+            self.events.append(('repeat',len(witness)))
+        n.update(read=read,plain=plain,identity=identity,repeat=repeat,
+                 _native_raw_module=lambda:self.events.append(('raw_source_guard',)) or object())
+        common=self.put(str(COMMON),common_bytes())
+        n['_NATIVE_COMMON_CAPTURE']=(common['path'],common['sha256'],common_bytes(),identity(plain(COMMON)))
+        projects={}
+        for key,relative in n['SOURCE_BINDINGS'].items():
+            if key=='renderer_sha256':continue
+            row=self.put(str(n['REPO']/relative),('SYNTHETIC_PROJECT:'+relative).encode())
+            projects[relative]=row;self.bindings[key]=row['sha256']
+        test=self.role('test',globals()['REVIEWED_TEST_CAPTURE'])
+        tree=ast.parse(globals()['REVIEWED_TEST_CAPTURE'])
+        case_ids=[node.name+'.'+method.name for node in tree.body if isinstance(node,ast.ClassDef)
+                  for method in node.body if isinstance(method,ast.FunctionDef) and method.name.startswith('test_')]
+        policy={node.targets[0].id:ast.literal_eval(node.value) for node in tree.body
+            if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name)
+            and node.targets[0].id in {'NATIVE_CRITICAL_FAMILY_CASES','NATIVE_SUBTEST_POLICY'}}
+        self.manifest={'schema_version':1,'record_type':'week8_native_schema2_case_manifest',
+            'test_definition':test,'ordered_case_ids':case_ids,
+            'ordered_subtest_ids':list(policy['NATIVE_SUBTEST_POLICY']),
+            'family_coverage':policy['NATIVE_CRITICAL_FAMILY_CASES']}
+        manifest=self.role('manifest',self.encode(self.manifest))
+        fixed=n['PROGRAMMATIC_FACTS']['frozen_config'];runtime_images={}
+        for field,path_key,sha_key in [('python','pinned_python','pinned_python_sha256'),
+                ('base_python','pinned_base_python','pinned_base_python_sha256'),
+                ('pyvenv_cfg','pinned_pyvenv','pinned_pyvenv_sha256')]:
+            row=self.put(fixed[path_key],('SYNTHETIC_RUNTIME:'+field).encode())
+            fixed[sha_key]=row['sha256'];runtime_images[field]=row
+        runtime={'os':'nt','implementation':'CPython','version':[3,13,5],
+            'flags':{'isolated':1,'no_site':1,'dont_write_bytecode':True,'utf8_mode':1},**runtime_images}
+        runtime_ref=self.role('runtime',self.encode({'schema_version':1,
+            'record_type':'week8_native_schema2_runtime_profile','owner_sha256':n['PROGRAMMATIC_FACTS']['owner_sha256'],
+            'runtime':runtime,'inventories':n['NATIVE_PUBLICATION_RUNTIME_FACTS'],'scope':self.scope}))
+        runtime={**runtime,'runtime_inventory_refs':runtime_ref}
+        template=self.role('template',b'REVIEWED_COMMON_SHA256 = None\nREVIEWED_CASE_MANIFEST_SHA256 = None\nREVIEWED_RUNTIME_PROFILE_SHA256 = None\n# SYNTHETIC_DRIVER_NO_EXECUTION\n')
+        substitutions={'REVIEWED_COMMON_SHA256':common['sha256'],
+            'REVIEWED_CASE_MANIFEST_SHA256':manifest['sha256'],'REVIEWED_RUNTIME_PROFILE_SHA256':runtime_ref['sha256']}
+        bound=self.files[template['path']]
+        for name,digest in substitutions.items():bound=bound.replace((name+' = None').encode(),(name+' = '+repr(digest)).encode())
+        driver=self.role('driver',bound)
+        sources={'common':common,'project_sources':projects,'test_definition':test,
+                 'driver_template':template,'bound_driver':driver}
+        observations=[{**row,'before':list(identity(plain(Path(row['path'])))),
+                      'after':list(identity(plain(Path(row['path']))))}
+                      for row in [common,test,template,driver,*projects.values()]]
+        self.validation={'schema_version':1,'record_type':'week8_native_schema2_source_validation',
+            'profile_id':'week8_native_schema2_common_actual_inert_v1','verdict':'PASS',
+            'owner_sha256':n['PROGRAMMATIC_FACTS']['owner_sha256'],'source_identities':sources,
+            'driver_binding':{'template':template,'bound':driver,'substitutions':substitutions,
+                'cli':{'flags':['-I','-S','-B','-X','utf8'],'self_hash':'externally_reviewed_cli',
+                       'authorization_hash':'externally_reviewed_cli'}},
+            'runtime_policy':runtime,'case_manifest':manifest,'source_observations':observations,'scope':self.scope}
+        validation_ref=self.role('validation',self.encode(self.validation))
+        owner=n['PROGRAMMATIC_FACTS']['owner_sha256'];start='2026-10-02T05:00:00.0000000+00:00'
+        finish='2026-10-02T05:00:00.0010000+00:00'
+        self.ack={'schema_version':1,'record_type':'week8_native_schema2_first_execution','author':'/root',
+            'decision':'execute_native_schema2_behavior_once','owner_sha256':owner,
+            'owner_end_utc':n['PROGRAMMATIC_FACTS']['owner']['work_end_utc'],
+            'source_validation':validation_ref,'driver':driver,'case_manifest':manifest,'runtime':runtime_ref,
+            'created_utc':start,'scope':self.scope}
+        ack_ref=self.role('authorization',self.encode(self.ack))
+        subtests=[{'subtest_id':key,'status':'PASS',**row} for key,row in policy['NATIVE_SUBTEST_POLICY'].items()]
+        cases=[{'case_id':key,'status':'PASS','elapsed_ms':0,'detail_sha256':sha(b'SYNTHETIC_CASE_DETAIL'),
+                'subtest_count':sum(row['case_id']==key for row in subtests)} for key in case_ids]
+        summary={'required':len(cases),'executed':len(cases),'passed':len(cases),
+                 'skipped':0,'failures':0,'errors':0,'unexpected_successes':0,'subtests':len(subtests)}
+        case_manifest={'sha256':manifest['sha256'],'ordered_case_ids':case_ids,'ordered_subtest_ids':list(policy['NATIVE_SUBTEST_POLICY'])}
+        rawresult={'schema_version':1,'record_type':'week8_native_schema2_unittest_result','case_manifest':case_manifest,
+                   'cases':cases,'subtests':subtests,'summary':summary,'scope':self.scope}
+        result=self.role('result',self.encode(rawresult))
+        import xml.etree.ElementTree as ET
+        xml=ET.Element('testsuite',{'tests':str(len(cases)),'failures':'0','errors':'0','skipped':'0'})
+        for case_id in case_ids:ET.SubElement(xml,'testcase',{'name':case_id})
+        junit=self.role('junit',ET.tostring(xml,encoding='utf-8'))
+        stdout=self.role('stdout',b'SYNTHETIC_UNITTEST_ONLY\n');stderr=self.role('stderr',b'')
+        evidence={'stdout':stdout,'stderr':stderr,'result':result,'junit':junit}
+        self.terminal={'schema_version':1,'record_type':'week8_native_schema2_launch_terminal',
+            'author':'/root','decision':'completed_once','owner_sha256':owner,'authorization':ack_ref,'driver':driver,
+            'started_utc':start,'finished_utc':finish,'elapsed_ms':1,'exit_code':0,'timed_out':False,
+            **evidence,'scope':self.scope}
+        terminal=self.role('terminal',self.encode(self.terminal))
+        self.profile={'schema_version':1,'record_type':'week8_native_schema2_typed_behavior_result',
+            'profile_id':'week8_native_schema2_common_actual_inert_v1','execution_kind':'actual_root_owned_inert_runtime',
+            'verdict':'PASS','owner_sha256':owner,'execution':{'started_utc':start,'finished_utc':finish,
+                'elapsed_ms':1,'root_authorization':ack_ref,'root_terminal':terminal},'source_identities':sources,
+            'source_validation':validation_ref,'runner':{**driver,'command':[runtime['base_python']['path'],
+                '-I','-S','-B','-X','utf8',driver['path'],'--expected-script-sha256',driver['sha256'],
+                '--root-execution-ack-sha256',ack_ref['sha256']], 'exit_code':0,'supervision':'root_retained_child_complete_60s'},
+            'runtime':runtime,'case_manifest':case_manifest,'cases':cases,'subtests':subtests,'summary':summary,
+            'skip_whitelist':[],'evidence':evidence,**self.scope}
+        self.replace_profile(self.profile)
+
+    @staticmethod
+    def encode(value):return json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=True).encode()+b'\n'
+    def put(self,path,data):
+        if path not in self.inodes:self.inodes[path]=len(self.inodes)+1
+        self.files[path]=data
+        return {'path':path,'sha256':sha(data),'size':len(data)}
+    def role(self,role,data):return self.put(str(self.n['BEHAVIOR_ROOT']/self.n['BEHAVIOR_ROLES'][role]),data)
+    def replace_profile(self,value):
+        self.profile=copy.deepcopy(value);row=self.role('profile',self.encode(value))
+        self.reference={key:row[key] for key in ('path','sha256')}
+    def accept_validation(self,value=None):
+        value=self.validation if value is None else value;data=self.encode(value);ref=self.role('validation',data)
+        return self.n['_native_behavior_source_validation'](data,ref,self.bindings,{})
+    def accept(self):
+        validation=self.accept_validation()
+        return self.n['_native_behavior_runtime_evidence'](self.files[self.reference['path']],self.reference,
+                                                         self.bindings,{},validation=validation)
+    def refusal(self,test,mutate,pattern):
+        self.accept()  # Healthy control precedes each one-field semantic mutation.
+        changed=copy.deepcopy(self.profile);mutate(changed);self.replace_profile(changed)
+        with test.assertRaisesRegex(ValueError,pattern):self.accept()
+
+def behavior_factory():return SyntheticBehaviorFixture()
+
+class NativeSchema2CriticalFamilies(unittest.TestCase):
+    def test_m01_pristine_raw_guard_has_actual_healthy_control(self):
+        # Full real code guard cold/reuse controls are independently exercised by
+        # the preserved parameterized test, not substituted by a constant PASS.
+        tree=ast.parse(common_bytes())
+        guard=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_validate_raw_helper_executable_identity')
+        text=ast.get_source_segment(common_bytes().decode(),guard)
+        self.assertIn('ast.FunctionDef',text);self.assertIn('ast.ClassDef',text)
+        self.assertNotIn("co_flags & inspect.CO_NEWLOCALS",text)
+
+    def test_m02_generator_initializer_is_reconciled_not_blanket_ignored(self):
+        tree=ast.parse(fixture_bytes('raw003-source.bytes'))
+        self.assertEqual(sum(isinstance(n,ast.FunctionDef) for n in tree.body),81)
+        self.assertEqual(sum(isinstance(n,ast.ClassDef) for n in tree.body),7)
+        self.assertEqual(sum(isinstance(n,ast.GeneratorExp) for statement in tree.body
+            if not isinstance(statement,(ast.FunctionDef,ast.ClassDef)) for n in ast.walk(statement)),1)
+        guard=next(n for n in ast.parse(common_bytes()).body if isinstance(n,ast.FunctionDef) and n.name=='_validate_raw_helper_executable_identity')
+        text=ast.get_source_segment(common_bytes().decode(),guard)
+        self.assertIn('unexplained',text);self.assertIn('GeneratorExp',text)
+
+    def test_m03_method_property_and_default_states_are_bound(self):
+        namespace=source_namespace({'require','_raw_helper_function_state','_raw_helper_value_identity'})
+        def sample(value=7):return value
+        before=namespace['_raw_helper_function_state'](sample)
+        sample.__defaults__=(8,)
+        self.assertNotEqual(before,namespace['_raw_helper_function_state'](sample))
+
+    def test_m04_import_alias_and_all_schema2_globals_remain_guarded(self):
+        namespace=source_namespace(BASE)
+        self.assertIn('base64',ast.unparse(ast.parse(fixture_bytes('raw003-source.bytes'))))
+        self.assertIn('binascii',ast.unparse(ast.parse(fixture_bytes('raw003-source.bytes'))))
+        policy=namespace['NATIVE_SCHEMA2_POLICY']
+        self.assertEqual(len(set(policy)-{'SUCCESSOR_PREDECESSOR_FACTS','SUCCESSOR_ALLOWED_CHANGED_PATHS',
+            '_SUCCESSOR_FROZEN_NATIVE_RECEIPT','_SUCCESSOR_RELEASE_SOURCE_FIELDS'}),16)
+
+    def test_m05_uniform44_missing_extra_or_old_bus_refuses(self):
+        n=source_namespace({'require','checked_bindings'})
+        self.assertEqual(len(n['BINDING_SCHEMA']),44)
+        # Missing/extra shape precedes semantic fields or any IO.
+        for fields in ({},dict.fromkeys(n['BINDING_SCHEMA'],'0'*64)|{'unexpected':'0'*64}):
+            with self.assertRaisesRegex(ValueError,'keys'):n['checked_bindings'](fields,receipt_only=False)
+
+    def test_m06_only_fixed_renderer_phase_allows_four_late_nulls(self):
+        n=source_namespace({'require','checked_bindings'})
+        fields=dict.fromkeys(n['BINDING_SCHEMA'],'0'*64)
+        n.update(NATIVE_REVIEW_RELATIVE='SYNTHETIC/final.json',PRE_RENDER_REVIEW_RELATIVE='SYNTHETIC/pre.json')
+        fields.update(controller_commit='0'*40,changed_file_count=25,
+            native_review_path=str(n['PROJECT']/n['NATIVE_REVIEW_RELATIVE']),
+            pre_render_review_path=str(n['PROJECT']/n['PRE_RENDER_REVIEW_RELATIVE']),
+            release_provenance={key:{'path':str(n['PROJECT']/'SYNTHETIC'/key),'sha256':'0'*64}
+                for key in n['PROGRAMMATIC_FACTS']['provenance_fields']})
+        self.assertEqual(n['checked_bindings'](fields,receipt_only=False),fields)
+        for key in ('publisher_sha256','external_verifier_sha256','publication_end_sha256','verification_intent_sha256'):fields[key]=None
+        self.assertEqual(n['checked_bindings'](fields,receipt_only=True),fields)
+        with self.assertRaises(ValueError):n['checked_bindings'](fields,receipt_only=False)
+        with self.assertRaises(ValueError):n['checked_bindings'](fields,receipt_only=1)
+
+    def test_m07_independent_producer_hash_is_not_raw_helper_hash(self):
+        n,d,a,i,s,b=external_factory();n['_native_external_record'](d,a,i,s,b,{})
+        d=copy.deepcopy(d);d['helper_sha256']=b['helper_sha256'];d=reseal(n,d)
+        with self.assertRaisesRegex(ValueError,'source/receipt pin.*helper'):n['_native_external_record'](d,a,i,s,b,{})
+
+    def test_m08_resealing_cannot_replace_trusted_completion_hash(self):
+        n,d,a,i,s,b=external_factory();n['_native_external_record'](d,a,i,s,b,{})
+        changed=copy.deepcopy(d);changed['publication_end_sha256']='f'*64
+        with self.assertRaisesRegex(ValueError,'source/receipt pin.*publication'):n['_native_external_record'](reseal(n,changed),a,i,s,b,{})
+
+    def test_m09_raw_source_pin_and_external_source_roles_differ(self):
+        n,d,a,i,s,b=external_factory();n['_native_external_record'](d,a,i,s,b,{})
+        changed=copy.deepcopy(d);changed['policy_source_sha256']=b['external_verifier_sha256']
+        with self.assertRaisesRegex(ValueError,'identity/scope'):n['_native_external_record'](reseal(n,changed),a,i,s,b,{})
+
+    def test_m10_eight_metadata_variants_have_exact_producer_shapes(self):
+        n=source_namespace(BASE)
+        counts={key:len(value) for key,value in n['NATIVE_PUBLICATION_RECEIPT_KEYS'].items()}
+        self.assertEqual(sorted(counts.values()),[17,17,18,19,21,21,30,33])
+        n,d,a,i,s,b=external_factory();n['_native_external_record'](d,a,i,s,b,{})
+        extra=reseal(n,{**d,'extra':'x'})
+        with self.assertRaises(ValueError):n['_native_external_record'](extra,a,i,s,b,{})
+
+    def test_m11_no_future_publication_full_digest_in_common_source(self):
+        tree=ast.parse(common_bytes());names={n.targets[0].id for n in tree.body if isinstance(n,ast.Assign)
+            and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)}
+        self.assertTrue({'PUBLISHER_SHA256','EXTERNAL_VERIFIER_SHA256','PUBLICATION_END_SHA256',
+                         'VERIFICATION_INTENT_SHA256'}.isdisjoint(names))
+        f=behavior_factory();f.accept()
+        changed=copy.deepcopy(f.validation);changed['driver_binding']['substitutions']['ROOT_ACK_SHA256']='f'*64
+        with self.assertRaisesRegex(ValueError,'substitutions'):f.accept_validation(changed)
+
+    def test_m12_complete_typed_profile_and_source_validation_are_accepted(self):
+        f=behavior_factory();result=f.accept()
+        self.assertEqual(result,f.profile);self.assertEqual(len(result),22);self.assertEqual(len(f.validation),11)
+        self.assertIn(('raw_source_guard',),f.events)
+
+    def test_m13_static_metadata_or_zero_case_profile_cannot_pass(self):
+        f=behavior_factory();f.refusal(self,lambda d:d.update(execution_kind='metadata_only'),'execution/scope')
+        f=behavior_factory();f.refusal(self,lambda d:d.update(cases=[]),'raw result differs|case/subtest count')
+
+    def test_m14_dropped_duplicate_or_reordered_case_ids_refuse(self):
+        f=behavior_factory();f.refusal(self,lambda d:d['cases'].reverse(),'raw result differs|reordered')
+        f=behavior_factory();f.refusal(self,lambda d:d['case_manifest']['ordered_case_ids'].pop(),'manifest/runtime')
+
+    def test_m15_skips_errors_failures_and_unexpected_successes_refuse(self):
+        for key in ('skipped','errors','failures','unexpected_successes'):
+            f=behavior_factory();f.refusal(self,lambda d:d['summary'].__setitem__(key,1),'raw result differs|coverage')
+
+    def test_m16_common_project_test_and_driver_drift_refuse_freshly(self):
+        for field in ('common','test_definition','driver_template','bound_driver'):
+            f=behavior_factory();f.accept();row=f.validation['source_identities'][field]
+            f.files[row['path']]+=b'changed'
+            with self.assertRaisesRegex(ValueError,'byte pin|capture|source'):f.accept()
+
+    def test_m17_exact_three_driver_bindings_and_external_ack_cli(self):
+        f=behavior_factory();f.accept()
+        changed=copy.deepcopy(f.validation);changed['driver_binding']['cli']['authorization_hash']='embedded_ack_digest'
+        with self.assertRaisesRegex(ValueError,'trusted CLI grammar'):f.accept_validation(changed)
+
+    def test_m18_runtime_image_paths_flags_and_image_bytes_are_bound(self):
+        f=behavior_factory();f.refusal(self,lambda d:d['runtime']['flags'].__setitem__('no_site',False),'manifest/runtime')
+        f=behavior_factory();f.accept();row=f.validation['runtime_policy']['base_python'];f.files[row['path']]+=b'changed'
+        with self.assertRaisesRegex(ValueError,'byte pin'):f.accept()
+
+    def test_m19_authentic_python32_and_powershell33_utc_are_distinct(self):
+        n=source_namespace({'require','_native_utc'})
+        self.assertIsInstance(n['_native_utc']('2026-10-02T03:39:32.843940+00:00','Python'),int)
+        self.assertIsInstance(n['_native_utc']('2026-10-02T03:39:32.8439407+00:00','ROOT',powershell=True),int)
+        with self.assertRaises(ValueError):n['_native_utc']('2026-10-02T03:39:32.8439407+00:00','Python')
+        with self.assertRaises(ValueError):n['_native_utc']('2026-10-02T03:39:32.843940+00:00','ROOT',powershell=True)
+
+    def test_m20_u64_twenty_digits_signed_i63_and_bool_domains(self):
+        n=source_namespace({'require','_native_uint','_native_identity_domain'})
+        row=[2**64-1,2**64-1,2**63-1,-2**63,2**63-1,2**32-1,2**32-1,2**32-1]
+        self.assertEqual(n['_native_identity_domain'](row,'maximum'),tuple(row))
+        for index,value in ((0,2**64),(3,-2**63-1),(5,2**32),(2,True),(4,1.0)):
+            changed=row.copy();changed[index]=value
+            with self.assertRaises(ValueError):n['_native_identity_domain'](changed,'out-of-domain')
+
+    def test_m21_cap_exact_and_cap_plus_one_are_checked_before_hash(self):
+        f=behavior_factory();f.accept();role='profile';data=f.files[f.reference['path']]
+        f.n['NATIVE_BEHAVIOR_CAPS'][role]=len(data);f.accept()
+        f.n['NATIVE_BEHAVIOR_CAPS'][role]=len(data)-1
+        with self.assertRaisesRegex(ValueError,'exceeds derived cap'):f.accept()
+
+    def test_m22_both_attestation_files_keep_fresh_395799_ceiling(self):
+        n=source_namespace({'require','_native_capture_limit'});events=[]
+        n['_native_attestation_limit']=lambda:events.append('fresh') or (object(),395799)
+        for name in ('attestation.json','attestation.twin.json'):
+            path=n['ADMISSION']/name;self.assertEqual(n['_native_capture_limit'](path,None),395799)
+            with self.assertRaises(ValueError):n['_native_capture_limit'](path,383105)
+        self.assertEqual(events,['fresh']*4)
+
+    def test_m23_cached_witness_cap_precedes_digest_even_after_policy_drift(self):
+        n=source_namespace({'require','repeat'});events=[]
+        n['_native_capture_limit']=lambda *a:events.append('fresh') or 2
+        n['sha']=lambda *a:events.append('hash') or 'f'*64
+        with self.assertRaisesRegex(ValueError,'before hash'):n['repeat']({'synthetic':(b'123',())})
+        self.assertEqual(events,['fresh'])
+
+    def test_m24_raw9_birth_mode_and_source_replacement_are_reobserved(self):
+        f=behavior_factory();f.accept();row=f.validation['source_identities']['test_definition']
+        f.inodes[row['path']]+=10000
+        with self.assertRaisesRegex(ValueError,'source changed'):f.accept()
+        n=source_namespace({'require','_native_uint','_native_identity_domain','_native_source_identity'})
+        valid=[1,2,3,4,5,0o100600,1,32,5];self.assertEqual(n['_native_source_identity'](valid,'source'),tuple(valid))
+        valid[8]=6
+        with self.assertRaisesRegex(ValueError,'creation slot'):n['_native_source_identity'](valid,'source')
+
+    def test_m25_primary33_record_domains_refuse_float_or_wrong_utc(self):
+        n,d,a,i,s,b=external_factory();n['_native_external_record'](d,a,i,s,b,{})
+        for field,value in [('verification_observations',2.0),('created_at_utc','2026-10-02T05:00:00.0000000+00:00')]:
+            changed=reseal(n,{**d,field:value})
+            with self.assertRaises(ValueError):n['_native_external_record'](changed,a,i,s,b,{})
+
+    def test_m26_fixed_middle_grouped_qa_and_exact25_are_not_generic_scan(self):
+        n=source_namespace(BASE);old,middle,proof,qa=historical_factory(n)
+        n['_native_middle'](proof,old,middle,policy=n['NATIVE_SCHEMA2_POLICY'],expected_paths=qa)
+        pairs=json.loads(fixture_bytes('middle_manifest.bytes'))
+        n['_native_grouped_qa'](fixture_bytes('middle_manifest.bytes'),middle,qa)
+        with self.assertRaises(ValueError):n['_native_grouped_qa'](n['canonical'](sorted(pairs)),middle,qa)
+        changed=copy.deepcopy(proof);changed['changed_files']=changed['changed_files'][:-1]
+        with self.assertRaises(ValueError):n['_native_middle'](changed,old,middle,
+            policy=n['NATIVE_SCHEMA2_POLICY'],expected_paths=qa)
+
+    def test_m27_readiness_requires_actual_raw5_gate5_and_admission_block(self):
+        n=source_namespace({'require','checked_ready_result'});calls=[]
+        n['actual_native_admission']=lambda block,b,**kw:calls.append((block,kw)) or object()
+        good={'command':'status','state':'adjudicated_ready_for_one_recovery_epoch',
+              'automatic_retry_allowed':False,'scientific_values_emitted':False,'successor_admission':{'TEST_ONLY':'actual callback position'}}
+        n['checked_ready_result'](good,{},'status');self.assertEqual(len(calls),1)
+        wrong={k:v for k,v in good.items() if k!='successor_admission'}
+        with self.assertRaises(ValueError):n['checked_ready_result'](wrong,{},'status')
+        self.assertEqual(len(calls),1)
+
+    def test_m28_v2_tokens_and_renderer_action_roles_are_distinct(self):
+        n=source_namespace({'require','deterministic_receipt'});self.assertEqual(len(n['RECEIPT_BINDINGS']),8)
+        self.assertNotEqual(str(n['FRONT']/'renderer-attempt013-finished.json'),str(n['ATTEMPT']/'release-receipt-v2.txt'))
+        bindings={key:'a'*64 for key in n['RECEIPT_BINDINGS'].values()};bindings['controller_commit']='a'*40
+        data=n['deterministic_receipt'](bindings)
+        self.assertEqual(len(data),683);self.assertEqual(data.count(b'\n'),9);self.assertEqual(len(data.split(b'\n')),10)
+
+    def test_m29_source_base64_framing_preserves_transport_ceiling(self):
+        encoded=base64.b64encode(common_bytes())
+        self.assertLessEqual(len(common_bytes()),196605)
+        self.assertLessEqual(len(encoded),262142);self.assertLessEqual(len(encoded)+2,262144)
+        self.assertGreater(len(base64.b64encode(b'x'*196606))+2,262144)
+        # Actual bound quoted Windows argv remains an independently reviewed
+        # runtime/derivation dependency; 16384 parser bytes never prove8191.
+
+    def test_m30_second_boundary_rechecks_source_without_authority_cache(self):
+        f=behavior_factory();f.accept();first=sum(e[0]=='raw_source_guard' for e in f.events)
+        f.accept();self.assertGreater(sum(e[0]=='raw_source_guard' for e in f.events),first)
+        f.files[f.validation['source_identities']['common']['path']]+=b'change'
+        with self.assertRaises(ValueError):f.accept()
+
+    def test_m31_scope_flags_forbid_native_fit_science_or_public_authority(self):
+        for key in source_namespace({'require'})['BEHAVIOR_FALSE_FIELDS']:
+            f=behavior_factory();f.refusal(self,lambda d:d.__setitem__(key,True),'execution/scope')
+
+    def test_m32_unbound_or_placeholder_caps_refuse_before_any_input_read(self):
+        n=source_namespace({'require','_native_behavior_cap'});n['NATIVE_BEHAVIOR_CAPS']=None
+        with self.assertRaisesRegex(ValueError,'unbound'):n['_native_behavior_cap']('profile')
+        n['NATIVE_BEHAVIOR_CAPS']={'TEST_ONLY':1000000}
+        with self.assertRaisesRegex(ValueError,'unbound'):n['_native_behavior_cap']('profile')
+        f=behavior_factory();f.accept()

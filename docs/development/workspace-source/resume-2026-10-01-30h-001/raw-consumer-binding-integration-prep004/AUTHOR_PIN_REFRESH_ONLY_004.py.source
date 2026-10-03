@@ -1,0 +1,97 @@
+
+import ast,datetime as dt,hashlib,json,math,os,pathlib,stat,re
+P=pathlib.Path(r"D:\Aenv\pro2");B=P/"resume-2026-10-01-30h-001";R=B/"raw-component-runtime-prep004"
+INPUTS={};BYTES={}
+FIXED_EXE_ROLES={str(P/"pro2/.venv/Scripts/python.exe"),str(P/"runtimes/git/mingw64/bin/git.exe"),str(P/"runtimes/week8-python313-frozen-001/python.exe")}
+RAW_FIELDS=("st_dev","st_ino","st_mode","st_size","st_mtime_ns","st_ctime_ns","st_nlink","st_file_attributes","st_birthtime_ns")
+def raw9(s):return [getattr(s,k) for k in RAW_FIELDS]
+def ancestors(p):
+    rows=[]
+    for d in [*reversed(p.parent.parents),p.parent]:
+        s=d.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not s.st_file_attributes&1024,d
+        rows.append([str(d),s.st_dev,s.st_ino,s.st_mode,s.st_file_attributes])
+    return rows
+def read(p,pin=None,size=None,maximum=8388608):
+    p=pathlib.Path(p);chain=ancestors(p);pre=p.lstat()
+    assert stat.S_ISREG(pre.st_mode) and pre.st_nlink==1 and not pre.st_file_attributes&1024,p
+    assert type(maximum) is int and 0<maximum<=134217728 and 0<=pre.st_size<=maximum,p
+    with p.open("rb") as f:
+        first=os.fstat(f.fileno());assert 0<=first.st_size<=maximum
+        x=f.read(maximum+1);last=os.fstat(f.fileno())
+    post=p.lstat()
+    assert len(x)<=maximum and len(x)==pre.st_size and raw9(pre)==raw9(post) and raw9(first)==raw9(last),p
+    for key in ("st_dev","st_ino","st_size","st_mtime_ns","st_nlink","st_file_attributes","st_birthtime_ns"):
+        assert getattr(pre,key)==getattr(first,key),str(p)+key
+    if pre.st_mode!=first.st_mode:
+        assert os.name=="nt" and str(p) in FIXED_EXE_ROLES,p
+        assert stat.S_IFMT(pre.st_mode)==stat.S_IFMT(first.st_mode) and stat.S_IMODE(pre.st_mode)&~0o111==stat.S_IMODE(first.st_mode)&~0o111,p
+        assert stat.S_IMODE(pre.st_mode)&0o111==0o111 and stat.S_IMODE(first.st_mode)&0o111==0,p
+    assert ancestors(p)==chain,p
+    r={"path":str(p),"sha256":hashlib.sha256(x).hexdigest(),"size":len(x),"path_raw9":raw9(pre),"handle_raw9":raw9(first)}
+    if pin is not None:assert r["sha256"]==pin,p
+    if size is not None:assert len(x)==size,p
+    INPUTS[str(p)]=r;BYTES[str(p)]=x
+    return x
+def pairs(v):
+    d={}
+    for k,x in v:
+        assert k not in d,"duplicate JSON key"
+        d[k]=x
+    return d
+def finite(token):
+    value=float(token);assert math.isfinite(value),"nonfinite JSON number";return value
+def J(x):return json.loads(x,object_pairs_hook=pairs,parse_float=finite,parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def hex64(x):return type(x) is str and re.fullmatch("[0-9a-f]{64}",x) is not None
+def bindings_reverse(source,names,expected):
+    rows=source.splitlines(keepends=True);t=ast.parse(source.decode("utf-8"));edits=[];found={}
+    for n in t.body:
+        if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in names:
+            key=n.targets[0].id;assert key not in found and isinstance(n.value,ast.Constant) and hex64(n.value.value)
+            found[key]=n.value.value
+            assert expected[key]==n.value.value,key
+            start=sum(map(len,rows[:n.value.lineno-1]))+n.value.col_offset
+            end=sum(map(len,rows[:n.value.end_lineno-1]))+n.value.end_col_offset
+            edits.append((start,end))
+    assert set(found)==set(names) and len(edits)==len(names)
+    back=source
+    for start,end in sorted(edits,reverse=True):back=back[:start]+b"None"+back[end:]
+    return back,found,edits
+
+R=B/"raw-consumer-binding-integration-prep004";S=R/"before/revision003"
+def create(p,x):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open("xb") as f:f.write(x)
+ assert read(p)==x
+oldbindings=J(read(S/"SOURCE_GUARD_TEST_BINDINGS_002.json"))
+raw=read(R/"inputs/raw004-source.bytes","da64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211",210452)
+rawpin=hashlib.sha256(raw).hexdigest()
+assert rawpin==J(read(R/"inputs/RAW_POLICY_STAGED_MANIFEST_004.json"))["raw_helper_sha256"] if "raw_helper_sha256" in J(read(R/"inputs/RAW_POLICY_STAGED_MANIFEST_004.json")) else True
+deltas={};bindings=json.loads(json.dumps(oldbindings))
+for role,row in oldbindings["consumers"].items():
+ path=S/row["path"];original=read(path,row["sha256"],row["size"]);tree=ast.parse(original)
+ matches=[n for n in tree.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and isinstance(n.value,ast.Constant) and n.value.value==oldbindings["raw_sha256"]]
+ assert len(matches)==1
+ n=matches[0];lines=original.splitlines(keepends=True)
+ begin=sum(map(len,lines[:n.value.lineno-1]))+n.value.col_offset
+ end=sum(map(len,lines[:n.value.end_lineno-1]))+n.value.end_col_offset
+ oldliteral=original[begin:end];assert oldliteral[0:1]==oldliteral[-1:]==b'"'
+ changed=original[:begin]+b'"'+rawpin.encode()+b'"'+original[end:]
+ assert changed[:begin]+oldliteral+changed[begin+len(oldliteral):]==original
+ create(R/"baseline-pins-only"/row["path"],changed)
+ # Active bytes initially only differ by the reviewed raw4 pin declaration.
+ create(R/row["path"],changed)
+ newrow=bindings["consumers"][role];newrow["sha256"]=hashlib.sha256(changed).hexdigest();newrow["size"]=len(changed)
+ deltas[role]={"path":row["path"],"raw_pin_symbol":n.targets[0].id,"raw_pin_line":n.lineno,"before_sha256":row["sha256"],"baseline_pin_only_sha256":newrow["sha256"],"only_original_source_delta":"one SHA literal declaration","algorithm_changed":False}
+oldraw=read(S/"inputs/raw003-source.bytes",oldbindings["raw_sha256"])
+oldtree=ast.parse(oldraw);rawtree=ast.parse(raw)
+oldglobalnames={z.id for n in oldtree.body if isinstance(n,ast.Assign) for z in n.targets if isinstance(z,ast.Name)}
+oldfunctions={n.name for n in oldtree.body if isinstance(n,ast.FunctionDef)}
+globals_added=[z.id for n in rawtree.body if isinstance(n,ast.Assign) for z in n.targets if isinstance(z,ast.Name) and z.id not in oldglobalnames]
+helpers_added=[n.name for n in rawtree.body if isinstance(n,ast.FunctionDef) and n.name not in oldfunctions]
+assert len(globals_added)==11 and len(helpers_added)==4
+bindings.update({"schema_version":4,"raw_sha256":rawpin,"raw_source_sha256_unchanged":rawpin,"raw_source_path":"inputs/raw004-source.bytes","top_module_named_function_count":85,"schema3_policy_names":globals_added,"schema3_helper_names":helpers_added,"top_module_class_count":7,"initializer_generator_code_count":1,"schema3_private_attestation_cap":361287,"global_attestation_cap":395799,"schema3_fixed_intermediates":"EA9->597->3f74->future-final; no current/final authority implied","new_14_prior_method_ASTs_retained":True,"guard_mapping_kind_correction_pending_root":True,"actual_test_results":None,"actual_collection":None,"actual_bound_review":None,"root_execution_ACK":None})
+create(R/"SOURCE_GUARD_TEST_BINDINGS_004.BASELINE.json",json.dumps(bindings,sort_keys=True,indent=2).encode()+b"\n")
+create(R/"PIN_REFRESH_ONLY_BASELINE_004.json",json.dumps({"schema_version":1,"author":"/root/candidate_review","created_at_utc":dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"),"raw_sha256":rawpin,"five_sources":deltas,"production_source_algorithms_changed":False,"actual_target_execution":False,"live_apply":False},sort_keys=True,indent=2).encode()+b"\n")
+print(json.dumps({"raw":rawpin,"five_pin_symbols":[x["raw_pin_symbol"] for x in deltas.values()],"new_policy_count":len(globals_added),"new_helper_count":len(helpers_added)}))
+

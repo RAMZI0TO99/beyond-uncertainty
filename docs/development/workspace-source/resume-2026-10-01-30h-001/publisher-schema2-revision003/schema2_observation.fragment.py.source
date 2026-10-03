@@ -1,0 +1,136 @@
+def schema2_release_checks(old, new, old_rows, new_rows, changed, branch, *, policy):
+    exact(old, set(policy["_SUCCESSOR_RELEASE_KEYS"]), "exact34 historical release")
+    exact(new, set(policy["_SUCCESSOR_RELEASE_KEYS"]), "exact34 final release")
+    require(old == HISTORICAL["release"], "historical release content differs")
+    for name, value in new.items():
+        if name.endswith("Sha256"):
+            hex_value(value, 64, "release " + name)
+    require(type(new["Branch"]) is str and new["Branch"] == branch, "release Branch differs")
+    stamp_value = new["CommittedUtc"]
+    require(type(stamp_value) is str and re.fullmatch(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{6})?\+00:00", stamp_value)
+        is not None, "release timestamp is not canonical UTC")
+    parsed = datetime.fromisoformat(stamp_value)
+    require(parsed.isoformat() == stamp_value and parsed.utcoffset().total_seconds() == 0
+            and parsed <= datetime.now(timezone.utc), "release timestamp differs/future")
+    middle = policy["SUCCESSOR_INTERMEDIATE_FACTS"]
+    required = {"ControllerCommit": BINDINGS["current_commit"], "ParentCommit": middle["controller_commit"],
+        "FinalCandidateManifestSha256": BINDINGS["current_candidate_manifest_sha256"],
+        "FrozenExecutionCommit": HISTORICAL["execution"]["git_commit"],
+        "NewOwnerWindowSha256": HISTORICAL["inputs"]["owner"]["sha256"]}
+    require(all(new[name] == value for name, value in required.items()), "final release provenance differs")
+    require(type(new["FileCount"]) is int and new["FileCount"] == len(changed)
+            == policy["_SUCCESSOR_REQUIRED_FINAL_CHANGED_COUNT"], "final release exact25 count differs")
+    for name in ("SourceClean", "FrozenExecutionClean", "CommittedBlobsMatchReviewedWorktreeBytes"):
+        require(new[name] is True, "release clean/provenance boolean differs")
+    for name in ("RemotePushPerformed", "ProductionInvoked"):
+        require(new[name] is False, "release public/production boolean differs")
+    old_files, new_files = ({row["path"]: row for row in rows} for rows in (old_rows, new_rows))
+    fields = {**policy["_SUCCESSOR_RELEASE_SOURCE_FIELDS"],
+              "NativeLauncherSha256": "scripts/week8_recovery_native_launcher.ps1",
+              "OuterSha256": "scripts/week8_recovery_outer_bootstrap.txt"}
+    for field, path in fields.items():
+        require(old[field] == old_files[path]["sha256"] and new[field] == new_files[path]["sha256"],
+                "release source field differs: " + field)
+    provenance_fields = {name for name in new if name.endswith("Sha256")} - set(fields) - {
+        "FinalCandidateManifestSha256", "NewOwnerWindowSha256"}
+    require(set(EXPECTED_RELEASE_PROVENANCE) == provenance_fields,
+            "release provenance bindings do not cover exact final34 SHA keyset")
+    require(all(new[name] == EXPECTED_RELEASE_PROVENANCE[name]["sha256"] for name in provenance_fields),
+            "release provenance hash differs from independently pinned evidence")
+
+
+def observation() -> dict:
+    owner()
+    runtime_facts = runtime()
+    material = inputs()
+    policy = schema2_literal_policy(material["raw_source"])
+    facts = policy["SUCCESSOR_PREDECESSOR_FACTS"]
+    middle = policy["SUCCESSOR_INTERMEDIATE_FACTS"]
+    allowed = frozenset(policy["SUCCESSOR_ALLOWED_CHANGED_PATHS"])
+    require(len(allowed) == 25, "finite policy scope differs")
+    incident = strict_json(material["incident"])
+    terminal = strict_json(material["terminal"])
+    old_raw = incident["authority"]["preimport_authority_record"]
+    require(old_raw == HISTORICAL["old_raw"] and old_raw["record_digest"] == facts["raw_record_digest"]
+        and incident["inventory_digest"] == facts["inventory_digest"]
+        and terminal["incident"] == {"file_sha256": facts["incident_sha256"],
+            "record_digest": incident["record_digest"], "inventory_digest": facts["inventory_digest"]},
+        "historical raw/inventory/terminal binding differs")
+    old_rows = committed_rows(CONTROLLER, facts["controller_commit"])
+    schema2_file_rows(old_rows, policy=policy, what="predecessor")
+    require(canonical(old_rows) + b"\n" == material["predecessor_rows"]
+            and all(row_identity(old_rows)[name] == facts[name] for name in row_identity(old_rows)),
+            "742 predecessor Git objects differ from retained raw inventory")
+    old_qa = schema2_qa(material["predecessor_manifest"], old_rows)
+    expected_paths = [row[0] for row in old_qa]
+    # This is an independent fresh full Git+blob acquisition, not an attestation
+    # supplied middle table. stable_observation repeats it in each helper.
+    fresh_middle_rows = committed_rows(CONTROLLER, middle["controller_commit"])
+    commit_size = line(git(CONTROLLER, ["cat-file", "-s", middle["controller_commit"]]))
+    require(commit_size == str(policy["_SUCCESSOR_INTERMEDIATE_PROOF_LIMITS"]["git_commit_object_base64"][1]),
+            "middle commit pre-read size differs")
+    fresh_commit = git(CONTROLLER, ["cat-file", "commit", middle["controller_commit"]])
+    require(fresh_commit == material["middle_commit_object"], "middle committed object differs from retained proof")
+    middle_proof = {
+        "release_record_base64": base64.b64encode(material["middle_release"]).decode("ascii"),
+        "candidate_manifest_base64": base64.b64encode(material["middle_manifest"]).decode("ascii"),
+        "git_commit_object_base64": base64.b64encode(fresh_commit).decode("ascii"),
+        "changed_files": [dict(row) for row in policy["_SUCCESSOR_INTERMEDIATE_AFTERIMAGES"]],
+    }
+    middle_rows = schema2_middle(middle_proof, old_rows, fresh_middle_rows,
+                                policy=policy, expected_paths=expected_paths)
+    new_rows = committed_rows(CONTROLLER, BINDINGS["current_commit"])
+    changed, parent_changed = schema2_diffs(old_rows, middle_rows, new_rows, policy=policy)
+    schema2_qa(material["current_manifest"], new_rows, expected_paths=expected_paths)
+    live = worktree(CONTROLLER, BINDINGS["current_commit"], new_rows)
+    final_commit_object = git(CONTROLLER, ["cat-file", "commit", BINDINGS["current_commit"]])
+    schema2_commit_object(final_commit_object, commit=BINDINGS["current_commit"],
+                          parent=middle["controller_commit"])
+    execution = HISTORICAL["execution"]
+    execution_rows = committed_rows(Path(execution["path"]), execution["git_commit"])
+    execution_identity = row_identity(execution_rows)
+    require(execution_identity == {"controller_inventory_digest": execution["worktree_inventory_digest"],
+        "tracked_tree_digest": execution["tracked_tree_digest"], "tracked_file_count": execution["tracked_file_count"]},
+        "frozen execution committed identity differs")
+    frozen_live = worktree(Path(execution["path"]), execution["git_commit"], execution_rows, detached=True)
+    schema2_release_checks(strict_json(material["predecessor_release"]), strict_json(material["current_release"]),
+        old_rows, new_rows, changed, live["branch"], policy=policy)
+    current_receipt = receipt(material["current_receipt"])
+    files = {row["path"]: row for row in new_rows}
+    expected_receipt = {"controller_commit": BINDINGS["current_commit"],
+        "native_launcher_sha256": files["scripts/week8_recovery_native_launcher.ps1"]["sha256"],
+        "outer_sha256": files["scripts/week8_recovery_outer_bootstrap.txt"]["sha256"],
+        "entry_sha256": files["scripts/week8_exp2a_recovery_entrypoint.py"]["sha256"],
+        "helper_sha256": files["scripts/week8_recovery_raw_authority.py"]["sha256"],
+        **{name: BINDINGS[name] for name in ("stage0_source_sha256", "stage0_encoded_sha256", "stage0_environment_policy_sha256")}}
+    require(current_receipt == expected_receipt and expected_receipt["helper_sha256"] == BINDINGS["raw_helper_sha256"],
+            "current V2 receipt differs from reviewed sources/generated stage0")
+    successor = {"controller_commit": BINDINGS["current_commit"], **row_identity(new_rows),
+        "release_record_sha256": BINDINGS["current_release_sha256"],
+        "candidate_manifest_sha256": BINDINGS["current_candidate_manifest_sha256"]}
+    attestation = {"successor_admission_schema_version": 2, "record_type": "week8_d176_successor_admission",
+        "decision_id": "D-161", "recovery_id": incident["recovery_id"], "predecessor": facts,
+        "successor": successor, "predecessor_files": old_rows, "successor_files": new_rows,
+        "changed_paths": changed, "intermediate": dict(middle), "intermediate_proof": middle_proof,
+        "successor_parent_changed_paths": parent_changed, **FLAGS}
+    attestation["record_digest"] = sha(canonical(attestation))
+    attestation_bytes = canonical(attestation) + b"\n"
+    require(len(attestation_bytes) <= policy["SUCCESSOR_ADMISSION_MAX_BYTES"],
+            "emitted attestation exceeds395799 before publication")
+    schema2_sealed_attestation(attestation_bytes, expected_sha256=sha(attestation_bytes), policy=policy)
+    payloads = {"attestation.json": attestation_bytes, "attestation.twin.json": attestation_bytes,
+        "predecessor-release.json": material["predecessor_release"],
+        "successor-release.json": material["current_release"],
+        "predecessor-candidate-manifest.json": material["predecessor_manifest"],
+        "successor-candidate-manifest.json": material["current_manifest"],
+        "current-native-release-receipt.txt": material["current_receipt"]}
+    require(set(payloads) == OUTPUT_NAMES, "output contract differs")
+    owner()
+    return {"payloads": payloads, "attestation": attestation, "runtime": runtime_facts,
+        "controller_live": live, "execution_live": frozen_live,
+        "input_identity_digest": input_identity_digest(material),
+        "input_hashes": {name: sha(value) for name, value in material.items()},
+        "policy": policy, "middle_full742_identity": row_identity(middle_rows),
+        "intermediate_proof_sha256": sha(canonical(middle_proof)),
+        "final_commit_object_sha256": sha(final_commit_object)}

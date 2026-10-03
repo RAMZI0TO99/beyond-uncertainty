@@ -1,0 +1,272 @@
+"""Owned stdlib metadata audit. Reviewed text is parsed as AST only, never executed."""
+import ast
+import copy
+import datetime as dt
+import hashlib
+import io
+import json
+import math
+import os
+from pathlib import Path
+import re
+import stat
+import tokenize
+
+ROOT = Path('D:/Aenv/pro2')
+BASE = ROOT / 'resume-2026-10-03-continuation001'
+U = BASE / 'guard006-bound-late-checker-prep001'
+OWN = BASE / 'guard008-utility-source-independent-review001'
+PINS = {}
+DATA = {}
+INITIAL = {}
+
+def need(value, reason):
+    if not value:
+        raise ValueError(reason)
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+def raw(s):
+    result = [getattr(s, key, None) for key in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')]
+    need(all(type(v) is int for v in result), 'genuine Windows raw9')
+    return result
+
+def parents(p):
+    result = []
+    for q in reversed(p.parents):
+        s = q.lstat()
+        need(stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not s.st_file_attributes & 0x400, 'plain parent')
+        result.append([str(q), s.st_dev, s.st_ino])
+    return result
+
+def observe(p, expected=None, size=None):
+    p = p.absolute()
+    need(p.is_relative_to(ROOT), 'workspace input')
+    chain = parents(p)
+    a = p.lstat(); ar = raw(a)
+    need(stat.S_ISREG(a.st_mode) and a.st_nlink == 1 and not a.st_file_attributes & 0x400 and a.st_size <= 8388608, 'plain finite source')
+    fd = os.open(p, os.O_RDONLY | os.O_BINARY)
+    parts = []; count = 0
+    try:
+        b = os.fstat(fd); br = raw(b)
+        need(all(ar[i] == br[i] for i in (0,1,2,3,5,6,7,8)), 'lawful plain source cross-API identity; retain independent ctime facts')
+        while True:
+            block = os.read(fd, min(1048576, a.st_size + 1 - count))
+            if not block:
+                break
+            count += len(block); need(count <= a.st_size, 'source growth')
+            parts.append(block)
+        need(raw(os.fstat(fd)) == br, 'descriptor post drift')
+    finally:
+        os.close(fd)
+    data = b''.join(parts)
+    need(raw(p.lstat()) == ar and parents(p) == chain, 'path/parent post drift')
+    need(len(data) == a.st_size and (size is None or len(data) == size) and (expected is None or sha(data) == expected), 'expected bytes/hash')
+    # Different API byte read is still owned metadata, never a reviewed module import.
+    need(p.read_bytes() == data and raw(p.lstat()) == ar, 'paired API byte read')
+    return data, dict(path=str(p), bytes=len(data), sha256=sha(data), path_raw9=ar, descriptor_raw9=br, parent_identities=chain)
+
+def pairs(rows):
+    result = {}
+    for key, value in rows:
+        need(key not in result, 'duplicate JSON key')
+        result[key] = value
+    return result
+
+def reject(value):
+    raise ValueError('nonfinite JSON constant')
+
+def decode(data):
+    value = json.loads(data.decode('utf-8', 'strict'), object_pairs_hook=pairs, parse_constant=reject)
+    def finite(v):
+        if type(v) is float:
+            need(math.isfinite(v), 'finite historical metadata')
+        elif type(v) is dict:
+            for item in v.values(): finite(item)
+        elif type(v) is list:
+            for item in v: finite(item)
+    finite(value)
+    return value
+
+def add(p, pin=None, size=None):
+    p = p.absolute(); key = str(p)
+    if key in PINS:
+        need(pin is None or PINS[key]['sha256'] == pin, 'consistent pool pin')
+        need(size is None or PINS[key]['bytes'] == size, 'consistent pool size')
+        return DATA[key]
+    data, row = observe(p, pin, size)
+    PINS[key] = dict(path=key, sha256=row['sha256'], bytes=row['bytes'])
+    INITIAL[key] = row; DATA[key] = data
+    if p.suffix == '.json': decode(data)
+    elif p.suffix in ('.py', '.md', '.ps1'): data.decode('utf-8', 'strict')
+    return data
+
+def dump(node):
+    return ast.dump(node, include_attributes=False)
+
+def output(name, value):
+    p = OWN / name
+    data = (json.dumps(value, sort_keys=True, ensure_ascii=True, allow_nan=False, separators=(',', ':')) + '\n').encode('ascii')
+    with p.open('xb') as stream:
+        stream.write(data); stream.flush(); os.fsync(stream.fileno())
+    need(p.read_bytes() == data, 'own output readback')
+    return dict(path=str(p), sha256=sha(data), bytes=len(data))
+
+def run():
+    need(os.name == 'nt' and os.sys.flags.isolated and os.sys.flags.no_site and os.sys.flags.dont_write_bytecode and os.sys.flags.utf8_mode, 'isolated frozen stdlib audit')
+    need(Path(os.sys.executable).absolute() == ROOT / 'runtimes/week8-python313-frozen-001/python.exe', 'frozen metadata interpreter')
+    manifest = decode(add(U / 'AUTHOR_FROZEN_SOURCE_MANIFEST_008.json', '4b7cbd49afcb3153a73835119ef1634c71f62b246eb4ad958bb69c4ffb855da1', 3752))
+    previous = decode(add(U / 'AUTHOR_FROZEN_SOURCE_MANIFEST_007.json', '4d95dc21c9606090a6ddab6344dc63bf062e62e3ead27846f08165ceebadb73e', 8517))
+    need(len(manifest['payloads']) == 17 and len(previous['payloads']) == 41, 'closed cohort counts')
+    need(manifest['author'] == '/root/pubnative_review' and manifest['schema_version'] == 1 and type(manifest['schema_version']) is int, 'genuine author Source envelope')
+    for key in ('Root_GO','SourceActualInputs','actual_READY','actual_binding','actual_bound_models','actual_fit','actual_source_pool','different_source_acceptance'):
+        need(manifest[key] is None, 'Source actual field remains None: ' + key)
+    for key in ('mains_or_target_tests_executed','operational_authority','runtime_acceptance'):
+        need(manifest[key] is False, 'Source-only flag: ' + key)
+    for m in (manifest, previous):
+        for row in m['payloads']: add(U / row['path'], row['sha256'], row['bytes'])
+    for row in manifest['active_source_rows']: add(U / row['path'], row['sha256'], row['bytes'])
+    author_obs = decode(DATA[str(U / 'UTILITY008_FINITE_SOURCE_OBSERVATIONS_001.json')])
+    selected = author_obs['selected_input_triples_copies_post']
+    need(len(selected) == 9, 'nine actual author input pairs')
+    pair_checks = []
+    for row in selected:
+        original = Path(row['original_path']); copied = Path(row['copy_path'])
+        claimed = row['observations'][0]
+        need(len(row['observations']) == 3 and all(x == claimed for x in row['observations']) and row['post_observation'] == claimed, 'author three/post stable observations')
+        a = add(original, claimed['sha256'], claimed['bytes'])
+        b = add(copied, claimed['sha256'], claimed['bytes'])
+        need(a == b and original != copied, 'author exact binary copy')
+        for p, c in ((original, claimed), (copied, row['copy_observation'])):
+            own = INITIAL[str(p)]
+            for key in ('sha256', 'bytes', 'path_raw9', 'descriptor_raw9'): need(own[key] == c[key], 'author preserved metadata ' + key)
+        need(INITIAL[str(original)]['path_raw9'][:2] != INITIAL[str(copied)]['path_raw9'][:2], 'genuinely different author copy identity')
+        pair_checks.append(dict(original_path=str(original), copy_path=str(copied), bytes=len(a), sha256=sha(a), exact_binary_copy=True, author_triples_and_post_confirmed=True))
+    contract = decode(DATA[str(U / 'UTILITY008_SOURCE_CONTRACT_001.json')])
+    plan = decode(DATA[str(U / 'UTILITY008_CAUSAL_SOURCE_CONTROL_PLAN_001.json')])
+    need(len(plan['controls']) == 6 and plan['status'] == 'PLANNED_UNRUN_NO_EXECUTABLE_TESTS' and plan['results'] is None and plan['tests_executed'] is False, 'six control plans are unrun')
+    choice = contract['Root_source_choice002']
+    add(Path(choice['path']), choice['sha256'])
+    need(choice['sha256'] == '1edf53523771c936c961a3617115a1d5d56af2f3c5bb04380059e4164cb741dc', 'selected Root choice002')
+    master = decode(add(BASE / 'OWNER_CONTINUATION_20261003_001.json', 'de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583', 1956))
+    owner_peer = decode(add(BASE / 'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json', '56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0', 8513))
+    lease = decode(add(BASE / 'EXECUTION_LEASE_GG6_M3_001.json', '43cb0552e3117842868eb78ff4e6b52913a16e78f3c26b8caa754cfb6b29fc48'))
+    need(len(master) == 27 and master['work_end_utc'] is None and master['fixed_deadline_invented'] is False, 'ongoing owner master27')
+    need(len(owner_peer) == 19 and owner_peer['reviewer'] == 'owner_docs_review' and owner_peer['source_owner_sha256'] == sha(DATA[str(BASE / 'OWNER_CONTINUATION_20261003_001.json')]), 'historical bare owner peer19')
+    need(len(lease) == 12 and lease['lease_is_owner_deadline'] is False and type(lease['maximum_lease_seconds']) is int and lease['maximum_lease_seconds'] == 43200 and lease['owner_master_sha256'] == owner_peer['source_owner_sha256'], 'finite distinct lease12')
+    for key in ('created_utc', 'lease_end_utc'):
+        need(type(lease[key]) is str and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{7}\+00:00', lease[key]), 'genuine PS7 lease stamp')
+    p16_path = BASE / 'root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_001.json'
+    p16 = decode(add(p16_path, 'd45a6cf273dd8ea8df2db150969e438c2ef7f1a042830dddfaf58b528d13b5fc', 7740))
+    add(BASE / 'root-pipeline-independent-review001/INDEPENDENT_ACTUAL_ROOT_PIPELINE_SOURCE_DETAILS_001.json', '84a45be780e523cadab663710d6eb7e9e8ba676580c3edb41da1d5da06e4bcfa', 381363)
+    root_main = add(BASE / 'root-guard006-pipeline-prep001/RUN_ROOT_METADATA_PIPELINE_006.TEMPLATE.ps1', '9b7dbc059cc51601e08bbf4ff748123b53034533173dca5a6254352e47f997e8', 45560).decode('utf-8')
+    need('function Source-Argv' in root_main and '$Selections.authorization_sha256' in root_main, 'physical phase source uses flat ticket hash')
+    old = DATA[str(U / 'review_guard006_actual_records_001-corrected007.TEMPLATE.py')]
+    new = DATA[str(U / 'review_guard006_actual_records_001-corrected008.TEMPLATE.py')]
+    old_text = old.decode('utf-8'); new_text = new.decode('utf-8')
+    ot = ast.parse(old_text); nt = ast.parse(new_text)
+    mapping = contract['literal_changes']; need(len(mapping) == 3, 'three selected literals')
+    op = next(n for n in ot.body if isinstance(n, ast.FunctionDef) and n.name == 'physical_provenance')
+    lines = old_text.splitlines(keepends=True); edits = []
+    for n in ast.walk(op):
+        if isinstance(n, ast.Constant) and type(n.value) is str and n.value in mapping:
+            start = sum(map(len, lines[:n.lineno - 1])) + n.col_offset
+            end = sum(map(len, lines[:n.end_lineno - 1])) + n.end_col_offset
+            segment = old_text[start:end]
+            need(segment[0] == segment[-1] and segment[0] in ('"', "'"), 'simple lawful constant span')
+            edits.append((start, end, segment[0] + mapping[n.value] + segment[-1]))
+    need(len(edits) == 3, 'only three physical provenance constant spans')
+    literal = old_text
+    for start, end, replacement in sorted(edits, reverse=True): literal = literal[:start] + replacement + literal[end:]
+    lt = ast.parse(literal)
+    protected = set()
+    for token in tokenize.generate_tokens(io.StringIO(literal).readline):
+        if token.type == tokenize.STRING and token.start[0] < token.end[0]:
+            protected.update(range(token.start[0] + 1, token.end[0] + 1))
+    need(sorted(protected) == [2, 3, 4, 5, 6], 'exact multiline protected interiors and closing lines')
+    rebuilt = []
+    for index, line in enumerate(literal.splitlines(keepends=True), 1):
+        count = len(line) - len(line.lstrip(' '))
+        rebuilt.append((' ' * (count // 4) + line[count:]) if index not in protected and count > 0 and count % 4 == 0 else line)
+    need(''.join(rebuilt).encode('utf-8') == new, 'complete independent lexical byte reconstruction')
+    need(len(literal.encode('utf-8')) - len(new) == 3747 and dump(lt) == dump(nt), 'complete Module AST preserved by indentation')
+    restored = copy.deepcopy(nt)
+    rp = next(n for n in restored.body if isinstance(n, ast.FunctionDef) and n.name == 'physical_provenance')
+    inverse = {v:k for k,v in mapping.items()}; changed = 0
+    for n in ast.walk(rp):
+        if isinstance(n, ast.Constant) and type(n.value) is str and n.value in inverse: n.value = inverse[n.value]; changed += 1
+    need(changed == 3 and dump(restored) == dump(ot), 'entire old Module AST recovered after three constants')
+    old_functions = {n.name:n for n in ot.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+    new_functions = {n.name:n for n in nt.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+    need(set(old_functions) == set(new_functions) and len(new_functions) == 41, 'all41 definitions present')
+    differences = [name for name in old_functions if dump(old_functions[name]) != dump(new_functions[name])]
+    need(differences == ['physical_provenance'], 'one selected changed definition')
+    composer = DATA[str(U / 'compose-root-review-packet-006.TEMPLATE.py')]
+    need(sha(composer) == '1b909f93c795c1d162b025ccf4917513ee20eb2edfd5d1db80ff78afebd1d911' and len(composer) == 14753, 'composer bytes unchanged')
+    ct = ast.parse(composer.decode('utf-8'))
+    np = new_functions['physical_provenance']
+    regexes = [n.args[0].value for n in ast.walk(np) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == 'fullmatch' and n.args and isinstance(n.args[0], ast.Constant)]
+    bad_pattern = r'\{[a-z_]+\}'
+    need(bad_pattern in regexes, 'actual utility argv pattern')
+    witnesses = []
+    for role, argv in p16['phase_argv_templates'].items():
+        for index, token in enumerate(argv):
+            if type(token) is str and '{' in token:
+                witnesses.append(dict(role=role, token_index=index, token=token, utility008_pattern_match=re.fullmatch(bad_pattern, token) is not None, checker_flat_hash_grammar_match=re.fullmatch(r'\{[a-z][a-z0-9_]*\}', token) is not None, residual_braces_refused=True))
+    need(any(w['role'] == 'capture_before' and w['token'] == '{authorization_sha256}' and not w['utility008_pattern_match'] for w in witnesses), 'causal required capture-before witness')
+    need(any(w['role'] == 'whole_before_result' and w['token'] == '{authorization_sha256}' and not w['utility008_pattern_match'] for w in witnesses), 'causal required whole-before witness')
+    # Independent metadata predicate witnesses, never execution of reviewed definitions.
+    controls = [{'token':t, 'candidate_shape_match':re.fullmatch(r'\{[a-z_][a-z0-9_]*\}', t) is not None, 'key_allowlist_required_separately':True} for t in ('{authorization_sha256}', '{unknown256}', '{ticket.authorization_sha256}', '{authorization_sha256}suffix', '{{authorization_sha256}}')]
+    syntax = []
+    for p, data in DATA.items():
+        if p.endswith('.py'):
+            tree = ast.parse(data.decode('utf-8'))
+            syntax.append(dict(path=p, sha256=sha(data), ast_only=True, top_level_function_class_count=sum(isinstance(n,(ast.FunctionDef,ast.ClassDef)) for n in tree.body)))
+    observations = {p:[] for p in PINS}
+    OWN.joinpath('inputs').mkdir()
+    copies = []
+    for index, (p, pin) in enumerate(PINS.items()):
+        for unused in range(3):
+            data, row = observe(Path(p), pin['sha256'], pin['bytes']); need(row == INITIAL[p], 'independent triple identity drift'); observations[p].append(row)
+        target = OWN / 'inputs' / (str(index).zfill(3) + '-' + Path(p).name)
+        with target.open('xb') as stream: stream.write(DATA[p]); stream.flush(); os.fsync(stream.fileno())
+        data, row = observe(target, pin['sha256'], pin['bytes'])
+        need(data == DATA[p] and row['path_raw9'][:2] != INITIAL[p]['path_raw9'][:2], 'owned binary copy identity')
+        copies.append(dict(original_path=p, copy_observation=row, exact_binary_copy=True))
+    pre = []
+    for p, pin in PINS.items():
+        unused, row = observe(Path(p), pin['sha256'], pin['bytes']); need(row == INITIAL[p], 'prepublication identity drift'); pre.append(row)
+    finding = dict(code='U008-ARGV-DIGITS', severity='BLOCKING_SOURCE_INTERFACE', function='physical_provenance', line=110, inherited_from_007=True, indentation_regression=False, reason='The argv substitution pattern excludes digits. Required flat ticket hash placeholders retain braces and are refused before source provenance can be accepted.', affected_required_before_roles=['capture_before','whole_before_result'], exact_pattern=bad_pattern, proposed_distinct_correction=r'\{[a-z_][a-z0-9_]*\}', retain_closed_substitution_lookup=True, no_reviewed_execution_or_runtime_failure_observed=True)
+    checks = [
+      'Read full U008 and unchanged composer source; evaluated all41 utility definition semantics and complete source admission/retained/BOUND/LATE routes.',
+      'Strict UTF8, duplicate-free finite metadata, raw9/path/descriptor/ancestor stability, three owned observations and exact different binary copies for the finite selected dependency closure.',
+      'Selected Root choice002, all17 new and all41 predecessor payload bytes, nine author original/copy pairs and author triple/post identities independently corroborated.',
+      'Independently reconstructed exactly three physical_provenance literal changes then lawful indentation4-to1 outside multiline STRING lines2-6; full bytes and Module AST match.',
+      'Reversing those three constants recovers complete old Module AST. Other40 function/class ASTs, all nonfunction ASTs and unchanged composer bytes are exact.',
+      'Ongoing master27/endNone, bare immutable owner peer19 and distinct finite lease12/PS7/43200/510 reserve remain exact; no invented owner overall deadline.',
+      'Closed source binding6/protocol19/fixed19/seven pin nominals and source role pool require actual bound model closure before retained READY; no current actual pool accepted.',
+      'Full Core12/detail15/trace13/trust8/INIT8/phase10/ticket22 proof and actual argv path examined; inherited digit-excluding placeholder predicate is blocking.',
+      'M3 source binding11/six literal reversals/20 functions, bound9 and phase7/four two-literal source pairs/genuine phase20 are retained; source-role approvals remain closed, externally pinned and attributed.',
+      'WHOLE projection13 authenticates four4MiB tables, full5390 file/506 directory facts, typed raw9/no-bool, canonical UTF16 ordering, byte/identity reconstruction and complete final reread without relaxing ordinary executable policy.',
+      'Original context600/both90/resource60/510 reserve/450+after60, authentic Py6/PS7 integer ticks, ACK22/BOUND22/LATE14 and RootPS three-literal reversal are retained.',
+      'Create-once output/caps and absence checks, retained deadline/poll handoff, private source READY scope and composer packet versus independent approval distinction reviewed; no runtime authority inferred.',
+      'Six author Source controls inspected as plans only. Historical arithmetic130427/headroom645 is not fresh bound size; actual constructor/preflight/actual pool20 must still precede READY/capture.'
+    ]
+    detail = dict(schema_version=1, record_type='independent_utility008_full_source_audit', reviewer='/root/owner_docs_review', source_author='/root/pubnative_review', created_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'), verdict='REFUSED_SOURCE_PREPARATION_REQUIRED_FLAT_HASH_ARGV_UNREADABLE', scope=contract['scope'], source_manifest_sha256=sha(DATA[str(U / 'AUTHOR_FROZEN_SOURCE_MANIFEST_008.json')]), utility_template_sha256=sha(new), composer_template_sha256=sha(composer), selected_root_source_choice_sha256=choice['sha256'], finite_input_count=len(PINS), new_payload_count=17, preserved_payload_count=41, selected_author_pair_count=9, selected_author_pairs=pair_checks, finite_inputs=list(PINS.values()), observations=observations, exact_copies=copies, prepublication_observations=pre, syntax_and_ast_metadata=syntax, function_ast_rows=[dict(name=n, old_ast_sha256=sha(dump(old_functions[n]).encode()), new_ast_sha256=sha(dump(new_functions[n]).encode()), exact=n!='physical_provenance') for n in new_functions], lexical_checks=dict(three_constant_changes=3, protected_multiline_string_lines=sorted(protected), indentation_bytes_saved=3747, exact_complete_rebuilt_bytes=True, entire_Module_AST_restored=True, complete_nonfunction_ASTs_exact=True, composer_byte_exact=True), checks=checks, findings=[finding], causal_source_witnesses=witnesses, proposed_successor_shape_controls=controls, witness_inputs_are_historical_source_not_fresh_process_authority=True, actual_fit=None, actual_models=None, actual_source_pool_peer20=None, actual_READY=None, actual_Root_GO=None, tests_executed=False, reviewed_definitions_executed=False, reviewed_imports_or_compile_or_exec=False, target_execution=False, operational_authority=False, runtime_acceptance=False, whole_ancestor_forest_recopied=False, limitations=['This is a full finite Source audit and a scoped source refusal. It is not a physical helper result, actual model fit, actual pool20, READY, GO, capture, test, native/Job/quiet or scientific acceptance.', 'The finding is inherited from the earlier U007 Source acceptance. Earlier frozen files/reviews remain genuine history; this full audit supplies a concrete cross-reader counterexample.', 'A fourth regex edit exceeds Root choice002 three-literal scope and requires a distinct selected Source successor; no current source bytes were changed.'])
+    details_row = output('INDEPENDENT_UTILITY008_SOURCE_DETAILS_001.json', detail)
+    post_rows = []
+    for p, pin in PINS.items():
+        unused, row = observe(Path(p), pin['sha256'], pin['bytes']); need(row == INITIAL[p], 'postpublication input drift'); post_rows.append(row)
+    copy_posts = []
+    for copied in copies:
+        row = copied['copy_observation']; unused, fresh_row = observe(Path(row['path']), row['sha256'], row['bytes']); need(row == fresh_row, 'owned copy post drift'); copy_posts.append(fresh_row)
+    post = output('INDEPENDENT_UTILITY008_SOURCE_POST_READBACK_001.json', dict(schema_version=1, record_type='utility008_independent_source_post_readback', reviewer='/root/owner_docs_review', details=details_row, input_count=len(PINS), observations=post_rows, copy_observations=copy_posts, all_input_and_copy_raw9_hash_bytes_exact=True, target_execution=False))
+    review = output('INDEPENDENT_UTILITY008_SOURCE_REVIEW_001.json', dict(schema_version=1, record_type='independent_guard006_utility008_source_review', reviewer='/root/owner_docs_review', source_author='/root/pubnative_review', created_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'), scope=contract['scope'], verdict=detail['verdict'], source_manifest_sha256=detail['source_manifest_sha256'], utility_template_sha256=sha(new), composer_template_sha256=sha(composer), source_choice_sha256=choice['sha256'], finite_input_count=len(PINS), new_payload_count=17, preserved_payload_count=41, selected_author_pair_count=9, finding_count=1, findings=[finding], details=details_row, post_readback=post, actual_fit=None, actual_models=None, actual_pool20=None, actual_READY=None, Root_GO=None, tests_executed=False, target_execution=False, runtime_acceptance=False, operational_authority=False))
+    handoff = ('# Utility008 independent source refusal\n\nFull finite Source audit: ' + str(len(PINS)) + ' inputs; all17 new/all41 predecessor payloads and nine author original-copy pairs; three raw9/hash observations, owned exact copies and full post-read.\n\nInherited physical_provenance line110 excludes digits from argv substitution. Both required before routes use {authorization_sha256}; the placeholder is not substituted and the no-braces guard refuses. The historical genuine P16 eight argv roles and full Root Source details corroborate the source interface; they confer no fresh process authority. No reviewed definition, import, compiler, main or test ran.\n\nThree approved filename changes and lawful indentation reconstruction are byte-exact; full Module AST reverses to007, all other40 definitions/nonfunction ASTs and composer bytes remain exact. Root must select a distinct successor for any regex correction; preserve008 and earlier receipts. Six causal controls remain plans only. Old130427 arithmetic is not fresh fit. No actual models, pool20, READY, GO, capture, test/native/science or operational authority is accepted. Caps and600/both90/resource60/510/450+after60 remain unchanged.\n\nReview: ' + review['sha256'] + '\nDetails: ' + details_row['sha256'] + '\nPost: ' + post['sha256'] + '\n')
+    p = OWN / 'HANDOFF_UTILITY008_INDEPENDENT_SOURCE_001.md'
+    with p.open('xb') as stream: stream.write(handoff.encode('utf-8')); stream.flush(); os.fsync(stream.fileno())
+    print(json.dumps(dict(review=review, details=details_row, post=post, handoff=dict(path=str(p),sha256=sha(p.read_bytes()),bytes=p.stat().st_size), finite_inputs=len(PINS), verdict=detail['verdict'], target_execution=False), sort_keys=True))
+
+if __name__ == '__main__':
+    run()

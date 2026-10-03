@@ -1,0 +1,55 @@
+# Root control writer only. No parent/helper/test execution. Fresh ACK required each call.
+param([Parameter(Mandatory=$true)][string]$AckPath,[Parameter(Mandatory=$true)][string]$ExpectedAckSha256,[Parameter(Mandatory=$true)][string]$AckCopyLeaf)
+Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop'
+$taskWork='D:\Aenv\pro2\resume-2026-10-03-continuation001'
+$taskPrep=Join-Path $taskWork 'root-checker28-runtime-prep002'
+function Need([bool]$v,[string]$m){if(-not $v){throw $m}}
+function Hash([byte[]]$b){$s=[Security.Cryptography.SHA256]::Create();try{return [BitConverter]::ToString($s.ComputeHash($b)).Replace('-','').ToLowerInvariant()}finally{$s.Dispose()}}
+function ReadPin([string]$path,[string]$pin){
+ $a=Get-Item -LiteralPath $path
+ Need (($a.Attributes -band [IO.FileAttributes]::ReparsePoint)-eq0 -and $a.Length -le131072) 'Control ordinary file/cap'
+ $b=[IO.File]::ReadAllBytes($path);$z=Get-Item -LiteralPath $path
+ Need ((Hash $b)-ceq $pin -and $a.Length -eq $z.Length -and $a.LastWriteTimeUtc.Ticks -eq $z.LastWriteTimeUtc.Ticks -and $a.CreationTimeUtc.Ticks -eq $z.CreationTimeUtc.Ticks) 'External pin/stability'
+ return ,$b
+}
+function Once([string]$path,[byte[]]$b){$f=[IO.File]::Open($path,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);try{$f.Write($b,0,$b.Length);$f.Flush($true)}finally{$f.Dispose()};Need ((Hash ([IO.File]::ReadAllBytes($path)))-ceq(Hash $b)) 'Publication readback'}
+Need ($ExpectedAckSha256 -cmatch '\A[0-9a-f]{64}\z' -and $AckCopyLeaf -cmatch '\APRO3_CHECKER28_INTERVAL_ACK_[0-9]{3}\.json\z') 'External fresh ACK selectors'
+$ab=ReadPin $AckPath $ExpectedAckSha256
+$ack=[Text.Encoding]::UTF8.GetString($ab)|ConvertFrom-Json
+Need ($ack.schema -ceq 'pro3_peer_sequential_synthetic_checker_interval_ack_v1' -and $ack.peer_attempt_namespace -ceq '002' -and $ack.scope -ceq 'one_fresh_pro2_stdlib_synthetic_checker28') 'Genuine fresh synthetic scope'
+Need ($ack.physical_wall_seconds -eq60 -and $ack.peer_declared_soft_seconds -eq52 -and $ack.peer_declared_outer_seconds -eq57 -and $ack.peer_declared_hard_seconds -eq60 -and $ack.peer_declared_pipe_cap_bytes -eq65536 -and $ack.peer_declared_memory_cap_bytes -eq1073741824 -and $ack.peer_declared_disk_floor_bytes -eq10737418240) 'Unchanged coordination limits'
+Need ($ack.pro3_owned_python_tests_jobs_fits_held_during_interval -ceq $true -and $ack.pro3_validation_and_metadata_compositors_held_during_interval -ceq $true -and $ack.root_holds_after_ack_writer_drains -ceq $true -and $ack.host_quiet_claimed -ceq $false -and $ack.one_use -ceq $true -and @($ack.owned_child_active_workload_handles).Count -eq0) 'Owned HOLD only; no quiet'
+$peerPin='4bdb33128cb85410de10b2d837a9c369ce8cc046200e99410a7a757eaed07c87'
+$parentPin='749781f580120b1974614b60572ce919559ef51fa17e626679e41ccae91ea7af'
+$runnerPin='f02c64855d86548653c4b5bac587b475a024fda8728113e9a5b39206a8dbd8f9'
+$testPin='daf2d526c1d751e6b10b78d8b421bdd2329b652e3a8cba23a761fcde35931fd9'
+$helperPin='9efa6deb54721a531159545ffa5e4e9bd90606f3dc12d7b0ab6cf5f4af51ee16'
+$helperPeerPin='6d981aa8a08c4329241c8d4fff7a5a12913123fe320b0f5cefddf69eee63f27e'
+$projectionPin='ebfc1094c0bf636e9f8f99cde146b189c4724da0c4391258a376d659dae7f03f'
+$ownerPin='de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'
+$ownerPeerPin='56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0'
+foreach($pin in @($peerPin,$parentPin,$runnerPin,$testPin,$helperPin,$helperPeerPin,$projectionPin,$ownerPin,$ownerPeerPin)){Need ($pin -cmatch '\A[0-9a-f]{64}\z') 'Source SHA64'}
+[void](ReadPin (Join-Path $taskPrep 'INDEPENDENT_CHECKER28_RUNNER_SOURCE_REVIEW_002.json') $peerPin)
+[void](ReadPin (Join-Path $taskPrep 'SUPERVISE_SYNTHETIC_CHECKER28_002.TEMPLATE.ps1') $parentPin)
+[void](ReadPin (Join-Path $taskPrep 'RUN_SYNTHETIC_CHECKER28_002.TEMPLATE.py') $runnerPin)
+[void](ReadPin (Join-Path $taskWork 'metadata3-actual-checker-prep001\test_metadata3_actual_checker_preparation_004.py') $testPin)
+# Helper146200 exceeds this writer's control cap; its actual pin is checked by the reviewed parent before child start.
+[void](ReadPin (Join-Path $taskWork 'metadata3-checker-independent-review001\INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_003.json') $helperPeerPin)
+[void](ReadPin (Join-Path $taskPrep 'CHECKER28_DISCOVERY_PROJECTION_001.json') $projectionPin)
+[void](ReadPin (Join-Path $taskWork 'OWNER_CONTINUATION_20261003_001.json') $ownerPin)
+[void](ReadPin (Join-Path $taskWork 'owner-docs-independent-review001\INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json') $ownerPeerPin)
+foreach($leaf in @('ROOT_SYNTHETIC_CHECKER28_GO_002.json','ROOT_PARENT_STARTED_002.json','ROOT_PARENT_TERMINAL_002.json','ROOT_PARENT_STDOUT_002.bin','ROOT_PARENT_STDERR_002.bin',$AckCopyLeaf)){Need (-not(Test-Path -LiteralPath (Join-Path $taskPrep $leaf))) 'Unentered Source002 one-use output'}
+Need (-not(Test-Path -LiteralPath (Join-Path $taskWork 'root-checker28-runtime002'))) 'Private002 unentered'
+$start=[DateTimeOffset]::Parse($ack.window_start_utc,[Globalization.CultureInfo]::InvariantCulture)
+$end=[DateTimeOffset]::Parse($ack.window_end_utc,[Globalization.CultureInfo]::InvariantCulture)
+$created=[DateTimeOffset]::UtcNow;$expires=$created.AddSeconds(120)
+Need ($created -ge $start -and $expires -le $end -and ($end-$created).TotalSeconds -ge125) 'Fresh original ACK reserve; no extend/retimestamp'
+$go=[ordered]@{schema_version=1;record_type='root_synthetic_checker28_GO';author='/root';scope='SYNTHETIC_METADATA3_CHECKER28_STDLIB_REGRESSIONS_ONLY';created_utc=$created.ToString('o');expires_utc=$expires.ToString('o');owner_master_sha256=$ownerPin;owner_review_sha256=$ownerPeerPin;parent_source_sha256=$parentPin;runner_source_sha256=$runnerPin;test_source_sha256=$testPin;helper_source_sha256=$helperPin;helper_source_peer_sha256=$helperPeerPin;discovery_projection_sha256=$projectionPin;decision='execute_fixed_synthetic_checker28_once'}
+Need ($go.Count -eq15) 'Root GO exact15'
+foreach($key in @('created_utc','expires_utc')){Need ($go[$key] -cmatch '\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{7}\+00:00\z' -and [DateTimeOffset]::Parse($go[$key]).ToString('o') -ceq $go[$key]) 'Genuine native seven-digit roundtrip'}
+Once (Join-Path $taskPrep $AckCopyLeaf) $ab
+$wire=[Text.UTF8Encoding]::new($false,$true).GetBytes(($go|ConvertTo-Json -Depth 4)+[Environment]::NewLine)
+$path=Join-Path $taskPrep 'ROOT_SYNTHETIC_CHECKER28_GO_002.json';Once $path $wire
+[ordered]@{go_sha256=(Hash $wire);go_bytes=$wire.Length;created_utc=$go.created_utc;expires_utc=$go.expires_utc;fresh_ACK_sha256=$ExpectedAckSha256;parent_started=$false;native_stamps_verified=$true}|ConvertTo-Json -Compress
+

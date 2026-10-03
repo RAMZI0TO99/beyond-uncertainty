@@ -1,0 +1,57 @@
+import os, json, hashlib, stat, datetime, decimal
+from pathlib import Path
+W=Path(r"D:\Aenv\pro2\resume-2026-10-03-continuation001")
+R=Path(r"D:\Aenv\pro3")
+P=W/"root-pro3-type003-observation001"
+P.mkdir(exist_ok=False); (P/"before").mkdir()
+spec=[
+("runs/coordination/next_step_20261003_types3/type_execution_audit_001.json","e7103786d9ee380b63932a3de357349e31ce903fb8c13a56c2a5c8421b05e7f3"),
+("runs/coordination/next_step_20261003_types3/root_type_physical_witness_001.json","2c8ce6e9bdd199ad792a32a7a7989d6fcb30a1191bf9c3405ef8d11846485d0e"),
+("runs/coordination/next_step_20261003_types3/root_failed_type_cleanup_closeout_001.json","285fbad78a326c54eb96f0c16acfdb3c5812f67b19cf42cb6747d36e266f1444"),
+("runs/coordination/next_step_20261003_types3/root_type_peer_release_closeout_001.json","8510f04d31d1b506bfd6222e324557aa7794e48d965f793dc01e0465368921e0"),
+("runs/phase2/type_validation/pro3_types_20261003_003/mypy.stdout.log","0ea4ff7b2ff88e2e5bd55c9b2cd93c6b6f1b626bd3c89dbcb38f4b79c0f863bf"),
+("runs/phase2/type_validation/pro3_types_20261003_003/mypy.stderr.log","b67de786706f2ed03456016fe05cfce146ec138d208115b5bf0a924184d02aad")]
+def raw(s):return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,s.st_file_attributes,s.st_birthtime_ns]
+def read(p):
+ a=p.lstat();assert stat.S_ISREG(a.st_mode) and not(a.st_file_attributes&1024)
+ with p.open("rb") as f:b=f.read(262145)
+ z=p.lstat();assert raw(a)==raw(z) and len(b)<=262144
+ return b,{"path":str(p),"sha256":hashlib.sha256(b).hexdigest(),"bytes":len(b),"raw9":raw(a)}
+rows=[]; records={}
+for rel,pin in spec:
+ q=R/rel;b,row=read(q);assert row["sha256"]==pin
+ b2,row2=read(q);assert b2==b and row2==row
+ copy=P/"before"/q.name
+ with copy.open("xb") as f:f.write(b)
+ cb,cr=read(copy);assert cb==b
+ b3,row3=read(q);assert b3==b and row3==row
+ row["before_copy"]=cr;row["triple_read_identical"]=True;rows.append(row)
+ if q.suffix==".json":records[q.name]=json.loads(b,parse_float=decimal.Decimal)
+ else:records[q.name]=b.decode("utf-8")
+grant,gr=read(W/"ROOT_PRO3_TYPE_COMPONENT_RELEASE_003.json")
+assert gr["sha256"]=="5abf9b926f6716f8a0d97c115f13926d64baf6477b7ee99ad655b29a57c92242"
+copy=P/"before"/"ROOT_PRO3_TYPE_COMPONENT_RELEASE_003.json"
+with copy.open("xb") as f:f.write(grant)
+assert read(copy)[0]==grant and read(Path(gr["path"]))[0]==grant
+gr["before_copy"]=read(copy)[1];rows.append(gr)
+a=records["type_execution_audit_001.json"];phys=records["root_type_physical_witness_001.json"];cl=records["root_failed_type_cleanup_closeout_001.json"];rel=records["root_type_peer_release_closeout_001.json"]
+assert a["decision"]=="FAILED_MYPY_EXIT_STATUS_REVIEWED_NO_TYPE_PASS" and a["review_accepted"] is True and a["type_pass"] is False
+assert a["admission"]["peer_record_sha256"]==gr["sha256"]
+assert a["physical_execution"]["root_witness_sha256"]==rows[1]["sha256"]
+assert a["resources_and_cleanup"]["root_scoped_cleanup_closeout_sha256"]==rows[2]["sha256"]
+assert a["failure"]["type_errors"]==4 and a["failure"]["checked_source_files"]==205
+assert phys["cli_exit_code"]==1 and phys["command_physically_returned"] and phys["redirected_streams_drained_on_cli_return"]
+assert cl["native_failed_candidate_whole_cleanup_flag"] is False and cl["parent_whole_job_cleanup_confirmed"] is True
+assert rel["explicit_early_release_tool_completed_utc"]=="2026-10-03T15:28:40Z"
+log=records["mypy.stdout.log"];assert log.count("error:")==4 and "evaluation\\phase2_cho_execution.py" in log.replace("/","\\")
+post=[]
+for row in rows:
+ b,r=read(Path(row["path"]));assert r["sha256"]==row["sha256"] and r["raw9"]==row["raw9"]
+ cb,cr=read(Path(row["before_copy"]["path"]));assert cb==b;post.append(r)
+wire={"schema_version":1,"record_type":"root_selected_external_pro3_type003_failed_evidence_observation","author":"/root","scope":"SEVEN_FIXED_SOURCE_RECORDS_ONLY_NO_INDEPENDENT_PHYSICAL_OR_PROCESS_ATTESTATION","recorded_utc":datetime.datetime.now(datetime.timezone.utc).isoformat(),"decision":"SELECT_DIFFERENT_FAILED_TYPE_REVIEW_ONLY_NO_TYPE_OR_RUNTIME_PASS","external_source_observations":rows,"post_read":post,"source_recorded_review_utc":a["recorded_utc"],"source_attributed_actual_physical_seconds_literal":str(phys["physical_cli_seconds"]),"source_attributed_actual_physical_exit_code":1,"source_attributed_four_errors":a["failure"]["errors"],"selected_error_log_text":log,"source_attributed_job_peak_bytes":a["resources_and_cleanup"]["sampled_peak_job_commit_bytes"],"source_attributed_private_job_caps":a["resources_and_cleanup"]["aggregate_limit_bytes"],"source_attributed_cleanup":"Parent empty/closed private Job and handles/no cleanup errors; native failure whole-cleanup=false remains. Pro3 Root separately checked only79468/83892/79968 absent. Extra83372 was not independently identified/queried. No global quiet claim.","source_attributed_final_source_runtime_ops_checks_completed":False,"source_attributed_explicit_early_release_tool_completed_utc":rel["explicit_early_release_tool_completed_utc"],"root_own_hold_coordination":"Own metadata/component tooling and all declared children were held after Root grant writer15:19:22 until Pro3 explicit release15:28:40; remote messaging/clock/status only. This record adds no whole-host quiet attestation.","independent_pro3_failure_evidence_review_selected":True,"root_personally_launched_or_timed_Pro3":False,"root_independent_os_job_process_scan":False,"all38_external_audit_pins_or_full_source_runtime_enumerated_by_this_observer":False,"type_validation_accepted":False,"runtime_validation_accepted":False,"science_or_operational_authority":False,"TYPE001_unretained_query_cause_explained":False,"attempt_grant003_consumed_no_replay":True,"next_type_source_fix_requires_new_pins_reviews_attempt_and_grant":True,"raw_source_bytes_preserved_no_float_policy_normalization":True}
+b=(json.dumps(wire,indent=2,sort_keys=True,allow_nan=False)+"\n").encode()
+dest=P/"ROOT_EXTERNAL_TYPE003_FAILURE_SOURCE_SELECTION_001.json"
+with dest.open("xb") as f:f.write(b)
+bb,rr=read(dest);assert bb==b
+print(json.dumps({"path":str(dest),"sha256":rr["sha256"],"bytes":len(b),"external_records":6,"genuine_root_grant":1,"type_pass":False}))
+

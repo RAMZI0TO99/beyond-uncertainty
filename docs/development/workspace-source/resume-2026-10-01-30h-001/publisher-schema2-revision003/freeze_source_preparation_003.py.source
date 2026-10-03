@@ -1,0 +1,239 @@
+"""Authoring inventory only: no helper/project imports or execution."""
+from pathlib import Path
+import ast
+import base64
+import hashlib
+import json
+import os
+import re
+import stat
+from datetime import datetime, timezone
+
+STAGE = Path(__file__).resolve().parent
+ROOT = STAGE.parent
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+                      allow_nan=False).encode("ascii")
+
+
+def read(path):
+    before = path.lstat()
+    assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+    assert not (getattr(before, "st_file_attributes", 0) & 1024)
+    with path.open("rb") as stream:
+        opened = os.fstat(stream.fileno())
+        assert (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_nlink) == (
+            opened.st_dev, opened.st_ino, opened.st_size, opened.st_mtime_ns, opened.st_nlink)
+        data = stream.read()
+        after_open = os.fstat(stream.fileno())
+        assert (opened.st_mode, opened.st_dev, opened.st_ino, opened.st_size,
+                opened.st_mtime_ns, opened.st_ctime_ns, opened.st_nlink) == (
+            after_open.st_mode, after_open.st_dev, after_open.st_ino, after_open.st_size,
+            after_open.st_mtime_ns, after_open.st_ctime_ns, after_open.st_nlink)
+    after = path.lstat()
+    assert (before.st_mode, before.st_dev, before.st_ino, before.st_size,
+            before.st_mtime_ns, before.st_ctime_ns, before.st_nlink) == (
+        after.st_mode, after.st_dev, after.st_ino, after.st_size,
+        after.st_mtime_ns, after.st_ctime_ns, after.st_nlink)
+    assert len(data) == before.st_size
+    return data
+
+
+def create(name, document):
+    data = (json.dumps(document, sort_keys=True, indent=2, ensure_ascii=True,
+                       allow_nan=False) + "\n").encode("utf-8")
+    with (STAGE / name).open("xb") as stream:
+        stream.write(data)
+    assert read(STAGE / name) == data
+    return sha(data)
+
+
+def assigned(tree, name):
+    nodes = [node.value for node in tree.body if isinstance(node, ast.Assign)
+             and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+             and node.targets[0].id == name]
+    assert len(nodes) == 1
+    return nodes[0]
+
+
+def definitions(tree):
+    nodes = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))]
+    result = {node.name: node for node in nodes}
+    assert len(result) == len(nodes)
+    return result
+
+
+def freeze():
+    assert not (STAGE / "STAGED_MANIFEST_003.json").exists()
+    created = datetime.now(timezone.utc).isoformat()
+    preservation = json.loads(read(STAGE / "PRESERVATION_MANIFEST_003.json"))
+    # Interpret the exact authoring record shape, not any helper code.
+    entries = preservation["copies"]
+    preserved_checks = []
+    for row in entries:
+        source_name = row["original_path"]
+        retained_name = row["copy_path"]
+        original = read(Path(source_name))
+        retained = read(STAGE / retained_name)
+        assert original == retained and sha(original) == row["sha256"]
+        preserved_checks.append({"source": source_name, "retained": retained_name,
+                                 "sha256": sha(original), "bytes": len(original)})
+    review = json.loads(read(STAGE / "RAW003_PEER_REVIEW_EVIDENCE_003.json"))
+    for row in review["files"]:
+        assert read(Path(row["source"])) == read(STAGE / row["retained"])
+        assert sha(read(Path(row["source"]))) == row["sha256"]
+    policy = json.loads(read(STAGE / "COMPILED_POLICY_003.json"))
+    middle_inputs = json.loads(read(STAGE / "MIDDLE_INPUTS_003.json"))
+    for facts in middle_inputs.values():
+        data = read(STAGE / "before" / facts["retained_name"])
+        assert data == base64.b64decode(facts["bytes_base64"], validate=True)
+        assert len(data) == facts["size"] and sha(data) == facts["sha256"]
+        if facts["path"] is not None:
+            assert read(Path(facts["path"])) == data
+    old = json.loads(read(STAGE / "before/predecessor_rows.bytes"))
+    mapping = {row["path"]: row for row in old}
+    assert len(old) == len(mapping) == 742
+    for row in policy["_SUCCESSOR_INTERMEDIATE_AFTERIMAGES"]:
+        assert row["path"] in mapping and row["mode"] == mapping[row["path"]]["mode"]
+        mapping[row["path"]] = row
+    middle = [mapping[path] for path in sorted(mapping)]
+    facts = policy["SUCCESSOR_INTERMEDIATE_FACTS"]
+    identity = {
+        "controller_inventory_digest": sha(canonical(middle)),
+        "tracked_tree_digest": sha(canonical([{key: row[key] for key in ("path", "mode", "git_blob")}
+                                               for row in middle])),
+        "tracked_file_count": len(middle),
+    }
+    assert all(facts[key] == value for key, value in identity.items())
+    old_qa = json.loads(read(STAGE / "before/predecessor_manifest.bytes"))
+    middle_qa = json.loads(read(STAGE / "before/middle_manifest.bytes"))
+    paths = [row[0] for row in old_qa]
+    assert len(paths) == len(set(paths)) == 263 and paths != sorted(paths)
+    assert [row[0] for row in middle_qa] == paths
+    assert all(mapping[path]["sha256"] == value for path, value in middle_qa)
+    commit = read(STAGE / "before/middle_commit_object.bytes")
+    assert hashlib.sha1(b"commit " + str(len(commit)).encode("ascii") + b"\0" + commit).hexdigest() == facts["controller_commit"]
+    header = commit.split(b"\n\n", 1)[0].split(b"\n")
+    assert [row for row in header if row.startswith(b"parent ")] == [b"parent " + facts["parent_commit"].encode("ascii")]
+    assert header[0] == b"tree " + facts["git_tree_sha1"].encode("ascii")
+    assert len(policy) == 20 and len(policy["SUCCESSOR_ALLOWED_CHANGED_PATHS"]) == 25
+    assert policy["SUCCESSOR_ADMISSION_MAX_BYTES"] == 395799
+    assert len(policy["_SUCCESSOR_INTERMEDIATE_RELEASE_KEYS"]) == 36
+    assert len(policy["_SUCCESSOR_RELEASE_KEYS"]) == 34
+    assert len(policy["_SUCCESSOR_ATTESTATION_SCHEMA2_KEYS"]) == 17
+    assert len(policy["_SUCCESSOR_INTERMEDIATE_AFTERIMAGES"]) == 9
+    helper_trees, helper_info = {}, {}
+    required_unchanged = {"cross_api_identity", "observation_identity", "capture_identity",
+                          "owner", "runtime", "worktree", "git", "inventory", "tree_observation",
+                          "strict_json", "absolute", "chain", "plain_info", "absent", "self_pin",
+                          "create_receipt", "stable_observation", "receipt"}
+    for role in ("publish", "verify"):
+        path = STAGE / (role + "-successor-admission-schema2-003.py.template")
+        data = read(path)
+        tree = ast.parse(data)
+        defs = definitions(tree)
+        assert len(defs) == 54
+        before = ast.parse(read(ROOT / ("successor-admission-publish-001/" + role + "-successor-admission-001.py.template")))
+        olddefs = definitions(before)
+        equal = [name for name in olddefs if ast.dump(olddefs[name], include_attributes=False)
+                 == ast.dump(defs[name], include_attributes=False)]
+        assert len(equal) == 33 and required_unchanged.issubset(equal)
+        bindings = ast.literal_eval(assigned(tree, "BINDINGS"))
+        assert len(bindings) == 13 and all(value is None for value in bindings.values())
+        global_none = ["RELEASE", "MANIFEST", "RAW_REVIEW", "RECEIPT",
+                       "EXTERNAL_PROOF_MAX_BYTES", "EXPECTED_RELEASE_PROVENANCE"]
+        if role == "verify":
+            global_none.append("EXPECTED_PUBLISHER_SHA256")
+        assert all(ast.literal_eval(assigned(tree, name)) is None for name in global_none)
+        embedded = assigned(tree, "COMPILED_POLICY")
+        assert isinstance(embedded, ast.Call) and json.loads(ast.literal_eval(embedded.args[0])) == policy
+        # Check AST source flow. This does not execute or prove behavior.
+        calls = {node.func.id for node in ast.walk(defs["observation"])
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+        assert {"schema2_literal_policy", "schema2_middle", "schema2_diffs", "schema2_release_checks",
+                "schema2_qa", "schema2_commit_object", "schema2_sealed_attestation", "committed_rows"}.issubset(calls)
+        assert not {"literal_policy", "qa", "release_checks"}.intersection(calls)
+        helper_trees[role] = defs
+        helper_info[role] = {"path": path.name, "sha256": sha(data), "bytes": len(data),
+                             "unchanged_original_definitions": len(equal), "current_definitions": len(defs),
+                             "unbound_value_count": len(bindings) + len(global_none)}
+    assert all(ast.dump(helper_trees["publish"][name], include_attributes=False)
+               == ast.dump(helper_trees["verify"][name], include_attributes=False)
+               for name in helper_trees["publish"] if name != "main")
+    for filename in ("schema2_policy.fragment.py", "schema2_io.fragment.py", "schema2_observation.fragment.py"):
+        for name, node in definitions(ast.parse(read(STAGE / filename))).items():
+            assert ast.dump(node, include_attributes=False) == ast.dump(helper_trees["publish"][name], include_attributes=False)
+    python_files = []
+    for path in sorted(STAGE.rglob("*")):
+        if path.is_file() and (path.name.endswith(".py") or path.name.endswith(".py.template")):
+            ast.parse(read(path))
+            python_files.append(path.relative_to(STAGE).as_posix())
+    test_tree = ast.parse(read(STAGE / "test_schema2_publication_pure_003.py"))
+    methods = [node.name for node in ast.walk(test_tree)
+               if isinstance(node, ast.FunctionDef) and node.name.startswith("test_")]
+    assert len(methods) == 12
+    planned_links = []
+    for path in sorted(STAGE.glob("*.md")):
+        text = read(path).decode("utf-8", errors="strict")
+        assert "\ufffd" not in text
+        for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", text):
+            resolved = (path.parent / target.split("#", 1)[0]).resolve()
+            assert resolved.is_relative_to(STAGE)
+            assert resolved.is_file() or resolved in {
+                STAGE / "STAGED_MANIFEST_003.json", STAGE / "AUTHOR_STATIC_AUDIT_003.json"}
+            planned_links.append({"source": path.name, "target": target})
+    audit = {
+        "created_at_utc": created, "decision": "AUTHOR_AST_AND_DATA_CHECKS_ONLY",
+        "independent_review_required": True, "source_frozen_after_inventory": True,
+        "helpers": helper_info, "common_non_main_ast_definitions": 53,
+        "raw003_static_review_sha256": review["files"][0]["sha256"],
+        "middle_reconstructed_identity": identity,
+        "historical_grouped_qa_count": 263, "global_sort_is_distinct": True,
+        "typed_middle_commit_recomputed": True, "retained_original_checks": preserved_checks,
+        "python_sources_parsed_without_execution": python_files,
+        "new_declared_test_methods": methods, "new_test_collection_count": None,
+        "new_test_runtime_result": None, "maintained_markdown_links": planned_links,
+        "operational_bindings_selected": False, "external_proof_cap_derived": False,
+        "project_helper_imports_or_execution": False, "publication_or_native_or_fit": False,
+        "limitations": [
+            "Author checks are not independent review or runtime acceptance.",
+            "No fresh Git/runtime observations occurred during preparation; future helper code must perform them.",
+            "Raw003 peer static acceptance is not raw runtime/cold/transitive acceptance.",
+            "External metadata proof bound and schema2 native readers are pending separate reviewed work.",
+            "Twelve pure methods are unrun; original85 driver is preserved historical schema1 evidence and spent.",
+            "Future current paths/hashes/provenance/helper SHA remain None; no release009 exists by assertion.",
+            "Inherited Git batch capture buffers complete subprocess stdout; no new OS write sandbox/descendant guarantee is claimed.",
+        ],
+    }
+    audit_sha = create("AUTHOR_STATIC_AUDIT_003.json", audit)
+    records = []
+    for path in sorted(STAGE.rglob("*")):
+        if path.is_file():
+            data = read(path)
+            records.append({"path": path.relative_to(STAGE).as_posix(), "sha256": sha(data), "bytes": len(data)})
+    manifest = {
+        "created_at_utc": created, "state": "FROZEN_UNBOUND_SOURCE_PREPARATION_AWAITING_INDEPENDENT_REVIEW",
+        "files": records, "file_count": len(records), "self_excluded": "STAGED_MANIFEST_003.json",
+        "author_static_audit_sha256": audit_sha, "operational_authority_granted": False,
+        "independent_source_review": None, "runtime_validation": None,
+        "future_binding_review": None, "first_execution_authorization": None,
+        "owner_window_end_utc": "2026-10-02T22:36:15Z",
+    }
+    manifest_sha = create("STAGED_MANIFEST_003.json", manifest)
+    for row in records:
+        assert sha(read(STAGE / row["path"])) == row["sha256"]
+    for row in planned_links:
+        assert (STAGE / row["target"].split("#", 1)[0]).is_file()
+    print(json.dumps({"manifest_sha256": manifest_sha, "file_count": len(records),
+                      "author_audit_sha256": audit_sha, "helpers": helper_info,
+                      "maintained_link_count": len(planned_links), "created_at_utc": created}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    freeze()

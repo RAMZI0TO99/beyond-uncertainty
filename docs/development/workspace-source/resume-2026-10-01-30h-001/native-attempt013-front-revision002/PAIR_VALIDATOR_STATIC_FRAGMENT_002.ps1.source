@@ -1,0 +1,56 @@
+function Assert-FrontQuietObservations([object] $Value) {
+    # Stored pair shape never exempts any process from a later live/native check.
+    if ($Value -isnot [array] -or $Value.Count -ne 2) { throw 'Full quiet-host proof malformed' }
+    $snapshotKeys = @('snapshot_index','process_count','foreign_python_pypy_count','verifier_pid','owned_verifier_pair')
+    $pairKeys = @('role','pid','parent_pid','executable_path','executable_sha256','creation_ms')
+    $roles = @('base_verifier','venv_redirector')
+    $paths = @(__BASE_PATH__,__VENV_PATH__)
+    $hashes = @(__BASE_SHA__,__VENV_SHA__)
+    $cutoff = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+    for ($snapshotIndex = 0; $snapshotIndex -lt 2; $snapshotIndex++) {
+        $snapshot = $Value[$snapshotIndex]
+        if ($null -eq $snapshot -or $snapshot -isnot [pscustomobject] -or
+            @($snapshot.PSObject.Properties.Name).Count -ne 5 -or
+            @(Compare-Object -ReferenceObject $snapshotKeys -DifferenceObject @($snapshot.PSObject.Properties.Name) -CaseSensitive).Count -ne 0) {
+            throw 'Full quiet-host proof fields differ'
+        }
+        foreach ($field in @('snapshot_index','process_count','foreign_python_pypy_count','verifier_pid')) {
+            if ($snapshot.$field -isnot [int] -and $snapshot.$field -isnot [long]) { throw 'Quiet proof integer type differs' }
+        }
+        if ($snapshot.snapshot_index -ne $snapshotIndex + 1 -or $snapshot.process_count -lt 2 -or
+            $snapshot.foreign_python_pypy_count -ne 0 -or $snapshot.verifier_pid -le 0) {
+            throw 'Quiet proof index/count/PID differs'
+        }
+        $pair = $snapshot.owned_verifier_pair
+        if ($pair -isnot [array] -or $pair.Count -ne 2) { throw 'Owned verifier pair must have exactly two rows' }
+        for ($roleIndex = 0; $roleIndex -lt 2; $roleIndex++) {
+            $row = $pair[$roleIndex]
+            if ($null -eq $row -or $row -isnot [pscustomobject] -or
+                @($row.PSObject.Properties.Name).Count -ne 6 -or
+                @(Compare-Object -ReferenceObject $pairKeys -DifferenceObject @($row.PSObject.Properties.Name) -CaseSensitive).Count -ne 0) {
+                throw 'Owned verifier pair row fields differ'
+            }
+            foreach ($field in @('pid','parent_pid','creation_ms')) {
+                if (($row.$field -isnot [int] -and $row.$field -isnot [long]) -or $row.$field -le 0) {
+                    throw 'Owned verifier pair integer type/value differs'
+                }
+            }
+            if ($row.role -isnot [string] -or $row.role -cne $roles[$roleIndex] -or
+                $row.executable_path -isnot [string] -or $row.executable_path -cne $paths[$roleIndex] -or
+                $row.executable_sha256 -isnot [string] -or $row.executable_sha256 -cne $hashes[$roleIndex] -or
+                $row.creation_ms -gt $cutoff) { throw 'Owned verifier fixed role/path/image/creation differs' }
+        }
+        if ($pair[0].pid -eq $pair[1].pid -or $pair[0].parent_pid -ne $pair[1].pid -or
+            $pair[1].parent_pid -in @($pair[0].pid,$pair[1].pid) -or
+            $pair[1].creation_ms -gt $pair[0].creation_ms -or $snapshot.verifier_pid -ne $pair[0].pid) {
+            throw 'Owned verifier direct-parent/creation relationship differs'
+        }
+    }
+    for ($roleIndex = 0; $roleIndex -lt 2; $roleIndex++) {
+        foreach ($field in $pairKeys) {
+            if ($Value[0].owned_verifier_pair[$roleIndex].$field -cne $Value[1].owned_verifier_pair[$roleIndex].$field) {
+                throw 'Owned verifier identity changed between snapshots'
+            }
+        }
+    }
+}

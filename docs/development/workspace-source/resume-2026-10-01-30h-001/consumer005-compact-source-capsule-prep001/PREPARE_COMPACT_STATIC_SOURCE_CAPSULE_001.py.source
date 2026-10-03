@@ -1,0 +1,503 @@
+"""Owned data/AST/metadata preparation only; no target code is executed."""
+from pathlib import Path
+from datetime import datetime, timezone
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+
+ROOT = Path(r'D:\Aenv\pro2')
+BASE = ROOT / 'resume-2026-10-01-30h-001'
+SOURCE = BASE / 'raw-consumer-binding-integration-prep005'
+PEER = BASE / 'consumer005-complete-static-audit001'
+DESIGN = BASE / 'consumer005-isolated-unit-harness-design001'
+DESIGN_PEER = BASE / 'consumer005-harness-design-independent-audit001'
+OUT = BASE / 'consumer005-compact-source-capsule-prep001'
+CAP = 4194304
+CAPSULE_CAP = 131072
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+def enc(value):
+    return (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True,
+                       allow_nan=False) + '\n').encode('ascii')
+
+def once(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('xb') as stream:
+        stream.write(data)
+
+def raw(value):
+    return [getattr(value, name, None) for name in
+            ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode',
+             'st_nlink','st_file_attributes','st_birthtime_ns')]
+
+def cross(value):
+    return [getattr(value, name, None) for name in
+            ('st_dev','st_ino','st_size','st_mtime_ns','st_nlink')]
+
+def read(path):
+    before = path.lstat()
+    assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+    assert not getattr(before,'st_file_attributes',0) & 1024 and 0 <= before.st_size <= CAP
+    with path.open('rb') as stream:
+        first = os.fstat(stream.fileno())
+        assert cross(first) == cross(before)
+        data = stream.read(CAP + 1)
+        last = os.fstat(stream.fileno())
+    after = path.lstat()
+    assert raw(before) == raw(after) and raw(first) == raw(last)
+    assert len(data) == before.st_size <= CAP
+    return data, dict(path=str(path), bytes=len(data), sha256=sha(data),
+                      path_raw9=raw(before), descriptor_raw9=raw(first))
+
+selected = []
+def select(key, path):
+    selected.append((key, path))
+
+select('root_choice010', BASE/'ROOT_CONSUMER005_CAPSULE_SOURCE_CHOICE_010.json')
+for key, name in [('full_peer','INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.json'),
+                  ('full_peer_md','INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.md'),
+                  ('full_peer_manifest','COMPLETE_SOURCE_AUDIT_MANIFEST_001.json')]:
+    select(key, PEER/name)
+for key, name in [('source_manifest','STAGED_MANIFEST_005.json'),
+                  ('source_post','AUTHOR_POST_FREEZE_STABILITY_005.json'),
+                  ('binding','SOURCE_GUARD_TEST_BINDINGS_005.json'),
+                  ('test','test_raw_consumer_guards_005.TEMPLATE.py'),
+                  ('source_delta','AUTHOR_SOURCE_AND_TEST_AST_DELTA_005.json'),
+                  ('source_closure','DERIVED_SOURCE_AND_FIXTURE_CLOSURE_MAP_005.json'),
+                  ('causal_map','CAUSAL_CASE_MAP_005.json'),
+                  ('code_metadata','RAW4_AND_SIX_PROJECTION_CODE_METADATA_005.json'),
+                  ('source_handoff','HANDOFF_005.md')]:
+    select(key, SOURCE/name)
+for key, name in [('raw4','raw004-source.bytes'),('raw4_peer','raw004-peer.json'),
+                  ('owner','owner.json'),('root_choice007','source-choice007.json'),
+                  ('root_choice007_md','source-choice007.md')]:
+    select(key, SOURCE/'inputs'/name)
+for role, relative in [('controller','src/bu/experiments/week8_exp2a_recovery.py'),
+                        ('entrypoint','scripts/week8_exp2a_recovery_entrypoint.py'),
+                        ('fit_child','scripts/week8_exp2a_recovery_fit_child.py'),
+                        ('inspector','scripts/week8_exp2a_recovery_inspector.py'),
+                        ('worker','scripts/week8_exp2a_recovery_worker.py')]:
+    select('consumer_'+role, SOURCE/relative)
+    select('before004_'+role, SOURCE/'before/revision004'/relative)
+select('before004_test', SOURCE/'before/revision004/test_raw_consumer_guards_004.TEMPLATE.py')
+for key, name in [('design_peer','INDEPENDENT_CONSUMER005_HARNESS_DESIGN_REVIEW_001.json'),
+                  ('design_peer_md','INDEPENDENT_CONSUMER005_HARNESS_DESIGN_REVIEW_001.md'),
+                  ('design_peer_post','INDEPENDENT_CONSUMER005_HARNESS_DESIGN_POST_CAPTURE_001.json'),
+                  ('design_peer_manifest','AUDIT_MANIFEST_001.json')]:
+    select(key, DESIGN_PEER/name)
+for key, name in [('historical_design','HARNESS_SOURCE_DESIGN_001.json'),
+                  ('historical_design_md','HARNESS_SOURCE_DESIGN_001.md'),
+                  ('historical_design_manifest','DESIGN_MANIFEST_001.json'),
+                  ('historical_design_post','DESIGN_POST_FREEZE_STABILITY_001.json')]:
+    select(key, DESIGN/name)
+select('old_source003_peer', BASE/'consumer-guard-test-runtime005/inputs/ACTUAL_SOURCE_PEER_003.json')
+for key, name in [('legacy_driver','run-consumer-guard-unit005.TEMPLATE.py'),
+                  ('legacy_profile','GUARD_RUNTIME_PROFILE_005.json'),
+                  ('legacy_child','consumer-guard-child-005.TEMPLATE.py')]:
+    select(key, DESIGN/'inputs/legacyGG5'/name)
+assert len(selected) == len({key for key,_ in selected}) == 41
+assert len({str(path) for _,path in selected}) == 41
+
+data = {}
+before_rounds = []
+before_times = []
+for iteration in range(3):
+    before_times.append(datetime.now(timezone.utc).isoformat())
+    rows = []
+    for key, path in selected:
+        content, row = read(path)
+        rows.append(dict(key=key, **row))
+        if iteration == 0:
+            data[key] = content
+    before_rounds.append(rows)
+assert before_rounds[0] == before_rounds[1] == before_rounds[2]
+pins = {row['key']:row for row in before_rounds[0]}
+assert pins['root_choice010']['sha256'] == '2b67f3109423ee1a11346a2cabfbc8ef3bc3c9b3f5d4bb14de8f69382b4e0e2c'
+assert pins['full_peer']['sha256'] == '5a283496929bffed9b022bff382719cbb918df94f5a5224b9c8022e237e9d096'
+assert pins['design_peer']['sha256'] == '9f1b43f04ad3396c825865c6acaa706cd4bbc758059bc05ea5cf132f812e75cf'
+choice = json.loads(data['root_choice010'])
+assert choice['new_capsule_maximum_bytes'] == CAPSULE_CAP
+assert choice['operational_authority_granted'] is False and choice['event_row_grammar_approved'] is False
+peer = json.loads(data['full_peer'])
+binding = json.loads(data['binding'])
+manifest = json.loads(data['source_manifest'])
+code_metadata = json.loads(data['code_metadata'])
+old_peer = json.loads(data['old_source003_peer'])
+profile = json.loads(data['legacy_profile'])
+assert len(peer) == 38 and len(data['full_peer']) == 2553985
+assert pins['source_manifest']['sha256'] == peer['manifest_sha256']
+assert pins['binding']['sha256'] == peer['binding_sha256']
+assert pins['test']['sha256'] == peer['test_sha256']
+assert manifest['raw_source_sha256'] == binding['raw_sha256'] == pins['raw4']['sha256']
+assert len(old_peer) == 51 and len(old_peer['raw_policy_facts']) == 12
+
+# Selected originals have been observed three times BEFORE any input copies/output facts.
+pairs = []
+for key, path in selected:
+    copy = OUT/'inputs'/(key+'.bytes')
+    if copy.exists():
+        assert read(copy)[0] == data[key]
+    else:
+        once(copy, data[key])
+    pairs.append(dict(key=key, original=str(path), copy=str(copy),
+                      bytes=len(data[key]), sha256=sha(data[key])))
+pair_rounds = []
+pair_times = []
+for iteration in range(3):
+    pair_times.append(datetime.now(timezone.utc).isoformat())
+    rows = []
+    for pair in pairs:
+        original_bytes, original = read(Path(pair['original']))
+        copy_bytes, copied = read(Path(pair['copy']))
+        assert original_bytes == copy_bytes == data[pair['key']]
+        rows.append(dict(key=pair['key'], original=original, copy=copied))
+    pair_rounds.append(rows)
+assert pair_rounds[0] == pair_rounds[1] == pair_rounds[2]
+
+raw_tree = ast.parse(data['raw4'])
+raw_functions = [node for node in raw_tree.body if isinstance(node, ast.FunctionDef)]
+raw_classes = [node for node in raw_tree.body if isinstance(node, ast.ClassDef)]
+raw_class_methods = sum(sum(isinstance(node, ast.FunctionDef) for node in row.body) for row in raw_classes)
+admit = next(node for node in raw_functions if node.name == 'admit_recorded_predecessor')
+api = [node.arg for node, default in zip(admit.args.kwonlyargs,admit.args.kw_defaults) if default is None]
+caps = {}
+for node in raw_tree.body:
+    if isinstance(node, ast.Assign):
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id in peer['raw_AST_facts']['caps']:
+                number = ast.literal_eval(node.value)
+                assert type(number) is int
+                caps[target.id] = number
+raw_facts = dict(API_required_keyword_only=api, caps=caps, class_methods=raw_class_methods,
+                 classes=len(raw_classes),functions=len(raw_functions),
+                 initializer_genexprs=sum(sum(isinstance(child,ast.GeneratorExp) for child in ast.walk(node))
+                    for node in raw_tree.body if not isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))),
+                 operational_input_roles=len([name for name in api if name.endswith('_bytes')
+                                               and name not in ('incident_bytes','terminal_bytes')]))
+assert raw_facts == peer['raw_AST_facts']
+assert len(raw_functions) == 85 and len(raw_classes) == 7 and raw_class_methods == 36
+assert len(api) == 12 and raw_facts['operational_input_roles'] == 7
+
+substitutions = [
+ ('if value is None or kind is bool or kind is int or kind is float or kind is str:', 'if value is None or kind in (bool, int, float, str):'),
+ ('if kind is dict or kind is MappingProxyType:', 'if kind in (dict, MappingProxyType):'),
+ ('if kind is tuple or kind is list or kind is set or kind is frozenset:', 'if kind in (tuple, list, set, frozenset):'),
+ ('if kind is set or kind is frozenset:', 'if kind in (set, frozenset):')]
+roles = []
+for role in ['controller','entrypoint','fit_child','inspector','worker']:
+    source_bytes = data['consumer_'+role]
+    before_bytes = data['before004_'+role]
+    reversed_bytes = source_bytes
+    for new,old in substitutions:
+        assert reversed_bytes.count(new.encode()) == 1
+        reversed_bytes = reversed_bytes.replace(new.encode(),old.encode())
+    assert reversed_bytes == before_bytes
+    current_tree = ast.parse(source_bytes)
+    prior_tree = ast.parse(before_bytes)
+    helper = next(node for node in current_tree.body if isinstance(node,ast.FunctionDef) and node.name == '_raw_helper_value_identity')
+    prior_other = [ast.dump(node,include_attributes=False) for node in prior_tree.body
+                   if not (isinstance(node,ast.FunctionDef) and node.name == helper.name)]
+    current_other = [ast.dump(node,include_attributes=False) for node in current_tree.body
+                     if not (isinstance(node,ast.FunctionDef) and node.name == helper.name)]
+    assert current_other == prior_other
+    proof = next(row for row in peer['source_proofs'] if row['role'] == role)
+    assert proof['sha256'] == sha(source_bytes) and proof['before_sha256'] == sha(before_bytes)
+    assert binding['consumers'][role]['sha256'] == sha(source_bytes)
+    import_count = sum(isinstance(node,ast.ImportFrom) and node.module == 'types'
+                       and any(alias.name == 'MappingProxyType' and alias.asname is None for alias in node.names)
+                       for node in current_tree.body)
+    assert import_count == 1
+    path_branch = next(node for node in ast.walk(helper) if isinstance(node,ast.If)
+                      and isinstance(node.test,ast.Call) and ast.unparse(node.test) == 'isinstance(value, Path)')
+    nominal_is = sum(isinstance(node,ast.Compare) and isinstance(node.left,ast.Name)
+                     and node.left.id == 'kind' and any(isinstance(op,ast.Is) for op in node.ops)
+                     for node in ast.walk(helper))
+    kind_in = sum(isinstance(node,ast.Compare) and isinstance(node.left,ast.Name)
+                  and node.left.id == 'kind' and any(isinstance(op,ast.In) for op in node.ops)
+                  for node in ast.walk(helper))
+    assert nominal_is == 14 and kind_in == 0
+    roles.append(dict(role=role, relative_path=binding['consumers'][role]['path'],
+        bytes=len(source_bytes),sha256=sha(source_bytes),before004_sha256=sha(before_bytes),
+        growth_bytes=len(source_bytes)-len(before_bytes), loader=binding['consumers'][role]['loader'],
+        exception=binding['consumers'][role]['exception'],
+        selected_functions=binding['consumers'][role]['selected_functions'],
+        helper_line=helper.lineno, Path_isinstance_line=path_branch.lineno,
+        four_predicate_reversal_exact_bytes=True, all_other_source_AST_exact=True,
+        nominal_kind_is_comparisons=nominal_is, remaining_kind_in_comparisons=kind_in,
+        direct_trusted_MappingProxyType_imports=import_count,
+        helper_AST_sha256=sha(ast.dump(helper,include_attributes=False).encode('utf-8'))))
+
+test_tree = ast.parse(data['test'])
+before_test_tree = ast.parse(data['before004_test'])
+classes = []
+for node in test_tree.body:
+    if isinstance(node,ast.ClassDef):
+        names = [method.name for method in node.body if isinstance(method,ast.FunctionDef) and method.name.startswith('test_')]
+        classes.append(dict(name=node.name,line=node.lineno,bases=[ast.unparse(base) for base in node.bases],
+            direct_method_count=len(names), direct_methods=names, class_keywords=len(node.keywords)))
+assert [row['direct_method_count'] for row in classes] == [19,5]
+assert all(row['bases'] == ['unittest.TestCase'] and row['class_keywords'] == 0 for row in classes)
+assert len({name for row in classes for name in row['direct_methods']}) == 24
+for node in test_tree.body:
+    targets = node.targets if isinstance(node,ast.Assign) else [node.target] if isinstance(node,ast.AnnAssign) else []
+    assert not any(isinstance(target,ast.Name) and target.id in {row['name'] for row in classes} for target in targets)
+old_class = next(node for node in before_test_tree.body if isinstance(node,ast.ClassDef) and node.name == classes[0]['name'])
+new_class = next(node for node in test_tree.body if isinstance(node,ast.ClassDef) and node.name == classes[0]['name'])
+assert ast.dump(old_class,include_attributes=False) == ast.dump(new_class,include_attributes=False)
+old_other = [ast.dump(node,include_attributes=False) for node in before_test_tree.body
+             if not (isinstance(node,ast.FunctionDef) and node.name == 'guard_fixture')]
+new_other = [ast.dump(node,include_attributes=False) for node in test_tree.body
+             if not (isinstance(node,ast.FunctionDef) and node.name in ('guard_fixture','metaclass_spoof_row'))
+             and not (isinstance(node,ast.ClassDef) and node.name == classes[1]['name'])]
+assert new_other == old_other
+old_fixture = next(node for node in before_test_tree.body if isinstance(node,ast.FunctionDef) and node.name == 'guard_fixture')
+new_fixture = next(node for node in test_tree.body if isinstance(node,ast.FunctionDef) and node.name == 'guard_fixture')
+new_fixture_dump = ast.dump(new_fixture,include_attributes=False)
+assert new_fixture_dump.replace('SOURCE_GUARD_TEST_BINDINGS_005.json','SOURCE_GUARD_TEST_BINDINGS_004.json') == ast.dump(old_fixture,include_attributes=False)
+assert classes[0]['direct_methods'] == peer['test_discovery']['classes'][0]['test_methods']
+assert classes[1]['direct_methods'] == peer['test_discovery']['classes'][1]['test_methods']
+
+created = datetime.now(timezone.utc).isoformat(timespec='microseconds')
+assert re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}\+00:00',created)
+anchors = {key:dict(path=pins[key]['path'],bytes=pins[key]['bytes'],sha256=pins[key]['sha256'])
+           for key in ['root_choice010','full_peer','source_manifest','source_post','binding','test','raw4',
+                       'raw4_peer','root_choice007','code_metadata','design_peer']}
+nominal_core = dict(source_scope='STATIC_SOURCE_AND_CAUSAL_TEST_PREPARATION_ONLY',
+    source5_full_peer_verdict=peer['verdict'], source5_full_peer_reviewer=peer['reviewer'],
+    source5_author=peer['source_author'], capsule_author='/root/native_frame_explorer',
+    raw_named_functions=85,raw_named_classes=7,raw_class_methods=36,raw_initializer_genexprs=1,
+    API_required_keyword_only_count=12,operational_input_roles=7,
+    prepared_direct_methods=24,direct_TestCase_classes=2,prior_direct_methods=19,added_direct_methods=5,
+    consumer_role_count=5,exact_predicate_changes_per_consumer=4,
+    global_attestation_cap=395799,schema3_private_attestation_cap=361287,
+    operational_authority_granted=False,target_compilation_performed_by_capsule_author=False,
+    target_definitions_or_functions_executed=False,tests_collected_or_executed=False,
+    actual_collection=None,actual_results=None,actual_healthy_module_acceptance=None)
+capsule = dict(schema_version=1,record_type='consumer005_compact_static_source_capsule',
+    created_utc=created,producer_clock_role='PYTHON_UTC_EXACT_SIX_FRACTIONAL_DIGITS_PLUS_00_00',
+    author='/root/native_frame_explorer',
+    verdict='STATIC_SOURCE_ACCEPTANCE_SUMMARY_PENDING_DISTINCT_CAPSULE_DERIVATION_PEER',
+    operational_authority_granted=False,nominal_core=nominal_core,anchors=anchors,
+    consumer_roles=roles,raw_AST_facts=raw_facts,
+    attributed_inert_code_metadata=dict(author=code_metadata['author'],
+        scope=code_metadata['scope'],source_key='code_metadata',
+        independently_recompiled_by_capsule_author=False,CodeType_or_FunctionType_constructed_by_capsule_author=False,
+        target_code_executed=code_metadata['target_code_executed'],
+        test_module_compiled=code_metadata['test_module_compiled'],
+        initializer_genexpr=code_metadata['initializer_genexpr'],
+        named_definition_metadata_count=len(code_metadata['named_definitions']),
+        named_definition_metadata_canonical_sha256=sha(enc(code_metadata['named_definitions'])),
+        selected_projection_metadata=code_metadata['six_selected_projection_metadata'],
+        qualification='CodeType flags/digests are attributed pinned author inert metadata. AST counts/API/caps and source bytes are independently rederived. This capsule performs no new compilation or code identity/runtime proof.'),
+    discovery=dict(classes=classes,potential_distinct_direct_IDs=24,
+        prior19_class_AST_exact=True,all_other_prior_top_AST_exact=True,
+        guard_fixture_delta_only='SOURCE_GUARD_TEST_BINDINGS_004.json -> SOURCE_GUARD_TEST_BINDINGS_005.json',
+        original14_retained_as_prior19=True,inherited_duplicate_IDs=False,inherited43=False,
+        actual_collection=None,actual_results=None,all24_methods_status='UNRUN',
+        future_requirement='Both pinned direct classes require actual fresh loader-name/ordered-ID reconciliation and independently reviewed collection/result/event evidence;24AST is not24 actual tests.'),
+    causal_preparation=dict(models=['M1','M2','M3','M4'],
+        role_phase_contexts_negative_planned=40,role_phase_contexts_genuine_planned=10,
+        all5_roles_cold_and_reuse=True,probe_mutation_objects_and_logs_separate=True,
+        mutation_log_never_cleared=True,specific_unsupported_value_refusal_before_callbacks_required=True,
+        healthy_control_loads_before_damage=2,restored_control_loads_after_damage=2,
+        M3_primitive_plus_instance_equality_compares_genuine_normalized_rows=True,
+        fixture_findings_from_full_peer=peer['fixture_findings'],
+        actual_controls=None,actual_mutations=None,actual_passes=None,
+        qualification='All assertions describe pinned future fixtures and reviewed source routes, not executed exploits, healthy acceptance or actual failures.'),
+    guard_and_Path_limits=dict(source_guard_scope=peer['source_guard_scope'],
+        causal_source_conclusion=peer['causal_source_conclusion'],
+        Path_qualification=peer['unchanged_Path_qualification'],
+        source_SHA_alone_is_not_mutable_global_default_policy_closure=True,
+        unconditional_nominal_closure=False,full_consumer_or_lifecycle_execution=False),
+    full_review_finite_scope=dict(declared_payload_files=peer['declared_payload_files'],
+        declared_payload_bytes=peer['declared_payload_bytes'],before_pairs=peer['before_pairs'],
+        before_actual004_pairs=peer['before_actual004_pairs'],
+        before_scoped_audit_pairs=peer['before_different_scoped_audit_pairs'],
+        selected_active_pairs=peer['selected_active_pairs'],unique_finite_inputs=peer['unique_finite_inputs'],
+        observed_namespace_count_including_manifest=peer['known_creation_files_including_manifest'],
+        known_postclosure_files=peer['known_postclosure_files'],
+        inherited_full_peer_claim=True,capsule_selected_pair_count=len(pairs),
+        fresh_entire_package_reinventory=False,unknown_file_absence_established=False,
+        loaded_fullsite_physical_capture_Job_descendant_readiness_established=False,
+        qualification=peer['namespace_count_scope']),
+    future_authority=dict(capsule_different_peer=None,harness_source=None,harness_source_peer=None,
+        reader_implementation=None,current_context=None,whole_before=None,resource=None,
+        coordination_ACK=None,ROOT_ACK=None,bound_review=None,late_review=None,
+        collection=None,events=None,results=None,terminal=None,reconciliation=None,
+        event1024_grammar_approved=False,caps_changed=False,canonical_live_native_science_changed=False),
+    remaining_conditions=[
+        'A different Root or eligible peer must validate exact capsule/schema/derivation/selected source closure before reader or harness source implementation choice.',
+        'RootChoice010 authorizes this capsule and precision only. It grants no reader, harness, event1024 grammar, binding, helper reuse, test entry, runtime or operational authority.',
+        'Capsule<=131072 is a new source-summary role; general2MiB reader, result262144, capture131072 and transcript262144 caps remain unchanged. Full5a283 receipt remains external pinned evidence, never falsely reformatted as oldSource003.',
+        'Preserve original600 context,90 bound/late,450unit+60after,60resource-through-spawn and owner/quiet/executor/canonical/Pro3 holds; genuine actual phase reviews remain separate.',
+        'Retain science/twins/epoch/history/spent/no-replay/no-public/no-outcomes; snapshots are not leases, direct Process cleanup is not Job/descendant/fullsite proof.'])
+
+# Closed data contract: exact built-in identity, not class-name/equality membership.
+# This validates own publication data, not a future target reader implementation.
+def typed_shape(value):
+    kind = type(value)
+    if kind is dict:
+        assert all(type(key) is str for key in value)
+        return dict(kind='exact_builtin_dict',closed_keys=sorted(value),
+                    fields={key:typed_shape(item) for key,item in value.items()})
+    if kind is list:
+        return dict(kind='exact_builtin_list',length=len(value),items=[typed_shape(item) for item in value])
+    if kind is bool:
+        return dict(kind='exact_builtin_bool',value=value)
+    if kind is int:
+        return dict(kind='exact_builtin_int_not_bool',value=value)
+    if kind is str:
+        return dict(kind='exact_builtin_str',value=value,maximum_UTF8_bytes=len(value.encode('utf-8')))
+    if value is None:
+        return dict(kind='None',value=None)
+    raise AssertionError('unsupported own data type')
+
+def type_validate(value, node):
+    kind = node['kind']
+    if kind == 'exact_builtin_dict':
+        assert type(value) is dict and sorted(value) == node['closed_keys']
+        for key in node['closed_keys']:
+            type_validate(value[key],node['fields'][key])
+    elif kind == 'exact_builtin_list':
+        assert type(value) is list and len(value) == node['length']
+        for item,shape in zip(value,node['items']):
+            type_validate(item,shape)
+    elif kind == 'exact_builtin_bool':
+        assert type(value) is bool and value is node['value']
+    elif kind == 'exact_builtin_int_not_bool':
+        assert type(value) is int and value == node['value']
+    elif kind == 'exact_builtin_str':
+        assert type(value) is str and value == node['value']
+    else:
+        assert kind == 'None' and value is None
+
+capsule_bytes = enc(capsule)
+assert len(capsule_bytes) <= CAPSULE_CAP
+contract = dict(schema_version=1,record_type='closed_compact_source_capsule_data_schema',
+    capsule_record_type=capsule['record_type'],maximum_capsule_bytes=CAPSULE_CAP,
+    exact_top_level_keys=sorted(capsule),top_level_key_count=len(capsule),
+    top_level_nominal_types={key:type(value).__name__ for key,value in capsule.items()},
+    exact_nominal_core=typed_shape(nominal_core),closed_entire_fixed_capsule_shape=typed_shape(capsule),
+    parser_requirements='Fresh bytes externallySHA-pinned;<=131072 before/descriptor/read checks; exact ASCII JSON+LF with duplicate/nonfinite rejection; exact builtin identities (int excludes bool); exact closed nested shapes and pinned literal data; genuinePy6 creation. This is a data contract only, not approved reader source.',
+    runtime_reader_implemented=False,implementation_approved=False)
+type_validate(capsule,contract['closed_entire_fixed_capsule_shape'])
+type_validate(json.loads(capsule_bytes),contract['closed_entire_fixed_capsule_shape'])
+
+derivation = dict(schema_version=1,record_type='reproducible_compact_capsule_source_derivation_map',
+    source_choice_sha256=pins['root_choice010']['sha256'],full_peer_sha256=pins['full_peer']['sha256'],
+    source_verdict=peer['verdict'],pairs=pairs,
+    selectors={
+        'anchors':'Fresh exact input pins for11 fixed named roles; metadata/source bytes only.',
+        'nominal_core':'Peer/full source binding facts, Raw4 top-level AST counts, API kw-only names, caps and Source005 test AST; explicit false/None scope values fromChoice010 and accepted peer.',
+        'consumer_roles':'For each5role reverse exactly4new is predicates to004; require byte identity with preserved004 input; AST dump all other top-level nodes exact; direct trustedMappingProxyType import1; kind is14 and kind in0; retain Path branch.',
+        'raw_AST_facts':'ast.parse selectedRaw4bytes; count85FunctionDef/7ClassDef/36direct methods/1module-initializerGeneratorExp excluding definition bodies; read required12 keyword-only args and7file*_bytes roles excluding historicalincident/terminal inputs; ast.literal_eval four cap assignments exactint.',
+        'attributed_inert_code_metadata':'Copy selected fields from authenticatedRAW4_AND_SIX_PROJECTION_CODE_METADATA_005; canonicalsha of92named definitions; do not recreate or approveCodeType metadata or flags by execution.',
+        'discovery':'ast.parse pinned test005; two directunittest.TestCase classes19+5, no class keyword/rebinding/inheritance duplication; full old19 class dump exact; remove2new definitions then all other old module ASTs exact exceptguard_fixture table005->004 string.',
+        'causal_preparation':'Fullpeer/fixture_findings at51-104/646-679/683-723/725-770/168-643 plus pinned testAST; futureM1–M4/5roles/2phases/40negative+10genuine; no actual callback/test claims.',
+        'guard_and_Path_limits':'Exact peer/source_guard_scope,causal_source_conclusion,unchanged_Path_qualification; before source byte identity proves no unapproved other changes.',
+        'full_review_finite_scope':'Selected fullpeer fields884/91882663/847=811+36/14/1737/885/886 are attributed accepted finite review facts, not new whole-package inventories; selected41pairs independently preserved.',
+        'future_authority':'Choice010 explicit noauthority/noimplementation; all new actual roles remainNone, all runtime/grammar/cap-change flags false.',
+        'created_utc':'Own datetime.now(timezone.utc).isoformat(timespec=microseconds); exact6digits/+00:00; creation timestamp source role only.'},
+    reproducibility='Run own stdlib data compositor only or reproduce selectors with ownAST/metadata; never import/compile/call reviewed code. Verify frozen input pins, schema andcapsule hash externally with a different peer before any future implementation.',
+    generated_capsule_sha256=sha(capsule_bytes),generated_capsule_bytes=len(capsule_bytes),
+    generated_contract_sha256=sha(enc(contract)),target_execution=False)
+
+driver_lines = data['legacy_driver'].decode('utf-8').splitlines()
+missing = [key for key in ['raw_policy_facts','source_bindings','source_authors'] if key not in peer]
+precision = dict(schema_version=1,record_type='distinct_old_source_peer_reader_precision_supplement',
+    created_utc=created,author='/root/native_frame_explorer',scope='SOURCE_BYTES_AND_DATA_ONLY_NO_IMPLEMENTATION_OR_RUNTIME_AUTHORITY',
+    preserved_wrong_design=dict(json_sha256=pins['historical_design']['sha256'],
+        md_sha256=pins['historical_design_md']['sha256'],
+        json_line=272,md_line=7,wrong_claim='old source peer exact12/general2MiB versus new peer38/2553985',
+        old_bytes_modified=False),
+    old=dict(source_peer=pins['old_source003_peer'],top_level_keys=len(old_peer),
+        nested_raw_policy_facts_keys=sorted(old_peer['raw_policy_facts']),nested_count=12,
+        general_JSON_cap=2097152,selected_typed_core=profile['source003_peer_core'],
+        driver_sha256=pins['legacy_driver']['sha256'],
+        driver_lines={str(line):driver_lines[line-1] for line in [26,391,392,393,394,395,396,397,398,399,400,401,402,403,404,405,406,407,408,409]}),
+    new=dict(full_peer=pins['full_peer'],top_level_keys=len(peer),bytes=2553985,
+        bytes_above_old_cap=456833,missing_old_structures=missing,
+        verdict=peer['verdict'],runtime_acceptance=False),
+    corrected_conclusion='Old actual Source003 document has51 top-level keys. Exact12 is only nestedraw_policy_facts; driver391/393–408 also checks typed selectedSource003core/bindings/authors/API undergeneral2MiB. New38-key2553985 peer remains incompatible by cap and different role/shape. A new closedcompactsource-summary schema is prepared underChoice010; no oldschema union/fabrication or general cap widening.',
+    different_capsule_derivation_peer=None,implementation_or_entry_authorized=False,target_execution=False)
+assert missing == ['raw_policy_facts','source_bindings','source_authors']
+once(OUT/'COMPACT_STATIC_SOURCE_CAPSULE_001.json',capsule_bytes)
+once(OUT/'COMPACT_CAPSULE_CLOSED_SCHEMA_001.json',enc(contract))
+once(OUT/'CAPSULE_DERIVATION_MAP_001.json',enc(derivation))
+once(OUT/'OLD_SOURCE_PEER_READER_PRECISION_001.json',enc(precision))
+once(OUT/'OLD_SOURCE_PEER_READER_PRECISION_001.md',('''# Distinct source-peer reader precision
+
+The old Source003 peer has51 top-level fields and an exact12-field nestedraw_policy_facts object. Driver391reads the full SHA-pinned peer under2097152;393–394compare selected typedSource003core;395–409check nestedfacts,API,binding/authors. The new Source005 peer has38 top-level fields and2553985bytes,456833 over the old cap, and lacks the old role structures.
+
+The original design001 exact12 wording is preserved byte-exact as unapproved history. This distinct supplement corrects its meaning before implementation. Choice010 authorizes a new compact source-only schema; it does not authorize the reader, harness, event grammar, bindings or runtime. A different capsule derivation peer is still required.
+''').encode('ascii'))
+preserved = dict(schema_version=1,record_type='compact_capsule_selected_input_preservation',
+    source_original_before_write_observations=3,source_original_before_write_times=before_times,
+    source_original_before_write_metadata=before_rounds,
+    original_copy_pair_observations=3,pair_times=pair_times,pairs=pairs,
+    observations_metadata=pair_rounds,all_byte_and_same_API_raw9_exact=True,
+    selected_pairs=len(pairs),unknown_file_absence_claimed=False,target_execution=False)
+once(OUT/'SELECTED_INPUT_PRESERVATION_001.json',enc(preserved))
+handoff = f'''# Compact Consumer005 source capsule
+
+FROZEN SOURCE PREPARATION ONLY; DIFFERENT CAPSULE DERIVATION PEER PENDING.
+
+Choice010 {pins['root_choice010']['sha256']} authorizes compact capsule/precision only. Capsule{len(capsule_bytes)}bytes <=131072, SHA{sha(capsule_bytes)}, has{len(capsule)} distinct closed top-level fields and an explicit nominal core (builtinexacttypes/int-not-bool/false/None). Its genuine Python6 creation is{created}. Full5a283 is externally anchored accepted STATIC source/causal preparation; this capsule author cites that existing differentSource005 acceptance and does not self-approve the new capsule.
+
+Preserved{len(pairs)} selected original/copy pairs include full5a283,Source005manifest/post/binding/test/Raw4/all5roles, six004comparison files, attributed inertcode metadata,RootChoices010/007,designpeer and wrongdesign history, old51/nested12 peer and legacyreader. All originals were read three times before copies; all pairs three times plus finalpost. No full884 recursive audit or unknown-file absence is inferred.
+
+Reproduction: validate input SHA/size rows and nominal data schema, follow CAPSULE_DERIVATION_MAP_001, compare full capsule bytes/SHA. RawAST85/7/36/1/API12/sevenroles andcaps395799/361287 are rederived; four predicate reversals in each source recover004 byte-exact, preserving all otherAST/import/default/guard behavior. Test has two direct sibling classes19+5,24 potential IDs; prior19AST retained; all24 collection/results UNRUN/None. M1–M4 probes/mutations/logs/healthy/restored controls are future assertions. Pathisinstance semantics remain qualified. InertCodeType flags/digests are pinned author attribution, with no new compile/definitions/calls.
+
+OLD_SOURCE_PEER_READER_PRECISION_001 corrects oldTOP51/nested12/selectedcore versusnewTOP38/2553985/over2MiB456833/missingoldstructures. Wrongdesign001 bytes remain unchanged history. No oldSource003 schema union or cap widening was implemented.
+
+No reader/harness/event1024grammar/binding/auth/ACK/unit/live/native/science/epoch/history/public changes. FutureRoot or eligible differentpeer must validate capsule/derivation/closure before a separate implementation choice. Current metadata capture status is outside this source artifact; no actual context or freshness is claimed here.
+'''
+once(OUT/'HANDOFF_001.md',handoff.encode('ascii'))
+
+# Finite outputs only, before their manifest/post records; no recursive history copying.
+payload_names = ['PREPARE_COMPACT_STATIC_SOURCE_CAPSULE_001.py'] + [str(Path('inputs')/(key+'.bytes')) for key,_ in selected] + [
+    'COMPACT_STATIC_SOURCE_CAPSULE_001.json','COMPACT_CAPSULE_CLOSED_SCHEMA_001.json',
+    'CAPSULE_DERIVATION_MAP_001.json','OLD_SOURCE_PEER_READER_PRECISION_001.json',
+    'OLD_SOURCE_PEER_READER_PRECISION_001.md','SELECTED_INPUT_PRESERVATION_001.json','HANDOFF_001.md']
+payload_rows = {}
+for name in payload_names:
+    content,row = read(OUT/name)
+    payload_rows[name] = row
+output_manifest = dict(schema_version=1,record_type='frozen_compact_source_capsule_preparation_manifest',
+    created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),
+    author='/root/native_frame_explorer',status='SOURCE_CAPSULE_PREPARATION_ONLY_DIFFERENT_PEER_PENDING',
+    source_choice_sha256=pins['root_choice010']['sha256'],capsule_maximum_bytes=CAPSULE_CAP,
+    capsule_bytes=len(capsule_bytes),capsule_sha256=sha(capsule_bytes),
+    payload_files=len(payload_names),creation_with_manifest=len(payload_names)+1,
+    known_after_post_files=len(payload_names)+2,selected_original_copy_pairs=len(pairs),
+    files=payload_rows,actual_collection=None,actual_results=None,capsule_peer=None,
+    implementation_authorized=False,runtime_authorized=False,no_target_execution=True)
+manifest_bytes = enc(output_manifest)
+once(OUT/'CAPSULE_PREPARATION_MANIFEST_001.json',manifest_bytes)
+post_rows = []
+for pair in pairs:
+    original_bytes,original = read(Path(pair['original']))
+    copied_bytes,copied = read(Path(pair['copy']))
+    assert original_bytes == copied_bytes == data[pair['key']]
+    post_rows.append(dict(key=pair['key'],original=original,copy=copied))
+assert post_rows == pair_rounds[0]
+for name,row in payload_rows.items():
+    assert read(OUT/name)[1] == row
+assert read(OUT/'CAPSULE_PREPARATION_MANIFEST_001.json')[0] == manifest_bytes
+post = dict(schema_version=1,record_type='compact_capsule_preparation_post_stability',
+    created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),
+    selected_pairs=len(pairs),all_original_copy_byte_same_API_raw9_stable=True,
+    all_declared_payload_and_manifest_exact=True,observations_metadata=post_rows,
+    manifest_sha256=sha(manifest_bytes),payload_files=len(payload_names),
+    known_files_including_manifest_and_this_post=len(payload_names)+2,no_target_execution=True)
+once(OUT/'CAPSULE_PREPARATION_POST_STABILITY_001.json',enc(post))
+print(json.dumps(dict(capsule_bytes=len(capsule_bytes),capsule_sha256=sha(capsule_bytes),
+    schema_sha256=sha(enc(contract)),derivation_sha256=sha(enc(derivation)),
+    precision_sha256=sha(enc(precision)),manifest_sha256=sha(manifest_bytes),
+    post_sha256=sha(enc(post)),pairs=len(pairs),payload=len(payload_names),
+    with_manifest_post=len(payload_names)+2,actual_results=None)))

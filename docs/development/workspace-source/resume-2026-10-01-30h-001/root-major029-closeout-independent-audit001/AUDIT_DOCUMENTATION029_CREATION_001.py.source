@@ -1,0 +1,163 @@
+"""Own stdlib metadata audit only; does not import or execute reviewed sources."""
+from pathlib import Path
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+import re
+
+ROOT = Path('D:/Aenv/pro2')
+BASE = ROOT / 'resume-2026-10-01-30h-001'
+OUT = BASE / 'root-major029-closeout-independent-audit001'
+SHA = lambda b: hashlib.sha256(b).hexdigest()
+ENC = lambda x: (json.dumps(x, sort_keys=True, indent=2, ensure_ascii=True, allow_nan=False) + '\n').encode('ascii')
+
+def once(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('xb') as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+def stamp():
+    return datetime.now(timezone.utc).isoformat(timespec='microseconds')
+
+def read(path):
+    before = path.lstat()
+    data = path.read_bytes()
+    after = path.lstat()
+    raw = lambda s: [s.st_dev, s.st_ino, s.st_mode, s.st_nlink, s.st_size, s.st_mtime_ns, s.st_ctime_ns, getattr(s, 'st_birthtime_ns', None), s.st_atime_ns]
+    # Access time may change through ordinary reads; its observations remain explicit.
+    assert raw(before)[:8] == raw(after)[:8], str(path)
+    assert len(data) == after.st_size
+    return data, dict(path=path.relative_to(ROOT).as_posix(), bytes=len(data), sha256=SHA(data), raw9_before=raw(before), raw9_after=raw(after))
+
+def main():
+    review_path = OUT / 'INDEPENDENT_ROOT_MAJOR029_CLOSEOUT_REVIEW_001.json'
+    md_path = OUT / 'INDEPENDENT_ROOT_MAJOR029_CLOSEOUT_REVIEW_001.md'
+    post_path = OUT / 'INDEPENDENT_ROOT_MAJOR029_CLOSEOUT_POST_001.json'
+    for p in (review_path, md_path, post_path):
+        assert not p.exists(), str(p)
+    audit_path = BASE / 'DOCS_REFRESH_AUDIT_029.json'
+    inputs_path = BASE / 'DOCS_REFRESH_INPUTS_029.json'
+    baseline_path = BASE / 'DOCS_REFRESH_BASELINE_029.json'
+    audit = json.loads(audit_path.read_bytes())
+    inputs = json.loads(inputs_path.read_bytes())
+    baseline = json.loads(baseline_path.read_bytes())
+    paths = {audit_path, inputs_path, baseline_path, BASE / 'PREPARE_ROOT_DOCS_CLOSEOUT_029.py'}
+    for row in audit['files']:
+        paths.add(ROOT / row['path'])
+    for pair in inputs['inputs']:
+        paths.add(ROOT / pair['original']['path'])
+        paths.add(ROOT / pair['copy']['path'])
+    for row in baseline['files']:
+        paths.add(ROOT / row['primary'])
+        paths.add(ROOT / row['before']['path'])
+    paths = sorted(paths, key=lambda p: p.as_posix())
+    snapshots = []
+    all_data = None
+    for phase in range(3):
+        current = {}
+        rows = []
+        for path in paths:
+            data, row = read(path)
+            current[path] = data
+            rows.append(row)
+        if all_data is None:
+            all_data = current
+        else:
+            assert all_data == current, 'selected input byte drift'
+        snapshots.append(dict(phase=phase + 1, observed_utc=stamp(), rows=rows))
+    blockers = []
+    checks = []
+    for row in audit['files']:
+        data = all_data[ROOT / row['path']]
+        assert len(data) == row['bytes'] and SHA(data) == row['sha256'], row['path']
+    checks.append(dict(check='declared_file_hashes', count=len(audit['files']), passed=True))
+    for pair in inputs['inputs']:
+        original = ROOT / pair['original']['path']
+        copy = ROOT / pair['copy']['path']
+        assert all_data[original] == all_data[copy]
+        for role in ('original', 'copy'):
+            record = pair[role]
+            data = all_data[ROOT / record['path']]
+            assert len(data) == record['bytes'] and SHA(data) == record['sha256']
+        a, b = original.lstat(), copy.lstat()
+        assert (a.st_dev, a.st_ino) != (b.st_dev, b.st_ino), str(original)
+    checks.append(dict(check='independent_original_copy_pairs', count=len(inputs['inputs']), passed=True))
+    for row in baseline['files']:
+        current = all_data[ROOT / row['primary']]
+        before = all_data[ROOT / row['before']['path']]
+        assert len(before) == row['before']['bytes'] and SHA(before) == row['before']['sha256']
+        if row['proof'] == 'exact_retained_suffix':
+            assert current.endswith(before)
+        elif row['proof'] == 'exact_retained_prefix':
+            assert current.startswith(before)
+        else:
+            assert row['proof'] == 'exact_before_copy'
+    checks.append(dict(check='before_and_history_preservation', count=len(baseline['files']), passed=True))
+    for row in audit['maintained_links']:
+        document = ROOT / row['document']
+        resolved = (document.parent / row['target']).resolve()
+        assert str(resolved) == row['resolved_path']
+        assert resolved.is_file()
+        assert '](' + row['target'] + ')' in all_data[document].decode('utf-8')
+    checks.append(dict(check='maintained_local_links', count=len(audit['maintained_links']), passed=True))
+    assert audit['actual_input_count'] == len(inputs['inputs'])
+    assert audit['checkpoint'] == 29
+    assert datetime.now(timezone.utc) > datetime(2026, 10, 2, 22, 36, 15, tzinfo=timezone.utc)
+    assert SHA(all_data[audit_path]) == '3901679e3c663a2d230af7136432398fa61319d7fd6e63b9ebd64c8f262bfe0a'
+    assert SHA(all_data[BASE / '30H_RESUME_CHECKPOINT_029.md']) == '4349b18a95ab897e646790175826788b9e670b4aca6691349b8e9aa5a0fc7c30'
+    value = lambda name: json.loads(all_data[BASE / name])
+    native = value('raw004-publication-native-bounded-closure-prep001/STAGED_MANIFEST_001.json')
+    assert (native['source_count'], native['payload_file_count'], native['total_with_manifest']) == (35, 1139, 1140)
+    assert (native['native_named_methods'], native['metadata_named_methods'], native['native_declared_subtest_policy']) == (128, 29, 421)
+    assert native['source_budget']['common_bytes'] == 183844
+    assert native['target_code_executed'] is False
+    capsule_manifest = value('consumer005-compact-source-capsule-prep001/CAPSULE_PREPARATION_MANIFEST_001.json')
+    capsule = value('consumer005-compact-source-capsule-prep001/COMPACT_STATIC_SOURCE_CAPSULE_001.json')
+    assert capsule_manifest['capsule_bytes'] == 24627 and capsule_manifest['capsule_maximum_bytes'] == 131072
+    assert len(capsule) == 18
+    assert capsule_manifest['implementation_authorized'] is False and capsule_manifest['runtime_authorized'] is False
+    assert capsule_manifest['actual_collection'] is None and capsule_manifest['actual_results'] is None
+    host = value('root-owner-window-closeout001/ROOT_CLOSEOUT_HOST_OBSERVATION_001.json')
+    assert host['task_before_state'] == 'Disabled' and host['task_after_state'] == 'Ready'
+    assert host['task_after_enabled'] is True and host['manual_task_start_performed'] is False
+    assert host['native_quiet_proved'] is False and host['operational_work_authorized'] is False
+    git = value('root-owner-window-closeout001/ROOT_CLOSEOUT_CONTROLLER_GIT_001.json')
+    assert git['head'] == '3f74b1d248e003168157e207e28ca775364f1f26'
+    assert git['status_porcelain'] == [' M src/bu/experiments/week8_exp2a_recovery.py', ' M tests/test_week8_exp2a_recovery.py']
+    assert git['global_git_config_changed'] is False and git['operational_authority_granted'] is False
+    finite = value('root-owner-window-closeout001/ROOT_CLOSEOUT_FINITE_OBSERVATION_001.json')
+    assert finite['selected_paths_count'] == 101
+    assert finite['known_current_gate009_accepted_receipts'] == ['g9-governance-001.accepted.json']
+    assert finite['changed_from_predecessor'] == ['D:\\Aenv\\pro2\\resume-2026-09-28-001\\SESSION.md']
+    assert finite['operational_authority_granted'] is False
+    assert value('INDEPENDENT_DOCS_REFRESH_REVIEW_028.json')['verdict'] == 'PASS_DOCUMENTATION_FROZEN_CREATION_SCOPE_ONLY'
+    assert value('metadata002-actual-freshness-closeout001/INDEPENDENT_ACTUAL_METADATA002_CLOSEOUT_REVIEW_001.json')['verdict'] == 'PASS_ACTUAL_METADATA_CLOSEOUT_ONLY_NO_UNIT_AUTHORITY'
+    assert value('guard006-metadata3-pipeline-design-independent-audit001/INDEPENDENT_FRESH_METADATA_PIPELINE_DESIGN_REVIEW_001.json')['verdict'] == 'REFUSED_SOURCE_DESIGN_REQUIRES_DAG_AND_ROLE_PRECISION_CORRECTIONS'
+    checks.append(dict(check='pinned_closeout_and_author_attributed_source_fact_reconciliation_only', passed=True, source_runtime_approval=False))
+    preserved = []
+    for index, path in enumerate(paths):
+        copy = OUT / 'before' / ('input-%03d.bytes' % index)
+        once(copy, all_data[path])
+        preserved.append(dict(original=path.relative_to(ROOT).as_posix(), copy=copy.relative_to(ROOT).as_posix(), bytes=len(all_data[path]), sha256=SHA(all_data[path])))
+    prepublication = []
+    for path in paths:
+        data, row = read(path)
+        assert data == all_data[path]
+        prepublication.append(row)
+    record = dict(schema_version=1, record_type='independent_root_major029_closeout_documentation_creation_review', reviewer='/root/closeout_audit', created_utc=stamp(), verdict='PASS_DOCUMENTATION_FROZEN_CREATION_CLOSEOUT_SCOPE_ONLY', checkpoint=29, audit_sha256=SHA(all_data[audit_path]), declared_files=len(audit['files']), independent_input_pairs=len(inputs['inputs']), maintained_links=len(audit['maintained_links']), finite_inputs=len(paths), observations=snapshots, prepublication_observations=prepublication, preserved_inputs=preserved, checks=checks, blockers=blockers, semantic_manual_review_reference='Parent-facing audit message and reviewed checkpoint/producer text; limited to documentation claims and pinned metadata, not source/runtime reapproval.', source_runtime_approval=False, operational_authority=False, new_owner_window=False, process_task_changes_by_reviewer=False, primary_files_changed_by_reviewer=False, scope_limits=['Finite selected paths only; no unknown-file absence.', 'Ordinary metadata reads provide no execution lock or independent tool-process witness.', 'No target source compilation, definitions, imports, calls, tests, Git, FFI, native, helper or PowerShell target execution.', 'Existing author/static review facts are attribution only; no self-approval.'])
+    once(review_path, ENC(record))
+    text = '# Independent final documentation029 closeout review\n\nVerdict: **PASS_DOCUMENTATION_FROZEN_CREATION_CLOSEOUT_SCOPE_ONLY**.\n\n' + str(len(audit['files'])) + ' declared files, ' + str(len(inputs['inputs'])) + ' independent original/copy pairs and ' + str(len(audit['maintained_links'])) + ' maintained links match the frozen pins. AGENTS retains its prior suffix; SESSION and RESOURCE retain prior prefixes. Three selected-input observations, a separate prepublication observation and final postpublication observation cover ' + str(len(paths)) + ' finite paths. All before copies are exact and distinct from their originals.\n\nThe expired owner window is explicit. Late publication/native and compact-capsule packages remain author-frozen preparation awaiting different review; design002 remains a correction awaiting narrow different review and Root choice. Existing metadata success does not imply a unit result, release or native readiness. The original scientific, history, epoch, spent-run and no-public boundaries remain. Restoration and process facts are limited to the pinned Root closeout observation, not an independent complete-process or quiet-host proof.\n\nThis review changes no primary document and grants no runtime, helper binding, test, source application, release, native, science, lease, quiet or new owner-window authority.\n'
+    once(md_path, text.encode('utf-8'))
+    post = []
+    for path in paths:
+        data, row = read(path)
+        assert data == all_data[path]
+        post.append(row)
+    once(post_path, ENC(dict(schema_version=1, created_utc=stamp(), review_sha256=SHA(review_path.read_bytes()), documentation_sha256=SHA(md_path.read_bytes()), unchanged_inputs=post)))
+    print(json.dumps(dict(verdict=record['verdict'], review_sha256=SHA(review_path.read_bytes()), md_sha256=SHA(md_path.read_bytes()), post_sha256=SHA(post_path.read_bytes()), finite_inputs=len(paths), declared_files=len(audit['files']), input_pairs=len(inputs['inputs']), links=len(audit['maintained_links']))))
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,233 @@
+"""Stdlib text staging from the immutable effective Oct2 lineage; no imports of helpers."""
+import ast,json,re
+from pathlib import Path
+ROOT=Path(__file__).parent
+BEFORE=ROOT/'before'
+F=json.loads((ROOT.parent/'native-attempt013-front-001/FRONT_BINDINGS_UNBOUND_001.json').read_bytes())
+assert len(F)==40 and all(value is None for value in F.values())
+ROOT_WIN='D:\\Aenv\\pro2\\resume-2026-10-01-30h-001\\native-attempt013-postseal-001'
+FRONT_WIN='D:\\Aenv\\pro2\\resume-2026-10-01-30h-001\\native-attempt013-front-001'
+front_source=(BEFORE/'front-native_successor_front_common_013_001.py.template').read_text(encoding='utf-8')
+facts_node=next(n for n in ast.parse(front_source).body if isinstance(n,ast.Assign)
+                and any(isinstance(t,ast.Name) and t.id=='PROGRAMMATIC_FACTS' for t in n.targets))
+FACTS=json.loads(facts_node.value.args[0].value)
+
+shared=r'''
+function Assert-DownstreamBoundary([hashtable] $C,[string] $AuditSha,[bool] $After=$false) {
+    foreach ($name in @('PostCommonSha','FrontHelperSha','SuccessorAdmissionSha','PriorVerdictSha','PhaseEvidenceSha')) {
+        if ($C[$name] -cnotmatch '^[0-9a-f]{64}$') { throw "Downstream $name is unbound" }
+    }
+    foreach ($pair in @(@($C.ScriptPath,$C.ScriptSha),@($C.CommonPath,$C.CommonSha),
+                       @($C.PostCommon,$C.PostCommonSha),@($C.FrontHelper,$C.FrontHelperSha),
+                       @($C.Python,$C.PythonSha),@($C.Stage0,$C.Stage0FileSha))) {
+        Assert-PoststatusPlain $pair[0] $false
+        if ((Get-PoststatusSha $pair[0]) -cne $pair[1]) { throw 'Fixed reviewed downstream executable/source changed' }
+    }
+    $source = [IO.File]::ReadAllBytes($C.PostCommon)
+    $digest = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($source)).Replace('-','').ToLowerInvariant()
+    if ($digest -cne $C.PostCommonSha) { throw 'Captured downstream policy differs' }
+    $json = $C.FrontBindings | ConvertTo-Json -Depth 12 -Compress
+    $bindings = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false,$true).GetBytes($json))
+    if ($bindings.Length -gt 16384) { throw 'Downstream fixed binding argument exceeds bound' }
+    $bootstrap = 'import base64,hashlib,sys; p=sys.argv.pop(1); h=sys.argv.pop(1); b=sys.stdin.buffer.read(262145); assert len(b)<=262144; b=b[:-2] if b.endswith(b''\r\n'') else b[:-1] if b.endswith(b''\n'') else b; d=base64.b64decode(b,validate=True); assert base64.b64encode(d)==b; assert hashlib.sha256(d).hexdigest()==h; sys.argv[0]=p; globals()[''__file__'']=p; exec(compile(d,p,''exec'',dont_inherit=True),globals())'
+    $payload = [Convert]::ToBase64String($source)
+    if ($payload.Length -gt 262142) { throw 'Captured downstream policy exceeds finite stdin bound' }
+    $arguments = @('-I','-S','-B','-X','utf8','-c',$bootstrap,$C.PostCommon,$C.PostCommonSha,
+        '--expected-script-sha256',$C.PostCommonSha,'--front-helper-sha256',$C.FrontHelperSha,
+        '--bindings-base64',$bindings,'--phase',$C.Operation,'--prior-verdict-sha256',$C.PriorVerdictSha,
+        '--phase-evidence-sha256',$C.PhaseEvidenceSha)
+    if ($AuditSha) { $arguments += @('--audit-sha256',$AuditSha) }
+    if ($After) { $arguments += @('--after') }
+    $reply = @($payload | & $C.Python @arguments)
+    if ($LASTEXITCODE -ne 0 -or $reply.Count -ne 1 -or $reply[0] -cne 'ATTEMPT013_POSTSEAL_BOUNDARY_PASS') {
+        throw 'Fresh full-tree/current release/history/admission/downstream proof refused'
+    }
+    foreach ($path in @($C.PostCommon,$C.FrontHelper,$C.ScriptPath,$C.CommonPath)) {
+        Assert-PoststatusPlain $path $false
+    }
+}
+
+function Assert-DownstreamNativeQuiet {
+    foreach ($taskName in @('Codex Router','arbop_p2p_monitor')) {
+        $task=Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+        if ($task.State.ToString() -cne 'Disabled' -or $task.Settings.Enabled -ne $false) {
+            throw 'Native router/arbop task is not disabled'
+        }
+    }
+    $foreign=@(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+        $_.Name -match '^(python|pypy).*\.exe$' -or
+        ([string]$_.ExecutablePath).IndexOf('D:\Aenv\pro3',[StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+        ([string]$_.CommandLine).IndexOf('D:\Aenv\pro3',[StringComparison]::OrdinalIgnoreCase) -ge 0
+    })
+    if ($foreign.Count -ne 0) { throw 'Durable native quiet host has foreign Python/PyPy/pro3' }
+}
+'''
+
+new_ready=r'''
+    $now=[DateTimeOffset]::UtcNow
+    $end=[DateTimeOffset]::ParseExact($C.OwnerEndUtc,'yyyy-MM-ddTHH:mm:ssZ',
+        [Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::AssumeUniversal)
+    if ($C.OwnerEndUtc -cne '2026-10-02T22:36:15Z' -or $now -ge $end -or
+        ($end-$now).TotalMinutes -le $C.MinimumRemainingMinutes) { throw 'Unchanged phase reserve/active 30h owner window expired' }
+    Assert-DownstreamBoundary $C $AuditSha
+    foreach ($pair in @(@($C.ScriptPath,$C.ScriptSha),@($C.CommonPath,$C.CommonSha),@($C.CaptureSource,$C.CaptureSourceSha),
+                       @($C.Stage0,$C.Stage0FileSha),@($C.PriorVerdict,$C.PriorVerdictSha),@($C.PhaseEvidence,$C.PhaseEvidenceSha))) {
+        Assert-PoststatusPlain $pair[0] $false
+        if ((Get-PoststatusSha $pair[0]) -cne $pair[1]) { throw 'Reviewed phase source/evidence changed' }
+    }
+    Assert-PoststatusSystemCommandImage
+    Assert-DownstreamNativeQuiet
+    $drive=Get-PSDrive D -ErrorAction Stop
+    if ($null -eq $drive.Free -or $drive.Free -lt 8GB) { throw 'Original 8 GiB floor unavailable' }
+    foreach ($path in @((Join-Path $C.Project 'week8-d168-stage0-runtime-attempt-001'),
+                        (Join-Path $C.Project 'week8-d167-native-runtime-attempt-001'))) {
+        Assert-PoststatusPlain $path $true
+        if (@(Get-ChildItem -LiteralPath $path -Force -ErrorAction Stop).Count -ne 0) { throw 'Native startup root is not exactly empty' }
+    }
+    Assert-PoststatusReceipt $C
+'''
+
+commons={
+'seal':'native-poststatus-transport-common',
+'monitor':'native-postseal-monitor-transport-common',
+'finalize':'native-postmonitor-finalize-transport-common',
+'report':'native-postfinalize-report-transport-common',
+'figures':'native-postreport-figures-transport-common',
+}
+reserves={'seal':45,'monitor':30,'finalize':90,'report':60,'figures':60}
+through={'seal':'recover','monitor':'seal','finalize':'monitor','report':'finalize','figures':'report'}
+files=('status','adjudicate','recover','seal','monitor','finalize','report','figures')
+def prior_files(phase):
+    result=['release-receipt-v2.txt']
+    for value in files[:files.index(through[phase])+1]:
+        result+=['stage0-'+value+'-audit.txt']
+        if value!='status':result+=[value+'-launch-intent.json']
+        result += [value+'-stdout.txt',value+'-stderr.txt',value+'-exitcode.txt']
+    return result
+def current_paths(text):
+    text=text.replace('D:\\Aenv\\pro2\\resume-2026-09-28-001\\native-',ROOT_WIN+'\\native-')
+    text=text.replace('D:\\Aenv\\pro2\\resume-2026-09-28-001\\recovery-evidence-before-seal-',ROOT_WIN+'\\recovery-evidence-before-seal-')
+    text=text.replace('D:\\Aenv\\pro2\\resume-2026-09-28-001\\sealed-recovery-independent-evidence-',ROOT_WIN+'\\sealed-recovery-independent-evidence-')
+    text=text.replace('-011-','-013-').replace('-011.json','-013.json')
+    text=text.replace('pro2_native_phase_evidence_v1','pro2_native_phase_evidence_v2')
+    for phase in ('seal','finalize','report','figures'):
+        text=text.replace('pro2_native_'+phase+'_mechanical_verification_v1','pro2_native_'+phase+'_mechanical_verification_v2')
+    return text.replace('pro2_native_monitor_terminal_verification_v1','pro2_native_monitor_terminal_verification_v2')
+
+for phase,base in commons.items():
+    source=(BEFORE/(base+'-011-oct02-002.ps1.template')).read_text(encoding='utf-8')
+    ready_name='Assert-FinalizeReady' if phase=='finalize' else 'Assert-PoststatusReady'
+    start=source.index('function '+ready_name+'(')
+    end=source.index('\nfunction ',start+1)
+    function=source[start:end]
+    tail=function[function.index('    $prior = Get-Content -LiteralPath $C.PriorVerdict'):]
+    source=source[:start]+'function '+ready_name+'([hashtable] $C, [string] $AuditSha) {\n'+new_ready+tail+source[end:]
+    invoke='Invoke-FinalizeStage' if phase=='finalize' else 'Invoke-PoststatusStage'
+    start=source.index('function '+invoke+'(')
+    body=source[start:]
+    right=body.index('    $priorNames = @($C.PreFiles)')
+    prefix='function '+invoke+'([hashtable] $C) {\n'
+    prefix+="    if ($C.Operation -cne '"+phase+"' -or $C.ScriptSha -cnotmatch '^[0-9a-f]{64}$' -or $C.Commit -cnotmatch '^[0-9a-f]{40}$') { throw 'Downstream operation/current source is unbound' }\n"
+    body=prefix+body[right:]
+    count_start=body.index('    if ($priorNames.Count')
+    count_end=body.index('    '+ready_name+' $C',count_start)
+    body=body[:count_start]+f"    if ($priorNames.Count -ne {len(prior_files(phase))}) {{ throw 'Wrong exact predecessor inventory size' }}\n"+body[count_end:]
+    body=body.replace("'--receipt-sha256',$C.ReceiptSha,'--command',$C.Operation)","'--receipt-sha256',$C.ReceiptSha,'--command',$C.Operation,\n        '--successor-admission-sha256',$C.SuccessorAdmissionSha)")
+    body=body.replace("schema='pro2_native_stage_launch_intent_v1'","schema='pro2_native_stage_launch_intent_v2'")
+    body=body.replace('        owner_record_sha256=$C.OwnerRecordSha','        owner_record_sha256=$C.OwnerRecordSha\n        owner_work_end_utc=$C.OwnerEndUtc\n        successor_admission_sha256=$C.SuccessorAdmissionSha\n        external_proof_sha256=$C.FrontBindings.external_proof_sha256')
+    marker='    $exit = [NativeStage0BinaryCapture001]::Run('
+    assert body.count(marker)==1
+    body=body.replace(marker,"    Assert-DownstreamBoundary $C $auditSha\n    Assert-DownstreamNativeQuiet\n"+marker)
+    publish='    [pscustomobject]@{'
+    assert body.count(publish)==1
+    body=body.replace(publish,"    Assert-DownstreamBoundary $C $auditSha $true\n    Assert-DownstreamNativeQuiet\n"+publish)
+    source=source[:start]+body
+    if phase!='finalize':
+        source=source.replace("$lines.Count -ne 12 -or $lines[0] -cne 'WEEK8_D168_STAGE0_AUDIT_RECORD_V2'", "$lines.Count -ne 13 -or $lines[0] -cne 'WEEK8_D176_STAGE0_AUDIT_V3'")
+        source=source.replace("$lines[11] -cne ''", "$lines[12] -cne ''")
+        source=source.replace('$i -le 10;', '$i -le 11;').replace('$fields.Count -ne 10','$fields.Count -ne 11')
+        source=source.replace('        requested_operation=$C.Operation','        requested_operation=$C.Operation\n        successor_admission_sha256=$C.SuccessorAdmissionSha')
+        marker='function Get-PoststatusSha('
+        source=source.replace(marker,shared+'\n'+marker)
+    else:
+        source=re.sub(r"\$basePath = '[^']+'", "$basePath = '"+ROOT_WIN.replace('\\','\\\\')+"\\\\native-postseal-monitor-transport-common-013-window30h-001.ps1'",source,count=1)
+        source=re.sub(r"\$baseSha = '[0-9a-f]{64}'",'$baseSha = $null # FINAL_REVIEWED_MONITOR_BASE_COMMON_SHA256',source,count=1)
+        source=source.replace("if ($baseActual -cne $baseSha)","if ($baseSha -cnotmatch '^[0-9a-f]{64}$' -or $baseActual -cne $baseSha)")
+    source=current_paths(source)
+    with (ROOT/(base+'-013-window30h-001.ps1.template')).open('xb') as file:file.write(source.encode('utf-8'))
+
+    # Wrapper source from exact lineage retains its bootstrap one-link checks;
+    # current fields all come from the independently reviewed F40/current proofs.
+    old='run-native-'+phase+'-011-window-oct02-'+('normal-once-' if phase=='seal' else 'terminal-once-' if phase=='monitor' else 'once-')+'001.ps1.template'
+    wrapper=(BEFORE/old).read_text(encoding='utf-8')
+    capture_pin=re.search(r"CaptureSourceSha\s*=\s*'([0-9a-f]{64})'",wrapper).group(1)
+    old_prefix=wrapper[:wrapper.index('$config = @{')]
+    bootstrap_start=old_prefix.find('function Assert-BootstrapPlain(')
+    bootstrap_end=old_prefix.find('Assert-BootstrapPlain $Session $true')
+    bootstrap=old_prefix[bootstrap_start:bootstrap_end] if bootstrap_start>=0 else (BEFORE/'run-native-monitor-011-window-oct02-terminal-once-001.ps1.template').read_text(encoding='utf-8').split('function Assert-BootstrapPlain(',1)[1].split('Assert-BootstrapPlain $Session $true',1)[0]
+    if bootstrap_start<0:bootstrap='function Assert-BootstrapPlain('+bootstrap
+    active="""param([Parameter(Mandatory=$true)][string] $ExpectedScriptSha256)
+Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop'
+# New one-use attempt013 transport. No replay/old attempt rewrite; all future pins unset.
+$Project='D:\\Aenv\\pro2'
+$Session=Join-Path $Project 'resume-2026-10-01-30h-001\\native-attempt013-postseal-001'
+$Front=Join-Path $Project 'resume-2026-10-01-30h-001\\native-attempt013-front-001'
+$Attempt=Join-Path $Project '.tmp\\week8-d168-release-attempt-013'
+$Repo=Join-Path $Project 'week8-recovery-controller-worktree'
+$Common=Join-Path $Session 'COMMON_NAME.ps1'
+$CommonSha=$null # FINAL_REVIEWED_PHASE_TRANSPORT_COMMON_SHA256
+$PostCommonSha=$null # FINAL_REVIEWED_POSTSEAL_POLICY_SHA256
+$FrontHelperSha=$null # FINAL_REVIEWED_FINAL_FRONT_COMMON_SHA256
+$PriorVerdictSha=$null # FINAL_PREDECESSOR_VERDICT_SHA256
+$PhaseEvidenceSha=$null # FINAL_INDEPENDENT_PHASE_EVIDENCE_SHA256
+$FrontBindings=[ordered]@{
+FIELDS
+}
+""".replace('COMMON_NAME',base+'-013-window30h-001').replace('FIELDS','\n'.join('    '+key+'=$null' for key in F))
+    active+=bootstrap+'''$self=$MyInvocation.MyCommand.Path
+Assert-BootstrapPlain $self $false
+Assert-BootstrapPlain $Common $false
+$commonBytes=[IO.File]::ReadAllBytes($Common)
+$commonDigest=[BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($commonBytes)).Replace('-','').ToLowerInvariant()
+if ($ExpectedScriptSha256 -cnotmatch '^[0-9a-f]{64}$' -or
+    (Get-FileHash -Algorithm SHA256 -LiteralPath $self).Hash.ToLowerInvariant() -cne $ExpectedScriptSha256 -or
+    $CommonSha -cnotmatch '^[0-9a-f]{64}$' -or $commonDigest -cne $CommonSha) {
+    throw 'Reviewed distinct one-use wrapper/common bytes differ or are unbound'
+}
+. ([scriptblock]::Create([Text.UTF8Encoding]::new($false,$true).GetString($commonBytes)))
+Assert-PoststatusPlain $self $false
+Assert-PoststatusPlain $Common $false
+$config=@{
+'''
+    current={
+        'Operation':phase,'PriorCommand':through[phase],'PriorStatus':'recovery_complete_ready_to_seal' if phase=='seal' else 'complete',
+        'OwnerEndUtc':'2026-10-02T22:36:15Z','FrozenCommit':'4515d5165756c8d1669d38d2ee854fa1051b1017',
+        'PythonSha':FACTS['frozen_config']['pinned_python_sha256'],
+        'CaptureSourceSha':capture_pin,
+    }
+    # Retrieve the programmatic executable pin from the frozen front source,
+    # never retype a hash in a successor.
+    front=(BEFORE/'front-native_successor_front_common_013_001.py.template').read_text(encoding='utf-8')
+    for key,value in current.items():active+='    '+key+"='"+value+"'\n"
+    assignments={
+        'MinimumRemainingMinutes':str(reserves[phase]),'Project':'$Project','Session':'$Session','Repo':'$Repo','Attempt':'$Attempt',
+        'ScriptPath':'$self','ScriptSha':'$ExpectedScriptSha256','CommonPath':'$Common','CommonSha':'$CommonSha',
+        'PostCommon':"(Join-Path $Session 'native_successor_postseal_common_013_001.py')",'PostCommonSha':'$PostCommonSha',
+        'FrontHelper':"(Join-Path $Front 'native_successor_front_common_013_001.py')",'FrontHelperSha':'$FrontHelperSha','FrontBindings':'$FrontBindings',
+        'Frozen':"(Join-Path $Project 'week8-e2a-execution-4515-worktree')",'Git':"(Join-Path $Project 'runtimes\\git\\mingw64\\bin\\git.exe')",
+        'Python':"(Join-Path $Project 'pro2\\.venv\\Scripts\\python.exe')",'Receipt':"(Join-Path $Attempt 'release-receipt-v2.txt')",
+        'Audit':"(Join-Path $Attempt 'stage0-"+phase+"-audit.txt')",'Intent':"(Join-Path $Attempt '"+phase+"-launch-intent.json')",
+        'Launcher':"(Join-Path $Repo 'scripts\\week8_recovery_native_launcher.ps1')",'Stage0':"(Join-Path $Repo 'scripts\\week8_recovery_stage0.py')",
+        'CaptureSource':"(Join-Path $Project 'resume-2026-09-28-001\\native-createprocess-binary-capture-001.cs')",
+        'OwnerRecordSha':"'"+FACTS['owner_sha256']+"'",
+        'PriorVerdict':"(Join-Path "+('$Front' if phase=='seal' else '$Session')+" 'native-"+through[phase]+"-013-"+('normal-' if through[phase]=='seal' else 'terminal-' if through[phase]=='monitor' else '')+"verification-001.json')",
+        'PriorVerdictSha':'$PriorVerdictSha','PhaseEvidence':"(Join-Path $Session '"+('recovery-evidence-before-seal-013.json' if phase=='seal' else 'sealed-recovery-independent-evidence-013.json')+"')",'PhaseEvidenceSha':'$PhaseEvidenceSha',
+    }
+    aliases={'Commit':'controller_commit','ReceiptSha':'receipt_sha256','LauncherSha':'launcher_sha256','Stage0FileSha':'stage0_file_sha256','SourceSha':'stage0_source_sha256','EncodedSha':'stage0_encoded_sha256','EnvironmentSha':'stage0_environment_policy_sha256','SuccessorAdmissionSha':'admission_sha256'}
+    assignments.update({key:'$FrontBindings.'+value for key,value in aliases.items()})
+    for key,value in assignments.items():active+='    '+key+'='+value+'\n'
+    active+='    PreFiles=@('+','.join("'"+name+"'" for name in prior_files(phase))+')\n}\n'
+    active+=('Invoke-FinalizeStage' if phase=='finalize' else 'Invoke-PoststatusStage')+' $config\n'
+    with (ROOT/old.replace('-011-window-oct02-','-013-window30h-')).open('xb') as file:file.write(active.encode('utf-8'))
+print('Five downstream transports/commons staged as unbound source; none parsed/executed by this generator.')

@@ -1,0 +1,70 @@
+import ast
+import base64
+import hashlib
+import io
+import json
+import re
+import tokenize
+from pathlib import Path
+
+root = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-schema2-admission-closure-prep003')
+composition = json.loads((root / 'FRAME_SOURCE_COMPOSITION_003.json').read_bytes())
+paths = [root / relative for relative in composition['updated_direct_PS_bridges']]
+common = root / 'front/native_successor_front_common_013_001.py.template'
+bootstrap_path = root / 'CAPTURED_FRAME_BOOTSTRAP_003.py.txt'
+paths += [common, bootstrap_path, root / 'EXPANDED_FRAME_SENDER_003.ps1.txt', root / 'FRAME_SOURCE_COMPOSITION_003.json']
+before_rows = []
+for path in paths:
+    data = path.read_bytes()
+    target = root / 'before' / 'frame-draft004' / path.relative_to(root)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open('xb') as stream:
+        stream.write(data)
+    assert path.read_bytes() == target.read_bytes() == data and path.stat().st_ino != target.stat().st_ino
+    before_rows.append(dict(original=str(path), copy=str(target), sha256=hashlib.sha256(data).hexdigest(), bytes=len(data)))
+
+def compact(source):
+    pairs = []
+    for token in tokenize.generate_tokens(io.StringIO(source).readline):
+        if token.type == tokenize.COMMENT:
+            continue
+        value = token.string
+        if token.type == tokenize.INDENT:
+            assert value == ' ' * len(value) and len(value) % 4 == 0
+            value = ' ' * (len(value) // 4)
+        pairs.append((token.type, value))
+    result = tokenize.untokenize(pairs)
+    assert ast.dump(ast.parse(result), include_attributes=False) == ast.dump(ast.parse(source), include_attributes=False)
+    return result
+
+old_bootstrap = bootstrap_path.read_text(encoding='utf-8')
+new_bootstrap = compact(old_bootstrap)
+old_common = common.read_text(encoding='utf-8')
+new_common = compact(old_common)
+for path in paths[:8]:
+    text = path.read_text(encoding='utf-8')
+    pattern = r"(\$(?:frontBootstrap|bootstrap)\s*=\s*)'((?:''|[^'])*)'"
+    matches = list(re.finditer(pattern, text))
+    assert len(matches) == 1 and matches[0].group(2).replace("''", "'") == old_bootstrap
+    text = re.sub(pattern, lambda match: match.group(1) + "'" + new_bootstrap.replace("'", "''") + "'", text)
+    path.write_text(text, encoding='utf-8', newline='\n')
+common.write_text(new_common, encoding='utf-8', newline='\n')
+bootstrap_path.write_text(new_bootstrap, encoding='utf-8', newline='\n')
+common_bytes = new_common.encode('utf-8')
+encoded = len(base64.b64encode(common_bytes))
+record = dict(schema_version=1, author='/root/bootstrap_stage', before_pairs=before_rows,
+              common_before_bytes=len(old_common.encode('utf-8')), common_after_bytes=len(common_bytes),
+              common_sha256=hashlib.sha256(common_bytes).hexdigest(), common_Base64_bytes=encoded,
+              bootstrap_before_UTF16_units=len(old_bootstrap.encode('utf-16-le'))//2,
+              bootstrap_after_UTF16_units=len(new_bootstrap.encode('utf-16-le'))//2,
+              bootstrap_sha256=hashlib.sha256(new_bootstrap.encode('utf-8')).hexdigest(),
+              entire_common_AST_equal=True, entire_bootstrap_AST_equal=True,
+              upper_transport_bytes_at_max_binding_component=encoded+16384+2,
+              illustrative_invalid_short_path_binding_component=7516,
+              illustrative_frame_bytes=encoded+7516+2,
+              actual_selected_binding_bytes=None, actual_source_literal_growth=None,
+              eight_actual_OS_commands=None, actual_native_witness=None,
+              target_code_executed_compiled_imported=False)
+with (root / 'AST_EQUAL_FRAME_LAYOUT_CHECKPOINT_005.json').open('xb') as stream:
+    stream.write((json.dumps(record, sort_keys=True, indent=2) + '\n').encode('ascii'))
+print(json.dumps({key: value for key, value in record.items() if key != 'before_pairs'}, sort_keys=True))

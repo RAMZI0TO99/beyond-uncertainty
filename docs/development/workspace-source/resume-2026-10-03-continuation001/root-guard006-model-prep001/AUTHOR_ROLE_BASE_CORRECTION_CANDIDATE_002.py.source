@@ -1,0 +1,38 @@
+"""Own metadata candidate author. Wait for full Source refusal before freeze."""
+import ast
+import difflib
+import hashlib
+import json
+from pathlib import Path
+
+OWN=Path(__file__).parent
+old=OWN/'ASSEMBLE_GUARD006_SOURCE_MODELS_001.TEMPLATE.py'
+new=OWN/'ASSEMBLE_GUARD006_SOURCE_MODELS_002.TEMPLATE.py'
+data=old.read_bytes()
+assert hashlib.sha256(data).hexdigest()=='3e165f33ca9ff2179751fec17d25be1346c2cf5d373278838ca91b1b0f66b7bd'
+changes=[
+ (b"own == OWN/'ASSEMBLE_GUARD006_SOURCE_MODELS_001.TEMPLATE.py'",b"own == OWN/'ASSEMBLE_GUARD006_SOURCE_MODELS_002.TEMPLATE.py'"),
+ (b"OWN/'AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_001.json'",b"OWN/'AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_002.json'"),
+ (b"typed(str(WORK/Path(relative)),str(wanted),'actual metadata role path agrees with Root config')",
+  b"base = G if key == 'UNIT_TERMINAL_RELATIVE' else WORK\r\n        typed(str(base/Path(relative)),str(wanted),'actual metadata role path agrees with Root config')")]
+corrected=data
+for before,after in changes:
+ assert corrected.count(before)==1
+ corrected=corrected.replace(before,after,1)
+trees=[ast.parse(value) for value in (data,corrected)]
+functions=[{node.name:ast.dump(node,include_attributes=False) for node in tree.body if isinstance(node,(ast.FunctionDef,ast.ClassDef))} for tree in trees]
+changed=[name for name in functions[0] if functions[0][name]!=functions[1][name]]
+assert sorted(changed)==['main','validate_metadata']
+with new.open('xb') as stream:stream.write(corrected)
+patch=''.join(difflib.unified_diff(data.decode().splitlines(keepends=True),corrected.decode().splitlines(keepends=True),fromfile=old.name,tofile=new.name))
+with (OWN/'ROLE_BASE_CORRECTION_CANDIDATE_002.patch').open('xb') as stream:stream.write(patch.encode('utf8'))
+facts=dict(schema_version=1,record_type='guard006_constructor_role_base_correction_candidate',author='/root/pubnative_review',
+ predecessor=dict(path=str(old),sha256=hashlib.sha256(data).hexdigest(),bytes=len(data)),
+ candidate=dict(path=str(new),sha256=hashlib.sha256(corrected).hexdigest(),bytes=len(corrected)),
+ changed_function_ASTs=changed,other_function_ASTs_exact=[name for name in functions[0] if name not in changed],
+ correction='Unit relative role joins GUARD; coordination roles join WORK. Main selfpath and Source manifest reference select distinct002 source leaves.',
+ complete_independent_refusal_pending=True,final_freeze=False,source_peer=None,SourceActualInputs=None,actual_source_models=None,
+ candidate_AST_parsed=True,target_source_compiled=False,target_definitions_executed=False,target_calls=False,constructor_main_executed=False,tests_executed=False)
+assert old.read_bytes()==data
+with (OWN/'ROLE_BASE_CORRECTION_CANDIDATE_FACTS_002.json').open('xb') as stream:stream.write((json.dumps(facts,sort_keys=True,indent=2)+'\n').encode('ascii'))
+print(json.dumps(dict(candidate=facts['candidate'],changed_functions=changed,final_freeze=False,actuals=None),sort_keys=True))

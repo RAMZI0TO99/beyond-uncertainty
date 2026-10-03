@@ -1,0 +1,116 @@
+"""One-use inert metadata-source binding; never runs bound or target code."""
+from pathlib import Path
+from datetime import datetime, timezone
+import ast
+import hashlib
+import json
+import os
+
+base = Path('D:/Aenv/pro2/resume-2026-10-01-30h-001')
+prep = base / 'guard005-root-metadata-prep001'
+guard = base / 'consumer-guard-test-runtime005'
+template = prep / 'capture-guard005-root-metadata.TEMPLATE.py'
+bound = prep / 'capture-guard005-root-metadata.BOUND.py'
+copies = prep / 'actual-source-binding-inputs001'
+record = prep / 'ACTUAL_SOURCE_BINDING_001.json'
+static_role = prep / 'INDEPENDENT_METADATA_STATIC_REVIEW_005.json'
+assert not bound.exists() and not copies.exists() and not record.exists()
+peer_paths = [prep / 'INDEPENDENT_ROOT_METADATA_PREPARER_STATIC_REVIEW_001.json',
+              prep / 'INDEPENDENT_METADATA_STATIC_REVIEW_005.json']
+peer = next((p for p in peer_paths if p.is_file()), None)
+assert peer is not None, 'Independent metadata preparer review is not yet frozen'
+data = template.read_bytes()
+text = data.decode('utf-8', errors='strict')
+parsed = ast.parse(text)
+bindings_node = next(n for n in parsed.body if isinstance(n, ast.Assign)
+                     and any(isinstance(t, ast.Name) and t.id == 'BINDINGS' for t in n.targets))
+old_bindings = ast.literal_eval(bindings_node.value)
+assert len(old_bindings) == 9 and all(v is None for v in old_bindings.values())
+selected = {
+    'guard_profile_sha256': guard / 'GUARD_RUNTIME_PROFILE_005.json',
+    'source_projection_sha256': guard / 'SOURCE_PROJECTION_005.json',
+    'raw_source_sha256': guard / 'inputs/raw003-source.bytes',
+    'source_manifest_sha256': guard / 'inputs/SOURCE_STAGED_MANIFEST_003.json',
+    'source_peer_sha256': guard / 'inputs/ACTUAL_SOURCE_PEER_003.json',
+    'guard_harness_static_review_sha256': guard / 'INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_005.json',
+    'preparer_static_review_sha256': peer,
+    'coordination_peer_reply_sha256': base / 'PRO3_ACK007_METADATA_CAPTURE_001.md',
+    'coordination_root_response_sha256': base / 'COORDINATION_GATE009_TIMEOUT_RESOURCE_REQUEST_012.md',
+}
+assert set(selected) == set(old_bindings)
+raw_inputs = {k: p.read_bytes() for k, p in selected.items()}
+peer_body = json.loads(raw_inputs['preparer_static_review_sha256'].decode('utf-8'))
+assert 'PASS' in peer_body['verdict'] and 'REFUSED' not in peer_body['verdict']
+harness_body = json.loads(raw_inputs['guard_harness_static_review_sha256'].decode('utf-8'))
+assert harness_body['verdict'] == 'PASS_STATIC_PREPARATION_ONLY'
+new_bindings = {k: hashlib.sha256(b).hexdigest() for k, b in raw_inputs.items()}
+role_paths = {
+    'UNIT_TERMINAL_RELATIVE': 'ROOT_LAUNCH_TERMINAL_005.json',
+    'COORDINATION_PEER_REPLY_RELATIVE': selected['coordination_peer_reply_sha256'].relative_to(base).as_posix(),
+    'COORDINATION_ROOT_RESPONSE_RELATIVE': selected['coordination_root_response_sha256'].relative_to(base).as_posix(),
+}
+lines = text.splitlines(keepends=True)
+edits = [(bindings_node.value.lineno, bindings_node.value.end_lineno, repr(new_bindings))]
+changed_names = {'BINDINGS'}
+for name, value in role_paths.items():
+    nodes = [n for n in parsed.body if isinstance(n, ast.Assign)
+             and any(isinstance(t, ast.Name) and t.id == name for t in n.targets)]
+    assert len(nodes) == 1 and ast.literal_eval(nodes[0].value) is None
+    node = nodes[0]
+    assert node.lineno == node.end_lineno
+    edits.append((node.value.lineno, node.value.end_lineno, repr(value)))
+    changed_names.add(name)
+for first, last, replacement in sorted(edits, reverse=True):
+    node = bindings_node if first == bindings_node.value.lineno else next(
+        n for n in parsed.body if isinstance(n, ast.Assign) and n.value.lineno == first)
+    before = lines[first - 1][:node.value.col_offset]
+    ending = lines[last - 1][node.value.end_col_offset:]
+    lines[first - 1:last] = [before + replacement + ending]
+payload = ''.join(lines).encode('utf-8')
+new_tree = ast.parse(payload.decode('utf-8'))
+old_rows = [ast.dump(n, include_attributes=False) for n in parsed.body
+            if not isinstance(n, ast.Assign) or not any(isinstance(t, ast.Name) and t.id in changed_names for t in n.targets)]
+new_rows = [ast.dump(n, include_attributes=False) for n in new_tree.body
+            if not isinstance(n, ast.Assign) or not any(isinstance(t, ast.Name) and t.id in changed_names for t in n.targets)]
+assert old_rows == new_rows
+assert len(payload) <= 65536
+for k, p in selected.items():
+    assert p.read_bytes() == raw_inputs[k]
+assert template.read_bytes() == data
+assert datetime.now(timezone.utc) < datetime(2026, 10, 2, 22, 36, 15, tzinfo=timezone.utc)
+
+def once(path, body):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('xb') as stream:
+        stream.write(body)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+once(copies / 'metadata-template-before.py', data)
+for key, body in raw_inputs.items():
+    once(copies / (key + '.bytes'), body)
+if static_role == peer:
+    assert static_role.read_bytes() == raw_inputs['preparer_static_review_sha256']
+else:
+    once(static_role, raw_inputs['preparer_static_review_sha256'])
+once(bound, payload)
+proof = dict(schema_version=1, record_type='root_inert_metadata_source_binding001',
+             created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),
+             source_author='/root/bootstrap_stage', binder='/root',
+             template_sha256=hashlib.sha256(data).hexdigest(),
+             actual_script_sha256=hashlib.sha256(payload).hexdigest(), bytes=len(payload),
+             bindings=new_bindings, selected_role_paths=role_paths,
+             exact_other_top_level_AST_preserved=True,
+             independent_metadata_static_review_original=str(peer),
+             static_review_actual_role_is_exact_byte_copy=static_role != peer,
+             actual_bound_review=None, before_authorization=None, after_authorization=None,
+             phase_or_target_execution=False, operational_authority=False,
+             inputs=[dict(key=k, original=str(selected[k]),
+                          copy=str(copies / (k + '.bytes')), bytes=len(b),
+                          sha256=hashlib.sha256(b).hexdigest()) for k, b in raw_inputs.items()])
+body = (json.dumps(proof, indent=2, sort_keys=True, ensure_ascii=True,
+                   allow_nan=False)+'\n').encode('ascii')
+once(record, body)
+print(json.dumps(dict(actual_script_sha256=proof['actual_script_sha256'],
+                      bytes=len(payload), record_sha256=hashlib.sha256(body).hexdigest(),
+                      actual_bound_review='PENDING', execution=False)))

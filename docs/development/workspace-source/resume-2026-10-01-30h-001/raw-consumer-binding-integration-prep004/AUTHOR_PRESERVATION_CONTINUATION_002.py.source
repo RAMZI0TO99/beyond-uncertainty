@@ -1,0 +1,106 @@
+
+import ast,datetime as dt,hashlib,json,math,os,pathlib,stat,re
+P=pathlib.Path(r"D:\Aenv\pro2");B=P/"resume-2026-10-01-30h-001";R=B/"raw-component-runtime-prep004"
+INPUTS={};BYTES={}
+FIXED_EXE_ROLES={str(P/"pro2/.venv/Scripts/python.exe"),str(P/"runtimes/git/mingw64/bin/git.exe"),str(P/"runtimes/week8-python313-frozen-001/python.exe")}
+RAW_FIELDS=("st_dev","st_ino","st_mode","st_size","st_mtime_ns","st_ctime_ns","st_nlink","st_file_attributes","st_birthtime_ns")
+def raw9(s):return [getattr(s,k) for k in RAW_FIELDS]
+def ancestors(p):
+    rows=[]
+    for d in [*reversed(p.parent.parents),p.parent]:
+        s=d.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not s.st_file_attributes&1024,d
+        rows.append([str(d),s.st_dev,s.st_ino,s.st_mode,s.st_file_attributes])
+    return rows
+def read(p,pin=None,size=None,maximum=8388608):
+    p=pathlib.Path(p);chain=ancestors(p);pre=p.lstat()
+    assert stat.S_ISREG(pre.st_mode) and pre.st_nlink==1 and not pre.st_file_attributes&1024,p
+    assert type(maximum) is int and 0<maximum<=134217728 and 0<=pre.st_size<=maximum,p
+    with p.open("rb") as f:
+        first=os.fstat(f.fileno());assert 0<=first.st_size<=maximum
+        x=f.read(maximum+1);last=os.fstat(f.fileno())
+    post=p.lstat()
+    assert len(x)<=maximum and len(x)==pre.st_size and raw9(pre)==raw9(post) and raw9(first)==raw9(last),p
+    for key in ("st_dev","st_ino","st_size","st_mtime_ns","st_nlink","st_file_attributes","st_birthtime_ns"):
+        assert getattr(pre,key)==getattr(first,key),str(p)+key
+    if pre.st_mode!=first.st_mode:
+        assert os.name=="nt" and str(p) in FIXED_EXE_ROLES,p
+        assert stat.S_IFMT(pre.st_mode)==stat.S_IFMT(first.st_mode) and stat.S_IMODE(pre.st_mode)&~0o111==stat.S_IMODE(first.st_mode)&~0o111,p
+        assert stat.S_IMODE(pre.st_mode)&0o111==0o111 and stat.S_IMODE(first.st_mode)&0o111==0,p
+    assert ancestors(p)==chain,p
+    r={"path":str(p),"sha256":hashlib.sha256(x).hexdigest(),"size":len(x),"path_raw9":raw9(pre),"handle_raw9":raw9(first)}
+    if pin is not None:assert r["sha256"]==pin,p
+    if size is not None:assert len(x)==size,p
+    INPUTS[str(p)]=r;BYTES[str(p)]=x
+    return x
+def pairs(v):
+    d={}
+    for k,x in v:
+        assert k not in d,"duplicate JSON key"
+        d[k]=x
+    return d
+def finite(token):
+    value=float(token);assert math.isfinite(value),"nonfinite JSON number";return value
+def J(x):return json.loads(x,object_pairs_hook=pairs,parse_float=finite,parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def hex64(x):return type(x) is str and re.fullmatch("[0-9a-f]{64}",x) is not None
+def bindings_reverse(source,names,expected):
+    rows=source.splitlines(keepends=True);t=ast.parse(source.decode("utf-8"));edits=[];found={}
+    for n in t.body:
+        if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in names:
+            key=n.targets[0].id;assert key not in found and isinstance(n.value,ast.Constant) and hex64(n.value.value)
+            found[key]=n.value.value
+            assert expected[key]==n.value.value,key
+            start=sum(map(len,rows[:n.value.lineno-1]))+n.value.col_offset
+            end=sum(map(len,rows[:n.value.end_lineno-1]))+n.value.end_col_offset
+            edits.append((start,end))
+    assert set(found)==set(names) and len(edits)==len(names)
+    back=source
+    for start,end in sorted(edits,reverse=True):back=back[:start]+b"None"+back[end:]
+    return back,found,edits
+
+R=B/"raw-consumer-binding-integration-prep004";S=B/"raw-consumer-binding-integration-prep003"
+def create(p,x):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open("xb") as f:f.write(x)
+ assert read(p)==x
+source_paths=sorted(p for p in S.rglob("*") if p.is_file())
+copied_paths=sorted(p for p in (R/"before/revision003").rglob("*") if p.is_file())
+assert len(source_paths)==len(copied_paths)==764
+observations=[];snapshots=[]
+for observation in range(3):
+ rows=[]
+ for p in source_paths:
+  x=read(p,maximum=134217728);a=INPUTS[str(p)].copy();q=R/"before/revision003"/p.relative_to(S)
+  assert read(q, a["sha256"],a["size"],maximum=134217728)==x
+  rows.append({"relative_path":p.relative_to(S).as_posix(),"original":a,"copy":INPUTS[str(q)].copy()})
+ assert len(rows)==764
+ if snapshots:assert rows==snapshots[0]
+ snapshots.append(rows);observations.append(dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"))
+extra=[
+(B/"ROOT_REVIEWED_SOURCE_PREPARATION_CHOICES_005.json","source-choice005.json","2a701b66edcd32bd5abae5fe3c80b944a9ff960916296c1a84f1deab02352bf0"),
+(B/"ROOT_REVIEWED_SOURCE_PREPARATION_CHOICES_005.md","source-choice005.md",None),
+(B/"OWNER_WORK_WINDOW_30H_20261001_001.json","owner.json","3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff"),
+(B/"successor-candidate-raw-revision004/scripts/week8_recovery_raw_authority.py","raw004-source.bytes","da64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211"),
+(B/"successor-candidate-raw-revision004/RAW_POLICY_STAGED_MANIFEST_004.json","RAW_POLICY_STAGED_MANIFEST_004.json","45561f4dd0cf1febd4db3e8d281eb03584477048d016b311634a0d1453dbd486"),
+(B/"successor-candidate-raw-revision004/INDEPENDENT_RAW_REVISION004_SOURCE_REVIEW_001.json","raw004-peer.json","e8b53c41b87e1654138a16bff69e7fb9bb84036f35b84f1fdbfffabe99e40984"),
+(B/"successor-candidate-raw-revision004/RAW_POLICY_API_004.md","RAW_POLICY_API_004.md",None),
+(B/"native-schema2-admission-closure-prep003/INDEPENDENT_NATIVE003_TEST_COMMON_COMPATIBILITY_SUPPLEMENT_001.json","native003-compatibility-supplement.json","0a42ae6eb3d6f9ecb305695698a7ca51eb784bfb4fa38f35a721b9431386582e")]
+extras=[]
+for p,name,pin in extra:
+ x=read(p,pin);q=R/"inputs"/name
+ if q.exists():assert read(q)==x
+ else:create(q,x)
+ extras.append({"original":INPUTS[str(p)].copy(),"copy":INPUTS[str(q)].copy()})
+stamp=dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z")
+record={"schema_version":1,"record_type":"complete_revision003_preservation","created_at_utc":stamp,"author":"/root/candidate_review","actual_original_file_count":len(snapshots[0]),"actual_original_bytes":sum(r["original"]["size"] for r in snapshots[0]),"all_actual_revision003_bytes_preserved":True,"historical_manifest_not_expanded":True,"current_peer_reviews_included":True,"observations_per_original_and_copy":3,"observation_times_utc":observations,"pairs":snapshots[0],"extra_input_pairs":extras,"source_or_target_definitions_executed":False,"test_collection_or_execution":False,"live_or_historical_evidence_modified":False,"prior_metadata_refusal":"AUTHOR_METADATA_PREPARATION_REFUSAL_001.json"}
+create(R/"BEFORE_PRESERVATION_004.json",json.dumps(record,sort_keys=True,indent=2).encode()+b"\n")
+segments={}
+for role,row in J(read(S/"SOURCE_GUARD_TEST_BINDINGS_002.json"))["consumers"].items():
+ p=S/row["path"];x=read(p);tree=ast.parse(x)
+ n=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="_raw_helper_value_identity")
+ segment=ast.get_source_segment(x.decode(),n);assert "if isinstance(value, Mapping):" in segment and "kind.__name__, tuple(sorted(rows, key=repr))" in segment
+ segments[role]={"path":str(p),"source_sha256":hashlib.sha256(x).hexdigest(),"line":n.lineno,"guard_ast_sha256":hashlib.sha256(ast.dump(n,include_attributes=False).encode()).hexdigest(),"source_segment":segment}
+collision={"schema_version":1,"record_type":"static_mapping_kind_fingerprint_collision","created_at_utc":stamp,"author":"/root/candidate_review","status":"CONCRETE_STATIC_COLLISION_NO_TARGET_EXECUTION","source_guards":segments,"real_policy_type":"types.MappingProxyType","foreign_type":"collections.abc.Mapping subclass with __name__='mappingproxy'","foreign_rows":"exact genuine-policy keys and values returned by items()","real_and_foreign_current_fingerprint":"('mappingproxy', tuple(sorted(recursively frozen identical rows, key=repr)))","cold_path":"both equal source-derived reference fingerprint","reuse_path":"foreign value equals retained source-derived fingerprint","type_difference_not_recorded":True,"requested_source_fix_pending_root_direction":True,"proposed_narrow_fix":"Only exact dict and exact types.MappingProxyType enter mapping branch; every other Mapping class reaches unsupported-value refusal.","foreign_class_or_guard_constructed_or_executed":False,"target_imports_or_definitions_or_tests_executed":False,"production_algorithm_changed":False}
+create(R/"MAPPING_KIND_STATIC_COUNTEREXAMPLE_004.json",json.dumps(collision,sort_keys=True,indent=2).encode()+b"\n")
+print(json.dumps({"preserved_count":len(snapshots[0]),"preserved_bytes":record["actual_original_bytes"],"preservation_sha256":INPUTS[str(R/"BEFORE_PRESERVATION_004.json")]["sha256"],"counterexample_sha256":INPUTS[str(R/"MAPPING_KIND_STATIC_COUNTEREXAMPLE_004.json")]["sha256"],"extra_inputs":len(extras)}))
+

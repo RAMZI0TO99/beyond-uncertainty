@@ -1,0 +1,558 @@
+"""UNBOUND one-use isolated raw003 collection then unit tests. Never replay any attempt."""
+import ast
+import ctypes
+import hashlib
+import json
+import math
+import os
+import stat
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from xml.etree import ElementTree as ET
+
+RAW_SOURCE_PEER_REVIEW_SHA256 = None
+RAW_TEST_PEER_REVIEW_SHA256 = None
+HARNESS_STATIC_REVIEW_SHA256 = None
+if RAW_SOURCE_PEER_REVIEW_SHA256 is None or RAW_TEST_PEER_REVIEW_SHA256 is None or HARNESS_STATIC_REVIEW_SHA256 is None:
+    raise RuntimeError("UNBOUND RAW003 HARNESS; NO COLLECTION OR TEST EXECUTION AUTHORIZED")
+
+PROJECT = Path("D:/Aenv/pro2")
+WORK = PROJECT / "resume-2026-10-01-30h-001"
+PREP = WORK / "raw-component-runtime-prep004"
+COPY = PREP / "source"
+LIVE = PROJECT / "week8-recovery-controller-worktree"
+RUNS = PROJECT / ".tmp/raw4-004"
+PYTHON = PROJECT / "pro2/.venv/Scripts/python.exe"
+BASE_PYTHON = PROJECT / "runtimes/week8-python313-frozen-001/python.exe"
+GIT = PROJECT / "runtimes/git/mingw64/bin/git.exe"
+OWNER_END = datetime(2026, 10, 2, 22, 36, 15, tzinfo=timezone.utc)
+SOURCE_PROJECTION_SHA256 = 'f62b752d0b2183123824719732495a459a63bfceaac80dad461154d39e3bdbb8'
+OWNER_SHA256 = "3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff"
+RAW_SOURCE_SHA256 = "7fe7dc1989b882f6ef2cb22caaa5975b0b7d5d2907d84ee3c1b858facd57f267"
+RAW_TEST_SHA256 = '367a1d34c6a0d90656fdb296bc864b43452f6e8caac2f63a7fdb2ec7ca31661c'
+RAW_TEST_SIZE = 415278
+MAX_COLLECTION_SECONDS = 600
+MAX_TEST_SECONDS = 3500
+MAX_ROOT_SECONDS = 4320
+MIN_DISK_BYTES = 10737418240
+MAX_ACK_HOURS = 5
+MAX_JSON_BYTES = 2097152
+RUNTIME_FIXED = {
+    str(PYTHON): "935016795f3e6908e75acbc2040a01e2e4cdb494a57c42f63a0d6eedb2372256",
+    str(GIT): "c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9",
+    str(PROJECT / "pro2/.venv/pyvenv.cfg"): "e4d43703e6bfd6ad7296ee63e3441af275a4b8a89d72796b316f6458f120e418",
+    str(PROJECT / "runtimes/week8-python313-frozen-001/python.exe"): "5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed",
+}
+
+def require(ok, text):
+    if not ok:
+        raise RuntimeError(text)
+
+def sha(value):
+    return hashlib.sha256(value).hexdigest()
+
+def hex64(value):
+    return type(value) is str and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+def ancestors(directory):
+    answer = []
+    for path in [*reversed(directory.absolute().parents), directory.absolute()]:
+        info = path.lstat()
+        require(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+                and not (getattr(info, "st_file_attributes", 0) & 0x400), "linked/reparse ancestor")
+        answer.append((str(path), info.st_dev, info.st_ino))
+    return tuple(answer)
+
+def raw(info):
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+            info.st_mode, info.st_nlink, getattr(info, "st_file_attributes", 0),
+            getattr(info, "st_birthtime_ns", None))
+
+def cross(info):
+    # Windows executable ctime and mode differ across lstat/fstat APIs; retain each full same-API tuple.
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_nlink)
+
+def read(path, expected=None, maximum=MAX_JSON_BYTES):
+    chain = ancestors(path.parent)
+    before = path.lstat()
+    require(stat.S_ISREG(before.st_mode) and not stat.S_ISLNK(before.st_mode)
+            and before.st_nlink == 1 and not (getattr(before, "st_file_attributes", 0) & 0x400),
+            "not a one-link plain file")
+    require(type(maximum) is int and maximum > 0 and before.st_size <= maximum, "pre-read size ceiling")
+    with path.open("rb") as stream:
+        first = os.fstat(stream.fileno())
+        require(cross(before) == cross(first) and first.st_size <= maximum, "opened file or size differs")
+        value = stream.read(maximum + 1)
+        last = os.fstat(stream.fileno())
+    after = path.lstat()
+    require(len(value) <= maximum and len(value) == before.st_size
+            and cross(before) == cross(first) == cross(last) == cross(after)
+            and raw(before) == raw(after) and raw(first) == raw(last)
+            and ancestors(path.parent) == chain, "file changed during read")
+    if expected is not None:
+        require(hex64(expected) and sha(value) == expected, "byte pin differs")
+    return value
+
+def duplicates(rows):
+    answer = {}
+    for key, value in rows:
+        require(key not in answer, "duplicate JSON key")
+        answer[key] = value
+    return answer
+
+def finite(token):
+    value = float(token)
+    require(math.isfinite(value), "nonfinite JSON")
+    return value
+
+def decode(value):
+    return json.loads(value.decode("utf-8"), object_pairs_hook=duplicates, parse_float=finite,
+                      parse_constant=lambda x: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+
+def parsed(path, expected=None):
+    return decode(read(path, expected))
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=True, allow_nan=False) + "\n").encode("ascii")
+
+def absent(path):
+    ancestors(path.parent)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return True
+    return False
+
+def once(path, value):
+    require(absent(path), "create-once output exists")
+    chain = ancestors(path.parent)
+    with path.open("xb") as stream:
+        stream.write(value)
+        stream.flush()
+        os.fsync(stream.fileno())
+    require(ancestors(path.parent) == chain and read(path, maximum=max(len(value), 1)) == value,
+            "output changed after publication")
+
+def mkdir(path):
+    require(absent(path), "create-once directory exists")
+    chain = ancestors(path.parent)
+    path.mkdir()
+    require(ancestors(path.parent) == chain, "directory parent changed")
+    ancestors(path)
+
+def exact(value, keys, what):
+    require(type(value) is dict and set(value) == set(keys), what + " shape differs")
+
+def timestamp(value):
+    require(type(value) is str, "UTC timestamp type")
+    result = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    require(result.tzinfo is not None and result.utcoffset() == timedelta(0), "UTC timestamp required")
+    return result
+
+def within_work(value):
+    require(type(value) is str, "evidence path type")
+    path = Path(value)
+    require(path.is_absolute() and path == path.absolute() and path.is_relative_to(WORK)
+            and ".." not in path.parts, "evidence path outside work folder")
+    ancestors(path.parent)
+    return path
+
+def binding(value):
+    exact(value, ("path", "sha256"), "external binding")
+    require(hex64(value["sha256"]), "external SHA type")
+    return within_work(value["path"]), value["sha256"]
+
+def projection_digest(source):
+    text = source.decode("utf-8")
+    lines = text.splitlines(keepends=True)
+    targets = {"RAW_SOURCE_PEER_REVIEW_SHA256", "RAW_TEST_PEER_REVIEW_SHA256", "HARNESS_STATIC_REVIEW_SHA256"}
+    replacements = []
+    for node in ast.parse(text).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            name = node.targets[0].id
+            if name in targets:
+                require(isinstance(node.value, ast.Constant) and hex64(node.value.value), "binding literal differs")
+                start = sum(len(x) for x in lines[:node.value.lineno - 1]) + node.value.col_offset
+                end = sum(len(x) for x in lines[:node.value.end_lineno - 1]) + node.value.end_col_offset
+                replacements.append((start, end))
+    require(len(replacements) == 3, "exact three binding sites required")
+    for start, end in sorted(replacements, reverse=True):
+        text = text[:start] + "None" + text[end:]
+    return sha(text.encode("utf-8"))
+
+def primary_inputs():
+    projection = parsed(PREP / "SOURCE_AND_HISTORICAL_INPUTS_004.json", SOURCE_PROJECTION_SHA256)
+    require(len(projection["eight_primary_inputs"]) == 8, "eight primary inputs required")
+    answer = []
+    for row in projection["eight_primary_inputs"]:
+        original, copied = Path(row["original"]), Path(row["copy"])
+        require(copied.is_relative_to(PREP), "copy escaped prep")
+        for path in (original, copied):
+            value = read(path, row["sha256"], row["size"])
+            answer.append({"path": str(path), "sha256": sha(value), "size": len(value),
+                           "path_identity": list(raw(path.lstat()))})
+    return answer
+
+
+REVIEWER_ALIASES = {name: canonical for canonical in (
+    "/root", "/root/raw_policy_worker", "/root/keepawake_stage", "/root/candidate_review",
+    "/root/bootstrap_stage", "/root/window_docs", "/root/gate_evidence")
+    for name in (canonical, canonical.rsplit("/", 1)[-1])}
+CONFIG_NAMES = ("pytest.toml", ".pytest.toml", "pytest.ini", ".pytest.ini", "pyproject.toml", "tox.ini", "setup.cfg", "conftest.py")
+PYTEST_CONFIG_SOURCE_SHA256 = "535d149e6f3962e44260b6645bb354976e19531f5dd248e14ee7d7fff61c8848"
+WHOLE_EXPECTED = {
+    "base": {"files":5368,"directories":504,"bytes":155022742,"sha256":"0a5aff918e4a46fae2427a593261f8e3640ba439ba4ffebf5081b15eb7df6760"},
+    "scripts": {"files":22,"directories":0,"bytes":2145329,"sha256":"baa95b3f7e3e50a9b388fca6c4fd238fb55fc2e62f4cdc07c1b7c57caa9a54ad"},
+}
+
+def independent_reviewer(review, *, harness):
+    identifier = review.get("reviewer")
+    if type(identifier) is dict:
+        identifier = identifier.get("canonical_identity")
+    require(type(identifier) is str and identifier in REVIEWER_ALIASES, "unknown reviewer identity")
+    canonical = REVIEWER_ALIASES[identifier]
+    excluded = {"/root", "/root/raw_policy_worker"}
+    if harness:
+        excluded.add("/root/keepawake_stage")
+    require(canonical not in excluded, "source/harness author or root cannot supply independent review")
+    return canonical
+
+def configuration_guard():
+    read(PROJECT / "pro2/.venv/Lib/site-packages/_pytest/config/findpaths.py", PYTEST_CONFIG_SOURCE_SHA256)
+    directories = [COPY / "tests", *(COPY / "tests").parents]
+    require(len(directories) == 7, "exact configuration ancestors differ")
+    paths = [directory / name for directory in directories for name in CONFIG_NAMES]
+    require(len(paths) == 56 and all(absent(path) for path in paths), "recognized pytest/config/conftest present")
+    return [str(path) for path in paths]
+
+def whole_before_guard(ack):
+    path, digest = binding(ack["whole_runtime_before"])
+    require(path == PREP / "whole-runtime-before/result.json", "whole before fixed path differs")
+    value = parsed(path, digest)
+    exact(value, ("schema_version", "phase", "verdict", "started_utc", "finished_utc", "observer_sha256", "static_review_sha256", "owner_sha256", "trees", "observation_files", "before_record_sha256", "runtime_mutation", "target_execution"), "external whole before")
+    require(type(value["schema_version"]) is int and value["schema_version"] == 1 and value["phase"] == "before"
+            and value["verdict"] == "MATCHES_PINNED_RUNTIME_TWICE" and value["owner_sha256"] == OWNER_SHA256
+            and value["static_review_sha256"] == HARNESS_STATIC_REVIEW_SHA256
+            and hex64(value["observer_sha256"]) and value["before_record_sha256"] is None
+            and value["runtime_mutation"] is False and value["target_execution"] is False,
+            "external whole before facts differ")
+    require(timestamp(value["started_utc"]) <= timestamp(value["finished_utc"]) <= datetime.now(timezone.utc), "whole before times")
+    exact(value["trees"], ("base", "scripts"), "whole trees")
+    require(value["trees"] == WHOLE_EXPECTED, "whole runtime identity differs")
+    for tree in value["trees"].values():
+        exact(tree, ("files", "directories", "bytes", "sha256"), "whole identity row")
+        require(all(type(tree[key]) is int for key in ("files", "directories", "bytes"))
+                and type(tree["sha256"]) is str, "whole identity scalar types differ")
+    require(type(value["observation_files"]) is list and len(value["observation_files"]) == 4, "four whole observations")
+    paths = set()
+    for row in value["observation_files"]:
+        exact(row, ("path", "sha256", "size"), "whole observation binding")
+        captured = within_work(row["path"])
+        require(captured.parent == PREP / "whole-runtime-before" and captured.name in
+                ("base-first.json", "base-second.json", "scripts-first.json", "scripts-second.json")
+                and str(captured) not in paths and type(row["size"]) is int and 0 < row["size"] <= 4194304, "whole row path or cap")
+        paths.add(str(captured)); read(captured, row["sha256"], row["size"])
+    # This authenticates external time-local observations. It is NOT a fresh global-tree reread by this driver.
+    return {"path":str(path),"sha256":digest,"finished_utc":value["finished_utc"],"observer_sha256":value["observer_sha256"]}
+
+def fresh_guard(ack, expected_live=None):
+    now = datetime.now(timezone.utc)
+    require(timestamp(ack["created_utc"]) <= now < timestamp(ack["expires_utc"]) <= OWNER_END,
+            "acknowledgement or owner expired")
+    require(timestamp(ack["expires_utc"]) - timestamp(ack["created_utc"]) <= timedelta(hours=MAX_ACK_HOURS),
+            "acknowledgement interval exceeds five hours")
+    configuration_paths = configuration_guard()
+    whole_before = whole_before_guard(ack)
+    inputs = primary_inputs()
+    owner = parsed(PREP / "inputs/OWNER_WORK_WINDOW_30H_20261001_001.json", OWNER_SHA256)
+    require(timestamp(owner["work_start_utc"]) <= now < timestamp(owner["work_end_utc"]) == OWNER_END,
+            "owner interval differs")
+    runtime_path, runtime_sha = binding(ack["runtime_snapshot"])
+    runtime = parsed(runtime_path, runtime_sha)
+    exact(runtime, ("schema_version", "purpose", "captured_utc", "entries", "pytest"), "runtime snapshot")
+    require(runtime["schema_version"] == 1 and runtime["purpose"] == "RAW004_ISOLATED_RUNTIME_GUARD_ONLY",
+            "runtime snapshot purpose differs")
+    require(timestamp(runtime["captured_utc"]) <= now and now - timestamp(runtime["captured_utc"]) < timedelta(hours=MAX_ACK_HOURS),
+            "runtime snapshot stale")
+    require(type(runtime["entries"]) is list and len(runtime["entries"]) == 4, "four fixed runtime files required")
+    actual_runtime = {}
+    for row in runtime["entries"]:
+        exact(row, ("path", "sha256", "size"), "runtime row")
+        require(row["path"] in RUNTIME_FIXED and row["path"] not in actual_runtime
+                and row["sha256"] == RUNTIME_FIXED[row["path"]]
+                and type(row["size"]) is int and row["size"] > 0, "runtime fixed pin differs")
+        value = read(Path(row["path"]), row["sha256"], row["size"])
+        actual_runtime[row["path"]] = {"sha256": sha(value), "size": len(value),
+                                        "path_identity": list(raw(Path(row["path"]).lstat()))}
+    require(set(actual_runtime) == set(RUNTIME_FIXED), "runtime executable closure differs")
+    exact(runtime["pytest"], ("path", "sha256", "size", "version"), "pytest binding")
+    pytest_row = runtime["pytest"]
+    pytest_path = Path(pytest_row["path"])
+    require(pytest_path == PROJECT / "pro2/.venv/Lib/site-packages/pytest/__init__.py"
+            and pytest_row["version"] == "9.1.1" and hex64(pytest_row["sha256"])
+            and type(pytest_row["size"]) is int and pytest_row["size"] > 0, "pytest entry binding differs")
+    read(pytest_path, pytest_row["sha256"], pytest_row["size"])
+    live_path, live_sha = binding(ack["live_guard_snapshot"])
+    live_snapshot = parsed(live_path, live_sha)
+    exact(live_snapshot, ("schema_version", "purpose", "captured_utc", "root", "rows"), "live guard")
+    require(live_snapshot["schema_version"] == 1 and live_snapshot["purpose"] == "OPAQUE_CURRENT_BYTES_GUARD_NOT_POLICY_AUTHORITY"
+            and live_snapshot["root"] == str(LIVE), "opaque live guard purpose differs")
+    require(timestamp(live_snapshot["captured_utc"]) <= now and now - timestamp(live_snapshot["captured_utc"]) < timedelta(hours=MAX_ACK_HOURS),
+            "live guard stale")
+    require(type(live_snapshot["rows"]) is list and len(live_snapshot["rows"]) == 742, "current live742 required")
+    live = []
+    paths = set()
+    for row in live_snapshot["rows"]:
+        exact(row, ("path", "sha256", "size", "mode"), "opaque live row")
+        rel = row["path"]
+        require(type(rel) is str and rel and "\\" not in rel and not rel.startswith("/")
+                and all(part not in ("", ".", "..") for part in rel.split("/"))
+                and rel.casefold() not in paths and hex64(row["sha256"])
+                and type(row["size"]) is int and row["size"] >= 0
+                and type(row["mode"]) is int and row["mode"] >= 0, "opaque row shape differs")
+        paths.add(rel.casefold())
+        path = LIVE / rel
+        value = read(path, row["sha256"], max(row["size"], 1))
+        info = path.lstat()
+        require(stat.S_IMODE(info.st_mode) == row["mode"], "opaque mode differs")
+        live.append({"path": rel, "sha256": sha(value), "size": len(value), "path_identity": list(raw(info))})
+    if expected_live is not None:
+        require(live == expected_live, "current live file metadata or bytes changed")
+    free_disk = ctypes.c_ulonglong()
+    require(ctypes.windll.kernel32.GetDiskFreeSpaceExW(str(PROJECT), ctypes.byref(free_disk), None, None), "disk query failed")
+    require(free_disk.value >= MIN_DISK_BYTES, "ten GiB start disk floor")
+    class Memory(ctypes.Structure):
+        _fields_ = [("length", ctypes.c_ulong), ("load", ctypes.c_ulong),
+                    ("total_phys", ctypes.c_ulonglong), ("avail_phys", ctypes.c_ulonglong),
+                    ("total_page", ctypes.c_ulonglong), ("avail_page", ctypes.c_ulonglong),
+                    ("total_virtual", ctypes.c_ulonglong), ("avail_virtual", ctypes.c_ulonglong),
+                    ("avail_extended", ctypes.c_ulonglong)]
+    memory = Memory(); memory.length = ctypes.sizeof(memory)
+    require(ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(memory)), "RAM query failed")
+    require(type(ack["min_free_ram_bytes"]) is int and ack["min_free_ram_bytes"] >= 1073741824
+            and memory.avail_phys >= ack["min_free_ram_bytes"], "root acknowledged RAM floor")
+    return {"configuration56": configuration_paths, "whole_runtime_before": whole_before,
+            "primary_inputs": inputs, "live": live, "runtime": actual_runtime,
+            "pytest": pytest_row, "free_disk_bytes": free_disk.value, "free_ram_bytes": memory.avail_phys}
+
+def environment(temp):
+    value = {key: val for key, val in os.environ.items()
+             if not key.upper().startswith(("PYTHON", "GIT_"))}
+    value.update({"PYTHONPATH": str(COPY), "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+                  "PYTHONDONTWRITEBYTECODE": "1", "PYTHONNOUSERSITE": "1", "PYTHONSAFEPATH": "1",
+                  "TEMP": str(temp), "TMP": str(temp), "TMPDIR": str(temp),
+                  "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1",
+                  "NUMEXPR_NUM_THREADS": "1"})
+    return value
+
+def node_digest(nodeids):
+    return sha((json.dumps(nodeids, separators=(",", ":"), ensure_ascii=True, allow_nan=False) + "\n").encode("ascii"))
+
+def evidence_guard(rows, expected=None):
+    answer = []
+    for path, digest, maximum in rows:
+        value = read(path, digest, maximum)
+        answer.append({"path": str(path), "sha256": sha(value), "size": len(value),
+                       "path_identity": list(raw(path.lstat()))})
+    if expected is not None:
+        require(answer == expected, "authority evidence bytes or metadata changed")
+    return answer
+
+def main():
+    require(sys.flags.isolated == sys.flags.no_site == sys.flags.dont_write_bytecode == 1
+            and sys.flags.utf8_mode == 1 and Path(sys.executable).resolve(strict=True) == BASE_PYTHON.resolve(strict=True),
+            "root driver must use the pinned direct base interpreter and isolated flags")
+    require(len(sys.argv) == 4 and all(hex64(x) for x in sys.argv[1:]), "external self/ACK/bound-review SHA arguments required")
+    self_sha, ack_sha, bound_review_sha = sys.argv[1:]
+    self_path = Path(__file__).absolute()
+    require(self_path == PREP / "run-isolated-raw-component-004.BOUND.py", "bound driver path differs")
+    source = read(self_path, self_sha)
+    static = parsed(PREP / "INDEPENDENT_RAW_HARNESS_STATIC_REVIEW_004.json", HARNESS_STATIC_REVIEW_SHA256)
+    require(static["verdict"] == "PASS_STATIC_PREPARATION_ONLY" and static["driver_template_sha256"] == projection_digest(source),
+            "independent static template review differs")
+    independent_reviewer(static, harness=True)
+    bound = parsed(PREP / "INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_004.json", bound_review_sha)
+    require(bound["verdict"] == "PASS_BOUND_FOR_ROOT_FIRST_EXECUTION_ONLY"
+            and bound["bound_driver_sha256"] == self_sha and bound["static_review_sha256"] == HARNESS_STATIC_REVIEW_SHA256,
+            "independent bound review differs")
+    independent_reviewer(bound, harness=True)
+    launch_path = PREP / "ROOT_LAUNCH_START_004.json"
+    launch_bytes = read(launch_path)
+    launch = decode(launch_bytes)
+    exact(launch, ("schema_version", "started_utc", "bound_driver_sha256", "ack_sha256", "bound_review_sha256"),
+          "external root first-launch receipt")
+    require(type(launch["schema_version"]) is int and launch["schema_version"] == 1
+            and launch["bound_driver_sha256"] == self_sha and launch["ack_sha256"] == ack_sha
+            and launch["bound_review_sha256"] == bound_review_sha
+            and timestamp(launch["started_utc"]) <= datetime.now(timezone.utc)
+            and datetime.now(timezone.utc) - timestamp(launch["started_utc"]) < timedelta(minutes=5),
+            "actual root launch receipt differs or is stale")
+    raw_peer = parsed(PREP / "inputs/INDEPENDENT_RAW_POLICY_STATIC_REVIEW_003.json", RAW_SOURCE_PEER_REVIEW_SHA256)
+    independent_reviewer(raw_peer, harness=False)
+    require(raw_peer["decision"] == "PASS_STATIC" and raw_peer["raw_helper_sha256"] == RAW_SOURCE_SHA256
+            and raw_peer["raw_tests_sha256"] == "b4bf5499506b6521ce6278254bffb9ba5fbde8f71f3e734edd4e148783dc2a7c"
+            and RAW_SOURCE_PEER_REVIEW_SHA256 == "7c263719ad75c3f48554b6e592d11747ed6ad9e2377723320adf114d71834d5f",
+            "exact historical raw003 SOURCE peer receipt required")
+    test_peer = parsed(PREP / "inputs/INDEPENDENT_RAW_TEST_REVISION_STATIC_REVIEW_004.json", RAW_TEST_PEER_REVIEW_SHA256)
+    independent_reviewer(test_peer, harness=False)
+    require(test_peer["decision"] == test_peer["verdict"] == "PASS_STATIC_TEST_REVISION_ONLY"
+            and test_peer["raw_helper_sha256"] == test_peer["raw_source_sha256"] == RAW_SOURCE_SHA256
+            and test_peer["raw_tests_sha256"] == RAW_TEST_SHA256 and type(test_peer["raw_tests_bytes"]) is int
+            and test_peer["raw_tests_bytes"] == RAW_TEST_SIZE, "exact new raw004 TEST peer receipt required")
+    ack = parsed(PREP / "ROOT_FIRST_EXECUTION_ACK_RAW004.json", ack_sha)
+    exact(ack, ("schema_version", "decision", "created_utc", "expires_utc", "owner_sha256",
+                "bound_driver_sha256", "bound_review_sha256", "static_review_sha256", "raw_source_peer_review_sha256", "raw_test_peer_review_sha256",
+                "source_projection_sha256", "raw_source_sha256", "raw_test_sha256", "child_sha256",
+                "runtime_snapshot", "live_guard_snapshot", "whole_runtime_before", "coordination_acknowledgement",
+                "min_free_ram_bytes", "maximum_collection_seconds", "maximum_test_seconds", "scope"), "root ACK")
+    require(type(ack["schema_version"]) is int and ack["schema_version"] == 1
+            and ack["decision"] == "execute_isolated_raw004_collection_then_tests_once"
+            and ack["owner_sha256"] == OWNER_SHA256 and ack["bound_driver_sha256"] == self_sha
+            and ack["bound_review_sha256"] == bound_review_sha and ack["static_review_sha256"] == HARNESS_STATIC_REVIEW_SHA256
+            and ack["raw_source_peer_review_sha256"] == RAW_SOURCE_PEER_REVIEW_SHA256
+            and ack["raw_test_peer_review_sha256"] == RAW_TEST_PEER_REVIEW_SHA256 and ack["source_projection_sha256"] == SOURCE_PROJECTION_SHA256
+            and ack["raw_source_sha256"] == RAW_SOURCE_SHA256 and ack["raw_test_sha256"] == RAW_TEST_SHA256
+            and ack["child_sha256"] == static["child_template_sha256"]
+            and ack["maximum_collection_seconds"] == MAX_COLLECTION_SECONDS and ack["maximum_test_seconds"] == MAX_TEST_SECONDS
+            and ack["scope"] == "ISOLATED_RAW_UNIT_TESTS_ONLY_NO_OPERATIONAL_AUTHORITY", "root ACK facts differ")
+    coordination_path, coordination_sha = binding(ack["coordination_acknowledgement"])
+    coordination = read(coordination_path, coordination_sha)
+    require(bool(coordination), "actual external coordination acknowledgement absent")
+    # Root and the independent bound reviewer must assess the immutable acknowledgement text.
+    # Merely finding a file or waiting in silence does not supply execution consensus.
+    child = read(PREP / "raw-test-child-004.TEMPLATE.py", ack["child_sha256"])
+    ast.parse(child)
+    authority_rows = [(self_path, self_sha, len(source)),
+                      (PREP / "INDEPENDENT_RAW_HARNESS_STATIC_REVIEW_004.json", HARNESS_STATIC_REVIEW_SHA256, MAX_JSON_BYTES),
+                      (PREP / "INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_004.json", bound_review_sha, MAX_JSON_BYTES),
+                      (PREP / "inputs/INDEPENDENT_RAW_POLICY_STATIC_REVIEW_003.json", RAW_SOURCE_PEER_REVIEW_SHA256, MAX_JSON_BYTES),
+                      (PREP / "inputs/INDEPENDENT_RAW_TEST_REVISION_STATIC_REVIEW_004.json", RAW_TEST_PEER_REVIEW_SHA256, MAX_JSON_BYTES),
+                      (PREP / "ROOT_FIRST_EXECUTION_ACK_RAW004.json", ack_sha, MAX_JSON_BYTES),
+                      (launch_path, sha(launch_bytes), MAX_JSON_BYTES),
+                      (coordination_path, coordination_sha, MAX_JSON_BYTES),
+                      (PREP / "raw-test-child-004.TEMPLATE.py", ack["child_sha256"], len(child))]
+    authority_baseline = evidence_guard(authority_rows)
+    first = fresh_guard(ack)
+    require(datetime.now(timezone.utc) - timestamp(first["whole_runtime_before"]["finished_utc"]) < timedelta(minutes=10),
+            "whole before observation is not fresh at sole claim")
+    require(datetime.now(timezone.utc) + timedelta(seconds=MAX_ROOT_SECONDS + 120)
+            < timestamp(ack["expires_utc"]), "insufficient acknowledged wall time reserve")
+    require(absent(RUNS), "short scratch already exists")
+    for name in ("ROOT_RUN_INTENT_004.json", "started.json", "finished.json", "failed.json"):
+        require(absent(PREP / name), "one-use root receipt exists")
+    intent = {"schema_version": 1, "created_utc": datetime.now(timezone.utc).isoformat(),
+              "self_sha256": self_sha, "root_ack_sha256": ack_sha, "bound_review_sha256": bound_review_sha,
+              "source_projection_sha256": SOURCE_PROJECTION_SHA256, "scope": ack["scope"],
+              "canonical_qa": False, "native_science_production_authority": False}
+    once(PREP / "ROOT_RUN_INTENT_004.json", encoded(intent))
+    once(PREP / "started.json", encoded({**intent, "before": first, "authority_evidence": authority_baseline}))
+    mkdir(RUNS)
+    baseline = first
+    try:
+        collection_ids = None
+        accepted = []
+        for phase, timeout in (("collection", MAX_COLLECTION_SECONDS), ("tests", MAX_TEST_SECONDS)):
+            evidence_guard(authority_rows, authority_baseline)
+            before = fresh_guard(ack, baseline["live"])
+            require(before["primary_inputs"] == baseline["primary_inputs"] and before["runtime"] == baseline["runtime"],
+                    "source or runtime metadata changed before phase")
+            out = PREP / phase
+            temp = RUNS / phase
+            require(absent(out) and absent(temp), "phase output or scratch exists")
+            mkdir(out); mkdir(temp)
+            once(out / "pytest-binding.json", encoded(before["pytest"]))
+            command = [str(BASE_PYTHON), "-I", "-S", "-B", "-X", "utf8", "-c", child.decode("utf-8"),
+                       str(COPY), str(RUNS), phase, str(out)]
+            once(out / "intent.json", encoded({"phase": phase, "started_utc": datetime.now(timezone.utc).isoformat(),
+                                              "timeout_seconds": timeout, "command": command,
+                                              "env_profile": "filtered_python_git_one_thread_plugin_cache_off"}))
+            start = time.monotonic()
+            stdout, stderr = (out / "stdout.txt").open("xb"), (out / "stderr.txt").open("xb")
+            timed_out = False
+            try:
+                process = subprocess.Popen(command, cwd=COPY, env=environment(temp), stdin=subprocess.DEVNULL,
+                                           stdout=stdout, stderr=stderr, shell=False)
+                try:
+                    rc = process.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    process.kill()
+                    rc = process.wait(timeout=60)
+            finally:
+                stdout.close(); stderr.close()
+            after = fresh_guard(ack, baseline["live"])
+            evidence_guard(authority_rows, authority_baseline)
+            unchanged = after["primary_inputs"] == baseline["primary_inputs"] and after["runtime"] == baseline["runtime"]
+            result = {"schema_version": 1, "phase": phase, "exit_code": rc, "timed_out": timed_out,
+                      "elapsed_seconds": time.monotonic() - start, "finished_utc": datetime.now(timezone.utc).isoformat(),
+                      "source_and_runtime_unchanged": unchanged, "live_opaque_guard_unchanged": True,
+                      "stdout_sha256": sha(read(out / "stdout.txt")), "stderr_sha256": sha(read(out / "stderr.txt")),
+                      "direct_child_reaped": True, "descendant_cleanup_guaranteed": False,
+                      "full_runtime_site_closure_verified": False, "os_write_sandbox_enforced": False,
+                      "canonical_qa": False, "native_science_production_authority": False}
+            once(out / "result.json", encoded(result))
+            require(not timed_out and rc == 0 and unchanged, "phase refused/failed/timeout; driver spent")
+            observation = parsed(out / "child-observation.json")
+            require(observation["pytest_exit_code"] == 0 and observation["no_remaining_bu_modules"], "child import boundary differs")
+            nodeids = parsed(out / "collected-nodeids.json")
+            require(type(nodeids) is list and nodeids and all(type(x) is str and x.startswith("tests/test_week8_recovery_raw_authority.py::") for x in nodeids)
+                    and len(nodeids) == len(set(nodeids)), "fresh collection IDs differ")
+            test_ast = ast.parse(read(COPY / "tests/test_week8_recovery_raw_authority.py", RAW_TEST_SHA256, RAW_TEST_SIZE))
+            expected_functions = {node.name for node in test_ast.body
+                                  if isinstance(node, ast.FunctionDef) and node.name.startswith("test_")}
+            require({x.split("::", 1)[1].split("[", 1)[0] for x in nodeids} == expected_functions,
+                    "fresh collection does not cover all copied test functions")
+            if phase == "collection":
+                collection_ids = nodeids
+                summary = {"schema_version": 1, "actual_collected_nodes": len(nodeids),
+                           "ordered_nodeids_sha256": node_digest(nodeids), "canonical_qa": False}
+                once(out / "collection-summary.json", encoded(summary))
+            else:
+                require(nodeids == collection_ids, "test collection differs from first collection")
+                # Full executed call-node coverage is independently recorded by pytest hooks.
+                calls = [row["nodeid"] for row in observation["reports"] if row["when"] == "call"]
+                skipped_setup = [row["nodeid"] for row in observation["reports"] if row["when"] == "setup" and row["outcome"] == "skipped"]
+                require(len(calls + skipped_setup) == len(set(calls + skipped_setup))
+                        and set(calls + skipped_setup) == set(collection_ids), "actual report node coverage differs")
+                xml = read(out / "junit.xml")
+                tree = ET.fromstring(xml)
+                cases = tree.findall(".//testcase")
+                require(len(cases) == len(collection_ids), "JUnit actual testcase count differs")
+                failures = sum(len(case.findall("failure")) for case in cases)
+                errors = sum(len(case.findall("error")) for case in cases)
+                skipped = sum(bool(case.findall("skipped")) for case in cases)
+                require(failures == errors == 0, "JUnit failures or errors")
+                expected_names = [x.split("::", 1)[1] for x in collection_ids]
+                require(sorted(case.attrib["name"] for case in cases) == sorted(expected_names), "JUnit identities differ")
+                for case in cases:
+                    if case.find("skipped") is not None:
+                        require(case.attrib["name"].split("[", 1)[0] in
+                                ("test_tracked_symlink_or_reparse_refuses", "test_plain_tree_refuses_symlink_or_reparse_entries")
+                                and ("1314" in ET.tostring(case, encoding="unicode") or "privilege" in ET.tostring(case, encoding="unicode").lower()),
+                                "unexpected skipped testcase")
+                once(out / "acceptance-summary.json", encoded({"schema_version": 1, "testcases": len(cases),
+                     "passed": len(cases) - skipped, "skipped": skipped, "failures": failures, "errors": errors,
+                     "junit_sha256": sha(xml), "ordered_nodeids_sha256": node_digest(nodeids), "canonical_qa": False,
+                     "operational_admission_or_fullgate_coverage": False}))
+            accepted.append({"phase": phase, "result_sha256": sha(read(out / "result.json"))})
+        final = fresh_guard(ack, baseline["live"])
+        evidence_guard(authority_rows, authority_baseline)
+        require(final["primary_inputs"] == baseline["primary_inputs"] and final["runtime"] == baseline["runtime"], "final source or runtime drift")
+        once(PREP / "finished.json", encoded({"schema_version": 1, "finished_utc": datetime.now(timezone.utc).isoformat(),
+             "accepted_phases": accepted, "actual_collected_nodes": len(collection_ids),
+             "ordered_nodeids_sha256": node_digest(collection_ids), "after": final,
+             "driver_spent": True, "canonical_qa": False, "native_science_production_authority": False,
+             "no_automatic_cleanup": True, "descendant_cleanup_guaranteed": False}))
+    except BaseException as error:
+        once(PREP / "failed.json", encoded({"schema_version": 1, "finished_utc": datetime.now(timezone.utc).isoformat(),
+             "error_type": type(error).__name__, "error": str(error), "driver_spent": True,
+             "canonical_qa": False, "native_science_production_authority": False,
+             "no_automatic_cleanup": True, "descendant_cleanup_guaranteed": False}))
+        raise
+
+if __name__ == "__main__":
+    main()

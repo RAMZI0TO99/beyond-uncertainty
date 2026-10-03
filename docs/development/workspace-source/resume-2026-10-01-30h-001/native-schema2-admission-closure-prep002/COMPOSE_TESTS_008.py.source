@@ -1,0 +1,98 @@
+"""Compose unexecuted test source from preserved definitions and source-only fixes."""
+import ast, hashlib, json, os
+from pathlib import Path
+ROOT=Path(__file__).absolute().parent
+out=ROOT/'source';out.mkdir()
+front=(ROOT/'before/front37/test_front_read_guard_013_001.py.template').read_text()
+native=(ROOT/'before/native001/test_native_schema2_closure_001.py.template').read_text()
+front=front[:front.index("if __name__ == '__main__':")] if "if __name__ == '__main__':" in front else front
+native=native[:native.index("if __name__ == '__main__':")] if "if __name__ == '__main__':" in native else native
+front=front.replace("Path(__file__).with_name('native_successor_front_common_013_001.py.template').read_text(encoding='utf-8')","common_bytes().decode('utf-8')")
+front=front.replace("'plain':lambda path:next(path_rows),'stat':stat,'PROJECT':InputPath(b'')}","'plain':lambda path:next(path_rows),'stat':stat,'PROJECT':InputPath(b''),\n                     '_native_capture_limit':lambda path,maximum:maximum}")
+start=native.index('STAGE = ');end=native.index('\n\nBASE =',start)
+native=native[:start]+'''STAGE = Path(__file__).absolute().parent
+COMMON = Path(r'D:\\Aenv\\pro2\\resume-2026-10-01-30h-001\\native-attempt013-front-001') / 'native_successor_front_common_013_001.py'
+RAW = Path('SYNTHETIC_CAPTURED_RAW_SOURCE')
+sha = lambda value: hashlib.sha256(value).hexdigest()
+
+def common_bytes():
+    data = globals().get('REVIEWED_COMMON_CAPTURE')
+    expected = globals().get('REVIEWED_COMMON_SHA256')
+    if type(data) is not bytes or type(expected) is not str or sha(data) != expected:
+        raise AssertionError('driver-authenticated common capture absent/different')
+    return data
+
+def fixture_bytes(name):
+    captures = globals().get('REVIEWED_FIXTURE_CAPTURES')
+    if type(captures) is not dict or type(captures.get(name)) is not bytes:
+        raise AssertionError('driver-authenticated static fixture absent')
+    return captures[name]
+
+def source_namespace(names):
+    """Future inert runtime only: select named pure definitions, never common main."""
+    tree = ast.parse(common_bytes(), filename=str(COMMON))
+    body = [node for node in tree.body if isinstance(node,(ast.Import,ast.ImportFrom,ast.Assign))
+            or isinstance(node,ast.FunctionDef) and node.name in names]
+    if {node.name for node in body if isinstance(node,ast.FunctionDef)} != set(names):
+        raise AssertionError('captured named definition set differs')
+    namespace = {'__name__':'_native_schema2_inert_tests','__file__':str(COMMON)}
+    exec(compile(ast.fix_missing_locations(ast.Module(body=body,type_ignores=[])),str(COMMON),
+                 'exec',dont_inherit=True),namespace)
+    return namespace
+''' +native[end:]
+native=native.replace("json.loads((STAGE / 'fixtures/predecessor_rows.bytes').read_bytes())","json.loads(fixture_bytes('predecessor_rows.bytes'))")
+native=native.replace("(STAGE / 'fixtures' / file).read_bytes()","fixture_bytes(file)")
+native=native.replace("json.loads((STAGE / 'fixtures/predecessor_manifest.bytes').read_bytes())","json.loads(fixture_bytes('predecessor_manifest.bytes'))")
+native=native.replace("raw_source = RAW.read_bytes()","raw_source = fixture_bytes('raw003-source.bytes')")
+native=native.replace("        before = json.loads((STAGE / 'AUTHOR_AST_COMPOSITION_001.json').read_bytes())\n",'')
+native=native.replace("        EXTERNAL_VERIFIER_SHA256='b' * 64, PUBLISHER_SHA256='c' * 64,\n        PUBLICATION_END_SHA256='d' * 64, VERIFICATION_INTENT_SHA256='e' * 64,\n",'')
+anchor="    bindings['release_provenance'] = "
+native=native.replace(anchor,"    bindings.update(external_verifier_sha256='b'*64,publisher_sha256='c'*64,\n                    publication_end_sha256='d'*64,verification_intent_sha256='e'*64)\n"+anchor,1)
+for old,new in [('PUBLISHER_SHA256','publisher_sha256'),('EXTERNAL_VERIFIER_SHA256','external_verifier_sha256'),('PUBLICATION_END_SHA256','publication_end_sha256'),('VERIFICATION_INTENT_SHA256','verification_intent_sha256')]:
+    native=native.replace("namespace['"+old+"']","bindings['"+new+"']")
+native=native.replace("namespace['_native_external_receipts'](document, {})","namespace['_native_external_receipts'](document, {}, bindings)")
+native=native.replace("BASE = {'require',", "BASE = {'_native_metadata_domains','_native_uint','_native_utc','_native_identity_domain','require',")
+# A pristine guard is exercised before every mutation, including the cold path.
+anchor="                        if timing == 'reuse':\n                            observed, cap = namespace['_native_attestation_limit']()\n                            self.assertIs(observed, module); self.assertEqual(cap, 395799)\n"
+assert native.count(anchor)==1
+native=native.replace(anchor,"""                        observed, cap = namespace['_native_attestation_limit']()
+                        self.assertIs(observed, module); self.assertEqual(cap, 395799)
+                        if timing == 'cold':
+                            namespace['_RAW_HELPER_EXECUTABLE_STATE'] = None
+""")
+# The pristine first acceptance validates the healthy compiled source; cold means
+# no captured executable-state cache at the mutated first-acceptance boundary.
+node=next(n for n in ast.walk(ast.parse(native)) if isinstance(n,ast.FunctionDef) and n.name=='test_runtime_behavior_contract_cannot_be_enabled_by_whole_result_or_digest')
+lines=native.splitlines(keepends=True)
+replacement='''    def test_runtime_behavior_contract_cannot_be_enabled_by_whole_result_or_digest(self):
+        fixture = behavior_factory()
+        fixture.accept()
+        for verdict in ('PASS_RUNTIME','PASS_STATIC','PASS'):
+            with self.subTest(verdict=verdict):
+                changed = {'verdict':verdict,'TEST_ONLY':'whole-result placeholder'}
+                fixture.replace_profile(changed)
+                with self.assertRaises(ValueError): fixture.accept()
+'''
+native=''.join(lines[:node.lineno-1])+replacement+''.join(lines[node.end_lineno:])
+front=front.replace('from __future__ import annotations\n','')
+native=native.replace('from __future__ import annotations\n','')
+# The authenticated-capture helper is defined before the classes use it, at
+# runtime. No filesystem selector consumes a path supplied by evidence.
+text='''"""UNRUN Native002 inert test preparation; no native acceptance or actual proof.
+
+Driver independently authenticates common, raw, test and five static historical
+fixtures before importing this source. Source selectors execute only captured
+stdlib definitions in the future isolated test process; main is never selected.
+Synthetic behavior/profile/OS/CIM records are explicit doubles. Their role is
+causal validator coverage, not actual ROOT/native authority.
+"""
+from __future__ import annotations
+'''+native+'\n\n'+front+'\n'
+ast.parse(text)
+path=out/'test_native_schema2_admission_002.py'
+with path.open('xb') as stream:stream.write(text.encode());stream.flush();os.fsync(stream.fileno())
+for q in sorted((ROOT/'before/native001/fixtures').glob('*')):
+ dest=out/'fixtures'/q.name;dest.parent.mkdir(exist_ok=True)
+ with dest.open('xb') as stream:stream.write(q.read_bytes())
+assert len([n for n in ast.walk(ast.parse(text)) if isinstance(n,ast.FunctionDef) and n.name.startswith('test_')])==53
+print(json.dumps({'source_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'named_methods':53,'unrun':True}))

@@ -1,0 +1,159 @@
+"""Own source transformation only; target strings are never executed."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+PREP = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\raw004-publication-native-bounded-closure-prep001')
+PATH = PREP / 'front/native_successor_front_common_013_001.py.template'
+source = PATH.read_text(encoding='utf8')
+assert hashlib.sha256(source.encode()).hexdigest() == 'c68485fcd03e046308d8a788cbfc28137dc1655c56939469ca1c1ca1c6443865'
+facts = json.loads((PREP / 'ALL31_POLICY_SOURCE_DERIVATION_001.json').read_bytes())
+with (PREP / 'NATIVE_BEFORE_POLICY_CORE_001.bytes').open('xb') as stream:
+    stream.write(source.encode())
+
+def replace_definition(name, text):
+    global source
+    tree = ast.parse(source)
+    node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == name)
+    lines = source.splitlines(keepends=True)
+    source = ''.join(lines[:node.lineno - 1]) + text.strip() + '\n' + ''.join(lines[node.end_lineno:])
+
+def replace_assignment(name, text):
+    global source
+    tree = ast.parse(source)
+    node = next(n for n in tree.body if isinstance(n, ast.Assign)
+                and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name)
+    lines = source.splitlines(keepends=True)
+    source = ''.join(lines[:node.lineno - 1]) + text + '\n' + ''.join(lines[node.end_lineno:])
+
+replace_assignment('NATIVE_SCHEMA2_POLICY', 'NATIVE_POLICY_NAMES=' + repr(tuple(facts['names'])) + '\n_NATIVE_POLICY_ORIGINS=None')
+replace_assignment('NATIVE_RAW_SOURCE_SHA256', 'NATIVE_RAW_SOURCE_SHA256=' + repr(facts['raw_source_sha256']))
+replace_assignment('NATIVE_RAW_SOURCE_BYTES', 'NATIVE_RAW_SOURCE_BYTES=' + str(facts['raw_source_bytes']))
+replace_definition('_raw_helper_value_identity', '''
+def _raw_helper_value_identity(value:object)->Any:
+ """Freeze trusted source/default values with exact mapping type identities."""
+ kind=type(value)
+ if value is None or kind is bool or kind is int or kind is float or kind is str:
+  return(kind.__name__,value)
+ if kind is bytes:
+  return('bytes',value.hex())
+ if isinstance(value,Path):
+  return('Path',str(value))
+ if kind is re.Pattern:
+  return('Pattern',value.pattern,value.flags)
+ if kind is dict or kind is types.MappingProxyType:
+  rows=[(_raw_helper_value_identity(key),_raw_helper_value_identity(item))for key,item in value.items()]
+  return('dict'if kind is dict else'mappingproxy',tuple(sorted(rows,key=repr)))
+ if kind is tuple or kind is list or kind is set or kind is frozenset:
+  rows=[_raw_helper_value_identity(item)for item in value]
+  if kind is set or kind is frozenset:
+   rows.sort(key=repr)
+  return(kind.__name__,tuple(rows))
+ raise ValueError('preloaded raw-authority helper has an unsupported policy/default value')
+''')
+
+text = ast.get_source_segment(source, next(n for n in ast.parse(source).body
+                                         if isinstance(n, ast.FunctionDef) and n.name == '_validate_raw_helper_executable_identity'))
+text = text.replace(' global _RAW_HELPER_EXECUTABLE_STATE\n', ' global _RAW_HELPER_EXECUTABLE_STATE\n _native_policy_origins(module)\n')
+text = text.replace('   if not isinstance(value,type)or value.__module__!=name:\n', '   if type(value)is not type(reference[expected.co_name])or value.__module__!=name:\n')
+text = text.replace('   for key,expected_value in reference.items():\n', '   for key,expected_value in reference.items():\n')
+text = text.replace('   _RAW_HELPER_EXECUTABLE_STATE=(module,name,identity,specification,loader,functions,classes,methods,module.__file__,loader.path,constants,registries,class_states,imports)', '   upper_names=frozenset(key for key in reference if key.isupper()or key=="__all__")\n   if frozenset(key for key in module.__dict__ if key.isupper()or key=="__all__")!=upper_names:\n    raise ValueError("raw-authority helper uppercase namespace differs")\n   _RAW_HELPER_EXECUTABLE_STATE=(module,name,identity,specification,loader,functions,classes,methods,module.__file__,loader.path,constants,registries,class_states,imports,upper_names)')
+text = text.replace('module,name,admitted_identity,specification,loader,functions,classes,methods,admitted_file,admitted_loader_path,constants,registries,class_states,imports=_RAW_HELPER_EXECUTABLE_STATE', 'module,name,admitted_identity,specification,loader,functions,classes,methods,admitted_file,admitted_loader_path,constants,registries,class_states,imports,upper_names=_RAW_HELPER_EXECUTABLE_STATE')
+text = text.replace(' if identity!=admitted_identity', ' if frozenset(key for key in module.__dict__ if key.isupper()or key=="__all__")!=upper_names or identity!=admitted_identity')
+replace_definition('_validate_raw_helper_executable_identity', text)
+
+text = ast.get_source_segment(source, next(n for n in ast.parse(source).body
+                                         if isinstance(n, ast.FunctionDef) and n.name == '_native_raw_module'))
+text = text.replace(' global _NATIVE_RAW_MODULE\n', ' global _NATIVE_RAW_MODULE,_NATIVE_POLICY_ORIGINS\n')
+text = text.replace("'current native raw helper differs from reviewed raw003'", "'current native raw helper differs from reviewed raw004'")
+text = text.replace('  _NATIVE_RAW_MODULE=module\n', '  _NATIVE_POLICY_ORIGINS={name:module.__dict__[name]for name in NATIVE_POLICY_NAMES}\n  _NATIVE_RAW_MODULE=module\n')
+replace_definition('_native_raw_module', text)
+
+addition = '''
+def _native_policy_origins(module):
+ """Only privately executed source objects may precede mapping callbacks."""
+ require(type(module)is types.ModuleType and type(_NATIVE_POLICY_ORIGINS)is dict and set(_NATIVE_POLICY_ORIGINS)==set(NATIVE_POLICY_NAMES),'raw004 source-owned policy origins unavailable')
+ require(all(module.__dict__.get(name)is _NATIVE_POLICY_ORIGINS[name]for name in NATIVE_POLICY_NAMES),'raw004 source policy object replaced before bounded capture')
+def _native_policy_snapshot(module):
+ """Fresh all31 typed capture; allocation follows source-derived finite bounds."""
+ _native_policy_origins(module)
+ nodes=[0]
+ def quoted(text):
+  require(type(text)is str and len(text)<=64 and text.isascii(),'raw004 policy string domain')
+  return 2+sum(2 if c in('"','\\\\')else 6 if ord(c)<32 else 1 for c in text)
+ def value(item,depth):
+  nodes[0]+=1
+  require(nodes[0]<=578 and depth<=4,'raw004 policy node/depth budget')
+  kind=type(item)
+  if kind is str:
+   cost=quoted(item)
+   return(('str',item),quoted('str')+cost+3)
+  if kind is int:
+   require(0<=item<=9223372036854775807,'raw004 policy exact integer domain')
+   return(('int',item),quoted('int')+len(str(item))+3)
+  require(kind is tuple or kind is frozenset or kind is dict or kind is types.MappingProxyType,'raw004 policy exact collection type')
+  require(len(item)<=263,'raw004 policy collection budget')
+  if kind is dict or kind is types.MappingProxyType:
+   keys=[]
+   for key in item:
+    quoted(key)
+    keys.append(key)
+   parts=[]
+   costs=[]
+   for key in sorted(keys):
+    child,size=value(item[key],depth+1)
+    parts.append((key,child))
+    costs.append(quoted(key)+size+3)
+   tag='dict'if kind is dict else'mappingproxy'
+  elif kind is frozenset:
+   for text in item:
+    quoted(text)
+   parts=tuple(sorted(item))
+   costs=tuple(quoted(text)for text in parts)
+   tag='frozenset'
+  else:
+   parts=[]
+   costs=[]
+   for child in item:
+    encoded,size=value(child,depth+1)
+    parts.append(encoded)
+    costs.append(size)
+   tag='tuple'
+  size=quoted(tag)+3+2+sum(costs)+max(0,len(parts)-1)
+  return((tag,tuple(parts)),size)
+ rows=[]
+ costs=[]
+ for name in NATIVE_POLICY_NAMES:
+  encoded,size=value(module.__dict__[name],1)
+  rows.append((name,encoded))
+  costs.append(quoted(name)+size+3)
+ domain='week8_raw004_all31_policy_v1'
+ predicted=quoted(domain)+quoted(NATIVE_RAW_SOURCE_SHA256)+2+2+2+sum(costs)+len(rows)-1
+ require(nodes[0]==578 and predicted<=32489,'raw004 typed serialized preallocation budget')
+ frozen=json.dumps((domain,NATIVE_RAW_SOURCE_SHA256,tuple(rows)),ensure_ascii=True,separators=(',',':')).encode('ascii')
+ require(len(frozen)==32489 and sha(frozen)=='POLICY_SHA','raw004 all31 typed policy commitment differs')
+ return frozen
+def _native_policy_data(frozen):
+ """Decode only the retained immutable, bounded, committed local snapshot."""
+ require(type(frozen)is bytes and len(frozen)==32489 and sha(frozen)=='POLICY_SHA','raw004 snapshot identity differs')
+ def plain(value):
+  tag,body=value
+  if tag=='str'or tag=='int':
+   return body
+  if tag=='dict'or tag=='mappingproxy':
+   return{key:plain(child)for key,child in body}
+  if tag=='frozenset':
+   return body
+  return[plain(child)for child in body]
+ return{name:plain(value)for name,value in json.loads(frozen)[2]}
+def _native_policy(bindings,witness):
+ module=_native_raw_module(bindings,witness)
+ frozen=_native_policy_snapshot(module)
+ return(_native_policy_data(frozen),frozen)
+'''.replace('POLICY_SHA', facts['typed_sha256'])
+ast.parse(addition)
+source += addition
+ast.parse(source)
+PATH.write_text(source, encoding='utf8', newline='\n')
+print(json.dumps({'policy_core_source_bytes':len(source.encode()),'all31_typed_commitment_sha256':facts['typed_sha256'],'target_code_executed':False}))

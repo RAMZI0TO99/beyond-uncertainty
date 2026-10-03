@@ -1,0 +1,101 @@
+"""One-use Root metadata reconciliation; preserve real receipts and no target entry."""
+from pathlib import Path
+from datetime import datetime, timezone
+import hashlib, json, os
+root = Path('D:/Aenv/pro2')
+base = root / 'resume-2026-10-01-30h-001'
+m = base / 'guard005-root-metadata-prep002'
+g = base / 'consumer-guard-test-runtime005'
+out = base / 'metadata002-actual-freshness-closeout001'
+assert not out.exists()
+pins = {
+    m / 'ROOT_METADATA_AUTHORIZATION_BEFORE_005.json': '3653911e39a83750c3470a4255a7d97818a92ee8603d5fd46941423777794b06',
+    m / 'INDEPENDENT_ACTUAL_ROOT_AUTH_BEFORE_REVIEW_005.json': '213c314ccd9e7d91b2ee1ec1561067e119459815636011412fab6212662dc5ed',
+    m / 'INDEPENDENT_FAST_AUTH_BEFORE_EVIDENCE_005.json': 'f16ad22072c176ed9a816864f14f2e44b5d1de7b9d98dc13e95c88413a86919e',
+    m / 'ROOT_METADATA_PARENT_TERMINAL_BEFORE_005.json': 'aaf85e9e390819fe500e9f7c0bcf76cb6257b9955331965f10480c223cca559c',
+    m / 'phase-before-005/METADATA_CAPTURE_005.json': '0395c6e9234188fe08d70888ecf6b5f2f91b786efecf641f50798d5ab43c8347',
+    m / 'phase-before-005/OPAQUE_CURRENT_CONTEXT_005.json': '38c6a98b5e6a1185cfee0ac59c5159d0c966e5f822c530c2e5a308c6e3347764',
+    m / 'phase-before-005/RUNTIME4_METADATA_SELECTION_005.json': 'ba402a441d877a82fcf16f3523771d97a8e19a5f25f070d0a98116c23d835f7f',
+    m / 'INDEPENDENT_ACTUAL_ROOT_METADATA_BEFORE_CAPTURE_REVIEW_005.json': '7dac20b78c396b8eec9842e8e6b77d2e04e02ff997100a9da90ee34ef9dc59d7',
+    m / 'INDEPENDENT_FAST_CAPTURE_BEFORE_EVIDENCE_005.json': '2888faf422e5371f12e127f5ce4579de0de919b9d97864ed10ef1a639391b9b6',
+    base / 'INDEPENDENT_DOCS_REFRESH_REVIEW_027.json': '4618cfd8421c8b354cfd5cd567e3a41281dfe579ba031ddf45fd8350fbba7074',
+}
+sha = lambda data: hashlib.sha256(data).hexdigest()
+inputs = {path: path.read_bytes() for path in pins}
+for path, pin in pins.items(): assert sha(inputs[path]) == pin
+records = {path: json.loads(data) for path, data in inputs.items()}
+terminal = records[m / 'ROOT_METADATA_PARENT_TERMINAL_BEFORE_005.json']
+assert len(terminal) == 20 and terminal['exit_code'] == 0 and terminal['failure'] is None
+assert terminal['direct_child_reaped'] is True and terminal['capture_drain_complete'] is True
+assert terminal['stdout_bytes'] == terminal['stderr_bytes'] == 0
+for field in ('timed_out','capture_overflow','target_tests_executed','operational_authority_granted','descendant_cleanup_guaranteed','OS_Job_hard_memory_bound'):
+    assert terminal[field] is False
+capture = records[m / 'phase-before-005/METADATA_CAPTURE_005.json']
+assert len(capture) == 14 and capture['paired742_and_git_config_runtime_matched'] is True
+assert capture['metadata_only'] is True and capture['whole_inventory_trees_observed'] == 0
+assert capture['guard_or_test_or_native_executed'] is False and capture['operational_authority_granted'] is False
+core = records[m / 'INDEPENDENT_ACTUAL_ROOT_METADATA_BEFORE_CAPTURE_REVIEW_005.json']
+assert len(core) == 12 and core['verdict'] == 'PASS_ACTUAL_BEFORE_METADATA_CAPTURE_ONLY'
+assert core['input_sha256'] == pins[m / 'phase-before-005/METADATA_CAPTURE_005.json']
+assert core['context_sha256'] == pins[m / 'phase-before-005/OPAQUE_CURRENT_CONTEXT_005.json']
+assert core['runtime_snapshot_sha256'] == pins[m / 'phase-before-005/RUNTIME4_METADATA_SELECTION_005.json']
+assert core['parent_terminal_sha256'] == pins[m / 'ROOT_METADATA_PARENT_TERMINAL_BEFORE_005.json']
+assert core['evidence_sha256'] == pins[m / 'INDEPENDENT_FAST_CAPTURE_BEFORE_EVIDENCE_005.json']
+absent = [g / name for name in ('ROOT_WHOLE_BEFORE_AUTHORIZATION_005.json','whole-runtime-before','whole-runtime-after',
+    'INDEPENDENT_WHOLE_BEFORE_ACCEPTANCE_005.json','ROOT_COORDINATION_ACK_GUARD_UNIT005.json',
+    'ROOT_RESOURCE_SNAPSHOT_005.json','ROOT_EXECUTION_ACK_GUARD_UNIT005.json',
+    'INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_005.json','ROOT_FIRST_LAUNCH_005.BOUND.ps1',
+    'INDEPENDENT_GUARD_ROOT_LAUNCH_LATE_REVIEW_005.json','ROOT_LAUNCH_START_005.json','ROOT_LAUNCH_TERMINAL_005.json')]
+absent += [root / '.tmp/cg14-005', m / 'ROOT_METADATA_AUTHORIZATION_AFTER_005.json', m / 'phase-after-005',
+    base / 'guard005-actual-record-review-prep002/ROOT_SELECTED_BOUND_PACKET_001.json',
+    base / 'guard005-actual-record-review-prep002/ROOT_SELECTED_LATE_PACKET_001.json']
+for path in absent: assert not path.exists(), str(path)
+primary_pins = {
+    root / 'AGENTS.md': '03107a1a10b0161a2dfbaf3efbf77882b499ef7f53d752140b37d544c5af265c',
+    root / 'HANDOFF.md': '4810ba91555250a33afdc2235a54dbfb8c9c9910777895873112a36e9f1a2107',
+    root / 'START_HERE.md': 'a131b9ceaf08e68769679f04211d455343d81414723902f8c1a1a964412ee843',
+    root / 'resume-2026-09-28-001/SESSION.md': 'aa390a526d6f2c197e0c110b9f5c0fc2dc77237d28997d8352d52be4e4f07368',
+    base / 'RESOURCE_COORDINATION.md': 'ec6928a44af81969145112d4e64514119b17c2805ab85995314617427436a347',
+}
+for path, pin in primary_pins.items(): assert sha(path.read_bytes()) == pin
+now = datetime.now(timezone.utc)
+stamp = now.isoformat(timespec='microseconds')
+context_stamp = records[m / 'phase-before-005/OPAQUE_CURRENT_CONTEXT_005.json']['captured_utc']
+runtime_stamp = records[m / 'phase-before-005/RUNTIME4_METADATA_SELECTION_005.json']['captured_utc']
+ages = {role: (now - datetime.fromisoformat(value)).total_seconds() for role, value in [('context',context_stamp),('runtime',runtime_stamp)]}
+assert min(ages.values()) > 90
+out.mkdir()
+def once(path, data):
+    with path.open('xb') as stream: stream.write(data); stream.flush(); os.fsync(stream.fileno())
+rows = []
+for index, (path, data) in enumerate(inputs.items()):
+    for _ in range(3): assert path.read_bytes() == data
+    copy = out / ('input-%02d.bytes' % index)
+    once(copy, data)
+    assert copy.read_bytes() == data
+    rows.append(dict(path=str(path), copy=str(copy), bytes=len(data), sha256=sha(data)))
+record = dict(schema_version=1, record_type='root_metadata002_actual_capture_unit_freshness_closeout',
+              author='/root', created_utc=stamp,
+              decision='WITHDRAW_METADATA002_FROM_FURTHER_EXECUTION_PRESERVE_ACTUAL_METADATA_ONLY',
+              actual_auth_and_capture_metadata_accepted=True, target_guard_units_executed=0,
+              current_GG5_driver_whole_observer_unit_unentered_unspent=True,
+              before_context_captured_utc=context_stamp, before_runtime_captured_utc=runtime_stamp,
+              observed_original_ages_seconds=ages, required_unit_GO_maximum_age_seconds=90,
+              no_retimestamp_TTL_extension_replay_or_guard_reduction=True,
+              actual_metadata_scope='CURRENT742_AND55_CONFIGURATIONS_FOUR_RUNTIME_FILES_ZERO_WHOLE_TREES',
+              accepted_auth_core_sha256=pins[m / 'INDEPENDENT_ACTUAL_ROOT_AUTH_BEFORE_REVIEW_005.json'],
+              accepted_capture_core_sha256=sha(inputs[m / 'INDEPENDENT_ACTUAL_ROOT_METADATA_BEFORE_CAPTURE_REVIEW_005.json']),
+              parent_terminal_sha256=sha(inputs[m / 'ROOT_METADATA_PARENT_TERMINAL_BEFORE_005.json']),
+              physical_Root_tool_chunks=['3a0c2a','3a7d6b','69189c','65198c','4732ba'],
+              different_reviewer_data_chunks=['6a9a08','269087','f41a13'],
+              selected_inputs=rows, fixed_primary_pins_during_actual_interval=[dict(path=str(p),sha256=s) for p,s in primary_pins.items()],
+              absent_actual_paths=[str(path) for path in absent],
+              cause_scope='Recorded sequential review/publication elapsed the freshness window; no attribution to host processes or physical I/O deadline.',
+              next_scope='Distinct reviewed fresh namespace/pipeline design only before any new actual action.',
+              canonical_fullQA_release_native_fit_authority=False, operational_authority_granted=False)
+encoded = (json.dumps(record, indent=2, sort_keys=True, ensure_ascii=True, allow_nan=False)+'\n').encode('ascii')
+once(out / 'ROOT_ACTUAL_METADATA002_CLOSEOUT_001.json', encoded)
+for path, data in inputs.items(): assert path.read_bytes() == data
+print(json.dumps(dict(closeout_sha256=sha(encoded), original_ages_seconds=ages,
+                      input_pairs=len(rows), phase_absences=len(absent), fixed_primary_count=len(primary_pins),
+                      guard_units_executed=0, metadata002_withdrawn=True)))

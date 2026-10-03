@@ -1,0 +1,94 @@
+def _native_frame_binding_shape(value, renderer=False):
+    schema = __FRAME_SCHEMA_LITERAL__
+    provenance = __FRAME_PROVENANCE_LITERAL__
+    optional = {'receipt_sha256', 'admission_sha256', 'external_proof_sha256', 'native_review_path', 'native_review_sha256', 'renderer_action_sha256', 'renderer_transport_sha256', 'publisher_sha256', 'external_verifier_sha256', 'publication_end_sha256', 'verification_intent_sha256'}
+    if type(renderer) is not bool or type(value) is not dict or set(value) != set(schema):
+        raise ValueError('frame requires the exact44 binding schema')
+    for name, kind in schema.items():
+        item = value[name]
+        if renderer and name in optional and item is None:
+            continue
+        if kind == 'sha256' or kind == 'commit':
+            width = 64 if kind == 'sha256' else 40
+            if type(item) is not str or len(item) != width or any(char not in '0123456789abcdef' for char in item):
+                raise ValueError('frame digest grammar differs')
+        elif kind == 'count':
+            if type(item) is not int or item != 25:
+                raise ValueError('frame count grammar differs')
+        elif kind == 'path':
+            if type(item) is not str or not item or len(item) > 12288 or '\x00' in item:
+                raise ValueError('frame path grammar differs')
+        elif kind == 'provenance':
+            if type(item) is not dict or set(item) != set(provenance):
+                raise ValueError('frame provenance exact14 keys differ')
+            for row in item.values():
+                if type(row) is not dict or set(row) != {'path', 'sha256'} or type(row['path']) is not str or not row['path'] or len(row['path']) > 12288 or '\x00' in row['path'] or type(row['sha256']) is not str or len(row['sha256']) != 64 or any(char not in '0123456789abcdef' for char in row['sha256']):
+                    raise ValueError('frame provenance row differs')
+    return value
+
+
+def _native_frame_decode(frame, expected_sha256, renderer=False):
+    if type(frame) is not bytes or not 0 < len(frame) <= 262144:
+        raise ValueError('frame exceeds receiver262144 ceiling')
+    if type(expected_sha256) is not str or len(expected_sha256) != 64 or any(char not in '0123456789abcdef' for char in expected_sha256):
+        raise ValueError('frame external source pin differs')
+    if b'\r' in frame or frame.count(b'\n') != 2 or not frame.endswith(b'\n'):
+        raise ValueError('frame must contain exactly twoLF and noCR')
+    source_token, binding_token, tail = frame.split(b'\n')
+    if tail or not source_token or not binding_token or len(source_token) + len(binding_token) > 262142 or len(binding_token) > 16384:
+        raise ValueError('frame component predecode bound differs')
+    try:
+        source = base64.b64decode(source_token, validate=True)
+        binding_bytes = base64.b64decode(binding_token, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError('frame Base64 differs') from exc
+    if not 0 < len(source) <= 196605 or len(binding_bytes) > 12288 or base64.b64encode(source) != source_token or base64.b64encode(binding_bytes) != binding_token:
+        raise ValueError('frame decoded length or canonical Base64 differs')
+    if hashlib.sha256(source).hexdigest() != expected_sha256 or source.startswith(b'\xef\xbb\xbf'):
+        raise ValueError('frame captured source SHA/BOM differs')
+    source.decode('utf-8', errors='strict')
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError('frame duplicate JSON key')
+            result[key] = value
+        return result
+    def no_float(value):
+        raise ValueError('frame JSON floats/nonfinite constants differ')
+    value = json.loads(binding_bytes.decode('utf-8', errors='strict'), object_pairs_hook=pairs, parse_float=no_float, parse_constant=no_float)
+    if json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('ascii') != binding_bytes:
+        raise ValueError('frame JSON must be canonical compact ASCII withoutLF')
+    _native_frame_binding_shape(value, renderer)
+    return source, binding_token.decode('ascii'), value
+
+
+def _native_frame_encode(source, bindings, expected_sha256, renderer=False):
+    _native_frame_binding_shape(bindings, renderer)
+    if type(source) is not bytes or not 0 < len(source) <= 196605:
+        raise ValueError('frame source byte cap differs')
+    binding_bytes = json.dumps(bindings, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('ascii')
+    source_token, binding_token = base64.b64encode(source), base64.b64encode(binding_bytes)
+    if len(binding_token) > 16384 or len(source_token) + len(binding_token) > 262142:
+        raise ValueError('frame sender encoded sum262142 differs')
+    frame = source_token + b'\n' + binding_token + b'\n'
+    # Both encoded lengths are multiples of4: the largest canonical frame is262142.
+    _native_frame_decode(frame, expected_sha256, renderer)
+    return frame
+
+
+def _native_frame_read(stream, expected_sha256, renderer=False):
+    if not callable(getattr(stream, 'read', None)):
+        raise ValueError('frame byte reader unavailable')
+    chunks, count = [], 0
+    while count < 262145:
+        chunk = stream.read(min(16384, 262145 - count))
+        if type(chunk) is not bytes:
+            raise ValueError('frame stream is not bytes')
+        if not chunk:
+            return _native_frame_decode(b''.join(chunks), expected_sha256, renderer)
+        if len(chunk) > min(16384, 262145 - count):
+            raise ValueError('frame reader violated requested count')
+        chunks.append(chunk)
+        count += len(chunk)
+    raise ValueError('frame truncated/oversize sentinel262145 differs')

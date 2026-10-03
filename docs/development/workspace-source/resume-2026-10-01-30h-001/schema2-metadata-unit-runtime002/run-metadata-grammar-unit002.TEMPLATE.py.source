@@ -1,0 +1,791 @@
+import argparse
+import ast
+import hashlib
+import json
+import math
+import os
+import stat
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+PROJECT = Path("D:/Aenv/pro2")
+WORK = PROJECT / "resume-2026-10-01-30h-001"
+PREP = WORK / "schema2-metadata-unit-runtime002"
+RUNS = PROJECT / ".tmp/mgu24-002"
+BASE_PYTHON = PROJECT / "runtimes/week8-python313-frozen-001/python.exe"
+BASE_PYTHON_SHA256 = "5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed"
+OWNER_PATH = WORK / "OWNER_WORK_WINDOW_30H_20261001_001.json"
+OWNER_SHA256 = "3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff"
+OWNER_END = datetime(2026, 10, 2, 22, 36, 15, tzinfo=timezone.utc)
+SCOPE = "COPIED_SCHEMA2_METADATA_UNIT002_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY"
+AUTHOR = "/root/candidate_review"
+REVIEWERS = frozenset(("/root/bootstrap_stage", "/root/keepawake_stage"))
+SOURCE_AUTHORS = ("/root/raw_policy_worker", "/root/window_docs")
+MAX_JSON = 2 * 1024 * 1024
+MAX_RECEIPT = 262144
+MAX_CAPTURE = 131072
+MAX_TRANSCRIPT = 262144
+MAX_EVENTS = 4096
+MAX_COLLECTION = 60
+MAX_TESTS = 300
+MAX_TOTAL = 420
+
+
+def require(ok, message):
+    if not ok:
+        raise RuntimeError(message)
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def hex64(value):
+    return type(value) is str and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def ancestors(path):
+    result = []
+    for parent in [*reversed(path.absolute().parents), path.absolute()]:
+        info = parent.lstat()
+        require(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+                and not getattr(info, "st_file_attributes", 0) & 0x400, "linked/reparse ancestor")
+        result.append((str(parent), info.st_dev, info.st_ino))
+    return tuple(result)
+
+
+def raw(info):
+    return tuple(getattr(info, name, None) for name in
+                 ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_mode",
+                  "st_nlink", "st_file_attributes", "st_birthtime_ns"))
+
+
+def cross(info):
+    values = tuple(getattr(info, name, None) for name in
+                   ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink", "st_file_attributes", "st_birthtime_ns"))
+    require(all(type(value) is int for value in values), "typed Windows identity7 required")
+    return values
+
+
+FIXED_EXECUTABLE_ROLES = {'d:\\aenv\\pro2\\pro2\\.venv\\scripts\\python.exe': ['935016795f3e6908e75acbc2040a01e2e4cdb494a57c42f63a0d6eedb2372256', 254800], 'd:\\aenv\\pro2\\runtimes\\git\\mingw64\\bin\\git.exe': ['c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9', 4344704], 'd:\\aenv\\pro2\\runtimes\\week8-python313-frozen-001\\python.exe': ['5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed', 105816]}
+
+def mode_pair(path, pathname, descriptor):
+    if pathname.st_mode == descriptor.st_mode:
+        return True
+    return (os.name == "nt" and str(path.absolute()).casefold() in FIXED_EXECUTABLE_ROLES
+            and pathname.st_mode & 0o111 == 0o111 and descriptor.st_mode & 0o111 == 0
+            and pathname.st_mode & ~0o111 == descriptor.st_mode)
+
+def read(path, pin=None, maximum=MAX_JSON):
+    require(type(maximum) is int and maximum > 0, "read cap type")
+    chain = ancestors(path.parent)
+    before = path.lstat()
+    require(stat.S_ISREG(before.st_mode) and not stat.S_ISLNK(before.st_mode)
+            and before.st_nlink == 1 and not getattr(before, "st_file_attributes", 0) & 0x400,
+            "not a plain one-link file")
+    require(0 <= before.st_size <= maximum, "path exceeds pre-read cap")
+    with path.open("rb") as stream:
+        first = os.fstat(stream.fileno())
+        require(cross(before) == cross(first) and mode_pair(path, before, first)
+                and stat.S_ISREG(first.st_mode) and first.st_nlink == 1
+                and not first.st_file_attributes & 0x400 and 0 <= first.st_size <= maximum,
+                "opened identity or cap differs")
+        value = stream.read(maximum + 1)
+        last = os.fstat(stream.fileno())
+    after = path.lstat()
+    require(len(value) <= maximum and len(value) == before.st_size
+            and raw(before) == raw(after) and raw(first) == raw(last)
+            and cross(before) == cross(first) == cross(last) == cross(after)
+            and mode_pair(path, after, last) and ancestors(path.parent) == chain, "changed capture")
+    if pin is not None:
+        require(hex64(pin) and digest(value) == pin, "source byte pin differs")
+    if str(path.absolute()).casefold() in FIXED_EXECUTABLE_ROLES:
+        fixed_pin, fixed_size = FIXED_EXECUTABLE_ROLES[str(path.absolute()).casefold()]
+        require(digest(value) == fixed_pin and len(value) == fixed_size, "fixed executable role byte pin")
+    return value, {"sha256": digest(value), "bytes": len(value),
+                   "path_raw9": raw(before), "descriptor_raw9": raw(first)}
+
+
+def duplicates(rows):
+    result = {}
+    for key, value in rows:
+        require(key not in result, "duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def finite(token):
+    value = float(token)
+    require(math.isfinite(value), "nonfinite JSON")
+    return value
+
+
+def decode(data):
+    return json.loads(data.decode("utf-8"), object_pairs_hook=duplicates, parse_float=finite,
+                      parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+                       allow_nan=False) + "\n").encode("ascii")
+
+
+def exact(value, names, what):
+    require(type(value) is dict and set(value) == set(names), what + " keys")
+
+
+def timestamp(value, role="python6"):
+    import re
+    digits = 6 if role == "python6" else 7 if role == "powershell7" else None
+    require(digits is not None and type(value) is str
+            and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{" + str(digits) + r"}\+00:00", value),
+            "exact Python6/PowerShell7 UTC role required")
+    result = datetime.fromisoformat(value)
+    require(result.utcoffset() == timedelta(0), "aware UTC required")
+    return result
+
+
+def work_path(value):
+    require(type(value) is str, "evidence path type")
+    path = Path(value)
+    require(path.is_absolute() and path == path.absolute() and ".." not in path.parts
+            and path.is_relative_to(WORK), "outside work path")
+    ancestors(path.parent)
+    return path
+
+
+def pointer(value):
+    exact(value, ("path", "sha256"), "external pointer")
+    require(hex64(value["sha256"]), "external pin type")
+    return work_path(value["path"]), value["sha256"]
+
+
+def absent(path):
+    ancestors(path.parent)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return True
+    return False
+
+
+def once(path, data, maximum=MAX_RECEIPT):
+    require(len(data) <= maximum and absent(path), "one-use output exists or cap")
+    chain = ancestors(path.parent)
+    with path.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    require(ancestors(path.parent) == chain and read(path, digest(data), maximum)[0] == data,
+            "output changed")
+
+
+def runtime_entry():
+    require(Path(sys.executable).resolve(strict=True) == BASE_PYTHON.resolve(strict=True)
+            and sys.version_info[:3] == (3, 13, 5), "direct frozen base/version required")
+    require(sys.flags.isolated == 1 and sys.flags.no_site == 1
+            and sys.flags.dont_write_bytecode == 1 and sys.flags.safe_path
+            and sys.flags.utf8_mode == 1 and sys.flags.optimize == 0,
+            "I-S-B safe flags required")
+    read(BASE_PYTHON, BASE_PYTHON_SHA256, 105816)
+    read(OWNER_PATH, OWNER_SHA256, 2227)
+    require(datetime.now(timezone.utc) < OWNER_END, "owner expired")
+
+
+def source_snapshot(profile):
+    require(profile["source_projection_sha256"] == profile["source_projection"]["sha256"], "projection identity")
+    projection = decode(read(PREP / profile["source_projection"]["path"],
+                             profile["source_projection_sha256"], MAX_JSON)[0])
+    answer = []
+    for row in projection["entries"]:
+        if not row["runtime_source_reobserve_required"]:
+            continue
+        original = work_path(row["original_path"])
+        relative = Path(row["copy_path"])
+        require(not relative.is_absolute() and ".." not in relative.parts, "copy projection escape")
+        original_bytes, original_meta = read(original, row["sha256"], row["bytes"])
+        copied_bytes, copied_meta = read(PREP / relative, row["sha256"], row["bytes"])
+        require(original_bytes == copied_bytes, "copy original differs")
+        require(encoded(original_meta) == encoded(row["original_metadata"])
+                and encoded(copied_meta) == encoded(row["copy_metadata"]), "frozen source/copy metadata differs")
+        answer.append({"path": row["copy_path"], "original": original_meta, "copy": copied_meta})
+    return answer
+
+def metadata_row(path, expected, maximum):
+    exact(expected, ("path", "sha256", "bytes", "path_raw9", "descriptor_raw9"), "opaque metadata row")
+    require(expected["path"] == str(path) and type(expected["bytes"]) is int
+            and 0 <= expected["bytes"] <= maximum, "opaque row path/size")
+    require(all(type(expected[name]) is list and len(expected[name]) == 9
+                and all(type(value) is int for value in expected[name])
+                for name in ("path_raw9", "descriptor_raw9")), "opaque raw9 metadata type")
+    data, observed = read(path, expected["sha256"], maximum)
+    require(len(data) == expected["bytes"] and list(observed["path_raw9"]) == expected["path_raw9"]
+            and list(observed["descriptor_raw9"]) == expected["descriptor_raw9"], "opaque byte/metadata drift")
+    return {"path": str(path), **observed}
+
+
+def context_snapshot(profile, value):
+    exact(value, ("schema_version", "scope", "captured_utc", "head", "tracked_rows",
+                  "git_metadata", "configurations", "runtime_roles_projection_sha256"), "opaque context")
+    require(type(value["schema_version"]) is int and value["schema_version"] == 1
+            and value["scope"] == SCOPE
+            and value["runtime_roles_projection_sha256"] == profile["runtime_roles_projection_sha256"], "opaque context role")
+    require(0 <= (datetime.now(timezone.utc)-timestamp(value["captured_utc"])).total_seconds() <= 600,
+            "fresh opaque context required")
+    cfg = profile["context_profile"]
+    live = Path(cfg["live_root"])
+    require(live == PROJECT / "week8-recovery-controller-worktree", "fixed opaque live root")
+    require(type(value["head"]) is str and len(value["head"]) == 40
+            and all(c in "0123456789abcdef" for c in value["head"]), "opaque HEAD syntax")
+    require(type(value["tracked_rows"]) is list and len(value["tracked_rows"]) == cfg["tracked_count"] == 742,
+            "opaque tracked row count")
+    paths = [row.get("path") for row in value["tracked_rows"] if type(row) is dict]
+    require(len(paths) == 742 and all(type(path) is str for path in paths)
+            and paths == sorted(paths) and len(set(path.casefold() for path in paths)) == 742
+            and digest(encoded(paths)) == cfg["historical_authenticated_pathset_sha256"], "fixed opaque742 path sequence")
+    result = {"head": value["head"], "tracked_rows": [], "git_metadata": [], "configurations": []}
+    for row in value["tracked_rows"]:
+        relative = Path(row["path"])
+        require(not relative.is_absolute() and ".." not in relative.parts and relative.as_posix() == row["path"]
+                and len(row["path"]) <= 399, "opaque relative path")
+        actual = dict(row)
+        actual["path"] = str(live / relative)
+        observed = metadata_row(live / relative, actual, cfg["maximum_file_bytes"])
+        observed["path"] = row["path"]
+        result["tracked_rows"].append(observed)
+    git_paths = cfg["head_paths"] + cfg["optional_git_metadata_paths"]
+    config_paths = [str(Path(parent) / name) for parent in cfg["configuration_parents"]
+                    for name in cfg["configuration_names"]]
+    for field, allowed in (("git_metadata", git_paths), ("configurations", config_paths)):
+        require(type(value[field]) is list and [row.get("path") for row in value[field] if type(row) is dict] == allowed,
+                "opaque fixed path coverage")
+        for row in value[field]:
+            exact(row, ("path", "exists", "identity"), "opaque optional row")
+            require(type(row["exists"]) is bool, "opaque existence type")
+            path = Path(row["path"])
+            if row["exists"]:
+                observed = metadata_row(path, row["identity"], cfg["maximum_git_metadata_bytes"])
+                result[field].append({"path": str(path), "exists": True, "identity": observed})
+            else:
+                require(row["identity"] is None and absent(path), "opaque absence drift")
+                require(field != "git_metadata" or row["path"] not in cfg["head_paths"], "required HEAD metadata absent")
+                result[field].append({"path": str(path), "exists": False, "identity": None})
+    # These explicit bytes anchor the observed branch HEAD without invoking Git.
+    head_path = Path(cfg["head_paths"][-1])
+    expected_head = next(row["identity"]["sha256"] for row in value["git_metadata"] if row["path"] == str(head_path))
+    require(read(head_path, expected_head, 128)[0].decode("ascii").strip() == value["head"], "opaque actual branch HEAD differs")
+    return result
+
+
+
+def runtime_snapshot(profile, snapshot):
+    exact(snapshot, ("schema_version", "scope", "captured_utc", "entries", "context_selection"), "runtime metadata snapshot")
+    require(snapshot["schema_version"] == 1 and type(snapshot["schema_version"]) is int
+            and snapshot["scope"] == SCOPE and type(snapshot["entries"]) is list, "runtime metadata role")
+    require(0 <= (datetime.now(timezone.utc)-timestamp(snapshot["captured_utc"])).total_seconds() <= 600,
+            "fresh runtime metadata snapshot required")
+    require(len(snapshot["entries"]) == len(profile["runtime4_roles"]) == 4, "four runtime roles")
+    observed = []
+    for actual, fixed in zip(snapshot["entries"], profile["runtime4_roles"]):
+        exact(actual, ("path", "sha256", "bytes", "path_raw9", "descriptor_raw9"), "runtime row")
+        require(type(actual["path_raw9"]) is list and type(actual["descriptor_raw9"]) is list
+                and len(actual["path_raw9"]) == len(actual["descriptor_raw9"]) == 9
+                and all(type(value) is int for value in actual["path_raw9"] + actual["descriptor_raw9"]),
+                "required integer runtime metadata")
+        require(actual["path"] == fixed["path"] and actual["sha256"] == fixed["sha256"]
+                and type(actual["bytes"]) is int and actual["bytes"] == fixed["size"], "fixed runtime path/hash/size")
+        data, meta = read(Path(actual["path"]), actual["sha256"], actual["bytes"])
+        require(list(meta["path_raw9"]) == actual["path_raw9"]
+                and list(meta["descriptor_raw9"]) == actual["descriptor_raw9"], "runtime metadata identity differs")
+        observed.append({"path": actual["path"], **meta})
+    context_path, context_pin = pointer(snapshot["context_selection"])
+    observed_context = context_snapshot(profile, decode(read(context_path, context_pin, profile["context_profile"]["maximum_opaque_context_bytes"])[0]))
+    return {"runtime4": observed, "context": observed_context}
+
+def evidence_snapshot(items):
+    require(len(items) == len(set(str(path).casefold() for path,pin,maximum in items)), "evidence path aliases")
+    return [{"path":str(path), **read(path,pin,maximum)[1]} for path,pin,maximum in items]
+
+STATIC_KEYS = ("schema_version", "record_type", "verdict", "scope", "author", "reviewer", "profile_sha256",
+               "driver_template_sha256", "child_template_sha256", "source_manifest_sha256", "grammar_test_peer_sha256",
+               "source_projection_sha256", "publisher_source_sha256", "test_sha256", "runtime_manifest_sha256",
+               "owner_sha256", "tests_executed", "target_definitions_executed", "native_authority", "limitation")
+ROOT_ACK_KEYS = ("schema_version", "record_type", "decision", "scope", "author", "executor",
+                 "created_utc", "expires_utc", "owner_sha256", "driver_sha256", "child_sha256",
+                 "source_manifest_sha256", "source_peer_sha256", "harness_static_review_sha256",
+                 "profile_sha256", "source_projection_sha256", "runtime_snapshot", "whole_runtime_before",
+                 "resource_snapshot", "coordination_acknowledgement", "max_collection_seconds", "max_test_seconds")
+BOUND_KEYS = ("schema_version", "record_type", "verdict", "reviewer", "scope", "author", "root_ack_sha256",
+              "driver_sha256", "driver_template_sha256", "child_sha256", "source_manifest_sha256",
+              "source_peer_sha256", "harness_static_review_sha256", "profile_sha256", "source_projection_sha256",
+              "owner_sha256", "runtime_snapshot_sha256", "whole_runtime_before_sha256", "resource_snapshot_sha256",
+              "coordination_ack_sha256", "max_collection_seconds", "max_test_seconds")
+MAX_RESULT = 2 * 1024 * 1024
+MAX_JUNIT = 2 * 1024 * 1024
+MAX_EVENT_BYTES = 4096
+
+
+def reviewer(value):
+    require(type(value) is str and value in REVIEWERS and value != AUTHOR
+            and value not in SOURCE_AUTHORS, "finite independent canonical reviewer required")
+
+
+def nominal(value, expected, message):
+    require(type(value) is type(expected) and value == expected, message)
+
+
+def static_review(value, profile, profile_pin):
+    exact(value, STATIC_KEYS, "harness static20")
+    reviewer(value["reviewer"])
+    fixed = {"schema_version": 1, "record_type": "metadata_grammar_unit002_harness_static_review",
+             "verdict": "PASS_STATIC_PREPARATION_ONLY", "scope": SCOPE, "author": AUTHOR,
+             "profile_sha256": profile_pin, "child_template_sha256": profile["child"]["sha256"],
+             "source_manifest_sha256": profile["source_manifest_sha256"],
+             "grammar_test_peer_sha256": profile["source_peer_sha256"],
+             "source_projection_sha256": profile["source_projection_sha256"],
+             "publisher_source_sha256": profile["publisher_source_sha256"],
+             "test_sha256": profile["test"]["sha256"], "owner_sha256": OWNER_SHA256,
+             "runtime_manifest_sha256": profile["runtime_roles_projection_sha256"],
+             "tests_executed": False, "target_definitions_executed": False, "native_authority": False}
+    for key, expected in fixed.items():
+        nominal(value[key], expected, "static actual source field: " + key)
+    require(hex64(value["driver_template_sha256"]) and type(value["limitation"]) is str
+            and 0 < len(value["limitation"]) <= 4096, "static source pin/limitation type")
+
+
+def ack_review(value, profile, profile_pin, driver_pin, child_pin, static_pin):
+    exact(value, ROOT_ACK_KEYS, "ROOT ACK22")
+    fixed = {"schema_version": 1, "record_type": "metadata_grammar_unit002_first_run_ack",
+             "decision": "execute_copied_metadata_grammar_unit002_once", "scope": SCOPE,
+             "author": "/root", "executor": "/root", "owner_sha256": OWNER_SHA256,
+             "driver_sha256": driver_pin, "child_sha256": child_pin,
+             "source_manifest_sha256": profile["source_manifest_sha256"],
+             "source_peer_sha256": profile["source_peer_sha256"],
+             "harness_static_review_sha256": static_pin, "profile_sha256": profile_pin,
+             "source_projection_sha256": profile["source_projection_sha256"],
+             "max_collection_seconds": MAX_COLLECTION, "max_test_seconds": MAX_TESTS}
+    for key, expected in fixed.items():
+        nominal(value[key], expected, "ACK actual field: " + key)
+    require(all(hex64(value[key]) for key in ROOT_ACK_KEYS if key.endswith("sha256")), "ACK exact SHA string domains")
+    created, expires = timestamp(value["created_utc"]), timestamp(value["expires_utc"])
+    require(created <= datetime.now(timezone.utc) < expires <= min(OWNER_END, created + timedelta(hours=5)),
+            "ACK owner/clock domain")
+    for key in ("runtime_snapshot", "whole_runtime_before", "resource_snapshot", "coordination_acknowledgement"):
+        pointer(value[key])
+    return created, expires
+
+
+def fixture_rows(profile):
+    rows = profile["fixtures"]
+    require(type(rows) is list and len(rows) == 9, "exact nine fixture rows")
+    for row in rows:
+        exact(row, ("relative_path", "sha256", "bytes"), "fixture row")
+        relative = Path(row["relative_path"])
+        require(type(row["relative_path"]) is str and relative.as_posix() == row["relative_path"]
+                and not relative.is_absolute() and ".." not in relative.parts and hex64(row["sha256"])
+                and type(row["bytes"]) is int and 0 < row["bytes"] <= 2097152, "fixture finite path/hash/size")
+    require(len(set(row["relative_path"].casefold() for row in rows)) == 9, "fixture aliases")
+    return rows
+
+
+def mirror_snapshot(profile):
+    result = []
+    for row in fixture_rows(profile):
+        path = RUNS / "mirror" / row["relative_path"]
+        data, meta = read(path, row["sha256"], row["bytes"])
+        require(len(data) == row["bytes"], "mirror exact size")
+        result.append({"relative_path": row["relative_path"], **meta})
+    return result
+
+
+def checked_collection(value, profile, profile_pin, child_pin, ack_pin):
+    exact(value, ("scope", "ordered_ids", "ordered_ids_sha256", "collected_methods", "collection_elapsed_seconds",
+                  "profile_sha256", "child_sha256", "root_ack_sha256"), "collection8")
+    require(type(value["ordered_ids"]) is list and value["ordered_ids"] == profile["expected_ids"]
+            and all(type(x) is str for x in value["ordered_ids"]), "actual sorted24 IDs")
+    for key, expected in {"scope": SCOPE, "ordered_ids_sha256": profile["ordered_ids_sha256"],
+                          "collected_methods": 24, "profile_sha256": profile_pin,
+                          "child_sha256": child_pin, "root_ack_sha256": ack_pin}.items():
+        nominal(value[key], expected, "collection field: " + key)
+    require(type(value["collection_elapsed_seconds"]) in (int, float)
+            and math.isfinite(value["collection_elapsed_seconds"])
+            and 0 <= value["collection_elapsed_seconds"] <= MAX_COLLECTION, "collection elapsed domain")
+
+
+def result_projection(value, collection, profile_pin, child_pin, ack_pin):
+    names = ("scope", "accepted", "collected_methods", "tests_run", "passed", "skipped", "failures", "errors",
+             "methods", "events", "reported_subtests", "passing_subtests", "ordered_ids_sha256", "transcript_sha256",
+             "junit_sha256", "private_raw_namespaces_untouched", "import_path_state_restored",
+             "owned_test_namespace_removed", "import_state_before", "import_state_after",
+             "forbidden_project_or_thirdparty_modules", "sources_initial", "sources_final", "mirror_initial",
+             "mirror_final", "elapsed_test_seconds", "source_peer_sha256", "root_ack_sha256", "profile_sha256",
+             "child_sha256", "native_fit_Git_fullQA", "OS_sandbox_hard_Job_memory_descendant_cleanup_proved")
+    exact(value, names, "result32")
+    for key, expected in {"scope": SCOPE, "accepted": True, "collected_methods": 24, "tests_run": 24,
+                          "passed": 24, "skipped": 0, "failures": 0, "errors": 0,
+                          "ordered_ids_sha256": collection["ordered_ids_sha256"],
+                          "profile_sha256": profile_pin, "child_sha256": child_pin, "root_ack_sha256": ack_pin,
+                          "private_raw_namespaces_untouched": True, "import_path_state_restored": True,
+                          "owned_test_namespace_removed": True, "native_fit_Git_fullQA": False,
+                          "OS_sandbox_hard_Job_memory_descendant_cleanup_proved": False}.items():
+        nominal(value[key], expected, "unit result field: " + key)
+    require(type(value["methods"]) is list and len(value["methods"]) == 24
+            and [row.get("id") for row in value["methods"]] == collection["ordered_ids"], "result24 method sequence")
+    for row in value["methods"]:
+        exact(row, ("id", "status"), "method row")
+        nominal(row["status"], "passed", "method did not pass")
+    require(type(value["events"]) is list and len(value["events"]) <= MAX_EVENTS, "finite actual events")
+    starts, successes, stops, subs = [], [], [], []
+    active = None
+    for item in value["events"]:
+        require(type(item) is dict and len(encoded(item)) <= MAX_EVENT_BYTES, "event byte domain")
+        kind = item.get("event")
+        if kind == "subtest":
+            exact(item, ("event", "parent_id", "id", "status"), "subtest event")
+            require(active == item["parent_id"] and type(item["id"]) is str and 0 < len(item["id"]) <= 2048
+                    and item["status"] == "passed", "causal active passing subtest")
+            subs.append(item)
+        else:
+            exact(item, ("event", "id"), "method event")
+            require(type(item["id"]) is str and item["id"] in collection["ordered_ids"], "event actual ID")
+            if kind == "start":
+                require(active is None, "overlapping method events")
+                active = item["id"]; starts.append(active)
+            elif kind == "success":
+                require(active == item["id"], "success outside active method"); successes.append(active)
+            elif kind == "stop":
+                require(active == item["id"], "stop outside active method"); stops.append(active); active = None
+            else:
+                raise RuntimeError("failed/unknown actual event")
+    require(active is None and starts == successes == stops == collection["ordered_ids"], "exact method lifecycle")
+    nominal(value["reported_subtests"], len(subs), "reported actual subtests")
+    nominal(value["passing_subtests"], len(subs), "passing actual subtests")
+    require(value["sources_initial"] == value["sources_final"] and value["mirror_initial"] == value["mirror_final"]
+            and value["forbidden_project_or_thirdparty_modules"] == []
+            and value["import_state_before"] == value["import_state_after"]
+            and hex64(value["transcript_sha256"]) and hex64(value["junit_sha256"])
+            and type(value["elapsed_test_seconds"]) in (int, float)
+            and math.isfinite(value["elapsed_test_seconds"]) and 0 <= value["elapsed_test_seconds"] <= MAX_TESTS,
+            "unit fresh state/capture/deadline projection")
+
+
+def checked_junit(data, value, ids):
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(data)
+    require(root.tag == "testsuite" and root.attrib == {"name": "metadata_grammar_unit002", "tests": "24",
+            "failures": "0", "errors": "0", "skipped": "0"}, "JUnit actual suite")
+    cases = list(root)
+    require(len(cases) == 24, "JUnit24 cases")
+    for case, expected in zip(cases, ids):
+        module, klass, name = expected.rsplit(".", 2)
+        require(case.tag == "testcase" and case.attrib == {"classname": module + "." + klass, "name": name}, "JUnit case ID")
+        children = list(case)
+        require(len(children) == 1 and children[0].tag == "system-out" and not children[0].attrib, "JUnit subtest ledger")
+        expected_events = [e for e in value["events"] if e.get("parent_id") == expected]
+        require(decode((children[0].text or "").encode("utf-8")) == expected_events, "JUnit causal subtests differ")
+
+
+import shutil
+import subprocess
+import threading
+
+GRAMMAR_TEST_PEER_SHA256 = "de3174a9a799c4dd101c6fd9c8e2d356f3927e56cf5b8f3b811dbb6d10a543c9"
+HARNESS_STATIC_PEER_SHA256 = None
+PROFILE_SHA256 = "44863df0e8707d07e5bd182176b42dcedf0a56be8b4de45d50b9125d8b80617f"
+def driver_projection(data):
+    text = data.decode("utf-8")
+    rows = text.splitlines(keepends=True)
+    changes = []
+    for node in ast.parse(text).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            if node.targets[0].id in ("HARNESS_STATIC_PEER_SHA256",):
+                require(isinstance(node.value, ast.Constant) and hex64(node.value.value), "bound peer literal")
+                start = sum(len(x) for x in rows[:node.value.lineno-1]) + node.value.col_offset
+                end = sum(len(x) for x in rows[:node.value.end_lineno-1]) + node.value.end_col_offset
+                changes.append((start, end))
+    require(len(changes) == 1, "exact one peer literal binding")
+    for start, end in sorted(changes, reverse=True):
+        text = text[:start] + "None" + text[end:]
+    return digest(text.encode("utf-8"))
+
+
+
+
+
+
+
+
+def driver_main():
+    require(hex64(GRAMMAR_TEST_PEER_SHA256) and hex64(HARNESS_STATIC_PEER_SHA256),
+            "UNBOUND metadata grammar harness; no execution authorized")
+    parser = argparse.ArgumentParser()
+    for name in ("expected-self-sha256", "root-ack-path", "root-ack-sha256", "bound-review-path",
+                 "bound-review-sha256", "source-peer-path", "harness-peer-path"):
+        parser.add_argument("--" + name, required=True)
+    args = parser.parse_args()
+    runtime_entry()
+    require(Path(__file__).resolve(strict=True) == (PREP / "run-metadata-grammar-unit002.BOUND.py").resolve(strict=True), "fixed bound driver source path")
+    deadline = time.monotonic() + MAX_TOTAL
+    self_bytes = read(Path(__file__), args.expected_self_sha256, 131072)[0]
+    profile = decode(read(PREP / "METADATA_UNIT_PROFILE_002.json", PROFILE_SHA256, 65536)[0])
+    require(profile["scope"] == SCOPE, "profile role")
+    ack = decode(read(work_path(args.root_ack_path), args.root_ack_sha256, 65536)[0])
+    created, expires = ack_review(ack, profile, PROFILE_SHA256, args.expected_self_sha256,
+                                   profile["child"]["sha256"], HARNESS_STATIC_PEER_SHA256)
+    now = datetime.now(timezone.utc)
+    require(expires - now >= timedelta(seconds=450), "ACK/owner450 reserve")
+    common = {"driver_sha256": args.expected_self_sha256, "child_sha256": profile["child"]["sha256"],
+              "source_manifest_sha256": profile["source_manifest_sha256"], "source_peer_sha256": GRAMMAR_TEST_PEER_SHA256,
+              "harness_static_review_sha256": HARNESS_STATIC_PEER_SHA256, "profile_sha256": PROFILE_SHA256,
+              "source_projection_sha256": profile["source_projection_sha256"], "owner_sha256": OWNER_SHA256}
+    static = decode(read(work_path(args.harness_peer_path), HARNESS_STATIC_PEER_SHA256, MAX_JSON)[0])
+    static_review(static, profile, PROFILE_SHA256)
+    nominal(static["driver_template_sha256"], driver_projection(self_bytes), "bound driver projection")
+    source_peer = decode(read(work_path(args.source_peer_path), GRAMMAR_TEST_PEER_SHA256, MAX_JSON)[0])
+    for key, expected in profile["source_peer_core"].items():
+        require(key in source_peer, "fixed grammar005 peer field absent")
+        nominal(source_peer[key], expected, "fixed typed grammar005 peer field: " + key)
+    require(profile["source_peer_sha256"] == GRAMMAR_TEST_PEER_SHA256,
+            "grammar005 source peer pin differs")
+    bound = decode(read(work_path(args.bound_review_path), args.bound_review_sha256, 65536)[0])
+    exact(bound, BOUND_KEYS, "bound peer22")
+    reviewer(bound["reviewer"])
+    for key, expected in {"schema_version":1, "record_type":"metadata_grammar_unit002_bound_review",
+                          "verdict":"PASS_BOUND_STATIC", "scope":SCOPE, "author":AUTHOR,
+                          "root_ack_sha256":args.root_ack_sha256,
+                          "driver_template_sha256":static["driver_template_sha256"],
+                          "max_collection_seconds":MAX_COLLECTION, "max_test_seconds":MAX_TESTS, **common}.items():
+        nominal(bound[key], expected, "bound22 actual field: " + key)
+    runtime_path, runtime_pin = pointer(ack["runtime_snapshot"])
+    whole_path, whole_pin = pointer(ack["whole_runtime_before"])
+    resource_path, resource_pin = pointer(ack["resource_snapshot"])
+    coord_path, coord_pin = pointer(ack["coordination_acknowledgement"])
+    require(bound["runtime_snapshot_sha256"] == runtime_pin and bound["whole_runtime_before_sha256"] == whole_pin
+            and bound["resource_snapshot_sha256"] == resource_pin and bound["coordination_ack_sha256"] == coord_pin,
+            "bound independent observations")
+    resource = decode(read(resource_path, resource_pin, 65536)[0])
+    exact(resource,("schema_version","scope","captured_utc","free_ram_bytes","disk_free_bytes","single_thread","author"),"resource")
+    require(resource["schema_version"] == 1 and type(resource["schema_version"]) is int
+            and resource["scope"] == SCOPE and resource["author"] == "/root" and resource["single_thread"] is True
+            and type(resource["free_ram_bytes"]) is int and resource["free_ram_bytes"] >= 1073741824
+            and type(resource["disk_free_bytes"]) is int and resource["disk_free_bytes"] >= 10737418240
+            and 0 <= (now-timestamp(resource["captured_utc"])).total_seconds() <= 60, "fresh RAM/disk snapshot")
+    require(shutil.disk_usage(PROJECT).free >= 10737418240,"actual disk floor")
+    coord = decode(read(coord_path,coord_pin,65536)[0])
+    exact(coord,("schema_version","scope","created_utc","other_session_acknowledgement","root_response","live_execution_authorized"),"coordination")
+    require(type(coord["schema_version"]) is int and coord["schema_version"] == 1 and coord["scope"] == SCOPE
+            and coord["live_execution_authorized"] is False
+            and timestamp(coord["created_utc"]) <= datetime.now(timezone.utc) < OWNER_END, "isolated coordination role")
+    for item in (coord["other_session_acknowledgement"],coord["root_response"]):
+        path,pin=pointer(item);read(path,pin,65536)
+    whole = decode(read(whole_path,whole_pin,MAX_JSON)[0])
+    exact(whole,("schema_version","scope","captured_utc","verifier","whole_before_evidence","unchanged_against_reviewed_runtime","runtime_snapshot_sha256"),"whole-before acceptance")
+    reviewer(whole["verifier"])
+    require(type(whole["schema_version"]) is int and whole["schema_version"]==1 and whole["scope"]==SCOPE
+            and whole["unchanged_against_reviewed_runtime"] is True and whole["runtime_snapshot_sha256"]==runtime_pin
+            and 0 <= (now-timestamp(whole["captured_utc"])).total_seconds() <= 600, "fresh independent whole-before")
+    whole_evidence_path,whole_evidence_pin=pointer(whole["whole_before_evidence"])
+    whole_data=decode(read(whole_evidence_path,whole_evidence_pin,MAX_RECEIPT)[0])
+    require(whole_evidence_path == PREP/"whole-runtime-before/result.json" and whole_data["record_type"] == "metadata_grammar_unit002_whole_metadata_result"
+            and whole_data["scope"] == SCOPE and whole_data["phase"] == "before"
+            and whole_data["verdict"] == "MATCHES_PINNED_BYTES_METADATA_TWICE"
+            and whole_data["runtime_snapshot_sha256"] == runtime_pin
+            and whole_data["profile_sha256"] == PROFILE_SHA256
+            and whole_data["static_review_sha256"] == HARNESS_STATIC_PEER_SHA256
+            and whole_data["owner_sha256"] == OWNER_SHA256 and whole_data["target_execution"] is False
+            and whole_data["metadata_scope"] == "FOUR_RUNTIME_FILES_PLUS_TWO_INVENTORY_TREES",
+            "actual whole-before source/profile facts")
+    exact(whole_data, ("schema_version","record_type","scope","phase","verdict","captured_utc","observer_sha256",
+          "static_review_sha256","profile_sha256","owner_sha256","runtime_snapshot_sha256","context_selection_sha256",
+          "source_snapshot_sha256","trees","observation_files","before_record_sha256","unit_receipt","target_execution",
+          "whole_site_loaded_closure_retained_lock_OS_Job_guaranteed","metadata_scope"), "whole-before actual20")
+    require(type(whole_data["schema_version"]) is int and whole_data["schema_version"] == 1
+            and whole_data["before_record_sha256"] is None and whole_data["unit_receipt"] is None
+            and whole_data["whole_site_loaded_closure_retained_lock_OS_Job_guaranteed"] is False
+            and hex64(whole_data["observer_sha256"]), "whole-before typed metadata role")
+    require(type(whole_data["observation_files"]) is list and len(whole_data["observation_files"]) == 4,
+            "two inventory trees, four observation files")
+    expected_paths=[PREP/"whole-runtime-before"/(role+"-"+suffix+".json") for role in ("base","scripts") for suffix in ("first","second")]
+    for row,expected_path in zip(whole_data["observation_files"], expected_paths):
+        exact(row,("path","sha256","bytes"),"whole file row")
+        require(row["path"] == str(expected_path) and type(row["bytes"]) is int
+                and 0 < row["bytes"] <= profile["whole_before_evidence_max_bytes"], "whole finite file/path")
+        read(expected_path,row["sha256"],profile["whole_before_evidence_max_bytes"])
+    runtime_record=decode(read(runtime_path,runtime_pin,65536)[0]);before_runtime=runtime_snapshot(profile,runtime_record)
+    context_path,context_pin=pointer(runtime_record["context_selection"])
+    evidence=[(Path(__file__),args.expected_self_sha256,131072),
+              (PREP/"METADATA_UNIT_PROFILE_002.json",PROFILE_SHA256,65536),
+              (PREP/profile["source_projection"]["path"],profile["source_projection_sha256"],MAX_JSON),
+              (PREP/profile["child"]["path"],profile["child"]["sha256"],profile["child"]["bytes"]),
+              (PREP/profile["root_supervisor"]["path"],profile["root_supervisor"]["sha256"],65536),
+              (PREP/profile["whole_observer"]["path"],profile["whole_observer"]["sha256"],65536),
+              (work_path(args.root_ack_path),args.root_ack_sha256,65536),
+              (work_path(args.bound_review_path),args.bound_review_sha256,65536),
+              (work_path(args.source_peer_path),GRAMMAR_TEST_PEER_SHA256,MAX_JSON),
+              (work_path(args.harness_peer_path),HARNESS_STATIC_PEER_SHA256,MAX_JSON),
+              (runtime_path,runtime_pin,65536),(context_path,context_pin,profile["context_profile"]["maximum_opaque_context_bytes"]),
+              (whole_path,whole_pin,MAX_JSON),(resource_path,resource_pin,65536),(coord_path,coord_pin,65536),(whole_evidence_path,whole_evidence_pin,MAX_RECEIPT)]
+    for item in (coord["other_session_acknowledgement"],coord["root_response"]):
+        evidence_path,evidence_pin=pointer(item);evidence.append((evidence_path,evidence_pin,65536))
+    for row in whole_data["observation_files"]:
+        evidence.append((Path(row["path"]),row["sha256"],profile["whole_before_evidence_max_bytes"]))
+    before_evidence=evidence_snapshot(evidence)
+    require(whole_data["context_selection_sha256"] == runtime_record["context_selection"]["sha256"], "whole context transport")
+    before_sources=source_snapshot(profile)
+    require(whole_data["source_snapshot_sha256"] == digest(encoded(before_sources)), "whole actual source snapshot")
+    read(PREP/profile["child"]["path"],profile["child"]["sha256"],profile["child"]["bytes"])
+    require(absent(RUNS),"one-use scratch exists")
+    ancestors(RUNS.parent);RUNS.mkdir();ancestors(RUNS)
+    once(RUNS/"start.json",encoded({"scope":SCOPE,"root_ack_sha256":args.root_ack_sha256,
+         "driver_sha256":args.expected_self_sha256,"child_sha256":profile["child"]["sha256"],
+         "driver_pid":os.getpid(),"created_utc":datetime.now(timezone.utc).isoformat(timespec="microseconds")}),65536)
+    child=None
+    threads=[]
+    output={"stdout":bytearray(),"stderr":bytearray()};overflow=threading.Event()
+    drain_completed={"stdout":False,"stderr":False};drain_errors={}
+    def drain(stream,key):
+        try:
+            while True:
+                data=stream.read(4096)
+                if not data:
+                    drain_completed[key]=True
+                    break
+                space=MAX_CAPTURE-len(output[key])
+                output[key].extend(data[:max(space,0)])
+                if len(data)>space:overflow.set()
+        except BaseException as error:
+            drain_errors[key]=type(error).__name__
+            overflow.set()
+        finally:
+            try:stream.close()
+            except BaseException as error:
+                drain_errors[key]=type(error).__name__
+                overflow.set()
+    try:
+        # Fresh source/runtime checks immediately precede owned child creation.
+        require(source_snapshot(profile)==before_sources and runtime_snapshot(profile,runtime_record)==before_runtime
+                and evidence_snapshot(evidence)==before_evidence,
+                "pre-spawn source/runtime changed")
+        env={key:value for key,value in os.environ.items() if key.upper() in ("SYSTEMROOT","WINDIR","COMSPEC","PATH","PATHEXT","NUMBER_OF_PROCESSORS")}
+        require(time.monotonic() < deadline-60 and datetime.now(timezone.utc) < min(expires,OWNER_END)-timedelta(seconds=60),
+                "fresh pre-spawn deadline/owner cleanup reserve")
+        require(0 <= (datetime.now(timezone.utc)-timestamp(resource["captured_utc"])).total_seconds() <= 60
+                and shutil.disk_usage(PROJECT).free >= 10737418240, "pre-spawn fresh resource/disk guard")
+        temp=RUNS/"temp";temp.mkdir()
+        env.update({"TEMP":str(temp),"TMP":str(temp),"PYTHONDONTWRITEBYTECODE":"1",
+                    "PYTHONNOUSERSITE":"1","PYTEST_DISABLE_PLUGIN_AUTOLOAD":"1",
+                    "OMP_NUM_THREADS":"1","OPENBLAS_NUM_THREADS":"1","MKL_NUM_THREADS":"1",
+                    "NUMEXPR_NUM_THREADS":"1","VECLIB_MAXIMUM_THREADS":"1","BLIS_NUM_THREADS":"1"})
+        mirror = RUNS / "mirror"
+        mirror.mkdir()
+        for row in fixture_rows(profile):
+            target = mirror / row["relative_path"]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            data = read(PREP / "fixtures" / row["relative_path"], row["sha256"], row["bytes"])[0]
+            once(target, data, row["bytes"])
+        before_mirror = mirror_snapshot(profile)
+        once(RUNS / "mirror-inputs.json", encoded(before_mirror), MAX_RECEIPT)
+        require(source_snapshot(profile) == before_sources and runtime_snapshot(profile, runtime_record) == before_runtime
+                and evidence_snapshot(evidence) == before_evidence, "post-mirror immediate pre-spawn guard")
+        require(time.monotonic() < deadline - 60 and datetime.now(timezone.utc) < expires - timedelta(seconds=60),
+                "post-mirror fresh owner/deadline reserve")
+        require(0 <= (datetime.now(timezone.utc)-timestamp(resource["captured_utc"])).total_seconds() <= 60
+                and shutil.disk_usage(PROJECT).free >= 10737418240, "immediate pre-spawn fresh resource floor")
+        command=[str(BASE_PYTHON),"-I","-S","-B","-X","utf8",str(PREP/profile["child"]["path"]),
+                 "--expected-self-sha256",profile["child"]["sha256"],"--expected-profile-sha256",PROFILE_SHA256,
+                 "--root-ack-path",args.root_ack_path,"--root-ack-sha256",args.root_ack_sha256]
+        child=subprocess.Popen(command,cwd=RUNS,env=env,stdin=subprocess.DEVNULL,
+                               stdout=subprocess.PIPE,stderr=subprocess.PIPE,creationflags=subprocess.CREATE_NO_WINDOW)
+        once(RUNS/"child-start.json",encoded({"pid":child.pid,"image":str(BASE_PYTHON),
+             "expected_image_sha256":BASE_PYTHON_SHA256,"direct_parent_pid":os.getpid(),
+             "started_utc":datetime.now(timezone.utc).isoformat(timespec="microseconds"),"root_ack_sha256":args.root_ack_sha256}),65536)
+        threads=[threading.Thread(target=drain,args=(child.stdout,"stdout"),daemon=True),
+                 threading.Thread(target=drain,args=(child.stderr,"stderr"),daemon=True)]
+        for thread in threads:thread.start()
+        launch=time.monotonic();collection_seen=False;phase_end=min(deadline-60,launch+MAX_COLLECTION)
+        while child.poll() is None:
+            if not collection_seen and not absent(RUNS/"collection.json"):
+                marker = decode(read(RUNS/"collection.json",maximum=MAX_RECEIPT)[0])
+                checked_collection(marker, profile, PROFILE_SHA256, profile["child"]["sha256"], args.root_ack_sha256)
+                collection_seen=True;phase_end=min(deadline-60,time.monotonic()+MAX_TESTS)
+            require(not overflow.is_set(),"capture overflow")
+            require(time.monotonic()<phase_end,"owned phase timeout")
+            time.sleep(0.05)
+        child.wait(timeout=max(0.0,min(5.0,deadline-time.monotonic())))
+        for thread in threads:thread.join(timeout=max(0.0,min(5.0,deadline-time.monotonic())))
+        require(all(not thread.is_alive() for thread in threads) and all(drain_completed.values())
+                and not drain_errors, "owned complete EOF/drain proof absent")
+        require(not threads or all(not t.is_alive() for t in threads), "capture handles not drained")
+        once(RUNS/"stdout.txt",bytes(output["stdout"]),MAX_CAPTURE)
+        once(RUNS/"stderr.txt",bytes(output["stderr"]),MAX_CAPTURE)
+        require(child.returncode==0 and not overflow.is_set(),"unit child refused")
+        wire=decode(bytes(output["stdout"]))
+        exact(wire,("result_sha256","collection_sha256","transcript_sha256","junit_sha256","profile_sha256","child_sha256","root_ack_sha256"),"direct child pipe receipt")
+        require(all(hex64(value) for value in wire.values()) and wire["profile_sha256"]==PROFILE_SHA256
+                and wire["child_sha256"]==profile["child"]["sha256"] and wire["root_ack_sha256"]==args.root_ack_sha256,
+                "direct child receipt source facts")
+        collection=decode(read(RUNS/"collection.json",wire["collection_sha256"],MAX_RECEIPT)[0])
+        result=decode(read(RUNS/"result.json",wire["result_sha256"],MAX_RESULT)[0])
+        read(RUNS/"transcript.txt",wire["transcript_sha256"],MAX_TRANSCRIPT)
+        checked_collection(collection, profile, PROFILE_SHA256, profile["child"]["sha256"], args.root_ack_sha256)
+        result_projection(result, collection, PROFILE_SHA256, profile["child"]["sha256"], args.root_ack_sha256)
+        nominal(result["source_peer_sha256"], GRAMMAR_TEST_PEER_SHA256, "result actual source peer")
+        nominal(result["transcript_sha256"], wire["transcript_sha256"], "actual transcript pipe pin")
+        nominal(result["junit_sha256"], wire["junit_sha256"], "actual JUnit pipe pin")
+        checked_junit(read(RUNS/"junit.xml",wire["junit_sha256"],MAX_JUNIT)[0], result, collection["ordered_ids"])
+        require(encoded(before_sources) == encoded(result["sources_initial"]) == encoded(result["sources_final"]),
+                "actual parent/child original-copy source observations differ")
+        require(encoded(mirror_snapshot(profile)) == encoded(before_mirror) == encoded(result["mirror_initial"]) == encoded(result["mirror_final"]),
+                "fresh copied mirror identity drift")
+        after_sources=source_snapshot(profile);after_runtime=runtime_snapshot(profile,runtime_record)
+        after_evidence=evidence_snapshot(evidence)
+        require(after_sources==before_sources and after_runtime==before_runtime and after_evidence==before_evidence,
+                "post-run byte/meta/evidence changed")
+        require(time.monotonic()<deadline,"total budget")
+        once(RUNS/"finished.json",encoded({"scope":SCOPE,"accepted_copied_metadata_grammar_units":True,
+             "result_sha256":digest(read(RUNS/"result.json",maximum=MAX_RESULT)[0]),
+             "collection_sha256":digest(read(RUNS/"collection.json",maximum=MAX_RECEIPT)[0]),
+             "collected_methods":result["collected_methods"],"passed":result["passed"],
+             "reported_subtests":result["reported_subtests"],"passing_subtests":result["passing_subtests"],
+             "root_ack_sha256":args.root_ack_sha256,"profile_sha256":PROFILE_SHA256,
+             "source_peer_sha256":GRAMMAR_TEST_PEER_SHA256,"harness_static_peer_sha256":HARNESS_STATIC_PEER_SHA256,
+             "whole_before_result_sha256":whole_evidence_pin,"evidence_initial":before_evidence,"evidence_final":after_evidence,
+             "driver_sha256":args.expected_self_sha256,"junit_sha256":wire["junit_sha256"], "transcript_sha256":wire["transcript_sha256"],
+             "ordered_ids_sha256":collection["ordered_ids_sha256"], "direct_child_reaped":True,
+             "external_whole_after_acceptance_pending":True,"canonical_fullQA_native_fit_authority":False,
+             "hard_Job_OS_sandbox_descendant_cleanup_proved":False}),MAX_RECEIPT)
+        return 0
+    except BaseException as error:
+        cleanup_errors=[]
+        if child is not None and child.poll() is None:
+            try:
+                child.terminate()
+            except OSError as cleanup_error:
+                cleanup_errors.append(type(cleanup_error).__name__)
+            try:
+                child.wait(timeout=max(0.0,min(5.0,deadline-time.monotonic())))
+            except subprocess.TimeoutExpired:
+                try:
+                    child.kill()
+                    child.wait(timeout=max(0.0,min(5.0,deadline-time.monotonic())))
+                except (OSError,subprocess.TimeoutExpired) as cleanup_error:
+                    cleanup_errors.append(type(cleanup_error).__name__)
+        for thread in threads:
+            thread.join(timeout=max(0.0,min(5.0,deadline-time.monotonic())))
+        for key in ("stdout","stderr"):
+            if absent(RUNS/(key+".txt")):
+                once(RUNS/(key+".txt"),bytes(output[key]),MAX_CAPTURE)
+        once(RUNS/"refused.json",encoded({"scope":SCOPE,"exception":type(error).__name__,
+             "message":str(error)[:4096],"root_ack_sha256":args.root_ack_sha256,
+             "direct_child_reaped":child is None or child.poll() is not None,
+             "capture_drain_complete":all(not thread.is_alive() for thread in threads) and all(drain_completed.values()) and not drain_errors,
+             "capture_errors":drain_errors,
+             "cleanup_errors":cleanup_errors,"capture_overflow":overflow.is_set(),"spent":True,
+             "native_fullQA_fit_authority":False}),65536)
+        raise
+
+
+if __name__ == "__main__":
+    raise SystemExit(driver_main())

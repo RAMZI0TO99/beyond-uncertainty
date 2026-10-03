@@ -1,0 +1,231 @@
+"""Owned finite metadata compositor; never imports or executes project code."""
+from pathlib import Path
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+import re
+import stat
+import xml.etree.ElementTree as ET
+
+BASE = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001')
+ACTOR = Path(r'D:\Aenv\pro2\resume-2026-09-28-001')
+GATE = ACTOR / 'full-gate-009'
+QA = Path(r'D:\Aenv\pro2\resume-2026-09-05\qa-relocation')
+OUT = BASE / 'gate009-finite-readonly-observation002'
+CAP = 1048576
+
+def utc():
+    return datetime.now(timezone.utc).isoformat()
+
+def sha(blob):
+    return hashlib.sha256(blob).hexdigest()
+
+def encode(value):
+    return (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True,
+                       allow_nan=False) + '\n').encode('ascii')
+
+def once(path, blob):
+    with path.open('xb') as handle:
+        handle.write(blob)
+
+def raw9(s):
+    return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns,
+            s.st_mode, s.st_nlink, getattr(s, 'st_file_attributes', 0),
+            getattr(s, 'st_birthtime_ns', None)]
+
+def cross5(s):
+    return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_nlink]
+
+def observe(path):
+    # Missing fixed paths are recorded, never created. There is no recursive walk.
+    try:
+        p0 = path.lstat()
+    except FileNotFoundError:
+        return None, {'path': str(path), 'absent': True, 'observed_utc': utc()}
+    for parent in reversed(path.parents):
+        item = parent.lstat()
+        assert stat.S_ISDIR(item.st_mode) and not getattr(item, 'st_file_attributes', 0) & 0x400
+    assert stat.S_ISREG(p0.st_mode) and p0.st_nlink == 1
+    assert not getattr(p0, 'st_file_attributes', 0) & 0x400
+    assert 0 <= p0.st_size <= CAP, str(path)
+    with path.open('rb') as handle:
+        f0 = os.fstat(handle.fileno())
+        blob = handle.read(CAP + 1)
+        f1 = os.fstat(handle.fileno())
+    p1 = path.lstat()
+    assert len(blob) <= CAP
+    return blob, {'path': str(path), 'absent': False, 'observed_utc': utc(),
+        'bytes': len(blob), 'sha256': sha(blob),
+        'path_raw9_before': raw9(p0), 'path_raw9_after': raw9(p1),
+        'descriptor_raw9_before': raw9(f0), 'descriptor_raw9_after': raw9(f1),
+        'read_stable': raw9(p0) == raw9(p1) and raw9(f0) == raw9(f1)
+             and cross5(p0) == cross5(f0) == cross5(p1) == cross5(f1)
+             and len(blob) == p0.st_size}
+
+def same(before, after):
+    if before['absent'] or after['absent']:
+        return before['absent'] == after['absent']
+    return all(before[k] == after[k] for k in ('bytes', 'sha256',
+        'path_raw9_before', 'path_raw9_after', 'descriptor_raw9_before',
+        'descriptor_raw9_after')) and before['read_stable'] and after['read_stable']
+
+started = utc()
+assert OUT.is_dir() and not (OUT / 'FINITE_GATE009_OBSERVATION_002.json').exists()
+copies = OUT / 'inputs'
+copies.mkdir(exist_ok=False)
+initial_names = sorted(p.name for p in GATE.iterdir())
+assert len(initial_names) <= 100
+historical_blob, historical_row = observe(BASE / 'ROOT021_GATE009_METADATA_OBSERVATION_001.json')
+historical = json.loads(historical_blob)
+plan_blob, _ = observe(GATE / 'plan.json')
+assert sha(plan_blob) == '83d6f3c1e6d052e35dbad66fd28f7529d2ca3ebfe9da7c3d31b805528e454212'
+plan = json.loads(plan_blob)
+assert len(plan['partitions']) == 45
+fixed = [GATE / name for name in ('plan.json', 'driver-start.json', 'driver-failed.json',
+    'continuation-001-start.json', 'continuation-001-failed.json',
+    'g9-governance-001.accepted.json', 'driver-paused.json', 'driver-finished.json',
+    'continuation-001-paused.json', 'continuation-001-finished.json',
+    'continuation-002-start.json', 'continuation-002-paused.json',
+    'continuation-002-failed.json', 'continuation-002-finished.json',
+    'release-verification.json', 'combined-junit.xml')]
+fixed += [ACTOR / 'run-full-gate-009-driver-001.py',
+          ACTOR / 'run-full-gate-009-continuation-001.py',
+          ACTOR / 'run-full-gate-009-continuation-002.py', ACTOR / 'SESSION.md',
+          ACTOR / 'controller-release-009-proposal018.json',
+          ACTOR / 'full-gate-008' / 'release-verification.json',
+          BASE / 'ROOT021_GATE009_METADATA_OBSERVATION_001.json',
+          BASE / 'ROOT021_GATE009_METADATA_OBSERVATION_001.md',
+          BASE / 'ROOT021_GATE009_METADATA_POST_CAPTURE_001.json',
+          BASE / 'COORDINATION_GATE009_OBSERVATION_012.json',
+          BASE / 'OWNER_WORK_WINDOW_30H_20261001_001.json',
+          Path(r'D:\Aenv\pro2\week8-recovery-controller-worktree\src\bu\experiments\week8_exp2a_recovery.py'),
+          Path(r'D:\Aenv\pro2\week8-recovery-controller-worktree\tests\test_week8_exp2a_recovery.py')]
+fixed += [QA / name / leaf for name in ('g9-governance-001', 'g9-b09-heavy-001',
+    'g9-b09-heavy-002', 'g9-b09-heavy-003') for leaf in
+    ('command.json', 'result.json', 'junit.xml', 'candidate-after.json', 'stdout.txt', 'stderr.txt')]
+receipt_paths = [GATE / ('g9-' + part['Name'] + '-001.accepted.json') for part in plan['partitions']]
+receipt_paths += [GATE / 'g9-b09-heavy-002.accepted.json', GATE / 'g9-b09-heavy-003.accepted.json']
+fixed = list(dict.fromkeys(fixed + receipt_paths))
+assert len(fixed) <= 110
+first, blobs = [], {}
+for index, path in enumerate(fixed, 1):
+    blob, row = observe(path)
+    if blob is not None:
+        target = copies / ('input-%03d.bin' % index)
+        once(target, blob)
+        row['copy_path'] = str(target)
+        row['copy_sha256'] = sha(target.read_bytes())
+        assert row['copy_sha256'] == row['sha256']
+        blobs[str(path)] = blob
+    first.append(row)
+second = []
+for index, path in enumerate(fixed, 1):
+    blob, row = observe(path)
+    row['same_as_first'] = same(first[index - 1], row)
+    if blob is not None and (first[index - 1]['absent'] or row['sha256'] != first[index - 1].get('sha256')):
+        target = copies / ('post-%03d.bin' % index)
+        once(target, blob)
+        row['copy_path'] = str(target)
+    second.append(row)
+final_names = sorted(p.name for p in GATE.iterdir())
+records = {name: json.loads(blobs[str(GATE / name)]) for name in initial_names
+    if name.endswith('.json') and str(GATE / name) in blobs and name != 'plan.json'}
+governance = records['g9-governance-001.accepted.json']
+gov_result = QA / 'g9-governance-001' / 'result.json'
+gov_junit = QA / 'g9-governance-001' / 'junit.xml'
+gov_xml = ET.fromstring(blobs[str(gov_junit)])
+assert governance['result_sha256'] == sha(blobs[str(gov_result)])
+assert governance['junit_sha256'] == sha(blobs[str(gov_junit)])
+xml_counts = {key: sum(1 for node in gov_xml.iter() if node.tag == tag) for key, tag in
+    (('testcases', 'testcase'), ('failures', 'failure'), ('errors', 'error'), ('skips', 'skipped'))}
+nodes = [node for part in plan['partitions'] for node in part['Nodes']]
+assert len(nodes) == len(set(nodes)) == plan['collected_nodes'] == 5575
+assert all(len(part['Nodes']) == part['ExpectedNodes'] for part in plan['partitions'])
+session = blobs[str(ACTOR / 'SESSION.md')].decode('utf-8')
+lines = session.splitlines()
+headings = [{'line': index, 'text': line} for index, line in enumerate(lines, 1)
+    if line.startswith('## 2026-10-02')]
+later = [item for item in headings if re.match(r'## 2026-10-02T(?:10:(?:0[2-9]|[1-5][0-9])|1[1-9]:|2[0-3]:)', item['text'])]
+session_start = min((item['line'] for item in later), default=len(lines) + 1)
+tail = '\n'.join(lines[session_start - 1:]) + '\n'
+once(OUT / 'SESSION_AFTER_1002_EXCERPT_002.txt', tail.encode('utf-8'))
+old_inputs = historical.get('inputs', [])
+old_hashes = {row['path']: row['sha256'] for row in old_inputs if 'path' in row and 'sha256' in row}
+comparison = [{'path': row['path'], 'historical_sha256': old_hashes[row['path']],
+    'current_sha256': row.get('sha256'), 'same_bytes': old_hashes[row['path']] == row.get('sha256')}
+    for row in first if row['path'] in old_hashes]
+report = {
+    'schema_version': 1, 'record_type': 'finite_readonly_gate009_observation_002',
+    'started_utc': started, 'completed_utc': utc(),
+    'scope': 'Two bounded stdlib file/byte/raw9 reads; top-level names only in the known Gate009 folder; selected current controller source/test and historical release/QA metadata.',
+    'historical_attribution': {'path': historical_row['path'], 'sha256': historical_row['sha256'],
+        'author_lane': 'Historical ROOT021 metadata observation; reused as evidence, not reattributed to this reviewer.',
+        'root_1002_cutoff': 'Parent-provided comparison cutoff; no separately supplied 10:02 artifact pin was independently selected.'},
+    'gate_directory': {'path': str(GATE), 'initial_names': initial_names, 'final_names': final_names,
+        'names_stable': initial_names == final_names, 'actual_known_record_count': len(initial_names),
+        'note': 'Six current names were observed, rather than inferring a seventh record from the task shorthand.'},
+    'observed_records': records,
+    'continuation002': {'helper_observed': str(ACTOR / 'run-full-gate-009-continuation-002.py') in blobs,
+        'start_record_observed': 'continuation-002-start.json' in records,
+        'terminal_record_observed': any(name in records for name in ('continuation-002-failed.json', 'continuation-002-finished.json')),
+        'actually_started_proven': False, 'unknown_helper_accepted': False,
+        'qualification': 'Fixed-path absence is a timed observation; no process scan or unknown helper search was performed.'},
+    'gate009_coverage': {'plan_partitions': 45, 'unique_planned_nodes': len(nodes),
+        'accepted_receipt_names': [name for name in initial_names if name.endswith('.accepted.json')],
+        'accepted_partitions': 1, 'accepted_governance_nodes': len(plan['partitions'][0]['Nodes']),
+        'remaining_unaccepted_partitions': 44, 'remaining_unaccepted_planned_nodes': len(nodes) - 13,
+        'governance_receipt_matches_selected_result_and_junit': True, 'governance_xml_counts': xml_counts,
+        'governance_result_record': json.loads(blobs[str(gov_result)]),
+        'new_accepted_result_evidence_since_historical_observation': False,
+        'full_gate009_acceptance': False, 'coverage_from_failed_attempts': 0},
+    'session': {'path': str(ACTOR / 'SESSION.md'), 'later_headings': later,
+        'excerpt_start_line': session_start, 'excerpt_sha256': sha(tail.encode('utf-8')),
+        'later_actor_gate009_launch_or_result_heading_observed': False,
+        'last_actor_gate009_status_heading': next((item for item in reversed(headings)
+            if 'gate009' in item['text'].lower() and 'ROOT' not in item['text']), None),
+        'claims_are_runtime_or_resource_cause_proof': False},
+    'selected_release_qa': {'release009_record': json.loads(blobs[str(ACTOR / 'controller-release-009-proposal018.json')]),
+        'gate008_summary_claims': {key: json.loads(blobs[str(ACTOR / 'full-gate-008' / 'release-verification.json')])[key]
+            for key in ('complete', 'collected_nodes', 'passed', 'skipped', 'failures', 'errors', 'controller_head')},
+        'full_gate008_or_release009_reaudit_performed': False, 'current_head_git_verified': False},
+    'historical_byte_comparison': comparison,
+    'inputs_before': first, 'inputs_post': second,
+    'all_selected_byte_and_raw9_observations_stable': all(row['same_as_first'] for row in second),
+    'limits_and_held_conditions': [
+        'No Git, target compile/import/definitions/tests, watcher/process/resource/native/operational action.',
+        'No full742/current263 source-policy, Git object graph, gate, release, descendant, host quiet or physical Job proof.',
+        'Failed receipts and absent result outputs do not independently prove timeout, RAM causality or ownership.',
+        'Unknown continuation helpers and actor SESSION assertions are not accepted execution evidence.',
+        'Sole-executor ACK, delivery, lease and native quiet remain unestablished by this finite snapshot.',
+        'Root canonical apply/fullQA/gate/commit/native remains HELD; no replay, owner-window extension or guard change.',
+        'Owner deadline remains 2026-10-02T22:36:15Z; science/twins/epoch/spent records and existing caps/reserves unchanged.'],
+    'action_authority_granted': False}
+once(OUT / 'FINITE_GATE009_OBSERVATION_002.json', encode(report))
+md = f"""Gate009 still has one accepted partition and two failed heavy attempts at {report['completed_utc']}.
+
+The known folder contains exactly six unchanged names. No fixed continuation-002 helper/start/terminal, heavy-003 output, new acceptance, driver finish or Gate009 verification file was observed. This is timed finite-path evidence; it does not prove global process absence or prohibit an unknown actor helper from existing elsewhere.
+
+The governance acceptance remains bound to its actual result and JUnit bytes: 13 test cases, no failure/error/skip. The pinned plan contains 45 partitions and 5,575 unique planned nodes; 44 partitions/5,562 nodes remain unaccepted. Heavy-001 failed at 06:30:05.639021 UTC; heavy-002 failed at 07:48:43.741054 UTC. Both records report exit1, accepted_before1 and null result. Their result/JUnit/candidate-after fixed outputs remain absent.
+
+SESSION headings after the parent-provided 10:02 cutoff are Root023, Root024 and Root025 source-preparation entries; no later actor Gate009 launch/result heading was observed. Its last actor Gate009 status heading remains 07:53 UTC. Resource, watcher and readiness claims are attributed commentary, not independently proved facts.
+
+Selected current controller source/test, historical release009 and Gate008 verification bytes were paired and hashed without Git or target execution. These hashes provide no new current HEAD, policy, full742/263, release or Gate009 acceptance. Historical ROOT021 evidence 0cd3a3ba is reused with its original attribution.
+
+All selected before/post byte/raw9 observations stable: {report['all_selected_byte_and_raw9_observations_stable']}. Detailed exact paths, raw9 rows, copied bytes and absent fixed paths are in FINITE_GATE009_OBSERVATION_002.json. Source/test pins are 5aee7479 / 3ed35399. Sole-executor ACK/delivery/lease/quiet remain unestablished; canonical apply/fullQA/gate/commit/native stays HELD. No process change, target import/compile/test, Git, native action, replay, science/epoch/twin change or owner-window extension occurred.
+"""
+once(OUT / 'FINITE_GATE009_OBSERVATION_002.md', md.encode('utf-8'))
+payload = []
+for path in sorted([Path(__file__), OUT / 'FINITE_GATE009_OBSERVATION_002.json',
+                    OUT / 'FINITE_GATE009_OBSERVATION_002.md', OUT / 'SESSION_AFTER_1002_EXCERPT_002.txt'] + list(copies.iterdir())):
+    blob, row = observe(path)
+    assert row['read_stable']
+    payload.append({'path': str(path.relative_to(OUT)), 'bytes': len(blob), 'sha256': sha(blob)})
+once(OUT / 'OBSERVATION_MANIFEST_002.json', encode({'schema_version': 1,
+    'scope': 'Finite metadata-only observation; no target execution or authority.',
+    'payload': payload, 'payload_count': len(payload), 'input_copy_pairs': len(blobs)}))
+print(json.dumps({'report': sha((OUT / 'FINITE_GATE009_OBSERVATION_002.json').read_bytes()),
+    'md': sha((OUT / 'FINITE_GATE009_OBSERVATION_002.md').read_bytes()),
+    'manifest': sha((OUT / 'OBSERVATION_MANIFEST_002.json').read_bytes()),
+    'paths_observed_twice': len(fixed), 'copies': len(blobs), 'all_stable': report['all_selected_byte_and_raw9_observations_stable'],
+    'gate_names': initial_names}, ensure_ascii=True))

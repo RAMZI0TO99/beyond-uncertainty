@@ -1,0 +1,200 @@
+"""Different reviewer owned metadata observer. Never invokes selected sources."""
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
+from urllib.parse import unquote
+
+ROOT = Path(r'D:\Aenv\pro2')
+WORK = ROOT / 'resume-2026-10-03-continuation001'
+STAGE = WORK / 'root-docs-major034'
+OUT = WORK / 'root-docs-independent-major034'
+AUTHOR = '/root/bootstrap_stage'
+MAX_FILE = 8388608
+PRIMARY = ('AGENTS.md', 'HANDOFF.md', 'START_HERE.md', 'resume-2026-09-28-001/SESSION.md', 'resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md')
+MANIFEST_SHA = '1a73af8a6e5dd49dde9446ff6355c2fe230140971bfe0853ce5f2ed82e03d34d'
+PUBLISHER_SHA = 'ca34fbead31440147a60e51b6a26aa196755c7ae284ed3d31f48954a6e728ac8'
+PEER_SHA = '8155a88403d0b8a8b7e5d3108e41aa6b53dee3e05dbd938a594246f0a4619e79'
+
+def need(value, message):
+    if not value:
+        raise ValueError(message)
+
+def sha(value):
+    return hashlib.sha256(value).hexdigest()
+
+def wire(value):
+    return (json.dumps(value, sort_keys=True, ensure_ascii=True, indent=2, allow_nan=False) + '\n').encode('ascii')
+
+def decode(value):
+    def pairs(rows):
+        result = {}
+        for key, item in rows:
+            need(key not in result, 'duplicate JSON key')
+            result[key] = item
+        return result
+    def bad(value):
+        raise ValueError('nonfinite JSON refused')
+    need(not value.startswith(b'\xef\xbb\xbf'), 'JSON BOM refused')
+    return json.loads(value.decode('utf8', 'strict'), object_pairs_hook=pairs, parse_float=Decimal, parse_constant=bad)
+
+def raw(value):
+    return [getattr(value, name) for name in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')]
+
+def chain(path):
+    result = []
+    for item in reversed(path.parents):
+        value = item.lstat()
+        need(stat.S_ISDIR(value.st_mode) and not value.st_file_attributes & 1024, 'plain ancestors')
+        result.append([str(item), value.st_dev, value.st_ino])
+    return result
+
+def read(path, pin=None, size=None):
+    need(path.is_absolute() and path.is_relative_to(ROOT), 'Root-contained finite input')
+    ancestors = chain(path)
+    first = path.lstat()
+    need(stat.S_ISREG(first.st_mode) and first.st_nlink == 1 and not first.st_file_attributes & 1024 and 0 <= first.st_size <= MAX_FILE, 'plain single-link capped input')
+    with path.open('rb', buffering=0) as stream:
+        opened = os.fstat(stream.fileno())
+        left, right = raw(first), raw(opened)
+        need(left[:4] + left[5:] == right[:4] + right[5:] and left[4] == left[8], 'ordinary cross8 and birth')
+        value = stream.read(first.st_size + 1)
+        need(raw(opened) == raw(os.fstat(stream.fileno())), 'same-handle raw9')
+    need(raw(first) == raw(path.lstat()) and chain(path) == ancestors and len(value) == first.st_size, 'path raw9 ancestry and exact length')
+    need(pin is None or sha(value) == pin, 'selected exact SHA')
+    need(size is None or len(value) == size, 'selected exact size')
+    return value, dict(path=str(path), sha256=sha(value), bytes=len(value), path_raw9=left, descriptor_raw9=right, ancestors=ancestors)
+
+def local(relative):
+    need(type(relative) is str and '\\' not in relative and not relative.startswith('/') and all(part not in ('', '.', '..') and ':' not in part for part in relative.split('/')), 'canonical relative path')
+    return ROOT.joinpath(*relative.split('/'))
+
+def once(name, value):
+    need(type(value) is bytes and len(value) <= MAX_FILE, 'review output8MiB')
+    path = OUT / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    need(not path.exists(), 'own review output create-once')
+    with path.open('xb') as stream:
+        need(stream.write(value) == len(value), 'complete own review write')
+    need(read(path)[0] == value, 'own metadata readback')
+
+def main():
+    need(Path(__file__).absolute() == OUT / 'REVIEW_MAJOR034_CREATION_001.py', 'own observer identity')
+    need(not (OUT / 'INDEPENDENT_MAJOR034_CREATION_REVIEW_001.json').exists(), 'creation first entry')
+    manifest_bytes, manifest_meta = read(STAGE / 'STAGED_DOCUMENTATION_MANIFEST_034_001.json', MANIFEST_SHA, 48370)
+    publisher, _ = read(STAGE / 'PUBLISH_MAJOR034_DOCS_001.py', PUBLISHER_SHA, 9951)
+    peer_bytes, peer_meta = read(OUT / 'INDEPENDENT_MAJOR034_PREPUBLICATION_SOURCE_REVIEW_001.json', PEER_SHA, 624)
+    details_bytes, details_meta = read(OUT / 'INDEPENDENT_MAJOR034_SOURCE_DETAILS_002.json', '545790f5462791d2023ba3e1426501497d8796dda867d11a5bc32b4e5f17e9a0')
+    source_post_bytes, source_post_meta = read(OUT / 'POST_MAJOR034_SOURCE_REVIEW_002.json', '175a35ac27b0ec45ef3680a468a0963fe657c2ce7723b128cdece2a4d88978d7')
+    receipt_bytes, receipt_meta = read(STAGE / 'ROOT_PUBLISH_RECEIPT_034.json')
+    manifest, peer, details, source_post, receipt = map(decode, (manifest_bytes, peer_bytes, details_bytes, source_post_bytes, receipt_bytes))
+    need(details_meta['sha256'] == '545790f5462791d2023ba3e1426501497d8796dda867d11a5bc32b4e5f17e9a0', 'Root-selected full Source details')
+    need(peer['reviewer'] == '/root' and peer['source_author'] == '/root/actual_record_checker' and peer['verdict'] == 'PASS_MAJOR034_DOCUMENTATION_SOURCE_ONLY' and peer['publisher_sha256'] == PUBLISHER_SHA and peer['manifest_sha256'] == MANIFEST_SHA and peer['publication_performed'] is False and peer['target_execution'] is False, 'genuine distinct Source review')
+    need(details['finite_input_count'] == len(details['finite_inputs']) == 306 and details['current_original_copy_pairs'] == 60 and details['staged_packet_pair_counts'] == [60, 78] and details['superseded_prior_primary_input_roles'] == [] and not details['findings'], 'complete Source cohort and corrected zero prior roles')
+    need(receipt['author'] == '/root' and receipt['record_type'] == 'root_documentation_publish' and receipt['publisher_sha256'] == PUBLISHER_SHA and receipt['manifest_sha256'] == MANIFEST_SHA and receipt['source_review_sha256'] == PEER_SHA and tuple(receipt['changes']) == PRIMARY and receipt['batch_atomicity_guaranteed'] is False and receipt['target_execution'] is False and receipt['operational_authority'] is False, 'physical Root publication receipt fields')
+    need(tuple(row['destination'] for row in manifest['primaries']) == PRIMARY and len(manifest['inputs']) == 60 and len(manifest['links']) == 32, 'exact current documentation scope')
+    pins, expected_rows, allowed_changed = {}, {}, {}
+    for row in manifest['primaries']:
+        allowed_changed[local(row['destination'])] = row['candidate']
+    for row in details['finite_inputs']:
+        path = Path(row['path'])
+        if path in allowed_changed:
+            selected = allowed_changed[path]
+            pins[path] = (selected['sha256'], selected['bytes'])
+        else:
+            pins[path] = (row['sha256'], row['bytes'])
+            expected_rows[path] = row['passes'][0]
+        copy = OUT / row['copy_path']
+        pins[copy] = (row['sha256'], row['bytes'])
+        expected_rows[copy] = row['copy_observation']
+    need(len([row for row in details['finite_inputs'] if Path(row['path']) in allowed_changed]) == 5, 'exact five current source originals changed')
+    fixed_top = [STAGE / name for name in ('STAGED_DOCUMENTATION_MANIFEST_034_001.json', 'AUTHOR_MAJOR034_STAGE_AUDIT_001.json', 'DOCUMENTATION_SOURCE_CONTRACT_034_001.json', 'HANDOFF_MAJOR034_FROZEN_SOURCE_001.md', 'ROOT_PUBLISH_RECEIPT_034.json', 'SELECTED_SOURCE_CONTEXT_034_001.json')]
+    fixed_top += [OUT / name for name in ('INDEPENDENT_MAJOR034_PREPUBLICATION_SOURCE_REVIEW_001.json', 'INDEPENDENT_MAJOR034_SOURCE_DETAILS_002.json', 'POST_MAJOR034_SOURCE_REVIEW_002.json', 'ROOT_REVIEW_MAJOR034_SOURCE_001.py', 'ROOT_REVIEW_MAJOR034_SOURCE_002.py', 'PREPARE_ROOT_MAJOR034_SOURCE_AUDITOR_001.py', 'OWN_MAJOR034_SOURCE_AUDITOR_REFUSAL_001.json', 'HANDOFF_MAJOR034_SOURCE_REVIEW_002.md', 'HANDOFF_PREPARED_ROOT_MAJOR034_SOURCE_AUDITOR_001.md')]
+    for path in fixed_top:
+        value, meta = read(path)
+        if path in pins:
+            need(pins[path] == (sha(value), len(value)), 'fixed role overlaps agree')
+        pins[path] = (sha(value), len(value))
+    checkpoints = manifest['checkpoint']
+    pins[local(checkpoints['path'])] = (checkpoints['sha256'], checkpoints['bytes'])
+    checkpoint = WORK / 'CONTINUATION_CHECKPOINT_005.md'
+    pins[checkpoint] = (checkpoints['sha256'], checkpoints['bytes'])
+    captures, initial, copies = {}, {}, {}
+    for ordinal, (path, (pin, size)) in enumerate(sorted(pins.items(), key=lambda row: str(row[0]))):
+        value, first = read(path, pin, size)
+        if path in expected_rows:
+            need(first == expected_rows[path], 'unchanged Source original/copy metadata')
+        copy_name = 'creation001-inputs/%03d.bytes' % ordinal
+        once(copy_name, value)
+        copy_bytes, copy_meta = read(OUT / copy_name, pin, size)
+        need(copy_bytes == value and copy_meta['path_raw9'][:2] != first['path_raw9'][:2], 'independent retained review copy')
+        captures[path], initial[path], copies[path] = value, first, dict(path=copy_name, observation=copy_meta)
+    history, regions = [], {}
+    for row in manifest['primaries']:
+        old = captures[local(row['before']['path'])]
+        new = captures[local(row['candidate']['path'])]
+        actual = captures[local(row['destination'])]
+        need(actual == new and (new.endswith(old) if row['preservation'] == 'suffix' else new.startswith(old)), 'physical candidate and complete whole033 preservation')
+        addition = new[:len(new)-len(old)] if row['preservation'] == 'suffix' else new[len(old):]
+        need(addition and b'Major034' in addition or addition and b'MAJOR STEP034' in addition, 'new034 text')
+        regions[row['destination']] = addition.decode('utf8', 'strict')
+        history.append(dict(destination=row['destination'], actual_sha256=sha(actual), bytes=len(actual), preservation=row['preservation'], whole033_bytes=len(old), whole033_sha256=sha(old), new_region_sha256=sha(addition), new_region_bytes=len(addition), exact_physical_candidate=True))
+    checkpoint_bytes = captures[checkpoint]
+    need(checkpoint_bytes == captures[local(checkpoints['path'])], 'physical checkpoint candidate')
+    regions[checkpoint.relative_to(ROOT).as_posix()] = checkpoint_bytes.decode('utf8', 'strict')
+    discovered = []
+    for origin, text in regions.items():
+        for match in re.finditer(r'\[[^\]]+\]\(([^)]+)\)', text):
+            target = match.group(1)
+            need('://' not in target and not target.startswith('#'), 'current selected links local')
+            resolved = (local(origin).parent / unquote(target.split('#', 1)[0])).resolve(strict=True)
+            need(resolved.is_relative_to(ROOT), 'current link Root-contained')
+            discovered.append(dict(origin=origin, target=target, resolved_path=resolved.relative_to(ROOT).as_posix()))
+    need(sorted(discovered, key=lambda row: (row['origin'], row['target'], row['resolved_path'])) == sorted(manifest['links'], key=lambda row: (row['origin'], row['target'], row['resolved_path'])) and len(discovered) == 32, 'all exact newly maintained32 links')
+    prior = decode(captures[WORK / 'root-docs-major033/STAGED_DOCUMENTATION_MANIFEST_033_001.json'])
+    need(len(prior['inputs']) == 78 and not any(local(row['original']['path']) in allowed_changed for row in prior['inputs']), 'prior033 cohort zero live primary originals')
+    for row in [*manifest['inputs'], *prior['inputs']]:
+        original, copy = local(row['original']['path']), local(row['copy']['path'])
+        if original in allowed_changed:
+            need(captures[copy] == captures[local(next(r['before']['path'] for r in manifest['primaries'] if local(r['destination']) == original))], 'changed current originals retain exact old selected copy')
+        else:
+            need(captures[original] == captures[copy], 'all remaining selected stage pairs exact')
+    # Third own observation is paired with exact prior observations; no selected definitions are called.
+    evidence = []
+    for path in captures:
+        passes = [initial[path]]
+        for _ in range(2):
+            value, observation = read(path, *pins[path])
+            need(value == captures[path] and observation == initial[path], 'full own triple stability')
+            passes.append(observation)
+        copied, copied_meta = read(OUT / copies[path]['path'], *pins[path])
+        need(copied == captures[path] and copied_meta == copies[path]['observation'], 'full own copy stability')
+        evidence.append(dict(path=str(path), bytes=len(captures[path]), sha256=sha(captures[path]), passes=passes, own_copy=copies[path]))
+    review = dict(schema_version=1, record_type='independent_major034_documentation_creation_review', created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'), reviewer=AUTHOR, source_author='/root/actual_record_checker', publisher='/root', scope='LOCAL_PRIVATE_MAJOR034_DOCUMENTATION_CREATION_ONLY', verdict='PASS_MAJOR034_DOCUMENTATION_CREATION_ONLY', staged_manifest_sha256=MANIFEST_SHA, publisher_sha256=PUBLISHER_SHA, source_review_sha256=PEER_SHA, source_details_sha256=details_meta['sha256'], source_post_sha256=source_post_meta['sha256'], publication_receipt_sha256=receipt_meta['sha256'], owning_Root_tool_attribution=dict(tool_chunk='073625', reported_exit=0, reported_wall_seconds='0.4715017', correlation_required_by_Root=True, reviewer_independent_OS_attestation=False), reviewed_finite_inputs=len(evidence), source_input_cohort=306, source_cohort_own_copies=306, current034_stage_pairs=60, prior033_stage_pairs=78, prior033_live_primary_originals=0, changed_current_primary_originals=5, physical_checkpoint_exact=True, new_link_count=32, whole_history_suffix_count=3, whole_history_prefix_count=2, current_primary_history=history, selected_links=discovered, findings=[], semantic_scope_notes=['All final current regions and checkpoint were read; stale DRAFT sections remain frozen history.', 'Major033 publication/creation and actual25 are historical selected evidence, not replayed.', 'U008 inherited placeholder refusal and genuine U010 plus Checker010 different Source reviews are disclosed as preparation-only;28 tests and7 utility plans unrun in this selected snapshot.', 'Pro3 FAILED TYPE evidence review is completed at b514/Root3d4; cleanup is attributed, cause and hold overlap unknown; no TYPE pass or independent whole-cleanup proof.', 'This audit checks created documentation and factual dependency identities only; it does not accept this reviewer own Checker28 preparation or other operational sources.', 'Source-model/binder/pool20/READY/GO/Auth/capture/current24 authority remains absent/unready as selected; later facts require separate records.', 'Ongoing owner/endNone, distinct finite lease and all unchanged caps/reserves/history/science boundaries remain preserved.'], no_prior_old_link_global_revalidation_claim=True, root_batch_atomicity=False, target_execution=False, selected_import_definitions_compile_main_called=False, production_or_Git_or_native_actions=False, operational_authority=False, evidence=evidence)
+    review['semantic_scope_notes'].append('Root reports binder003 Source-only produced three fresh files at15:06:36-37, after documentation publication15:02:40. This later attributed fact is outside the selected306-Source corpus and14:24 documentation snapshot; earlier named absences are time-local, not a claim that future Source output never exists. This review does not accept those later outputs or infer INIT/model/P16/capture/test authority.')
+    review['later_Root_attributed_event'] = dict(tool_chunk='0854a9', exit=0, reported_wall_seconds='0.6091388', reported_UTC_interval='2026-10-03T15:06:36..15:06:37+00:00', scope='three binder003 Source-only outputs after documentation publication', different_later_output_acceptance=False)
+    review_bytes = wire(review)
+    once('INDEPENDENT_MAJOR034_CREATION_REVIEW_001.json', review_bytes)
+    post_rows = []
+    for path in captures:
+        value, observation = read(path, *pins[path])
+        copied, copied_meta = read(OUT / copies[path]['path'], *pins[path])
+        need(value == copied == captures[path] and observation == initial[path] and copied_meta == copies[path]['observation'], 'all inputs and reviewer copies postpublication')
+        post_rows.append(dict(path=str(path), observation=observation, own_copy=copies[path]['path'], copy_observation=copied_meta))
+    post = dict(schema_version=1, created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'), reviewer=AUTHOR, review_sha256=sha(review_bytes), all_finite_inputs_and_copies_exact=True, rows=post_rows, target_execution=False, operational_authority=False)
+    post_bytes = wire(post)
+    once('POST_MAJOR034_CREATION_REVIEW_001.json', post_bytes)
+    handoff = ('Different Major034 creation review by /root/bootstrap_stage.\n\nPASS applies only to published documentation creation: five physical primaries plus checkpoint005 and Root receipt match selected candidates; whole033 history suffix3/prefix2 and32 maintained links are exact. Complete current60/prior78 finite stage pairs, Source306 cohort and its declared Source copies are authenticated; zero prior033 live-primary originals are superseded. Only five current034 live primaries changed. The own observer retains independent copies and three+post observations. Root owns physical invocation correlation; this reviewer does not manufacture Root OS evidence or semantic acceptance of its own Source dependencies. No publisher/helper/compiler/import/definitions/test/Git/native actions were invoked. All operational/model/pool/TYPE/current24 authority remains outside scope.\n\nReview SHA256 ' + sha(review_bytes) + '\nPost SHA256 ' + sha(post_bytes) + '\nSelected publisher ' + PUBLISHER_SHA + '\nSelected manifest ' + MANIFEST_SHA + '\n')
+    once('HANDOFF_MAJOR034_CREATION_REVIEW_001.md', handoff.encode('utf8'))
+    for path in captures:
+        need(read(path, *pins[path])[1] == initial[path] and read(OUT / copies[path]['path'], *pins[path])[1] == copies[path]['observation'], 'final paired preservation')
+    need(read(OUT / 'INDEPENDENT_MAJOR034_CREATION_REVIEW_001.json')[0] == review_bytes and read(OUT / 'POST_MAJOR034_CREATION_REVIEW_001.json')[0] == post_bytes, 'review output final readback')
+    print(json.dumps(dict(verdict=review['verdict'], reviewed_inputs=len(evidence), own_copies=len(evidence), review_sha256=sha(review_bytes), review_bytes=len(review_bytes), post_sha256=sha(post_bytes), post_bytes=len(post_bytes), handoff_sha256=sha(handoff.encode('utf8')), target_execution=False)))
+
+if __name__ == '__main__':
+    main()

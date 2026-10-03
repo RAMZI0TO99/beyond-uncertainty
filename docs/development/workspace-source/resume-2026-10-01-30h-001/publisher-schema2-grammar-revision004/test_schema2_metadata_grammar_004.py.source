@@ -1,0 +1,788 @@
+"""UNRUN preparation; pure selected-definition tests, never import raw/project code.
+
+An eventual distinct reviewed driver must authorize this file. These cases do
+not run either publication main, Git, runtime inventory, native gates or fits.
+"""
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+import ast
+import base64
+import binascii
+import copy
+import hashlib
+import json
+import math
+import os
+import re
+import stat
+import unittest
+from datetime import datetime, timezone
+
+STAGE = Path(__file__).resolve().parent
+TEMPLATES = ("publish-successor-admission-schema2-004.py.template",
+             "verify-successor-admission-schema2-004.py.template")
+PURE_NAMES = {"Refused", "require", "sha", "canonical", "strict_json", "exact", "hex_value", "relative",
+              "row_identity", "strict_ast_literal", "schema2_literal_policy", "schema2_file_rows", "schema2_diffs",
+              "schema2_qa", "schema2_commit_object", "schema2_middle", "schema2_sealed_attestation",
+              "read", "create_file", "schema2_release_checks"}
+
+
+def selected_namespace(name):
+    source = (STAGE / name).read_text(encoding="utf-8", errors="strict")
+    module = ast.parse(source)
+    nodes = [node for node in module.body
+             if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in PURE_NAMES]
+    assert {node.name for node in nodes} == PURE_NAMES
+    namespace = dict(globals())
+    for node in module.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id in {"HISTORICAL", "COMPILED_POLICY", "BINDINGS", "FLAGS"}):
+            if isinstance(node.value, ast.Call):
+                assert isinstance(node.value.func, ast.Attribute) and node.value.func.attr == "loads"
+                namespace[node.targets[0].id] = json.loads(ast.literal_eval(node.value.args[0]))
+            else:
+                namespace[node.targets[0].id] = ast.literal_eval(node.value)
+    namespace["HEX40"] = re.compile(r"[0-9a-f]{40}\Z", re.ASCII)
+    namespace["HEX64"] = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
+    # Test-only selected-definition compilation. No module main/import/loader or
+    # original raw helper is executed, and no admission context is manufactured.
+    code = compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])),
+                   "<schema2-selected-pure-test-definitions>", "exec")
+    exec(code, namespace)
+    return namespace
+
+
+def historical_fixture(ns):
+    facts = ns["HISTORICAL"]
+    old_rows = json.loads((STAGE / "before" / facts["inputs"]["predecessor_rows"]["retained_name"]).read_bytes())
+    old_qa_bytes = (STAGE / "before" / facts["inputs"]["predecessor_manifest"]["retained_name"]).read_bytes()
+    policy = copy.deepcopy(ns["COMPILED_POLICY"])
+    mapping = {row["path"]: dict(row) for row in old_rows}
+    for row in policy["_SUCCESSOR_INTERMEDIATE_AFTERIMAGES"]:
+        mapping[row["path"]] = dict(row)
+    middle = [mapping[path] for path in sorted(mapping)]
+    proof = {
+        "release_record_base64": base64.b64encode((STAGE / "before/middle_release.bytes").read_bytes()).decode("ascii"),
+        "candidate_manifest_base64": base64.b64encode((STAGE / "before/middle_manifest.bytes").read_bytes()).decode("ascii"),
+        "git_commit_object_base64": base64.b64encode((STAGE / "before/middle_commit_object.bytes").read_bytes()).decode("ascii"),
+        "changed_files": copy.deepcopy(policy["_SUCCESSOR_INTERMEDIATE_AFTERIMAGES"]),
+    }
+    expected_paths = [row[0] for row in json.loads(old_qa_bytes)]
+    return policy, old_rows, middle, proof, expected_paths, old_qa_bytes
+
+
+class Schema2PurePreparation(unittest.TestCase):
+    def each_namespace(self):
+        for name in TEMPLATES:
+            yield name, selected_namespace(name)
+
+    def test_actual_raw003_twenty_constants_and_no_ast_execution(self):
+        # A hostile constructor is rejected by the interpreter rather than run.
+        raw = STAGE / "preserved/successor-candidate-raw-revision003/scripts/week8_recovery_raw_authority.py"
+        for name, ns in self.each_namespace():
+            with self.subTest(template=name):
+                self.assertEqual(ns["schema2_literal_policy"](raw.read_bytes()), ns["COMPILED_POLICY"])
+                for expression in ("__import__('os').system('echo forbidden')", "dict(a=1)",
+                                   "{**{'a': 1}}", "MappingProxyType({'a': 1.0})",
+                                   "frozenset({'a', 'a'})", "tuple(MappingProxyType(row) for row in ({},) if True)"):
+                    with self.subTest(expression=expression):
+                        with self.assertRaises(ns["Refused"]):
+                            ns["strict_ast_literal"](ast.parse(expression, mode="eval").body)
+
+    def test_fixed_assignment_rebinding_and_bool_substitution_refused(self):
+        raw = (STAGE / "preserved/successor-candidate-raw-revision003/scripts/week8_recovery_raw_authority.py").read_bytes()
+        source = raw.decode("utf-8", errors="strict")
+        field = "SUCCESSOR_ADMISSION_MAX_BYTES"
+        for name, ns in self.each_namespace():
+            with self.subTest(template=name):
+                compiled = ns["COMPILED_POLICY"]
+                wanted = set(compiled)
+                self.assertIs(type(compiled[field]), int)
+                self.assertEqual(compiled[field], 395799)
+
+                def policy_assignments(data):
+                    parsed = ast.parse(data.decode("utf-8", errors="strict"))
+                    assignments = [node for node in parsed.body if isinstance(node, ast.Assign)
+                                   and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                                   and node.targets[0].id in wanted]
+                    names = [node.targets[0].id for node in assignments]
+                    self.assertEqual(len(assignments), 20)
+                    self.assertEqual(len(set(names)), 20)
+                    self.assertEqual(set(names), wanted)
+                    return assignments
+
+                with self.subTest(case="unique_twenty_valid_before"):
+                    policy_assignments(raw)
+                    self.assertEqual(ns["schema2_literal_policy"](raw), compiled)
+                # Retain all original rebinding negatives, including the appended
+                # boolean assignment. They test rebinding, not boolean typing.
+                for extra in (b"\nSUCCESSOR_ADMISSION_MAX_BYTES = True\n",
+                              b"\nSUCCESSOR_ADMISSION_MAX_BYTES: int = 395799\n",
+                              b"\nSUCCESSOR_ADMISSION_MAX_BYTES += 0\n"):
+                    with self.assertRaises(ns["Refused"]):
+                        ns["schema2_literal_policy"](raw + extra)
+
+                target = next(node for node in policy_assignments(raw)
+                              if node.targets[0].id == field)
+                self.assertIsInstance(target.value, ast.Constant)
+                self.assertIs(type(target.value.value), int)
+                self.assertEqual(target.value.value, compiled[field])
+                self.assertEqual(target.value.lineno, target.value.end_lineno)
+                lines = source.splitlines(keepends=True)
+                line = lines[target.value.lineno - 1]
+                self.assertEqual(line[target.value.col_offset:target.value.end_col_offset], str(compiled[field]))
+                # Replace the unique existing RHS. No duplicate or alternate AST
+                # assignment is added, and all other source bytes are retained.
+                lines[target.value.lineno - 1] = (line[:target.value.col_offset] + "True"
+                                                + line[target.value.end_col_offset:])
+                changed = "".join(lines).encode("utf-8")
+                changed_target = next(node for node in policy_assignments(changed)
+                                      if node.targets[0].id == field)
+                self.assertIs(type(changed_target.value.value), bool)
+                bool_policy = copy.deepcopy(compiled)
+                bool_policy[field] = True
+                self.assertNotEqual(ns["canonical"](bool_policy), ns["canonical"](compiled))
+                stages = []
+                original_require = ns["require"]
+
+                def observed_require(condition, message):
+                    stages.append((message, condition))
+                    return original_require(condition, message)
+
+                with self.subTest(case="single_existing_assignment_bool"), patch.dict(ns, require=observed_require):
+                    with self.assertRaisesRegex(ns["Refused"], "^reviewed raw003 literal policy changed$"):
+                        ns["schema2_literal_policy"](changed)
+                self.assertIn(("fixed twenty policy values absent", True), stages)
+                self.assertEqual(stages[-1], ("reviewed raw003 literal policy changed", False))
+                self.assertNotIn("immutable original predecessor policy differs", [message for message, _ in stages])
+                with self.subTest(case="unique_twenty_valid_after"):
+                    policy_assignments(raw)
+                    self.assertEqual(ns["schema2_literal_policy"](raw), compiled)
+                    self.assertIs(type(ns["COMPILED_POLICY"][field]), int)
+                    self.assertEqual(ns["COMPILED_POLICY"][field], 395799)
+
+    def test_actual_grouped_qa_order_accepts_and_global_sort_refuses(self):
+        for name, ns in self.each_namespace():
+            policy, old, middle, proof, paths, data = historical_fixture(ns)
+            with self.subTest(template=name):
+                self.assertNotEqual(paths, sorted(paths))
+                self.assertEqual(ns["schema2_qa"](data, old), json.loads(data))
+                self.assertEqual(ns["schema2_qa"](base64.b64decode(proof["candidate_manifest_base64"]),
+                                                 middle, expected_paths=paths)[0][0], paths[0])
+                sorted_data = ns["canonical"](sorted(json.loads(data))) + b"\n"
+                with self.assertRaises(ns["Refused"]):
+                    ns["schema2_qa"](sorted_data, old, expected_paths=paths)
+                duplicate = json.loads(data); duplicate[-1] = duplicate[0]
+                with self.assertRaises(ns["Refused"]):
+                    ns["schema2_qa"](ns["canonical"](duplicate), old, expected_paths=paths)
+
+    def test_actual_middle_reconstructs_all742_then_refuses_unrelated_fresh_blob(self):
+        for name, ns in self.each_namespace():
+            policy, old, middle, proof, paths, _ = historical_fixture(ns)
+            with self.subTest(template=name):
+                self.assertEqual(len(old), 742)
+                self.assertEqual(ns["schema2_middle"](proof, old, middle, policy=policy, expected_paths=paths), middle)
+                altered = copy.deepcopy(middle)
+                unchanged = next(i for i, row in enumerate(altered)
+                                 if row["path"] not in policy["SUCCESSOR_INTERMEDIATE_FACTS"]["changed_paths"])
+                altered[unchanged]["sha256"] = "0" * 64
+                with self.assertRaisesRegex(ns["Refused"], "full742 reconstructed middle"):
+                    ns["schema2_middle"](proof, old, altered, policy=policy, expected_paths=paths)
+                self.assertEqual(ns["schema2_middle"](proof, old, middle, policy=policy, expected_paths=paths), middle)
+
+    def test_middle_exact_proof_keysets_afterimages_and_encoded_sizes_refuse(self):
+        for name, ns in self.each_namespace():
+            policy, old, middle, proof, paths, _ = historical_fixture(ns)
+            with self.subTest(template=name):
+                self.assertEqual(ns["schema2_middle"](proof, old, middle, policy=policy, expected_paths=paths), middle)
+                witnesses = []
+                changed = copy.deepcopy(proof); changed["changed_files"][0]["size"] += 1; witnesses.append(changed)
+                changed = copy.deepcopy(proof); changed["extra"] = True; witnesses.append(changed)
+                changed = copy.deepcopy(proof); del changed["changed_files"]; witnesses.append(changed)
+                changed = copy.deepcopy(proof); changed["release_record_base64"] += "="; witnesses.append(changed)
+                changed = copy.deepcopy(proof); changed["git_commit_object_base64"] = "!" + changed["git_commit_object_base64"][1:]; witnesses.append(changed)
+                for witness in witnesses:
+                    with self.assertRaises(ns["Refused"]):
+                        ns["schema2_middle"](witness, old, middle, policy=policy, expected_paths=paths)
+
+                cap_name = "_SUCCESSOR_INTERMEDIATE_PROOF_MAX_BYTES"
+                self.assertEqual(policy[cap_name], 48008)
+                self.assertEqual(len(ns["canonical"](proof)), policy[cap_name])
+                width_witness = copy.deepcopy(proof)
+                width_witness["release_record_base64"] += "="
+                witness_size = len(ns["canonical"](width_witness))
+                self.assertEqual(witness_size, policy[cap_name] + 1)
+                self.assertEqual(len(width_witness["release_record_base64"]),
+                                 policy["_SUCCESSOR_INTERMEDIATE_PROOF_LIMITS"]["release_record_base64"][0] + 1)
+
+                def never_decode(*args, **kwargs):
+                    raise AssertionError("whole-proof cap must refuse before any decoder")
+
+                # The original production ceiling still catches the48009-byte
+                # canonical proof before any base64 decoder is entered.
+                with self.subTest(case="actual_whole_proof_cap_limit_plus_one"), patch.dict(ns,
+                        base64=SimpleNamespace(b64decode=never_decode, b64encode=base64.b64encode)):
+                    with self.assertRaisesRegex(ns["Refused"], "^intermediate proof cap exceeded$"):
+                        ns["schema2_middle"](width_witness, old, middle, policy=policy, expected_paths=paths)
+
+                # This explicit test-only policy copy changes ONLY the whole-proof
+                # cap, by one byte. Embedded field lengths/SHA/size and production
+                # COMPILED_POLICY stay exact. It permits reaching the width gate.
+                wider = copy.deepcopy(policy)
+                wider[cap_name] = witness_size
+                self.assertEqual({key: value for key, value in wider.items() if key != cap_name},
+                                 {key: value for key, value in policy.items() if key != cap_name})
+                bad_token = width_witness["release_record_base64"].encode("ascii")
+                decoded_tokens, stages = [], []
+                original_decode, original_require = base64.b64decode, ns["require"]
+
+                def observed_decode(token, *args, **kwargs):
+                    if token == bad_token:
+                        raise AssertionError("wrong-width release token reached decoder")
+                    decoded_tokens.append(token)
+                    return original_decode(token, *args, **kwargs)
+
+                def observed_require(condition, message):
+                    stages.append((message, condition))
+                    return original_require(condition, message)
+
+                # Earlier valid fields use the real stdlib decoder. A blanket
+                # decoder sentinel would incorrectly mask this later field gate.
+                with self.subTest(case="embedded_encoded_width_without_cap_mask"), patch.dict(ns,
+                        base64=SimpleNamespace(b64decode=observed_decode, b64encode=base64.b64encode),
+                        require=observed_require):
+                    self.assertEqual(ns["schema2_middle"](proof, old, middle, policy=wider, expected_paths=paths), middle)
+                    decoded_tokens.clear()
+                    stages.clear()
+                    with self.assertRaisesRegex(ns["Refused"], "^middle base64 type/encoded length differs$"):
+                        ns["schema2_middle"](width_witness, old, middle, policy=wider, expected_paths=paths)
+                    self.assertIn(("intermediate proof cap exceeded", True), stages)
+                    self.assertEqual(stages[-1], ("middle base64 type/encoded length differs", False))
+                    self.assertNotIn(bad_token, decoded_tokens)
+                    ordered_fields = list(policy["_SUCCESSOR_INTERMEDIATE_PROOF_LIMITS"])
+                    expected_earlier = ordered_fields[:ordered_fields.index("release_record_base64")]
+                    self.assertEqual(decoded_tokens, [proof[field].encode("ascii") for field in expected_earlier])
+                    self.assertEqual(ns["schema2_middle"](proof, old, middle, policy=wider, expected_paths=paths), middle)
+                with self.subTest(case="actual_production_ceiling_and_fixture_restored"):
+                    self.assertEqual(policy[cap_name], 48008)
+                    self.assertEqual(ns["COMPILED_POLICY"][cap_name], 48008)
+                    self.assertEqual(ns["schema2_middle"](proof, old, middle, policy=policy, expected_paths=paths), middle)
+
+    def test_typed_middle_commit_unique_parent_with_nonhash_masked_control(self):
+        for name, ns in self.each_namespace():
+            policy, _, _, _, _, _ = historical_fixture(ns)
+            data = (STAGE / "before/middle_commit_object.bytes").read_bytes()
+            facts = policy["SUCCESSOR_INTERMEDIATE_FACTS"]
+            with self.subTest(template=name):
+                ns["schema2_commit_object"](data, commit=facts["controller_commit"], parent=facts["parent_commit"], tree=facts["git_tree_sha1"])
+                merge = data.replace(b"\nauthor ", b"\nparent " + b"1" * 40 + b"\nauthor ", 1)
+                merge_sha = hashlib.sha1(b"commit " + str(len(merge)).encode("ascii") + b"\0" + merge).hexdigest()
+                with self.assertRaisesRegex(ns["Refused"], "exactly the fixed immediate parent"):
+                    ns["schema2_commit_object"](merge, commit=merge_sha, parent=facts["parent_commit"], tree=facts["git_tree_sha1"])
+
+    def test_schema2_external_sha_seal_schema_and_preparse_cap(self):
+        for name, ns in self.each_namespace():
+            policy, old, middle, proof, _, _ = historical_fixture(ns)
+            # Frame-only fixture is intentionally not an admission proof. Complete
+            # tree/diff semantics are covered separately and by future real runs.
+            body = {"successor_admission_schema_version": 2, "record_type": "week8_d176_successor_admission",
+                "decision_id": "D-161", "recovery_id": "week8-exp2a-d161-2026-09-02-attempt-001",
+                "predecessor": policy["SUCCESSOR_PREDECESSOR_FACTS"], "successor": {},
+                "predecessor_files": old, "successor_files": middle, "changed_paths": [],
+                "intermediate": policy["SUCCESSOR_INTERMEDIATE_FACTS"], "intermediate_proof": proof,
+                "successor_parent_changed_paths": [], **ns["FLAGS"]}
+            document = {**body, "record_digest": ns["sha"](ns["canonical"](body))}
+            data = ns["canonical"](document) + b"\n"
+            with self.subTest(template=name):
+                self.assertEqual(ns["schema2_sealed_attestation"](data, expected_sha256=ns["sha"](data), policy=policy), document)
+                with self.assertRaisesRegex(ns["Refused"], "external byte pin"):
+                    ns["schema2_sealed_attestation"](data, expected_sha256="0" * 64, policy=policy)
+                with patch.dict(ns, strict_json=lambda value: (_ for _ in ()).throw(AssertionError("parser must not run"))):
+                    oversized = b"x" * (policy["SUCCESSOR_ADMISSION_MAX_BYTES"] + 1)
+                    with self.assertRaisesRegex(ns["Refused"], "exceeds395799"):
+                        ns["schema2_sealed_attestation"](oversized, expected_sha256="0" * 64, policy=policy)
+                resealed = copy.deepcopy(body); resealed["successor_admission_schema_version"] = 1
+                resealed["record_digest"] = ns["sha"](ns["canonical"](resealed))
+                wrong = ns["canonical"](resealed) + b"\n"
+                with self.assertRaisesRegex(ns["Refused"], "identity/schema"):
+                    ns["schema2_sealed_attestation"](wrong, expected_sha256=ns["sha"](wrong), policy=policy)
+
+    def test_bounded_read_refuses_before_open_or_hash(self):
+        class NeverOpen:
+            def open(self, *args):
+                raise AssertionError("oversized input opened")
+        for name, ns in self.each_namespace():
+            maximum = ns["COMPILED_POLICY"]["SUCCESSOR_ADMISSION_MAX_BYTES"]
+            with self.subTest(template=name), patch.dict(ns, chain=lambda path: None,
+                    plain_info=lambda path: SimpleNamespace(st_size=maximum + 1)):
+                with self.assertRaisesRegex(ns["Refused"], "pre-read cap"):
+                    ns["read"](NeverOpen(), maximum=maximum)
+
+    def test_emitted_attestation_cap_refuses_before_any_filesystem_mutation(self):
+        for name, ns in self.each_namespace():
+            maximum = ns["COMPILED_POLICY"]["SUCCESSOR_ADMISSION_MAX_BYTES"]
+            with self.subTest(template=name), patch.dict(ns,
+                    absent=lambda path: (_ for _ in ()).throw(AssertionError("mutation guard reached"))):
+                for filename in ("attestation.json", "attestation.twin.json"):
+                    with self.assertRaisesRegex(ns["Refused"], "before write"):
+                        ns["create_file"](Path(filename), b"x" * (maximum + 1))
+
+    def test_complete_rows_reject_signed64_bool_mode_membership_and_duplicate_paths(self):
+        for name, ns in self.each_namespace():
+            policy, old, _, _, _, _ = historical_fixture(ns)
+            with self.subTest(template=name):
+                ns["schema2_file_rows"](old, policy=policy, what="positive742")
+                for value in (-1, True, policy["_SUCCESSOR_MAX_FILE_SIZE"] + 1):
+                    changed = copy.deepcopy(old); changed[0]["size"] = value
+                    with self.assertRaises(ns["Refused"]):
+                        ns["schema2_file_rows"](changed, policy=policy, what="badsize")
+                changed = copy.deepcopy(old); changed[0]["mode"] = "120000"
+                with self.assertRaises(ns["Refused"]):
+                    ns["schema2_file_rows"](changed, policy=policy, what="badmode")
+                changed = copy.deepcopy(old); changed[-1] = changed[0]
+                with self.assertRaises(ns["Refused"]):
+                    ns["schema2_file_rows"](changed, policy=policy, what="duplicate")
+
+    def test_coherent_outside_qa_delta_rejected_by_only_finite_diff_gate(self):
+        for name, ns in self.each_namespace():
+            policy, old, middle, _, paths, _ = historical_fixture(ns)
+            final = copy.deepcopy(middle)
+            allowed = set(policy["SUCCESSOR_ALLOWED_CHANGED_PATHS"])
+            for row in final:
+                if row["path"] in allowed:
+                    content = ("synthetic-final/" + row["path"]).encode("ascii")
+                    row.update(size=len(content), sha256=ns["sha"](content),
+                               git_blob=hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\0" + content).hexdigest())
+            with self.subTest(template=name):
+                self.assertEqual(len(ns["schema2_diffs"](old, middle, final, policy=policy)[0]), 25)
+                altered = copy.deepcopy(final)
+                outside = next(row for row in altered if row["path"] not in allowed and row["path"] not in paths)
+                content = ("coherent-outside/" + outside["path"]).encode("ascii")
+                outside.update(size=len(content), sha256=ns["sha"](content),
+                               git_blob=hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\0" + content).hexdigest())
+                qa = ns["canonical"]([[path, next(row["sha256"] for row in altered if row["path"] == path)] for path in paths]) + b"\n"
+                ns["schema2_qa"](qa, altered, expected_paths=paths)
+                with self.assertRaisesRegex(ns["Refused"], "same finite25"):
+                    ns["schema2_diffs"](old, middle, altered, policy=policy)
+                # Test-only expanded policy proves that no stale row/hash/QA
+                # identity masks the finite allowlist refusal. It grants nothing.
+                expanded = copy.deepcopy(policy)
+                expanded["SUCCESSOR_ALLOWED_CHANGED_PATHS"].append(outside["path"])
+                expanded["_SUCCESSOR_REQUIRED_FINAL_CHANGED_COUNT"] = 26
+                self.assertEqual(len(ns["schema2_diffs"](old, middle, altered, policy=expanded)[0]), 26)
+
+    def test_final_exact34_unique_parent_current_source_and_complete_provenance(self):
+        for name, ns in self.each_namespace():
+            policy, old, middle, _, paths, _ = historical_fixture(ns)
+            final = copy.deepcopy(middle)
+            for row in final:
+                if row["path"] in policy["SUCCESSOR_ALLOWED_CHANGED_PATHS"]:
+                    data = ("final-release-fixture/" + row["path"]).encode("ascii")
+                    row.update(size=len(data), sha256=ns["sha"](data),
+                               git_blob=hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest())
+            changed, _ = ns["schema2_diffs"](old, middle, final, policy=policy)
+            qa = ns["canonical"]([[path, next(row["sha256"] for row in final if row["path"] == path)] for path in paths]) + b"\n"
+            old_release = copy.deepcopy(ns["HISTORICAL"]["release"])
+            release = copy.deepcopy(old_release)
+            release.update(ControllerCommit="2" * 40, ParentCommit=policy["SUCCESSOR_INTERMEDIATE_FACTS"]["controller_commit"],
+                           FinalCandidateManifestSha256=ns["sha"](qa), FileCount=25,
+                           NewOwnerWindowSha256=ns["HISTORICAL"]["inputs"]["owner"]["sha256"],
+                           CommittedUtc="2026-10-01T21:12:59.858381+00:00")
+            fields = {**policy["_SUCCESSOR_RELEASE_SOURCE_FIELDS"],
+                "NativeLauncherSha256": "scripts/week8_recovery_native_launcher.ps1",
+                "OuterSha256": "scripts/week8_recovery_outer_bootstrap.txt"}
+            for field, path in fields.items():
+                release[field] = next(row["sha256"] for row in final if row["path"] == path)
+            provenance = {field: {"path": "synthetic-only/" + field, "sha256": value}
+                          for field, value in release.items() if field.endswith("Sha256")
+                          and field not in set(fields) | {"FinalCandidateManifestSha256", "NewOwnerWindowSha256"}}
+            bindings = {**ns["BINDINGS"], "current_commit": release["ControllerCommit"],
+                        "current_candidate_manifest_sha256": ns["sha"](qa)}
+            with self.subTest(template=name), patch.dict(ns, BINDINGS=bindings, EXPECTED_RELEASE_PROVENANCE=provenance):
+                ns["schema2_release_checks"](old_release, release, old, final, changed, old_release["Branch"], policy=policy)
+                wrong = copy.deepcopy(release); wrong["ParentCommit"] = old_release["ControllerCommit"]
+                with self.assertRaisesRegex(ns["Refused"], "provenance differs"):
+                    ns["schema2_release_checks"](old_release, wrong, old, final, changed, old_release["Branch"], policy=policy)
+                wrong = copy.deepcopy(release); wrong["Proposal017DocumentApplicationSha256"] = "1" * 64
+                with self.assertRaises(ns["Refused"]):
+                    ns["schema2_release_checks"](old_release, wrong, old, final, changed, old_release["Branch"], policy=policy)
+                with patch.dict(ns, EXPECTED_RELEASE_PROVENANCE={key: value for key, value in list(provenance.items())[1:]}):
+                    with self.assertRaisesRegex(ns["Refused"], "complete keyset|exact final34"):
+                        ns["schema2_release_checks"](old_release, release, old, final, changed, old_release["Branch"], policy=policy)
+
+
+
+# New grammar fixtures are TEST-ONLY source composition. Values below are finite
+# synthetic role choices, never proposed production bounds or native evidence.
+def grammar_data_literal(node, namespace):
+    if isinstance(node, ast.Constant):
+        assert type(node.value) in (str, int, bool, type(None))
+        return node.value
+    if isinstance(node, ast.Name):
+        return namespace[node.id]
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        values = [grammar_data_literal(item, namespace) for item in node.elts]
+        return list(values) if isinstance(node, ast.List) else tuple(values) if isinstance(node, ast.Tuple) else set(values)
+    if isinstance(node, ast.Dict):
+        assert all(key is not None for key in node.keys)
+        return {grammar_data_literal(key, namespace): grammar_data_literal(value, namespace)
+                for key, value in zip(node.keys, node.values)}
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        return -grammar_data_literal(node.operand, namespace)
+    if isinstance(node, ast.BinOp):
+        left, right = grammar_data_literal(node.left, namespace), grammar_data_literal(node.right, namespace)
+        if isinstance(node.op, ast.LShift): return left << right
+        if isinstance(node.op, ast.Sub): return left - right
+        if isinstance(node.op, ast.BitOr): return left | right
+        raise AssertionError('Unexpected grammar constant arithmetic')
+    if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            and node.func.id == 'frozenset' and len(node.args) == 1 and not node.keywords):
+        return frozenset(grammar_data_literal(node.args[0], namespace))
+    raise AssertionError('Unexpected nonliteral grammar initialization')
+
+
+def grammar_namespace(name):
+    ns = selected_namespace(name)
+    source = (STAGE / name).read_text(encoding='utf-8', errors='strict')
+    module = ast.parse(source)
+    functions = {node.name for node in module.body if isinstance(node, ast.FunctionDef)
+                 and (node.name.startswith('metadata_') or node.name in {
+                     'derive_external_metadata_cap', 'reviewed_metadata_cap', 'validate_metadata_document',
+                     'sealed_receipt_bytes', 'receipt_document', 'absolute', 'identity',
+                     'observation_identity', 'capture_identity', 'cross_api_identity', 'report_base', 'stamp'})}
+    for node in module.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+            continue
+        key = node.targets[0].id
+        if key.startswith('METADATA_') or key in {'OUTPUT_ROLE_MAX_BYTES', 'INPUT_ROLE_MAX_BYTES', 'UPSTREAM_ROLE_CAP_DERIVATION'}:
+            ns[key] = grammar_data_literal(node.value, ns)
+        elif key == 'HISTORICAL_BINDING_KEYS':
+            ns[key] = ast.literal_eval(node.value)
+        elif key == 'MIDDLE_INPUTS':
+            ns[key] = json.loads(ast.literal_eval(node.value.args[0]))
+        elif key == 'OUTPUT_NAMES':
+            ns[key] = frozenset(ast.literal_eval(node.value.args[0]))
+    nodes = [node for node in module.body if isinstance(node, ast.FunctionDef) and node.name in functions]
+    # The eventual distinct test runner alone executes this limited test fixture.
+    # No target module top level/main, project/native/raw helper is imported.
+    exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])),
+                 '<grammar004-selected-test-definitions>', 'exec'), ns)
+    ns.update(WORKSPACE=Path('D:/Aenv/pro2'), STAGE=STAGE, REPARSE=stat.FILE_ATTRIBUTE_REPARSE_POINT)
+    return ns
+
+
+def grammar_fixture(ns):
+    root = Path('D:/Aenv/pro2/.tmp/grammar004-tests-only')
+    paths = {'output_root': str(root / 'output'),
+             'native_review_path': str(root / 'native-review.json'),
+             'renderer_receipt_path': str(root / 'renderer-receipt.txt'),
+             **{'release_provenance:' + field: str(root / (field + '.json'))
+                for field in ns['metadata_provenance_keys']()}}
+    bindings = {key: paths[key] if key.endswith('_path') else '2' * 40 if key == 'current_commit' else '1' * 64
+                for key in ns['HISTORICAL_BINDING_KEYS']}
+    provenance = {field: {'path': paths['release_provenance:' + field], 'sha256': '3' * 64}
+                  for field in ns['metadata_provenance_keys']()}
+    # Deliberately explicit synthetic-only limits; production counterparts stayNone.
+    inputs = {key: 8192 for key in ns['metadata_input_keys']()}
+    inputs.update({key: row['size'] for key, row in ns['HISTORICAL']['inputs'].items()})
+    inputs.update({key: row['size'] for key, row in ns['MIDDLE_INPUTS'].items()})
+    inputs.update(current_release=4096, current_manifest=31347, current_receipt=683,
+                  raw_source=len((STAGE / 'preserved/successor-candidate-raw-revision003/scripts/week8_recovery_raw_authority.py').read_bytes()))
+    outputs = {'attestation.json': 395799, 'attestation.twin.json': 395799,
+               'predecessor-release.json': inputs['predecessor_release'],
+               'successor-release.json': inputs['current_release'],
+               'predecessor-candidate-manifest.json': inputs['predecessor_manifest'],
+               'successor-candidate-manifest.json': inputs['current_manifest'],
+               'current-native-release-receipt.txt': inputs['current_receipt']}
+    ns.update(BINDINGS=bindings, EXPECTED_RELEASE_PROVENANCE=provenance, OUTPUT=Path(paths['output_root']),
+              METADATA_ROLE_PATHS=paths, INPUT_ROLE_MAX_BYTES=inputs, OUTPUT_ROLE_MAX_BYTES=outputs,
+              UPSTREAM_ROLE_CAP_DERIVATION={'schema_id': 'week8_schema2_metadata_roles_004',
+                  'fixed_paths': paths, 'input_caps': inputs, 'output_caps': outputs})
+    context = ns['metadata_context']()
+    ns['EXTERNAL_PROOF_MAX_BYTES'] = ns['derive_external_metadata_cap'](context)
+    documents = {}
+    for kind in ns['METADATA_VARIANT_KEYS']:
+        doc = ns['metadata_maximal_document'](kind, context)
+        doc.pop('record_digest')
+        doc.update(created_at_utc='2026-10-02T04:54:00.391402+00:00', bindings=copy.deepcopy(bindings),
+                   release_provenance_bindings=copy.deepcopy(provenance),
+                   external_proof_max_bytes=ns['EXTERNAL_PROOF_MAX_BYTES'],
+                   policy_source_sha256=bindings['raw_helper_sha256'],
+                   owner_sha256=ns['HISTORICAL']['inputs']['owner']['sha256'])
+        if 'files' in doc:
+            for index, (name, row) in enumerate(sorted(doc['files'].items()), 1):
+                row['identity'] = [1, index, row['size'], 0, 0, stat.S_IFREG | 0o600, 1, 32]
+            doc['successor'].update(controller_commit=bindings['current_commit'],
+                release_record_sha256=bindings['current_release_sha256'],
+                candidate_manifest_sha256=bindings['current_candidate_manifest_sha256'])
+            doc['middle_full742_identity'] = {key: ns['COMPILED_POLICY']['SUCCESSOR_INTERMEDIATE_FACTS'][key]
+                for key in ('controller_inventory_digest', 'tracked_tree_digest', 'tracked_file_count')}
+        documents[kind] = doc
+    return context, documents
+
+
+def grammar_reader(ns, kind, data):
+    stems = {'successor_publication_intent': 'publish-intent', 'successor_publication_started': 'publish-start',
+             'successor_publication_complete': 'publish-end', 'successor_publication_failed': 'publish-fail',
+             'successor_verification_intent': 'verify-intent', 'successor_verification_started': 'verify-start',
+             'successor_verification_pass': 'verify-end', 'successor_verification_failed': 'verify-fail'}
+    prefix, suffix = stems[kind].split('-')
+    path = STAGE / (prefix + '-schema2-004-' + suffix + '.json')
+    def capture(actual, *, maximum):
+        assert actual == path
+        assert maximum == ns['EXTERNAL_PROOF_MAX_BYTES']
+        if len(data) > maximum:
+            raise ns['Refused']('file exceeds its finite pre-read cap')
+        return data, ()
+    with patch.dict(ns, read=capture):
+        return ns['receipt_document'](path)
+
+
+def grammar_reseal(ns, document):
+    body = {key: value for key, value in document.items() if key != 'record_digest'}
+    return ns['canonical']({**body, 'record_digest': ns['sha'](ns['canonical'](body))}) + b'\n'
+
+
+class MetadataGrammarPreparation(unittest.TestCase):
+    def each_namespace(self):
+        for name in TEMPLATES:
+            ns = grammar_namespace(name)
+            context, documents = grammar_fixture(ns)
+            yield name, ns, context, documents
+
+    def test_all_eight_exact_writer_reader_controls_and_canonical_lengths(self):
+        counts = [18, 17, 30, 21, 19, 17, 33, 21]
+        for name, ns, context, docs in self.each_namespace():
+            with self.subTest(template=name):
+                self.assertEqual(len(ns['metadata_provenance_keys']()), 14)
+                self.assertEqual(len(ns['metadata_input_keys']()), 35)
+                self.assertEqual(len(context['paths']), 17)
+                for (kind, doc), count in zip(docs.items(), counts):
+                    with self.subTest(kind=kind):
+                        data = ns['sealed_receipt_bytes'](doc)
+                        parsed, pin = grammar_reader(ns, kind, data)
+                        self.assertEqual(len(parsed), count)
+                        self.assertEqual(pin, ns['sha'](data))
+                        self.assertEqual(ns['metadata_canonical_length'](parsed) + 1, len(data))
+                        self.assertLessEqual(len(data), ns['EXTERNAL_PROOF_MAX_BYTES'])
+                        maximal = ns['metadata_maximal_document'](kind, context)
+                        self.assertEqual(ns['metadata_canonical_length'](maximal), len(ns['canonical'](maximal)))
+                # JSON escaping includes quotes/control text/BMP/non-BMP exactly.
+                for value in ['ascii', 'quote"\\', '\n\x01', '\u007f', '\u00e9', '\U0001f600']:
+                    self.assertEqual(ns['metadata_canonical_length'](value), len(ns['canonical'](value)))
+
+    def test_integer_width_extrema_bool_and_float_domains_are_causal(self):
+        for name, ns, _, _ in self.each_namespace():
+            for minimum, maximum in [(0, ns['METADATA_U64_MAX']),
+                                     (ns['METADATA_I63_MIN'], ns['METADATA_I63_MAX']),
+                                     (0, ns['METADATA_U32_MAX'])]:
+                with self.subTest(template=name, domain=(minimum, maximum)):
+                    for value in (minimum, maximum):
+                        self.assertEqual(ns['metadata_integer'](value, minimum, maximum, 'test'), value)
+                    for value in (minimum - 1, maximum + 1, True, False, 1.0, float('nan'), float('inf')):
+                        with self.assertRaisesRegex(ns['Refused'], 'exact integer'):
+                            ns['metadata_integer'](value, minimum, maximum, 'test')
+                    ns['metadata_integer'](maximum, minimum, maximum, 'restored control')
+            self.assertEqual(len(str(ns['METADATA_U64_MAX'])), 20)
+            self.assertEqual(len(str(ns['METADATA_I63_MIN'])), 20)
+            self.assertEqual(len(str(ns['METADATA_I63_MAX'])), 19)
+
+    def test_stat_identity_all_eight_domains_and_birthtime_extension(self):
+        for name, ns, _, _ in self.each_namespace():
+            values = [ns['METADATA_U64_MAX'], ns['METADATA_U64_MAX'], 1,
+                      ns['METADATA_I63_MIN'], ns['METADATA_I63_MAX'], ns['METADATA_U32_MAX'],
+                      ns['METADATA_U32_MAX'], ns['METADATA_U32_MAX']]
+            ns['metadata_identity'](values, maximum_size=1)
+            for index in range(8):
+                bad = list(values); bad[index] = True
+                with self.assertRaisesRegex(ns['Refused'], 'exact integer'):
+                    ns['metadata_identity'](bad, maximum_size=1)
+            for bad in [values[:-1], values + [1]]:
+                with self.assertRaisesRegex(ns['Refused'], 'eight scalar'):
+                    ns['metadata_identity'](bad, maximum_size=1)
+            info = SimpleNamespace(st_dev=1, st_ino=2, st_size=1, st_mtime_ns=0, st_ctime_ns=0,
+                                   st_mode=stat.S_IFREG | 0o600, st_nlink=1, st_file_attributes=32,
+                                   st_birthtime_ns=ns['METADATA_I63_MAX'])
+            self.assertEqual(len(ns['identity'](info)), 8)
+            if os.name == 'nt':
+                self.assertEqual(len(ns['observation_identity'](info)), 9)
+                for value in (True, -1, ns['METADATA_I63_MAX'] + 1):
+                    info.st_birthtime_ns = value
+                    with self.assertRaisesRegex(ns['Refused'], 'creation identity'):
+                        ns['observation_identity'](info)
+
+    def test_python32_and_supporting_powershell33_utc_roles_without_rewriting(self):
+        for name, ns, _, _ in self.each_namespace():
+            python = '2026-10-02T03:39:32.795635+00:00'
+            powershell = '2026-10-02T03:39:32.8439407+00:00'
+            self.assertEqual(len(python), 32); self.assertEqual(len(powershell), 33)
+            self.assertEqual(ns['metadata_utc'](python), python)
+            self.assertEqual(ns['metadata_utc'](powershell, supporting_root=True), powershell)
+            with self.assertRaisesRegex(ns['Refused'], 'UTC grammar'):
+                ns['metadata_utc'](powershell)
+            for value in ['2026-02-30T03:39:32.795635+00:00', python[:-6] + '+01:00',
+                          python.replace('+00:00', 'Z'), python.replace('795635', '1'),
+                          '2026-10-02T03:39:32.000000+00:00', True]:
+                with self.assertRaises(ns['Refused']): ns['metadata_utc'](value)
+            ns['metadata_utc'](python)
+
+    def test_every_variant_resealed_unknown_bool_float_utc_and_source_negative(self):
+        for name, ns, _, docs in self.each_namespace():
+            for kind, healthy in docs.items():
+                mutations = [('extra_key', True, 'exact metadata variant'),
+                             ('publication_schema_version', True, 'schema integer'),
+                             ('attestation_schema_version', 2.0, 'schema integer'),
+                             ('created_at_utc', '2026-10-02T04:54:00Z', 'UTC grammar'),
+                             ('helper_sha256', 'f' * 63, 'metadata helper'),
+                             ('policy_source_sha256', 'e' * 64, 'source/owner'),
+                             ('owner_sha256', 'e' * 64, 'source/owner'),
+                             ('operational_authority_granted', 0, 'safety boolean')]
+                for field, value, reason in mutations:
+                    with self.subTest(template=name, kind=kind, field=field):
+                        bad = copy.deepcopy(healthy); bad[field] = value
+                        # Resigning ensures the grammar, rather than a stale seal,
+                        # is the causal reader failure.
+                        with self.assertRaisesRegex(ns['Refused'], reason):
+                            grammar_reader(ns, kind, grammar_reseal(ns, bad))
+                        with self.assertRaisesRegex(ns['Refused'], reason):
+                            ns['sealed_receipt_bytes'](bad)
+                        ns['sealed_receipt_bytes'](healthy)
+
+    def test_exact_nested_bindings_provenance_input_rows_and_path_text(self):
+        for name, ns, _, docs in self.each_namespace():
+            kind = 'successor_publication_intent'; healthy = docs[kind]
+            variants = []
+            bad = copy.deepcopy(healthy); bad['bindings']['current_commit'] = '2' * 39; variants.append((bad, 'metadata binding'))
+            bad = copy.deepcopy(healthy); bad['bindings']['native_review_path'] += 'x'; variants.append((bad, 'role path'))
+            bad = copy.deepcopy(healthy); bad['release_provenance_bindings'].pop(next(iter(bad['release_provenance_bindings']))); variants.append((bad, 'metadata provenance'))
+            bad = copy.deepcopy(healthy); next(iter(bad['release_provenance_bindings'].values()))['extra'] = 1; variants.append((bad, 'provenance row'))
+            bad = copy.deepcopy(healthy); bad['input_hashes'].pop('native_review'); variants.append((bad, 'input hashes'))
+            bad = copy.deepcopy(healthy); bad['input_hashes']['native_review'] = 'f' * 63; variants.append((bad, 'input pin'))
+            for bad, reason in variants:
+                with self.assertRaisesRegex(ns['Refused'], reason): grammar_reader(ns, kind, grammar_reseal(ns, bad))
+                ns['sealed_receipt_bytes'](healthy)
+            for value in ['D:/Aenv/pro2/../escape', 'D:/Aenv/pro2/x\n.json', 'D:/Aenv/pro2/x\ud800.json']:
+                with patch.dict(ns['METADATA_ROLE_PATHS'], native_review_path=value):
+                    with self.assertRaises(ns['Refused']): ns['metadata_context']()
+            ns['metadata_context']()
+
+    def test_completion_file_array_types_extrema_aliases_and_role_size(self):
+        for name, ns, context, docs in self.each_namespace():
+            for kind in ('successor_publication_complete', 'successor_verification_pass'):
+                healthy = docs[kind]; first = sorted(healthy['files'])[0]
+                variants = []
+                for index in range(8):
+                    bad = copy.deepcopy(healthy); bad['files'][first]['identity'][index] = True
+                    variants.append((bad, 'exact integer'))
+                bad = copy.deepcopy(healthy); bad['files'][first]['identity'].append(1); variants.append((bad, 'eight scalar'))
+                bad = copy.deepcopy(healthy); bad['files'][first]['size'] = context['output_caps'][first] + 1; variants.append((bad, 'exact integer'))
+                bad = copy.deepcopy(healthy); bad['files'][first]['size'] = 1.0; variants.append((bad, 'exact integer'))
+                bad = copy.deepcopy(healthy); bad['files'][first]['identity'][2] -= 1; variants.append((bad, 'identity semantics'))
+                bad = copy.deepcopy(healthy); bad['files'][first]['identity'][6] = 2; variants.append((bad, 'identity semantics'))
+                bad = copy.deepcopy(healthy); bad['files'][first]['identity'][5] = stat.S_IFDIR | 0o700; variants.append((bad, 'identity semantics'))
+                bad = copy.deepcopy(healthy); bad['files'][first]['identity'][7] |= stat.FILE_ATTRIBUTE_REPARSE_POINT; variants.append((bad, 'identity semantics'))
+                bad = copy.deepcopy(healthy); names = sorted(bad['files']); bad['files'][names[1]]['identity'][:2] = bad['files'][names[0]]['identity'][:2]; variants.append((bad, 'alias'))
+                for bad, reason in variants:
+                    with self.subTest(template=name, kind=kind, reason=reason):
+                        with self.assertRaisesRegex(ns['Refused'], reason): grammar_reader(ns, kind, grammar_reseal(ns, bad))
+                        ns['sealed_receipt_bytes'](healthy)
+                extreme = copy.deepcopy(healthy)
+                for index, row in enumerate(extreme['files'].values(), 1):
+                    row['identity'][0] = ns['METADATA_U64_MAX']; row['identity'][1] = ns['METADATA_U64_MAX'] - index
+                    row['identity'][3] = ns['METADATA_I63_MIN']; row['identity'][4] = ns['METADATA_I63_MAX']
+                grammar_reader(ns, kind, ns['sealed_receipt_bytes'](extreme))
+
+    def test_coherent_resealed_finite25_middle742_runtime_and_count_negative(self):
+        for name, ns, _, docs in self.each_namespace():
+            for kind in ('successor_publication_complete', 'successor_verification_pass'):
+                healthy = docs[kind]; variants = []
+                bad = copy.deepcopy(healthy); bad['changed_paths'] = list(reversed(bad['changed_paths'])); variants.append((bad, 'finite25'))
+                bad = copy.deepcopy(healthy); bad['successor_parent_changed_paths'].append('new.py'); variants.append((bad, 'finite25'))
+                bad = copy.deepcopy(healthy); bad['successor']['tracked_file_count'] = 742.0; variants.append((bad, 'successor742'))
+                bad = copy.deepcopy(healthy); bad['intermediate']['release_file_count'] = 9.0; variants.append((bad, 'scalar type'))
+                bad = copy.deepcopy(healthy); bad['middle_full742_identity']['tracked_tree_digest'] = 'e' * 64; variants.append((bad, 'fixed597'))
+                bad = copy.deepcopy(healthy); bad['verification_observations'] = True; variants.append((bad, 'observation count'))
+                for role in healthy['runtime']:
+                    bad = copy.deepcopy(healthy); bad['runtime'][role]['file_count'] = float(bad['runtime'][role]['file_count']); variants.append((bad, 'exact integer'))
+                    bad = copy.deepcopy(healthy); bad['runtime'][role]['file_identity_digest'] = 'f' * 63; variants.append((bad, 'runtime identity'))
+                for bad, reason in variants:
+                    with self.assertRaisesRegex(ns['Refused'], reason): grammar_reader(ns, kind, grammar_reseal(ns, bad))
+                    ns['sealed_receipt_bytes'](healthy)
+
+    def test_cap_projection_failclosed_before_hash_parse_open_or_write(self):
+        for name, ns, _, docs in self.each_namespace():
+            healthy = docs['successor_publication_intent']; original = ns['EXTERNAL_PROOF_MAX_BYTES']
+            for value in (None, True, original - 1, original + 1):
+                with patch.dict(ns, EXTERNAL_PROOF_MAX_BYTES=value, sha=lambda data: self.fail('hash reached before cap validation'),
+                                canonical=lambda value: self.fail('serialization reached before cap validation')):
+                    with self.assertRaises(ns['Refused']): ns['sealed_receipt_bytes'](healthy)
+            for key in ('METADATA_ROLE_PATHS', 'INPUT_ROLE_MAX_BYTES', 'OUTPUT_ROLE_MAX_BYTES', 'UPSTREAM_ROLE_CAP_DERIVATION', 'OUTPUT'):
+                with patch.dict(ns, **{key: None}):
+                    with self.assertRaises(ns['Refused']): ns['reviewed_metadata_cap']()
+            path = STAGE / 'publish-schema2-004-intent.json'
+            with patch.dict(ns, plain_info=lambda unused: SimpleNamespace(st_size=original + 1),
+                            chain=lambda unused: None):
+                with self.assertRaisesRegex(ns['Refused'], 'pre-read cap'):
+                    ns['read'](path, maximum=original)
+            with patch.dict(ns, absent=lambda unused: self.fail('write reached before role cap')):
+                with self.assertRaisesRegex(ns['Refused'], 'before write'):
+                    ns['create_file'](ns['OUTPUT'] / 'successor-release.json', b'x' * (ns['OUTPUT_ROLE_MAX_BYTES']['successor-release.json'] + 1))
+            ns['sealed_receipt_bytes'](healthy)
+
+    def test_strict_json_duplicate_nonfinite_utf8_and_canonical_bytes(self):
+        for name, ns, _, docs in self.each_namespace():
+            kind = 'successor_publication_intent'; good = ns['sealed_receipt_bytes'](docs[kind])
+            grammar_reader(ns, kind, good)
+            for data in [b'{"a":1,"a":2}', b'{"a":NaN}', b'{"a":Infinity}', b'{"a":1e999}', b'\xff']:
+                with self.assertRaises((ns['Refused'], ValueError, UnicodeError)): ns['strict_json'](data)
+            for data in (good.rstrip(b'\n'), good.replace(b'\n', b'\r\n'), b' ' + good,
+                         json.dumps(json.loads(good), ensure_ascii=True, sort_keys=True, indent=2).encode('ascii') + b'\n'):
+                with self.assertRaisesRegex(ns['Refused'], 'canonical seal'):
+                    grammar_reader(ns, kind, data)
+            grammar_reader(ns, kind, good)
+
+    def test_error_identifier_and_detail_full_hash_before_any_coercion(self):
+        for name, ns, _, docs in self.each_namespace():
+            for kind in ('successor_publication_failed', 'successor_verification_failed'):
+                healthy = docs[kind]
+                for value in ('E' * 129, '9Error', 'Error-name', '\u00c9rror', '', True):
+                    bad = copy.deepcopy(healthy); bad['error_type'] = value
+                    with self.assertRaisesRegex(ns['Refused'], 'ASCII identifier'):
+                        grammar_reader(ns, kind, grammar_reseal(ns, bad))
+                healthy['error_type'] = 'E' * 128
+                ns['sealed_receipt_bytes'](healthy)
+            class GoodError(Exception): pass
+            detail = 'a' * 8193 + '\ud800'
+            fields = ns['metadata_failure_fields'](GoodError(detail))
+            self.assertEqual(fields['error_text_sha256'], hashlib.sha256(detail.encode('utf-8', errors='backslashreplace')).hexdigest())
+            def forbidden(self): raise AssertionError('invalid type was coerced')
+            hostile = type('\u00c9rror', (Exception,), {'__str__': forbidden})()
+            with self.assertRaisesRegex(ns['Refused'], 'ASCII identifier'):
+                ns['metadata_failure_fields'](hostile)
+            fields = ns['metadata_failure_fields'](GoodError('restored control'))
+            self.assertEqual(fields['error_type'], 'GoodError')
+
+    def test_source_structure_cap_order_all_rereads_and_failure_preservation(self):
+        # No main is executed. Source assertions supplement actual pure-method
+        # controls and make omitted integration call sites reviewable.
+        for name in TEMPLATES:
+            text = (STAGE / name).read_text(encoding='utf-8'); module = ast.parse(text)
+            functions = {node.name: node for node in module.body if isinstance(node, ast.FunctionDef)}
+            writer = ast.get_source_segment(text, functions['sealed_receipt_bytes'])
+            self.assertLess(writer.index('validate_metadata_document'), writer.index('sha(canonical'))
+            reader = ast.get_source_segment(text, functions['receipt_document'])
+            self.assertLess(reader.index('reviewed_metadata_cap'), reader.index('read(path'))
+            self.assertLess(reader.index('validate_metadata_document'), reader.index('sha(canonical'))
+            reread = ast.get_source_segment(text, functions['input_identity_digest'])
+            self.assertIn('read(Path(path), maximum=maximum)', reread)
+            main = ast.get_source_segment(text, functions['main'])
+            self.assertIn('failure_fields = metadata_failure_fields(exc)', main)
+            self.assertNotIn('"error_type": type(exc).__name__', main)
+            self.assertIn('**failure_fields', main)
+            self.assertIn('operational_authority_granted', ast.get_source_segment(text, functions['report_base']))
+
+
+if __name__ == '__main__':
+    unittest.main()

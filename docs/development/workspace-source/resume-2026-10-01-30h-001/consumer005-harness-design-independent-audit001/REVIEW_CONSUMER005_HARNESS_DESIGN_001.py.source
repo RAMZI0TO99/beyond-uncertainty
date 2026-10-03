@@ -1,0 +1,412 @@
+"""Owned stdlib AST/data/finite metadata review. No reviewed definitions execute."""
+from pathlib import Path
+from datetime import datetime, timezone
+import ast
+import hashlib
+import itertools
+import json
+import os
+import stat
+
+ROOT = Path(r'D:\Aenv\pro2')
+BASE = ROOT / 'resume-2026-10-01-30h-001'
+DESIGN = BASE / 'consumer005-isolated-unit-harness-design001'
+OUT = BASE / 'consumer005-harness-design-independent-audit001'
+CAP = 4194304
+
+def sha(value):
+    return hashlib.sha256(value).hexdigest()
+
+def canonical(value):
+    return (json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True,
+                       allow_nan=False) + '\n').encode('ascii')
+
+def pretty(value):
+    return (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True,
+                       allow_nan=False) + '\n').encode('ascii')
+
+def once(path, value):
+    with path.open('xb') as stream:
+        stream.write(value)
+
+def raw(value):
+    return [getattr(value, name, None) for name in
+            ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode',
+             'st_nlink', 'st_file_attributes', 'st_birthtime_ns')]
+
+def cross(value):
+    return [getattr(value, name, None) for name in
+            ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_nlink')]
+
+def read(path):
+    before = path.lstat()
+    assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+    assert not getattr(before, 'st_file_attributes', 0) & 1024 and before.st_size <= CAP
+    with path.open('rb') as stream:
+        first = os.fstat(stream.fileno())
+        assert cross(before) == cross(first)
+        data = stream.read(CAP + 1)
+        last = os.fstat(stream.fileno())
+    after = path.lstat()
+    assert raw(before) == raw(after) and raw(first) == raw(last)
+    assert len(data) == before.st_size <= CAP
+    return data, dict(path=str(path), bytes=len(data), sha256=sha(data),
+                      path_raw9=raw(before), descriptor_raw9=raw(first))
+
+manifest_path = DESIGN / 'DESIGN_MANIFEST_001.json'
+manifest_bytes, _ = read(manifest_path)
+assert sha(manifest_bytes) == '38c8db8e8a2e7e57073c87d9fa6648e215f78bd6ba096e51b21bbcf47ee92aa5'
+manifest = json.loads(manifest_bytes)
+preservation = json.loads(read(DESIGN / 'SELECTED_INPUT_PRESERVATION_001.json')[0])
+assert manifest['payload_files'] == len(manifest['files']) == 39
+assert manifest['creation_including_manifest'] == 40 and len(preservation['pairs']) == 31
+old_peer_path = BASE / 'consumer-guard-test-runtime005/inputs/ACTUAL_SOURCE_PEER_003.json'
+paths = list(dict.fromkeys([DESIGN / name for name in manifest['files']] +
+             [manifest_path, DESIGN / 'DESIGN_POST_FREEZE_STABILITY_001.json'] +
+             [Path(pair['original']['path']) for pair in preservation['pairs']] +
+             [old_peer_path]))
+assert len(paths) == 73
+rounds = []
+round_times = []
+data = {}
+for round_index in range(3):
+    round_times.append(datetime.now(timezone.utc).isoformat())
+    rows = []
+    for path in paths:
+        value, row = read(path)
+        rows.append(row)
+        if round_index == 0:
+            data[str(path)] = value
+    rounds.append(rows)
+assert rounds[0] == rounds[1] == rounds[2]
+for name, row in manifest['files'].items():
+    value = data[str(DESIGN / name)]
+    assert len(value) == row['size'] and sha(value) == row['sha256']
+for pair in preservation['pairs']:
+    original = data[pair['original']['path']]
+    copied = data[pair['copy']['path']]
+    assert original == copied
+    assert sha(original) == pair['original']['sha256'] == pair['copy']['sha256']
+    assert len(original) == pair['original']['size'] == pair['copy']['size']
+post_author = json.loads(data[str(DESIGN / 'DESIGN_POST_FREEZE_STABILITY_001.json')])
+assert post_author['actual_files_including_manifest_and_this_receipt'] == 41
+assert post_author['manifest_sha256'] == sha(manifest_bytes)
+
+# Finite directory names only under the exact emitted design path closure.
+declared = {str(DESIGN / name) for name in manifest['files']}
+declared.update((str(manifest_path), str(DESIGN / 'DESIGN_POST_FREEZE_STABILITY_001.json')))
+parents = {DESIGN}
+for name in declared:
+    path = Path(name).parent
+    while path != DESIGN:
+        parents.add(path)
+        path = path.parent
+actual_names = set()
+directory_rows = []
+for parent in sorted(parents, key=str):
+    names = sorted(parent.iterdir(), key=lambda path: path.name)
+    directory_rows.append(dict(path=str(parent), direct_names=[path.name for path in names]))
+    for path in names:
+        if path.is_file():
+            actual_names.add(str(path))
+        else:
+            assert path in parents
+assert actual_names == declared and len(actual_names) == 41
+
+def value(relative):
+    return data[str(DESIGN / relative)]
+
+design = json.loads(value('HARNESS_SOURCE_DESIGN_001.json'))
+binding = json.loads(value('inputs/source005/SOURCE_GUARD_TEST_BINDINGS_005.json'))
+source5_peer = json.loads(value('inputs/source005-peer/INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.json'))
+old_peer = json.loads(data[str(old_peer_path)])
+profile = json.loads(value('inputs/legacyGG5/GUARD_RUNTIME_PROFILE_005.json'))
+old_child_bytes = value('inputs/legacyGG5/consumer-guard-child-005.TEMPLATE.py')
+old_driver_bytes = value('inputs/legacyGG5/run-consumer-guard-unit005.TEMPLATE.py')
+test_bytes = value('inputs/source005/test_raw_consumer_guards_005.TEMPLATE.py')
+tree = ast.parse(test_bytes)
+classes = []
+for node in tree.body:
+    if isinstance(node, ast.ClassDef):
+        names = [method.name for method in node.body
+                 if isinstance(method, ast.FunctionDef) and method.name.startswith('test_')]
+        classes.append(dict(name=node.name, line=node.lineno,
+                            bases=[ast.unparse(base) for base in node.bases],
+                            keywords=[ast.unparse(keyword) for keyword in node.keywords],
+                            direct_methods=names, direct_count=len(names)))
+assert [row['direct_count'] for row in classes] == [19, 5]
+assert all(row['bases'] == ['unittest.TestCase'] and not row['keywords'] for row in classes)
+assert len({name for row in classes for name in row['direct_methods']}) == 24
+assert all(row['name'] == stated['name'] and row['direct_methods'] == stated['direct_method_names']
+           for row, stated in zip(classes, design['discovery']['classes']))
+rebound = []
+class_names = {row['name'] for row in classes}
+for node in tree.body:
+    targets = node.targets if isinstance(node, ast.Assign) else [node.target] if isinstance(node, ast.AnnAssign) else []
+    if any(isinstance(target, ast.Name) and target.id in class_names for target in targets):
+        rebound.append(node.lineno)
+assert not rebound
+
+parents_ast = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+sites = sorted([node for node in ast.walk(tree) if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute) and node.func.attr == 'subTest'],
+               key=lambda node: node.lineno)
+site_rows = []
+site_nodes = {}
+for site in sites:
+    ancestor = site
+    loops = []
+    while ancestor in parents_ast:
+        ancestor = parents_ast[ancestor]
+        if isinstance(ancestor, ast.For):
+            loops.append(ancestor)
+        if isinstance(ancestor, ast.FunctionDef):
+            method = ancestor.name
+            break
+    loops.reverse()
+    site_rows.append(dict(line=site.lineno, method=method,
+                          keyword_order=[keyword.arg for keyword in site.keywords],
+                          loops=[dict(line=node.lineno, target=ast.unparse(node.target),
+                                      iterable_AST=ast.unparse(node.iter)) for node in loops]))
+    site_nodes[site.lineno] = (site, method, loops)
+assert len(sites) == 17
+assert {site.lineno: {keyword.arg: ast.unparse(keyword.value) for keyword in site.keywords}
+        for site in sites} == {row['line']: row['kwargs'] for row in
+                              design['event_transport_proposal']['subtest_AST_sites']}
+
+# Derive case labels from literal return-list labels, never run schema3_policy_changes.
+change_function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
+                       and node.name == 'schema3_policy_changes')
+case_labels = {}
+for branch in change_function.body:
+    if not isinstance(branch, ast.If):
+        continue
+    comparison = branch.test
+    assert isinstance(comparison, ast.Compare)
+    names = ast.literal_eval(comparison.comparators[0])
+    names = (names,) if type(names) is str else names
+    returned = next(node for node in branch.body if isinstance(node, ast.Return))
+    labels = [ast.literal_eval(row.elts[0]) for row in returned.value.elts]
+    for name in names:
+        case_labels[name] = labels
+assert set(case_labels) == set(binding['schema3_policy_names'])
+assert sum(len(case_labels[name]) for name in binding['schema3_policy_names']) == 38
+
+method_class = {method: row['name'] for row in classes for method in row['direct_methods']}
+metaclass_cases = []
+for node in tree.body:
+    if isinstance(node, ast.ClassDef) and node.name == 'RawConsumerMetaclassIdentityRegressions':
+        for method in node.body:
+            if isinstance(method, ast.FunctionDef) and method.name.startswith('test_m'):
+                call = method.body[0].value
+                metaclass_cases.append((method.name, ast.literal_eval(call.args[0])))
+assert [case for _, case in metaclass_cases] == ['M1', 'M2', 'M3', 'M4']
+
+def assignments(site, method, loops, dispatch_order=False):
+    answers = [dict()]
+    for loop in loops:
+        updated = []
+        for environment in answers:
+            if isinstance(loop.iter, ast.Name):
+                token = loop.iter.id
+                if token == 'policies':
+                    domain = binding['new_policy_names'] if loop.lineno == 244 else list(case_labels) if dispatch_order else binding['schema3_policy_names']
+                elif token == 'helpers':
+                    domain = binding['new_helper_names'] if loop.lineno == 265 else binding['schema3_helper_names']
+                elif token == 'cases':
+                    domain = [(label, None) for label in case_labels[environment['name']]]
+                else:
+                    raise AssertionError(token)
+            else:
+                domain = ast.literal_eval(loop.iter)
+            for item in domain:
+                fresh = dict(environment)
+                if isinstance(loop.target, ast.Name):
+                    fresh[loop.target.id] = item
+                else:
+                    for target, part in zip(loop.target.elts, item):
+                        fresh[target.id] = part
+                updated.append(fresh)
+        answers = updated
+    if method == 'assert_metaclass_case_refused':
+        return [(test_method, dict(environment, case=case)) for test_method, case in metaclass_cases
+                for environment in answers]
+    return [(method, environment) for environment in answers]
+
+def subtest_rows(namespace, selected_lines=None, dispatch_order=False):
+    rows = []
+    row_sites = []
+    for line, (site, method, loops) in site_nodes.items():
+        if selected_lines is not None and line not in selected_lines:
+            continue
+        for actual_method, environment in assignments(site, method, loops, dispatch_order):
+            identifier = namespace + '.' + method_class[actual_method] + '.' + actual_method
+            params = [(keyword.arg, environment[keyword.value.id]) for keyword in site.keywords]
+            suffix = '(' + ', '.join(key + '=' + repr(part) for key, part in params) + ')'
+            rows.append(dict(event='subtest', id=identifier + ' ' + suffix,
+                             parent_id=identifier, status='passed'))
+            row_sites.append(line)
+    return rows, row_sites
+
+# Three-family count/bytes rederived from copied AST/binding and pinned unittest format.
+three_lines = [245, 503, 613]
+three_families = []
+for namespace, artifact in [('', 'EMPTY_NAMESPACE_STRICT_LOWER_BOUND.bytes'),
+                            ('isolated_consumer_guard_unit006', 'ILLUSTRATIVE_UNSELECTED_NAMESPACE.bytes')]:
+    rows, locations = subtest_rows(namespace, three_lines, dispatch_order=True)
+    encoded = canonical(rows)
+    if encoded != value(artifact):
+        expected_rows = json.loads(value(artifact))
+        print(json.dumps(dict(rows=len(rows), expected=len(expected_rows), first_different=
+              next(((i, a, b) for i, (a, b) in enumerate(zip(rows, expected_rows)) if a != b), None))))
+    assert len(rows) == 780 and encoded == value(artifact)
+    three_families.append(dict(namespace=namespace, rows=len(rows), bytes=len(encoded),
+                               sha256=sha(encoded), over_receipt_cap=len(encoded)-262144,
+                               family_counts={str(line): locations.count(line) for line in three_lines},
+                               ordering='Unsealed AST dispatch-label table order; schema3 policy group order differs from binding loop order. Permutation preserves canonical list byte length; this is not an actual runtime ordered-event witness.',
+                               unsealed_data_only=True, runtime=False))
+assert three_families[0]['bytes'] == 276146 and three_families[0]['over_receipt_cap'] == 14002
+assert three_families[1]['bytes'] == 324506
+
+# Advisory complete HEALTHY old-key grammar witness, not a new approved transport schema.
+all_healthy, healthy_sites = subtest_rows('N' * 32)
+assert len(all_healthy) == 1151
+for row in classes:
+    for method in sorted(row['direct_methods']):
+        identifier = 'N' * 32 + '.' + row['name'] + '.' + method
+        all_healthy.extend([dict(event='start', id=identifier), dict(event='success', id=identifier)])
+assert len(all_healthy) == 1199
+maximum_row = max(len(canonical(row)) for row in all_healthy)
+assert maximum_row < 1024
+healthy_witness_bytes = b''.join(canonical(row) for row in all_healthy)
+advisory_path = OUT / 'ADVISORY_HEALTHY_EVENT_DOMAIN_001.jsonl'
+if advisory_path.exists():
+    assert read(advisory_path)[0] == healthy_witness_bytes
+else:
+    once(advisory_path, healthy_witness_bytes)
+
+assert len(old_peer) == 51 and len(old_peer['raw_policy_facts']) == 12
+assert len(source5_peer) == 38 and len(value('inputs/source005-peer/INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.json')) == 2553985
+missing_old = [key for key in ('raw_policy_facts', 'source_bindings', 'source_authors') if key not in source5_peer]
+assert missing_old == ['raw_policy_facts', 'source_bindings', 'source_authors']
+assert profile['raw_policy_facts'] == old_peer['raw_policy_facts']
+assert profile['source003_peer_core']['prepared_test_method_count'] == 14
+assert profile['source003_peer_core']['raw_source_sha256'] == '7fe7dc1989b882f6ef2cb22caaa5975b0b7d5d2907d84ee3c1b858facd57f267'
+old_driver_lines = old_driver_bytes.decode('utf-8').splitlines()
+old_child_lines = old_child_bytes.decode('utf-8').splitlines()
+assert 'source_peer = decode(read(' in old_driver_lines[390]
+assert 'source003_peer_core' in old_driver_lines[393]
+assert 'facts = source_peer["raw_policy_facts"]' in old_driver_lines[394]
+assert 'exact(facts, profile["raw_policy_facts"]' in old_driver_lines[395]
+assert 'len(classes) == 1' in old_child_lines[307]
+assert '600' in old_child_lines[217]
+assert design['approved_for_harness_source_implementation'] is False
+assert design['binding_or_execution_authorized'] is False
+assert design['source_peer_reader_choice'] is None
+assert all(value is None for value in design['future_actual'].values())
+assert design['event_transport_proposal']['approved'] is False
+assert design['event_transport_proposal']['actual_legal_row_bound'] is None
+temp_sites = sorted(node.lineno for node in ast.walk(tree) if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute) and node.func.attr == 'TemporaryDirectory')
+assert len(temp_sites) == 6
+imports = [dict(line=node.lineno, source=ast.unparse(node)) for node in tree.body
+           if isinstance(node, (ast.Import, ast.ImportFrom))]
+
+conditions = [
+    dict(id='D01', requirement='Publish a distinct precision record before implementation: old Source003 peer has51 top-level fields; exact12 applies only to nested raw_policy_facts. Reader391/393/395-408 also pins/compares selected Source003 typed core, bindings/authors/API and general2MiB. New Source005 has38 top-level fields,2553985B and lacks the old nested/core role structures. Preserve wrong001 bytes as unapproved history.', source='HARNESS_SOURCE_DESIGN_001.json:272; HARNESS_SOURCE_DESIGN_001.md:7; inputs/legacyGG5/run-consumer-guard-unit005.TEMPLATE.py:391'),
+    dict(id='D02', requirement='Root must choose a new closed source acceptance reader. Recommended compact different-reviewer capsule <=131072 references exact5a283 full review and binds selected Source005 manifest/test/Raw4/five-source pins,24 direct-method table and qualified Path/static-only scope. Independently reconstruct capsule facts from pinned full review before entry; no capsule may claim runtime acceptance or borrow old Source003 schema. Alternative exact-role-only read of2553985B full peer needs complete38-key/nested grammar and separate approval; general2MiB cap stays fixed. Neither option is selected here.', source='HARNESS_SOURCE_DESIGN_001.json:273;391'),
+    dict(id='D03', requirement='Select pinned ASCII-safe namespace with finite width (advisory<=32); close all event kinds/keysets/parameter domains and exact row grammar. Own witness1151 hypothetical healthy subtests+48start/success=1199 rows supports a prospective1024 healthy line limit under old keys, but does not approve new/failure/skip/error grammar or prove runtime reachability. Finite failure reason/transcript policy, true event order, JSON escaping, LF/EOF/duplicate/nonfinite/type rules and unsupported rows need reviewed source before use.', source='HARNESS_SOURCE_DESIGN_001.json:103; inputs/legacyGG5/consumer-guard-child-005.TEMPLATE.py:376'),
+    dict(id='D04', requirement='Implement createonce131072-byte chunks only after complete-line cap validation; rotate solely on next-record overflow or finalEOF. Ordered names1..32,<=4096 rows, per-chunk ordinal/bytes/count/SHA, fullstream digest, immutable closed manifest and externally captured child result pins must be independently reread under caps. Reader rejects any missing/extra/duplicate/reordered/truncated/oversize/noncanonical rows/chunks and verifies collection/method/subtest completeness. No record dropping or arbitrary flush. Result262144/stdout131072/stderr131072/transcript262144 remain fixed;4MiB is maximum aggregate, not a single read cap.', source='HARNESS_SOURCE_DESIGN_001.json:92-103'),
+    dict(id='D05', requirement='Explicitly select both direct TestCase siblings with exact24 method/class IDs, fresh runtime loader discovery and persisted collection. AST19+5 is preparation; no43 inheritance and no24 actual collection/results are inferred. Preserve all test/source bytes.', source='inputs/source005/test_raw_consumer_guards_005.TEMPLATE.py:160;682; inputs/legacyGG5/consumer-guard-child-005.TEMPLATE.py:307'),
+    dict(id='D06', requirement='Produce a finite new profile/child/driver/observer/RootPS/protocol/copy projection closure and different complete harness source peer. Keep closed20/22bound/22ACK/14late/15observer contracts only after proving every new dependency pinned. Role-specific genuine Py6/PS7 clocks remain external; break hash cycles using reviewed external self/late pins. No oldaa73 approval extends to new inputs.', source='HARNESS_SOURCE_DESIGN_001.json:6-35;284'),
+    dict(id='D07', requirement='Preload exact finite stdlib import closure and prove denial probes without masking healthy tests; sixTemporaryDirectory sites require scoped owned-scratch cleanup inventories. Reject project/thirdparty/unreviewed lazy imports, out-of-scratch traversal/mutation, process/native/network/FFI. Preload/import roots, allowed cleanup operations and path identities must be explicit in future source; audit hook is not an OS sandbox.', source='HARNESS_SOURCE_DESIGN_001.json:256-264; inputs/source005/test_raw_consumer_guards_005.TEMPLATE.py:9'),
+    dict(id='D08', requirement='Preserve original600s whole-before/context and bounded/late90s freshness; unit450+after60 reserves and resource60s through actualspawn require retained external Root phase supervision and genuine actual clock evidence. Design60collection/300tests/60cleanup/420driver/450Root remain nominal cooperative limits. Direct handles, +1s reaping and snapshots do not prove physical deadlines/Job/descendants/fullsite/quiet/leases. FixedtwoTrees+fourFiles/742/config metadata is preservation only.', source='HARNESS_SOURCE_DESIGN_001.json:287-302; inputs/legacyGG5/consumer-guard-child-005.TEMPLATE.py:218; authorized Root task budgets'),
+    dict(id='D09', requirement='After new source peer and actual independent bound/late/canonical-role reviews, obtain fresh original context/whole/resource/coordination/owner/ROOTACK before first entry. All current actual slots remainNone; no timer, binding, helper reuse, fullQA/live/native/science/twins/epoch or canonical authority follows from this design peer.', source='HARNESS_SOURCE_DESIGN_001.json:230-250; Root task restrictions'),
+]
+report = dict(schema_version=1, record_type='independent_consumer005_harness_design_review',
+    reviewer='/root/native_frame_explorer', source_author='/root/candidate_review',
+    created_at_utc=datetime.now(timezone.utc).isoformat(),
+    verdict='PASS_SOURCE_ONLY_HARNESS_DESIGN_WITH_REQUIRED_PRECISION_READER_GRAMMAR_AND_IMPLEMENTATION_CONDITIONS',
+    approved_for_implementation=False, binding_or_execution_authorized=False,
+    scope='Independent finite source/AST/data design feasibility review only. D01 exact source-peer wording correction is mandatory before implementation; historical design001 is preserved. No target compiler/definitions/imports/functions/collection/tests/Git/FFI/PS/native/helper/runtime executed.',
+    source_manifest=dict(path=str(manifest_path), bytes=len(manifest_bytes), sha256=sha(manifest_bytes)),
+    finite_preservation=dict(payload_files=39, with_manifest=40, with_post=41, pairs=31,
+        actual_design_files=41, finite_unique_input_paths=73, observations=3,
+        observation_times=round_times, all_byte_and_same_API_raw9_stable=True,
+        finite_directory_names=directory_rows, unknown_original_package_files_not_inventoried=True,
+        observations_metadata=rounds),
+    discovery=dict(classes=classes, module_class_rebindings=rebound, potential_direct_IDs=24,
+        inherited43=False, actual_collection=None, actual_results=None,
+        old_one_class_selector_lines=[307,308,343,345,406]),
+    event_domain=dict(three_family_reconstructions=three_families,
+        lower_bound_is_arithmetic_not_runtime=True, lower_bound_omits21_methods_and_envelope=True,
+        subtest_AST_sites=site_rows, cases38=case_labels,
+        advisory_complete_healthy_old_key_model=dict(namespace='N'*32,
+            namespace_max_ASCII_width_advisory=32, passing_subtest_rows=1151,
+            start_and_success_rows=48, total_hypothetical_rows=1199,
+            counts_by_subtest_site={str(line):healthy_sites.count(line) for line in site_nodes},
+            max_LF_inclusive_row_bytes=maximum_row, jsonl_bytes=len(healthy_witness_bytes),
+            jsonl_sha256=sha(healthy_witness_bytes),
+            actual_event_order_model=False, schema_approved=False, runtime=False),
+        packing=dict(conditional_row_cap=1024, chunk_cap=131072, row_limit=4096,
+            minimum_rows_per_nonlast_chunk=128, max_chunks=32, aggregate_max_bytes=4194304,
+            proof='Overflow means prior bytes>131072-1024=130048;127rows can hold at most130048, so every nonlast chunk has>=128rows.33chunks need>=32*128+1=4097rows, impossible under4096. Requires no arbitrary flush/empty chunks and valid completeLF rows.',
+            result_receipt_cap=262144, capture_cap_each=131072, transcript_cap=262144,
+            new_row_grammar_approved=False)),
+    legacy_reader_precision=dict(old_peer_path=str(old_peer_path), old_top_keys=len(old_peer),
+        old_raw_policy_fact_keys=len(old_peer['raw_policy_facts']), old_peer_bytes=len(data[str(old_peer_path)]),
+        old_peer_sha256=sha(data[str(old_peer_path)]), old_source_core=profile['source003_peer_core'],
+        driver_lines={str(line):old_driver_lines[line-1] for line in [26,391,393,394,395,396,398,399,400,401,402,403,404,405,406,407,408]},
+        old_general_cap=2097152, new_top_keys=38, new_full_peer_bytes=2553985,
+        new_full_peer_sha256='5a283496929bffed9b022bff382719cbb918df94f5a5224b9c8022e237e9d096',
+        new_over_old_cap=456833, missing_old_structures=missing_old,
+        source5_peer_scope=source5_peer['verdict'], source_peer_reader_choice=None,
+        legacyaa73_is_only_static_algorithm_reference=True),
+    temporary_directory_AST_sites=temp_sites, test_AST_imports=imports,
+    conditions_before_implementation_or_entry=conditions,
+    all_design_actual_slots=design['future_actual'],
+    Source5_full_peer_is_not_runtime_acceptance=True,
+    canonical_live_science_epoch_history_preserved=True,
+    owned_output_changes_only=True,
+    no_target_execution=True)
+report_bytes = pretty(report)
+once(OUT/'INDEPENDENT_CONSUMER005_HARNESS_DESIGN_REVIEW_001.json', report_bytes)
+md = '''# Consumer005 harness design independent review
+
+PASS_SOURCE_ONLY_HARNESS_DESIGN_WITH_REQUIRED_PRECISION_READER_GRAMMAR_AND_IMPLEMENTATION_CONDITIONS. No implementation, binding, timer or runtime approval.
+
+All39 payloads+manifest+post (41 design files),31 original/copy pairs and73 finite inputs were independently read three times with exact bytes and same-API raw9. A separate post witness brackets the final report. Source AST confirms two direct unittest.TestCase siblings19+5,24 potential IDs and no inherited43; actual collection/results remainNone.
+
+D01 must be corrected in a distinct precision record before implementation. The old Source003 peer has51 top-level fields; its exact12 check is nested raw_policy_facts. The old driver391/393/395-408 also checks selected typed Source003 core and bindings/authors/API under2097152. The new peer has38 top-level fields/2553985bytes and lacks the old structures. The cap/role/shape incompatibility is real; the historical exact12-top-level wording is false and remains preserved, unapproved history.
+
+Three AST-fixed families reconstruct780 hypothetical passing subtest rows byte-exact: empty namespace276146 bytes exceeds262144 by14002; illustrative namespace324506. These are data, not runtime outcomes. The prospective chunk packing proof is sound if completeLF rows<=1024 and chunks rotate only on overflow/finalEOF: each nonlast holds>=128 rows,4096 rows need<=32 chunks of<=131072, aggregate<=4194304. Existing result262144/captures131072/transcript262144 stay fixed.
+
+An advisory own data witness derives all17 subTest sites (including four calls through the metaclass helper) as1151 hypothetical healthy rows plus48 method start/success rows under a32-character ASCII namespace. It is an old-key healthy-domain model, not actual order/collection, a new approved1024 grammar, or failure/skip/error coverage. New strict schema/source/countertests still require review.
+
+Recommended future source choice: separately reviewed compact source-acceptance capsule<=131072 anchored externally to full5a283 and selected Source005/test/Raw4/five-source pins/24-method table, preserving Path/static limits. A new exact-role full-peer reader is an alternative requiring full38-key/nested grammar and separate cap approval. Both remainNone here; no general cap widening or Source003-compatible fabrication.
+
+Before implementation choose exact two-class collection, closed event/result/manifest grammar and external child summary trust; refresh the entire finite source/profile/observer/RootPS/protocol closure; preload finite imports and scope six TemporaryDirectory cleanup inventories; preserve original600/context,90boundlate,450unit+60after and60resource-through-spawn requirements. Cooperative60/300/60/420/450 timers and direct handles do not prove physical deadlines/Job/descendant/fullsite/sandbox/quiet/lease closure. All new actual slots remainNone and canonical/Pro3 holds remain.
+'''.encode('ascii')
+once(OUT/'INDEPENDENT_CONSUMER005_HARNESS_DESIGN_REVIEW_001.md', md)
+
+# Final independent fourth observation and finite names after report construction.
+post_rows = [read(path)[1] for path in paths]
+assert post_rows == rounds[0]
+post_names = set()
+for parent in parents:
+    for path in parent.iterdir():
+        if path.is_file():
+            post_names.add(str(path))
+        else:
+            assert path in parents
+assert post_names == declared
+post_record = dict(schema_version=1, record_type='independent_design_review_post_witness',
+    created_at_utc=datetime.now(timezone.utc).isoformat(), finite_input_paths=73,
+    all_byte_same_API_raw9_and41_design_names_stable=True,
+    report_sha256=sha(report_bytes), markdown_sha256=sha(md),
+    observations_metadata=post_rows, target_execution=False)
+once(OUT/'INDEPENDENT_CONSUMER005_HARNESS_DESIGN_POST_CAPTURE_001.json', pretty(post_record))
+print(json.dumps(dict(verdict=report['verdict'], inputs=len(paths), design_files=41,
+    pairs=31, healthy_rows=1199, hypothetical_healthy_max_row=maximum_row,
+    report_sha256=sha(report_bytes), markdown_sha256=sha(md),
+    post_sha256=sha(pretty(post_record))), sort_keys=True))

@@ -1,0 +1,651 @@
+"""Author-owned byte/AST preparation only. Never execute target definitions."""
+import ast
+import datetime
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import stat
+
+PROJECT = Path('D:/Aenv/pro2')
+WORK = PROJECT / 'resume-2026-10-01-30h-001'
+PREP = WORK / 'raw-component-runtime-prep005'
+OLD = WORK / 'raw-component-runtime-prep004'
+RAW = WORK / 'successor-candidate-raw-revision004'
+GUARD = WORK / 'consumer-guard-test-runtime005'
+MAX_FILE = 8 * 1024 * 1024
+MAX_HISTORY_FILES = 512
+MAX_HISTORY_DIRECTORIES = 128
+MAX_HISTORY_BYTES = 64 * 1024 * 1024
+SOURCE_SHA = 'da64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211'
+TEST_SHA = '561e85d9d1cb9848467119ced1276a15ac35134954eaf84f9ed0f4392f3d5e98'
+RAW_MANIFEST_SHA = '45561f4dd0cf1febd4db3e8d281eb03584477048d016b311634a0d1453dbd486'
+RAW_PEER_SHA = 'e8b53c41b87e1654138a16bff69e7fb9bb84036f35b84f1fdbfffabe99e40984'
+RAW_PEER_MD_SHA = '8f74f9a499491a40c78bee3ae356f6dd43a4f1df751c4ca41a89508590ef3e26'
+OWNER_SHA = '3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff'
+sha = lambda blob: hashlib.sha256(blob).hexdigest()
+
+def utc():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+
+def encoded(value):
+    return (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True,
+                       allow_nan=False) + '\n').encode('ascii')
+
+def compact(value):
+    return (json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True,
+                       allow_nan=False) + '\n').encode('ascii')
+
+def raw9(s):
+    return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns,
+            s.st_mode, s.st_nlink, getattr(s, 'st_file_attributes', 0),
+            getattr(s, 'st_birthtime_ns', None)]
+
+def cross5(s):
+    return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_nlink]
+
+def directory(path):
+    for item in [*reversed(path.absolute().parents), path.absolute()]:
+        s = item.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode)
+        assert not getattr(s, 'st_file_attributes', 0) & 0x400
+
+def read(path):
+    directory(path.parent)
+    a = path.lstat()
+    assert stat.S_ISREG(a.st_mode) and a.st_nlink == 1
+    assert not getattr(a, 'st_file_attributes', 0) & 0x400 and a.st_size <= MAX_FILE
+    with path.open('rb') as handle:
+        b = os.fstat(handle.fileno())
+        assert cross5(a) == cross5(b)
+        blob = handle.read(MAX_FILE + 1)
+        c = os.fstat(handle.fileno())
+    d = path.lstat()
+    assert raw9(a) == raw9(d) and raw9(b) == raw9(c)
+    assert cross5(d) == cross5(c) and len(blob) == a.st_size
+    return blob, {'path': str(path), 'sha256': sha(blob), 'bytes': len(blob),
+                  'mode': stat.S_IMODE(a.st_mode), 'path_raw9': raw9(a),
+                  'descriptor_raw9': raw9(b)}
+
+def strict(blob):
+    def pairs(items):
+        answer = {}
+        for key, value in items:
+            assert key not in answer
+            answer[key] = value
+        return answer
+    def finite(token):
+        value = float(token)
+        assert math.isfinite(value)
+        return value
+    return json.loads(blob.decode('utf-8'), object_pairs_hook=pairs, parse_float=finite,
+                      parse_constant=lambda token: (_ for _ in ()).throw(ValueError(token)))
+
+def mkdir(path):
+    if path.exists():
+        directory(path)
+    else:
+        mkdir(path.parent)
+        path.mkdir()
+        directory(path)
+
+def write(path, blob):
+    mkdir(path.parent)
+    assert not path.exists(), str(path)
+    with path.open('xb') as handle:
+        handle.write(blob)
+        handle.flush()
+        os.fsync(handle.fileno())
+    assert read(path)[0] == blob
+    return read(path)[1]
+
+def inventory(root):
+    queue = [root]
+    directories = []
+    rows = []
+    total = 0
+    while queue:
+        parent = queue.pop()
+        directory(parent)
+        directories.append({'path': str(parent), 'relative_path': parent.relative_to(root).as_posix(),
+                            'path_raw9': raw9(parent.lstat()), 'mode': stat.S_IMODE(parent.lstat().st_mode)})
+        for child in sorted(parent.iterdir(), key=lambda p: p.name):
+            info = child.lstat()
+            assert not getattr(info, 'st_file_attributes', 0) & 0x400
+            if stat.S_ISDIR(info.st_mode):
+                queue.append(child)
+            else:
+                blob, row = read(child)
+                row['relative_path'] = child.relative_to(root).as_posix()
+                rows.append(row)
+                total += len(blob)
+                assert total <= MAX_HISTORY_BYTES
+        assert len(rows) <= MAX_HISTORY_FILES and len(directories) <= MAX_HISTORY_DIRECTORIES
+    return {'files': sorted(rows, key=lambda r: r['relative_path']),
+            'directories': sorted(directories, key=lambda r: r['relative_path']), 'bytes': total}
+
+def changed_function(source, name, replacement):
+    text = source.decode('utf-8')
+    nodes = [node for node in ast.parse(text).body if isinstance(node, ast.FunctionDef) and node.name == name]
+    assert len(nodes) == 1
+    node = nodes[0]
+    lines = text.splitlines(keepends=True)
+    start = sum(len(line) for line in lines[:node.lineno - 1])
+    end = sum(len(line) for line in lines[:node.end_lineno])
+    return (text[:start] + replacement.rstrip() + '\n' + text[end:]).encode('utf-8')
+
+def assignments(source, values):
+    text = source.decode('utf-8')
+    lines = text.splitlines(keepends=True)
+    edits = []
+    for node in ast.parse(text).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            name = node.targets[0].id
+            if name in values:
+                start = sum(len(line) for line in lines[:node.value.lineno - 1]) + node.value.col_offset
+                end = sum(len(line) for line in lines[:node.value.end_lineno - 1]) + node.value.end_col_offset
+                edits.append((start, end, repr(values[name])))
+    assert len(edits) == len(values)
+    for start, end, replacement in sorted(edits, reverse=True):
+        text = text[:start] + replacement + text[end:]
+    return text.encode('utf-8')
+
+started = utc()
+directory(PREP)
+assert sorted(item.name for item in PREP.iterdir()) == ['AUTHOR_PREPARE_RAW_RUNTIME005.py']
+assert not (PROJECT / '.tmp/raw4-005').exists()
+
+old_inventory = inventory(OLD)
+old_manifest_bytes, old_manifest_row = read(OLD / 'RAW_COMPONENT_PREPARATION_MANIFEST_004.json')
+old_manifest = strict(old_manifest_bytes)
+for row in old_manifest['files']:
+    blob, observed = read(OLD / row['path'])
+    assert observed['sha256'] == row['sha256'] and observed['bytes'] == row['size']
+    assert observed['path_raw9'] == row['path_identity'] and observed['descriptor_raw9'] == row['handle_identity']
+historical_pairs = []
+for row in old_inventory['directories']:
+    mkdir(PREP / 'before-runtime004' / row['relative_path'])
+for row in old_inventory['files']:
+    blob, original = read(Path(row['path']))
+    assert original['sha256'] == row['sha256']
+    copied = write(PREP / 'before-runtime004' / row['relative_path'], blob)
+    historical_pairs.append({'original': row, 'copy': copied, 'byte_exact': True,
+                             'selected_for_new_execution': False})
+write(PREP / 'COMPLETE_SPENT_RUNTIME004_PRESERVATION_005.json', encoded({
+    'schema_version': 1, 'captured_utc': utc(), 'scope': 'ALL_SPENT004_BYTES_HISTORICAL_ONLY_NEVER_REPLAY',
+    'original_inventory': old_inventory, 'original_preparation_manifest': old_manifest_row,
+    'preserved_file_pairs': historical_pairs, 'file_count': len(historical_pairs),
+    'directory_count': len(old_inventory['directories']), 'total_original_bytes': old_inventory['bytes'],
+    'complete_inventory_limits': {'files': MAX_HISTORY_FILES, 'directories': MAX_HISTORY_DIRECTORIES,
+                                  'total_bytes': MAX_HISTORY_BYTES, 'file_bytes': MAX_FILE},
+    'historical_binding_ACK_runtime_or_authority_selected': False}))
+
+source_manifest_blob, source_manifest_row = read(RAW / 'RAW_POLICY_STAGED_MANIFEST_004.json')
+assert sha(source_manifest_blob) == RAW_MANIFEST_SHA
+source_manifest = strict(source_manifest_blob)
+for row in source_manifest['entries']:
+    blob, observed = read(Path(row['path']))
+    assert observed['sha256'] == row['sha256'] and observed['bytes'] == row['bytes']
+    assert observed['path_raw9'] == row['path_raw9'] and observed['descriptor_raw9'] == row['handle_raw9']
+peer_blob, peer_row = read(RAW / 'INDEPENDENT_RAW_REVISION004_SOURCE_REVIEW_001.json')
+peer_md_blob, peer_md_row = read(RAW / 'INDEPENDENT_RAW_REVISION004_SOURCE_REVIEW_001.md')
+assert sha(peer_blob) == RAW_PEER_SHA and sha(peer_md_blob) == RAW_PEER_MD_SHA
+peer = strict(peer_blob)
+assert peer['verdict'] == peer['decision'] == 'PASS_STATIC_SOURCE_AND_TEST_PREPARATION_ONLY'
+assert peer['reviewer'] == peer['reviewer_agent'] == '/root/candidate_review'
+assert peer['source_author'] == '/root/raw_policy_worker'
+assert peer['source_sha256'] == peer['raw_helper_sha256'] == SOURCE_SHA
+assert peer['test_sha256'] == peer['raw_tests_sha256'] == TEST_SHA and peer['manifest_sha256'] == RAW_MANIFEST_SHA
+assert peer['authorization']['source_execution_authorized_by_this_review'] is False
+assert peer['tests']['actual_collection'] is None and peer['tests']['actual_runtime_acceptance'] is None
+
+selected = [
+    (RAW / 'scripts/week8_recovery_raw_authority.py', 'source/scripts/week8_recovery_raw_authority.py'),
+    (RAW / 'tests/test_week8_recovery_raw_authority.py', 'source/tests/test_week8_recovery_raw_authority.py'),
+    (RAW / 'scripts/week8_relocation_metadata.py', 'source/scripts/week8_relocation_metadata.py'),
+    (RAW / 'src/bu/experiments/week8_relocation_provenance.py', 'source/src/bu/experiments/week8_relocation_provenance.py'),
+    (RAW / 'RAW_POLICY_STAGED_MANIFEST_004.json', 'inputs/RAW_POLICY_STAGED_MANIFEST_004.json'),
+    (RAW / 'INDEPENDENT_RAW_REVISION004_SOURCE_REVIEW_001.json', 'inputs/INDEPENDENT_RAW_REVISION004_SOURCE_REVIEW_001.json'),
+    (WORK / 'OWNER_WORK_WINDOW_30H_20261001_001.json', 'inputs/OWNER_WORK_WINDOW_30H_20261001_001.json'),
+    (WORK / 'OWNER_WORK_WINDOW_30H_20261001_001_REVIEW.md', 'inputs/OWNER_WORK_WINDOW_30H_20261001_001_REVIEW.md'),
+    (RAW / 'INDEPENDENT_RAW_REVISION004_SOURCE_REVIEW_001.md', 'inputs/INDEPENDENT_RAW_REVISION004_SOURCE_REVIEW_001.md'),
+    (RAW / 'AUTHOR_FINAL_AST_AND_CAUSAL_MAP_004.json', 'inputs/AUTHOR_FINAL_AST_AND_CAUSAL_MAP_004.json'),
+    (RAW / 'HANDOFF_004.md', 'inputs/RAW_SOURCE004_HANDOFF.md'),
+    (OLD / 'inputs/pytest-findpaths.py.source', 'inputs/pytest-findpaths.py.source'),
+    (OLD / 'inputs/native-identity-algorithm-source.ps1', 'inputs/native-identity-algorithm-source.ps1'),
+]
+selected_pairs = []
+for original, relative in selected:
+    blob, row = read(original)
+    copied = write(PREP / relative, blob)
+    selected_pairs.append({'original': row, 'copy': copied, 'relative_copy': relative})
+primary = [{'original': pair['original']['path'], 'copy': pair['copy']['path'],
+            'relative_copy': pair['relative_copy'], 'sha256': pair['copy']['sha256'],
+            'size': pair['copy']['bytes'], 'mode': pair['copy']['mode']}
+           for pair in selected_pairs[:8]]
+assert primary[0]['sha256'] == SOURCE_SHA and primary[0]['size'] == 210452
+assert primary[1]['sha256'] == TEST_SHA and primary[1]['size'] == 462390
+assert primary[6]['sha256'] == OWNER_SHA
+projection = {'schema_version': 1, 'scope': 'RAW004_SOURCE_TEST_STATIC_PEER_AND_HISTORICAL_OWNER_ONLY',
+              'eight_primary_inputs': primary, 'all_current_copied_inputs': selected_pairs,
+              'source_and_test_peer_input_sha256': RAW_PEER_SHA,
+              'peer_confers_runtime_or_operational_authority': False,
+              'actual_context_runtime_owner_selection_ACK_or_binding_completed': False,
+              'source_global_admission_cap': 395799, 'source_schema3_admission_cap': 361287,
+              'source_API_keyword_count': 12, 'source_operational_file_roles': 7}
+projection_blob = encoded(projection)
+projection_row = write(PREP / 'SOURCE_AND_HISTORICAL_INPUTS_005.json', projection_blob)
+
+guard_profile = strict(read(GUARD / 'GUARD_RUNTIME_PROFILE_005.json')[0])
+context_profile = dict(guard_profile['context_profile'])
+context_profile['configuration_parents'] = context_profile['configuration_parents'][:-1] + [PREP.as_posix()]
+context_profile['purpose'] = 'Fresh opaque current742/HEAD/index/55configuration preservation, not policy or release authority.'
+context_profile['fresh_current_context_required_after_runtime004_review'] = True
+assert len(context_profile['configuration_names']) == 11 and len(context_profile['configuration_parents']) == 5
+context_profile_data = {'schema_version': 1, 'scope': 'RAW005_OPAQUE_CURRENT_CONTEXT_GUARD_ONLY',
+    'context_profile': context_profile,
+    'runtime_roles_projection_sha256': guard_profile['runtime_roles_projection_sha256'],
+    'intrinsic_timestamp_parser_is_permissive_aware_UTC': True,
+    'actual_record_canonical_producer_role_review_required': True,
+    'actual_current_context_or_runtime_selected': None}
+context_row = write(PREP / 'OPAQUE_CONTEXT_PROFILE_005.json', encoded(context_profile_data))
+write(PREP / 'OPAQUE_CURRENT_CONTEXT_005.TEMPLATE.json', encoded({
+    'schema_version': 1, 'scope': context_profile_data['scope'], 'captured_utc': None,
+    'head': None, 'tracked_rows': None, 'git_metadata': None, 'configurations': None,
+    'runtime_roles_projection_sha256': context_profile_data['runtime_roles_projection_sha256']}))
+
+old_driver = read(OLD / 'run-isolated-raw-component-004.TEMPLATE.py')[0]
+driver = old_driver.replace(b'raw-component-runtime-prep004', b'raw-component-runtime-prep005')
+driver = driver.replace(b'raw4-004', b'raw4-005').replace(b'RAW004', b'RAW005').replace(b'RAW003', b'RAW005')
+for old_name, new_name in (
+    (b'SOURCE_AND_HISTORICAL_INPUTS_004.json', b'SOURCE_AND_HISTORICAL_INPUTS_005.json'),
+    (b'run-isolated-raw-component-004.BOUND.py', b'run-isolated-raw-component-005.BOUND.py'),
+    (b'INDEPENDENT_RAW_HARNESS_STATIC_REVIEW_004.json', b'INDEPENDENT_RAW_HARNESS_STATIC_REVIEW_005.json'),
+    (b'INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_004.json', b'INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_005.json'),
+    (b'ROOT_LAUNCH_START_004.json', b'ROOT_LAUNCH_START_005.json'),
+    (b'ROOT_RUN_INTENT_004.json', b'ROOT_RUN_INTENT_005.json'),
+    (b'raw-test-child-004.TEMPLATE.py', b'raw-test-child-005.TEMPLATE.py'),
+    (b'execute_isolated_raw004_collection_then_tests_once', b'execute_isolated_raw005_collection_then_tests_once')):
+    driver = driver.replace(old_name, new_name)
+driver = assignments(driver, {'SOURCE_PROJECTION_SHA256': projection_row['sha256'],
+    'RAW_SOURCE_SHA256': SOURCE_SHA, 'RAW_TEST_SHA256': TEST_SHA, 'RAW_TEST_SIZE': 462390,
+    'MAX_COLLECTION_SECONDS': 60, 'MAX_TEST_SECONDS': 300, 'MAX_ROOT_SECONDS': 450})
+driver = driver.replace(b'RAW_TEST_PEER_REVIEW_SHA256 = None\n', b'')
+driver = driver.replace(b' or RAW_TEST_PEER_REVIEW_SHA256 is None', b'')
+driver = driver.replace(b'"RAW_SOURCE_PEER_REVIEW_SHA256", "RAW_TEST_PEER_REVIEW_SHA256", "HARNESS_STATIC_REVIEW_SHA256"',
+                        b'"RAW_SOURCE_PEER_REVIEW_SHA256", "HARNESS_STATIC_REVIEW_SHA256"')
+driver = driver.replace(b'len(replacements) == 3, "exact three binding sites required"',
+                        b'len(replacements) == 2, "exact two binding sites required"')
+driver = driver.replace(b'excluded.add("/root/keepawake_stage")', b'excluded.add("/root/raw_policy_worker")')
+insertion = ("\nRAW_STAGE_MANIFEST_SHA256 = " + repr(RAW_MANIFEST_SHA) +
+             "\nCONTEXT_PROFILE_SHA256 = " + repr(context_row['sha256']) + "\n").encode('ascii')
+driver = driver.replace(b'\ndef require(ok, text):', insertion + b'\ndef require(ok, text):', 1)
+
+context_helpers = '''def opaque_metadata_row(path, expected, maximum):
+    exact(expected, ("path", "sha256", "bytes", "path_raw9", "descriptor_raw9"), "opaque metadata row")
+    require(expected["path"] == str(path) and type(expected["bytes"]) is int
+            and 0 <= expected["bytes"] <= maximum and hex64(expected["sha256"]), "opaque row path/size")
+    require(all(type(expected[name]) is list and len(expected[name]) == 9
+                and all(type(value) is int for value in expected[name])
+                for name in ("path_raw9", "descriptor_raw9")), "opaque raw9 metadata type")
+    chain = ancestors(path.parent)
+    before = path.lstat()
+    require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+            and not getattr(before, "st_file_attributes", 0) & 0x400
+            and before.st_size <= maximum, "opaque pre-read identity/cap")
+    with path.open("rb") as stream:
+        first = os.fstat(stream.fileno())
+        require(cross(before) == cross(first) and first.st_size <= maximum, "opaque opened identity/cap")
+        data = stream.read(maximum + 1)
+        last = os.fstat(stream.fileno())
+    after = path.lstat()
+    require(len(data) == expected["bytes"] == before.st_size and len(data) <= maximum
+            and raw(before) == raw(after) and raw(first) == raw(last)
+            and cross(before) == cross(first) == cross(last) == cross(after)
+            and ancestors(path.parent) == chain and sha(data) == expected["sha256"]
+            and list(raw(before)) == expected["path_raw9"]
+            and list(raw(first)) == expected["descriptor_raw9"], "opaque byte/metadata drift")
+    return {"path": str(path), "sha256": sha(data), "bytes": len(data),
+            "path_raw9": list(raw(before)), "descriptor_raw9": list(raw(first))}
+
+def opaque_context_guard(ack):
+    profile = parsed(PREP / "OPAQUE_CONTEXT_PROFILE_005.json", CONTEXT_PROFILE_SHA256)
+    path, pin = binding(ack["opaque_current_context"])
+    value = decode(read(path, pin, profile["context_profile"]["maximum_opaque_context_bytes"]))
+    exact(value, ("schema_version", "scope", "captured_utc", "head", "tracked_rows",
+                  "git_metadata", "configurations", "runtime_roles_projection_sha256"), "opaque context")
+    require(type(value["schema_version"]) is int and value["schema_version"] == 1
+            and value["scope"] == profile["scope"]
+            and value["runtime_roles_projection_sha256"] == profile["runtime_roles_projection_sha256"], "opaque context role")
+    require(0 <= (datetime.now(timezone.utc)-timestamp(value["captured_utc"])).total_seconds() <= 600,
+            "fresh opaque context required")
+    cfg = profile["context_profile"]
+    live = Path(cfg["live_root"])
+    require(live == LIVE, "fixed opaque live root")
+    require(type(value["head"]) is str and len(value["head"]) == 40
+            and all(c in "0123456789abcdef" for c in value["head"]), "opaque HEAD syntax")
+    require(type(value["tracked_rows"]) is list and len(value["tracked_rows"]) == cfg["tracked_count"] == 742,
+            "opaque tracked row count")
+    paths = [row.get("path") for row in value["tracked_rows"] if type(row) is dict]
+    require(len(paths) == 742 and all(type(path) is str for path in paths)
+            and paths == sorted(paths) and len(set(path.casefold() for path in paths)) == 742
+            and sha(encoded(paths)) == cfg["historical_authenticated_pathset_sha256"], "fixed opaque742 path sequence")
+    result = {"head": value["head"], "tracked_rows": [], "git_metadata": [], "configurations": []}
+    for row in value["tracked_rows"]:
+        relative = Path(row["path"])
+        require(not relative.is_absolute() and ".." not in relative.parts and relative.as_posix() == row["path"]
+                and len(row["path"]) <= 399, "opaque relative path")
+        actual = dict(row)
+        actual["path"] = str(live / relative)
+        observed = opaque_metadata_row(live / relative, actual, cfg["maximum_file_bytes"])
+        observed["path"] = row["path"]
+        result["tracked_rows"].append(observed)
+    git_paths = cfg["head_paths"] + cfg["optional_git_metadata_paths"]
+    config_paths = [str(Path(parent) / name) for parent in cfg["configuration_parents"]
+                    for name in cfg["configuration_names"]]
+    require(len(config_paths) == 55, "exact55 separate context configuration paths")
+    for field, allowed in (("git_metadata", git_paths), ("configurations", config_paths)):
+        require(type(value[field]) is list and [row.get("path") for row in value[field] if type(row) is dict] == allowed,
+                "opaque fixed path coverage")
+        for row in value[field]:
+            exact(row, ("path", "exists", "identity"), "opaque optional row")
+            require(type(row["exists"]) is bool, "opaque existence type")
+            item = Path(row["path"])
+            if row["exists"]:
+                observed = opaque_metadata_row(item, row["identity"], cfg["maximum_git_metadata_bytes"])
+                result[field].append({"path": str(item), "exists": True, "identity": observed})
+            else:
+                require(row["identity"] is None and absent(item), "opaque absence drift")
+                require(field != "git_metadata" or row["path"] not in cfg["head_paths"], "required HEAD metadata absent")
+                result[field].append({"path": str(item), "exists": False, "identity": None})
+    head_path = Path(cfg["head_paths"][-1])
+    expected_head = next(row["identity"]["sha256"] for row in value["git_metadata"] if row["path"] == str(head_path))
+    require(read(head_path, expected_head, 128).decode("ascii").strip() == value["head"], "opaque actual branch HEAD differs")
+    return result
+'''
+driver = driver.replace(b'\ndef fresh_guard(', b'\n' + context_helpers.encode('utf-8') + b'\ndef fresh_guard(', 1)
+text = driver.decode('utf-8')
+start = text.index('    live_path, live_sha = binding(ack["live_guard_snapshot"])')
+end = text.index('    free_disk = ctypes.c_ulonglong()', start)
+text = text[:start] + '''    live = opaque_context_guard(ack)
+    if expected_live is not None:
+        require(live == expected_live, "current742/HEAD/index/configuration bytes or metadata changed")
+''' + text[end:]
+start = text.index('    raw_peer = parsed(')
+end = text.index('    ack = parsed(', start)
+text = text[:start] + '''    raw_peer = parsed(PREP / "inputs/INDEPENDENT_RAW_REVISION004_SOURCE_REVIEW_001.json", RAW_SOURCE_PEER_REVIEW_SHA256)
+    independent_reviewer(raw_peer, harness=False)
+    require(type(raw_peer["schema_version"]) is int and raw_peer["schema_version"] == 1
+            and raw_peer["record_type"] == "independent_raw_revision004_source_test_static_review"
+            and raw_peer["reviewer"] == raw_peer["reviewer_agent"] == "/root/candidate_review"
+            and raw_peer["source_author"] == "/root/raw_policy_worker"
+            and raw_peer["decision"] == raw_peer["verdict"] == "PASS_STATIC_SOURCE_AND_TEST_PREPARATION_ONLY"
+            and raw_peer["source_sha256"] == raw_peer["raw_helper_sha256"] == RAW_SOURCE_SHA256
+            and raw_peer["test_sha256"] == raw_peer["raw_tests_sha256"] == RAW_TEST_SHA256
+            and type(raw_peer["source_bytes"]) is int and raw_peer["source_bytes"] == 210452
+            and type(raw_peer["test_bytes"]) is int and raw_peer["test_bytes"] == RAW_TEST_SIZE
+            and raw_peer["manifest_sha256"] == RAW_STAGE_MANIFEST_SHA256
+            and raw_peer["authorization"]["source_execution_authorized_by_this_review"] is False
+            and raw_peer["tests"]["actual_collection"] is None
+            and raw_peer["tests"]["actual_runtime_acceptance"] is None,
+            "exact Raw004 source-and-test STATIC peer receipt required")
+    raw_stage = parsed(PREP / "inputs/RAW_POLICY_STAGED_MANIFEST_004.json", RAW_STAGE_MANIFEST_SHA256)
+    require(raw_stage["source_sha256"] == RAW_SOURCE_SHA256 and raw_stage["test_sha256"] == RAW_TEST_SHA256
+            and type(raw_stage["api_keyword_count"]) is int and raw_stage["api_keyword_count"] == 12
+            and type(raw_stage["global_cap"]) is int and raw_stage["global_cap"] == 395799
+            and type(raw_stage["schema3_cap"]) is int and raw_stage["schema3_cap"] == 361287,
+            "fixed Raw004 source manifest/API/caps differ")
+''' + text[end:]
+text = text.replace('"raw_test_peer_review_sha256"', '"context_profile_sha256"')
+text = text.replace('"live_guard_snapshot"', '"opaque_current_context"')
+text = text.replace('ack["context_profile_sha256"] == RAW_TEST_PEER_REVIEW_SHA256',
+                    'ack["context_profile_sha256"] == CONTEXT_PROFILE_SHA256')
+old_evidence = '''                      (PREP / "inputs/INDEPENDENT_RAW_POLICY_STATIC_REVIEW_003.json", RAW_SOURCE_PEER_REVIEW_SHA256, MAX_JSON_BYTES),
+                      (PREP / "inputs/INDEPENDENT_RAW_TEST_REVISION_STATIC_REVIEW_004.json", RAW_TEST_PEER_REVIEW_SHA256, MAX_JSON_BYTES),'''
+new_evidence = '''                      (PREP / "inputs/INDEPENDENT_RAW_REVISION004_SOURCE_REVIEW_001.json", RAW_SOURCE_PEER_REVIEW_SHA256, MAX_JSON_BYTES),
+                      (PREP / "inputs/RAW_POLICY_STAGED_MANIFEST_004.json", RAW_STAGE_MANIFEST_SHA256, MAX_JSON_BYTES),
+                      (PREP / "OPAQUE_CONTEXT_PROFILE_005.json", CONTEXT_PROFILE_SHA256, MAX_JSON_BYTES),'''
+assert old_evidence in text
+text = text.replace(old_evidence, new_evidence)
+driver = text.encode('utf-8')
+assert b'RAW_TEST_PEER_REVIEW_SHA256' not in driver
+assert b'INDEPENDENT_RAW_POLICY_STATIC_REVIEW_003.json' not in driver
+assert b'INDEPENDENT_RAW_TEST_REVISION_STATIC_REVIEW_004.json' not in driver
+assert b'raw-component-runtime-prep004' not in driver
+assert b'raw4-004' not in driver
+ast.parse(driver)
+driver_row = write(PREP / 'run-isolated-raw-component-005.TEMPLATE.py', driver)
+child = read(OLD / 'raw-test-child-004.TEMPLATE.py')[0]
+ast.parse(child)
+child_row = write(PREP / 'raw-test-child-005.TEMPLATE.py', child)
+observer = read(OLD / 'observe-whole-runtime-004.TEMPLATE.py')[0]
+observer = observer.replace(b'raw-component-runtime-prep004', b'raw-component-runtime-prep005')
+observer = observer.replace(b'observe-whole-runtime-004.BOUND.py', b'observe-whole-runtime-005.BOUND.py')
+observer = observer.replace(b'INDEPENDENT_RAW_HARNESS_STATIC_REVIEW_004.json', b'INDEPENDENT_RAW_HARNESS_STATIC_REVIEW_005.json')
+observer = observer.replace(b"'/root/keepawake_stage','keepawake_stage',", b'')
+observer = observer.replace(b"allowed={'/root/candidate_review'", b"allowed={'/root/keepawake_stage','keepawake_stage','/root/candidate_review'")
+ast.parse(observer)
+observer_row = write(PREP / 'observe-whole-runtime-005.TEMPLATE.py', observer)
+
+ps = read(OLD / 'ROOT_FIRST_LAUNCH_004.TEMPLATE.ps1')[0]
+ps = ps.replace(b'raw-component-runtime-prep004', b'raw-component-runtime-prep005')
+ps = ps.replace(b'RAW004', b'RAW005').replace(b'Raw004', b'Raw005')
+for name in ('run-isolated-raw-component', 'INDEPENDENT_RAW_HARNESS_BOUND_REVIEW', 'ROOT_LAUNCH_START',
+             'ROOT_LAUNCH_TERMINAL', 'ROOT_LAUNCH_STDOUT', 'ROOT_LAUNCH_STDERR'):
+    ps = ps.replace((name + '-004').encode(), (name + '-005').encode())
+    ps = ps.replace((name + '_004').encode(), (name + '_005').encode())
+ps = ps.replace(b'WaitForExit(4320000)', b'WaitForExit(450000)')
+ps = ps.replace(b"$Stderr = Join-Path $Prep 'ROOT_LAUNCH_STDERR_005.txt'", b"$Stderr = Join-Path $Prep 'ROOT_LAUNCH_STDERR_005.txt'\n$Scratch = 'D:\\Aenv\\pro2\\.tmp\\raw4-005'")
+ps = ps.replace(b'@($Start, $Terminal, $Stdout, $Stderr)',
+                b"@($Start, $Terminal, $Stdout, $Stderr, $Scratch, (Join-Path $Prep 'ROOT_RUN_INTENT_005.json'), (Join-Path $Prep 'started.json'), (Join-Path $Prep 'finished.json'), (Join-Path $Prep 'failed.json'), (Join-Path $Prep 'collection'), (Join-Path $Prep 'tests'))")
+assert b'4320000' not in ps and b'raw-component-runtime-prep004' not in ps
+assert ps.index(b'$Scratch,') < ps.index(b'$Started =')
+ps_row = write(PREP / 'ROOT_FIRST_LAUNCH_005.TEMPLATE.ps1', ps)
+
+old_ack = strict(read(OLD / 'ROOT_FIRST_EXECUTION_ACK_RAW004.TEMPLATE.json')[0])
+ack = dict(old_ack)
+ack['decision'] = 'execute_isolated_raw005_collection_then_tests_once'
+ack['owner_sha256'] = None
+ack['raw_source_sha256'] = SOURCE_SHA
+ack['raw_test_sha256'] = TEST_SHA
+ack['source_projection_sha256'] = projection_row['sha256']
+ack['maximum_collection_seconds'] = 60
+ack['maximum_test_seconds'] = 300
+ack.pop('raw_test_peer_review_sha256')
+ack['context_profile_sha256'] = context_row['sha256']
+ack['opaque_current_context'] = ack.pop('live_guard_snapshot')
+assert len(ack) == 22
+ack_row = write(PREP / 'ROOT_FIRST_EXECUTION_ACK_RAW005.TEMPLATE.json', encoded(ack))
+
+future = {name: None for name in (
+    'source_peer_literal_binding', 'harness_static_review_sha256', 'bound_driver_sha256',
+    'bound_whole_observer_sha256', 'bound_root_PS_sha256', 'bound_review_sha256',
+    'late_launch_review_sha256', 'root_ack_sha256', 'actual_owner_selection',
+    'actual_runtime_selection', 'actual_current742_HEAD_index_config_selection',
+    'actual_resource_record', 'actual_coordination_record', 'actual_whole_before_sha256',
+    'actual_whole_after_sha256', 'actual_collection_count', 'actual_ordered_nodeids_sha256',
+    'actual_runtime_result_sha256', 'actual_JUnit_sha256')}
+plan = {'schema_version': 1, 'author': '/root/raw_policy_worker',
+    'status': 'FROZEN_AUTHOR_SOURCE_PREPARATION_UNBOUND_UNRUN_DIFFERENT_REVIEW_REQUIRED',
+    'scope': 'RAW004_COPIED_PYTEST_UNIT_ONLY_NO_OPERATIONAL_AUTHORITY',
+    'raw_source_sha256': SOURCE_SHA, 'raw_source_bytes': 210452,
+    'raw_test_sha256': TEST_SHA, 'raw_test_bytes': 462390,
+    'raw_source_test_preparation_peer_input_sha256': RAW_PEER_SHA,
+    'source_peer_driver_literal': None, 'source_projection_sha256': projection_row['sha256'],
+    'context_profile_sha256': context_row['sha256'], 'owner_end_utc': '2026-10-02T22:36:15Z',
+    'phases': [{'phase': 'collection', 'maximum_seconds': 60},
+               {'phase': 'tests', 'maximum_seconds': 300, 'maxfail': 1}],
+    'owned_direct_child_cleanup_wait_seconds': 60, 'root_direct_driver_seconds': 450,
+    'root_driver_claim_reserve_seconds': 570,
+    'budgets_are_local_waits_not_hard_end_to_end_IO_or_process_tree_bounds': True,
+    'minimum_ack_RAM_bytes': 1073741824, 'minimum_disk_bytes': 10737418240,
+    'single_thread': True, 'scratch': str(PROJECT / '.tmp/raw4-005'),
+    'separate_guards': {'pytest_discovery_names': 8, 'pytest_discovery_ancestors': 7,
+                       'pytest_discovery_paths': 56, 'opaque_context_names': 11,
+                       'opaque_context_parents': 5, 'opaque_context_paths': 55},
+    'API_keywords': 12, 'operational_file_roles': 7, 'global_admission_ingress_bytes': 395799,
+    'schema3_admission_bytes': 361287, 'prepared_AST_test_functions': 58,
+    'actual_collection_or_case_count_inferred': False,
+    'old171_cases_are_historical_runtime004_only_not_new_collection_acceptance': True,
+    'private_Git_and_scoped_Windows_metadata_FFI_fixtures_future_unit_only': True,
+    'expected_Win1314_symlink_skips': 'Only actual outcomes of the two named privilege-sensitive tests may qualify.',
+    'canonical_QA': False, 'fits_fullQA_native_Torch_or_release_authority': False,
+    'OS_sandbox_full_site_closure_Job_or_descendant_cleanup_proved': False,
+    'before_after_whole_tree_fresh_metadata_required': True,
+    'two_whole_inventory_trees': ['frozen_base', 'venv_Scripts'], 'runtime_fixed_files': 4,
+    'future': future,
+    'templates': {row['path'].split('\\')[-1]: {'sha256': row['sha256'], 'bytes': row['bytes']}
+                  for row in (driver_row, child_row, observer_row, ps_row, ack_row)}}
+plan_row = write(PREP / 'RAW_COMPONENT_PLAN_005.json', encoded(plan))
+
+protocol = {'schema_version': 1, 'scope': plan['scope'], 'source_author': '/root/raw_policy_worker',
+    'source_peer_exact_core': {key: peer[key] for key in ('schema_version', 'record_type', 'reviewer',
+        'reviewer_agent', 'source_author', 'verdict', 'decision', 'source_sha256', 'raw_helper_sha256',
+        'test_sha256', 'raw_tests_sha256', 'manifest_sha256', 'source_bytes', 'test_bytes')},
+    'actual_nested_source_peer_nonexecution_fields': {
+        'authorization.source_execution_authorized_by_this_review': False,
+        'tests.actual_collection': None, 'tests.actual_runtime_acceptance': None},
+    'static_report_required_core': {'verdict': 'PASS_STATIC_PREPARATION_ONLY',
+        'driver_template_sha256': driver_row['sha256'], 'child_template_sha256': child_row['sha256'],
+        'whole_observer_template_sha256': observer_row['sha256']},
+    'bound_report_required_core': {'verdict': 'PASS_BOUND_FOR_ROOT_FIRST_EXECUTION_ONLY',
+        'bound_driver_sha256': None, 'static_review_sha256': None},
+    'ACK_exact_keys': sorted(ack), 'ACK_key_count': len(ack),
+    'driver_future_literals': ['RAW_SOURCE_PEER_REVIEW_SHA256', 'HARNESS_STATIC_REVIEW_SHA256'],
+    'observer_future_literals': ['HARNESS_STATIC_REVIEW_SHA256'],
+    'ROOT_PS_future_literals': ['BoundDriverSha256', 'RootAckSha256', 'BoundReviewSha256'],
+    'late_review_is_separate_ROOT_external_prerequisite_not_programmatically_intrinsic_in_this_driver': True,
+    'late_review_must_assess_actual': ['ROOT_ACK', 'actual_bound_ROOT_PS', 'actual_bound_driver',
+        'actual_bound_review', 'source_test_peer', 'fresh_source_projection', 'fresh_context742_HEAD_index_config55',
+        'fresh_runtime4', 'fresh_whole_before', 'owner_expiry', 'resource', 'coordination'],
+    'future_late_review': None,
+    'timestamp_contract': {'intrinsic_python_fromisoformat_and_PS_Parse_are_permissive_aware_UTC': True,
+        'external_actual_record_review_must_enforce_genuine_producer_role': True,
+        'Python_metadata': 'UTC offset +00:00; own producer uses six fractional digits, legacy isoformat may emit zero or six.',
+        'ROOT_PS_metadata': 'ToString(o) UTC offset +00:00, seven fractional digits.',
+        'immutable_owner': 'Authenticate exact existing bytes; legacy Z spelling remains its own schema.',
+        'universal_UTC33_claim': False},
+    'actual_context_runtime_ACK_late_bound_or_execution': None}
+write(PREP / 'BINDING_AND_EXECUTION_PROTOCOL_005.json', encoded(protocol))
+
+source_tree = ast.parse(read(PREP / 'source/scripts/week8_recovery_raw_authority.py')[0])
+test_tree = ast.parse(read(PREP / 'source/tests/test_week8_recovery_raw_authority.py')[0])
+test_names = [node.name for node in test_tree.body if isinstance(node, ast.FunctionDef) and node.name.startswith('test_')]
+assert len(test_names) == len(set(test_names)) == 58
+old_test_tree = ast.parse(read(OLD / 'source/tests/test_week8_recovery_raw_authority.py')[0])
+old_functions = {node.name: ast.dump(node, include_attributes=False) for node in old_test_tree.body if isinstance(node, ast.FunctionDef)}
+new_functions = {node.name: ast.dump(node, include_attributes=False) for node in test_tree.body if isinstance(node, ast.FunctionDef)}
+assert all(new_functions[name] == value for name, value in old_functions.items())
+assert read(PREP / 'source/tests/test_week8_recovery_raw_authority.py')[0].startswith(read(OLD / 'source/tests/test_week8_recovery_raw_authority.py')[0])
+new_driver_ast = ast.parse(driver)
+driver_functions = {node.name: ast.dump(node, include_attributes=False) for node in new_driver_ast.body if isinstance(node, ast.FunctionDef)}
+old_driver_functions = {node.name: ast.dump(node, include_attributes=False) for node in ast.parse(old_driver).body if isinstance(node, ast.FunctionDef)}
+driver_changed = [name for name in old_driver_functions if driver_functions[name] != old_driver_functions[name]]
+driver_unchanged = [name for name in old_driver_functions if driver_functions[name] == old_driver_functions[name]]
+driver_added = [name for name in driver_functions if name not in old_driver_functions]
+driver_nones = [node.targets[0].id for node in new_driver_ast.body if isinstance(node, ast.Assign)
+                and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                and isinstance(node.value, ast.Constant) and node.value.value is None]
+assert driver_nones == ['RAW_SOURCE_PEER_REVIEW_SHA256', 'HARNESS_STATIC_REVIEW_SHA256']
+assert all(value is None for value in future.values())
+assert all(bad not in driver for bad in (b'raw-component-runtime-prep004', b'.tmp/raw4-004',
+                                      b'ROOT_FIRST_EXECUTION_ACK_RAW004', b'raw4-003'))
+audit = {'schema_version': 1, 'method': 'AST/literal/data/byte guards only; no target compiler/definitions/imports/tests/Git/FFI',
+    'source_test_AST_functions': test_names, 'source_top_functions': len([n for n in source_tree.body if isinstance(n, ast.FunctionDef)]),
+    'test_top_functions': len(new_functions), 'preserved_old_test_function_AST_count': len(old_functions),
+    'preserved_old_test_bytes_prefix': len(read(OLD / 'source/tests/test_week8_recovery_raw_authority.py')[0]),
+    'driver_changed_function_ASTs': driver_changed, 'driver_unchanged_function_ASTs': driver_unchanged,
+    'driver_added_functions': driver_added, 'child_byte_exact_old004': child == read(OLD / 'raw-test-child-004.TEMPLATE.py')[0],
+    'observer_changes_namespace_only': True, 'driver_future_None_literals': driver_nones,
+    'ACK_keys': sorted(ack), 'ACK_count': len(ack), 'source_peer_binding_None': True,
+    'copied_source4_and_test4_exact': True, 'source_API12_ingress395799_schema3361287_preserved': True,
+    'ROOT_PS_active_scratch_and_outputs_preflight_precedes_RootStart': True,
+    'pytest56_and_context55_are_separate': True, 'fresh_actual_counts_and_context_None': True,
+    'target_execution_or_collection_completed': False,
+    'author_findings': ['Prior report-schema advisory placed nonexecution at top level; actual frozen report nests it in authorization. No target effect; actual nested contract is used.',
+        'The old preparation describes45 test functions but actual new test AST contains58; no node count is inferred.',
+        'Old spent004 policies and bindings are historical only and no raw3 source/test peer is selected.'],
+    'limits': ['AST preparation does not prove healthy collection/runtime, physical Git/native closure, complete site or loaded module closure.',
+               'ROOT450 and child60/300/cleanup60 are local waits; file IO, capture drains and descendant cleanup are not hard bounded.',
+               'No Job memory/write sandbox is present; two fresh whole-tree observations and external after audit remain mandatory.']}
+write(PREP / 'AUTHOR_STATIC_PROTOCOL_AUDIT_005.json', encoded(audit))
+
+contract = '''# Raw005 isolated runtime preparation contract
+
+This is author preparation only, with Raw004 source da64 and test561e copied exactly. Raw004 source/test peer e8b53 is authenticated data, while both driver literal bindings and the observer binding remain None. No target compiler, definition, import, collection, test, observer, Git, FFI, native, fit or Torch action ran during preparation.
+
+The complete spent runtime004 package, including its before003 history and actual runtime/whole-tree/ACK/binding/capture/review evidence, is preserved under before-runtime004. None of those records is selected as a fresh binding or execution authority. A fresh different harness static review, exact source binding review, actual before/context/runtime/resource/coordination proofs, actual bound/late reviews and ROOT_ACK are required before any first entry. The source/test and harness author is /root/raw_policy_worker; /root and that author cannot supply independent reviews. Canonical finite aliases are checked. The exact current Raw004 source peer reviewer is /root/candidate_review.
+
+New driver has two future literal bindings: RAW_SOURCE_PEER_REVIEW_SHA256 and HARNESS_STATIC_REVIEW_SHA256. Observer has one; ROOT_PS has three. Literal reversal must reproduce each reviewed template. Actual ACK has exactly22 keys. There is no receipt self-hash cycle: bound review pins driver, later ACK pins bound review, reviewed PS carries those external hashes. The actual separate late review remains an external ROOT prerequisite and must authenticate the genuine actual ACK/PS/source/context/runtime/resource/coordination proof sequence; merely finding records or silence is not approval. No old ACK, result or observer is reusable.
+
+The private source-only pytest child is exact old004 child bytes. It uses direct frozen base -I-S-B-Xutf8, explicit pytest9.1.1 site, plugin autoload/cache off, one thread, fresh short .tmp/raw4-005 TEMP/TMP/TMPDIR and copied source cwd. The future raw suite permits reviewed private scratch Git subprocess fixtures and scoped Windows native metadata/FFI probes. No real native ceremony, live Git mutation/commit, fit, Torch, source apply or release is authorized. Two named symlink tests may qualify as skips only on their actual Win1314 privilege outcome. All58 test function names are prepared AST facts, not an actual node count. Collection/IDs/JUnit/results are derived fresh; maxfail1 leaves later nodes unrun on failure.
+
+Collection wait60s, test wait300s and owned direct-child cleanup wait60s yield a420s local phase allowance, with ROOT direct-driver wait450s. Driver requires570s ACK expiry reserve for its450s plus120s capture/closeout allowance. These are local wait controls, not guaranteed hard wall limits for IO/guard work/capture drains/process trees. ROOT450 kill targets its direct driver only; owned-child waits retain direct handle evidence. No Job, descendant cleanup, full site/Lib/DLL loaded closure or OS write sandbox is claimed.
+
+Before/after whole observer retains exact globally mixed D/F UTF16 Ordinal native digest, root excluded, for frozen base and venv Scripts twice. All4 current runtime files are independently selected after review. The two whole trees are external time-local metadata observations; driver authenticates their pins/age and does not itself freshly reread every global-tree file. Independent after byte/path/descriptor/directory/root metadata reconciliation remains required for runtime acceptance. No before/after capture ran in preparation.
+
+Old pytest discovery absence guard remains8names*7copied-test ancestors=56. A separate opaque context record checks742 current files, actual branch HEAD bytes, gitdir/commondir/index/config/packed-ref metadata and11names*5parents=55 configurations. All current context/runtime records remain unselected None. Historical742 path order authenticates shape only; ROOT must freshly select and independently review actual current HEAD/index/pathset. No old597/3f source bytes are substituted for a current preservation snapshot, and current metadata is never finite-lineage or operational policy authority.
+
+Intrinsic Python fromisoformat and inherited PS timestamp handling accept aware UTC permissively; they do not universally enforce a canonical33-byte spelling. Actual independent record review must enforce the genuine producer role: Python own metadata6 fractions (legacy isoformat0or6), ROOT_PS ToString(o)7 fractions, and exact legacy owner Z bytes separately. Existing policy/schema1-2 private caps, global395799/schema3361287, API12/seven roles remain unchanged. Source4 consumer/publisher/native propagation and physical typed Git/operational release closure are deferred.
+
+Minimum fresh ACK RAM1GiB and D10GiB, existing owner ending2026-10-02T22:36:15Z, actual isolated coordination (not sole/native quiet ACK), all create-once output/scratch absences and original reserve/public/replay/science/epoch guards remain. ROOT020 primary docs and live/frozen files are unchanged. All future selection/review/binding/ACK/results fields are None. Partial/failure/timeout consumes its namespace; preserve bytes and prepare a different successor, never replay.
+'''
+write(PREP / 'BINDING_AND_EXECUTION_CONTRACT_005.md', contract.encode('utf-8'))
+write(PREP / 'HANDOFF_005.md', ('''# Raw005 preparation handoff
+
+AUTHOR PREPARATION ONLY; unbound/unrun and different harness review required. Raw004 source da64c4ea/210452B and test561e85d9/462390B are exact copies. Their actual source/test STATIC peer e8b53c41 is preserved; it grants no runtime/native/fit/fullgate authority. Driver2 None bindings, observer1, ROOT_PS3; ACK exact22. New source/test/runtime/context/late/ACK/result execution bindings are unset.
+
+Complete spent004 history:133 files/17directories/31,735,972B are preserved once, including consumed observers/ACK/driver/PS/whole trees/171-case169P2Win1314S historical result and prior003failure. Old selected hashes are historical only. Fresh planned collection has58 source AST test functions but no actual node/count/result. Meaningful old/final/new policy fixtures remain exact accepted source4 bytes; the new third-middle broad refusal has its independently documented size-mask limitation. Cold/reuse consumer/physical native closure is not proved by this raw-only unit scope.
+
+Local budgets60collection/300tests/60ownedcleanup/ROOT450, reserve570; freshRAM1GiB/D10GiB. Future child permits private scratch Git/scoped FFI fixtures, never production/native ceremony/fit/Torch/live apply. Separate56pytest-discovery and55opaque-context guards, fullcurrent742/HEAD/index and4runtime files, two before/after whole runtime trees, strict finite metadata and assessed actual coordination/owner remain prerequisites. Parser canonical-role obligations are external and producer-specific, no universalUTC33 claim. No hard Job/site/write/process-tree bounds or automatic cleanup are promised.
+
+Source author/harness author cannot independently approve. ROOT alone selects actual before records, then different static/bound/late review and fresh ACK precede one first entry; independent after reconciliation follows. Any failure is spent and never replayed. No ROOT020 primary docs, old package, Raw004 frozen input, live source or operational policy was changed.
+''').encode('utf-8'))
+
+old_again = inventory(OLD)
+assert old_again == old_inventory
+for pair in historical_pairs:
+    ob, original = read(Path(pair['original']['path']))
+    cb, copied = read(Path(pair['copy']['path']))
+    assert original['sha256'] == pair['original']['sha256']
+    assert original['path_raw9'] == pair['original']['path_raw9'] and original['descriptor_raw9'] == pair['original']['descriptor_raw9']
+    assert copied == pair['copy'] and ob == cb
+for pair in selected_pairs:
+    ob, original = read(Path(pair['original']['path']))
+    cb, copied = read(Path(pair['copy']['path']))
+    assert original == pair['original'] and copied == pair['copy'] and ob == cb
+reobs = {'schema_version': 1, 'captured_utc': utc(), 'scope': 'AUTHOR_METADATA_REOBSERVATION_NOT_PEER_APPROVAL',
+    'full_spent004_inventory_equal': True, 'historical_pairs': len(historical_pairs),
+    'selected_current_input_pairs': len(selected_pairs), 'all_pairs_byte_and_same_API_metadata_stable': True,
+    'fresh_records_or_execution_bindings_selected': False, 'target_execution': False}
+write(PREP / 'AUTHOR_REOBSERVATION_005.json', encoded(reobs))
+new_inventory = inventory(PREP)
+manifest = {'schema_version': 1, 'record_type': 'raw004_unit_runtime005_source_preparation_manifest',
+    'author': '/root/raw_policy_worker', 'frozen_utc': utc(), 'status': plan['status'],
+    'source_stage_peer_input_sha256': RAW_PEER_SHA, 'source_stage_manifest_sha256': RAW_MANIFEST_SHA,
+    'source_sha256': SOURCE_SHA, 'test_sha256': TEST_SHA,
+    'files': new_inventory['files'], 'file_count_excluding_manifest': len(new_inventory['files']),
+    'directory_count': len(new_inventory['directories']), 'total_payload_bytes': new_inventory['bytes'],
+    'complete_spent004_files': len(historical_pairs), 'selected_current_pairs': len(selected_pairs),
+    'driver_None_bindings': 2, 'observer_None_bindings': 1, 'ROOT_PS_null_bindings': 3,
+    'ACK_exact_keys': sorted(ack), 'context55_and_pytest56_distinct': True,
+    'future': future, 'actual_prepared_AST_test_functions': 58, 'actual_collection_count': None,
+    'actual_runtime_results': None, 'different_harness_review': None,
+    'target_definitions_compile_import_collection_test_Git_FFI_observer_native_executed': False,
+    'allowed_post_manifest_author_receipt': 'AUTHOR_POST_FREEZE_OBSERVATION_005.json'}
+manifest_row = write(PREP / 'RAW_COMPONENT_PREPARATION_MANIFEST_005.json', encoded(manifest))
+for row in new_inventory['files']:
+    _, observed = read(Path(row['path']))
+    assert observed['sha256'] == row['sha256'] and observed['bytes'] == row['bytes']
+    assert observed['path_raw9'] == row['path_raw9'] and observed['descriptor_raw9'] == row['descriptor_raw9']
+post = {'schema_version': 1, 'captured_utc': utc(), 'manifest_sha256': manifest_row['sha256'],
+        'declared_payload_files_reobserved': len(new_inventory['files']),
+        'all_pins_and_same_API_metadata_stable': True, 'target_execution_or_binding': False,
+        'author_not_independent_reviewer': True}
+post_row = write(PREP / 'AUTHOR_POST_FREEZE_OBSERVATION_005.json', encoded(post))
+print(json.dumps({'manifest': manifest_row, 'post': post_row,
+    'driver': driver_row, 'child': child_row, 'observer': observer_row, 'ROOT_PS': ps_row,
+    'plan': plan_row, 'source_projection': projection_row, 'context_profile': context_row,
+    'files_excluding_manifest': len(new_inventory['files']), 'historical_pairs': len(historical_pairs),
+    'selected_current_pairs': len(selected_pairs)}, ensure_ascii=True))

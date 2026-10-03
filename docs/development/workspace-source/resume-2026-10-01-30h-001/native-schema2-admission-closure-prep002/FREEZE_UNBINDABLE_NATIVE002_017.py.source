@@ -1,0 +1,104 @@
+"""Author-only paired byte/AST inventory. No target execution or approval."""
+import ast,base64,copy,hashlib,json,os,re,stat
+from pathlib import Path
+from datetime import datetime,timezone
+ROOT=Path(__file__).absolute().parent
+def sha(data):return hashlib.sha256(data).hexdigest()
+def snapshot(path):
+    before=path.lstat()
+    assert stat.S_ISREG(before.st_mode) and before.st_nlink==1 and not before.st_file_attributes&0x400
+    with path.open('rb',buffering=0) as f:
+        opened=os.fstat(f.fileno());assert opened.st_size==before.st_size
+        data=f.read(opened.st_size+1);closed=os.fstat(f.fileno())
+    after=path.lstat()
+    def row(s):return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,s.st_file_attributes,s.st_birthtime_ns]
+    assert row(before)==row(after) and row(opened)==row(closed) and len(data)==before.st_size
+    assert row(before)[:4]+[before.st_birthtime_ns]+row(before)[5:8]==row(opened)[:4]+[opened.st_birthtime_ns]+row(opened)[5:8]
+    return {'path':str(path),'sha256':sha(data),'bytes':len(data),'identity':row(before)},data
+preservation=json.loads((ROOT/'ORIGINAL_PRESERVATION_002.json').read_bytes())
+first=[]
+for item in preservation['inputs']:
+    original=Path(item['original']['path']);copied=ROOT/item['copy']
+    obs,data=snapshot(original);copy_obs,copy_data=snapshot(copied)
+    assert obs['sha256']==item['original']['sha256'] and data==copy_data
+    assert obs['identity'][:2]!=copy_obs['identity'][:2]
+    first.append((original,copied,obs,copy_obs))
+sources=[];tables=[];py_count=ps_count=cs_count=0
+for folder in ('front','postseal'):
+ for path in sorted((ROOT/folder).iterdir()):
+    obs,data=snapshot(path);sources.append(obs)
+    if path.name.endswith('.py.template'):
+        tree=ast.parse(data);py_count+=1
+        for node in tree.body:
+            if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='FRONT_BINDINGS' for t in node.targets):
+                value=json.loads(ast.literal_eval(node.value.args[0]));assert len(value)==44
+                assert all(v is None for v in value.values())
+                tables.append({'path':str(path.relative_to(ROOT)),'language':'Python','count':44,'all_future_values_none':True})
+    elif path.name.endswith('.ps1.template'):
+        ps_count+=1;text=data.decode()
+        match=re.search(r'\$FrontBindings\s*=\s*\[ordered\]@\{(.*?)^\}',text,re.S|re.M)
+        if match:
+            keys=re.findall(r'(?<![A-Za-z0-9_])([A-Za-z0-9_]+)\s*=\s*\$null\b',match.group(1),re.M)
+            assert len(keys)==44 and len(set(keys))==44
+            tables.append({'path':str(path.relative_to(ROOT)),'language':'PowerShell','count':44,'all_future_values_none':True})
+    elif path.suffix=='.cs':cs_count+=1
+assert len(sources)==31 and len(tables)==21 and (py_count,ps_count,cs_count)==(15,15,1)
+common=ROOT/'front/native_successor_front_common_013_001.py.template';common_obs,common_data=snapshot(common);tree=ast.parse(common_data)
+assign={n.targets[0].id:n.value for n in tree.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)}
+assert len(json.loads(ast.literal_eval(assign['BINDING_SCHEMA'].args[0])))==44
+assert {'PUBLISHER_SHA256','EXTERNAL_VERIFIER_SHA256','PUBLICATION_END_SHA256','VERIFICATION_INTENT_SHA256'}.isdisjoint(assign)
+assert assign['NATIVE_BEHAVIOR_CAPS'].value is None and assign['EXTERNAL_PROOF_MAX_BYTES'].value is None
+assert len(common_data)<=196605 and len(base64.b64encode(common_data))+2<=262144
+worker=ast.parse((ROOT/'inputs/accepted-worker-guard003.py').read_bytes())
+expected=copy.deepcopy(next(n for n in worker.body if isinstance(n,ast.FunctionDef) and n.name=='_validate_raw_helper_executable_identity'))
+for n in ast.walk(expected):
+    if isinstance(n,ast.Name) and n.id=='BootstrapRefused':n.id='ValueError'
+actual=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==expected.name)
+assert ast.dump(expected,include_attributes=False)==ast.dump(actual,include_attributes=False)
+interface=ROOT.parent/'publisher-schema2-grammar-revision004/METADATA_GRAMMAR_INTERFACE_004.json'
+io,idata=snapshot(interface);assert io['sha256']=='f8fda24b4d1d1d8e29de6a91c489f8aa7df0336f35d742c386e1d4830e3b1685'
+variants=json.loads(ast.literal_eval(assign['NATIVE_PUBLICATION_RECEIPT_KEYS'].args[0]))
+assert variants==json.loads(idata)['variant_keysets']
+test=ROOT/'source/test_native_schema2_admission_002.py';test_obs,test_data=snapshot(test);tt=ast.parse(test_data)
+cases={cls.name+'.'+fn.name:ast.dump(fn,include_attributes=False) for cls in tt.body if isinstance(cls,ast.ClassDef)
+    for fn in cls.body if isinstance(fn,ast.FunctionDef) and fn.name.startswith('test_')}
+assert len(cases)==85
+old_methods={}
+for path in (ROOT/'before/front37/test_front_read_guard_013_001.py.template',ROOT/'before/native001/test_native_schema2_closure_001.py.template'):
+    old=ast.parse(path.read_bytes())
+    old_methods.update({cls.name+'.'+fn.name:ast.dump(fn,include_attributes=False) for cls in old.body if isinstance(cls,ast.ClassDef)
+        for fn in cls.body if isinstance(fn,ast.FunctionDef) and fn.name.startswith('test_')})
+assert len(old_methods)==53 and set(old_methods)<=set(cases)
+old37=[key for key in old_methods if not key.startswith('NativeSchema2Preparation.')]
+assert len(old37)==37 and all(cases[key]==old_methods[key] for key in old37)
+policy={n.targets[0].id:ast.literal_eval(n.value) for n in tt.body if isinstance(n,ast.Assign) and len(n.targets)==1
+    and isinstance(n.targets[0],ast.Name) and n.targets[0].id in {'NATIVE_SUBTEST_POLICY','NATIVE_CRITICAL_FAMILY_CASES'}}
+assert len(policy['NATIVE_SUBTEST_POLICY'])==272 and len(policy['NATIVE_CRITICAL_FAMILY_CASES'])==32
+for original,copied,obs,cobs in first:
+    again,_=snapshot(original);copy_again,_=snapshot(copied)
+    assert again==obs and copy_again==cobs
+audit={'schema_version':1,'record_type':'native002_author_unbindable_source_snapshot_audit','author':'/root/bootstrap_stage',
+ 'created_utc':datetime.now(timezone.utc).isoformat(),'status':'UNBINDABLE_TRANSPORT_INCOMPLETE_CURRENT_POLICY_INAPPLICABLE',
+ 'original_pairs_verified_twice':len(first),'sources':sources,'source_count':31,
+ 'python_ast_count':15,'powershell_source_count':15,'csharp_unchanged_source_count':1,
+ 'caller_tables':tables,'caller_table_count':21,'caller_schema_fields':44,
+ 'worker_guard_ast_exact_except_refusal_type':True,'four_late_common_digest_globals_removed':True,
+ 'producer_grammar_interface':io,'eight_variant_keysets_exact':True,
+ 'common':common_obs,'test':test_obs,'test_named_methods':85,'old_named_methods_retained':53,
+ 'old37_test_method_asts_exact':True,'source_expected_subtest_events':272,'critical_family_count':32,
+ 'all_test_method_ast_sha256':{key:sha(value.encode()) for key,value in cases.items()},
+ 'base64_source_bytes':len(base64.b64encode(common_data)),'source_only_raw_headroom':196605-len(common_data),
+ 'two_line_frame_remaining_bytes_before_bindings':262144-len(base64.b64encode(common_data))-2,
+ 'new_frame_implemented':False,'actual_argv_derivation':None,'actual_caps_bound':False,
+ 'actual_guard14_accepted':False,'actual_tests_executed':False,'target_definitions_imported_or_executed':False,
+ 'FFI_kernel_or_native_called':False,'operational_authority_granted':False,
+ 'limitations':['Author audit is not independent review.','Fixed raw7fe597-to-final policy is unit context only after additional actor intermediates.',
+ '44 full-path binding JSON may exceed8191 argv and cannot fit current common plus combined stdin262144.',
+ 'Caps/current outputs/native reviews/typed actual profile/source validation/ROOT runtime authorization remainNone.',
+ '85 cases272 subtests are planned AST/source-policy expectations; no target execution has occurred.']}
+q=ROOT/'AUTHOR_SOURCE_SNAPSHOT_AUDIT_017.json'
+with q.open('xb') as f:f.write((json.dumps(audit,sort_keys=True,indent=2)+'\n').encode());f.flush();os.fsync(f.fileno())
+print(json.dumps({'audit_sha256':sha(q.read_bytes()),'sources':31,'tables':21,'schema_fields':44,
+ 'preserved_pairs':len(first),'common_sha256':common_obs['sha256'],'common_bytes':len(common_data),
+ 'test_sha256':test_obs['sha256'],'test_bytes':len(test_data),'cases':85,'planned_subtests':272,
+ 'two_line_remaining':audit['two_line_frame_remaining_bytes_before_bindings'],'unbound':True}))

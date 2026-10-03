@@ -1,0 +1,645 @@
+"""Own finite metadata/data design author; never imports, compiles or calls target code.
+
+Run only as python -B. This is not a production fingerprint implementation.
+Target AST calls are recognized as syntax; no target constructor is evaluated.
+"""
+from pathlib import Path
+import ast
+import collections
+import datetime
+import hashlib
+import json
+import os
+import stat
+
+BASE = Path(r"D:\Aenv\pro2\resume-2026-10-01-30h-001")
+OUT = BASE / "raw004-publication-native-bounded-closure-design001"
+MAX_INPUT = 2 * 1024 * 1024
+CHOICE_SHA = "2a701b66edcd32bd5abae5fe3c80b944a9ff960916296c1a84f1deab02352bf0"
+RAW_REL = "successor-candidate-raw-revision004/scripts/week8_recovery_raw_authority.py"
+COMMON_REL = "native-schema2-admission-closure-prep003/front/native_successor_front_common_013_001.py.template"
+PUB_REL = "publisher-schema2-grammar-revision004/publish-successor-admission-schema2-004.py.template"
+VER_REL = "publisher-schema2-grammar-revision004/verify-successor-admission-schema2-004.py.template"
+POLICIES = (
+    "SUCCESSOR_COMPACT_INTERMEDIATE_FACTS", "_SUCCESSOR_COMPACT_AFTERIMAGES",
+    "_SUCCESSOR_COMPACT_PROOF_LIMITS", "_SUCCESSOR_COMPACT_RELEASE_KEYS",
+    "_SUCCESSOR_COMPACT_ENTRY_KEYS", "_SUCCESSOR_COMPACT_PROOF_KEYS",
+    "_SUCCESSOR_COMPACT_PROOF_MAX_BYTES", "_SUCCESSOR_COMPACT_QA_PATHS",
+    "_SUCCESSOR_COMPACT_QA_BYTES", "_SUCCESSOR_ATTESTATION_SCHEMA3_KEYS",
+    "_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3",
+)
+HELPERS = (
+    "_successor_compact_qa_bytes", "_successor_decode_compact_intermediate",
+    "_successor_compact_git_tree_sha1", "_successor_compact_intermediate_rows",
+)
+INPUTS = (
+    "OWNER_WORK_WINDOW_30H_20261001_001.json",
+    "ROOT_REVIEWED_SOURCE_PREPARATION_CHOICES_004.json",
+    "ROOT_REVIEWED_SOURCE_PREPARATION_CHOICES_005.json",
+    "ROOT_REVIEWED_SOURCE_PREPARATION_CHOICES_005.md",
+    RAW_REL,
+    "successor-candidate-raw-revision004/tests/test_week8_recovery_raw_authority.py",
+    "successor-candidate-raw-revision004/RAW_POLICY_STAGED_MANIFEST_004.json",
+    "successor-candidate-raw-revision004/INDEPENDENT_RAW_REVISION004_SOURCE_REVIEW_001.json",
+    "successor-candidate-raw-revision004/INDEPENDENT_RAW_REVISION004_SOURCE_REVIEW_001.md",
+    "successor-candidate-raw-revision004/CONSTANT_AND_CALLER_INTERFACE_PREPARATION_004.json",
+    "successor-candidate-raw-revision004/BYTE_BOUND_AND_LITERAL_FACT_DERIVATION_004.json",
+    "successor-candidate-raw-revision004/HANDOFF_004.md",
+    "successor-candidate-raw-revision004/facts/intermediate1-commit.bytes",
+    "successor-candidate-raw-revision004/facts/intermediate2-commit.bytes",
+    "successor-candidate-raw-revision004/before/publisher-schema2-revision003/before/middle_release.bytes",
+    "successor-candidate-raw-revision004/before/external/resume-2026-09-28-001/controller-release-009-proposal018.json",
+    "successor-candidate-raw-revision004/before/publisher-schema2-revision003/before/middle_manifest.bytes",
+    "successor-candidate-raw-revision004/before/external/resume-2026-09-28-001/d175-doc-proposal-018/candidate-after.json",
+    "raw-consumer-binding-integration-prep003/src/bu/experiments/week8_exp2a_recovery.py",
+    "raw-consumer-binding-integration-prep003/scripts/week8_exp2a_recovery_worker.py",
+    "raw-consumer-binding-integration-prep003/scripts/week8_exp2a_recovery_entrypoint.py",
+    "raw-consumer-binding-integration-prep003/scripts/week8_exp2a_recovery_inspector.py",
+    "raw-consumer-binding-integration-prep003/scripts/week8_exp2a_recovery_fit_child.py",
+    "raw-consumer-binding-integration-prep003/test_raw_consumer_guards_003.TEMPLATE.py",
+    "raw-consumer-binding-integration-prep003/SOURCE_GUARD_TEST_BINDINGS_002.json",
+    "raw-consumer-binding-integration-prep003/EXACT_SOURCE_BINDING_AUDIT_003.json",
+    "raw-consumer-binding-integration-prep003/SOURCE_INTERFACE_AND_PIN_AUDIT_002.json",
+    "raw-consumer-binding-integration-prep003/STAGED_MANIFEST_003.json",
+    "raw-consumer-binding-integration-prep003/INDEPENDENT_RAW_CONSUMER_GUARD_STATIC_REVIEW_003.json",
+    "raw-consumer-binding-integration-prep003/HANDOFF_003.md",
+    PUB_REL, VER_REL,
+    "publisher-schema2-grammar-revision004/METADATA_GRAMMAR_INTERFACE_004.json",
+    "publisher-schema2-grammar-revision004/STAGED_MANIFEST_004.json",
+    "publisher-schema2-grammar-revision004/INDEPENDENT_METADATA_GRAMMAR_STATIC_REVIEW_004.json",
+    "publisher-schema2-grammar-revision004/HANDOFF.md",
+    "publisher-schema2-grammar-test-revision005/test_schema2_metadata_grammar_005.py",
+    "publisher-schema2-grammar-test-revision005/TEST_PREPARATION_MANIFEST_005.json",
+    "publisher-schema2-grammar-test-revision005/CASE_AND_FRESH_CONTROL_MAP_005.json",
+    "publisher-schema2-grammar-test-revision005/INDEPENDENT_METADATA_GRAMMAR_TEST_REVIEW_005.json",
+    "publisher-schema2-grammar-test-revision005/HANDOFF_005.md",
+    COMMON_REL,
+    "native-schema2-admission-closure-prep003/source/test_native_schema2_admission_002.py",
+    "native-schema2-admission-closure-prep003/SOURCE_CALLER_BUDGET_TEST_AUDIT_015.json",
+    "native-schema2-admission-closure-prep003/STAGED_MANIFEST_003.json",
+    "native-schema2-admission-closure-prep003/INDEPENDENT_NATIVE_CLOSURE_SOURCE_REVISION003_REVIEW_001.json",
+    "native-schema2-admission-closure-prep003/INDEPENDENT_NATIVE_CLOSURE_SOURCE_REVISION003_REVIEW_001.md",
+    "native-schema2-admission-closure-prep003/INDEPENDENT_NATIVE003_TEST_COMMON_COMPATIBILITY_SUPPLEMENT_001.json",
+    "native-schema2-admission-closure-prep003/INDEPENDENT_NATIVE003_TEST_COMMON_COMPATIBILITY_SUPPLEMENT_001.md",
+    "native-schema2-admission-closure-prep003/HANDOFF.md",
+)
+EXPECTED = {
+    RAW_REL: (210452, "da64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211"),
+    COMMON_REL: (178586, "c68485fcd03e046308d8a788cbfc28137dc1655c56939469ca1c1ca1c6443865"),
+    PUB_REL: (127706, "6021e0818b6f084e2bf79e7cd3ab516a3e91a7df19ee9058cf39f524c9f2f479"),
+    VER_REL: (133135, "2a43d3a7204691f4ae45f2b62fef2d6f1122b316c5f7557bd7c894d721f0664c"),
+}
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def canonical(value):
+    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii")
+
+
+def raw9(s):
+    return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns,
+            s.st_mode, s.st_nlink, getattr(s, "st_file_attributes", None),
+            getattr(s, "st_birthtime_ns", None)]
+
+
+def read_finite(path):
+    first = path.lstat()
+    if not stat.S_ISREG(first.st_mode) or first.st_size > MAX_INPUT or first.st_nlink != 1:
+        raise ValueError("not a capped, single-link regular finite input: " + str(path))
+    if getattr(first, "st_file_attributes", 0) & 0x400:
+        raise ValueError("reparse input: " + str(path))
+    with path.open("rb") as stream:
+        fd_before = os.fstat(stream.fileno())
+        data = stream.read(MAX_INPUT + 1)
+        fd_after = os.fstat(stream.fileno())
+    after = path.lstat()
+    if len(data) != first.st_size or len(data) > MAX_INPUT:
+        raise ValueError("capped input changed or exceeded bound")
+    if raw9(first) != raw9(after) or raw9(fd_before) != raw9(fd_after):
+        raise ValueError("same-API finite input identity changed")
+    # Windows path and descriptor ctime semantics can differ; do not equate them.
+    for field in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_mode", "st_nlink"):
+        if getattr(first, field) != getattr(fd_before, field):
+            raise ValueError("shared path/descriptor identity differs: " + field)
+    return data, {"path_lstat_before_raw9": raw9(first), "path_lstat_after_raw9": raw9(after),
+                  "descriptor_before_raw9": raw9(fd_before), "descriptor_after_raw9": raw9(fd_after),
+                  "same_api_repeat_exact": True, "cross_api_ctime_equated": False}
+
+
+def new_bytes(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    if path.read_bytes() != data:
+        raise ValueError("new artifact readback differs")
+
+
+def new_json(name, value):
+    data = json.dumps(value, ensure_ascii=True, sort_keys=True, indent=2).encode("ascii") + b"\n"
+    new_bytes(OUT / name, data)
+
+
+def assignments(tree):
+    result = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    if target.id in result:
+                        raise ValueError("duplicate direct source assignment " + target.id)
+                    result[target.id] = node
+    return result
+
+
+def typed_literal(node):
+    """Recognize this finite source AST grammar into own JSON data, no eval/calls."""
+    if isinstance(node, ast.Constant):
+        if type(node.value) is str:
+            if not node.value.isascii():
+                raise ValueError("non-ASCII policy string")
+            return ["str", node.value]
+        if type(node.value) is int:
+            return ["int", node.value]
+        raise ValueError("unsupported scalar AST")
+    if isinstance(node, ast.Tuple):
+        return ["tuple", [typed_literal(x) for x in node.elts]]
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and not node.keywords and len(node.args) == 1:
+        if node.func.id == "MappingProxyType" and isinstance(node.args[0], ast.Dict):
+            literal = node.args[0]
+            pairs = []
+            for key, value in zip(literal.keys, literal.values):
+                if not isinstance(key, ast.Constant) or type(key.value) is not str or not key.value.isascii():
+                    raise ValueError("mapping keys must be exact literal ASCII strings")
+                pairs.append([key.value, typed_literal(value)])
+            if len({key for key, _ in pairs}) != len(pairs):
+                raise ValueError("duplicate AST mapping key")
+            return ["mappingproxy", sorted(pairs)]
+        if node.func.id == "frozenset" and isinstance(node.args[0], ast.Tuple):
+            values = []
+            for value in node.args[0].elts:
+                if not isinstance(value, ast.Constant) or type(value.value) is not str or not value.value.isascii():
+                    raise ValueError("frozenset requires exact literal ASCII strings")
+                values.append(value.value)
+            if len(set(values)) != len(values):
+                raise ValueError("duplicate AST frozenset member")
+            return ["frozenset", sorted(values)]
+    raise ValueError("unreviewed literal form " + ast.dump(node, include_attributes=False)[:100])
+
+
+def plain(typed):
+    tag, value = typed
+    if tag in {"str", "int", "frozenset"}:
+        return value
+    if tag == "tuple":
+        return [plain(child) for child in value]
+    if tag == "mappingproxy":
+        return {key: plain(child) for key, child in value}
+    raise ValueError("unknown own typed data")
+
+
+def shape(typed, path, measures, depth=1):
+    tag, value = typed
+    measures["typed_node_count"] += 1
+    measures["tag_counts"][tag] += 1
+    measures["maximum_depth"] = max(measures["maximum_depth"], depth)
+    if tag == "str":
+        escaped = len(json.dumps(value, ensure_ascii=True, separators=(",", ":")).encode("ascii"))
+        measures["maximum_string_ascii_bytes"] = max(measures["maximum_string_ascii_bytes"], len(value))
+        measures["maximum_json_quoted_string_bytes"] = max(measures["maximum_json_quoted_string_bytes"], escaped)
+        return {"nominal_type": "str", "ascii_bytes": len(value), "quoted_json_bytes": escaped}
+    if tag == "int":
+        return {"nominal_type": "int_not_bool", "decimal_bytes": len(str(value)), "sign": "nonnegative" if value >= 0 else "negative"}
+    if tag == "tuple":
+        measures["maximum_collection_count"] = max(measures["maximum_collection_count"], len(value))
+        return {"nominal_type": "tuple", "exact_count": len(value),
+                "items": [shape(child, path + "/" + str(i), measures, depth + 1) for i, child in enumerate(value)]}
+    if tag == "mappingproxy":
+        measures["maximum_collection_count"] = max(measures["maximum_collection_count"], len(value))
+        for key, _ in value:
+            measures["mapping_key_count"] += 1
+            measures["maximum_string_ascii_bytes"] = max(measures["maximum_string_ascii_bytes"], len(key))
+        return {"nominal_type": "exact_types.MappingProxyType", "exact_count": len(value),
+                "keys_in_canonical_order": [key for key, _ in value],
+                "values": {key: shape(child, path + "/" + key, measures, depth + 1) for key, child in value}}
+    if tag == "frozenset":
+        measures["maximum_collection_count"] = max(measures["maximum_collection_count"], len(value))
+        for text in value:
+            measures["frozenset_member_count"] += 1
+            measures["maximum_string_ascii_bytes"] = max(measures["maximum_string_ascii_bytes"], len(text))
+        return {"nominal_type": "frozenset_of_exact_str", "exact_count": len(value),
+                "member_ascii_byte_lengths_in_canonical_order": [len(text) for text in value]}
+    raise ValueError("unknown shape tag")
+
+
+def function_refs(tree, names):
+    return {node.name: {"line": node.lineno, "end_line": node.end_lineno}
+            for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in names}
+
+
+def direct_upper_names(tree):
+    values = set()
+    for node in tree.body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Name) and (target.id.isupper() or target.id == "__all__"):
+                    values.add(target.id)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                name = alias.asname or (alias.name.split(".")[0] if isinstance(node, ast.Import) else alias.name)
+                if name.isupper() or name == "__all__":
+                    values.add(name)
+    return sorted(values)
+
+
+def create_design():
+    choice_bytes, _ = read_finite(BASE / "ROOT_REVIEWED_SOURCE_PREPARATION_CHOICES_005.json")
+    if len(choice_bytes) != 5830 or digest(choice_bytes) != CHOICE_SHA:
+        raise ValueError("Root source choice005 bytes differ")
+    choice = json.loads(choice_bytes)
+    if choice["publication_native_schema3_design"]["implementation_authorized"] is not False:
+        raise ValueError("unexpected source authority")
+    for row in choice["inputs"]:
+        EXPECTED[row["path"]] = (row["bytes"], row["sha256"])
+    raw_manifest_data, _ = read_finite(BASE / "successor-candidate-raw-revision004/RAW_POLICY_STAGED_MANIFEST_004.json")
+    raw_manifest = json.loads(raw_manifest_data)
+    def collect_raw_manifest_pins(value):
+        if isinstance(value, dict):
+            rel = value.get("relative_path")
+            if type(rel) is str and type(value.get("bytes")) is int and type(value.get("sha256")) is str:
+                full_rel = "successor-candidate-raw-revision004/" + rel
+                if full_rel in INPUTS:
+                    EXPECTED[full_rel] = (value["bytes"], value["sha256"])
+            for child in value.values():
+                collect_raw_manifest_pins(child)
+        elif isinstance(value, list):
+            for child in value:
+                collect_raw_manifest_pins(child)
+    collect_raw_manifest_pins(raw_manifest)
+    selected = {}
+    pairs = []
+    for rel in INPUTS:
+        data, observation = read_finite(BASE / rel)
+        if rel in EXPECTED and (len(data), digest(data)) != EXPECTED[rel]:
+            raise ValueError("selected expected finite source pin differs: " + rel)
+        copy = OUT / "before" / rel
+        new_bytes(copy, data)
+        copy_data, copy_observation = read_finite(copy)
+        if copy_data != data:
+            raise ValueError("finite before pair bytes differ")
+        selected[rel] = data
+        pairs.append({"original": str(BASE / rel), "copy": str(copy), "relative_input": rel,
+                      "bytes": len(data), "sha256": digest(data), "byte_pair_exact": True,
+                      "original_observation": observation, "copy_observation": copy_observation})
+    trees = {rel: ast.parse(selected[rel].decode("utf-8"), filename=str(BASE / rel))
+             for rel in (RAW_REL, COMMON_REL, PUB_REL, VER_REL)}
+    raw_tree, common_tree = trees[RAW_REL], trees[COMMON_REL]
+    raw_assign = assignments(raw_tree)
+    common_assign = assignments(common_tree)
+    def literal_json_call(node):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == "json"
+                and node.func.attr == "loads" and len(node.args) == 1
+                and isinstance(node.args[0], ast.Constant) and type(node.args[0].value) is str):
+            raise ValueError("expected explicit json.loads literal AST")
+        return json.loads(node.args[0].value)
+    native_bindings = literal_json_call(common_assign["BINDING_SCHEMA"].value)
+    native_middle = literal_json_call(common_assign["NATIVE_MIDDLE_INPUTS"].value)
+    pub_assign = assignments(trees[PUB_REL])
+    pub_middle = literal_json_call(pub_assign["MIDDLE_INPUTS"].value)
+    if len(native_bindings) != 44 or native_middle != pub_middle or set(native_middle) != {"middle_release", "middle_manifest", "middle_commit_object"}:
+        raise ValueError("current binding/middle scalar source roles differ")
+    facts = [[name, typed_literal(raw_assign[name].value)] for name in sorted(POLICIES)]
+    raw_sha = digest(selected[RAW_REL])
+    commitment = ["week8_raw004_compact_policy_v1", raw_sha, facts]
+    commitment_bytes = json.dumps(commitment, ensure_ascii=True, separators=(",", ":")).encode("ascii")
+    if len(commitment_bytes) != 21724 or digest(commitment_bytes) != "b292d3ff9487fd44cdf0647d982f6ae544d1bbcc9c4f5775820ddd39fd6c95f9":
+        raise ValueError("prior advisory typed commitment derivation differs")
+    new_bytes(OUT / "AST_TYPED_POLICY_COMMITMENT_001.json", commitment_bytes)
+    plain_facts = {name: plain(value) for name, value in facts}
+    measures = {"typed_node_count": 0, "tag_counts": collections.Counter(), "maximum_depth": 0,
+                "maximum_collection_count": 0, "maximum_string_ascii_bytes": 0,
+                "maximum_json_quoted_string_bytes": 0, "mapping_key_count": 0,
+                "frozenset_member_count": 0}
+    shapes = {name: shape(value, name, measures) for name, value in facts}
+    measures["tag_counts"] = dict(measures["tag_counts"])
+    new_json("AST_TYPED_POLICY_SHAPE_001.json", {
+        "scope": "OWN_AST_DATA_BOUND_DERIVATION_NOT_A_RUNTIME_WHITELIST_OR_APPROVED_CAP",
+        "raw_source_sha256": raw_sha, "facts": shapes, "derived_measurements": measures,
+        "shape_interpretation": "Exact recursive collection counts/keys/nominal types; leaf lengths are source-derived required upper bounds. The independently reviewed digest fixes all scalar values. Every mapping key and frozenset member must be exact ASCII str. A runtime walker must validate shape before copying/hashing and derive a serialized-size budget including keys/members/tags/punctuation; these measured data are not by themselves a compiled implementation budget.",
+    })
+    native_json_node = common_assign["NATIVE_SCHEMA2_POLICY"].value
+    if not (isinstance(native_json_node, ast.Call) and isinstance(native_json_node.func, ast.Attribute)
+            and isinstance(native_json_node.func.value, ast.Name) and native_json_node.func.value.id == "json"
+            and native_json_node.func.attr == "loads" and len(native_json_node.args) == 1
+            and isinstance(native_json_node.args[0], ast.Constant) and type(native_json_node.args[0].value) is str):
+        raise ValueError("unexpected Native policy AST literal source")
+    native_policy = json.loads(native_json_node.args[0].value)
+    first_limits = dict(native_policy["_SUCCESSOR_INTERMEDIATE_PROOF_LIMITS"])
+    del first_limits["candidate_manifest_base64"]
+    dedup = {
+        "first_summary_equals_existing_native_fact": plain_facts["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"][0] == native_policy["SUCCESSOR_INTERMEDIATE_FACTS"],
+        "first_afterimages_equal_existing_native_afterimages": plain_facts["_SUCCESSOR_COMPACT_AFTERIMAGES"][0] == native_policy["_SUCCESSOR_INTERMEDIATE_AFTERIMAGES"],
+        "first_compact_limits_equal_old_limits_without_QA_base64": plain_facts["_SUCCESSOR_COMPACT_PROOF_LIMITS"][0] == first_limits,
+        "first_release_keyset_equals_existing_native_keyset": plain_facts["_SUCCESSOR_COMPACT_RELEASE_KEYS"][0] == sorted(native_policy["_SUCCESSOR_INTERMEDIATE_RELEASE_KEYS"]),
+        "second_release_added_keys": sorted(set(plain_facts["_SUCCESSOR_COMPACT_RELEASE_KEYS"][1]) - set(native_policy["_SUCCESSOR_INTERMEDIATE_RELEASE_KEYS"])),
+        "second_release_removed_keys": sorted(set(native_policy["_SUCCESSOR_INTERMEDIATE_RELEASE_KEYS"]) - set(plain_facts["_SUCCESSOR_COMPACT_RELEASE_KEYS"][1])),
+        "second_summary_normalized_json_bytes": len(canonical(plain_facts["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"][1])),
+        "second_afterimages_normalized_json_bytes": len(canonical(plain_facts["_SUCCESSOR_COMPACT_AFTERIMAGES"][1])),
+        "QA_paths_normalized_json_bytes": len(canonical(plain_facts["_SUCCESSOR_COMPACT_QA_PATHS"])),
+        "QA_paths_count": len(plain_facts["_SUCCESSOR_COMPACT_QA_PATHS"]),
+    }
+    if not all(dedup[key] for key in list(dedup)[:4]):
+        raise ValueError("dedup equality proof differs")
+    naive = len(canonical(plain_facts))
+    current_bytes = len(selected[COMMON_REL])
+    b64_current = 4 * ((current_bytes + 2) // 3)
+    frame_current = b64_current + 16384 + 2
+    canonical_max = 262142
+    raw_max = ((canonical_max - 16384 - 2) // 4) * 3
+    naive_total = current_bytes + naive
+    native_naive_frame = 4 * ((naive_total + 2) // 3) + 16384 + 2
+    derive = {
+        "record_type": "own_finite_source_ast_literal_and_transport_derivation001",
+        "status": "SOURCE_AST_DATA_ONLY_ADVISORY_DIGEST_NOT_RUNTIME_APPROVED",
+        "raw_source": {"path": str(BASE / RAW_REL), "bytes": len(selected[RAW_REL]), "sha256": raw_sha},
+        "native_common": {"path": str(BASE / COMMON_REL), "bytes": current_bytes, "sha256": digest(selected[COMMON_REL])},
+        "existing_native_policy_literal_field_count": len(native_policy),
+        "new_raw_policy_field_count": len(POLICIES), "future_policy_facts_count": len(native_policy) + len(POLICIES),
+        "source_policy_assignments": {name: {"line": raw_assign[name].lineno, "end_line": raw_assign[name].end_lineno,
+                                                 "normalized_json_bytes": len(canonical(plain_facts[name]))} for name in POLICIES},
+        "source_helper_definitions": function_refs(raw_tree, HELPERS),
+        "raw_top_function_count": sum(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) for node in raw_tree.body),
+        "raw_top_class_count": sum(isinstance(node, ast.ClassDef) for node in raw_tree.body),
+        "raw_explicit_class_method_count": sum(isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) for node in raw_tree.body if isinstance(node, ast.ClassDef) for child in node.body),
+        "raw_non_definition_initializer_genexpr_count": sum(isinstance(child, ast.GeneratorExp) for node in raw_tree.body if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) for child in ast.walk(node)),
+        "source_direct_uppercase_or___all___names": direct_upper_names(raw_tree),
+        "source_direct_uppercase_name_scope": "Direct module assignments/imports only; future executable reference must prove equality with actual reference namespace rather than assuming this static extraction covers conditional/dynamic globals.",
+        "normalized_11_fact_json_bytes": naive, "typed_commitment_bytes": len(commitment_bytes),
+        "typed_commitment_sha256_advisory": digest(commitment_bytes),
+        "typed_commitment_domain": "week8_raw004_compact_policy_v1",
+        "typed_commitment_format": "ASCII json compact separators, no LF; [domain, raw-source-SHA256, lexicographically ordered 11 [name,typed-value] rows]; exact mapping keys sorted, tuple order retained, frozenset exact strings sorted; duplicate AST keys/members rejected.",
+        "typed_shape_measures": measures, "dedup_equalities": dedup,
+        "frame_math": {"fixed_physical_cap": 262144, "canonical_frame_max": canonical_max,
+                       "encoded_binding_max": 16384, "linefeeds": 2,
+                       "current_encoded_source": b64_current, "current_frame_max_binding": frame_current,
+                       "remaining_encoded_source_bytes": canonical_max - frame_current,
+                       "maximum_common_raw_bytes_with_max_binding": raw_max,
+                       "raw_growth_allowance": raw_max - current_bytes,
+                       "naive_raw_common_before_added_logic": naive_total,
+                       "naive_frame_before_added_logic": native_naive_frame,
+                       "naive_frame_excess_over_canonical_max": native_naive_frame - canonical_max,
+                       "source_individual_raw_cap_fixed": 196605,
+                       "frame_closed": False, "actual_literal_growth_bytes": None,
+                       "actual_16_bound_paths": None, "actual_eight_OS_command_lengths": None},
+        "derivation_limit": "No target AST compilation/import/call/evaluation, constructor, test or runtime was used. The 17528 number is normalized fact JSON, not exact added source-token byte growth. New common code/path literals/dependencies may use the 5731 allowance. A 64-character SHA literal still needs declaration, typed walker, guards, acquisition logic, tests/pins and reviewed size proof.",
+    }
+    if (naive, raw_max - current_bytes, native_naive_frame) != (17528, 5731, 277874):
+        raise ValueError("prior static size derivation differs")
+    new_json("LITERAL_DERIVATION_AND_CAP_AUDIT_001.json", derive)
+    helper_matrix = [{"helper": name, "source_line": raw_assign[name].lineno if name in raw_assign else function_refs(raw_tree, HELPERS)[name]["line"],
+                      "cases": ["code replacement with same name", "default/keyword-default/annotation mutation where applicable", "same-code function with foreign globals", "name omission/replacement"],
+                      "required_stages": ["fresh cold preloaded-module validation", "reuse of admitted module", "healthy acceptance before negative", "restored acceptance after negative"]} for name in HELPERS]
+    mutations = {
+        "SUCCESSOR_COMPACT_INTERMEDIATE_FACTS": ["valid-shaped second controller/parent digest substitution", "first/second tuple swap", "tuple replaced by list", "nested int742 replaced by bool", "nested mappingproxy replaced by forged Mapping class named mappingproxy", "required summary key omitted"],
+        "_SUCCESSOR_COMPACT_AFTERIMAGES": ["valid 64-hex nested sha256 substitution", "second size changed within positive int domain", "one 9-row tuple omission", "9-row order swap", "tuple/list replacement", "exact mappingproxy replaced by dict or name-forged Mapping"],
+        "_SUCCESSOR_COMPACT_PROOF_LIMITS": ["valid int byte limit substitution", "valid nested digest substitution", "remove release/commit key", "nested tuple/list replacement", "first/second limits swap", "bool/int substitution"],
+        "_SUCCESSOR_COMPACT_RELEASE_KEYS": ["same-size valid string replacement", "omit Proposal018DocumentationApplicationSha256", "frozenset replaced by set/tuple/list", "swap first/second keysets", "insertion order changed but same frozenset accepts"],
+        "_SUCCESSOR_COMPACT_ENTRY_KEYS": ["same-size valid name replacement", "required identities or proof omission", "frozenset replaced by set", "equivalent member iteration order accepts"],
+        "_SUCCESSOR_COMPACT_PROOF_KEYS": ["replace changed_files by candidate_manifest_base64", "required member omission", "add extra member", "frozenset replaced by tuple", "equivalent member iteration order accepts"],
+        "_SUCCESSOR_COMPACT_PROOF_MAX_BYTES": ["valid positive int6181/6321 mutation", "first/second swap", "bool/int substitution", "tuple/list replacement", "one element omission"],
+        "_SUCCESSOR_COMPACT_QA_PATHS": ["valid same-length path mutation", "two grouped rows swapped", "one of263 paths omitted", "tuple/list replacement", "duplicate path inserted"],
+        "_SUCCESSOR_COMPACT_QA_BYTES": ["valid positive int31347 changed", "bool/int substitution", "float/int substitution", "name omitted"],
+        "_SUCCESSOR_ATTESTATION_SCHEMA3_KEYS": ["valid same-count key replacement", "required key omission", "extra key insertion", "frozenset/set replacement", "equivalent member iteration order accepts"],
+        "_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3": ["valid positive int361287 changed", "bool/int substitution", "float/int substitution", "name omitted"],
+    }
+    policy_matrix = [{"name": name, "source_line": raw_assign[name].lineno,
+                      "case_families": mutations[name],
+                      "coverage": ["all five consumer guards", "Native guarded raw-helper acquisition", "fresh cold", "reuse", "healthy before", "fresh restored after"],
+                      "status": "PLANNED_UNRUN_NO_CASE_COUNT_OR_ACCEPTANCE"} for name in POLICIES]
+    design = {
+        "record_type": "raw004_publication_native_bounded_closure_design001", "schema_version": 1,
+        "status": "FROZEN_SOURCE_AST_DATA_DESIGN_PENDING_DIFFERENT_PEER",
+        "owner": "/root/native_frame_explorer", "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "authority": {"source_choice_path": str(BASE / "ROOT_REVIEWED_SOURCE_PREPARATION_CHOICES_005.json"), "source_choice_sha256": CHOICE_SHA,
+                      "production_implementation": False, "target_compilation": False, "target_import_or_call": False,
+                      "tests_or_collection": False, "Git_or_FFI": False, "runtime_native_live_binding": False,
+                      "own_finite_metadata_AST_data_only": True, "different_design_peer_required_before_future_source_choice": True},
+        "fixed_contracts": {"raw_API_arguments": 12, "operational_input_roles": 7, "operational_output_files": 7,
+                            "native_closed_table_fields": 44, "native_closed_roles": 31,
+                            "old_compiled_policy_facts": 20, "all_new_policy_facts": 11, "future_policy_facts": 31,
+                            "raw_global_ingress_cap": 395799, "raw_private_schema3_cap": 361287,
+                            "native_frame_cap": 262144, "encoded_binding_token_cap": 16384, "cmd_cap": 8191,
+                            "receipt": "WEEK8_D168_RELEASE_RECEIPT_V2", "schema1_2_canonical_history_preserved": True,
+                            "schemas_1_2_existing_functions_tests_history_preserved": True,
+                            "seven_inputs_are_not_metadata_35_roles": True},
+        "filename_owned_plan": [
+            {"scope": "Raw004 frozen source/tests", "paths": [RAW_REL, "successor-candidate-raw-revision004/tests/test_week8_recovery_raw_authority.py"], "changes": "No change. Derive authenticated85-functions/7classes/36methods/one oldgenexpr metadata, all11 types/facts and four helper identities from da64 plus independent e8 peer. Raw final admission schema3 is already implemented in frozen source; do not infer publication or native support.", "line_refs": "2996-3006,3512-3689,3691-3910"},
+            {"scope": "Five-consumer future004 assigned separately", "paths": [x for x in INPUTS if x.startswith("raw-consumer-binding-integration-prep003/") and (x.endswith(".py") or x.endswith(".TEMPLATE.py") or x.endswith("SOURCE_GUARD_TEST_BINDINGS_002.json"))], "changes": "Refresh exact raw SHA/bytes and source/test selectors to reviewed da64; derive85 function metadata instead of81; preserve source-code/class/import/default/global/reuse guard coverage and unchanged initializer genexpr. Broad isinstance(Mapping)+kind.__name__ is insufficient nominal type identity; require a separately documented exact dict/MappingProxyType whitelist and trusted types import plus meaningful forged-name/alias-default controls under Root's separately issued consumer authority. Add all11/four helper cold/reuse controls with real healthy/restored stages. This is candidate_review ownership, not implementation authorized here.", "line_refs": "controller144-145,916-1157;worker192-193,1171-1359;entrypoint39-40,282;inspector109-110,410;fit134-135,762;test27,52,86-94,114-140,184-233"},
+            {"scope": "Future publisher/verifier separate schema3 namespace", "paths": [PUB_REL, VER_REL, "publisher-schema2-grammar-revision004/METADATA_GRAMMAR_INTERFACE_004.json", "publisher-schema2-grammar-test-revision005/test_schema2_metadata_grammar_005.py"], "changes": "Replace one-middle observation/admission with exact two independent acquisitions and four742 tables, reconstruct historical grouped263 QA, emit schema3 exact16-key document with two three-key proofs, update same-key metadata shapes/input hashes and fresh finite caps, preserve corrected005 healthy-before/restored test helper and all8 writer/reader variants. This needs full behavior changes beyond pins/constants.", "publisher_line_refs": "54-55,664-742,744-905,948-1043,1239-1296,1340-1382,1412-1510,1614-1616", "verifier_source_guard": "Shared non-main functions are AST-equal in current004; independently patch/review both final sources and verify fresh equality rather than assuming a publisher patch transfers."},
+            {"scope": "Future native common/source/tests and transitive captures", "paths": [COMMON_REL, "native-schema2-admission-closure-prep003/source/test_native_schema2_admission_002.py", "native-schema2-admission-closure-prep003/SOURCE_CALLER_BUDGET_TEST_AUDIT_015.json"], "changes": "Update raw exact pin/byte read cap; consume guarded immutable snapshot committed by all11 typed fingerprint; change final parent/distinctness to both fixed middles; acquire four742 tables and both typed commit/release proofs and metadata exact two shapes; retain raw revalidation callbacks/API12/V2receipt and44-field role tables. Regenerate future common captures/digest pins/source profiles across existing31 closed roles/12 Python capture sites/8 PS byte bridges/9 dependencies; do not patch frozen003 or claim current callers applicable to future common.", "line_refs": "164,313-388,683-688,728-736,770-889,890-1105,1106-1168,1333,1444-1530;test41-46,1230-1238,1443"},
+        ],
+        "publication_acquisition": {
+            "order": ["EA9 predecessor", "597 first fixed middle", "3f74 second fixed middle", "distinct future final"],
+            "four_tables": "Acquire and authenticate independently four full742 tracked file tables from pinned direct commits. Require equal closed pathsets/mode100644-or-reviewed exact mode/positive bounded sizes/hex SHA and git_blob; recompute controller inventory and tracked-tree digests for each. Do not derive a missing middle/final table by applying afterimages to another table.",
+            "edges": "597 direct parentEA9;3f74 direct parent597;future final direct parent3f74. Validate exact old->5979 paths/afterimages and597->3f749 paths/afterimages. Validate finite25 exact old->final,597->final,3f74->final edges in the same roles Raw004 proves; no ancestor/key union/generalized path allowance.",
+            "two_acquisitions": "Each observation independently opens authenticated first and second fixed release bytes, candidate QA manifest bytes, and typed raw git commit-object bytes under separate exact decoded/encoded caps before I/O/allocation. Match pinned facts, each exact36/37 release keyset,9 filecount, direct parent, tree and afterimages. Acquire future final release and table separately; source/peer pins are caller constants, not proof-derived expectations.",
+            "QA_reconstruction": "Each full742 table is projected into the exact263 reviewed grouped path sequence in _SUCCESSOR_COMPACT_QA_PATHS, not global lexical order. Canonical indent2 ASCII JSON plus one LF must have31347 bytes and fixed candidate manifest digest d213 or90c759 as applicable. Cross-check independently acquired candidate-manifest bytes and reconstructed bytes; neither substitutes for full742 acquisition.",
+            "typed_commit_objects": "Check exact commit-object byte length299/288, SHA256, canonical git commit framing, object SHA1, tree SHA1 and exactly one direct parent against fixed per-middle facts. Reconstruct tree object SHA1 from the independently acquired table and compare pinned tree; reject extra parents, missing headers, wrong order/framing and alternate seals. No Git execution in this design.",
+            "compact_proofs": "Emit two ordered entries exactly {identities,proof}; proof keys exactly changed_files,git_commit_object_base64,release_record_base64; no candidate_manifest_base64. Per-proof canonical byte maxima6181/6321 unchanged. Attestation exactly16 schema3 fields/canonical ASCII one LF/private361287 and global395799 ingress; all original1/2 legacy canonical behavior preserved.",
+            "stability": "Run two whole independent observations and compare canonical snapshots of all four tables, both fixed triples, final release/provenance/runtime observations and freshly read raw source. Revalidate source/helper and source-derived types before/after any raw API use. Old stable_observation1043 repeats a one-middle observation and is not evidence for this topology.",
+        },
+        "same_role_metadata_design_proposal": {
+            "status": "EXPLICIT_PROPOSED_VALUE_SHAPE_CHANGE_REQUIRING_DIFFERENT_PEER_AND_NEW_SOURCE_CHOICE",
+            "unchanged": "35 input-role names,17 dynamic path-role names,13 binding keys,14 release provenance roles,7 output-role names and existing8 producer metadata keysets/clocks remain exact. publication_schema_version stays2; attestation_schema_version becomes3. Receipt text stays V2. No new top-level field, binding, producer role or role name.",
+            "current_scalar_role_trace": {"publisher_source_line": 55, "native_source_line": 731, "current_compiled_role_rows": native_middle,
+                                          "native44_binding_fields": native_bindings,
+                                          "native44_path_fields": sorted(key for key, kind in native_bindings.items() if kind == "path"),
+                                          "middle_roles_intersect_native44_fields": sorted(set(native_middle) & set(native_bindings)),
+                                          "role_path_flow": "Pub37 WORKSPACE andNative28 PROJECT are fixed Path D:/Aenv/pro2; Pub55/Native731 middle release/manifest are compiled scalar absolute paths under that root; commit path is None. Pub527-556 reads retained bytes and scalar original paths,568-598 rereads physical identities. Pub974-979 acquires typed commit from existing CONTROLLER43 root by fixed commit40. Native1039-1060 acquires Git tables fromREPO31. Native44 shape141-163/1444-1469 locks native_review_path/pre_render_review_path strings and14 provenance row path strings. Pub56 keeps native_review_path/renderer_receipt_path strings. Pub1239-1248 gives35hash roles and17dynamic path roles; none of the three middle role names are CLI args,44 binding path keys or17dynamic path keys. Native696-704 CLI has no middle role/path argument.",
+                                          "nominal_PathString_preserved": True,
+                                          "external_middle_descriptor_path_accepted": False},
+            "middle_roles": "Reuse existing middle_release,middle_manifest,middle_commit_object role names only as internal exact ordered2 acquisition vectors. Derive separately reviewed compiled relative paths below the existing verified WORKSPACE/PROJECT root; do not change any native44 PathStr or metadata17 path value into a list. Release paths are resume-2026-09-28-001/controller-release-008-proposal017.json andcontroller-release-009-proposal018.json; QA paths ared175-doc-proposal-017/candidate-after.json andd175-doc-proposal-018/candidate-after.json under that same root prefix. Their finite frozen before bytes are included here; actual physical originals/retained-pair acquisition remains future and unproved. Commit objects use source-pinned commit40 plus typed object acquisition from existing CONTROLLER/REPO root, not an invented physical path. All parent chain/canonical-relative/root containment/leaf link/raw9/path-vs-descriptor/independent inode guards must be maintained or explicitly strengthened. No descriptor path is selected from a proof or metadata field.",
+            "middle_input_hashes": "Each existing input_hashes middle-role value remains one64-hex SHA256. Proposal: hash ASCII compact canonical [domain,role,[row597,row3f74]], domainweek8_schema3_fixed_middle_role_v1. Exact file row is [file,compiledCanonicalRelativePath,byteCount,contentSha256]; exact commit row is [git_commit,fixedCommit40,byteCount,contentSha256]. Type/tag/role/index/path/count/hex domains and source-derived bounds checked before allocation/hash. Expand file path only from authenticated existing fixed root; do not publish/accept new arbitrary path or root role. Each role's two content hashes are independently authenticated from the separate actual acquisitions first; descriptor aggregate alone cannot authorize a read or supply expected SHA. Other32 input_hashes retain single-source semantics. This is a changed hash meaning needing fresh grammar/source/caller proof, not approval inferred from keeping35 keys.",
+            "middle_fields": "Existing intermediate field becomes exact2 list of exact summary dictionaries first597/second3f74. Existing middle_full742_identity becomes exact2 list of exact3-field identities in that order. Existing intermediate_proof_sha256 remains one hash over canonical ordered2 proof projection. Attestation intermediate_chain contains the actual exact2 entries; no new metadata field name.",
+            "caps": "Existing INPUT_ROLE_MAX_BYTES middle-role keys must account for exact two separately bounded reads, with an explicit internal per-index bound and aggregate sum. Recalculate maximal documents for every existing variant with two summary/identity lists and new attestation version; output attestation caps remain global395799, private schema3 admission361287. Use future trusted absolute paths and pure-data derivation; no precise future EXTERNAL_PROOF_MAX_BYTES asserted here.",
+            "migration_limit": "Keeping keys does not prove native nominal bindings or caps compatible. The trace here establishes that middle roles are compiled internal inputs, not existing NativePathStr keys; every locked path/string/table schema remains unchanged. Old597-only external receipts and schema_id week8_schema2_metadata_roles_004 are inapplicable to a new schema3 proof. A changed schema_id value is required in the same4-key upstream derivation. Both writer/readers, all callers and native parser must implement and causally test the same proposal plus physical two-acquisition proof; a constant-only update is insufficient. Any actual need for a new external root/path/descriptor field or raised cap requires a later explicit Root choice instead of this proposal.",
+        },
+        "bounded_fingerprint": {
+            "preferred_option": "Keep20 existing compiled facts; derive all11 compact facts only from a freshly source/code/default/global/import-guarded exact Raw004 module, compare an independently derived type-tagged SHA256 commitment, then use a retained immutable snapshot. Compile only the64-character commitment and minimal independently derived shape/name bounds needed for fail-fast validation. Avoid duplicating17528 normalized bytes in the178586 common.",
+            "advisory_only": {"sha256": digest(commitment_bytes), "typed_bytes": len(commitment_bytes), "runtime_approval": False, "independent_peer_required": True},
+            "nominal_types": "Runtime accepts type(value) is types.MappingProxyType,tuple,frozenset,int,str only; int exact rejects bool and float. Mapping keys and frozenset members type(str) exactly; ASCII bounded strings. Reject generic Mapping,dict,list,set,custom objects/subclasses,name-forged classes even if type.__name__ equals a trusted type. Do not call __iter__/items/__len__ on an untrusted type before rejecting it.",
+            "generic_guard_nominal_supplement": "Current common _raw_helper_value_identity uses broad isinstance(Mapping) andkind.__name__; exact all11 walker alone does not repair every old policy/default capture path. Future Native4 must separately document exact dict/MappingProxyType whitelist and trusted types import binding for the generic identity helper, retain exact other permitted builtin container/scalar roles, and prove all source/default/alias controls. No generic Mapping/class-name reliance is allowed to authenticate the walker or its own expected snapshot. The independently assigned consumer correction is not automatically a Native correction.",
+            "canonical_typed_walker": "Match exactly the11 sorted names and recursive source-derived shape before construction. Encode str/int as tagged pairs; tuple retains order; mappingproxy has exact keyset and sorted ASCII [key,typed-value] pairs; frozenset has exact str members sorted and no duplicate AST members. Serialize [week8_raw004_compact_policy_v1,da64 sourceSHA,11 sorted pairs] with ensure_ascii=True and compact separators and no LF. SHA256 algorithm/name/digest domain are fixed, never selected by proof.",
+            "allocation_bound": "Before snapshot or canonical JSON allocation: exact nominal type, depth,node count,per-collection count/keyset/per-leaf ASCII and quoted-JSON byte length,int decimal length,all11 name set and total predicted canonical bytes are checked against authenticated finite AST-derived shape/budgets. Detect cyclic/repeated container references if not justified by source snapshot. Calculate punctuation/type-tag/key/name/domain/sourceSHA byte overhead; source-derived21724 is an advisory exact serialized witness, not permission to build an unbounded object first. Preferred streaming hash after immutable bounded snapshot; any serializer allocation must have proven prior byte bound. Do not embed the whole21724 witness in common.",
+            "fresh_cold_and_reuse_brackets": [
+                "Fresh capped raw bytes+descriptor/path identity+external da64 pin; authenticate peer e8 as source review input, not runtime mutable object.",
+                "Existing executable guard establishes exact module/import/name/path/loader/code85/class7/method36/genexpr1/default/kwdefault/annotation/global identities from pinned source/reference; exact expected upper-name+__all__ namespace check rejects omission/substitution/addition.",
+                "Immediately obtain nominally checked, fully bounded immutable typed snapshot of all11 and verify advisory commitment after independent approval; no expected facts read from the candidate module before guard.",
+                "Perform required acquisition/admission against the snapshot; never independently reread mutable globals as expected values.",
+                "Fresh capped source and executable/default/import/global/name guard again; re-snapshot exact typed11 and require identical approved commitment/snapshot; reject mutation during acquisition or reuse.",
+            ],
+            "all_upper_name_note": "Current common770-889 iterates expected reference upper names and compares current values; its displayed code does not independently enforce equality of the complete current upper-name set. An extra unused upper name is not an observed production defect, but exact name-set closure required by this design must be explicit in a future Native guard supplement, including __all__; do not claim the old loop proves absence of additions.",
+            "trust_assumptions": "Actual future runtime must authenticate captured common code/source, loader, reference compilation/execution machinery, types/json/hashlib/importlib/ast/builtins/imported bindings and source bytes, and retain the executable guard's real code/default/global identities. This design did not execute or validate those mechanisms. SourceSHA alone does not freeze module values, defaults, methods or imports. A forged hash/serializer/builtin or arbitrary concurrent hostile interpreter can subvert a digest; do not claim physical wholeJob/OS containment from this check. MappingProxy construction syntax creates fresh backing dictionaries, but any alias/retention/concurrency assumption must be reviewed in actual implementation.",
+            "alternatives": [
+                "Dedup first summary/afterimages/prooflimits/releasekeys against four proven existing20 facts; add only second summary959 and afterimages1762 bytes, second-keyset union adds Proposal018DocumentationApplicationSha256, derive QA263 grouped paths from independently authenticated historical manifest bytes. Every derivation must typecheck and compare all11 approved facts; do not drop commitment coverage. Added logic+remaining facts still need exact common source growth proof.",
+                "Use shared guarded Raw004 facts without full literals, preserving source+code/default/global/import/name guards and strict typed all11 commitment. This is preferred but is not equivalent to source hash alone. Do not invoke target private helpers as an unchecked fact derivation shortcut.",
+                "Move fact data to an existing authenticated owned dependency only if its closed capture/review/input roles are already valid and all11 data/type/name bindings are retained. A new arbitrary dependency role or unbounded external fact file is outside Root choice005; requires later explicit choice rather than hiding an expansion.",
+            ],
+        },
+        "policy_case_matrix": policy_matrix, "helper_case_matrix": helper_matrix,
+        "schema3_causal_cases": [
+            "Healthy exact old->597->3f74->final whole observation/admission, fresh and reused module; restored acceptance after each isolated negative.",
+            "Omit/swap/duplicate/add a middle; keep all other data valid and within private361287 so schema length/order guard is reached. Existing Raw004 third-middle368167 witness exceeds361287, so that particular negative alone does not causally prove exact2 guard.",
+            "For each of four independently acquired742 tables, valid-shaped one-row mode/size/SHA/blob/path mutation that reaches table/edge check, missing acquisition, alias or stale second pass. Independently mutate each exact9+9 edge and each finite25 final edge.",
+            "Each typed299/288 commit object: wrong direct parent/tree/seal, extra parent/header, same-length valid byte mutation, limit/encoded-length/type mutation with before-I/O refusal controls. Each release36/37 keyset and FileCount9 independently mutated.",
+            "Each grouped263 QA projection: valid-sized reordered paths, wrong grouped boundary, omitted/duplicated path, wrong digest despite742 acquisition, correct QA but unrelated742 tree; canonical ASCII indent2 one LF equality.",
+            "All8 metadata writer/reader variants healthy first; exact2 summary/identity list mutation, bool/int and list/tuple, middle-role aggregate hash permutation/omission, raw9/birthtime/canonical caps/digests/owner/clock/provenance negatives, restored fresh controls.",
+            "Raw source/default/global/import/helper mutation after first observation or between commit/table acquisition and admission, plus reuse mutation; show actual guard stage accepts healthy and refuses negative rather than an earlier unrelated cap/parser failure.",
+            "Native Raw00485 fixture and reviewed common capture applied consistently; inherited unexplained-text assertion source-only supplement kept separate from runtime outcomes. Native global code/default/import/name guard control precedes fingerprint negatives.",
+        ],
+        "cap_rederivation_method": [
+            "Freeze future exact role keys/paths and internal two-index input acquisitions; provide decoded and encoded byte caps separately for each299/288 commit and2957/3073 release and31347 QA manifest from authenticated facts. Bind pathlengths only from actual trusted16 values; all currently None.",
+            "Construct own pure-data worst-case document for each existing8 metadata variant from exact keysets/types, all35 input-role hashes, same17 paths/13bindings/14provenance, two summaries+two identities, seven outputcaps and full raw9/birthtime/integer domains. Positivei63 at most19 digits; signedi63 include minus where required; u64/u32 and finite UTC widths retained. Compute exact ASCII JSON indentation/escaped path cost plus LF and SHA sealing without target import/calls.",
+            "Derive per-variant and external-proof caps once from immutable sourcegrammar+trusted fixed role paths+independent finite input/output cap projection. No iterative selfhash/proof-derived expectations, no reading future own review to grant authority. Check maximal witness and actual serialized healthy values separately; cap tightness requires different peer reconstruction.",
+            "Render future common and all caller literals from reviewed owned inputs once, then independently read bytes and verify source identity/AST preservation, raw cap196605, canonical frame4*ceil(commonBytes/3)+encodedBindingBytes+2<=262142 and encodedBinding<=16384 for actual16 paths.5731 is max growth only at16384 binding. Do not use the individual196605 source cap as aggregate capacity.",
+            "Compute each complete OS command from actual trusted exe/script paths, arguments and correct Windows quoting/backslash/quote rules, UTF16 or platform length units, including bootstrap/encoded commands. Check eight commandcmd8191 where applicable and relevant CreateProcess limits separately;7198 bootstrap or7200 quoted token is not a full OS command witness.",
+            "Independently review PowerShell/Python canonical byte serializer parity, exact writer bytes/twoLF/EOF and producer deadlines/owned Process cleanup/wholeJob before physical capture. No parallel/path/growth/argv/parity/physical containment claim follows from AST/data cap arithmetic.",
+        ],
+        "remaining_unknowns": {"future_publication_source": None, "future_native_source": None, "future_common_growth_bytes": None,
+                               "approved_policy_fingerprint": None, "future_exact_metadata_caps": None,
+                               "actual16_paths": None, "actual_eight_OS_commands": None,
+                               "serializer_byte_parity": None, "physical_capture": None, "wholeJob_or_descendant_cleanup": None,
+                               "native111_methods_runtime": "ALL_UNRUN", "native298_planned_subtests_runtime": "ALL_UNRUN",
+                               "Raw00482_new_planned_invocations_runtime": "ALL_UNRUN", "metadata24_methods_runtime": "ALL_UNRUN",
+                               "consumer14_methods_runtime": "ALL_UNRUN", "sole_executor_ACK": False,
+                               "live_or_native_authority": False},
+        "prior_native_test_supplement": {"path": "native-schema2-admission-closure-prep003/INDEPENDENT_NATIVE003_TEST_COMMON_COMPATIBILITY_SUPPLEMENT_001.json", "sha256": digest(selected["native-schema2-admission-closure-prep003/INDEPENDENT_NATIVE003_TEST_COMMON_COMPATIBILITY_SUPPLEMENT_001.json"]), "status": "SOURCE_ONLY_PREDICTIVE_ASSERTION_MISMATCH_CONFIRMED_SEPARATE_SUPPLEMENT_NO_RUNTIME_FAILURE", "details": "Active c684 guard770-889 lacks unexplained literal and uses GeneratorExp. Inherited test1238 assertIn unexplained is inapplicable as text criterion to active guard. Raw003 fixture81/7/1 is correct for its own pinned source; future Raw004 fixture85 is a separate migration."},
+        "next_steps": "Different independent full design peer; resolve same-key metadata value-shape contract/fingerprint type+trust+size conditions; only then later Root choice for separately owned publication/native production source and tests. Future source review, actual16 bound paths/growth/eight commands/parity/caps, distinct fresh one-use runtime preparation and late authorization required. No replay/live apply/fullQA/gate/commit/native authority from this artifact.",
+    }
+    new_json("BOUNDED_CLOSURE_DESIGN_001.json", design)
+    md = """# Raw004 publication and native bounded closure design001
+
+Status: frozen source/AST/data design, pending a different independent design peer. Root choice005 permits design only. No production source was changed; no target code was compiled, imported, evaluated, called or tested. No Git, FFI, native/runtime/live work occurred. This artifact grants no binding or operational authority.
+
+## Finite source basis and preservation
+
+`FINITE_INPUT_PRESERVATION_001.json` records capped original/copy byte pairs for only the selected finite inputs, each with SHA256, bytecount and same-API raw9 before/after observations. Copies preserve bytes, not original identity or creation time. The data utilities read source syntax and recognize literal AST calls; they do not evaluate target constructors. The author utility itself is retained and hashed in the final manifest. Historical recursive packages remain outside this finite design capture.
+
+Root choice005 is5830 bytes SHA2a701b66edcd32bd5abae5fe3c80b944a9ff960916296c1a84f1deab02352bf0. Raw004 source is210452 bytes SHAda64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211, source-only peer e8b53c41. Native003 active common is178586 bytes SHAc68485fc, peer0f9f0d52. The current publisher/verifier004 templates remain127706/133135 bytes and authenticate only the597 middle; grammar005 corrects tests and does not implement schema3.
+
+## Owned source plan
+
+Raw004 is already frozen and source reviewed:11 new policies at2996–3006, four new helpers at3512/3534/3553/3594 and schema3 dispatcher at3691. The dispatcher checks canonical legacy schemas1/2, private schema3 limit361287, exact two middles, grouped263 QA reconstruction, finite25 final edges and final direct parent3f74. API12, seven operational roles, global395799 and existing genexpr remain fixed.85 top functions/7classes/36 explicit methods/one initializer genexpr are AST counts, not runtime results.
+
+The five consumer guards already derive function/class/code bindings from pinned AST; changing81 to85 is metadata/test migration, not a new hardcoded algorithm. Root assigned future consumer004 separately to candidate_review. Source pins are at controller144–145, worker192–193, entrypoint39–40, inspector109–110 and fit134–135. Their current algorithms also capture defaults/keyword defaults/annotations/imports/upper globals and guard reuse. Refresh raw pin/bytes and exact selectors, preserve the original genexpr rule, and add real healthy/negative/restored cold+reuse cases for all11 policies/four helpers. Broad Mapping plus class-name identity requires an explicitly documented exact dict/MappingProxyType nominal correction and trusted import/default/alias controls under separate consumer authority. Do not infer these tests have run.
+
+Publisher/verifier future schema3 work is substantive: the current compiled policy20/MIDDLE_INPUTS are54–55; AST extraction664–742 selects only20; one middle815–905 and observation948–1043 remain597-only. Replace them with exact two acquisitions and four independent742 tables. Patch metadata context1239–1296, maximal documents1340–1382, validators1412–1510 and receipt projections1614–1616 consistently in both templates. Preserve grammar005's healthy-before-negative/restored controls for all8 writer/reader variants. A source SHA/constant update alone does not implement admission behavior.
+
+Native common needs actual behavior changes at164,313–388,728–736,890–1105 and1106–1168, plus exact raw pin/byte capture and authenticated immutable policy snapshot. Retain its generic guard770–889, source/admission callbacks683–688, global395799, API12/V2receipt and all44-field tables. New common bytes require regenerated captures/profile/digest pins across the existing31 closed roles,12 Python sites,8 PS byte bridges and9 dependencies. No frozen003 file is modified here.
+
+## Exact acquisition and metadata proposal
+
+Each of two whole observations independently acquires EA9,597,3f74 and future-final full742 tables, the two fixed release/QA-manifest/commit triples, and final release/provenance/runtime data. Require direct parents EA9→597→3f74→final, exact9+9 fixed afterimages, and the finite25 final edges required by Raw004. Independently reconstruct each tree SHA1 and typed299/288-byte commit object, release36/37 keysets and9 filecount. Project each table into the authenticated grouped263 QA path order; canonical indent2 ASCII+one LF must be31347 bytes and its fixed QA digest. An afterimage-derived table or QA manifest alone is insufficient.
+
+The schema3 attestation has exactly16 fields and two ordered `{identities,proof}` entries. Proofs have exactly three keys: changed_files,git_commit_object_base64,release_record_base64. There is no candidate-manifest Base64.6181/6321 proof limits and private361287/global395799 remain fixed; schemas1/2 history is retained.
+
+The three middle roles are compiled Pub55/Native731 inputs, not native44 fields, CLI args or17 metadata dynamic path roles. Pub527–556 reads scalar original paths and retained bytes;568–598 repeats physical identity checks. Commit path is None and Pub974–979 acquires the typed fixed commit object through CONTROLLER43. Native28 PROJECT and Pub37 WORKSPACE are fixed root Paths. Native141–163/1444–1469 keep native_review_path/pre_render_review_path and14 provenance paths as exact strings; Pub56's native/renderer review paths remain strings too. No locked PathStr is changed to a list.
+
+Proposed metadata value shapes retain35 input hashes,17 dynamic paths,13 bindings,14 provenance roles,7 outputs and8 variants. The three middle roles acquire ordered pairs internally from separately reviewed compiled relative paths below the authenticated existing root; descriptors are never supplied by proof. File descriptor row is `[file,compiledRelativePath,byteCount,contentSHA]`; commit descriptor row is `[git_commit,pinnedCommit40,byteCount,contentSHA]`. Existing input hash remains64 hex over a domain-separated canonical fixed ordered pair after both actual acquisitions/authentications. Existing intermediate and middle_full742_identity fields become exact two-element lists; intermediate_proof_sha256 remains one hash of the two-proof projection. publication version2/attestation version3/V2receipt stay as proposed. Same keys do not prove type/cap/caller compatibility: these changed value shapes/hash meanings require fresh grammar, caps, all callers and physical two-acquisition proof. The present597-only schema_id/receipts/cap derivation cannot cover them, and any new external path/root/role or cap growth would require a later explicit Root choice.
+
+## Typed commitment and transitive trust
+
+The independently derived advisory commitment is ASCII compact JSON with no LF:
+
+`["week8_raw004_compact_policy_v1", da64SourceSHA, [[sortedName, typedValue], ... eleven rows]]`
+
+Exact tags are str,int,tuple,mappingproxy,frozenset. Mapping keys sort lexically, tuple order is retained, frozenset exact strings sort; AST duplicate keys/members and unsupported forms are rejected. The21724-byte witness SHA isb292d3ff9487fd44cdf0647d982f6ae544d1bbcc9c4f5775820ddd39fd6c95f9. It is a design derivation, not an approved runtime constant. The exact source-derived shape and measurements are recorded separately.
+
+Runtime design accepts only exact builtin types:types.MappingProxyType,tuple,frozenset,int-not-bool,str. Reject dict/list/set/subclasses/generic Mapping and classes forged with the name mappingproxy. Before constructing or hashing, check all11 names, recursive shape/keysets/counts, depth/node budget, ASCII/quoted string lengths, decimal integer lengths and full serialized-byte prediction. Preserve exact immutable snapshots and bracket acquisition/use with fresh source/code/default/global/import/loader guards on cold and reuse, then identical typed fingerprint/snapshot checks. Source hash alone does not freeze values or function defaults.
+
+The current guard compares expected upper-name values but its displayed loop does not separately reject additional current upper names. This design requires exact upper-name+__all__ set equality as a future Native supplement; it is not a claim of an observed production failure. Its generic identity helper also uses broad Mapping/class-name identity; future Native4 needs an independent exact dict/MappingProxyType correction for old policy/default captures, beyond the new11 walker. Trusted common code, compiler/reference machinery, types/json/hashlib/ast/importlib/builtins and imported objects are runtime assumptions requiring independent review. This design executes none of them. Digest checks cannot establish wholeJob/OS containment.
+
+Preferred design retains20 existing compiled facts and uses a guarded all11 typed snapshot with a reviewed64-character commitment rather than duplicating17528 normalized data bytes. Alternative dedup is concrete: the first summary/afterimages/proof limits-minus-QA/release keyset equal existing Native facts; second summary959 bytes and afterimages1762 bytes remain; second keyset adds only Proposal018DocumentationApplicationSha256; QA path literal8990 bytes can derive from independently authenticated grouped263 manifest data. Every option must still bind all11 names/types/values and retain real mutable-state guards. No new arbitrary dependency role is authorized.
+
+## Growth, caps and remaining evidence
+
+Current common Base64 is238116; with max encoded binding16384 plus two LF its frame is254502. Canonical two-Base64 framing has a262142 maximum under physical262144, leaving7640 encoded bytes or5731 raw common bytes: common maximum184317. Naively adding normalized11 facts17528 produces196114 common bytes and277874 frame bytes,15732 over the canonical maximum before added logic. The isolated raw-source196605 cap does not close aggregate framing. The17528 amount is a normalized JSON witness, not exact future source-token growth; a SHA literal's64 characters do not prove the walker/acquisition implementation fits.
+
+Recalculate each finite metadata variant from immutable sourcegrammar, trusted fixed role paths, separately bounded two middle inputs, unchanged field/role sets and seven output caps. Include precise ASCII indentation/escaping/LF/seal and raw9/birthtime/UTC/integer domains. Bind actual paths, re-render final common/callers and reconstruct all8 complete OS commands with correct Windows quoting before claiming fit. Bootstrap7198 bytes or quoted7200 token alone is not a complete command. No exact new metadata caps are asserted here.
+
+The JSON design contains the full11-policy/four-helper cold/reuse matrix, type-forgery/nested mutation/order/omission cases, causal two-middle/four-table/commit/QA/metadata controls and the cap derivation method. Existing Raw004 third-middle368167 negative exceeds private361287 and alone does not causally reach the exact-two check; use valid within-cap alternatives in future tests.
+
+Native003111 methods/298 planned subtests, Raw00482 new planned invocations, consumer14 methods and metadata24 methods remain UNRUN in this scope. Separate Native003 supplement0a42ae6e source-only confirms test1238's inherited unexplained-text criterion is incompatible with c684's AST guard; it is not an actual failure. Raw003 fixture81/7/1 was correct for its source; Raw00485 is a separate fixture migration. Actual16 bound paths, future growth,8 OS commands, serializer parity, physical capture, wholeJob/descendant cleanup and live authority remain absent.
+
+Next: different full design peer, resolve these exact value-shape/type/trust/budget conditions, then a later Root source choice before any production publication/native implementation. Fresh source review and independently bound one-use runtime/late authorization remain required. Preserve owner deadline/science/twins/epoch/spent history/reserves/piped GO/noNonInteractive/no-public/no-push/no-replay; canonical work remains HELD.
+"""
+    new_bytes(OUT / "BOUNDED_CLOSURE_DESIGN_001.md", md.encode("utf-8"))
+    # All selected input files must still match both original bytes and copied bytes.
+    for pair in pairs:
+        data, observation = read_finite(Path(pair["original"]))
+        copy_data, copy_observation = read_finite(Path(pair["copy"]))
+        if data != selected[pair["relative_input"]] or copy_data != data:
+            raise ValueError("finite source pair changed before publication")
+        if observation["path_lstat_before_raw9"] != pair["original_observation"]["path_lstat_before_raw9"]:
+            raise ValueError("original same-API identity changed before publication")
+        if copy_observation["path_lstat_before_raw9"] != pair["copy_observation"]["path_lstat_before_raw9"]:
+            raise ValueError("copy same-API identity changed before publication")
+        pair["pre_manifest_reobservation_exact"] = True
+    new_json("FINITE_INPUT_PRESERVATION_001.json", {
+        "record_type": "finite_design_input_original_copy_preservation001", "file_read_cap": MAX_INPUT,
+        "selected_finite_input_count": len(pairs), "all_pairs_exact": True,
+        "original_same_API_raw9_unchanged": True, "copy_same_API_raw9_unchanged": True,
+        "copies_preserve_original_raw9_or_identity": False, "pairs": pairs,
+        "scope": "Only these finite source/peer/manifest/interface inputs; no recursive703/762/full history audit or runtime acquisition. Source bytes are evidence, not authority for runtime mutable globals.",
+    })
+    handoff = {
+        "status": "FROZEN_SOURCE_AST_DATA_DESIGN_PENDING_DIFFERENT_PEER", "owner": "/root/native_frame_explorer",
+        "primary": ["BOUNDED_CLOSURE_DESIGN_001.json", "BOUNDED_CLOSURE_DESIGN_001.md"],
+        "evidence": ["FINITE_INPUT_PRESERVATION_001.json", "LITERAL_DERIVATION_AND_CAP_AUDIT_001.json", "AST_TYPED_POLICY_COMMITMENT_001.json", "AST_TYPED_POLICY_SHAPE_001.json"],
+        "authority": "Root005 exact5830/2a701 authorizes this finite source/AST/data design only. No production implementation, target compiler/import/call/test/Git/FFI/native/runtime/live binding.",
+        "different_peer_required": True, "advisory_digest_approved_runtime": False,
+        "actual_bound_paths_commands_caps_growth_physical_containment": None,
+        "do_not_replay": True,
+    }
+    new_json("HANDOFF_001.json", handoff)
+    new_bytes(OUT / "HANDOFF.md", ("# Design001 handoff\n\nRead BOUNDED_CLOSURE_DESIGN_001.md and its full structured JSON; finite preservation and literal/cap/type derivations accompany them. Root005 permits source/AST/data design only. Different independent design peer and later Root production-source choice remain required. No target code or tests executed; all actual paths/argv/growth/new caps/physical capture/wholeJob remain unbound. See DESIGN_MANIFEST_001.json for immutable file pins.\n").encode("ascii"))
+    payload = []
+    for path in sorted(OUT.rglob("*")):
+        if path.is_file():
+            data, _ = read_finite(path)
+            payload.append({"path": str(path.relative_to(OUT)).replace("\\", "/"), "bytes": len(data), "sha256": digest(data)})
+    manifest = {"record_type": "frozen_source_AST_data_bounded_design_manifest001", "schema_version": 1,
+                "status": "FROZEN_SOURCE_AST_DATA_DESIGN_PENDING_DIFFERENT_PEER", "author": "/root/native_frame_explorer",
+                "source_choice_sha256": CHOICE_SHA, "finite_input_count": len(pairs), "payload_file_count": len(payload),
+                "files": payload, "self_hash": None, "self_hash_reason": "Manifest excludes its own bytes and is externally hash-pinned after publication; no selfhash cycle.",
+                "production_or_runtime_authority": False, "different_peer_review": None,
+                "advisory_commitment_runtime_approved": False, "post_manifest_readback_scope": "Author utility subsequently rereads all listed artifacts and all original/copy pairs; stdout is metadata-only and not runtime result evidence."}
+    new_json("DESIGN_MANIFEST_001.json", manifest)
+    for row in payload:
+        data, _ = read_finite(OUT / row["path"])
+        if (len(data), digest(data)) != (row["bytes"], row["sha256"]):
+            raise ValueError("post-manifest payload readback changed")
+    for pair in pairs:
+        original, obs = read_finite(Path(pair["original"]))
+        copy, copy_obs = read_finite(Path(pair["copy"]))
+        if original != selected[pair["relative_input"]] or copy != original:
+            raise ValueError("post-manifest finite pair changed")
+        if obs["path_lstat_before_raw9"] != pair["original_observation"]["path_lstat_before_raw9"]:
+            raise ValueError("post-manifest original raw9 changed")
+        if copy_obs["path_lstat_before_raw9"] != pair["copy_observation"]["path_lstat_before_raw9"]:
+            raise ValueError("post-manifest copy raw9 changed")
+    manifest_bytes = (OUT / "DESIGN_MANIFEST_001.json").read_bytes()
+    print(json.dumps({"status": manifest["status"], "folder": str(OUT), "finite_input_pairs": len(pairs),
+                      "payload_files": len(payload), "manifest_bytes": len(manifest_bytes), "manifest_sha256": digest(manifest_bytes),
+                      "post_manifest_all_pairs_and_payload_readback": "EXACT_METADATA_ONLY", "typed_advisory_sha256": digest(commitment_bytes),
+                      "typed_measures": measures, "all_target_code_execution": False}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    create_design()

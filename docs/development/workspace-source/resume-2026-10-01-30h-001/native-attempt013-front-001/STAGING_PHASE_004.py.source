@@ -1,0 +1,95 @@
+"""AST/text staging only; never executes phase or project code."""
+import ast
+from pathlib import Path
+
+FRONT = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-attempt013-front-001')
+path = FRONT / 'native_phase_evidence_common_013_window30h_001.py.template'
+text = path.read_text()
+
+def replace_function(name, new):
+    global text
+    tree = ast.parse(text)
+    node = next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name == name)
+    lines = text.splitlines(keepends=True)
+    lines[node.lineno-1:node.end_lineno] = [new.rstrip()+'\n']
+    text = ''.join(lines)
+
+start = '''
+FRONT_CONTEXT = None
+FRONT_BINDINGS = None
+BASE_RECORD_KEYS = {'recovery_schema_version','recovery_id','decision_id','record_type',
+                    'scientific_outcomes_consulted','scientific_values_emitted','record_digest'}
+
+def configure_successor(front, bindings):
+    global FRONT_CONTEXT, FRONT_BINDINGS, SESSION, ATTEMPT, RAW_AUTHORITY_HELPER_SHA, CHILD_BOOTSTRAP_LITERAL_SHA
+    require(front is not None, 'registered captured front policy required')
+    front.checked_bindings(bindings,receipt_only=False)
+    FRONT_CONTEXT, FRONT_BINDINGS = front, dict(bindings)
+    SESSION, ATTEMPT = front.FRONT, front.ATTEMPT
+    RAW_AUTHORITY_HELPER_SHA = bindings['helper_sha256']
+    CHILD_BOOTSTRAP_LITERAL_SHA = bindings['child_bootstrap_literal_sha256']
+
+def operating_invocation():
+    require(FRONT_CONTEXT is not None and FRONT_BINDINGS is not None, 'operating evidence policy is unconfigured')
+    invocation, _, _ = twin('bootstrap-invocation.json','bootstrap_invocation')
+    require(set(invocation) == BASE_RECORD_KEYS | {
+        'bootstrap_schema_version','status','incident','epoch001_terminal','transition_intent',
+        'transition_completion','authority','historical_admission','controller_process','runtime_temp',
+        'child_transport','prelaunch_state','prelaunch_state_digest','claim_paths','automatic_retry_allowed'}
+        and type(invocation['bootstrap_schema_version']) is int and invocation['bootstrap_schema_version'] == 5
+        and invocation['authority']['preimport_authority_record']['runtime']['command'] == 'recover',
+        'stored current bootstrap5 invocation shape/recover command differs')
+    context = FRONT_CONTEXT.admission_for_authority(invocation['authority'],invocation['historical_admission'],FRONT_BINDINGS)
+    require(invocation['authority'] == context.operating_authority
+            and invocation['historical_admission'] == context.admission_binding,
+            'stored current invocation authority/admission differs')
+    return invocation, context
+'''
+text += '\n' + start
+old_tree = ast.parse(text)
+node = next(n for n in old_tree.body if isinstance(n,ast.FunctionDef) and n.name=='transition_authorization')
+body = ast.get_source_segment(text,node)
+body = body.replace('authority = incident["authority"]', 'invocation, context = operating_invocation()\n    authority = context.operating_authority')
+body = body.replace('"epoch001_terminal_file_sha256": terminal_sha,', '"epoch001_terminal_file_sha256": terminal_sha,\n        "operating_authority": authority,\n        "historical_admission": context.admission_binding,')
+replace_function('transition_authorization',body)
+tree = ast.parse(text)
+node = next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='check_transition')
+body = ast.get_source_segment(text,node)
+body = body.replace('authorization = transition_authorization(incident, incident_sha, terminal_sha)', '''authorization = transition_authorization(incident, incident_sha, terminal_sha)
+    require(set(intent) == BASE_RECORD_KEYS | {'status','authorization','liveness_stability_reports'}
+            and set(completion) == BASE_RECORD_KEYS | {'status','authorization','transition_intent','orphan_lease_archive','quarantine'},
+            'transition current strict field sets differ')''')
+replace_function('check_transition',body)
+tree=ast.parse(text)
+node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='check_normal_bootstrap')
+body=ast.get_source_segment(text,node)
+body=body.replace('absent_twins("bootstrap-postmortem-completion.json")', '''validated_invocation, context = operating_invocation()
+    absent_twins("bootstrap-postmortem-completion.json")''')
+body=body.replace('terminal.get("bootstrap_schema_version") == 4','terminal.get("bootstrap_schema_version") == 5')
+body=body.replace('invocation.get("authority") == incident["authority"]', '''invocation == validated_invocation
+            and invocation.get("authority") == context.operating_authority
+            and invocation.get("historical_admission") == context.admission_binding
+            and transition['authorization']['operating_authority'] == context.operating_authority
+            and transition['authorization']['historical_admission'] == context.admission_binding''')
+body=body.replace('check_bootstrap_process_and_transport(invocation, claim, witness)', '''require(set(claim) == BASE_RECORD_KEYS | {'status','invocation','transition_completion','prelaunch_state_digest','worker','claim_paths','exclusive_create','automatic_retry_allowed'}
+            and set(terminal) == BASE_RECORD_KEYS | {'status','bootstrap_schema_version','invocation','claim','operational_result','automatic_retry_allowed'},
+            'bootstrap claim/terminal strict field sets differ')
+    check_bootstrap_process_and_transport(invocation, claim, witness)''')
+replace_function('check_normal_bootstrap',body)
+replace_function('check_owner_and_attempt','''
+def check_owner_and_attempt(*, prior_stage, controller_commit, receipt_sha, owner_sha,
+                            prior_sha, expected_files, prior_name):
+    require(FRONT_CONTEXT is not None and FRONT_BINDINGS is not None,'successor phase context missing')
+    C,F=FRONT_CONTEXT,FRONT_BINDINGS
+    C.boundary(F,reserve=390 if prior_stage=='adjudicate' else 0)
+    require(controller_commit==F['controller_commit'] and receipt_sha==F['receipt_sha256']
+            and owner_sha==C.PROGRAMMATIC_FACTS['owner_sha256'] and prior_stage=='adjudicate'
+            and prior_name==C.verdict_path('adjudicate').name,'current pre-recovery caller bindings differ')
+    prior=C.validate_ready_verdict('adjudicate',prior_sha,F)
+    require({path.name for path in entries(ATTEMPT)}==set(expected_files),'exact attempt013 phase inventory differs')
+    hashes={name:sha(read_file(ATTEMPT/name)) for name in sorted(expected_files)}
+    return prior,hashes
+''')
+ast.parse(text)
+path.write_text(text,encoding='utf-8',newline='\n')
+print('phase common operating authority/current admission strict validators staged')

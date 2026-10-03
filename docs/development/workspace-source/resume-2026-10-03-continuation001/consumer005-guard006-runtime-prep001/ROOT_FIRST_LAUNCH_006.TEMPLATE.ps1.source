@@ -1,0 +1,193 @@
+param([Parameter(Mandatory=$true)][string]$ExpectedSelfSha256, [Parameter(Mandatory=$true)][string]$ExpectedLateReviewSha256)
+# AUTHOR PREPARATION ONLY. Static, actual-bound and late review precede root first entry.
+$ErrorActionPreference = 'Stop'
+$BoundDriverSha256 = $null
+$RootAckSha256 = $null
+$BoundReviewSha256 = $null
+if ($null -eq $BoundDriverSha256 -or $null -eq $RootAckSha256 -or $null -eq $BoundReviewSha256) {
+    throw 'UNBOUND GUARD006 ROOT LAUNCH; no execution'
+}
+foreach ($pin in @($ExpectedSelfSha256,$BoundDriverSha256,$RootAckSha256,$BoundReviewSha256,$ExpectedLateReviewSha256)) {
+    if ($pin -isnot [string] -or $pin -cnotmatch '^[0-9a-f]{64}$') { throw 'Exact externally supplied SHA256 required' }
+}
+$Prep = 'D:\Aenv\pro2\resume-2026-10-03-continuation001\consumer005-guard006-runtime-prep001'
+$Python = 'D:\Aenv\pro2\runtimes\week8-python313-frozen-001\python.exe'
+$Driver = Join-Path $Prep 'run-consumer-guard-unit006.py'
+$Ack = Join-Path $Prep 'ROOT_EXECUTION_ACK_GUARD_UNIT006.json'
+$Review = Join-Path $Prep 'INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_006.json'
+$Late = Join-Path $Prep 'INDEPENDENT_GUARD_ROOT_LAUNCH_LATE_REVIEW_006.json'
+$Static = Join-Path $Prep 'INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_006.json'
+$SourcePeer = 'D:\Aenv\pro2\resume-2026-10-03-continuation001\capsule-design-independent-review001\INDEPENDENT_COMPACT_CAPSULE_REVIEW_001.json'
+$Profile = Join-Path $Prep 'GUARD_RUNTIME_PROFILE_006.json'
+$Start = Join-Path $Prep 'ROOT_LAUNCH_START_006.json'
+$Terminal = Join-Path $Prep 'ROOT_LAUNCH_TERMINAL_006.json'
+$Stdout = Join-Path $Prep 'ROOT_LAUNCH_STDOUT_006.txt'
+$Stderr = Join-Path $Prep 'ROOT_LAUNCH_STDERR_006.txt'
+function Assert-Plain-Ancestors([string]$Path) {
+    $parent = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Path))
+    while ($parent) {
+        $info = Get-Item -LiteralPath $parent -Force
+        if (-not $info.PSIsContainer -or ($info.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Reparse launch ancestor' }
+        $next = [IO.Directory]::GetParent($parent)
+        if ($null -eq $next) { break }
+        $parent = $next.FullName
+    }
+}
+function Read-Plain([string]$Path,[string]$Pin,[int]$Maximum) {
+    Assert-Plain-Ancestors $Path
+    $first = Get-Item -LiteralPath $Path -Force
+    if ($first.PSIsContainer -or ($first.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $first.Length -gt $Maximum) { throw 'Nonplain/oversize launch input' }
+    $before = @($first.Length,$first.CreationTimeUtc.Ticks,$first.LastWriteTimeUtc.Ticks,[int]$first.Attributes)
+    $stream = [IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    try {
+        if ($stream.Length -ne $first.Length -or $stream.Length -gt $Maximum) { throw 'Opened input size differs' }
+        $memory = [IO.MemoryStream]::new()
+        try {
+            $buffer = [byte[]]::new(4096)
+            do {
+                $count = $stream.Read($buffer,0,$buffer.Length)
+                if ($memory.Length + $count -gt $Maximum) { throw 'Opened input exceeds cap' }
+                $memory.Write($buffer,0,$count)
+            } while ($count -gt 0)
+            $bytes = $memory.ToArray()
+        } finally { $memory.Dispose() }
+    } finally { $stream.Dispose() }
+    $last = Get-Item -LiteralPath $Path -Force
+    $after = @($last.Length,$last.CreationTimeUtc.Ticks,$last.LastWriteTimeUtc.Ticks,[int]$last.Attributes)
+    if (($before -join ',') -cne ($after -join ',') -or $bytes.Length -ne $first.Length) { throw 'Launch input metadata changed' }
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try { $hash = [BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-','').ToLowerInvariant() } finally { $hasher.Dispose() }
+    if ($hash -cne $Pin) { throw 'External launch input pin differs' }
+    return ,$bytes
+}
+function Write-Once([string]$Path,[string]$Text) {
+    Assert-Plain-Ancestors $Path
+    $bytes = [Text.UTF8Encoding]::new($false).GetBytes($Text + "`n")
+    if ($bytes.Length -gt 65536) { throw 'Root receipt cap' }
+    $stream = [IO.File]::Open($Path,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+    try { $stream.Write($bytes,0,$bytes.Length); $stream.Flush($true) } finally { $stream.Dispose() }
+}
+foreach ($path in @($Start,$Terminal,$Stdout,$Stderr,'D:\Aenv\pro2\.tmp\cg24-006')) {
+    Assert-Plain-Ancestors $path
+    try { [void](Get-Item -LiteralPath $path -Force -ErrorAction Stop); throw 'One-use root capture/scratch exists' }
+    catch [System.Management.Automation.ItemNotFoundException] { }
+}
+if ([IO.Path]::GetFullPath($PSCommandPath) -cne (Join-Path $Prep 'ROOT_FIRST_LAUNCH_006.BOUND.ps1')) { throw 'Fixed bound root launch path required' }
+$Own = Read-Plain $PSCommandPath $ExpectedSelfSha256 65536
+[void](Read-Plain $Python '5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed' 105816)
+[void](Read-Plain $Driver $BoundDriverSha256 65536)
+[void](Read-Plain $Review $BoundReviewSha256 65536)
+$AckRecord = [Text.Encoding]::UTF8.GetString((Read-Plain $Ack $RootAckSha256 65536)) | ConvertFrom-Json
+$ProfileRecord = [Text.Encoding]::UTF8.GetString((Read-Plain $Profile $AckRecord.profile_sha256 65536)) | ConvertFrom-Json
+[void](Read-Plain $SourcePeer $AckRecord.source_peer_sha256 2097152)
+[void](Read-Plain $Static $AckRecord.harness_static_review_sha256 2097152)
+$LateRecord = [Text.Encoding]::UTF8.GetString((Read-Plain $Late $ExpectedLateReviewSha256 65536)) | ConvertFrom-Json
+$LateKeys = @('schema_version','record_type','verdict','reviewer','scope','author','root_ack_sha256','driver_sha256','bound_review_sha256','launch_sha256','profile_sha256','created_utc','expires_utc','target_execution')
+$ActualLateKeys = ($LateRecord.PSObject.Properties.Name | Sort-Object) -join ','
+$ExpectedLateKeys = ($LateKeys | Sort-Object) -join ','
+if ($ActualLateKeys -cne $ExpectedLateKeys) { throw 'Late root review14 keys' }
+# Strict intrinsic late14 types precede every comparison or timestamp parse.
+$LateTextFields = @('record_type','verdict','author','scope','root_ack_sha256','driver_sha256','bound_review_sha256','launch_sha256','profile_sha256')
+foreach ($field in $LateTextFields) {
+    if ($LateRecord.$field -isnot [string]) { throw 'Late nominal field requires exact string' }
+}
+foreach ($field in @('reviewer','created_utc','expires_utc')) {
+    if ($LateRecord.$field -isnot [string]) { throw 'Late reviewer/UTC field requires exact string' }
+}
+foreach ($field in @('root_ack_sha256','driver_sha256','bound_review_sha256','launch_sha256','profile_sha256')) {
+    if ($LateRecord.$field.Length -ne 64 -or $LateRecord.$field -cnotmatch '^[0-9a-f]{64}$') { throw 'Late SHA requires exact lowercase64hex string' }
+}
+if ($LateRecord.schema_version -isnot [int] -or $LateRecord.schema_version -ne 1 -or
+    $LateRecord.record_type -cne 'consumer_guard_unit006_root_launch_late_review' -or $LateRecord.verdict -cne 'PASS_LATE_BOUND_ONLY' -or
+    @('/root/pubnative_review','/root/actual_record_checker','/root/owner_docs_review','/root') -cnotcontains $LateRecord.reviewer -or
+    $LateRecord.author -cne '/root/capsule_design_review' -or $LateRecord.scope -cne 'COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY' -or
+    $LateRecord.root_ack_sha256 -cne $RootAckSha256 -or $LateRecord.driver_sha256 -cne $BoundDriverSha256 -or
+    $LateRecord.bound_review_sha256 -cne $BoundReviewSha256 -or $LateRecord.launch_sha256 -cne $ExpectedSelfSha256 -or
+    $LateRecord.profile_sha256 -cne $AckRecord.profile_sha256 -or $LateRecord.target_execution -isnot [bool] -or $LateRecord.target_execution) { throw 'Late independent root review facts' }
+$OwnText = [Text.Encoding]::UTF8.GetString($Own)
+$Pattern = '(?m)^\$(BoundDriverSha256|RootAckSha256|BoundReviewSha256) = ''[0-9a-f]{64}''\r?$'
+if ([regex]::Matches($OwnText,$Pattern).Count -ne 3) { throw 'Root supervisor exactly three bindings' }
+$TemplateText = [regex]::Replace($OwnText,$Pattern,{ param($m) '$' + $m.Groups[1].Value + ' = $null' })
+$Hasher = [Security.Cryptography.SHA256]::Create()
+try { $TemplateHash = [BitConverter]::ToString($Hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($TemplateText))).Replace('-','').ToLowerInvariant() } finally { $Hasher.Dispose() }
+if ($TemplateHash -cne $ProfileRecord.root_supervisor.sha256) { throw 'Root launch template differs' }
+# DateTimeOffset.Parse is permissive; it does not enforce canonical timestamp shape.
+# Before binding, independent actual-record review must enforce genuine Python UTC32
+# or supporting ROOT PS UTC33 roles per EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_006.json.
+$Now = [DateTimeOffset]::UtcNow
+$LeasePath = 'D:\Aenv\pro2\resume-2026-10-03-continuation001\EXECUTION_LEASE_GG6_M3_001.json'
+$Lease = [Text.Encoding]::UTF8.GetString((Read-Plain $LeasePath $AckRecord.owner_sha256 65536)) | ConvertFrom-Json
+if ($Lease.record_type -cne 'root_local_private_execution_lease' -or $Lease.author -cne '/root' -or
+    $Lease.scope -cne $AckRecord.scope -or $Lease.lease_is_owner_deadline -isnot [bool] -or $Lease.lease_is_owner_deadline -or
+    $Lease.operational_authority -isnot [bool] -or $Lease.operational_authority) { throw 'Bounded execution lease role' }
+$OwnerEnd = [DateTimeOffset]::Parse($Lease.lease_end_utc)
+if ([DateTimeOffset]::Parse($AckRecord.created_utc) -gt $Now -or [DateTimeOffset]::Parse($LateRecord.created_utc) -gt $Now -or
+    [DateTimeOffset]::Parse($AckRecord.expires_utc) -gt $OwnerEnd -or [DateTimeOffset]::Parse($LateRecord.expires_utc) -gt $OwnerEnd -or
+    ([DateTimeOffset]::Parse($AckRecord.expires_utc)-$Now).TotalSeconds -lt 450 -or
+    ([DateTimeOffset]::Parse($LateRecord.expires_utc)-$Now).TotalSeconds -lt 450) { throw 'Fresh root/late review and owner450s reserve required' }
+$RuntimePointer=$AckRecord.runtime_snapshot
+$Runtime=[Text.Encoding]::UTF8.GetString((Read-Plain $RuntimePointer.path $RuntimePointer.sha256 65536)) | ConvertFrom-Json
+$ContextPointer=$Runtime.context_selection
+$Context=[Text.Encoding]::UTF8.GetString((Read-Plain $ContextPointer.path $ContextPointer.sha256 1048576)) | ConvertFrom-Json
+foreach ($original in @($Runtime,$Context)) {
+    $age=([DateTimeOffset]::UtcNow-[DateTimeOffset]::Parse($original.captured_utc)).TotalSeconds
+    if ($age -lt 0 -or $age -gt 90) { throw 'Both original context/runtime require90 second final GO gate' }
+}
+$Started = [DateTimeOffset]::UtcNow
+Write-Once $Start (([ordered]@{schema_version=1;scope=$AckRecord.scope;started_utc=$Started.ToString('o');launch_sha256=$ExpectedSelfSha256;driver_sha256=$BoundDriverSha256;root_ack_sha256=$RootAckSha256;bound_review_sha256=$BoundReviewSha256;late_review_sha256=$ExpectedLateReviewSha256;consumed=$true}) | ConvertTo-Json -Compress)
+# Direct process only; no OS Job or descendant cleanup proof. The driver normally owns/reaps its test child.
+$Info = [Diagnostics.ProcessStartInfo]::new()
+$Info.FileName = $Python
+$Info.Arguments = '-I -S -B -X utf8 "' + $Driver + '" --expected-self-sha256 ' + $BoundDriverSha256 + ' --root-ack-path "' + $Ack + '" --root-ack-sha256 ' + $RootAckSha256 + ' --bound-review-path "' + $Review + '" --bound-review-sha256 ' + $BoundReviewSha256 + ' --source-peer-path "' + $SourcePeer + '" --harness-peer-path "' + $Static + '"'
+$Info.WorkingDirectory = $Prep
+$Info.UseShellExecute = $false
+$Info.CreateNoWindow = $true
+$Info.RedirectStandardInput = $true
+$Info.RedirectStandardOutput = $true
+$Info.RedirectStandardError = $true
+foreach ($key in @('OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','NUMEXPR_NUM_THREADS','VECLIB_MAXIMUM_THREADS','BLIS_NUM_THREADS')) { $Info.EnvironmentVariables[$key] = '1' }
+$Info.EnvironmentVariables['PYTHONDONTWRITEBYTECODE']='1'
+$Process = [Diagnostics.Process]::new(); $Process.StartInfo=$Info
+$OutFile = [IO.File]::Open($Stdout,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+$ErrFile = [IO.File]::Open($Stderr,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+$Code=$null; $TimedOut=$false; $Overflow=$false; $Failure=$null; $Reaped=$false; $DrainComplete=$false; $OutBytes=0; $ErrBytes=0
+try {
+    if (-not $Process.Start()) { throw 'Root driver failed to start' }
+    $Process.StandardInput.Close()
+    $OutBuffer=[byte[]]::new(4096); $ErrBuffer=[byte[]]::new(4096)
+    $OutRead=$Process.StandardOutput.BaseStream.ReadAsync($OutBuffer,0,4096)
+    $ErrRead=$Process.StandardError.BaseStream.ReadAsync($ErrBuffer,0,4096)
+    $OutDone=$false; $ErrDone=$false
+    while (-not ($Reaped -and $OutDone -and $ErrDone)) {
+        foreach ($channel in @('out','err')) {
+            $task=if($channel -ceq 'out'){$OutRead}else{$ErrRead}
+            $done=if($channel -ceq 'out'){$OutDone}else{$ErrDone}
+            if (-not $done -and $task.IsCompleted) {
+                $n=$task.GetAwaiter().GetResult()
+                if ($n -eq 0) { if($channel -ceq 'out'){$OutDone=$true}else{$ErrDone=$true} }
+                else {
+                    $used=if($channel -ceq 'out'){$OutBytes}else{$ErrBytes}
+                    $keep=[Math]::Min($n,131072-$used)
+                    if ($channel -ceq 'out') { $OutFile.Write($OutBuffer,0,$keep);$OutBytes+=$keep;$OutRead=$Process.StandardOutput.BaseStream.ReadAsync($OutBuffer,0,4096) }
+                    else { $ErrFile.Write($ErrBuffer,0,$keep);$ErrBytes+=$keep;$ErrRead=$Process.StandardError.BaseStream.ReadAsync($ErrBuffer,0,4096) }
+                    if ($keep -lt $n) { $Overflow=$true }
+                }
+            }
+        }
+        $elapsed=([DateTimeOffset]::UtcNow-$Started).TotalSeconds
+        if (($Overflow -or $elapsed -ge 420) -and -not $Process.HasExited) { $TimedOut=($elapsed -ge 420); $Process.Kill() }
+        if ($Process.HasExited) { $Reaped=$true;$Code=$Process.ExitCode }
+        if ($elapsed -ge 450) { throw 'Root450s capture/reap budget exhausted; owned descendant state unproved' }
+        Start-Sleep -Milliseconds 20
+    }
+    $DrainComplete=$true
+} catch { $Failure=$_.Exception.Message }
+finally {
+    if (-not $Reaped) {
+        try { if(-not $Process.HasExited){$Process.Kill()};$Reaped=$Process.WaitForExit(1000);if($Reaped){$Code=$Process.ExitCode} }
+        catch { $Failure=([string]$Failure)+'; direct process reap unproved' }
+    }
+    $OutFile.Dispose();$ErrFile.Dispose();$Process.Dispose()
+    Write-Once $Terminal (([ordered]@{schema_version=1;scope=$AckRecord.scope;finished_utc=[DateTimeOffset]::UtcNow.ToString('o');exit_code=$Code;timed_out=$TimedOut;capture_overflow=$Overflow;capture_drain_complete=$DrainComplete;direct_driver_reaped=$Reaped;failure=$Failure;stdout_bytes=$OutBytes;stderr_bytes=$ErrBytes;driver_sha256=$BoundDriverSha256;root_ack_sha256=$RootAckSha256;spent=$true;canonical_qa_native_fit_authority=$false;descendant_cleanup_guaranteed=$false;OS_Job_hard_memory_bound=$false;automatic_cleanup_performed=$false}) | ConvertTo-Json -Compress)
+}
+if ($TimedOut -or $Overflow -or $Failure -or -not $DrainComplete -or -not $Reaped -or $Code -ne 0) { throw 'Guard005 first execution refused/failed; preserve captures; never replay' }

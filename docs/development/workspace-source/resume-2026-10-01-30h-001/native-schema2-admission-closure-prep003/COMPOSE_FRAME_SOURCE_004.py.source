@@ -1,0 +1,135 @@
+import ast
+import hashlib
+import json
+import re
+from pathlib import Path
+
+root = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-schema2-admission-closure-prep003')
+old = root / 'before' / 'native002'
+common_path = root / 'front/native_successor_front_common_013_001.py.template'
+tree = ast.parse(common_path.read_bytes())
+schema_node = next(node for node in tree.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'BINDING_SCHEMA' for target in node.targets))
+assert isinstance(schema_node.value, ast.Call) and isinstance(schema_node.value.func, ast.Attribute) and schema_node.value.func.attr == 'loads'
+schema = json.loads(ast.literal_eval(schema_node.value.args[0]))
+facts_node = next(node for node in tree.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'PROGRAMMATIC_FACTS' for target in node.targets))
+facts = json.loads(ast.literal_eval(facts_node.value.args[0]))
+provenance = facts['provenance_fields']
+assert len(schema) == 44 and len(provenance) == 14
+fragment = (root / 'FRAME_FUNCTIONS_002.FRAGMENT.py').read_text(encoding='utf-8').replace('__FRAME_SCHEMA_LITERAL__', repr(schema)).replace('__FRAME_PROVENANCE_LITERAL__', repr(tuple(provenance)))
+frame_tree = ast.parse(fragment)
+assert len(frame_tree.body) == 4 and all(isinstance(node, ast.FunctionDef) for node in frame_tree.body)
+assert isinstance(tree.body[-1], ast.If) and isinstance(tree.body[-1].test, ast.Compare)
+tree.body[-1:-1] = frame_tree.body
+new_common = (ast.unparse(tree) + '\n').encode('utf-8')
+assert len(new_common) <= 196605
+
+bootstrap_functions = [node for node in frame_tree.body if node.name != '_native_frame_encode']
+bootstrap = 'import base64,binascii,ctypes,hashlib,json,sys\n' + '\n'.join(ast.unparse(node) for node in bootstrap_functions) + '''
+k=ctypes.WinDLL('kernel32.dll',use_last_error=True)
+q=k.GetCommandLineW
+q.argtypes=[]
+q.restype=ctypes.c_wchar_p
+w=q()
+if type(w)is not str or not 0<len(w.encode('utf-16-le'))//2<=8191:raise ValueError('observed physical Windows command exceeds8191')
+physical_argv=tuple(sys.argv)
+p=sys.argv.pop(1)
+h=sys.argv.pop(1)
+if sys.argv.count('--phase')!=1 or any(item.split('=',1)[0]=='--bindings-base64' for item in sys.argv[1:]):raise ValueError('physical frame argv context differs')
+phase_index=sys.argv.index('--phase')
+if phase_index+1>=len(sys.argv):raise ValueError('physical frame phase missing')
+d,t,v=_native_frame_read(sys.stdin.buffer,h,sys.argv[phase_index+1]=='renderer')
+globals()['__native_observed_os_command_line__']=w
+globals()['__native_physical_argv__']=physical_argv
+globals()['__source_bytes__']=d
+globals()['__source_sha256__']=h
+globals()['__file__']=p
+sys.argv[0]=p
+sys.argv[1:1]=['--bindings-base64',t]
+exec(compile(d,p,'exec',dont_inherit=True),globals())
+'''
+bootstrap_tree = ast.parse(bootstrap)
+for node in bootstrap_functions:
+    found = next(item for item in bootstrap_tree.body if isinstance(item, ast.FunctionDef) and item.name == node.name)
+    assert ast.dump(found, include_attributes=False) == ast.dump(node, include_attributes=False)
+assert len(bootstrap.encode('utf-16-le')) // 2 < 8191
+with (root / 'CAPTURED_FRAME_BOOTSTRAP_003.py.txt').open('xb') as stream:
+    stream.write(bootstrap.encode('utf-8'))
+
+quote_ps = lambda text: "'" + text.replace("'", "''") + "'"
+keys_ps = '@(' + ','.join(quote_ps(name) for name in sorted(schema)) + ')'
+sha_keys = '@(' + ','.join(quote_ps(name) for name, kind in schema.items() if kind == 'sha256') + ')'
+provenance_ps = '@(' + ','.join(quote_ps(name) for name in sorted(provenance)) + ')'
+ps_closed = '''function Convert-NativeFrameBindings($Value, [bool] $Renderer) {
+    $keys = __KEYS__
+    $shaKeys = __SHA_KEYS__
+    $provenance = __PROVENANCE__
+    $optional = @('receipt_sha256','admission_sha256','external_proof_sha256','native_review_path','native_review_sha256','renderer_action_sha256','renderer_transport_sha256','publisher_sha256','external_verifier_sha256','publication_end_sha256','verification_intent_sha256')
+    if ($Value -isnot [Collections.IDictionary] -or $Value.Count -ne 44 -or @($Value.Keys | Where-Object { $_ -isnot [string] -or $keys -cnotcontains $_ }).Count -ne 0) { throw 'Frame sender exact44 keys differ' }
+    foreach ($key in $keys) {
+        $item = $Value[$key]
+        if ($Renderer -and $optional -ccontains $key -and $null -eq $item) { continue }
+        if ($shaKeys -ccontains $key) { if ($item -isnot [string] -or $item -cnotmatch '^[0-9a-f]{64}$') { throw 'Frame sender SHA differs' } }
+        elseif ($key -ceq 'controller_commit') { if ($item -isnot [string] -or $item -cnotmatch '^[0-9a-f]{40}$') { throw 'Frame sender commit differs' } }
+        elseif ($key -ceq 'changed_file_count') { if (($item -isnot [int] -and $item -isnot [long]) -or $item -ne 25) { throw 'Frame sender integer count differs' } }
+        elseif ($key -ceq 'release_provenance') {
+            if ($item -isnot [Collections.IDictionary] -or $item.Count -ne 14 -or @($item.Keys | Where-Object { $_ -isnot [string] -or $provenance -cnotcontains $_ }).Count -ne 0) { throw 'Frame sender provenance keys differ' }
+            foreach ($row in $item.Values) {
+                if ($row -isnot [Collections.IDictionary] -or $row.Count -ne 2 -or -not $row.Contains('path') -or -not $row.Contains('sha256') -or $row['path'] -isnot [string] -or $row['path'].Length -eq 0 -or $row['path'].Length -gt 12288 -or $row['path'].IndexOf([char]0) -ge 0 -or $row['sha256'] -isnot [string] -or $row['sha256'] -cnotmatch '^[0-9a-f]{64}$') { throw 'Frame sender provenance row differs' }
+            }
+        }
+        elseif ($item -isnot [string] -or $item.Length -eq 0 -or $item.Length -gt 12288 -or $item.IndexOf([char]0) -ge 0) { throw 'Frame sender path differs' }
+    }
+    $json = Convert-NativeFrameJson $Value
+    if ($json.Length -gt 12288 -or @($json.ToCharArray() | Where-Object { [int]$_ -gt 127 }).Count -ne 0) { throw 'Frame sender canonical ASCII JSON exceeds bound' }
+    return $json
+}
+
+'''.replace('__KEYS__', keys_ps).replace('__SHA_KEYS__', sha_keys).replace('__PROVENANCE__', provenance_ps)
+ps_fragment = ps_closed + (root / 'FRAME_SENDER_003.FRAGMENT.ps1').read_text(encoding='utf-8')
+with (root / 'EXPANDED_FRAME_SENDER_003.ps1.txt').open('xb') as stream:
+    stream.write(ps_fragment.encode('utf-8'))
+
+changed = []
+for folder in ('front', 'postseal'):
+    for path in sorted((root / folder).glob('*.ps1.template')):
+        text = path.read_text(encoding='utf-8')
+        if 'b=sys.stdin.buffer.read(262145)' not in text:
+            continue
+        assert text.count('b=sys.stdin.buffer.read(262145)') == 1
+        before = text
+        assert text.count('function Assert-CapturedSourceCommandLine(') == 1
+        text = text.replace('function Assert-CapturedSourceCommandLine(', ps_fragment + '\nfunction Assert-CapturedSourceCommandLine(', 1)
+        if '$frontBootstrap =' in text:
+            text = text.replace('$frontJson = $FrontBindings | ConvertTo-Json -Depth 8 -Compress', "$frontJson = Convert-NativeFrameBindings $FrontBindings ($Phase -ceq 'renderer')")
+            text, n = re.subn(r"\$frontBootstrap = '[^\r\n]*'", lambda match: '$frontBootstrap = ' + quote_ps(bootstrap), text)
+            assert n == 1
+            text = text.replace("if ($frontPayload.Length -gt 262142) { throw 'Captured front source exceeds reviewed transport bound' }", "if ($frontPayload.Length + $frontBase64.Length -gt 262142) { throw 'Frame sender encoded sum exceeds262142' }\n    $frontFrame = [Text.Encoding]::ASCII.GetBytes($frontPayload + \"`n\" + $frontBase64 + \"`n\")\n    if ($frontFrame.Length -gt 262144) { throw 'Frame sender complete byte cap differs' }")
+            text = text.replace(",'--bindings-base64',$frontBase64", '')
+            text = text.replace('$frontReply = @($frontPayload | & $Python @frontArgs)', "$frontResult = Invoke-NativeFrameChild $Python $frontArgs $frontFrame 'ATTEMPT013_BOUNDARY_PASS'\n    $frontReply = @($frontResult.Lines)")
+            text = text.replace('$LASTEXITCODE -ne 0 -or $frontReply.Count', '$frontResult.ExitCode -ne 0 -or $frontReply.Count')
+        else:
+            text = text.replace('$json = $C.FrontBindings | ConvertTo-Json -Depth 12 -Compress', '$json = Convert-NativeFrameBindings $C.FrontBindings $false')
+            text, n = re.subn(r"\$bootstrap = '[^\r\n]*'", lambda match: '$bootstrap = ' + quote_ps(bootstrap), text)
+            assert n == 1
+            text = text.replace("if ($payload.Length -gt 262142) { throw 'Captured downstream policy exceeds finite stdin bound' }", "if ($payload.Length + $bindings.Length -gt 262142) { throw 'Frame sender encoded sum exceeds262142' }\n    $frame = [Text.Encoding]::ASCII.GetBytes($payload + \"`n\" + $bindings + \"`n\")\n    if ($frame.Length -gt 262144) { throw 'Frame sender complete byte cap differs' }")
+            text = text.replace("'--bindings-base64',$bindings,", '')
+            text = text.replace('$reply = @($payload | & $C.Python @arguments)', "$frameResult = Invoke-NativeFrameChild $C.Python $arguments $frame 'ATTEMPT013_POSTSEAL_BOUNDARY_PASS'\n    $reply = @($frameResult.Lines)")
+            text = text.replace('$LASTEXITCODE -ne 0 -or $reply.Count', '$frameResult.ExitCode -ne 0 -or $reply.Count')
+        assert '| & $' not in text or 'frontPayload | &' not in text and 'payload | &' not in text
+        assert "'--bindings-base64'," not in text and 'ReadAsync' in text and 'BaseStream' in text
+        assert text != before
+        path.write_text(text, encoding='utf-8', newline='\n')
+        changed.append(path.relative_to(root).as_posix())
+assert len(changed) == 8
+common_path.write_bytes(new_common)
+record = dict(schema_version=1, author='/root/bootstrap_stage', status='SOURCE_ONLY_UNRUN',
+              common_bytes=len(new_common), common_sha256=hashlib.sha256(new_common).hexdigest(),
+              bootstrap_utf16_units=len(bootstrap.encode('utf-16-le'))//2, bootstrap_sha256=hashlib.sha256(bootstrap.encode('utf-8')).hexdigest(),
+              updated_direct_PS_bridges=changed, direct_PS_count=8, preserved_Python_loader_boundaries=12,
+              preserved_caller_schema=44, inherited_forwarder_count=9,
+              actual_source_literal_growth_bound=None, actual_selected16_paths=None,
+              actual_native_commands=None, actual_physical_GetCommandLineW_witness=None,
+              target_definitions_compilation_import_tests_FFI_Git_native_executed=False)
+with (root / 'FRAME_SOURCE_COMPOSITION_003.json').open('xb') as stream:
+    stream.write((json.dumps(record, sort_keys=True, indent=2) + '\n').encode('ascii'))
+print(json.dumps(record, sort_keys=True))

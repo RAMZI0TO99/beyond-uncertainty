@@ -1,0 +1,49 @@
+def _capture_bound_successor_input(
+    path: Path, *, what: str, maximum_bytes: int,
+) -> tuple[bytes, tuple[Any, ...]]:
+    """Capture one bounded input before hashing; cross-compare only established fields."""
+    if type(maximum_bytes) is not int or maximum_bytes <= 0:
+        raise BootstrapRefused(f"{what} capture bound is invalid")
+    try:
+        parent = path.parent.lstat()
+        before = path.lstat()
+        if (
+            stat.S_ISLNK(parent.st_mode) or _is_reparse(parent)
+            or not stat.S_ISDIR(parent.st_mode)
+            or stat.S_ISLNK(before.st_mode) or _is_reparse(before)
+            or not stat.S_ISREG(before.st_mode)
+            or int(getattr(before, "st_nlink", 0)) != 1
+        ):
+            raise BootstrapRefused(f"{what} is not a distinct plain file")
+        if not 0 <= before.st_size <= maximum_bytes:
+            raise BootstrapRefused(f"{what} exceeds its capture bound")
+        cross_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink")
+        path_fields = cross_fields + ("st_ctime_ns", "st_mode", "st_file_attributes", "st_birthtime_ns")
+        before_identity = tuple(getattr(before, key, None) for key in path_fields)
+        with path.open("rb", buffering=0) as stream:
+            opened = os.fstat(stream.fileno())
+            if (
+                not 0 <= opened.st_size <= maximum_bytes
+                or any(getattr(before, key, None) != getattr(opened, key, None)
+                       for key in cross_fields)
+            ):
+                raise BootstrapRefused(f"{what} exceeds or changed before bounded capture")
+            data = stream.read(maximum_bytes + 1)
+            after_open = os.fstat(stream.fileno())
+        after_path = path.lstat()
+        if len(data) > maximum_bytes:
+            raise BootstrapRefused(f"{what} exceeds its capture bound")
+        if (
+            len(data) != before.st_size
+            or before_identity != tuple(getattr(after_path, key, None) for key in path_fields)
+            or any(getattr(opened, key, None) != getattr(after_open, key, None) for key in path_fields)
+            or any(getattr(before, key, None) != getattr(observed, key, None)
+                   for observed in (opened, after_open, after_path) for key in cross_fields)
+            or stat.S_ISLNK(after_path.st_mode) or _is_reparse(after_path)
+            or not stat.S_ISREG(after_path.st_mode)
+            or int(getattr(after_path, "st_nlink", 0)) != 1
+        ):
+            raise BootstrapRefused(f"{what} changed during bounded admission read")
+        return data, before_identity
+    except OSError as exc:
+        raise BootstrapRefused(f"{what} is unavailable for admission") from exc

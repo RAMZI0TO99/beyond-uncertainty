@@ -1,0 +1,55 @@
+"""AST/inert CodeType metadata only; no target namespace is executed."""
+import ast,base64,collections,hashlib,json,types
+from pathlib import Path
+stage=Path(__file__).absolute().parent
+preservation=json.loads((stage/'PRESERVATION_BEFORE_IMPLEMENTATION_002.json').read_bytes())
+def sha(data):return hashlib.sha256(data).hexdigest()
+def methods(tree):return {n.name+'.'+m.name:ast.dump(m,include_attributes=False) for n in tree.body if isinstance(n,ast.ClassDef) for m in n.body if isinstance(m,ast.FunctionDef)and m.name.startswith('test_')}
+rows=[]
+for record in preservation['active_source_map']:
+    path=stage/record['active'];data=path.read_bytes();old=next(row for row in preservation['pairs']if row['original_relative']==record['before'])
+    row={'path':record['active'],'bytes':len(data),'sha256':sha(data),'before_sha256':old['sha256'],'unchanged':sha(data)==old['sha256']}
+    if path.name.endswith('.py.template')or path.suffix=='.py':
+        tree=ast.parse(data,filename=str(path))
+        # Root expressly authorized inert CodeType metadata for new sources.
+        code=compile(data,str(path),'exec',dont_inherit=True,optimize=0)
+        row.update(ast=True,inert_compile=True,functions=sum(isinstance(n,ast.FunctionDef)for n in tree.body),classes=sum(isinstance(n,ast.ClassDef)for n in tree.body),top_code_bodies=len([c for c in code.co_consts if type(c)is types.CodeType]))
+        entries=[n for n in tree.body if isinstance(n,ast.If)and isinstance(n.test,ast.Compare)and isinstance(n.test.left,ast.Name)and n.test.left.id=='__name__']
+        if entries:assert len(entries)==1 and tree.body[-1]is entries[0],path
+        known={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)}
+        missing=[]
+        for n in ast.walk(tree):
+            if isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id in known:
+                required={arg.arg for arg,default in zip(known[n.func.id].args.kwonlyargs,known[n.func.id].args.kw_defaults)if default is None}
+                given={k.arg for k in n.keywords}
+                if None not in given and required-given:missing.append({'line':n.lineno,'call':n.func.id,'missing':sorted(required-given)})
+        row['direct_required_keyword_gaps']=missing
+        assert not missing,(path,missing)
+        if record['active'].startswith('source/'):
+            olddata=(stage/old['copy_relative']).read_bytes();oldmethods=methods(ast.parse(olddata));newmethods=methods(tree)
+            assert set(oldmethods)<=set(newmethods)
+            row.update(old_method_count=len(oldmethods),method_count=len(newmethods),old_method_names_retained=True,old_method_ASTs_unchanged=sum(newmethods[k]==v for k,v in oldmethods.items()),changed_old_method_names=[k for k,v in oldmethods.items()if newmethods[k]!=v],added_method_names=[k for k in newmethods if k not in oldmethods])
+    rows.append(row)
+common=stage/'front/native_successor_front_common_013_001.py.template';data=common.read_bytes();tree=ast.parse(data)
+assign={n.targets[0].id:n.value for n in tree.body if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)}
+schema=json.loads(ast.literal_eval(assign['BINDING_SCHEMA'].args[0]))
+assert len(schema)==44 and len(data)<=184317
+budget={'common_bytes':len(data),'growth_from178586':len(data)-178586,'common_max184317':184317,'source_headroom':184317-len(data),'source_base64_bytes':len(base64.b64encode(data)),'maximum_encoded_binding_bytes':16384,'maximum_decoded_binding_bytes':12288,'LF_bytes':2,'canonical_frame_bytes_at_max_binding':len(base64.b64encode(data))+16384+2,'canonical_frame_max262142':262142,'frame_headroom':262142-len(base64.b64encode(data))-16384-2,'receiver_read_sentinel_bytes':262145,'actual16_selected_paths':None,'actual8_full_OS_command_lengths':None,'actual_captured_OS_command_lengths':None,'future_literal_growth':None,'physical_capture_and_Job':None}
+assert budget['canonical_frame_bytes_at_max_binding']<=262142
+raw=stage/'source/before/raw004-source.bytes';data=raw.read_bytes()
+assert sha(data)=='da64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211'
+tree=ast.parse(data);code=compile(data,str(raw),'exec',dont_inherit=True,optimize=0)
+declared=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))]
+bodies=[c for c in code.co_consts if type(c)is types.CodeType]
+named=[]
+for n in declared:
+    line=min([n.lineno]+[d.lineno for d in n.decorator_list])
+    matches=[c for c in bodies if c.co_name==n.name and c.co_qualname==n.name and c.co_firstlineno==line]
+    assert len(matches)==1
+    named.append(matches[0])
+initializers=[c for c in bodies if not any(c is other for other in named)]
+assert len(initializers)==1 and initializers[0].co_name=='<genexpr>'and initializers[0].co_flags&32
+raw_shape={'sha256':sha(data),'bytes':len(data),'functions':sum(isinstance(n,ast.FunctionDef)for n in tree.body),'classes':sum(isinstance(n,ast.ClassDef)for n in tree.body),'explicit_class_methods':sum(isinstance(m,ast.FunctionDef)for n in tree.body if isinstance(n,ast.ClassDef)for m in n.body),'initializer_code':[{'name':c.co_name,'line':c.co_firstlineno,'flags':c.co_flags}for c in initializers],'scope':'CodeType metadata only; no target namespace execution'}
+result={'schema_version':1,'author':'/root/bootstrap_stage','scope':'author source metadata; independent peer and actual runtime pending','source_files':rows,'native_budget':budget,'binding_kinds':dict(collections.Counter(schema.values())),'binding_schema':schema,'raw004_inert_code_shape':raw_shape,'target_code_executed':False,'actual_test_results':None}
+with(stage/'SOURCE_SHAPE_BUDGET_TEST_AUDIT_004.json').open('x',encoding='utf-8')as f:json.dump(result,f,indent=2);f.write('\n')
+print({'source_files':len(rows),'native_budget':budget,'test_methods':[(r['path'],r.get('method_count'))for r in rows if r['path'].startswith('source/')]})

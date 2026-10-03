@@ -1,0 +1,241 @@
+"""Owned source metadata audit only: no reviewed definition execution or compilation."""
+import ast, datetime as dt, hashlib, json, os, re, stat
+from decimal import Decimal
+from pathlib import Path
+ROOT=Path('D:/Aenv/pro2'); WORK=ROOT/'resume-2026-10-03-continuation001'
+PREP=WORK/'root-checker28-runtime-prep002'; OLD=WORK/'root-checker28-runtime-prep001'
+OWN=WORK/'root-checker28-actual-independent002'; META=WORK/'metadata3-actual-checker-prep001'
+DATA={}; FIRST={}; DECIMALS=[]
+def need(v,m):
+    if not v: raise ValueError(m)
+def sha(v): return hashlib.sha256(v).hexdigest()
+def raw(s):
+    v=[getattr(s,k) for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+    need(all(type(x) is int for x in v),'Windows raw9');return v
+def ancestors(p):
+    v=[]
+    for q in reversed(p.parents):
+        s=q.lstat();need(stat.S_ISDIR(s.st_mode) and not s.st_file_attributes&1024,'plain ancestor');v.append([str(q),s.st_dev,s.st_ino])
+    return sha(json.dumps(v).encode())
+def observe(p,pin=None,size=None):
+    p=p.absolute();need(p.is_relative_to(ROOT) or str(p) in EXTERNAL_PINS,'workspace or explicitly selected external record only');parent=ancestors(p);a=p.lstat();x=raw(a)
+    need(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and not a.st_file_attributes&1024 and 0<=a.st_size<=8388608,'finite plain file cap')
+    with p.open('rb',buffering=0) as f:
+        y=raw(os.fstat(f.fileno()));need(all(x[i]==y[i] for i in (0,1,2,3,6,7,8)),'cross identity excluding independent ctime')
+        if str(p) in RUNTIME_EXES:
+            need(x[5]&0o111==0o111 and y[5]&0o111==0 and x[5]&~0o111==y[5] and pin==RUNTIME_EXES[str(p)],'exact three-EXE mode projection')
+        else:need(x[5]==y[5],'ordinary mode exact')
+        v=f.read(a.st_size+1);need(raw(os.fstat(f.fileno()))==y,'same handle raw9')
+    need(raw(p.lstat())==x and ancestors(p)==parent and len(v)==a.st_size,'same path raw9')
+    need((pin is None or sha(v)==pin) and (size is None or len(v)==size),'pin bytes');need(p.read_bytes()==v and raw(p.lstat())==x,'different API bytes')
+    return v,dict(path=str(p),sha256=sha(v),bytes=len(v),path_raw9=x,descriptor_raw9=y,parent_identity_sha256=parent)
+def pairs(rows):
+    d={}
+    for k,v in rows:need(k not in d,'duplicate JSON key');d[k]=v
+    return d
+def forbidden(v):raise ValueError('JSON nonfinite')
+def decode(v,source=False,path=''):
+    need(not v.startswith(b'\xef\xbb\xbf'),'BOM');obj=json.loads(v.decode('utf8','strict'),object_pairs_hook=pairs,parse_float=Decimal,parse_constant=forbidden)
+    def walk(x,keys=()):
+        if type(x) is Decimal:
+            need(not source and x.is_finite(),'noFloat Source JSON; documentary finite Decimal only');DECIMALS.append(dict(path=path,key_path=list(keys),exact_decimal=str(x),documentary_only=True))
+        elif type(x) is dict:
+            for k,y in x.items():walk(y,keys+(k,))
+        elif type(x) is list:
+            for i,y in enumerate(x):walk(y,keys+(i,))
+    walk(obj);return obj
+def add(p,pin=None,size=None):
+    p=p.absolute();key=str(p)
+    if key in DATA:
+        need(pin is None or sha(DATA[key])==pin,'consistent pin');need(size is None or len(DATA[key])==size,'consistent size');return DATA[key]
+    v,row=observe(p,pin,size);DATA[key]=v;FIRST[key]=row;return v
+def dump(n):return ast.dump(n,include_attributes=False)
+def methods(tree):return {(c.name,n.name):n for c in tree.body if isinstance(c,ast.ClassDef) for n in c.body if isinstance(n,ast.FunctionDef) and n.name.startswith('test_')}
+def psfunctions(text):
+    lines=text.splitlines(keepends=True);out={}
+    for i,line in enumerate(lines):
+        m=re.match(r'^function ([A-Za-z0-9_-]+)',line)
+        if m:
+            j=i+1 if line.rstrip().endswith('}') else next(k+1 for k in range(i+1,len(lines)) if lines[k].rstrip()=='}');out[m.group(1)]=''.join(lines[i:j])
+    return out
+
+SCOPE='SYNTHETIC_METADATA3_CHECKER28_STDLIB_REGRESSIONS_ONLY'
+PRIVATE=WORK/'root-checker28-runtime002'
+ACK=Path('D:/Aenv/pro3/runs/coordination/next_step_20261003_types4/pro2_checker28_interval_ack_003.json')
+ACK_SHA='0e8ee9273996fd63ed76a0edfbf82fa6f8870e3ac4549b35618db1aa316c40e4'
+EXTERNAL_PINS={str(ACK):ACK_SHA};RUNTIME_EXES={}
+
+def emit(p,v):
+    data=(json.dumps(v,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)+'\n').encode('ascii') if type(v) is not bytes else v
+    with p.open('xb') as f:need(f.write(data)==len(data),'own complete write');f.flush();os.fsync(f.fileno())
+    need(p.read_bytes()==data,'own readback');return dict(path=str(p),sha256=sha(data),bytes=len(data))
+
+def ticks(v,precision):
+    need(type(v) is str and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.'+r'\d{'+str(precision)+r'}\+00:00',v),'authentic timestamp precision')
+    sec=dt.datetime.fromisoformat(v[:19]+'+00:00');fraction=v[20:-6]
+    return int((sec-dt.datetime(1970,1,1,tzinfo=dt.timezone.utc)).total_seconds())*10000000+int(fraction)*10**(7-precision)
+
+def typed(row,expected):
+    for k,v in expected.items():need(k in row and type(row[k]) is type(v) and row[k]==v,'typed '+k)
+
+def jsonfile(p,pin=None,size=None):return decode(add(p,pin,size),True,str(p))
+
+def run():
+    pins={
+    'RUN_SYNTHETIC_CHECKER28_002.TEMPLATE.py':('f02c64855d86548653c4b5bac587b475a024fda8728113e9a5b39206a8dbd8f9',16549),
+    'SUPERVISE_SYNTHETIC_CHECKER28_002.TEMPLATE.ps1':('749781f580120b1974614b60572ce919559ef51fa17e626679e41ccae91ea7af',20451),
+    'ROOT_SYNTHETIC_CHECKER28_GO_002.json':('26b599a41a0398cff45acec5d848666529ee937a3ae7c88177ed0a6c9bc42769',1149),
+    'PRO3_CHECKER28_INTERVAL_ACK_003.json':(ACK_SHA,2155),
+    'ROOT_PARENT_STARTED_002.json':('6d10e45545bfc061adde23e7bfa8fbee762c319394ea7f687dd1d47b109c4afe',659),
+    'ROOT_PARENT_TERMINAL_002.json':('28218a78c1a63c4e8c9818ed4f34a654b91e373753bf0c55e6f475d3b36f1fcc',1005),
+    'ROOT_PARENT_STDOUT_002.bin':('2e0eefafa0d4494bddfd1bae7f65ec1a767ffbe72de4a005f10bbeb1013bc24b',226),
+    'ROOT_PARENT_STDERR_002.bin':('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',0),
+    'ROOT_WRITE_FRESH_CHECKER28_GO_002.ps1':('70b8a12e2e5facf57052f093c5380f4b5c2c4e3dc1dd9b72e0f54647f15c6023',6662),
+    'ROOT_ACTUAL_CHECKER28_PHYSICAL_WITNESS_002.json':('35571fbe0d9d1931b813c40cab7cfef2a37063100ffdf118515c0883fa40c82d',7630),
+    'ROOT_CHECKER28_SUCCESSOR_SOURCE_SELECTION_002.json':('b8bc0df3ea5df1758478d86377f7aa3c471efb94fe57a4ed8deabf2783071bc7',3991),
+    'INDEPENDENT_CHECKER28_RUNNER_SOURCE_REVIEW_002.json':('4bdb33128cb85410de10b2d837a9c369ce8cc046200e99410a7a757eaed07c87',645),
+    'SOURCE_MANIFEST_002.json':('f76face922b422b3cf90481cb7e422bbe2da6e18b58a1608c0ef1c61bf751d97',94321),
+    'SOURCE_CONTRACT_002.json':('5c990a91f9c315eb21944bc457e2609a399d3bc4c5f3cfef726f617e0b3ba48a',9526),
+    'ROOT_LAUNCH_RECIPE_002.json':('748e706eea8196afc22f031d75be77b47c2da90bea57234ff231a44bb66e7186',6711),
+    'CHECKER28_DISCOVERY_PROJECTION_001.json':('ebfc1094c0bf636e9f8f99cde146b189c4724da0c4391258a376d659dae7f03f',15523),
+    'CHECKER28_TEST_EVENT_PLAN_001.json':('1eb64fe716824bf71c7a6d206381a858f9a6dc273a64020fa6c334ac1aee780d',16512)}
+    for name,(pin,size) in pins.items():add(PREP/name,pin,size)
+    actualpins={'result.json':('d965726150c3bfb1ca90e0c0a2f9d8d1ab077b28c24d54048b5fa33672dd8401',10137),'discovery.json':('24d58a619c8eeb8935475e8bf26f865c36671015e0b79dfabbafd2951f041ff4',4290),'source-byte-proof.json':('d6eb89c1d53941cba3b3909f823a5e4e5d4306425991451e8a44db9b7ea15a61',155576),'events-00.bin':('f82d82b724ae2c09eb30e303987216e565ded84c5fa378c9c2245731ceb9cfa5',17994)}
+    for name,(pin,size) in actualpins.items():add(PRIVATE/name,pin,size)
+    need(add(ACK,ACK_SHA,2155)==DATA[str(PREP/'PRO3_CHECKER28_INTERVAL_ACK_003.json')],'genuine ACK original bytecopy')
+    runner=ast.parse(DATA[str(PREP/'RUN_SYNTHETIC_CHECKER28_002.TEMPLATE.py')])
+    literals={n.targets[0].id:ast.literal_eval(n.value) for n in runner.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and isinstance(n.value,ast.Constant)}
+    runtime_node=next(n.value for n in runner.body if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='RUNTIME4')
+    runtime=[]
+    for row in runtime_node.elts:
+        need(isinstance(row,ast.Tuple) and len(row.elts)==3 and isinstance(row.elts[0],ast.Call) and isinstance(row.elts[0].func,ast.Name) and row.elts[0].func.id=='Path','inert runtime tuple')
+        p=Path(ast.literal_eval(row.elts[0].args[0]));pin=ast.literal_eval(row.elts[1]);size=ast.literal_eval(row.elts[2]);runtime.append((p,pin,size))
+        if p.suffix=='.exe':RUNTIME_EXES[str(p)]=pin
+    need(len(runtime)==4 and len(RUNTIME_EXES)==3,'four runtime files three fixed EXEs')
+    fixed=[(PREP/'RUN_SYNTHETIC_CHECKER28_002.TEMPLATE.py',pins['RUN_SYNTHETIC_CHECKER28_002.TEMPLATE.py'][0],65536),(PREP/'SUPERVISE_SYNTHETIC_CHECKER28_002.TEMPLATE.ps1',pins['SUPERVISE_SYNTHETIC_CHECKER28_002.TEMPLATE.ps1'][0],65536),(META/'test_metadata3_actual_checker_preparation_004.py',literals['TEST_SHA'],52200),(META/'review-metadata3-actual006-corrected010.TEMPLATE.py',literals['HELPER_SHA'],146200),(WORK/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_003.json',literals['PEER_SHA'],65536),(PREP/'CHECKER28_DISCOVERY_PROJECTION_001.json',literals['PROJECTION_SHA'],65536),(PREP/'ROOT_SYNTHETIC_CHECKER28_GO_002.json',pins['ROOT_SYNTHETIC_CHECKER28_GO_002.json'][0],65536),(WORK/'metadata3-checker-source-independent010/INDEPENDENT_METADATA3_CHECKER010_SOURCE_DETAILS_001.json',literals['FULL_PEER_SHA'],525323),(META/'AUTHOR_FROZEN_SOURCE_MANIFEST_010.json',literals['SOURCE_MANIFEST_SHA'],28249),(WORK/'metadata3-checker-source-independent010/POST_METADATA3_CHECKER010_SOURCE_REVIEW_001.json',literals['SOURCE_POST_SHA'],157247),(META/'ROOT_CHECKER010_SOURCE_SELECTION_001.json',literals['ROOT_SELECTION_SHA'],2977),(WORK/'OWNER_CONTINUATION_20261003_001.json',literals['MASTER_SHA'],65536),(WORK/'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json',literals['MASTER_PEER_SHA'],65536),*runtime]
+    packet=jsonfile(META/'AUTHOR_FROZEN_SOURCE_MANIFEST_010.json',literals['SOURCE_MANIFEST_SHA'],28249)
+    typed(packet,{'payload_count':141});need(type(packet['payloads']) is list and len(packet['payloads'])==141,'packet141')
+    packet_names=set();nested=0
+    for row in packet['payloads']:
+        need(type(row) is dict and set(row)=={'path','bytes','sha256'} and type(row['path']) is str and re.fullmatch(r'(?:source010-finite-inputs001\\)?[A-Za-z0-9_.-]{1,160}',row['path']),'finite exact packet row')
+        need(row['path'] not in packet_names and type(row['bytes']) is int and 0<=row['bytes']<=2097152 and type(row['sha256']) is str and re.fullmatch('[0-9a-f]{64}',row['sha256']),'typed packet row');packet_names.add(row['path']);nested+=row['path'].startswith('source010-finite-inputs001\\')
+        fixed.append((META/row['path'],row['sha256'],row['bytes']))
+    fixed=list(dict.fromkeys(fixed));need(nested==72 and len(packet_names)-nested==69,'Source packet69top72nested')
+    proof=jsonfile(PRIVATE/'source-byte-proof.json',*actualpins['source-byte-proof.json'])
+    need(set(proof)=={'schema_version','scope','initial','final','source_cache_absences','same_API_raw9_and_exact_bytes','known_three_EXE_mode_projection_only','loaded_dependencies_or_OS_Job_proved'},'closed proof')
+    typed(proof,{'schema_version':1,'scope':SCOPE,'same_API_raw9_and_exact_bytes':True,'known_three_EXE_mode_projection_only':True,'loaded_dependencies_or_OS_Job_proved':False})
+    need(type(proof['initial']) is list and proof['initial']==proof['final'] and len(proof['initial'])==len(fixed),'all exact initial/final proof rows')
+    for (p,pin,cap),row in zip(fixed,proof['initial']):
+        need(type(row) is dict and set(row)=={'path','sha256','bytes','path_raw9','descriptor_raw9'},'closed proof row');typed(row,{'path':str(p),'sha256':pin})
+        need(type(row['bytes']) is int and 0<=row['bytes']<=cap,'original source cap');add(p,pin,row['bytes']);observed=FIRST[str(p)]
+        need(all(type(x) is int for x in row['path_raw9']+row['descriptor_raw9']) and len(row['path_raw9'])==len(row['descriptor_raw9'])==9,'raw9 integers')
+        need(row['path_raw9']==observed['path_raw9'] and all(row['descriptor_raw9'][i]==observed['descriptor_raw9'][i] for i in (0,1,2,3,5,6,7,8)),'current source proof raw9 and independently sampled FD ctime qualification')
+    import importlib.util
+    caches=[str(Path(importlib.util.cache_from_source(str(p)))) for p in (META/'test_metadata3_actual_checker_preparation_004.py',META/'review-metadata3-actual006-corrected010.TEMPLATE.py')]
+    need(proof['source_cache_absences']==caches and all(not Path(p).exists() for p in caches),'two named Source cache absences no process scan')
+    master=jsonfile(WORK/'OWNER_CONTINUATION_20261003_001.json');typed(master,{'work_end_utc':None,'fixed_deadline_invented':False})
+    sourcepeer=jsonfile(PREP/'INDEPENDENT_CHECKER28_RUNNER_SOURCE_REVIEW_002.json');typed(sourcepeer,{'scope':SCOPE,'reviewer':'/root/owner_docs_review','source_author':'/root/bootstrap_stage','verdict':'PASS_STATIC_SYNTHETIC_CHECKER28_RUNNER_ONLY','actual_runtime':None,'target_execution':False,'runner_source_sha256':pins['RUN_SYNTHETIC_CHECKER28_002.TEMPLATE.py'][0],'parent_source_sha256':pins['SUPERVISE_SYNTHETIC_CHECKER28_002.TEMPLATE.ps1'][0],'source_manifest_sha256':pins['SOURCE_MANIFEST_002.json'][0]})
+    sourcelineage=WORK/'root-checker28-runtime-independent002'
+    need(add(sourcelineage/'INDEPENDENT_CHECKER28_RUNNER_SOURCE_REVIEW_002.json',pins['INDEPENDENT_CHECKER28_RUNNER_SOURCE_REVIEW_002.json'][0],645)==DATA[str(PREP/'INDEPENDENT_CHECKER28_RUNNER_SOURCE_REVIEW_002.json')],'authentic peer copy')
+    add(sourcelineage/'INDEPENDENT_CHECKER28_SUCCESSOR_SOURCE_DETAILS_002.json','30932597cf688e89679c96355fdecb8458485124edb0c9f18f0e4476820737ca',2848015)
+    add(sourcelineage/'POST_CHECKER28_SUCCESSOR_SOURCE_REVIEW_002.json','bc20cfb0585c3556fcb30dd66691f92cd6bec2b25604ff6b4bc541c26bcd26ed',1244343)
+    projection=jsonfile(PREP/'CHECKER28_DISCOVERY_PROJECTION_001.json');ordered=projection['ordered_ids']
+    tree=ast.parse(DATA[str(META/'test_metadata3_actual_checker_preparation_004.py')]);methodnodes=methods(tree)
+    methodrows=sorted([dict(id=literals['MODULE']+'.'+cls+'.'+name,name=name,body_ast_sha256=sha(dump(node).encode()),source_line=node.lineno) for (cls,name),node in methodnodes.items()],key=lambda x:x['id'])
+    need(len(methodrows)==28 and methodrows==projection['methods'] and [x['id'] for x in methodrows]==ordered and len(set(ordered))==28,'exact28 bodyAST/source discovery')
+    need(sha(('\n'.join(ordered)+'\n').encode())==projection['ordered_ids_sha256'],'ordered IDs SHA')
+    oldtest=META/'test_metadata3_actual_checker_preparation_003.py';oldnodes=methods(ast.parse(add(oldtest)))
+    need(len(oldnodes)==25 and all(k in methodnodes and dump(n)==dump(methodnodes[k]) for k,n in oldnodes.items()),'25 inherited bodyAST exact')
+    newnodes={k:n for k,n in methodnodes.items() if k not in oldnodes};need(len(newnodes)==3,'three causal new fixture bodies')
+    plan=jsonfile(PREP/'CHECKER28_TEST_EVENT_PLAN_001.json');expected_subtests={};expected_subids={};derived=[]
+    for (cls,name),node in methodnodes.items():
+        ident=literals['MODULE']+'.'+cls+'.'+name;count=0;sites=[];labels=[]
+        for loop in sorted((n for n in ast.walk(node) if isinstance(n,ast.For)),key=lambda n:n.lineno):
+            if isinstance(loop,ast.For):
+                calls=[n for n in ast.walk(loop) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='subTest']
+                if calls:
+                    need(isinstance(loop.iter,(ast.Tuple,ast.List)) and len(calls)==1 and len(calls[0].keywords)==1,'literal finite one-site subtest loop');count+=len(loop.iter.elts)*len(calls);sites.extend(n.lineno for n in calls)
+                    keyword=calls[0].keywords[0]
+                    for element in loop.iter.elts:
+                        if isinstance(loop.target,ast.Name):
+                            need(keyword.arg=='bad' and isinstance(keyword.value,ast.Name) and keyword.value.id==loop.target.id,'direct literal bad label');value=ast.literal_eval(element)
+                        else:
+                            need(isinstance(loop.target,ast.Tuple) and isinstance(element,ast.Tuple),'finite pair loop');first=element.elts[0]
+                            if keyword.arg=='key':
+                                need(isinstance(keyword.value,ast.Name) and keyword.value.id==loop.target.elts[0].id,'key label binding');value=ast.literal_eval(first)
+                            else:
+                                expression=keyword.value
+                                need(keyword.arg=='left_type' and isinstance(expression,ast.Attribute) and expression.attr=='__name__' and isinstance(expression.value,ast.Call) and isinstance(expression.value.func,ast.Name) and expression.value.func.id=='type' and not expression.value.keywords and len(expression.value.args)==1 and isinstance(expression.value.args[0],ast.Name) and expression.value.args[0].id=='left','symbolic primitive type label')
+                                if isinstance(first,ast.Constant):value=type(first.value).__name__
+                                elif isinstance(first,ast.Dict):value='dict'
+                                elif isinstance(first,ast.List):value='list'
+                                else:need(isinstance(first,ast.Call) and isinstance(first.func,ast.Name) and first.func.id in ('Foreign','ForeignType') and not first.args and not first.keywords,'inert Foreign type label');value=first.func.id
+                        labels.append(ident+' ('+keyword.arg+'='+repr(value)+')')
+        allsites=[n for n in ast.walk(node) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='subTest']
+        need(len(allsites)==len(sites),'all subtest callbacks derived');expected_subtests[ident]=count;expected_subids[ident]=labels
+        derived.append(dict(id=ident,subtests=count,body_ast_sha256=sha(dump(node).encode()),new_control=(cls,name) not in oldnodes))
+    need(sum(expected_subtests.values())==24 and sum(v>0 for v in expected_subtests.values())==5 and plan['conditional_healthy_events']==80 and plan['conditional_healthy_subtests']==24,'independent6site24subtest80event derivation')
+    result=jsonfile(PRIVATE/'result.json');discovery=jsonfile(PRIVATE/'discovery.json');typed(discovery,{'schema_version':1,'scope':SCOPE,'module_name':literals['MODULE'],'ordered_ids':ordered,'methods':28,'projection_sha256':literals['PROJECTION_SHA']})
+    typed(result,{'schema_version':1,'scope':SCOPE,'module_name':literals['MODULE'],'testsRun':28,'started_ids':ordered,'subtests':24,'subtest_failures':0,'failures':0,'errors':0,'skipped':0,'expected_failures':0,'unexpected_successes':0,'successful':True,'independent_acceptance':False,'real_metadata_or_current24_execution':False,'operational_authority':False})
+    need(result['terminals']==[dict(id=x,status='success') for x in ordered],'one exact success terminal per method')
+    for role in ('discovery','source_byte_proof'):
+        ptr=result[role];name='discovery.json' if role=='discovery' else 'source-byte-proof.json';need(set(ptr)=={'path','bytes','sha256'} and ptr==dict(path=name,bytes=actualpins[name][1],sha256=actualpins[name][0]),'complete result pointer')
+    streams={};chunk_total=0;stream_total=0
+    for role,key in (('events','event_manifest'),('diagnostics','diagnostic_manifest')):
+        m=result[key];need(set(m)=={'role','chunks','bytes','rows','maximum_chunks','maximum_chunk_bytes','maximum_stream_bytes'},'closed stream manifest');typed(m,{'role':role,'maximum_chunks':32,'maximum_chunk_bytes':131072,'maximum_stream_bytes':4194304})
+        need(type(m['chunks']) is list and type(m['bytes']) is int and type(m['rows']) is int,'stream type domains');parts=[]
+        for i,row in enumerate(m['chunks']):
+            need(set(row)=={'path','sha256','bytes','ordinal'} and type(row['ordinal']) is int and row['ordinal']==i and row['path']==role+'-'+str(i).zfill(2)+'.bin' and type(row['bytes']) is int and 0<row['bytes']<=131072,'contiguous complete chunk');parts.append(add(PRIVATE/row['path'],row['sha256'],row['bytes']))
+        data=b''.join(parts);need(len(data)==m['bytes'],'stream complete bytes');streams[role]=data;chunk_total+=len(parts);stream_total+=len(data)
+    need(chunk_total==1 and chunk_total<=32 and stream_total==17994 and stream_total<=4194304 and streams['diagnostics']==b'' and result['diagnostic_manifest']['rows']==0,'combined stream caps no omitted diagnostics')
+    data=streams['events'];need(data.endswith(b'\n') and not data.startswith(b'\xef\xbb\xbf'),'complete LF stream');rows=data.splitlines(keepends=True);need(len(rows)==80 and all(0<len(x)<=1024 and x.endswith(b'\n') for x in rows),'finite80 complete1024 rows')
+    events=[decode(x,True) for x in rows];active=None;starts=[];successes=[];subcounts={x:0 for x in ordered};subids=[]
+    for row in events:
+        if row['event']=='start':
+            need(set(row)=={'event','id'} and active is None and len(starts)<28 and row['id']==ordered[len(starts)],'start order and no unfinished parent');active=row['id'];starts.append(active)
+        elif row['event']=='subtest':
+            need(set(row)=={'event','id','subtest_id','success'} and row['id']==active and type(row['success']) is bool and row['success'] is True and type(row['subtest_id']) is str and subcounts[active]<len(expected_subids[active]) and row['subtest_id']==expected_subids[active][subcounts[active]],'successful subtest exact active parent/Source ordered label/multiplicity');subids.append(row['subtest_id']);subcounts[active]+=1
+        else:
+            need(row['event']=='success' and set(row)=={'event','id'} and row['id']==active,'exact known one terminal');successes.append(active);active=None
+    need(active is None and starts==successes==ordered and subcounts==expected_subtests and len(subids)==24,'full event closure exact per-method subtests')
+    go=jsonfile(PREP/'ROOT_SYNTHETIC_CHECKER28_GO_002.json');ack=jsonfile(ACK);terminal=jsonfile(PREP/'ROOT_PARENT_TERMINAL_002.json');started=jsonfile(PREP/'ROOT_PARENT_STARTED_002.json');witness=jsonfile(PREP/'ROOT_ACTUAL_CHECKER28_PHYSICAL_WITNESS_002.json')
+    typed(go,{'schema_version':1,'record_type':'root_synthetic_checker28_GO','author':'/root','scope':SCOPE,'decision':'execute_fixed_synthetic_checker28_once','owner_master_sha256':literals['MASTER_SHA'],'owner_review_sha256':literals['MASTER_PEER_SHA'],'parent_source_sha256':pins['SUPERVISE_SYNTHETIC_CHECKER28_002.TEMPLATE.ps1'][0],'runner_source_sha256':pins['RUN_SYNTHETIC_CHECKER28_002.TEMPLATE.py'][0],'test_source_sha256':literals['TEST_SHA'],'helper_source_sha256':literals['HELPER_SHA'],'helper_source_peer_sha256':literals['PEER_SHA'],'discovery_projection_sha256':literals['PROJECTION_SHA']});need(len(go)==15,'closed15 GO')
+    gc,ge=ticks(go['created_utc'],7),ticks(go['expires_utc'],7);ps,pe=ticks(terminal['started_utc'],7),ticks(terminal['finished_utc'],7)
+    rs,rt,result_end_ticks=(ticks(result[k],6) for k in ('started_utc','tests_started_utc','finished_utc'))
+    need(ge-gc==1200000000 and gc<=ps<rs<=rt<=result_end_ticks<=pe<=ge and ge-ps>=600000000 and pe-ps<600000000 and result['root_GO_created_utc']==go['created_utc'],'originalPS7ticks/Py6 time ordering; unmodified120sGO/60sreserve')
+    typed(ack,{'schema':'pro3_peer_sequential_synthetic_checker_interval_ack_v1','scope':'one_fresh_pro2_stdlib_synthetic_checker28','peer_attempt_namespace':'002','ack_namespace':'003','physical_wall_seconds':60,'peer_declared_soft_seconds':52,'peer_declared_outer_seconds':57,'peer_declared_hard_seconds':60,'peer_declared_pipe_cap_bytes':65536,'peer_declared_memory_cap_bytes':1073741824,'peer_declared_disk_floor_bytes':10737418240,'pro3_owned_python_tests_jobs_fits_held_during_interval':True,'pro3_validation_and_metadata_compositors_held_during_interval':True,'owned_child_active_workload_handles':[],'root_holds_after_ack_writer_drains':True,'one_use':True,'torch_or_fit_or_real_case_authorized':False,'host_quiet_claimed':False,'pro3_compute_grant_received':False,'type004_replay_authorized':False,'end_estimate_is_not_early_release':True,'explicit_peer_physical_release_or_interval_end_required':True,'write_once':True})
+    aw0=dt.datetime.fromisoformat(ack['window_start_utc'].replace('Z','+00:00'));aw1=dt.datetime.fromisoformat(ack['window_end_utc'].replace('Z','+00:00'));need(int(aw0.timestamp())*10000000<=gc and ge<=int(aw1.timestamp())*10000000 and ticks(ack['recorded_utc'],7)<=gc,'ACK recorded and interval covers original GO')
+    typed(terminal,{'schema_version':1,'record_type':'root_synthetic_checker28_parent_terminal','author':'/root','scope':SCOPE,'exit_code':0,'timed_out':False,'capture_overflow':False,'capture_drain_complete':True,'direct_child_reaped':True,'source_runtime_preserved':True,'stdout_bytes':226,'stdout_sha256':pins['ROOT_PARENT_STDOUT_002.bin'][0],'stderr_bytes':0,'stderr_sha256':pins['ROOT_PARENT_STDERR_002.bin'][0],'failure':None,'physical_parent_within60_seconds':True,'hard_OS_Job_or_descendant_cleanup_proof':False,'operational_authority':False,'root_GO_sha256':pins['ROOT_SYNTHETIC_CHECKER28_GO_002.json'][0],'parent_source_sha256':pins['SUPERVISE_SYNTHETIC_CHECKER28_002.TEMPLATE.ps1'][0],'runner_source_sha256':pins['RUN_SYNTHETIC_CHECKER28_002.TEMPLATE.py'][0]})
+    typed(started,{'schema_version':1,'record_type':'root_synthetic_checker28_parent_start','author':'/root','scope':SCOPE,'parent_source_sha256':pins['SUPERVISE_SYNTHETIC_CHECKER28_002.TEMPLATE.ps1'][0],'runner_source_sha256':pins['RUN_SYNTHETIC_CHECKER28_002.TEMPLATE.py'][0],'root_GO_sha256':pins['ROOT_SYNTHETIC_CHECKER28_GO_002.json'][0],'resource_lease_or_native_quiet':False})
+    need(type(started['parent_pid']) is int and started['parent_pid']>0 and terminal['started_utc']==started['started_utc'] and ps<=ticks(started['resource_observed_utc'],7)<=rs,'authentic parent start/resources');need(type(started['free_physical_memory_bytes']) is int and started['free_physical_memory_bytes']>=1073741824 and type(started['disk_free_bytes']) is int and started['disk_free_bytes']>=10737418240,'actual point resource floors')
+    stdout=decode(DATA[str(PREP/'ROOT_PARENT_STDOUT_002.bin')],True);typed(stdout,{'status':'SYNTHETIC28_RESULT_PUBLISHED','successful':True,'independent_acceptance':False});need(stdout['result']==dict(path='result.json',sha256=actualpins['result.json'][0],bytes=10137),'stdout exactresult correlation')
+    typed(witness,{'author':'/root','scope':SCOPE,'record_type':'root_actual_synthetic_checker28_002_physical_witness','conservative_physical_clock_bracket_upper_seconds':38,'direct_child_reaped_and_both_streams_drained':True,'all_Go002_ACK003_parent002_runner002_consumed_no_replay':True,'independent_actual_acceptance':False,'hard_OS_Job_or_descendant_or_whole_host_quiet_proof':False,'actual_metadata_current24_or_models_or_pool_or_capture_proof':False})
+    typed(witness['actual_launch_tool'],{'chunk_id':'fa363a','session_id':60032,'initial_yield_seconds_literal':'10.0013705'});typed(witness['actual_terminal_tool'],{'chunk_id':'ae57c1','exit_code':0,'poll_wall_seconds_literal':'0.0000067','streams_returned_drained':True})
+    typed(witness,{'physical_envelope_seconds':60,'source_runtime_preserved':True,'parent_internal_interval_only_not_whole_Root_envelope':True,'tool_yield_and_poll_times_are_not_summed_as_total_runtime':True,'source_or_operational_or_scientific_authority_extended':False,'root_clock_before_utc':'2026-10-03T17:13:11Z','root_clock_after_terminal_poll_utc':'2026-10-03T17:13:48Z','source_attributed_parent_started_utc':terminal['started_utc'],'source_attributed_parent_finished_utc':terminal['finished_utc']})
+    wc0=dt.datetime.fromisoformat(witness['root_clock_before_utc'].replace('Z','+00:00'));wc1=dt.datetime.fromisoformat(witness['root_clock_after_terminal_poll_utc'].replace('Z','+00:00'))
+    need((wc1-wc0).total_seconds()+1==38 and int(wc0.timestamp())*10000000<=ps<pe<int(wc1.timestamp())*10000000 and 38<60,'conservative whole Root bracket independent of tool sum')
+    need(len(witness['observed_fixed_source_runtime_artifacts'])==12,'Root literal12 physical witness files')
+    for row in witness['observed_fixed_source_runtime_artifacts']:
+        need(set(row)=={'path','sha256','bytes','raw9'} and row['path'] in FIRST,'Root selected finite attribution');obs=FIRST[row['path']];need(row['sha256']==obs['sha256'] and type(row['bytes']) is int and row['bytes']==obs['bytes'] and row['raw9']==obs['path_raw9'],'Root current physical witness/source correlation')
+    history=[]
+    for p,pin in [(OLD/'ROOT_ACTUAL_CHECKER28_PRECHILD_REFUSAL_001.json','6649c3ebd31bdc3408397c72b945eee461f44d5065071efdcdc4b2c5d5f33c86'),(PREP/'ROOT_ACK002_PRE_GO_WINDOW_REFUSAL_001.json',None),(WORK/'root-checker25-runtime-audit001/INDEPENDENT_ACTUAL_CHECKER25_REVIEW_001.json',None),(WORK/'root-checker25-runtime-audit001/POST_ACTUAL_CHECKER25_REVIEW_001.json',None)]:
+        add(p,pin);history.append(dict(path=str(p),sha256=sha(DATA[str(p)]),bytes=len(DATA[str(p)]),historical_only=True))
+    for p in (OWN/'OWN_PREPUBLICATION_VARIABLE_SHADOW_REFUSAL_001.json',OWN/'OWN_PREPUBLICATION_SUBTEST_LABEL_ASSUMPTION_REFUSAL_002.json',OWN/'OWN_PREPUBLICATION_AST_DUMP_ASSUMPTION_REFUSAL_003.json',OWN/'AUDIT_ACTUAL_CHECKER28_002.py',OWN/'AUDIT_ACTUAL_CHECKER28_003.py',OWN/'AUDIT_ACTUAL_CHECKER28_004.py',Path(__file__).absolute()):add(p)
+    # Every selected finite input gets independently sampled raw9/hash observations, exact private copies and post-read.
+    observations=[];copies=[];inputdir=OWN/'inputs';inputdir.mkdir()
+    for i,(key,data) in enumerate(DATA.items()):
+        p=Path(key);second,row2=observe(p,sha(data),len(data));third,row3=observe(p,sha(data),len(data));need(second==third==data and row2==row3==FIRST[key],'full triple same-path/FD observations')
+        copy=inputdir/(str(i).zfill(4)+'.bytes');emit(copy,data);cdata,crow=observe(copy,sha(data),len(data));need(cdata==data,'exact binary private copy');copies.append(dict(original=key,copy=crow));observations.append(dict(initial=FIRST[key],second=row2,third=row3))
+    posts=[]
+    for key,data in DATA.items():
+        val,row=observe(Path(key),sha(data),len(data));need(val==data and row==FIRST[key],'full final post read');posts.append(row)
+    for row in copies:need(observe(Path(row['copy']['path']),row['copy']['sha256'],row['copy']['bytes'])[0]==DATA[row['original']],'copies post')
+    limitations=['Only synthetic stdlib checker regression fixtures; no project metadata capture/current24, models, actual bound pool, U010 seven planned controls, Raw58/Metadata30+2/Native128 or science authority.','Root toolfa363a/ae57c1/f72881 attribution is externally supplied and correlated to frozen witness bytes; this reviewer does not independently attest OS launch provenance.','Conservative Root clock bracket38s is less than60; initial yield10.0013705 plus terminal poll0.0000067 is not whole runtime. Internal parent interval is not the complete Root physical span.','Direct-child reap and stream drain only; no hard OS Job, descendants, whole-host quiet, loaded dependency/tree/native, sole executor or future fit guarantee.','GO002/ACK003/parent002/runner002 are spent, never replay/retimestamp/extend. Ongoing owner has no overall deadline; finite lease and all project caps remain separate.','No target import/compile/definition/helper/test/main/process scan/rerun was performed by this reviewer. Source609/1206 static forest is authenticated through prior genuine source receipts, not rereviewed or added to runtime input closure.']
+    full=dict(schema_version=1,record_type='independent_actual_checker28_full_review',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'),reviewer='/root/owner_docs_review',producer='/root',scope=SCOPE,verdict='PASS_ACTUAL_SYNTHETIC_CHECKER28_ONLY',methods=28,subtests=24,events=80,zero_failures_errors_skips=True,diagnostic_bytes=0,source_packet_payloads=141,source_packet_top=69,source_packet_nested=72,source_proof_rows=len(fixed),runtime_byte_files=4,finite_inputs=len(DATA),original_copy_pairs=len(copies),three_observations=observations,exact_copies=copies,methods_and_subtests=derived,new_control_body_ast_sha256={name:sha(dump(node).encode()) for (_,name),node in newnodes.items()},event_order_full=events,sourceproof=proof,physical_root_witness_sha256=pins['ROOT_ACTUAL_CHECKER28_PHYSICAL_WITNESS_002.json'][0],root_native_launch_tool='fa363a',root_native_terminal_tool='ae57c1',root_witness_writer_tool='f72881',conservative_root_physical_upper_seconds=38,tool_times_not_total_runtime=True,history_preserved=history,limitations=limitations,reviewer_target_execution=False,reviewer_test_execution=False,operational_authority=False)
+    detail=emit(OWN/'INDEPENDENT_ACTUAL_CHECKER28_DETAILS_002.json',full)
+    post=emit(OWN/'POST_ACTUAL_CHECKER28_REVIEW_002.json',dict(schema_version=1,record_type='independent_actual_checker28_post_readback',reviewer='/root/owner_docs_review',scope=SCOPE,finite_inputs=len(posts),post_observations=posts,details=detail,all_exact=True,target_execution=False,operational_authority=False))
+    peer=emit(OWN/'INDEPENDENT_ACTUAL_CHECKER28_REVIEW_002.json',dict(schema_version=1,record_type='independent_actual_synthetic_checker28_review',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'),reviewer='/root/owner_docs_review',producer='/root',scope=SCOPE,verdict='PASS_ACTUAL_SYNTHETIC_CHECKER28_ONLY',result_sha256=actualpins['result.json'][0],discovery_sha256=actualpins['discovery.json'][0],source_byte_proof_sha256=actualpins['source-byte-proof.json'][0],event_stream_sha256=actualpins['events-00.bin'][0],source_peer_sha256=pins['INDEPENDENT_CHECKER28_RUNNER_SOURCE_REVIEW_002.json'][0],root_selection_sha256=pins['ROOT_CHECKER28_SUCCESSOR_SOURCE_SELECTION_002.json'][0],root_physical_witness_sha256=pins['ROOT_ACTUAL_CHECKER28_PHYSICAL_WITNESS_002.json'][0],full_details=detail,post_readback=post,methods=28,successful_parent_terminals=28,subtests=24,events=80,failures=0,errors=0,skips=0,diagnostic_bytes=0,source_proof_rows=len(fixed),finite_inputs=len(DATA),source_copies=len(copies),three_observations=True,conservative_physical_upper_seconds=38,physical_limit_seconds=60,consumed_no_replay=True,reviewer_target_execution=False,reviewer_test_execution=False,actual_project_metadata_or_current24=False,models_or_bound_pool=False,hard_OS_Job_or_descendant_or_global_quiet=False,operational_authority=False,limitations=limitations))
+    handoff=emit(OWN/'HANDOFF.md',('# Actual synthetic checker28 independent review002\n\nAccepted only synthetic checker regression fixtures:28 methods,28 parent successes,24 successful subtests,80 ordered events,zero failures/errors/skips/diagnostic bytes.\n\n'+str(len(fixed))+' exact source-proof rows including141 selected packet payloads and four runtime byte files; '+str(len(DATA))+' finite inputs received three raw9/hash observations, exact binary copies and post-read. All25 inherited method ASTs and three causal fixture additions match selected Source. Root physical attribution fa363a/ae57c1/f72881 correlates frozen witness35571fbe; conservative Root clock bracket38s<60, not sum of tool yields. Original native7 GO002 and genuine ACK003 were used and are spent.\n\nNo rerun/import/helper/test/process scan. Direct-child cleanup only; no OSJob/descendant/globalquiet, actual metadata/current24/model/boundpool/operational/science authority. Old25 acceptance, old001 Py6 prechild refusal and expiredACK2 preGO refusal remain distinct history. Full609 Source preparation was not recopied/re-audited.\n\nReview SHA '+peer['sha256']+'\nDetails SHA '+detail['sha256']+'\nPost SHA '+post['sha256']+'\n').encode())
+    print(json.dumps(dict(peer=peer,details=detail,post=post,handoff=handoff,finite_inputs=len(DATA),sourceproof_rows=len(fixed),methods=28,subtests=24,events=80,target_execution=False)))
+
+if __name__=='__main__':run()

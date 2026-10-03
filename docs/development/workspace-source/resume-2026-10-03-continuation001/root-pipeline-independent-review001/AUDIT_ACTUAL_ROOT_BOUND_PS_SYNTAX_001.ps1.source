@@ -1,0 +1,28 @@
+# Own syntax metadata only. Parser::ParseFile never invokes target definitions.
+Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop'
+$base='D:\Aenv\pro2\resume-2026-10-03-continuation001'
+$taskRoot=Join-Path $base 'root-guard006-pipeline-prep001'
+$inputs=@(
+ @('RUN_ROOT_METADATA_PIPELINE_006.BOUND.ps1','9b7dbc059cc51601e08bbf4ff748123b53034533173dca5a6254352e47f997e8'),
+ @('PREPARE_ROOT_GUARD006_RECORDS_001.BOUND.ps1','2ca089fa9c94a5ca79bd454daa813982d45b47d2ed0ea2a53312776a81627f34'),
+ @('SUPERVISE_ROOT_WHOLE_BEFORE_006.BOUND.ps1','d1e799741d6f75c14a12d8b2ddc44a4aa0b08c96d8e5db5fc9bb65fa353909d7'),
+ @('WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.BOUND.ps1','0278a79e9c8ddb5327788f99bb3670aea1f71b85b684e3bad01f59fd7e8fda5c'),
+ @('SUPERVISE_ROOT_WHOLE_AFTER_006.BOUND.ps1','f791bc77e21ffd8bcd2c68f44ba95f76617a82021e5f07fdd5ab9243afb7aaed'))
+$rows=@()
+foreach($item in $inputs){
+ $path=Join-Path $taskRoot $item[0]
+ $first=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+ if($first -cne $item[1]){throw 'Selected actual source differs'}
+ $tokens=$null;$errors=$null
+ $tree=[System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)
+ $second=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+ if($first -cne $second -or $errors.Count -ne 0){throw 'Source drift or syntax errors'}
+ $rows+=,[ordered]@{path=$path;sha256=$first;bytes=(Get-Item -LiteralPath $path).Length;parser_errors=@();function_count=@($tree.FindAll({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst]},$true)).Count;target_execution=$false}
+}
+$record=[ordered]@{schema_version=1;record_type='independent_actual_root_bound_source_syntax_metadata';reviewer='/root/owner_docs_review';created_utc=[DateTimeOffset]::UtcNow.ToString('o');powershell_version=$PSVersionTable.PSVersion.ToString();rows=$rows;target_execution=$false;runtime_acceptance=$false}
+$out=Join-Path $base 'root-pipeline-independent-review001\INDEPENDENT_ACTUAL_ROOT_BOUND_PS_SYNTAX_001.json'
+$bytes=[Text.UTF8Encoding]::new($false).GetBytes(($record|ConvertTo-Json -Depth 12)+"`n")
+$stream=[IO.File]::Open($out,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+[ordered]@{output=$out;sha256=(Get-FileHash -LiteralPath $out -Algorithm SHA256).Hash.ToLowerInvariant();bytes=$bytes.Length;source_count=$rows.Count;parser_errors=0;target_execution=$false}|ConvertTo-Json -Compress

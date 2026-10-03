@@ -1,0 +1,125 @@
+"""Independent metadata/AST review only. Never compile or execute target code."""
+import ast
+import hashlib
+import json
+import os
+from pathlib import Path
+from datetime import datetime, timezone
+
+ROOT = Path(r'D:\Aenv\pro2')
+P = ROOT / 'resume-2026-10-01-30h-001/raw004-publication-native-bounded-closure-prep001'
+OUT = Path(__file__).parent
+sha = lambda b: hashlib.sha256(b).hexdigest()
+def raw(s):
+    return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,getattr(s,'st_file_attributes',0),getattr(s,'st_birthtime_ns',None)]
+def read(p):
+    a=p.lstat()
+    assert not p.is_symlink() and a.st_nlink==1 and not getattr(a,'st_file_attributes',0)&1024
+    with p.open('rb') as f:
+        b=os.fstat(f.fileno()); data=f.read(); c=os.fstat(f.fileno())
+    d=p.lstat()
+    assert raw(a)==raw(d) and raw(b)==raw(c)
+    assert (a.st_dev,a.st_ino,a.st_size,a.st_mtime_ns)==(b.st_dev,b.st_ino,b.st_size,b.st_mtime_ns)
+    assert len(data)==a.st_size
+    return data,{'sha256':sha(data),'bytes':len(data),'path_raw9':raw(a),'descriptor_raw9':raw(b)}
+manifest_bytes,_=read(P/'STAGED_MANIFEST_001.json')
+assert sha(manifest_bytes)=='dd016b7d8ac7030ee096dc9b16bc7cd7cfae9f44b8359a0232d110e7cd806124'
+m=json.loads(manifest_bytes)
+pres=json.loads(read(P/'PRESERVATION_BEFORE_IMPLEMENTATION_002.json')[0])
+diff=json.loads(read(P/'SOURCE_BEFORE_AFTER_DIFF_MANIFEST_001.json')[0])
+assert len(m['files'])==1139 and len(pres['pairs'])==912 and len(diff['sources'])==35
+selected={str(P/'STAGED_MANIFEST_001.json'):sha(manifest_bytes)}
+for row in m['files']:
+    selected[str(P/row['path'])]=row['sha256']
+for row in pres['pairs']:
+    selected[row['original']]=row['sha256']
+    selected[str(P/row['copy_relative'])]=row['sha256']
+passes=[]
+for _ in range(3):
+    obs={}
+    for name,pin in sorted(selected.items()):
+        data,facts=read(Path(name)); assert facts['sha256']==pin
+        obs[name]=facts
+    if passes: assert obs==passes[0]
+    passes.append(obs)
+for row in pres['pairs']:
+    a=passes[0][row['original']];b=passes[0][str(P/row['copy_relative'])]
+    assert a['sha256']==b['sha256'] and a['bytes']==b['bytes']==row['bytes']
+    assert a['path_raw9'][:2]!=b['path_raw9'][:2]
+copies=OUT/'selected-before-003';copies.mkdir(exist_ok=False)
+trees={}
+source_checks=[]
+for index,row in enumerate(diff['sources']):
+    path=P/row['path']; data,_=read(path)
+    with (copies/f'{index:02}.bytes').open('xb') as f:f.write(data)
+    assert sha(data)==row['sha256'] and len(data)==row['bytes']
+    if row['path'].endswith(('.py','.py.template')):
+        trees[row['path']]=ast.parse(data,filename=row['path'])
+    source_checks.append({'path':row['path'],'sha256':sha(data),'bytes':len(data),'unchanged':row['unchanged']})
+common=trees['front/native_successor_front_common_013_001.py.template']
+native=trees['source/test_native_schema3_admission_001.py']
+metadata=trees['source/test_schema3_metadata_grammar_001.py']
+def defs(t):return {n.name:n for n in t.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+def assignment(t,name):
+    matches=[n.value for n in t.body if isinstance(n,ast.Assign) and any(isinstance(x,ast.Name) and x.id==name for x in n.targets)]
+    assert len(matches)==1
+    n=matches[0]
+    if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='loads':return json.loads(ast.literal_eval(n.args[0]))
+    return ast.literal_eval(n)
+policy=json.loads(read(P/'ALL31_NORMALIZED_POLICY_001.json')[0])
+assert set(assignment(common,'NATIVE_POLICY_NAMES'))==set(policy)
+assert len(policy)==31
+norm=json.loads(read(P/'ALL31_NORMALIZED_POLICY_001.json')[0]);assert policy==norm
+typed=read(P/'ALL31_TYPED_POLICY_COMMITMENT_001.json')[0]
+assert len(typed)==32489 and sha(typed)=='dbaa86c401cd0694eab1e80392f7dfe7207fa564750e3d9adfcfb908ce00c893'
+assert len(assignment(native,'NATIVE_SUBTEST_POLICY'))==421
+native_methods=[n.name for c in native.body if isinstance(c,ast.ClassDef) for n in c.body if isinstance(n,ast.FunctionDef) and n.name.startswith('test_')]
+meta_methods=[n.name for c in metadata.body if isinstance(c,ast.ClassDef) for n in c.body if isinstance(n,ast.FunctionDef) and n.name.startswith('test_')]
+assert len(native_methods)==128 and len(meta_methods)==29
+imports=set()
+for n in native.body:
+    if isinstance(n,ast.Import):imports.update(a.asname or a.name.split('.')[0] for a in n.names)
+    if isinstance(n,ast.ImportFrom):imports.update(a.asname or a.name for a in n.names)
+assert 'io' in imports
+methods={n.name:n for c in native.body if isinstance(c,ast.ClassDef) for n in c.body if isinstance(n,ast.FunctionDef)}
+b14=methods['test_b14_unbound_git_ceiling_refuses_before_process_creation']
+assert any(isinstance(n,ast.Name) and n.id=='io' and isinstance(n.ctx,ast.Load) for n in ast.walk(b14))
+fnstate=defs(common)['_raw_helper_function_state']
+assert [n.lineno for n in ast.walk(fnstate) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id=='require']
+pub=trees['publication/publish-successor-admission-schema3-001.py.template']
+ver=trees['publication/verify-successor-admission-schema3-001.py.template']
+pd,vd=defs(pub),defs(ver)
+shared=[name for name in pd.keys()&vd.keys() if ast.dump(pd[name],include_attributes=False)==ast.dump(vd[name],include_attributes=False)]
+assert len(shared)==74
+for t in (pub,ver):
+    assert assignment(t,'COMPILED_POLICY')==policy
+    mids=assignment(t,'MIDDLE_INPUTS');assert mids==assignment(common,'NATIVE_MIDDLE_INPUTS')
+    assert all(len(pair)==2 for pair in mids.values())
+common_data=read(P/'front/native_successor_front_common_013_001.py.template')[0]
+budget={'common_bytes':len(common_data),'source_growth':len(common_data)-178586,'common_headroom':184317-len(common_data),'canonical_frame_at_max_binding':4*((len(common_data)+2)//3)+16384+2,'canonical_frame_headroom':262142-(4*((len(common_data)+2)//3)+16384+2)}
+assert budget['common_bytes']==183844 and budget['canonical_frame_at_max_binding']==261514
+findings=[
+ {'id':'PN002','kind':'advertised_causal_coverage_blocker','path':'source/test_native_schema3_admission_001.py','line':1805,'detail':'B05 tuple(range(264)) is a newly allocated object absent from retained _NATIVE_POLICY_CONTAINERS. _native_policy_snapshot rejects nested source identity before len(item)<=263. Broad assertRaises cannot establish collection budget causality. Primitive string/int cases and same-origin cycle test are separate.','required':'Use a genuinely retained mutable source container, with healthy state, over-limit mutation reaching the collection guard, exact refusal boundary and restored healthy state. Preserve source origin rules.'},
+ {'id':'PN003','kind':'advertised_causal_coverage_blocker','path':'source/test_native_schema3_admission_001.py','line':1905,'detail':'B15 invokes only _native_capture_limit; it does not invoke read()/repeat() or instrument open/read/hash. Inherited bounded-read and cached-witness tests prove generic ordering through doubles, but do not compose the new fixed-history selector with those actual planned call paths. Production read ordering is statically before open/read/hash.','required':'Add a healthy-negative-restored fixed-history acquisition test through selected real read/repeat definitions with explicit no-open/read/hash sentinels for over-cap inputs, or narrow the coverage claim and retain this as resolver-only.'}
+]
+record={'schema_version':1,'record_type':'independent_pubnative_complete_source_review','reviewer':'/root/pubnative_review','created_utc':datetime.now(timezone.utc).isoformat(),'verdict':'REFUSED_STATIC_TEST_PREPARATION_CAUSAL_CLOSURE','source_manifest_sha256':sha(manifest_bytes),'scope':'Finite source metadata/AST and manual semantic inspection only; production source observations are not runtime acceptance.','findings':findings,'source_observations':['All31 typed policy uses source-owned top and nested container identities before callback-capable traversal; nominal types precede metadata equality.','Schema3 fixes exactly two ordered compiled middles, direct parents, independent four full742 tables and grouped263 QA, and all three finite25 final differences; no generic scan/ancestry admission.','Retained Git stdout/stderr readers check remaining finite ceiling before buffer extension; ceiling remains None and runtime entry refuses before Popen.','Native128 and Metadata29 method counts, 421 declared subtests are planned only.','Thirty unchanged native caller files and 74 shared publisher/verifier AST bodies retained; final future literal cap parity/paths/argv/OS Job remain unresolved.'],'source_budget':budget,'payloads_verified':1139,'manifest_total':1140,'preservation_pairs_verified':912,'finite_input_count':len(selected),'three_observations_equal':True,'inputs':passes[0],'source_checks':source_checks,'shared_publication_AST_count':len(shared),'test_method_counts':{'native':len(native_methods),'metadata':len(meta_methods)},'planned_subtests':421,'limitations':['No target compile, definitions, imports, calls, test collection/execution, Git, FFI, PowerShell, native, binding, production or science operation.','Author inert CodeType and PowerShell parse facts remain attributed author evidence, not this reviewer execution.','Known finite manifest closure does not prove absence of unknown files.','Path nominal semantics remain qualified; no deep stdlib/loaded-site or descendant/Job/provider hard deadline proof.','New ongoing owner directive requires fresh reviewed owner/final release/runtime bindings; historical expired owner pins are not executable authority.','Only 473 source bytes and 628 canonical frame bytes remain; no future binding closure is accepted.'],'operational_authority':False,'runtime_acceptance':False,'actual_results':None}
+out=OUT/'INDEPENDENT_PUBNATIVE_SOURCE_REVIEW_003.json'
+with out.open('xb')as f:f.write((json.dumps(record,sort_keys=True,indent=2)+'\n').encode('utf-8'))
+post={}
+for name,pin in sorted(selected.items()):
+    _,facts=read(Path(name));assert facts==passes[0][name];post[name]=facts
+with (OUT/'INDEPENDENT_PUBNATIVE_POST_CAPTURE_003.json').open('xb')as f:f.write((json.dumps({'inputs':post,'all_equal':True},sort_keys=True,indent=2)+'\n').encode())
+md='''# Independent publication/native source review
+
+REFUSED_STATIC_TEST_PREPARATION_CAUSAL_CLOSURE. This is a source preparation refusal, not an observed runtime failure or a claim of a production defect.
+
+PN002: B05's new 264-item tuple is rejected by the source-container identity check before the collection budget. Use a retained mutable container to reach the budget, retain exact refusal text and restore it.
+
+PN003: B15 resolves fixed-history caps only. It never calls the read/repeat paths or observes open/read/hash ordering. Inherited generic cap tests are separate. Compose the fixed selector with the real selected acquisition path, or qualify the claim as resolver-only.
+
+All 1,139 manifest payloads plus manifest and 912 original/copy pairs were independently hashed and observed three times plus post-publication. Thirty-five source rows were copied independently; Python sources were parsed without target compile or execution. Typed31 policy, exact two-middle direct lineage, full742/grouped263 and finite25 domains, nominal function metadata checks, finite buffer extension and unchanged interfaces were inspected. The source is not ready for binding: future owner/release/runtime/caps/paths/OS argv/Job selections remain unresolved; source margin is 473 bytes and canonical frame margin 628 bytes. No tests, Git, FFI, PowerShell, native, target definitions/imports or operational action ran.
+
+The JSON records precise finite scope and qualifications. Frozen author bytes remain unchanged.
+'''
+with (OUT/'INDEPENDENT_PUBNATIVE_SOURCE_REVIEW_003.md').open('x',encoding='utf-8',newline='\n')as f:f.write(md)
+print(json.dumps({'verdict':record['verdict'],'review_sha256':sha(out.read_bytes()),'inputs':len(selected),'findings':len(findings)}))

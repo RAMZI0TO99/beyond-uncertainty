@@ -1,0 +1,88 @@
+"""Own bounded Source/AST preparation only. No target import, definitions or tests."""
+import ast,datetime,hashlib,json,os,re,stat
+from pathlib import Path
+ROOT=Path('D:/Aenv/pro2');WORK=ROOT/'resume-2026-10-03-continuation001'
+PREP=WORK/'root-checker25-runtime-prep001';META=WORK/'metadata3-actual-checker-prep001'
+OUT=WORK/'root-checker25-runtime-audit001'
+SCOPE='SYNTHETIC_METADATA3_CHECKER25_STDLIB_REGRESSIONS_ONLY'
+PINS=dict(manifest='e455763beee5cd5069da4ccc7ba3937c03aea9d1d7857f93b600721e7b6efb91',runner='0d232235a9b72e1be9eb3167fd20c658e92674736c1fa6274c989fa618fc5987',parent='793cc0589f5cafbd93676056555cdbbbb4156ad145d07e0f6c5c625c140e4051',contract='632c59581deb00967b3f3743922bc95a8cda87d4d8b9aef6d18e079f9815542d',projection='c6f3e058238a9abe747ffe2c7e75060d6ae57224b190f83048c0e96d4edd78d7',source_peer='74ba4590579c56892e3e881d05152857b44390d20a753168eca29f4c6c996cdb',full_source_peer='ad34244835ec9d534eab0e87f608a954183376fb5b5fab129776a27b80ef830b',test='11babbb00b240059ce441b37e2b4bcbcd3167ff44f674dc3229578a63dd865db',helper='3c02e9898ed5fde8cf74f91ff780093ed66ca2a8807a1be2dfe1c9e8976d14e6',helper_peer='4a7188b0f44de5ac2b454de0ba6bc0e4a07b1891fa24b23c88e119d0547d4137',helper_full_peer='556bd1a518caf9e284c00adab7fcd937ea71e31ab770bfb4257137e6b6cf0ebe',helper_manifest='8b296a86c7912141f3e2b880927e515408b7d73994edde6b2bfd7f1676fa0e31')
+RUNTIME=[(Path('D:/Aenv/pro2/pro2/.venv/Scripts/python.exe'),'935016795f3e6908e75acbc2040a01e2e4cdb494a57c42f63a0d6eedb2372256',254800),(Path('D:/Aenv/pro2/runtimes/git/mingw64/bin/git.exe'),'c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9',4344704),(Path('D:/Aenv/pro2/pro2/.venv/pyvenv.cfg'),'e4d43703e6bfd6ad7296ee63e3441af275a4b8a89d72796b316f6458f120e418',290),(Path('D:/Aenv/pro2/runtimes/week8-python313-frozen-001/python.exe'),'5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed',105816)]
+def sha(v):return hashlib.sha256(v).hexdigest()
+def encoded(v):return (json.dumps(v,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def now():return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+def exact(v,keys):assert type(v)is dict and set(v)==set(keys)
+def decode(body):
+    def pairs(rows):
+        out={}
+        for key,value in rows:assert key not in out;out[key]=value
+        return out
+    def bad(value):raise ValueError('float/nonfinite Source data')
+    assert not body.startswith(b'\xef\xbb\xbf')
+    return json.loads(body.decode('utf8','strict'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def raw(s):return [getattr(s,k)for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+def chain(p):
+    rows=[]
+    for q in reversed(p.parents):
+        s=q.lstat();assert stat.S_ISDIR(s.st_mode)and not stat.S_ISLNK(s.st_mode)and not s.st_file_attributes&1024;rows.append([str(q),s.st_dev,s.st_ino])
+    return rows
+def read(path,pin,size):
+    assert type(size)is int and 0<=size<=8388608 and re.fullmatch('[0-9a-f]{64}',pin)
+    ancestry=chain(path);a=path.lstat();x=raw(a);assert stat.S_ISREG(a.st_mode)and a.st_nlink==1 and not a.st_file_attributes&1024 and a.st_size==size
+    with path.open('rb')as f:
+        b=os.fstat(f.fileno());y=raw(b);assert x[:4]+[x[8],x[6],x[7]]==y[:4]+[y[8],y[6],y[7]]and x[4]==x[8]
+        if (path,pin,size)in RUNTIME and path.suffix=='.exe':assert x[5]&0o111==0o111 and y[5]&0o111==0 and x[5]&~0o111==y[5]
+        else:assert x[5]==y[5]
+        data=f.read(size+1);assert raw(os.fstat(f.fileno()))==y
+    assert len(data)==size and sha(data)==pin and raw(path.lstat())==x and chain(path)==ancestry
+    return data,dict(path=str(path),bytes=size,sha256=pin,path_raw9=x,descriptor_raw9=y,ancestors=ancestry)
+def once(name,body):
+    path=OUT/name;path.parent.mkdir(parents=True,exist_ok=True)
+    with path.open('xb')as f:assert f.write(body)==len(body)
+def main():
+    manifest=decode(read(PREP/'SOURCE_MANIFEST_001.json',PINS['manifest'],17782)[0])
+    contract=decode(read(PREP/'SOURCE_CONTRACT_001.json',PINS['contract'],7991)[0])
+    packet=decode(read(META/'AUTHOR_FROZEN_SOURCE_MANIFEST_009.json',PINS['helper_manifest'],10908)[0])
+    assert manifest['payload_count']==len(manifest['payloads'])==92 and packet['payload_count']==len(packet['payloads'])==55
+    rows=[(PREP/'SOURCE_MANIFEST_001.json',PINS['manifest'],17782),(PREP/'SOURCE_CONTRACT_001.json',PINS['contract'],7991),(PREP/'RUN_SYNTHETIC_CHECKER25_001.TEMPLATE.py',PINS['runner'],16098),(PREP/'SUPERVISE_SYNTHETIC_CHECKER25_001.TEMPLATE.ps1',PINS['parent'],19946),(PREP/'CHECKER25_DISCOVERY_PROJECTION_001.json',PINS['projection'],13872),(PREP/'INDEPENDENT_CHECKER25_RUNNER_SOURCE_REVIEW_001.json',PINS['source_peer'],651),(WORK/'root-checker25-independent-review001/INDEPENDENT_CHECKER25_RUNNER_SOURCE_DETAILS_001.json',PINS['full_source_peer'],558571),(META/'test_metadata3_actual_checker_preparation_003.py',PINS['test'],34563),(META/'review-metadata3-actual006-corrected009.TEMPLATE.py',PINS['helper'],146200),(WORK/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_002.json',PINS['helper_peer'],795),(WORK/'metadata3-checker009-independent-review001/INDEPENDENT_METADATA3_CHECKER009_SOURCE_DETAILS_001.json',PINS['helper_full_peer'],192565),(META/'AUTHOR_FROZEN_SOURCE_MANIFEST_009.json',PINS['helper_manifest'],10908),(META/'test_metadata3_actual_checker_preparation_002.py','ea0012b190e108edcfc1dece29ed480cd369a34f1ed044edacad415d808934db',26002),(WORK/'OWNER_CONTINUATION_20261003_001.json','de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583',None),(WORK/'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json','56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0',None),*RUNTIME]
+    for row in manifest['payloads']:
+        exact(row,('path','bytes','sha256'));assert not Path(row['path']).is_absolute()and '..'not in Path(row['path']).parts;rows.append((PREP/row['path'],row['sha256'],row['bytes']))
+    for row in packet['payloads']:
+        exact(row,('path','bytes','sha256'));assert re.fullmatch('[A-Za-z0-9_.-]{1,160}',row['path']);rows.append((META/row['path'],row['sha256'],row['bytes']))
+    registry={}
+    for path,pin,size in rows:
+        if size is None:size=path.lstat().st_size
+        if path in registry:assert registry[path]==(pin,size)
+        registry[path]=(pin,size)
+    assert len(registry)<=200
+    observed=[];bodies={}
+    for index,(path,(pin,size))in enumerate(sorted(registry.items(),key=lambda x:str(x[0]))):
+        passes=[read(path,pin,size)for _ in range(3)];assert passes[0]==passes[1]==passes[2]
+        copy='source-preparation001/'+str(index).zfill(3)+'.bytes';once(copy,passes[0][0]);copy_body,copy_meta=read(OUT/copy,pin,size);assert copy_body==passes[0][0]and copy_meta['path_raw9'][:2]!=passes[0][1]['path_raw9'][:2]
+        observed.append(dict(path=str(path),sha256=pin,bytes=size,passes=[r[1]for r in passes],copy_path=copy,copy_observation=copy_meta));bodies[path]=passes[0][0]
+    peer=decode(bodies[PREP/'INDEPENDENT_CHECKER25_RUNNER_SOURCE_REVIEW_001.json']);exact(peer,contract['source_peer_keys'])
+    assert peer['reviewer']=='/root/binder_correction_audit'and peer['source_author']=='/root/bootstrap_stage'and peer['verdict']=='PASS_STATIC_SYNTHETIC_CHECKER25_RUNNER_ONLY'and peer['runner_source_sha256']==PINS['runner']and peer['parent_source_sha256']==PINS['parent']and peer['source_manifest_sha256']==PINS['manifest']and peer['actual_runtime']is None and peer['target_execution']is False
+    full=decode(bodies[WORK/'root-checker25-independent-review001/INDEPENDENT_CHECKER25_RUNNER_SOURCE_DETAILS_001.json']);assert full['copied_input_count']==161 and full['actual_runtime']is None
+    projection=decode(bodies[PREP/'CHECKER25_DISCOVERY_PROJECTION_001.json']);module=projection['module_name']
+    methods=[];method_nodes={}
+    for cls in ast.parse(bodies[META/'test_metadata3_actual_checker_preparation_003.py']).body:
+        if isinstance(cls,ast.ClassDef):
+            for node in cls.body:
+                if isinstance(node,ast.FunctionDef)and node.name.startswith('test_'):methods.append(dict(id=module+'.'+cls.name+'.'+node.name,name=node.name,body_ast_sha256=sha(ast.dump(node,include_attributes=False).encode('utf8')),source_line=node.lineno));method_nodes[node.name]=node
+    methods.sort(key=lambda x:x['id']);assert len(methods)==25 and methods==projection['methods']and [r['id']for r in methods]==projection['ordered_ids']
+    old_nodes={node.name:node for cls in ast.parse(bodies[META/'test_metadata3_actual_checker_preparation_002.py']).body if isinstance(cls,ast.ClassDef)for node in cls.body if isinstance(node,ast.FunctionDef)and node.name.startswith('test_')}
+    assert len(old_nodes)==19 and all(ast.dump(node,include_attributes=False)==ast.dump(method_nodes[name],include_attributes=False)for name,node in old_nodes.items())
+    sites=[dict(method=name,source_line=node.lineno,AST_sha256=sha(ast.dump(node,include_attributes=False).encode()))for name,method in method_nodes.items()for node in ast.walk(method)if isinstance(node,ast.Call)and isinstance(node.func,ast.Attribute)and node.func.attr=='subTest'];assert len(sites)==6
+    independent_projection=dict(schema_version=1,record_type='independent_checker25_discovery_projection',reviewer='/root/capsule_design_review',scope=SCOPE,module_name=module,test_sha256=PINS['test'],helper_sha256=PINS['helper'],ordered_ids=[r['id']for r in methods],methods=methods,ordered_ids_sha256=sha(('\n'.join(r['id']for r in methods)+'\n').encode()))
+    once('INDEPENDENT_CHECKER25_DISCOVERY_PROJECTION_001.json',encoded(independent_projection))
+    # Future runtime fixed tuple ordering is reproduced exactly without target calls.
+    fixed=[(PREP/'RUN_SYNTHETIC_CHECKER25_001.TEMPLATE.py',PINS['runner'],65536),(PREP/'SUPERVISE_SYNTHETIC_CHECKER25_001.TEMPLATE.ps1',PINS['parent'],65536),(META/'test_metadata3_actual_checker_preparation_003.py',PINS['test'],34563),(META/'review-metadata3-actual006-corrected009.TEMPLATE.py',PINS['helper'],146200),(WORK/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_002.json',PINS['helper_peer'],65536),(PREP/'CHECKER25_DISCOVERY_PROJECTION_001.json',PINS['projection'],65536),(PREP/'ROOT_SYNTHETIC_CHECKER25_GO_001.json',None,65536),(WORK/'metadata3-checker009-independent-review001/INDEPENDENT_METADATA3_CHECKER009_SOURCE_DETAILS_001.json',PINS['helper_full_peer'],192565),(META/'AUTHOR_FROZEN_SOURCE_MANIFEST_009.json',PINS['helper_manifest'],10908),(WORK/'OWNER_CONTINUATION_20261003_001.json','de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583',65536),(WORK/'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json','56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0',65536),*RUNTIME,*[(META/r['path'],r['sha256'],r['bytes'])for r in packet['payloads']]]
+    fixed=list(dict.fromkeys(fixed))
+    plan=dict(schema_version=1,record_type='independent_synthetic_checker25_actual_audit_preparation',created_utc=now(),reviewer='/root/capsule_design_review',scope=SCOPE,source_pins=PINS,finite_input_count=len(observed),finite_inputs=observed,full_discovery_method_AST_exact=True,inherited19_method_ASTs_exact=True,new_methods=sorted(set(method_nodes)-set(old_nodes)),Source_subtest_sites=sites,declared_sites_are_not_actual_counts=True,runtime_fixed_source_tuple_order=[dict(path=str(p),sha256=h,maximum_bytes=n)for p,h,n in fixed],runtime_source_tuple_count=len(fixed),own_discovery_projection_sha256=sha(encoded(independent_projection)),actual_Pro3_ACK=None,actual_Root_GO=None,actual_parent=None,actual_discovery=None,actual_result=None,actual_tests=None,actual_subtests=None,actual_event_rows=None,actual_diagnostics=None,actual_acceptance=None,reviewed_target_definitions_imports_mains_tests_executed=False,operational_authority=False,required_actual_checks=['Fresh external Pro3 ACK genuine bytes/pin and Root original GO15/Sourcepeer12; authenticate exact selected scope/interval via owning Root witness, do not fabricate an ACK grammar or treat Source peer as coordination.','Physical Root complete owning tool<=60 including preflight/receipts/disposal; strictPS7 parent chronology, GOpositive<=600 and60reserve, source/fullpipe64KiB, complete direct reap/drain/noOverflow/noTimeout; resource1GiB/D10GiB pointage60 throughspawn.','Actual25sorted fullIDs/bodyAST discovery; reconstruct every start/directterminal and parented subtest in order. Derive actual subtest/event counts from stream, never from six Source sites; preserve duplicate display labels without deduplication.','Full events<=1024/LF/4096rows, finite32 combined chunks<=131072each/4MiB aggregate, exact chunkbytes/hash/order/manifest; complete diagnostic UTF8offset/length/hash accounting. On failure retain full bytes and emit scoped refusal, never truncate or fakePASS.','Sourceproof initial/final exact tuple set/order dynamically reconstructed from fixed15+55packet with exact tuple dedup; all runtime4/plain-file bytes and sameAPIraw9/currentpost exact. Runtimebyte guards are not whole inventories or loaded-site proof.','All selected result/discovery/sourceproof schemas nominal/closed, cachesexacttest/helper paths absent, exact private output membership, UTF8physicalstdoutstderr linked toresult and no hidden/staging evidence.','No project metadata/Auth/capture/current24/U007/native/canonical/fullQA/science/Job/descendant/quiet orfutureauthority follows from isolated synthetic009 fixtures.'])
+    once('INDEPENDENT_CHECKER25_ACTUAL_AUDIT_PREPARATION_001.json',encoded(plan))
+    post=[]
+    for row in observed:
+        body,meta=read(Path(row['path']),row['sha256'],row['bytes']);cb,cm=read(OUT/row['copy_path'],row['sha256'],row['bytes']);assert body==cb and meta==row['passes'][0]and cm==row['copy_observation'];post.append(dict(path=row['path'],observation=meta,copy_observation=cm))
+    once('POST_CHECKER25_ACTUAL_AUDIT_PREPARATION_001.json',encoded(dict(schema_version=1,created_utc=now(),observations=post,all_exact=True,actual_runtime=None,operational_authority=False)))
+    once('HANDOFF_CHECKER25_ACTUAL_AUDIT_PREPARATION_001.md',('Independent actual checker25 audit prepared only from frozen Source. Exact25 full method IDs/bodyASTs and inherited19 methods verified; six subTest sites are Source facts, never actual counts. The complete accepted009 source packet55 is included; future runtime tuple ordering is derived without invoking targets. All actual ACK/GO/parent/discovery/result/subtests/counts/acceptance remain None. Wait for Root physical closeout and explicit release.\n\n'+'\n\n'.join(plan['required_actual_checks'])+'\n').encode('utf8'))
+    print(json.dumps(dict(preparation_sha256=sha(encoded(plan)),finite_inputs=len(observed),methods=len(methods),runtime_source_tuple_count=len(fixed),own_projection_sha256=sha(encoded(independent_projection)),actual_runtime=None,targets_or_tests_executed=False)))
+if __name__=='__main__':main()

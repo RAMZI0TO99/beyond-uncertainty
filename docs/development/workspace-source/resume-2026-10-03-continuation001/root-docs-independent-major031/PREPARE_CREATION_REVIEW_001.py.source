@@ -1,0 +1,179 @@
+"""Independent actual documentation creation audit; finite metadata reads only."""
+from pathlib import Path
+import datetime
+import hashlib
+import json
+import os
+import re
+
+ROOT = Path('D:/Aenv/pro2')
+WORK = ROOT / 'resume-2026-10-03-continuation001'
+STAGE = WORK / 'root-docs-major031'
+OUT = WORK / 'root-docs-independent-major031'
+SOURCE = OUT / 'INDEPENDENT_MAJOR031_PREPUBLICATION_SOURCE_REVIEW_001.json'
+SOURCE_SHA = 'fc7a3d82753b2529517088641021d09d34169c2d246c5538d84c95cacf234823'
+MANIFEST = STAGE / 'STAGED_DOCUMENTATION_CLOSEOUT_MANIFEST_031.json'
+MANIFEST_SHA = 'a52d87133599c09efbc8c061ddb93a1e6d0ffc78a76862c5f089d708f85b82cf'
+PUBLISHER_SHA = 'e81e4cd6d871df604fa160e528fc7c173e3fa45043f23ffc1dbb3838233d10bb'
+RECEIPT = STAGE / 'ROOT_PUBLISH_RECEIPT_031.json'
+CHECKPOINT = WORK / 'CONTINUATION_CHECKPOINT_002.md'
+PRIMARY = ['AGENTS.md', 'HANDOFF.md', 'START_HERE.md', 'resume-2026-09-28-001/SESSION.md', 'resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md']
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+def stamp():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+
+def raw9(info):
+    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+            info.st_mode, info.st_nlink, getattr(info, 'st_file_attributes', 0), info.st_birthtime_ns]
+
+def read(path, expected=None, expected_bytes=None):
+    before = path.stat()
+    if not path.is_file() or path.is_symlink() or before.st_size > 4 * 1024 * 1024:
+        raise ValueError('invalid finite metadata file ' + str(path))
+    with path.open('rb') as stream:
+        fd_before = os.fstat(stream.fileno())
+        data = stream.read(4 * 1024 * 1024 + 1)
+        fd_after = os.fstat(stream.fileno())
+    after = path.stat()
+    if raw9(before) != raw9(after) or raw9(fd_before) != raw9(fd_after):
+        raise ValueError('unstable source metadata ' + str(path))
+    if expected is not None and sha(data) != expected:
+        raise ValueError('source pin changed ' + str(path))
+    if expected_bytes is not None and len(data) != expected_bytes:
+        raise ValueError('source byte count changed ' + str(path))
+    return data, {'path': path.as_posix(), 'sha256': sha(data), 'bytes': len(data),
+                  'path_raw9': raw9(after), 'descriptor_raw9': raw9(fd_after), 'observed_utc': stamp()}
+
+def publish(name, value):
+    data = (json.dumps(value, indent=2, ensure_ascii=True, allow_nan=False) + '\n').encode('utf8')
+    path = OUT / name
+    with path.open('xb') as stream:
+        stream.write(data)
+    return {'path': path.as_posix(), 'sha256': sha(data), 'bytes': len(data)}
+
+def main():
+    source_data, _ = read(SOURCE, SOURCE_SHA)
+    source = json.loads(source_data)
+    assert source['verdict'] == 'PASS_SOURCE_ONLY_DOCUMENTATION_SUCCESSOR002_WITH_CREATION_REVIEW_PENDING'
+    manifest_data, _ = read(MANIFEST, MANIFEST_SHA)
+    manifest = json.loads(manifest_data)
+    receipt_data, _ = read(RECEIPT)
+    receipt = json.loads(receipt_data)
+    assert set(receipt) == {'author','batch_atomicity_guaranteed','changes','checkpoint_retained','created_utc',
+                            'different_documentation_review','external_Root_invocation_required','manifest_sha256',
+                            'operational_authority','publisher_sha256','record_type','schema_version','target_execution'}
+    assert type(receipt['schema_version']) is int and receipt['schema_version'] == 1
+    assert receipt['record_type'] == 'root_documentation_publish' and receipt['author'] == '/root'
+    assert receipt['publisher_sha256'] == PUBLISHER_SHA and receipt['manifest_sha256'] == MANIFEST_SHA
+    assert receipt['changes'] == PRIMARY and receipt['checkpoint_retained'] == CHECKPOINT.relative_to(ROOT).as_posix()
+    assert re.fullmatch(r'2026-10-03T08:25:11\.367105\+00:00', receipt['created_utc'])
+    assert receipt['different_documentation_review'] is None
+    assert receipt['external_Root_invocation_required'] is True
+    for key in ('batch_atomicity_guaranteed','operational_authority','target_execution'):
+        assert receipt[key] is False
+    pins = {Path(row['path']): (row['sha256'], row['bytes']) for row in source['observations'][0]['rows']}
+    for row in manifest['primaries']:
+        pins[ROOT / row['destination']] = (row['candidate']['sha256'], row['candidate']['bytes'])
+    pins[CHECKPOINT] = (manifest['checkpoint']['sha256'], manifest['checkpoint']['bytes'])
+    pins[SOURCE] = (SOURCE_SHA, len(source_data))
+    pins[RECEIPT] = (sha(receipt_data), len(receipt_data))
+    for name, pin in (
+        ('SOURCE_CANDIDATE_HISTORY_AND_LINKS_001.json', 'fb2e5fbd22c19e3445b0c6095cea928b31e9754f3eb89ff8fc5b0ca72c8ab51d'),
+        ('POST_PREPUBLICATION_SOURCE_CAPTURE_001.json', '73f43e696cb83a6fe27081d28d58d18ab83cf4664456887115d50a51c09ce723'),
+    ):
+        data, _ = read(OUT / name, pin)
+        pins[OUT / name] = (pin, len(data))
+    paths = sorted(pins, key=lambda path: path.as_posix())
+    blobs = {}
+    observations = []
+    for phase in (1, 2, 3):
+        rows = []
+        for path in paths:
+            data, row = read(path, *pins[path])
+            if phase > 1:
+                assert data == blobs[path]
+            blobs[path] = data
+            rows.append(row)
+        observations.append({'phase': phase, 'rows': rows})
+    primary_rows = []
+    copies = []
+    for row in manifest['primaries']:
+        primary = ROOT / row['destination']
+        before = ROOT / row['before']['path']
+        candidate = ROOT / row['candidate']['path']
+        assert blobs[primary] == blobs[candidate]
+        if row['preservation'] == 'suffix':
+            assert blobs[primary].endswith(blobs[before])
+        else:
+            assert row['preservation'] == 'prefix' and blobs[primary].startswith(blobs[before])
+        primary_rows.append({'path': row['destination'], 'bytes': len(blobs[primary]), 'sha256': sha(blobs[primary]),
+                             'candidate': row['candidate'], 'before': row['before'],
+                             'history_preservation': row['preservation'], 'candidate_exact': True, 'old_history_exact': True})
+    assert blobs[CHECKPOINT] == blobs[ROOT / manifest['checkpoint']['path']]
+    for path in [ROOT / value for value in PRIMARY] + [CHECKPOINT, RECEIPT]:
+        destination = OUT / 'creation-cohort001' / path.relative_to(ROOT)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with destination.open('xb') as stream:
+            stream.write(blobs[path])
+        data, row = read(destination, sha(blobs[path]), len(blobs[path]))
+        copies.append({'original': path.as_posix(), 'copy': row, 'exact': data == blobs[path]})
+    links = []
+    for row in manifest['links']:
+        destination = ((ROOT / row['document']).parent / row['target']).resolve()
+        assert destination == (ROOT / row['resolved_path']).resolve()
+        assert destination in blobs
+        links.append(dict(row, sha256=sha(blobs[destination]), bytes=len(blobs[destination]), actual_exists=True))
+    assert len(links) == 81
+    report = {
+        'schema_version': 1, 'record_type': 'independent_major031_documentation_creation_review',
+        'reviewer': '/root/renewal_runtime_inventory', 'documentation_source_author': '/root/pubnative_review',
+        'actual_publisher': '/root', 'created_utc': stamp(),
+        'verdict': 'PASS_ACTUAL_DOCUMENTATION_CREATION_ONLY',
+        'source_review': {'path': SOURCE.as_posix(), 'sha256': SOURCE_SHA, 'bytes': len(source_data)},
+        'stage_manifest': {'path': MANIFEST.as_posix(), 'sha256': MANIFEST_SHA, 'bytes': len(manifest_data)},
+        'publisher_source_sha256': PUBLISHER_SHA,
+        'actual_root_publication_receipt': {'path': RECEIPT.as_posix(), 'sha256': sha(receipt_data), 'bytes': len(receipt_data)},
+        'actual_checkpoint': {'path': CHECKPOINT.as_posix(), 'sha256': sha(blobs[CHECKPOINT]), 'bytes': len(blobs[CHECKPOINT])},
+        'actual_primary_rows': primary_rows, 'primary_count': 5, 'manifest_link_count': 81,
+        'actual_link_rows': links, 'finite_input_count': len(paths), 'observations': observations,
+        'frozen_creation_cohort_copies': copies, 'findings': [],
+        'checks': [
+            'All five actual primaries are byte-for-byte equal to reviewed candidates002. Every entire old before file is retained exactly as the prescribed prefix or suffix.',
+            'The actual create-once checkpoint is byte-for-byte equal to reviewed candidate43501202; every one of the81 staged links resolves to an actual file, including that checkpoint.',
+            'The stage manifest, selected publisher, independent prepublication source peer and all immutable source histories retain their previously observed pins.',
+            'The genuine Root publication receipt contains exact five changes, authentic Py6 creation stamp, self/manifest pins, false target/operational/batch-atomicity flags and unchanged different-documentation-review None.',
+            'Root reported genuine tool85f801 exit0 and direct isolated base Python invocation. This is external parent attribution combined with independent byte/readback observations, not an independently witnessed OS/process launch.',
+            'No publisher or restoration main was run by this reviewer, and no Root receipt was edited to insert a fabricated peer. The publisher publication identity is spent and cannot be replayed.',
+            'The selected documentation keeps conservative source-only factual wording. Separate newer source observations in the prepublication review do not supply runtime, bound-pool, lease, test or scientific acceptance.'
+        ],
+        'implementation_conditions': [
+            'This verdict concerns creation of the exact frozen documentation cohort only. Later primary edits fall outside these observed pins and require a distinct review.',
+            'The ongoing master is separate from finite phase leases; all original600/both90/resource60/Root450+after60 guards and source/runtime/evidence caps remain.',
+            'No source PASS or documentation creation PASS authorizes replay, target runtime, native recovery, public action, science/epoch changes or full QA acceptance.'
+        ],
+        'target_tests_executed_by_reviewer': False, 'publisher_main_executed_by_reviewer': False,
+        'actual_runtime_results': None, 'runtime_acceptance': False, 'operational_authority': False,
+        'post_capture_reference': None
+    }
+    report_row = publish('INDEPENDENT_MAJOR031_CREATION_REVIEW_001.json', report)
+    post_rows = []
+    for path in paths:
+        data, row = read(path, *pins[path])
+        assert data == blobs[path]
+        post_rows.append(row)
+    report_data, report_obs = read(Path(report_row['path']), report_row['sha256'], report_row['bytes'])
+    post = publish('POST_CREATION_CAPTURE_001.json', {
+        'schema_version': 1, 'record_type': 'independent_major031_creation_post_capture',
+        'reviewer': '/root/renewal_runtime_inventory', 'created_utc': stamp(), 'review': report_row,
+        'review_observation': report_obs, 'finite_input_count': len(paths), 'post_rows': post_rows,
+        'all_observed_bytes_preserved': True, 'runtime_acceptance': False, 'operational_authority': False
+    })
+    print(json.dumps({'review': report_row, 'post': post, 'finite_input_count': len(paths),
+                      'actual_primary_hashes': {row['path']: row['sha256'] for row in primary_rows},
+                      'actual_checkpoint_sha256': sha(blobs[CHECKPOINT]), 'root_receipt_sha256': sha(receipt_data)}, indent=2))
+
+if __name__ == '__main__':
+    main()

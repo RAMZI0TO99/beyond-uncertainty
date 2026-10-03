@@ -1,0 +1,103 @@
+"""Nonexecuting author composition and AST-derived case inventory."""
+import ast,hashlib,json,os
+from pathlib import Path
+ROOT=Path(__file__).absolute().parent
+path=ROOT/'source/test_native_schema2_admission_002.py';before=path.read_bytes()
+saved=ROOT/'before/test-composition009';saved.mkdir()
+with (saved/path.name).open('xb') as f:f.write(before)
+text=before.decode()
+text=text.replace("(STAGE / 'fixtures/middle_manifest.bytes').read_bytes()","fixture_bytes('middle_manifest.bytes')")
+text=text.replace("(STAGE / 'fixtures/middle_commit_object.bytes').read_bytes()","fixture_bytes('middle_commit_object.bytes')")
+text=text.replace('isinstance(node,(ast.Import,ast.ImportFrom,ast.Assign))','isinstance(node,(ast.Import,ast.ImportFrom,ast.Assign,ast.AnnAssign))')
+text=text.replace("type(captures.get(name)) is not bytes:","type(captures.get(name)) is not bytes or sha(captures[name]) != FIXTURE_PINS.get(name):")
+fragment=(ROOT/'BEHAVIOR_TESTS_009.FRAGMENT.py').read_bytes()
+ast.parse(fragment)
+text+='\n'+fragment.decode()+'\n'
+tree=ast.parse(text)
+cases=[node.name+'.'+method.name for node in tree.body if isinstance(node,ast.ClassDef)
+    for method in node.body if isinstance(method,ast.FunctionDef) and method.name.startswith('test_')]
+assert len(cases)==85 and len(set(cases))==85
+families={}
+for case in cases:
+ name=case.split('.',1)[1]
+ if name.startswith('test_m'):
+  key='M'+name[6:8];families[key]=[case]
+assert set(families)=={'M%02d'%i for i in range(1,33)}
+guard_case='NativeSchema2Preparation.test_cold_and_reused_real_raw_guard_policy_code_defaults_aliases'
+for key in ('M01','M02','M03','M04'):families[key].append(guard_case)
+
+# Exact planned event cardinalities from preserved literal loops. These are
+# source expectations, not observed runtime counts. The runtime must reconcile
+# every actual addSubTest event in source-case order or refuse its result.
+counts={
+'NativeSchema2Preparation.test_middle_base64_and_reconstruction_negative':3,
+'NativeSchema2Preparation.test_resealed_external33_semantic_mutations':14,
+'NativeSchema2Preparation.test_actual_publication_complete_and_verifier_intent_semantics':5,
+'NativeSchema2Preparation.test_exact_metadata_cap_before_open_and_reread':2,
+'NativeSchema2Preparation.test_runtime_behavior_contract_cannot_be_enabled_by_whole_result_or_digest':3,
+guard_case:46,
+'CapturedReadTests.test_every_same_api_field_drift_is_rejected':18,
+'CapturedReadTests.test_every_canonical_cross_api_field_is_rejected_if_different':8,
+'CapturedReadTests.test_noninteger_birthtime_refuses_windows_mapping':4,
+'CapturedReadTests.test_known_executable_suffixes_accept_only_exact_role_masks':5,
+'CapturedReadTests.test_executable_missing_partial_or_unexpected_execute_bits_refuse':4,
+'CapturedReadTests.test_executable_filetype_readwrite_and_afterread_mode_substitutions_refuse':5,
+'CapturedReadTests.test_other_suffix_and_posix_never_receive_executable_projection':2,
+'OwnedVerifierPairTests.test_pair_unknown_missing_extra_and_reordered_fields_or_rows_refuse':6,
+'OwnedVerifierPairTests.test_pair_wrong_roles_image_hashes_and_paths_refuse':10,
+'OwnedVerifierPairTests.test_pair_pid_parent_and_creation_types_values_refuse':36,
+'OwnedVerifierPairTests.test_pair_direct_parent_cycle_order_and_future_creation_refuse':11,
+'OwnedVerifierPairTests.test_complete_cim_inventory_duplicate_missing_or_malformed_rows_refuse':14,
+'OwnedVerifierPairTests.test_owned_cim_name_path_command_parent_and_creation_substitution_refuse':18,
+'OwnedVerifierPairTests.test_every_other_python_pypy_and_pro3_process_remains_foreign':7,
+'OwnedVerifierPairTests.test_stored_quiet_snapshot_false_counts_indices_verifier_and_shape_refuse':19,
+'OwnedVerifierPairTests.test_pid_reuse_and_relationship_changes_between_snapshots_refuse':3,
+'OwnedVerifierPairTests.test_current_interpreter_flags_executable_base_or_parent_must_match':9,
+'OwnedVerifierPairTests.test_independent_image_pin_failure_precedes_first_host_query':2,
+'OwnedVerifierPairTests.test_after_snapshot_image_byte_or_identity_change_refuses':2,
+'OwnedVerifierPairTests.test_final_pid_parent_flags_and_base_substitution_refuse':4,
+'OwnedVerifierPairTests.test_foreign_second_snapshot_and_query_failure_refuse':2,
+'AuditBindingTests.test_length_below_ceiling_must_still_equal_actual013_review':6,
+'AuditBindingTests.test_missing_extra_duplicate_or_old_audit_header_refuses':4,
+}
+actual_subtest_methods={cls.name+'.'+fn.name for cls in tree.body if isinstance(cls,ast.ClassDef)
+    for fn in cls.body if isinstance(fn,ast.FunctionDef) and fn.name.startswith('test_')
+    and any(isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='subTest' for n in ast.walk(fn))}
+assert set(counts)==actual_subtest_methods
+subtests={}
+for case in cases:
+ for index in range(counts.get(case,0)):
+  cls,method=case.split('.',1)
+  if cls=='CapturedReadTests':control='CapturedReadTests.test_modified_windows_file_maps_creation_without_dropping_guards'
+  elif cls=='OwnedVerifierPairTests':control='OwnedVerifierPairTests.test_valid_pair_and_two_fresh_snapshots_keep_pid_zero_inventory'
+  elif cls=='AuditBindingTests':control='AuditBindingTests.test_exact_current_admission_and_reviewed_length_accept'
+  elif 'middle' in method:control='NativeSchema2Preparation.test_actual_middle_full742_grouped263_positive'
+  elif case==guard_case:control=case
+  elif 'runtime_behavior' in method:control='NativeSchema2CriticalFamilies.test_m12_complete_typed_profile_and_source_validation_are_accepted'
+  else:control='NativeSchema2Preparation.test_complete_external33_positive'
+  positive='known_executable_suffixes' in method
+  subtests[case+'#%04d'%(index+1)]={'case_id':case,'expected_refusal':not positive,
+    'observed_boundary':method.removeprefix('test_'),'control_case_id':case if positive else control}
+
+fixture_files={q.name:q.read_bytes() for q in (ROOT/'source/fixtures').glob('*') if q.is_file()}
+fixture_files['raw003-source.bytes']=(ROOT/'inputs/raw003-source.bytes').read_bytes()
+pins={key:hashlib.sha256(data).hexdigest() for key,data in sorted(fixture_files.items())}
+text+='\nFIXTURE_PINS = '+repr(pins)+'\n'
+text+='NATIVE_CRITICAL_FAMILY_CASES = '+repr(families)+'\n'
+text+='NATIVE_SUBTEST_POLICY = '+repr(subtests)+'\n'
+ast.parse(text)
+with path.open('wb') as f:f.write(text.encode());f.flush();os.fsync(f.fileno())
+assert path.read_bytes()==text.encode()
+record={'schema_version':1,'record_type':'native002_unrun_case_source_inventory',
+    'test_source_sha256':hashlib.sha256(path.read_bytes()).hexdigest(), 'bytes':len(path.read_bytes()),
+    'old_named_methods_retained':53,'new_named_methods':32,'ordered_case_ids':cases,
+    'expected_subtest_count':len(subtests),'expected_subtest_counts':counts,
+    'family_coverage':families,'fixture_pins':pins,
+    'actual_tests_executed':False,'actual_subtest_events_observed':False,
+    'metadata_counts_are_source_expectations_only':True,
+    'test_original_before_sha256':hashlib.sha256(before).hexdigest(),
+    'fragment_sha256':hashlib.sha256(fragment).hexdigest()}
+q=ROOT/'TEST_SOURCE_CASE_INVENTORY_009.json'
+with q.open('xb') as f:f.write((json.dumps(record,sort_keys=True,indent=2)+'\n').encode());f.flush();os.fsync(f.fileno())
+print(json.dumps({'test_sha256':record['test_source_sha256'],'bytes':record['bytes'],'cases':len(cases),
+ 'planned_subtests':len(subtests),'inventory_sha256':hashlib.sha256(q.read_bytes()).hexdigest(),'unrun':True}))

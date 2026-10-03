@@ -1,7 +1,11 @@
-"""The preregistration, in code.
+"""The registered scientific constants, in code.
 
-Every value here is fixed before data collection and is not revised after seeing
-data (Plan §4.2, §10.6). They live in one file, alone, for a specific reason:
+Original values are fixed before their dependent data collection and are not
+revised after seeing outcomes (Plan §4.2, §10.6). D-154 is an explicitly
+disclosed exception: CAPACITY_EXTENSION_HIDDEN_SIZE is a prospective amendment
+after partial prior exposure and collection, not original pre-data registration.
+It leaves every existing constant unchanged and awaits external Sol review.
+The values live in one file, alone, for a specific reason:
 in Plan v1.1 a withdrawn two-sigma acceptance rule survived in two sections and
 would have produced a different ground-truth label depending on which section
 the implementation happened to follow. Constants scattered across modules fail
@@ -237,6 +241,13 @@ DATA_SIZES = (100, 250, 500, 1000, 2500, 5000)
 
 #: Experiment 2B -- capacity sweep, at complete input features.
 HIDDEN_SIZES = (16, 32, 64, 128, 256)
+
+#: D-154's fixed, distinct capacity_extension_repair for fully observed
+#: width-256 source units only. Changes width alone; never a new sweep level,
+#: a replacement for capacity_repair's 256 target, or an outcome-tuned ladder.
+#: Registered after partial prior exposure, before dependent implementation;
+#: external Sol review remains pending. No realizability or label guarantee.
+CAPACITY_EXTENSION_HIDDEN_SIZE = 512
 
 #: Experiment 2A -- the four non-zero confound levels between the decoy
 #: attribute and the withheld causal attribute (Plan §8.2.1). Note that

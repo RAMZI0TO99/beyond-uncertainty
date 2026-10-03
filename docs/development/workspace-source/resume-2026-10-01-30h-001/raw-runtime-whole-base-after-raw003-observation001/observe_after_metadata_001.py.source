@@ -1,0 +1,235 @@
+"""Independent metadata-only observation; never import or execute target sources."""
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+import struct
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(r"D:\Aenv\pro2")
+OUT = Path(__file__).parent
+SESSION = ROOT / "resume-2026-09-28-001"
+CURRENT = ROOT / "resume-2026-10-01-30h-001"
+PREP = CURRENT / "raw-component-runtime-prep003"
+LAUNCHER = ROOT / "week8-recovery-controller-worktree/scripts/week8_recovery_native_launcher.ps1"
+FIELDS = ["st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_mode", "st_nlink", "st_file_attributes", "st_birthtime_ns"]
+INPUTS = {
+    "native_launcher": LAUNCHER,
+    "prior_runtime_verifier": SESSION / "verify-runtime-release-014.py",
+    "prior_restore_source": SESSION / "restore-frozen-base-pyc-003.py",
+    "prior_restore_verifier": SESSION / "verify-frozen-base-pyc-restore-003.py",
+    "historical_base_manifest": SESSION / "runtime-release-013/base-inventory.json",
+    "historical_restore_success": SESSION / "runtime-base-pyc-restore-003/success.json",
+    "historical_restore_copies_verified": SESSION / "runtime-base-pyc-restore-003/copies-verified.json",
+    "actor_repair_claim": SESSION / "runtime-pyc-drift-repair-20261002-001.json",
+    "raw_driver": PREP / "run-isolated-raw-component-003.BOUND.py",
+    "raw_child": PREP / "raw-test-child-003.TEMPLATE.py",
+    "raw_source": PREP / "source/scripts/week8_recovery_raw_authority.py",
+    "raw_tests": PREP / "source/tests/test_week8_recovery_raw_authority.py",
+    "metadata_source": PREP / "source/scripts/week8_relocation_metadata.py",
+    "provenance_source": PREP / "source/src/bu/experiments/week8_relocation_provenance.py",
+    "pytest_rewrite_source": ROOT / "pro2/.venv/Lib/site-packages/_pytest/assertion/rewrite.py",
+    "root_ps_source": PREP / "ROOT_FIRST_LAUNCH_003.BOUND.ps1",
+}
+
+def utc():
+    return datetime.now(timezone.utc).isoformat()
+
+def require(value, message):
+    if not value:
+        raise RuntimeError(message)
+
+def identity(info):
+    return [getattr(info, name) for name in FIELDS]
+
+def common(info):
+    return tuple(getattr(info, name) for name in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink", "st_file_attributes", "st_birthtime_ns"))
+
+def plain(info, directory=False):
+    require(not info.st_file_attributes & 0x400, "reparse entry")
+    require(stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode), "unexpected entry type")
+    if not directory:
+        require(info.st_nlink == 1, "hardlinked file")
+
+def ancestors(path):
+    for parent in reversed(path.parents):
+        plain(parent.lstat(), True)
+
+def read(path, collect=False):
+    ancestors(path)
+    before = path.lstat()
+    plain(before)
+    digest = hashlib.sha256()
+    parts = []
+    total = 0
+    with path.open("rb") as stream:
+        opened = os.fstat(stream.fileno())
+        plain(opened)
+        require(common(before) == common(opened), "path/handle identity mismatch")
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+            total += len(chunk)
+            if collect:
+                parts.append(chunk)
+        closed = os.fstat(stream.fileno())
+        require(identity(opened) == identity(closed), "handle changed while read")
+    after = path.lstat()
+    require(identity(before) == identity(after), "path changed while read")
+    require(common(after) == common(closed), "path/handle final identity mismatch")
+    require(total == before.st_size, "byte count mismatch")
+    return {"path": str(path), "sha256": digest.hexdigest(), "size": total,
+            "path_identity": identity(before), "handle_identity": identity(opened)}, b"".join(parts) if collect else None
+
+def write_bytes(name, value):
+    path = OUT / name
+    with path.open("xb") as stream:
+        stream.write(value)
+    observed, copied = read(path, True)
+    require(copied == value, "written bytes changed")
+    return observed
+
+def write_json(name, value):
+    return write_bytes(name, (json.dumps(value, sort_keys=True, ensure_ascii=True, indent=2, allow_nan=False) + "\n").encode("ascii"))
+
+def ordinal(value):
+    encoded = value.encode("utf-16-le", "surrogatepass")
+    return struct.unpack("<" + "H" * (len(encoded) // 2), encoded)
+
+def tree(root):
+    started = utc()
+    ancestors(root)
+    root_before = root.lstat()
+    plain(root_before, True)
+    rows = []
+    directory_metadata = {}
+    def walk(folder):
+        before = folder.lstat()
+        plain(before, True)
+        with os.scandir(folder) as entries:
+            names = [entry.name for entry in entries]
+        require(len(names) == len(set(names)), "duplicate names")
+        for name in names:
+            path = folder / name
+            relative = path.relative_to(root).as_posix()
+            require(not any(c in relative for c in ("\t", "\n", "\r")), "unserializable path")
+            info = path.lstat()
+            if stat.S_ISDIR(info.st_mode):
+                plain(info, True)
+                rows.append({"kind": "directory", "path": relative, "path_identity": identity(info)})
+                walk(path)
+            else:
+                observed, _ = read(path)
+                rows.append({"kind": "file", "path": relative, "size": observed["size"],
+                             "sha256": observed["sha256"], "path_identity": observed["path_identity"],
+                             "handle_identity": observed["handle_identity"]})
+        require(identity(before) == identity(folder.lstat()), "directory changed during traversal")
+        directory_metadata[str(folder)] = identity(before)
+    walk(root)
+    rows.sort(key=lambda row: ordinal(row["path"]))
+    digest = hashlib.sha256()
+    files = directories = total = 0
+    for row in rows:
+        if row["kind"] == "directory":
+            directories += 1
+            line = f"D\t{row['path']}\n"
+        else:
+            files += 1
+            total += row["size"]
+            line = f"F\t{row['path']}\t{row['size']}\t{row['sha256']}\n"
+        digest.update(line.encode("utf-8"))
+        require(row["path_identity"] == identity((root / row["path"]).lstat()), "entry changed after capture")
+    require(identity(root_before) == identity(root.lstat()), "root changed during traversal")
+    return {"root": str(root), "started_at_utc": started, "finished_at_utc": utc(),
+            "identity": {"files": files, "directories": directories, "bytes": total, "sha256": digest.hexdigest()},
+            "root_identity": identity(root_before), "rows": rows,
+            "directory_metadata": directory_metadata,
+            "non_ascii_paths": [row["path"] for row in rows if not row["path"].isascii()]}
+
+def literals(source):
+    result = {}
+    for node in ast.parse(source).body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            try:
+                value = ast.literal_eval(node.value)
+            except (ValueError, TypeError):
+                continue
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    result[target.id] = value
+    return result
+
+def dotted(node):
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return dotted(node.value) + "." + node.attr
+    return "<dynamic>"
+
+def surfaces(source):
+    result = []
+    def visit(node, scopes):
+        current = scopes + [node.name] if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) else scopes
+        if isinstance(node, ast.Call):
+            name = dotted(node.func)
+            if "subprocess" in name or name in ("real_run", "os.system", "os.popen", "exec", "eval") or name.endswith((".Popen", ".run", ".system", ".popen")):
+                result.append({"line": node.lineno, "scope": current, "call": name,
+                               "source": ast.get_source_segment(source, node)})
+        for child in ast.iter_child_nodes(node):
+            visit(child, current)
+    visit(ast.parse(source), [])
+    return result
+
+
+def main():
+    require(sys.flags.isolated == sys.flags.no_site == sys.flags.dont_write_bytecode == 1, 'metadata flags')
+    require(set(p.name for p in OUT.iterdir()) == {Path(__file__).name}, 'output not fresh')
+    before_root = OUT.parent / 'raw-runtime-whole-base-observation001'
+    before_result, before_bytes = read(before_root/'WHOLE_RUNTIME_OBSERVATION_001.json',True)
+    require(before_result['sha256']=='dbcf5b424f3e99f5bb038d909aa05a78b20c7b218dcb6d389cacb5e5404838ab','before result pin')
+    before = json.loads(before_bytes)
+    (OUT/'inputs').mkdir()
+    write_bytes('inputs/before-result.json',before_bytes)
+    source_observed,source_bytes=read(before_root/'observe_metadata_001.py',True)
+    write_bytes('inputs/before-observer-source.py',source_bytes)
+    write_json('started.json',{'utc':utc(),'scope':'after_raw003_metadata_only','target_execution':False,'runtime_mutation':False})
+    trees={}; differences={}; copies=[]
+    for label in ('base','scripts'):
+        original=[]
+        for phase in ('first','second'):
+            pin=before['tree_observation_files'][label][phase]
+            obs,rawbytes=read(Path(pin['path']),True)
+            require(obs['sha256']==pin['sha256'],'before observation pin')
+            copies.append(write_bytes('inputs/before-'+label+'-'+phase+'.json',rawbytes))
+            original.append(json.loads(rawbytes))
+        first=tree(Path(original[0]['root']))
+        first_file=write_json(label+'-after-first.json',first)
+        print(json.dumps({'phase':label+'_after_first','identity':first['identity']}),flush=True)
+        second=tree(Path(original[0]['root']))
+        second_file=write_json(label+'-after-second.json',second)
+        stable=first['identity']==second['identity'] and first['rows']==second['rows'] and first['directory_metadata']==second['directory_metadata'] and first['root_identity']==second['root_identity']
+        old_map={row['path']:row for row in original[0]['rows']}; new_map={row['path']:row for row in first['rows']}
+        rowdiff=[{'path':name,'before':old_map.get(name),'after':new_map.get(name)} for name in sorted(set(old_map)|set(new_map),key=ordinal) if old_map.get(name)!=new_map.get(name)]
+        dirchanges=[{'path':name,'before':original[0]['directory_metadata'].get(name),'after':first['directory_metadata'].get(name)} for name in sorted(set(original[0]['directory_metadata'])|set(first['directory_metadata']),key=ordinal) if original[0]['directory_metadata'].get(name)!=first['directory_metadata'].get(name)]
+        differences[label]={'rows':rowdiff,'directories':dirchanges,'root_changed':original[0]['root_identity']!=first['root_identity']}
+        trees[label]={'actual_identity':first['identity'],'before_identity':original[0]['identity'],'matches_expected_identity':first['identity']==before['trees'][label]['expected_identity'],'matches_before_bytes':first['identity']==original[0]['identity'],'matches_before_all_path_and_handle_metadata':not rowdiff and not dirchanges and original[0]['root_identity']==first['root_identity'],'stable_twice':stable,'first':first_file,'second':second_file,'started_utc':first['started_at_utc'],'finished_utc':second['finished_at_utc']}
+        print(json.dumps({'phase':label+'_after_second','facts':trees[label],'changed_rows':len(rowdiff),'changed_directories':len(dirchanges)}),flush=True)
+    all_match=all(row['matches_expected_identity'] and row['matches_before_bytes'] and row['matches_before_all_path_and_handle_metadata'] and row['stable_twice'] for row in trees.values())
+    result={'schema_version':1,'record_type':'independent_after_raw003_full_runtime_observation','reviewer':'/root/keepawake_stage','finished_at_utc':utc(),'verdict':'MATCHES_BEFORE_BYTES_AND_METADATA_TWICE' if all_match else 'AFTER_RUNTIME_DRIFT_OR_UNSTABLE','before_result':before_result,'before_observer_source':source_observed,'trees':trees,'differences':differences,'digest_algorithm':before['digest_algorithm'],'stat_fields':FIELDS,'read_guards':before['read_guards'],'runtime_repairs_or_cleanup_performed':False,'target_sources_imported_or_executed':False,'pyc_bytes_loaded_as_code_by_observer':False,'limits':['Time-local sequential reads; no retained native locks.','No loaded Lib/DLL/site closure, native authority, OS sandbox or full process-tree cleanup proof.','Raw003 failed/spent; global runtime equality does not accept the failed unit run.']}
+    rfile=write_json('WHOLE_RUNTIME_AFTER_RAW003_001.json',result)
+    md=f"# After raw003 whole runtime observation\n\n{result['verdict']}. Result SHA256 {rfile['sha256']}. Both full trees were independently streamed twice after the failed unit run and compared with exact before dbcf5b42 observations, including full raw9 path/handle metadata. Runtime mutations/repairs/cleanup and target source imports/execution: none.\n\nThis is time-local file evidence, not native admission, loaded closure or full process-tree cleanup. The failed raw003 attempt remains spent and unaccepted.\n"
+    hfile=write_bytes('WHOLE_RUNTIME_AFTER_RAW003_001.md',md.encode('utf-8'))
+    files=[]
+    for path in sorted(OUT.rglob('*'),key=lambda p:ordinal(p.relative_to(OUT).as_posix())):
+        if path.is_file():files.append(read(path)[0])
+    mfile=write_json('AFTER_OBSERVATION_MANIFEST_001.json',{'schema_version':1,'files':files,'result_sha256':rfile['sha256'],'md_sha256':hfile['sha256'],'no_runtime_mutation':True})
+    print(json.dumps({'result':rfile,'md':hfile,'manifest':mfile,'verdict':result['verdict']}),flush=True)
+if __name__=='__main__':
+    try:main()
+    except BaseException as error:
+        write_json('METADATA_AFTER_REFUSAL_001.json',{'utc':utc(),'error':str(error),'target_execution':False,'runtime_mutation':False})
+        raise

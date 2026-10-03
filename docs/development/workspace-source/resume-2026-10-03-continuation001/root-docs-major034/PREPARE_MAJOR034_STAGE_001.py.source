@@ -1,0 +1,420 @@
+"""Own bounded documentation Source staging. Never calls a publisher or target."""
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+import sys
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
+
+ROOT = Path('D:/Aenv/pro2')
+WORK = ROOT / 'resume-2026-10-03-continuation001'
+OWN = WORK / 'root-docs-major034'
+OLD = WORK / 'root-docs-major033'
+PRIMARY = ('AGENTS.md', 'HANDOFF.md', 'START_HERE.md',
+           'resume-2026-09-28-001/SESSION.md', 'resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md')
+CHECKPOINT = 'resume-2026-10-03-continuation001/CONTINUATION_CHECKPOINT_005.md'
+MAX_FILE = 8388608
+AUTHOR = '/root/actual_record_checker'
+STAMP = datetime.now(timezone.utc).isoformat(timespec='microseconds')
+ROOT_COMPACT_EXTERNAL_SHA = '6d981aa8a08c4329241c8d4fff7a5a12913123fe320b0f5cefddf69eee63f27e'  # Genuine Root-selected07ef77.
+
+def need(value, message):
+    if not value:
+        raise ValueError(message)
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+def raw(info):
+    return [getattr(info, name) for name in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns',
+            'st_ctime_ns', 'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')]
+
+def chain(path):
+    result = []
+    for item in [*reversed(path.parents), path]:
+        info = item.lstat()
+        need(stat.S_ISDIR(info.st_mode) and not info.st_file_attributes & 1024, 'plain directory')
+        result.append([str(item), info.st_dev, info.st_ino])
+    return result
+
+def observe(path):
+    ancestry = chain(path.parent)
+    before = path.lstat()
+    need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and
+         not before.st_file_attributes & 1024 and before.st_size <= MAX_FILE, 'plain bounded input')
+    with path.open('rb', buffering=0) as stream:
+        opened = os.fstat(stream.fileno())
+        pr, dr = raw(before), raw(opened)
+        need(pr[:4] + pr[5:] == dr[:4] + dr[5:] and pr[4] == pr[8], 'ordinary crossAPI8/birth')
+        data = stream.read(before.st_size + 1)
+        need(dr == raw(os.fstat(stream.fileno())), 'descriptor raw9 stability')
+    need(pr == raw(path.lstat()) and chain(path.parent) == ancestry and
+         len(data) == before.st_size and len(data) <= MAX_FILE, 'path/raw9/bytes stability')
+    return data, dict(path=str(path), bytes=len(data), sha256=sha(data),
+                      path_raw9=pr, descriptor_raw9=dr)
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True, allow_nan=False) + '\n').encode('ascii')
+
+def decode(data, physical=False):
+    def pairs(rows):
+        result = {}
+        for key, value in rows:
+            need(key not in result, 'duplicate Source JSON key')
+            result[key] = value
+        return result
+    def bad(value):
+        raise ValueError('nonfinite or ordinary Source float refused')
+    need(not data.startswith(b'\xef\xbb\xbf'), 'JSON BOM')
+    return json.loads(data.decode('utf-8'), object_pairs_hook=pairs,
+                      parse_float=Decimal if physical else bad, parse_constant=bad)
+
+def once(path, data):
+    need(path.is_relative_to(OWN) and not path.exists() and type(data) is bytes and
+         len(data) <= MAX_FILE, 'own create-only Source write')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('xb') as stream:
+        need(stream.write(data) == len(data), 'complete Source write')
+    reread, _ = observe(path)
+    need(reread == data, 'Source write readback')
+
+def pointer(path, data):
+    return dict(path=path.relative_to(ROOT).as_posix(), bytes=len(data), sha256=sha(data))
+
+need(sys.version_info[:2] == (3, 13), 'frozen BASE313 metadata only')
+need(not (OWN / 'STAGED_DOCUMENTATION_MANIFEST_034_001.json').exists(), 'Source stage already frozen')
+need(not (ROOT / CHECKPOINT).exists(), 'fresh checkpoint must remain uncreated')
+
+# Fixed genuine published033 selection authenticates the full five baseline bytes.
+selection_path = OLD / 'ROOT_CREATION_SELECTION_033_001.json'
+selection_data, _ = observe(selection_path)
+need(sha(selection_data) == '871f64022f9078b74b7d61cb8e6cc65000a5fbd05967c812867c90cd5a4c8834', 'Root033 selection pin')
+selection = decode(selection_data, physical=True)
+need(selection['author'] == '/root' and selection['verdict'] == 'SELECTED_GENUINE_DIFFERENT_CREATION_ACCEPTANCE', 'Root033 nominal selection')
+baseline = {}
+for relative, row in zip(PRIMARY, selection['primary_checks'], strict=True):
+    path = ROOT / relative
+    need(Path(row['path']) == path, 'exact primary selection order')
+    data, record = observe(path)
+    need(record['sha256'] == row['sha256'] and len(data) == row['bytes'], 'current033 baseline drift')
+    baseline[relative] = data
+
+# Fresh publisher is a declared literal-only successor of the complete033 body.
+old_publisher_data, _ = observe(OLD / 'PUBLISH_MAJOR033_DOCS_001.py')
+need(sha(old_publisher_data) == '57b0a0d48ec026542559db950654ee85204af6b9d45f511c50bb7469955b5936', 'published033 publisher pin')
+substitutions = [(b'033', b'034'),
+    (b'CONTINUATION_CHECKPOINT_004.md', b'CONTINUATION_CHECKPOINT_005.md'),
+    (b'/root/root_pipeline_binder', b'/root/actual_record_checker'),
+    (b"review['reviewer']=='/root/capsule_design_review'", b"review['reviewer']=='/root'")]
+publisher_data = old_publisher_data
+declared = []
+for old, new in substitutions:
+    count = old_publisher_data.count(old)
+    need(count > 0, 'declared033 identity absent')
+    declared.append(dict(original=old.decode(), selected=new.decode(), occurrences=count))
+    publisher_data = publisher_data.replace(old, new)
+reversed_data = publisher_data
+for old, new in reversed(substitutions):
+    reversed_data = reversed_data.replace(new, old)
+need(reversed_data == old_publisher_data, 'exact publisher Source reversal')
+old_ast, new_ast = ast.parse(old_publisher_data), ast.parse(publisher_data)
+function_map = lambda tree: {node.name: ast.dump(node, include_attributes=False) for node in tree.body if isinstance(node, ast.FunctionDef)}
+old_functions, new_functions = function_map(old_ast), function_map(new_ast)
+changed = [name for name in old_functions if old_functions[name] != new_functions[name]]
+need(set(old_functions) == set(new_functions) and changed == ['main'], 'publisher validation logic remains inherited')
+publisher_path = OWN / 'PUBLISH_MAJOR034_DOCS_001.py'
+once(publisher_path, publisher_data)
+
+# Only finite selected current Source records and a few exact prior scope receipts.
+selected = [
+ 'OWNER_CONTINUATION_20261003_001.json',
+ 'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json',
+ 'EXECUTION_LEASE_GG6_M3_001.json',
+ 'root-docs-major033/ROOT_CREATION_SELECTION_033_001.json',
+ 'root-docs-major033/ROOT_PUBLISH_RECEIPT_033.json',
+ 'root-docs-major033/PUBLISH_MAJOR033_DOCS_001.py',
+ 'root-docs-major033/STAGED_DOCUMENTATION_MANIFEST_033_001.json',
+ 'root-docs-independent-major033/INDEPENDENT_MAJOR033_PREPUBLICATION_SOURCE_REVIEW_001.json',
+ 'root-docs-independent-major033/INDEPENDENT_MAJOR033_CREATION_REVIEW_001.json',
+ 'root-docs-independent-major033/POST_MAJOR033_CREATION_REVIEW_001.json',
+ 'CONTINUATION_CHECKPOINT_004.md',
+ 'guard008-utility-source-independent-review001/INDEPENDENT_UTILITY008_SOURCE_REVIEW_001.json',
+ 'guard008-utility-source-independent-review001/INDEPENDENT_UTILITY008_SOURCE_DETAILS_001.json',
+ 'guard008-utility-source-independent-review001/INDEPENDENT_UTILITY008_SOURCE_POST_READBACK_001.json',
+ 'guard010-utility-source-independent-review001/INDEPENDENT_UTILITY010_SOURCE_REVIEW_001.json',
+ 'guard010-utility-source-independent-review001/INDEPENDENT_UTILITY010_SOURCE_DETAILS_001.json',
+ 'guard010-utility-source-independent-review001/INDEPENDENT_UTILITY010_SOURCE_POST_READBACK_001.json',
+ 'guard006-bound-late-checker-prep001/AUTHOR_FROZEN_SOURCE_MANIFEST_010.json',
+ 'root-pipeline-source-successor-design001/ROOT_SUCCESSOR_SOURCE_CHOICE_003.json',
+ 'root-pipeline-source-successor-design001/ROOT_SUCCESSOR_SOURCE_CHOICE_004.json',
+ 'root-pipeline-source-successor-design001/ROOT_SUCCESSOR004_SOURCE_CANDIDATE_DELTA_001.json',
+ 'guard006-bound-late-checker-prep001/review_guard006_actual_records_001-corrected009.TEMPLATE.py',
+ 'guard006-bound-late-checker-prep001/review_guard006_actual_records_001-corrected010.TEMPLATE.py',
+ 'guard006-bound-late-checker-prep001/HANDOFF_UTILITY010_SOURCE_001.md',
+ 'root-guard006-pipeline-prep001/RUN_ROOT_METADATA_PIPELINE_009.TEMPLATE.ps1',
+ 'root-guard006-pipeline-prep001/ROOT_PIPELINE009_NATIVE_SOURCE_PARSE_001.json',
+ 'root-guard006-pipeline-prep001/SOURCE_BINDING_CONTRACT_003.json',
+ 'root-guard006-pipeline-prep001/BIND_ROOT_PIPELINE_SOURCE_003.TEMPLATE.py',
+ 'root-guard006-pipeline-prep001/ROOT_PIPELINE_BINDING_003.TEMPLATE.json',
+ 'root-guard006-pipeline-prep001/ROOT_PIPELINE_BINDING_001.json',
+ 'metadata3-actual-checker-prep001/AUTHOR_FROZEN_SOURCE_MANIFEST_010.json',
+ 'metadata3-actual-checker-prep001/AUTHOR_FRESH_SOURCE_METADATA_010.json',
+ 'metadata3-actual-checker-prep001/review-metadata3-actual006-corrected010.TEMPLATE.py',
+ 'metadata3-actual-checker-prep001/test_metadata3_actual_checker_preparation_004.py',
+ 'metadata3-actual-checker-prep001/HANDOFF_SOURCE010_AUTHOR_FREEZE_CLOSEOUT_001.md',
+ 'metadata3-actual-checker-prep001/ROOT_CHECKER010_SOURCE_SELECTION_001.json',
+ 'metadata3-actual-checker-prep001/ROOT_SOURCE_SELECTION_PREPUBLICATION_REFUSAL_001.json',
+ 'metadata3-checker-source-independent010/INDEPENDENT_METADATA3_CHECKER010_SOURCE_REVIEW_001.json',
+ 'metadata3-checker-source-independent010/INDEPENDENT_METADATA3_CHECKER010_SOURCE_DETAILS_001.json',
+ 'metadata3-checker-source-independent010/POST_METADATA3_CHECKER010_SOURCE_REVIEW_001.json',
+ 'root-checker25-runtime-prep001/ROOT_SYNTHETIC_CHECKER25_ACCEPTANCE_001.json',
+ 'ROOT_PRO3_TYPE_COMPONENT_RELEASE_001.json',
+ 'root-pro3-type-closeout001/PRO3_FAILED_TYPE_CLEANUP_CLOSEOUT_001.json',
+ 'root-pro3-type-closeout001/ROOT_TYPE_HOLD_EVENT_AND_EARLY_RELEASE_001.json',
+ 'root-pro3-type-closeout001/PRO3_type_execution_audit_001.json',
+ 'root-pro3-type-closeout001/PRO3_root_manual_failure_review_001.json',
+ 'root-pro3-type-closeout001/PRO3_pro2_type_hold_qualification_001.json',
+ 'root-pro3-type-closeout001/ROOT_PRO3_FAILED_TYPE_SOURCE_READ_SELECTION_001.json',
+]
+paths = [ROOT / relative for relative in PRIMARY] + [WORK / relative for relative in selected]
+paths += [OWN / 'DRAFT_CHECKPOINT_005_SOURCE.md', OWN / 'DRAFT_PRIMARY_SECTIONS_034.json',
+          OWN / 'PREPARE_MAJOR034_STAGE_001.py', publisher_path]
+root_compact_path = WORK / 'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_003.json'
+if ROOT_COMPACT_EXTERNAL_SHA is not None:
+    compact_data, compact_record = observe(root_compact_path)
+    need(compact_record['sha256'] == ROOT_COMPACT_EXTERNAL_SHA, 'externally selected genuine Root compact003')
+    compact = decode(compact_data)
+    need(compact['reviewer'] == '/root' and compact['source_author'] == AUTHOR and
+         compact['checker_template_sha256'] == '9efa6deb54721a531159545ffa5e4e9bd90606f3dc12d7b0ab6cf5f4af51ee16' and
+         compact['full_source_details_sha256'] == 'a0c7285f1e3a8851cc156a0e435f4e60f283b47de1d551201ce1478bb93e1c99' and
+         compact['source_manifest_sha256'] == '624914bedda69ba654cf8ff273774bfb6054f936d61dec936c332b2e46dd0949' and
+         compact['actual_binding'] is None and compact['tests_executed'] is False and
+         compact['runtime_acceptance'] is False, 'Root003 genuine selected Source closure')
+    paths.append(root_compact_path)
+    checker_status = ('[Genuine Root compact003](metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_003.json) '
+                      'is separately externally selected at SHA' + ROOT_COMPACT_EXTERNAL_SHA[:8] + ', Source-only; no actual test or phase authority follows.')
+else:
+    checker_status = 'Genuine Root compact003 selection remains separate and unselected in this documentation cohort.'
+
+need(len(paths) == len({str(path).casefold() for path in paths}) and len(paths) < 95, 'finite unique selected Source inputs')
+content, observations = {}, []
+for path in paths:
+    samples = [observe(path) for _ in range(3)]
+    need(all(sample == samples[0] for sample in samples), 'three Source observations differ')
+    data, row = samples[0]
+    content[str(path)] = data
+    observations.append(dict(original_path=str(path), observations=[sample[1] for sample in samples]))
+
+data_at = lambda relative: content[str(WORK / relative)]
+u8 = decode(data_at('guard008-utility-source-independent-review001/INDEPENDENT_UTILITY008_SOURCE_REVIEW_001.json'))
+need(sha(data_at('guard008-utility-source-independent-review001/INDEPENDENT_UTILITY008_SOURCE_REVIEW_001.json')) ==
+     '4d810a2a95013ad1a304996dd3ca334bf5444e07fdbebea07a6957c17aa1f89e', 'genuine U008 refusal pin')
+need(u8['verdict'] == 'REFUSED_SOURCE_PREPARATION_REQUIRED_FLAT_HASH_ARGV_UNREADABLE' and
+     u8['finite_input_count'] == 72 and u8['new_payload_count'] == 17 and
+     u8['preserved_payload_count'] == 41 and u8['selected_author_pair_count'] == 9, 'U008 scoped refusal facts')
+u10_path = 'guard010-utility-source-independent-review001/INDEPENDENT_UTILITY010_SOURCE_REVIEW_001.json'
+u10 = decode(data_at(u10_path))
+need(sha(data_at(u10_path)) == '846d37306356953d7a882cd5f846eefab908bfedd9f1a171ed3cec3ad237555d' and
+     u10['reviewer'] == '/root/owner_docs_review' and u10['source_author'] == '/root/pubnative_review' and
+     u10['verdict'] == 'PASS_STATIC_GENERIC_PUB_PREPARATION_ONLY_ACTUAL_BOUND_POOL_UNREADY' and
+     u10['finite_input_count'] == 99 and u10['new_payload_count'] == 24 and
+     u10['preserved007_payload_count'] + u10['preserved008_payload_count'] == 58 and
+     u10['selected_author_pair_count'] == 16 and u10['tests_executed'] is False and
+     u10['actual_bound_pool_peer20'] is None and u10['actual_fit'] is None, 'U010 genuine current scoped Source completion')
+need(sha(data_at('guard010-utility-source-independent-review001/INDEPENDENT_UTILITY010_SOURCE_DETAILS_001.json')) == u10['details']['sha256'] and
+     sha(data_at('guard010-utility-source-independent-review001/INDEPENDENT_UTILITY010_SOURCE_POST_READBACK_001.json')) == u10['post_readback']['sha256'], 'U010 full/post selected hashes')
+choice = decode(data_at('root-pipeline-source-successor-design001/ROOT_SUCCESSOR_SOURCE_CHOICE_004.json'))
+need(sha(data_at('root-pipeline-source-successor-design001/ROOT_SUCCESSOR_SOURCE_CHOICE_004.json')) ==
+     '81051a31a93a93e5539454ea11e732152f3a1d4796b730d2eeb8a987aba65589', 'Rootchoice004 genuine pin')
+need(choice['author'] == '/root' and choice['scope'] == 'STAGED_SOURCE_ONLY_NO_CAPTURE_AUTHORITY' and
+     choice['actual_models_or_pool20'] is None and choice['actual_diagnostic_fit'] is None, 'Rootchoice Source only')
+need(choice['additional_inherited_reader_correction']['Source_token_count'] == 11 and
+     len(choice['additional_inherited_reader_correction']['Source_token_names']) == 6, 'flat token source counts')
+for role in ('Root_proposal_preserved', 'utility_selected_draft'):
+    row = choice[role]
+    need(content[str(Path(row['path']))] == data_at('guard006-bound-late-checker-prep001/review_guard006_actual_records_001-corrected010.TEMPLATE.py')
+         and sha(content[str(Path(row['path']))]) == row['sha256'] and len(content[str(Path(row['path']))]) == row['bytes'], 'proposal/adoption exact Source bytes')
+pipeline_data = data_at('root-guard006-pipeline-prep001/RUN_ROOT_METADATA_PIPELINE_009.TEMPLATE.ps1')
+need(sha(pipeline_data) == '84ddc157d2c2b9eba3998afc8ca57e09110cd34e24e403422e574a97b20165d3' and len(pipeline_data) == 45560, 'fresh T009 pin')
+parser = decode(data_at('root-guard006-pipeline-prep001/ROOT_PIPELINE009_NATIVE_SOURCE_PARSE_001.json'), physical=True)
+need(parser['source_sha256'] == sha(pipeline_data) and parser['native_parser_errors'] == 0 and
+     parser['function_count'] == 26 and parser['unchanged_function_count'] == 25 and
+     parser['parser_only_no_source_execution'] is True and parser['actual_binding'] is False, 'attributed native Source parser only')
+source10 = decode(data_at('metadata3-checker-source-independent010/INDEPENDENT_METADATA3_CHECKER010_SOURCE_REVIEW_001.json'))
+need(source10['reviewer'] == '/root/capsule_design_review' and source10['source_author'] == AUTHOR and
+     source10['verdict'] == 'PASS_STATIC_METADATA3_CHECKER010_SOURCE_ONLY' and
+     source10['tests_executed'] is False and source10['actual_binding'] is None and
+     source10['full_source_details_sha256'] == 'a0c7285f1e3a8851cc156a0e435f4e60f283b47de1d551201ce1478bb93e1c99', 'different Source010 scope')
+need(sha(data_at('metadata3-checker-source-independent010/INDEPENDENT_METADATA3_CHECKER010_SOURCE_DETAILS_001.json')) == source10['full_source_details_sha256'], 'full different Source010 hash')
+pro3 = decode(data_at('root-pro3-type-closeout001/PRO3_FAILED_TYPE_CLEANUP_CLOSEOUT_001.json'), physical=True)
+event = decode(data_at('root-pro3-type-closeout001/ROOT_TYPE_HOLD_EVENT_AND_EARLY_RELEASE_001.json'), physical=True)
+pro3_audit = decode(data_at('root-pro3-type-closeout001/PRO3_type_execution_audit_001.json'), physical=True)
+pro3_selection = decode(data_at('root-pro3-type-closeout001/ROOT_PRO3_FAILED_TYPE_SOURCE_READ_SELECTION_001.json'))
+need(sha(data_at('root-pro3-type-closeout001/PRO3_type_execution_audit_001.json')) ==
+     'b514dc3a2ca2f2a1ac521372a072369ce2c31a8e1a1fbbb0f4d4440a38b2c153' and
+     sha(data_at('root-pro3-type-closeout001/ROOT_PRO3_FAILED_TYPE_SOURCE_READ_SELECTION_001.json')) ==
+     '3d4ed3f69c4c9174bf959d6b6ca6b9e0bfe5d6e65f97d095f20758b1a4457902', 'Root-selected attributed Pro3 FAILED audit pins')
+need(pro3_audit['decision'] == 'FAILED_BOOTSTRAP_BEFORE_MYPY_API_REVIEWED_NO_TYPE_PASS' and
+     pro3_audit['failed_attempt_evidence_review_accepted'] is True and
+     pro3_audit['type_validation_accepted'] is False and pro3_audit['runtime_validation_accepted'] is False and
+     pro3_selection['Pro3_different_failed_evidence_review_accepted'] is True and
+     pro3_selection['actual_leaf_private_Job_membership_proven'] is False and
+     pro3_selection['type_pass'] is False, 'Pro3 completed FAILED evidence scope, never TYPE acceptance')
+need(pro3['actual_exit_code'] == 1 and pro3['actual_mypy_api_run'] is False and
+     pro3['independent_actual_audit_pending'] is True and pro3['type_result_accepted'] is False, 'TYPE refusal scope')
+need(event['scope_event']['overlap_with_TYPE_launch_proven'] is None and
+     event['scope_event']['causal_attribution_to_bootstrap_or_resources'] is None and
+     event['physical_scope_attributed_to_Pro3_Root']['native_whole_cleanup_flag'] is False, 'TYPE no invented cause/overlap/whole cleanup')
+
+contract = dict(schema_version=1, record_type='major034_documentation_source_contract', source_author=AUTHOR,
+    prepared_utc=STAMP, scope='LOCAL_PRIVATE_MAJOR034_DOCUMENTATION_ONLY', publisher_sha256=sha(publisher_data),
+    inherited_publisher033_sha256=sha(old_publisher_data), declared_literal_substitutions=declared,
+    exact_publisher_byte_reversal=True, changed_function_ASTs=changed,
+    all_other_function_ASTs_exact=True, validation_and_publication_logic_preserved=True,
+    primary_paths=list(PRIMARY), checkpoint=CHECKPOINT,
+    fixed_review_path='resume-2026-10-03-continuation001/root-docs-independent-major034/INDEPENDENT_MAJOR034_PREPUBLICATION_SOURCE_REVIEW_001.json',
+    genuine_future_review_keys=['schema_version','record_type','created_utc','reviewer','source_author','scope','verdict',
+                               'publisher_sha256','manifest_sha256','publication_performed','target_execution','operational_authority'],
+    genuine_future_review_nominals=dict(schema_version=1,record_type='independent_major034_documentation_prepublication_source_review',
+        reviewer='/root',source_author=AUTHOR,scope='LOCAL_PRIVATE_MAJOR034_DOCUMENTATION_ONLY',
+        verdict='PASS_MAJOR034_DOCUMENTATION_SOURCE_ONLY',publication_performed=False,target_execution=False,operational_authority=False),
+    actual_review=None, actual_Root_publication=None, different_creation_review=None,
+    publisher_main_or_definitions_executed=False, target_execution=False, operational_authority=False)
+contract_path = OWN / 'DOCUMENTATION_SOURCE_CONTRACT_034_001.json'
+once(contract_path, encoded(contract))
+context = dict(schema_version=1,record_type='major034_selected_source_context',source_author=AUTHOR,prepared_utc=STAMP,
+    scope='LOCAL_PRIVATE_MAJOR034_DOCUMENTATION_ONLY',selected_033_creation_sha256=sha(selection_data),
+    selected_checker010_different_source_details=source10['full_source_details_sha256'],
+    genuine_Root_checker003_external_pin=ROOT_COMPACT_EXTERNAL_SHA,
+    selected_pro3_TYPE_FAILED_actual_audit_sha256=sha(data_at('root-pro3-type-closeout001/PRO3_type_execution_audit_001.json')),
+    selected_pro3_Root_source_read_sha256=sha(data_at('root-pro3-type-closeout001/ROOT_PRO3_FAILED_TYPE_SOURCE_READ_SELECTION_001.json')),
+    pro3_cleanup_attributed_only=True,TYPE_cause_and_overlap_unknown=True,
+    no_actual_production_fit_or_models_inferred=True,selected_inputs=[pointer(path,content[str(path)]) for path in paths],
+    source_snapshot_not_retimestamping_history=True,publication_performed=False,target_execution=False,operational_authority=False)
+context_path = OWN / 'SELECTED_SOURCE_CONTEXT_034_001.json'
+once(context_path, encoded(context))
+for path in (contract_path, context_path):
+    samples = [observe(path) for _ in range(3)]
+    need(all(sample == samples[0] for sample in samples), 'owned Source contract observations')
+    content[str(path)] = samples[0][0]
+    paths.append(path)
+    observations.append(dict(original_path=str(path),observations=[sample[1] for sample in samples]))
+
+checkpoint_text = content[str(OWN / 'DRAFT_CHECKPOINT_005_SOURCE.md')].decode('utf-8').replace('_PREPARED_UTC_', STAMP).replace('_CHECKER_SOURCE_REVIEW_STATUS_', checker_status)
+checkpoint_data = checkpoint_text.encode('utf-8')
+checkpoint_candidate = OWN / 'candidates' / CHECKPOINT
+once(checkpoint_candidate, checkpoint_data)
+sections = decode(content[str(OWN / 'DRAFT_PRIMARY_SECTIONS_034.json')])
+need(tuple(sections) == PRIMARY, 'five declared section order')
+candidate_rows, selected_sections = [], []
+history_note = b'\n\n---\n\nEarlier primary bytes below remain exact history; their pending statements describe the earlier selected snapshot.\n\n'
+for index, relative in enumerate(PRIMARY):
+    text = sections[relative].replace('_PREPARED_UTC_', STAMP).replace('_WORK_', WORK.relative_to(ROOT).as_posix())
+    for old, current in [
+        ('differentactualauditPENDING', 'differentactualFAILED auditb514/Rootselection3d4e attributed'),
+        ('actual different audit PENDING/unselected', 'different actual FAILED evidence auditb514 completed/Root selection3d4e attributed'),
+        ('different actual audit remains PENDING/unselected', 'different FAILED evidence auditb514 is completed/Rootselected3d4e with attributed scope'),
+        ('different actual audit PENDING/unselected', 'different FAILED evidence auditb514 completed/Root selection3d4e attributed'),
+        ('actual different TYPE audit PENDING/unselected', 'different FAILED evidence auditb514 completed/Root selection3d4e attributed')]:
+        text = text.replace(old, current)
+    if 'Checker010' in text:
+        text += ('\nDifferent complete U010 Source846d3730/full8f721aa9/post1e48dc52 accepts preparation with poolUNREADY; seven causal plans remain UNRUN. '
+                 'Different complete Checker010 Source1f3b0ed4/fulla0c7285f/post409435e5 and genuine Root compact0036d981aa8 accept static Source only; all28 planned methods remain UNRUN.\n')
+    section_data = text.encode('utf-8')
+    section_path = OWN / 'selected-sections' / f'section-{index}.md'
+    once(section_path, section_data)
+    selected_sections.append((ROOT / relative, section_data))
+    old = baseline[relative]
+    direction = 'suffix' if index < 3 else 'prefix'
+    new = section_data + history_note + old if direction == 'suffix' else old + b'\n\n' + section_data
+    need(new.endswith(old) if direction == 'suffix' else new.startswith(old), 'whole033 byte preservation')
+    before_path, candidate_path = OWN / 'before' / relative, OWN / 'candidates' / relative
+    once(before_path, old)
+    once(candidate_path, new)
+    candidate_rows.append(dict(destination=relative,before=pointer(before_path,old),candidate=pointer(candidate_path,new),preservation=direction))
+
+links = []
+for origin, data in [(ROOT / CHECKPOINT,checkpoint_data), *selected_sections]:
+    for target in re.findall(r'\]\(([^)]+)\)', data.decode('utf-8')):
+        need(not re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:',target), 'local documentation links only')
+        resolved = (origin.parent / target).resolve()
+        need(resolved.is_relative_to(ROOT) and (resolved == ROOT / CHECKPOINT or resolved.is_file()), 'new selected local link exists')
+        links.append(dict(origin=origin.relative_to(ROOT).as_posix(),target=target,resolved_path=resolved.relative_to(ROOT).as_posix()))
+need(len(links) <= 200, 'selected link bound')
+
+inputs = []
+for path, row in zip(paths,observations,strict=True):
+    data = content[str(path)]
+    copy_path = OWN / 'stage-evidence' / path.relative_to(ROOT)
+    once(copy_path,data)
+    copy_data, copy_record = observe(copy_path)
+    need(copy_data == data,'exact owned Source evidence copy')
+    row['owned_copy_path'] = str(copy_path)
+    row['owned_copy_observation'] = copy_record
+    inputs.append(dict(original=pointer(path,data),copy=pointer(copy_path,data)))
+need(len(inputs) <= 100,'selected source input pair limit')
+
+named_roles = [
+ WORK/'root-guard006-pipeline-prep001/RUN_ROOT_METADATA_PIPELINE_007.BOUND.ps1',
+ WORK/'root-guard006-pipeline-prep001/ROOT_PIPELINE_BINDING_002.json',
+ WORK/'root-guard006-pipeline-prep001/ROOT_PIPELINE_SOURCE_BINDING_PROVENANCE_002.json',
+ WORK/'root-guard006-pipeline-prep001/ROOT_PIPELINE_INIT_TRACE_002.json',
+ WORK/'root-guard006-pipeline-prep001/ROOT_PIPELINE_TRUST_SELECTION_002.json',
+ WORK/'root-guard006-pipeline-prep001/ROOT_METADATA_PIPELINE_GO_002.json',
+ WORK/'root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_002.json',
+ WORK/'metadata3-actual-checker-prep001/ACTUAL_CHECKER_BINDING_002.json',
+ WORK/'metadata3-actual-checker-prep001/CHECKER_READY_ALL_006.json',
+ WORK/'metadata3-actual-checker-prep001/CHECKER_READY_BEFORE_006.json',
+ WORK/'metadata3-actual-checker-prep001/CHECKER_READY_AFTER_006.json',
+ WORK/'guard006-bound-late-checker-prep001/BOUND_LATE_CHECKER_READY_006.json',
+]
+absence_rows = []
+for path in named_roles:
+    need(not path.exists(),'fresh named actual role unexpectedly present: '+str(path))
+    absence_rows.append(dict(path=str(path),observed_absent=True,kind='named filesystem role only; no process/quiet claim'))
+for row in observations:
+    path = Path(row['original_path'])
+    data, post = observe(path)
+    need(post == row['observations'][0] and data == content[str(path)],'whole selected Source post-read drift')
+    copy_data, copy_post = observe(Path(row['owned_copy_path']))
+    need(copy_data == data and copy_post == row['owned_copy_observation'],'owned copy post-read drift')
+    row['post_read'],row['owned_copy_post_read'] = post,copy_post
+for relative in PRIMARY:
+    need(observe(ROOT/relative)[0] == baseline[relative],'primary changed during Source staging')
+
+audit = dict(schema_version=1,record_type='major034_author_source_stage_audit',source_author=AUTHOR,prepared_utc=STAMP,
+    scope='LOCAL_PRIVATE_MAJOR034_DOCUMENTATION_ONLY',finite_input_count=len(inputs),selected_link_count=len(links),
+    observations=observations,named_role_absences=absence_rows,whole_five_primary033_bytes_preserved=True,
+    unchanged_publisher_logic_exact_byte_reversal=True,publisher_function_count=len(old_functions),changed_function_ASTs=changed,
+    Source_only_changed_identity_literals=declared,all_checks_are_own_metadata_AST_and_data_only=True,
+    future_publisher_main_or_import_or_compile_or_definitions_executed=False,
+    selected_checker28_tests_executed=False,publication_performed=False,target_execution=False,operational_authority=False,
+    actual_034_Source_review=None,actual_034_creation_review=None,actual_models_or_fit_or_capture=None,
+    pro3_failed_execution_evidence_audit_selected='b514dc3a2ca2f2a1ac521372a072369ce2c31a8e1a1fbbb0f4d4440a38b2c153',
+    pro3_TYPE_pass=False,pro3_cleanup_scope_attributed_only=True,
+    inherited_historical_links='Whole historical bytes retained; prior033 creation review remains separate evidence. Only newly selected links are enumerated.',
+    failed_read_only_discovery='Initial top-level SESSION.md and guessed architecture namespace were absent; corrected canonical paths read, no primary changes or Source-helper entry.')
+audit_path = OWN / 'AUTHOR_MAJOR034_STAGE_AUDIT_001.json'
+once(audit_path,encoded(audit))
+manifest = dict(schema_version=1,record_type='major034_documentation_stage',author=AUTHOR,prepared_utc=STAMP,
+    checkpoint=pointer(checkpoint_candidate,checkpoint_data),primaries=candidate_rows,inputs=inputs,links=links,
+    source_only=True,publication_performed=False,target_execution=False,operational_authority=False)
+manifest_path = OWN / 'STAGED_DOCUMENTATION_MANIFEST_034_001.json'
+manifest_data = encoded(manifest)
+need(len(manifest_data) <= 2097152,'unchanged manifest cap')
+for row in observations:
+    data, final = observe(Path(row['original_path']))
+    need(final == row['observations'][0] and data == content[row['original_path']],'final Source prefreeze observation')
+for relative in PRIMARY:
+    need(observe(ROOT/relative)[0] == baseline[relative],'current033 primary final stability')
+once(manifest_path,manifest_data)
+print(json.dumps(dict(manifest_path=str(manifest_path),manifest_sha256=sha(manifest_data),manifest_bytes=len(manifest_data),
+    publisher_path=str(publisher_path),publisher_sha256=sha(publisher_data),publisher_bytes=len(publisher_data),
+    author_audit_sha256=sha(audit_path.read_bytes()),author_audit_bytes=audit_path.stat().st_size,
+    finite_input_pairs=len(inputs),selected_links=len(links),checkpoint_bytes=len(checkpoint_data),
+    publisher_function_count=len(old_functions),publisher_changed_functions=changed,
+    publication_performed=False,selected_execution=False),separators=(',',':')))

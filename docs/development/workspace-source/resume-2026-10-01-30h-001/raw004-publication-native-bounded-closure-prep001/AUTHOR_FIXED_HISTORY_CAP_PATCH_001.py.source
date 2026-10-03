@@ -1,0 +1,53 @@
+"""Own source/AST patch only; no target definitions or reads are invoked."""
+import ast,json
+from pathlib import Path
+stage=Path(__file__).absolute().parent
+common=stage/'front/native_successor_front_common_013_001.py.template'
+test=stage/'source/test_native_schema3_admission_001.py'
+for path in(common,test):
+ with(stage/('BEFORE_FIXED_HISTORY_CAP_'+path.name+'.bytes')).open('xb')as f:f.write(path.read_bytes())
+source=common.read_text(encoding='utf8')
+old=" require(maximum is None or(type(maximum)is int and maximum>0),'native finite capture bound malformed')\n return maximum"
+new=""" fixed={FRONT/'predecessor-tracked-rows-001.json':171333,ADMISSION/'predecessor-release.json':2725,ADMISSION/'predecessor-candidate-manifest.json':31347,ADMISSION/'successor-candidate-manifest.json':31347,ADMISSION/'current-native-release-receipt.txt':683,ATTEMPT/'release-receipt-v2.txt':683}
+ fixed.update({Path(row['path']):row['size']for row in NATIVE_HISTORICAL_INPUTS.values()})
+ if path in fixed:
+  captured=fixed[path]
+  require(maximum is None or(type(maximum)is int and maximum==captured),'fixed historical acquisition ceiling differs')
+  return captured
+ require(maximum is None or(type(maximum)is int and maximum>0),'native finite capture bound malformed')
+ return maximum"""
+assert source.count(old)==1
+source=source.replace(old,new)
+old_families="{*(f'M{index:02}'for index in range(1,33)),*(f'F{index:02}'for index in range(1,27)),*(f'B{index:02}'for index in range(1,15))}"
+assert source.count(old_families)==1
+source=source.replace(old_families,old_families.replace('range(1,15)','range(1,16)'))
+ast.parse(source)
+assert len(source.encode())<=184317
+common.write_text(source,encoding='utf8',newline='\n')
+source=test.read_text(encoding='utf8')
+tree=ast.parse(source)
+family=next(n for n in tree.body if isinstance(n,ast.Assign)and isinstance(n.targets[0],ast.Name)and n.targets[0].id=='NATIVE_CRITICAL_FAMILY_CASES')
+groups=json.loads(family.value.args[0].value)
+groups['B15']={'case_ids':['BoundedRaw004CausalCases.test_b15_fixed_history_acquisition_caps_precede_IO'],'required_subtest_ids':[]}
+replacement='NATIVE_CRITICAL_FAMILY_CASES = json.loads('+repr(json.dumps(groups,sort_keys=True,separators=(',',':')))+')'
+lines=source.splitlines(keepends=True);lines[family.lineno-1:family.end_lineno]=[replacement+'\n'];source=''.join(lines)
+entry=next(n for n in ast.parse(source).body if isinstance(n,ast.If)and isinstance(n.test,ast.Compare)and isinstance(n.test.left,ast.Name)and n.test.left.id=='__name__')
+lines=source.splitlines(keepends=True)
+method='''
+    def test_b15_fixed_history_acquisition_caps_precede_IO(self):
+        n=source_namespace({'require','_native_uint','_native_hex','_native_behavior_cap','_native_capture_limit'})
+        path=n['FRONT']/'predecessor-tracked-rows-001.json'
+        self.assertEqual(n['_native_capture_limit'](path,None),171333)
+        for maximum in(True,0,171332,171334):
+            with self.assertRaisesRegex(ValueError,'fixed historical acquisition ceiling'):
+                n['_native_capture_limit'](path,maximum)
+            self.assertEqual(n['_native_capture_limit'](path,None),171333)
+        for row in n['NATIVE_HISTORICAL_INPUTS'].values():
+            self.assertEqual(n['_native_capture_limit'](Path(row['path']),None),row['size'])
+        for name,bound in(('predecessor-release.json',2725),('predecessor-candidate-manifest.json',31347),('successor-candidate-manifest.json',31347),('current-native-release-receipt.txt',683)):
+            self.assertEqual(n['_native_capture_limit'](n['ADMISSION']/name,None),bound)
+'''
+lines[entry.lineno-1:entry.lineno-1]=[method+'\n'];source=''.join(lines)
+ast.parse(source)
+test.write_text(source,encoding='utf8',newline='\n')
+print({'common_bytes':len(common.read_bytes()),'test':'B15 planned only','target_code_executed':False})

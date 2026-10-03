@@ -1,0 +1,24 @@
+import ast
+import collections
+import json
+from pathlib import Path
+
+root = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-schema2-admission-closure-prep003')
+mapping = json.loads((root / 'before/design003/SOURCE_AND_CALLER_METADATA_003.json').read_bytes())
+common = 'front/native_successor_front_common_013_001.py.template'
+trees = [ast.parse((root / relative).read_bytes()) for relative in (common, 'before/native002/' + common)]
+named = [{node.name: ast.dump(node, include_attributes=False) for node in tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))} for tree in trees]
+print(json.dumps(dict(languages=dict(collections.Counter(row['language'] for row in mapping['callers'])),
+                      literals=[row['relative_path'] for row in mapping['callers'] if row['literal_44_table']],
+                      dependencies=[row['relative_path'] for row in mapping['callers'] if row['nonliteral_dependency']],
+                      added_names=sorted(set(named[0])-set(named[1])),
+                      changed_names=sorted(name for name in named[1] if named[0].get(name)!=named[1][name]),
+                      native_assignments=[node.targets[0].id for node in trees[0].body if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id.startswith('NATIVE_')]),sort_keys=True))
+for row in mapping['callers']:
+    if row['language']!='Python': continue
+    assignments=[]
+    for node in ast.parse((root / row['relative_path']).read_bytes()).body:
+        if isinstance(node, ast.Assign) and isinstance(node.value,ast.Dict) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name):
+            keys=[key.value for key in node.value.keys if isinstance(key,ast.Constant) and isinstance(key.value,str)]
+            if len(keys)>30: assignments.append(dict(name=node.targets[0].id,count=len(keys),literal=all(isinstance(value,ast.Constant) and value.value is None for value in node.value.values)))
+    if assignments: print(json.dumps(dict(path=row['relative_path'], tables=assignments),sort_keys=True))

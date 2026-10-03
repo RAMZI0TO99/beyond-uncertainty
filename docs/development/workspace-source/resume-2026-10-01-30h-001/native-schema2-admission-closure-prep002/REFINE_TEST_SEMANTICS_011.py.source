@@ -1,0 +1,70 @@
+"""Author AST/text maintenance only; never compiles or executes target definitions."""
+import ast,hashlib,json,os
+from pathlib import Path
+ROOT=Path(__file__).absolute().parent
+path=ROOT/'source/test_native_schema2_admission_002.py'
+old=path.read_bytes();saved=ROOT/'before/test-semantic011';saved.mkdir()
+with (saved/path.name).open('xb') as f:f.write(old)
+text=old.decode()
+# Supporting runtime labels in the synthetic fixture obey the same canonical
+# Windows Path spellings as the validator, without changing live runtime facts.
+text=text.replace("row=self.put(fixed[path_key],('SYNTHETIC_RUNTIME:'+field).encode())",
+                  "row=self.put(str(Path(fixed[path_key])),('SYNTHETIC_RUNTIME:'+field).encode())\n            fixed[path_key]=row['path']")
+helper='''def trusted_binding_fixture(namespace):
+    """Closed synthetic caller bus; no runtime or release authority is supplied."""
+    namespace.update(NATIVE_REVIEW_RELATIVE='SYNTHETIC/final.json',
+                     PRE_RENDER_REVIEW_RELATIVE='SYNTHETIC/pre.json')
+    fields=dict.fromkeys(namespace['BINDING_SCHEMA'],'0'*64)
+    fields.update(controller_commit='0'*40,changed_file_count=25,
+        native_review_path=str(namespace['PROJECT']/namespace['NATIVE_REVIEW_RELATIVE']),
+        pre_render_review_path=str(namespace['PROJECT']/namespace['PRE_RENDER_REVIEW_RELATIVE']),
+        release_provenance={key:{'path':str(namespace['PROJECT']/'SYNTHETIC'/key),'sha256':'0'*64}
+            for key in namespace['PROGRAMMATIC_FACTS']['provenance_fields']})
+    return fields
+
+'''
+text=text.replace('class NativeSchema2CriticalFamilies(unittest.TestCase):',helper+'class NativeSchema2CriticalFamilies(unittest.TestCase):',1)
+tree=ast.parse(text)
+def replace_method(name,replacement):
+    global text
+    node=next(n for n in ast.walk(ast.parse(text)) if isinstance(n,ast.FunctionDef) and n.name==name)
+    lines=text.splitlines(keepends=True)
+    text=''.join(lines[:node.lineno-1])+replacement+''.join(lines[node.end_lineno:])
+replace_method('test_m05_uniform44_missing_extra_or_old_bus_refuses','''    def test_m05_uniform44_missing_extra_or_old_bus_refuses(self):
+        n=source_namespace({'require','checked_bindings'});valid=trusted_binding_fixture(n)
+        self.assertEqual(len(n['BINDING_SCHEMA']),44)
+        self.assertEqual(n['checked_bindings'](valid,receipt_only=False),valid)
+        for key in n['BINDING_SCHEMA']:
+            missing={name:value for name,value in valid.items() if name!=key}
+            with self.assertRaisesRegex(ValueError,'keys'):n['checked_bindings'](missing,receipt_only=False)
+        with self.assertRaisesRegex(ValueError,'keys'):
+            n['checked_bindings']({**valid,'unexpected':'0'*64},receipt_only=False)
+''')
+replace_method('test_m06_only_fixed_renderer_phase_allows_four_late_nulls','''    def test_m06_only_fixed_renderer_phase_allows_four_late_nulls(self):
+        n=source_namespace({'require','checked_bindings'});valid=trusted_binding_fixture(n)
+        self.assertEqual(n['checked_bindings'](valid,receipt_only=False),valid)
+        for key in ('publisher_sha256','external_verifier_sha256','publication_end_sha256','verification_intent_sha256'):
+            fields=dict(valid);fields[key]=None
+            self.assertEqual(n['checked_bindings'](fields,receipt_only=True),fields)
+            with self.assertRaisesRegex(ValueError,'SHA'):n['checked_bindings'](fields,receipt_only=False)
+        with self.assertRaisesRegex(ValueError,'phase type'):n['checked_bindings'](valid,receipt_only=1)
+''')
+ast.parse(text)
+with path.open('wb') as f:f.write(text.encode());f.flush();os.fsync(f.fileno())
+common=ROOT/'front/native_successor_front_common_013_001.py.template'
+data=common.read_bytes();target=b"and type(value['version']) is list and value['version'] == [3,13,5]"
+assert data.count(target)==1
+next_data=data.replace(target,target+b"\n            and all(type(item) is int for item in value['version'])")
+with (saved/common.name).open('xb') as f:f.write(data)
+ast.parse(next_data)
+with common.open('wb') as f:f.write(next_data);f.flush();os.fsync(f.fileno())
+report={'schema_version':1,'record_type':'native002_semantic_draft_checkpoint',
+    'test_before_sha256':hashlib.sha256(old).hexdigest(),'test_after_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
+    'common_before_sha256':hashlib.sha256(data).hexdigest(),'common_after_sha256':hashlib.sha256(next_data).hexdigest(),
+    'common_bytes':len(next_data),'common_raw_headroom':196605-len(next_data),
+    'changes':['synthetic runtime Path labels canonicalized','healthy44 bus before each shape/phase mutation',
+               'strict integer runtime version components'],
+    'target_definitions_executed':False,'actual_tests_executed':False,'operational_authority_granted':False}
+q=ROOT/'SEMANTIC_DRAFT_CHECKPOINT_011.json'
+with q.open('xb') as f:f.write((json.dumps(report,sort_keys=True,indent=2)+'\n').encode());f.flush();os.fsync(f.fileno())
+print(json.dumps(report))

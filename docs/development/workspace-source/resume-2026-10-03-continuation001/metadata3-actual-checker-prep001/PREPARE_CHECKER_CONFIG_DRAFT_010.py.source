@@ -1,0 +1,279 @@
+"""Owned metadata-only Source draft; never imports or calls selected helpers."""
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+from datetime import datetime, timezone
+from pathlib import Path
+
+WORK=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001')
+OWN=WORK/'metadata3-actual-checker-prep001'
+M=WORK/'metadata3-producer-core-prep001'
+G=WORK/'consumer005-guard006-runtime-prep001'
+P=WORK/'root-guard006-pipeline-prep001'
+CTOR=WORK/'root-guard006-model-prep001'
+SCOPE='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+CHECKER_SHA='3c02e9898ed5fde8cf74f91ff780093ed66ca2a8807a1be2dfe1c9e8976d14e6'
+PEER_SHA='4a7188b0f44de5ac2b454de0ba6bc0e4a07b1891fa24b23c88e119d0547d4137'
+C_SHA='ef3a6f208158ca2809aecf6d92b62b63777d4b795574c8cdccec1f882c669488'
+P16_SHA='d45a6cf273dd8ea8df2db150969e438c2ef7f1a042830dddfaf58b528d13b5fc'
+PHASE_SHA='73c2cdb26b770b6b67f748fb44e326bc01cb4af5c085a0f500c219050c6f0678'
+BINDING_SHA='2e229cb87d623ffb536ab01022d6226b764e24ca1523f4c4cd508c65783136df'
+BOUND9_SHA='84f4876e2331392cfbe881c20ba770c620be6c961e41e3a9355fe56e77d00474'
+LEASE_SHA='43cb0552e3117842868eb78ff4e6b52913a16e78f3c26b8caa754cfb6b29fc48'
+NONCE='663b82ce6ed0adf36d0cc52b948ab252'
+EVIDENCE={}
+DATA={}
+CHECKS=[]
+
+def need(ok,message):
+    if not ok: raise ValueError(message)
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+def raw(info):
+    return [info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns,info.st_ctime_ns,
+            info.st_mode,info.st_nlink,info.st_file_attributes,info.st_birthtime_ns]
+
+def ancestors(path):
+    result=[]
+    for parent in reversed(path.parents):
+        info=parent.lstat()
+        need(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+             and not info.st_file_attributes&1024,'plain Source ancestor')
+        result.append([str(parent),info.st_dev,info.st_ino])
+    return result
+
+def observe(path,cap):
+    chain=ancestors(path);before=path.lstat();a=raw(before)
+    need(stat.S_ISREG(before.st_mode) and before.st_nlink==1
+         and not before.st_file_attributes&1024 and 0<=before.st_size<=cap,'plain bounded Source file')
+    with path.open('rb',buffering=0) as stream:
+        b=raw(os.fstat(stream.fileno()))
+        need(a[:4]+[a[5],a[6],a[7],a[8]]==b[:4]+[b[5],b[6],b[7],b[8]]
+             and a[4]==a[8],'Source path/descriptor identity')
+        data=stream.read(before.st_size+1)
+        need(raw(os.fstat(stream.fileno()))==b,'Source descriptor stable')
+    need(raw(path.lstat())==a and ancestors(path)==chain and len(data)==before.st_size,'Source readback stable')
+    return data,dict(path=str(path),sha256=digest(data),bytes=len(data),path_raw9=a,descriptor_raw9=b,ancestors=chain)
+
+def read(path,pin=None,cap=2097152):
+    path=Path(path)
+    need(path.is_absolute() and path.is_relative_to(WORK),'finite own Source root')
+    need(type(cap) is int and 0<cap<=8388608,'bounded Source read cap')
+    if str(path) in DATA:
+        data=DATA[str(path)];row=EVIDENCE[str(path)]['observations'][0]
+        need(len(data)<=cap and (pin is None or digest(data)==pin),'cached Source cap/pin')
+        return data
+    reads=[observe(path,cap) for _ in range(3)]
+    need(all(pair==reads[0] for pair in reads),'three exact Source observations')
+    data,row=reads[0]
+    need(pin is None or digest(data)==pin,'externally selected Source SHA')
+    target=OWN/'checker-config-draft010-inputs'/('%03d-'%(len(EVIDENCE)+1)+path.name)
+    with target.open('xb') as stream:stream.write(data)
+    need(target.read_bytes()==data,'owned copy exact')
+    EVIDENCE[str(path)]=dict(maximum=cap,observations=[pair[1] for pair in reads],copy_path=str(target),copy_sha256=digest(data))
+    DATA[str(path)]=data
+    return data
+
+def pairs(items):
+    result={}
+    for key,value in items:
+        need(key not in result,'duplicate JSON key')
+        result[key]=value
+    return result
+
+def forbidden(value):
+    raise ValueError('floating/nonfinite JSON token: '+value)
+
+def decode(data):
+    need(not data.startswith(b'\xef\xbb\xbf'),'JSON BOM')
+    return json.loads(data.decode('utf8',errors='strict'),object_pairs_hook=pairs,parse_float=forbidden,parse_constant=forbidden)
+
+def record(path,pin=None,cap=2097152):
+    return decode(read(path,pin,cap))
+
+def same(actual,expected,label):
+    need(type(actual) is type(expected),'typed Source difference: '+label)
+    if type(actual) is dict:
+        need(actual.keys()==expected.keys(),'closed Source keys: '+label)
+        for key,value in expected.items():same(actual[key],value,label+'.'+key)
+    elif type(actual) is list:
+        need(len(actual)==len(expected),'Source list count: '+label)
+        for index,value in enumerate(expected):same(actual[index],value,label+'[%d]'%index)
+    else:need(actual==expected,'Source value difference: '+label)
+
+def exact(value,keys,label):
+    need(type(value) is dict and set(value)==set(keys),'closed schema: '+label)
+
+def point(path,pin,cap=2097152):
+    path=Path(path);read(path,pin,cap)
+    return dict(path=str(path),sha256=pin)
+
+def literals(data):
+    tree=ast.parse(data.decode('utf8',errors='strict'))
+    result={}
+    for node in tree.body:
+        if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name):
+            name=node.targets[0].id
+            try:value=ast.literal_eval(node.value)
+            except (ValueError,TypeError):continue
+            need(name not in result,'duplicate literal Source assignment')
+            result[name]=value
+    return result
+
+def check(label):
+    CHECKS.append(label)
+
+def wire(value):
+    return (json.dumps(value,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+
+(OWN/'checker-config-draft010-inputs').mkdir(exist_ok=False)
+template=record(OWN/'ACTUAL_CHECKER_BINDING_009.TEMPLATE.json',cap=131072)
+helper=read(OWN/'review-metadata3-actual006-corrected009.TEMPLATE.py',CHECKER_SHA,262144)
+constructor=read(CTOR/'ASSEMBLE_GUARD006_SOURCE_MODELS_002.TEMPLATE.py','e6886127e80c85bbdccfc9748b5cdca28917a746feac7389cd514cb649cb092c',65536)
+table=record(CTOR/'IMMUTABLE_MODEL_INPUTS_001.json','b01516f22dd1db00323bfaff1a37494e24fec3e6ba8ef6374ebb3c5f8d478890',65536)
+protocol=record(OWN/'SOURCE_PROTOCOL_AND_REVIEW_CONTRACT_009.json','b4f54b28ef018d4aaf35b846dc5fac3f1c52ed04eec910dfc62faa84659f0a7b',65536)
+c=record(P/'ROOT_PIPELINE_BINDING_001.json',C_SHA,131072)
+p16=record(WORK/'root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_001.json',P16_SHA,131072)
+binding=record(M/'ACTUAL_SOURCE_BINDING_003.json',BINDING_SHA,65536)
+bound9=record(M/'INDEPENDENT_BOUND_METADATA_REVIEW_003.json',BOUND9_SHA,65536)
+phase=record(M/'PHASE_PS_SOURCE_BINDING_003.json','e782bfc525dadf8ce5e81acac87c428d4c6eabff3dd1b2b7937edd2d1c952d27',65536)
+phase_peer=record(M/'INDEPENDENT_ROOT_METADATA_PHASE_PS_BINDING_REVIEW_003.json',PHASE_SHA,65536)
+lease=record(WORK/'EXECUTION_LEASE_GG6_M3_001.json',LEASE_SHA,65536)
+peer=record(WORK/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_002.json',PEER_SHA,65536)
+launch=record(OWN/'REVIEWER_RETAINED_LAUNCH_PLAN_010.json',cap=65536)
+exact(c,('author','bound_checker_ready','coordination_peer_reply','coordination_root_response','guard_sources',
+    'harness_static_review','maximum_retained_seconds','metadata_checker_ready','owner_lease_end_utc','owner_lease_sha256',
+    'packet_composer','profile','projection','record_type','schema_version','scope','source_capsule',
+    'source_capsule_review','source_manifest','sources'),'C20')
+same(c['schema_version'],1,'C schema');same(c['author'],'/root','C author')
+same(c['record_type'],'root_metadata_pipeline_source_binding','C type');same(c['scope'],SCOPE,'C scope')
+exact(p16,literals(constructor)['ROOT_PEER16'],'P16')
+for key,value in dict(schema_version=1,record_type='independent_root_metadata_pipeline_bound_source_review',
+    reviewer='/root/owner_docs_review',source_author='/root',scope=SCOPE,verdict='PASS_STATIC_ROOT_PIPELINE_SOURCE_ONLY',
+    pipeline_binding_sha256=C_SHA,before_capture_timer=True,target_execution=False,operational_authority_granted=False).items():same(p16[key],value,'P16 '+key)
+read(P/'RUN_ROOT_METADATA_PIPELINE_006.BOUND.ps1',p16['pipeline_source_sha256'],131072)
+same(c['owner_lease_sha256'],LEASE_SHA,'C lease');same(c['owner_lease_end_utc'],lease['lease_end_utc'],'C lease end')
+same(lease['scope'],SCOPE,'lease scope');same(lease['author'],'/root','lease author')
+need(re.fullmatch(r'.*\.[0-9]{7}\+00:00',lease['lease_end_utc']) is not None,'PS7 lease end')
+check('Current C20/P16 source binding, pipeline hash, scope and finite lease relationships agree; no physical INIT or Root provenance is inferred.')
+exact(binding,('schema_version','binder','template_sha256','actual_script_sha256','bindings','role_selections',
+    'exact_six_assignment_reversal','exact_function_ASTs','actual_before_authorization','actual_after_authorization','target_capture_executed'),'M3 binding11')
+for key,value in dict(schema_version=1,binder='/root',exact_six_assignment_reversal=True,exact_function_ASTs=True,
+    actual_before_authorization=None,actual_after_authorization=None,target_capture_executed=False).items():same(binding[key],value,'M3 source11 '+key)
+nine=binding['bindings'];exact(nine,table['metadata9_keys'],'metadata9')
+values=literals(read(M/'capture-root-metadata003.BOUND.py',binding['actual_script_sha256'],65536))
+same(values['BINDINGS'],nine,'actual M3 literals9');same(values['OWNER_SHA'],LEASE_SHA,'M3 lease')
+same(values['OWNER_END'],lease['lease_end_utc'],'M3 lease end')
+same(values['UNIT_TERMINAL_RELATIVE'],'ROOT_LAUNCH_TERMINAL_006.json','unit basename with G base')
+same({key:values[key] for key in binding['role_selections']},binding['role_selections'],'M3 roles3')
+same(bound9,dict(schema_version=1,record_type='guard006_root_metadata_bound_source_review',reviewer='/root/owner_docs_review',
+    source_author='/root/renewal_runtime_inventory',verdict='PASS_STATIC_BOUND_METADATA_ONLY',actual_script_sha256=binding['actual_script_sha256'],
+    source_bindings=nine,phase_set=['before','after'],metadata_only=True),'bound9')
+for key,c_key in (('guard_profile_sha256','profile'),('source_projection_sha256','projection'),
+    ('source_manifest_sha256','source_manifest'),('source_peer_sha256','source_capsule'),
+    ('guard_harness_static_review_sha256','harness_static_review'),('coordination_peer_reply_sha256','coordination_peer_reply'),
+    ('coordination_root_response_sha256','coordination_root_response')):same(nine[key],c[c_key]['sha256'],'metadata9 C20 '+key)
+check('M3 sourceBinding11, actual literal9/owner/role3 and genuine bound9 agree with current C20 metadata inputs.')
+for key,value in dict(source_author='/root/actual_record_checker',verdict='PASS_STATIC_METADATA3_CHECKER_SOURCE_ONLY',checker_template_sha256=CHECKER_SHA).items():same(peer[key],value,'checker Source peer')
+need(peer['reviewer'] in ('/root','/root/owner_docs_review'),'different Source reviewer')
+same(launch['execution_launch_witness'],dict(reviewer='/root/actual_record_checker',nonce=NONCE,
+    tool_trace_kind='EXTERNALLY_CORROBORATED_REVIEWER_TOOL_CELL_NOT_OS_ATTESTATION'),'genuine planned witness3')
+same(launch['actual_execution'],None,'planned no execution')
+draft=decode(wire(template))
+draft['checker_source_peer_sha256']=PEER_SHA
+draft['metadata_bindings']={key:nine[key] for key in draft['metadata_bindings']}
+for role,pointer in draft['metadata_sources'].items():
+    path=Path(pointer['path']);data=read(path,cap=65536)
+    draft['metadata_sources'][role]=point(path,digest(data),65536)
+same(draft['metadata_sources']['metadata_script']['sha256'],binding['actual_script_sha256'],'closure M3')
+for key,pointer in list(draft['metadata_input_paths'].items()):
+    if key=='coordination_peer_reply_sha256':path=WORK/binding['role_selections']['COORDINATION_PEER_REPLY_RELATIVE']
+    elif key=='coordination_root_response_sha256':path=WORK/binding['role_selections']['COORDINATION_ROOT_RESPONSE_RELATIVE']
+    else:path=Path(pointer)
+    read(path,nine[key],2097152);draft['metadata_input_paths'][key]=str(path)
+need(len(set(value.casefold() for value in draft['metadata_input_paths'].values()))==8,'finite unique input8')
+phases=tuple(draft['phase_sources'])
+exact(phase,('schema_version','binder','sources','actual_script_sha256','bound_review_sha256','actual_authorization','prepared_source_actions_executed'),'phaseBinding7')
+exact(phase_peer,table['phase20_keys'],'phasePeer20 no invented scope')
+for key,value in dict(schema_version=1,binder='/root',actual_script_sha256=binding['actual_script_sha256'],bound_review_sha256=BOUND9_SHA,
+    actual_authorization=None,prepared_source_actions_executed=False).items():same(phase[key],value,'phaseBinding '+key)
+for key,value in dict(schema_version=1,record_type='guard006_root_metadata_phase_ps_source_binding_review',reviewer='/root/owner_docs_review',
+    reviewer_agent='/root/owner_docs_review',source_author='/root/renewal_runtime_inventory',binding_author='/root',
+    verdict='PASS_STATIC_ACTUAL_PHASE_PS_SOURCE_BINDINGS_ONLY',metadata_only=True,actual_authorization_or_entry_approved=False,
+    PowerShell_parser_errors=0,exact_two_literal_reversal_all_four=True,bound_metadata_source_sha256=binding['actual_script_sha256'],
+    bound_source_review_sha256=BOUND9_SHA,phase_source_binding_sha256=draft['metadata_sources']['phase_source_binding']['sha256']).items():same(phase_peer[key],value,'phasePeer '+key)
+need(len(phase['sources'])==len(phase_peer['phase_sources'])==4,'phase count4')
+for role,actual,observed in zip(phases,phase['sources'],phase_peer['phase_sources']):
+    exact(actual,('path','sha256','template_sha256','exact_two_literal_reversal'),'phase row4')
+    path=Path(draft['phase_sources'][role]['path']);same(actual['path'],str(path),'phase normalized fixed path')
+    content=read(path,actual['sha256'],65536)
+    same(observed,dict(PowerShell_parser_errors=0,bytes=len(content),exact_two_literal_reversal=True,
+        path=str(path),sha256=actual['sha256'],template_sha256=actual['template_sha256']),'phase peer row6')
+    c_role={'before_writer':'metadata_before_writer','before_parent':'metadata_before_parent',
+        'after_writer':'metadata_after_writer','after_parent':'metadata_after_parent'}[role]
+    same(c['sources'][c_role]['sha256'],actual['sha256'],'phase C20 source pin')
+    same(c['sources'][c_role]['path'],str(path),'phase C20 path')
+    field={'before_writer':'writer_sha256','before_parent':'supervisor_sha256','after_writer':'after_writer_sha256','after_parent':'after_supervisor_sha256'}[role]
+    same(phase_peer[field],actual['sha256'],'phase aggregate')
+    draft['phase_sources'][role]=point(path,actual['sha256'],65536)
+check('All four phase Source rows4 match genuine closed20 peer rows6 and aggregate pins, M3 source/peer, physical byte sizes and C20; no phase authorization exists in this Source draft.')
+for role,pointer in list(draft['whole_sources'].items()):
+    c_role={'before_parent':'whole_before_parent','after_writer':'whole_after_writer','after_parent':'whole_after_parent'}[role]
+    actual=c['sources'][c_role];same(str(Path(pointer['path'])),actual['path'],'whole C20 path')
+    draft['whole_sources'][role]=point(actual['path'],actual['sha256'],65536)
+for role,pointer in list(draft['guard_sources'].items()):
+    actual=c['guard_sources'][role];same(str(Path(pointer['path'])),actual['path'],'guard C20 path')
+    draft['guard_sources'][role]=point(actual['path'],actual['sha256'],131072)
+draft['owner_lease_sha256']=LEASE_SHA;draft['owner_lease_end_utc']=lease['lease_end_utc']
+draft['root_pipeline_source']=dict(path=str(P/'RUN_ROOT_METADATA_PIPELINE_006.BOUND.ps1'),sha256=p16['pipeline_source_sha256'],
+    source_peer_path=str(WORK/'root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_001.json'),source_peer_sha256=P16_SHA)
+draft['execution_launch_witness']=launch['execution_launch_witness'];draft['maximum_wait_seconds']=3600
+exact(draft,table['checker_config18_keys'],'constructor exact config18')
+same(list(draft),list(template),'reviewed template18 property order')
+same(draft['metadata_sources'],dict(metadata_script=dict(path=str(M/'capture-root-metadata003.BOUND.py'),sha256=binding['actual_script_sha256']),
+    metadata_source_binding=dict(path=str(M/'ACTUAL_SOURCE_BINDING_003.json'),sha256=BINDING_SHA),
+    metadata_bound_review=dict(path=str(M/'INDEPENDENT_BOUND_METADATA_REVIEW_003.json'),sha256=BOUND9_SHA),
+    phase_source_binding=dict(path=str(M/'PHASE_PS_SOURCE_BINDING_003.json'),sha256=phase_peer['phase_source_binding_sha256']),
+    phase_source_review=dict(path=str(M/'INDEPENDENT_ROOT_METADATA_PHASE_PS_BINDING_REVIEW_003.json'),sha256=PHASE_SHA)),'constructor complete Source5')
+for key,value in dict(schema_version=1,record_type='metadata3_actual_checker_binding',binder='/root',scope=SCOPE,
+    checker_template_sha256=CHECKER_SHA,checker_source_peer_sha256=PEER_SHA,owner_lease_sha256=LEASE_SHA,
+    owner_lease_end_utc=lease['lease_end_utc'],actual_actions_executed=False,maximum_wait_seconds=3600).items():same(draft[key],value,'constructor config nominal '+key)
+check('Draft satisfies closed config18, metadata9/Source5, four phase pins, Root pipeline/P16 pins and constructor002 Source validation nominal requirements by independent data comparisons; constructor/helper code was not called.')
+check('All config paths use Windows str(Path) normalization, actual input8 confinement and no case-fold aliases; witness3 retains genuine reviewer/nonce and makes no actual tool or OS claim.')
+missing=[]
+for path in (OWN/'ACTUAL_CHECKER_BINDING_001.json',OWN/'CHECKER_READY_ALL_006.json',P/'ROOT_PIPELINE_INIT_TRACE_001.json',
+    P/'ROOT_PIPELINE_TRUST_SELECTION_001.json',P/'ROOT_METADATA_PIPELINE_GO_001.json'):
+    chain=ancestors(path)
+    try:path.lstat()
+    except FileNotFoundError:need(ancestors(path)==chain,'absence ancestor drift');missing.append(str(path))
+    else:raise ValueError('actual role unexpectedly exists: '+str(path))
+for name,row in EVIDENCE.items():
+    data,post=observe(Path(name),row['maximum'])
+    same(post,row['observations'][0],'Source final reobservation');need(data==DATA[name],'Source bytes after draft derivation')
+    need(Path(row['copy_path']).read_bytes()==data,'owned copied Source post exact')
+    row['post_observation']=post
+data=wire(draft);need(len(data)<=131072,'draft config cap131072 unchanged')
+path=OWN/'ROOT_ACTUAL_CHECKER_BINDING_DRAFT_010.json'
+report=dict(schema_version=1,record_type='independent_metadata3_checker_config_source_draft_validation',created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),
+    source_author='/root/actual_record_checker',reviewer='/root/actual_record_checker',scope=SCOPE,
+    draft=dict(path=str(path),sha256=digest(data),bytes=len(data),closed_fields=18),checks=CHECKS,
+    source_input_count=len(EVIDENCE),source_observations=list(EVIDENCE.values()),finite_absences=missing,
+    root_attribution='binder=/root in the draft is the prospective fixed schema nominal, not a claim that Root authored or published this draft. Root must independently validate and create ACTUAL_CHECKER_BINDING_001.json.',
+    compatibility_scope='Independent Source-data comparisons only. Checker configure/preflight and constructor validate_metadata were not invoked; no actual model admission, current-context proof or complete byte-fit claim is made.',
+    delegated_provenance='Root external full owner_docs P16/Binder17 prerequisite precedes physical INIT; constructor/pipeline are not represented as directly enforcing full Binder17. Different actual bound-pool20 must accept complete closure before capture.',
+    actual_binding=None,actual_Root_selection=None,actual_Root_trust=None,actual_READY=None,actual_execution=None,actual_tool_cell=None,actual_PID=None,
+    helper_definitions_imports_mains_bindings_tests_executed=False,operational_authority=False,
+    limitations=['Root-independent actual config publication and genuine retained-cell entry remain pending.',
+        'No current project capture, whole proof, unit GO, runtime acceptance or OS attribution follows from this Source draft.',
+        'C20/P16 and other genuine Source receipts are consumed within their Source scopes; this report is not their reapproval.'])
+report_data=wire(report)
+for output,content in ((path,data),(OWN/'ROOT_ACTUAL_CHECKER_BINDING_DRAFT_SOURCE_VALIDATION_010.json',report_data)):
+    with output.open('xb') as stream:stream.write(content)
+    need(output.read_bytes()==content,'owned draft/report readback')
+print(json.dumps(dict(draft_path=str(path),draft_sha256=digest(data),draft_bytes=len(data),report_sha256=digest(report_data),report_bytes=len(report_data),
+    source_input_count=len(EVIDENCE),actual_binding=None,actual_execution=None),separators=(',',':')))

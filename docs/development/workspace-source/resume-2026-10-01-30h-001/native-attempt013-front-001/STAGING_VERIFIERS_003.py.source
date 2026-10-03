@@ -1,0 +1,145 @@
+"""Create attempt013 verifier definitions from preserved effective source.
+
+Stdlib text/AST editing only. This script never executes operational helpers.
+"""
+import ast
+import json
+from pathlib import Path
+
+FRONT = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-attempt013-front-001')
+common = (FRONT / 'native_successor_front_common_013_001.py.template').read_text()
+tree = ast.parse(common)
+node = next(n for n in tree.body if isinstance(n, ast.Assign)
+            and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'BINDING_SCHEMA')
+schema = json.loads(node.value.args[0].value)
+schema.update(phase_common_sha256='sha256', child_bootstrap_literal_sha256='sha256')
+lines = common.splitlines(keepends=True)
+lines[node.lineno-1:node.end_lineno] = ['BINDING_SCHEMA = json.loads(' + repr(json.dumps(schema, sort_keys=True, separators=(',', ':'))) + ')\n']
+(FRONT / 'native_successor_front_common_013_001.py.template').write_text(''.join(lines), encoding='utf-8', newline='\n')
+(FRONT / 'FRONT_BINDINGS_UNBOUND_001.json').write_text(json.dumps({k:None for k in sorted(schema)}, indent=2, sort_keys=True)+'\n', encoding='utf-8')
+for path in FRONT.glob('*.ps1.template'):
+    text = path.read_text()
+    marker = '$FrontBindings = [ordered]@{\n'
+    if marker in text:
+        text = text.replace(marker, marker+'    phase_common_sha256 = $null\n    child_bootstrap_literal_sha256 = $null\n',1)
+        path.write_text(text, encoding='utf-8', newline='\n')
+
+header = '''
+# ATTEMPT013 ACTIVE INTERFACE. Earlier definitions retain consumed-history
+# checks only; the old main is omitted and cannot replay the old ceremony.
+import argparse
+import types
+import sys
+
+FRONT_DIRECTORY = Path(r'D:\\Aenv\\pro2\\resume-2026-10-01-30h-001\\native-attempt013-front-001')
+FRONT_HELPER = FRONT_DIRECTORY / 'native_successor_front_common_013_001.py'
+FRONT_HELPER_SHA256 = None
+FRONT_BINDINGS = json.loads(__BINDINGS_JSON__)
+PRIOR_STATUS_VERDICT_SHA256 = None
+PRIOR_ADJUDICATE_VERDICT_SHA256 = None
+FIRST_STDOUT_SHA256 = None
+FIRST_STDOUT_BYTES = None
+FIRST_STDERR_SHA256 = None
+CURRENT_AUDIT_SHA256 = None
+CURRENT_LAUNCH_INTENT_SHA256 = None
+
+def load_front():
+    if not (sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode):
+        raise RuntimeError('attempt013 verifier requires Python -I -S -B')
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument('--expected-script-sha256', required=True)
+    args = parser.parse_args()
+    if not isinstance(FRONT_HELPER_SHA256, str) or re.fullmatch(r'[0-9a-f]{64}', FRONT_HELPER_SHA256) is None:
+        raise ValueError('attempt013 common helper SHA unbound')
+    for root in reversed(FRONT_HELPER.parents):
+        info = root.lstat()
+        if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or int(getattr(info, 'st_file_attributes',0)) & 0x400:
+            raise ValueError('linked/nonplain front helper ancestor')
+    info = FRONT_HELPER.lstat()
+    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_nlink != 1 or int(getattr(info,'st_file_attributes',0)) & 0x400:
+        raise ValueError('linked/nonplain front helper')
+    raw = FRONT_HELPER.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != FRONT_HELPER_SHA256:
+        raise ValueError('front helper changed before captured load')
+    module = types.ModuleType('_attempt013_front_boundary')
+    module.__file__ = str(FRONT_HELPER)
+    exec(compile(raw, str(FRONT_HELPER),'exec',dont_inherit=True), module.__dict__)
+    module.read(FRONT_HELPER, FRONT_HELPER_SHA256)
+    module.require(type(args.expected_script_sha256) is str and module.HEX64.fullmatch(args.expected_script_sha256) is not None,
+                   'reviewed verifier self SHA unbound')
+    module.read(Path(__file__).absolute(), args.expected_script_sha256)
+    module.checked_bindings(FRONT_BINDINGS, receipt_only=False)
+    return module
+'''.replace('__BINDINGS_JSON__', repr(json.dumps({k:None for k in sorted(schema)}, sort_keys=True,separators=(',',':'))))
+
+ready_main = '''
+def main():
+    C = load_front()
+    F = FRONT_BINDINGS
+    command = __COMMAND__
+    C.boundary(F, reserve=420 if command == 'adjudicate' else 0)
+    C.absent(C.verdict_path(command))
+    C.plain(C.ATTEMPT, directory=True)
+    expected_files = C.STATUS_FILES | (C.ADJUDICATE_FILES if command == 'adjudicate' else frozenset())
+    C.require({p.name for p in C.ATTEMPT.iterdir()} == expected_files, 'fresh phase exact attempt inventory differs')
+    witness = {}
+    for name in expected_files:
+        C.read(C.ATTEMPT / name, witness=witness, maximum=C.readiness_byte_limit() if name.endswith('-stdout.txt') else 65536)
+    if command == 'status':
+        checked_prior_refusal()
+        checked_status009_refusal()
+        checked_attempt010_final()
+        checked_attempt011_terminal()
+        prior = None
+    else:
+        checked_prior010_final()
+        prior = C.validate_ready_verdict('status', PRIOR_STATUS_VERDICT_SHA256, F)
+        C.checked_launch_intent(C.read(C.ATTEMPT / 'adjudicate-launch-intent.json', CURRENT_LAUNCH_INTENT_SHA256),
+                                F, 'adjudicate', PRIOR_STATUS_VERDICT_SHA256, None)
+    audit = C.checked_audit(C.read(C.ATTEMPT / ('stage0-' + command + '-audit.txt'), CURRENT_AUDIT_SHA256), F, command)
+    result = C.captured_response(C.ATTEMPT / (command + '-stdout.txt'), FIRST_STDOUT_SHA256, FIRST_STDOUT_BYTES)
+    C.require(type(FIRST_STDERR_SHA256) is str and C.HEX64.fullmatch(FIRST_STDERR_SHA256) is not None,
+              'first stderr SHA unbound')
+    stderr = C.read(C.ATTEMPT / (command + '-stderr.txt'), FIRST_STDERR_SHA256)
+    if command == 'adjudicate':
+        C.require(stderr == C.read(C.ATTEMPT / 'status-stderr.txt', prior['stderr_sha256']),
+                  'actual inherited binary warning differs from status capture')
+    exit_bytes = C.read(C.ATTEMPT / (command + '-exitcode.txt'))
+    C.require(exit_bytes == b'0\\n', 'native readiness exit is not zero')
+    context = C.checked_ready_result(result, F, command)
+    C.quiet_host_twice()
+    document = dict(front_verification_schema_version=2,
+        created_at_utc=datetime.now(timezone.utc).isoformat(), command=command, attempt=str(C.ATTEMPT),
+        controller_commit=F['controller_commit'], owner_record_sha256=C.PROGRAMMATIC_FACTS['owner_sha256'],
+        receipt_sha256=F['receipt_sha256'], successor_admission_sha256=F['admission_sha256'],
+        external_proof_sha256=F['external_proof_sha256'], audit_sha256=CURRENT_AUDIT_SHA256,
+        stdout_sha256=FIRST_STDOUT_SHA256, stdout_bytes=FIRST_STDOUT_BYTES, stderr_sha256=C.sha(stderr),
+        exitcode_sha256=C.sha(exit_bytes), envelope_sha256=audit['envelope_sha256'],
+        historical_inventory_digest=C.PROGRAMMATIC_FACTS['predecessor']['inventory_digest'],
+        historical_inspector_digest=C.PROGRAMMATIC_FACTS['historical_inspector_digest'],
+        historical_counts=C.PROGRAMMATIC_FACTS['historical_counts'], historical_admission=context.admission_binding,
+        readiness_stdout_byte_ceiling=C.readiness_byte_limit(), result=result, mechanical_verdict='pass',
+        prior_status_verdict_sha256=PRIOR_STATUS_VERDICT_SHA256 if command == 'adjudicate' else None,
+        launch_intent_sha256=CURRENT_LAUNCH_INTENT_SHA256 if command == 'adjudicate' else None,
+        scientific_outcomes_consulted=False, scientific_values_emitted=False, production_mutation_performed=False)
+    C.require(set(document) | {'record_digest'} == C.READY_VERDICT_KEYS, 'current readiness verdict exact schema differs')
+    C.repeat(witness)
+    C.checked_ready_result(result,F,command)
+    C.quiet_host_twice()
+    print('native_' + command + '_verification_sha256=' + C.publish_verdict(C.verdict_path(command), document, F,
+          reserve=420 if command == 'adjudicate' else 0))
+
+if __name__ == '__main__':
+    main()
+'''
+
+for command in ('status','adjudicate'):
+    path = FRONT / ('verify-native-' + command + '-013-window30h-success-001.py.template')
+    old = path.read_text()
+    old_tree = ast.parse(old)
+    main_node = next(n for n in old_tree.body if isinstance(n,ast.FunctionDef) and n.name == 'main')
+    prefix = ''.join(old.splitlines(keepends=True)[:main_node.lineno-1])
+    result = prefix + header + ready_main.replace('__COMMAND__', repr(command))
+    ast.parse(result)
+    path.write_text(result, encoding='utf-8', newline='\n')
+print('status/adjudicate active verifier mains staged; legacy main omitted; 36 future slots remain unbound')

@@ -1,0 +1,153 @@
+"""Author-owned data/AST preparation only; never execute target definitions."""
+import runpy
+
+G = runpy.run_path(__file__.replace('AUTHOR_IMPLEMENT_RAW_004.py', 'AUTHOR_METADATA_UTILS_004.py'))
+globals().update({k: v for k, v in G.items() if not k.startswith('__')})
+
+d = json.loads(read(N / 'before/FINITE_RELEASE_CHAIN_COMPACT_DESIGN_002.json')[0])
+chain = [d['historical_fact_authority'][k] for k in ('intermediate1', 'intermediate2')]
+source, source_ob = read(N / 'scripts/week8_recovery_raw_authority.py')
+assert digest(source) == '7fe7dc1989b882f6ef2cb22caaa5975b0b7d5d2907d84ee3c1b858facd57f267'
+old_tree = ast.parse(source)
+text_source = source.decode('utf8')
+
+def imm_mapping(value):
+    return 'MappingProxyType(' + repr(value) + ')'
+
+facts = []
+limits = []
+release_keys = []
+afterimages = []
+for entry in chain:
+    fact = dict(entry['identities'])
+    fact['changed_paths'] = tuple(fact['changed_paths'])
+    facts.append(imm_mapping(fact))
+    limit = {}
+    for key in ('release_record_base64', 'git_commit_object_base64'):
+        value = entry['proof'][key]
+        decoded = base64.b64decode(value, validate=True)
+        assert base64.b64encode(decoded).decode('ascii') == value
+        limit[key] = (len(value), len(decoded), digest(decoded))
+    limits.append(imm_mapping(limit))
+    release = json.loads(base64.b64decode(entry['proof']['release_record_base64'], validate=True))
+    release_keys.append('frozenset(' + repr(tuple(sorted(release))) + ')')
+    afterimages.append('(' + ', '.join(imm_mapping(row) for row in entry['proof']['changed_files']) + ',)')
+paths = tuple(d['deterministic_qa_reconstruction']['compiled_grouped_path_sequence'])
+assert len(paths) == len(set(paths)) == 263 and paths != tuple(sorted(paths))
+grammar = d['complete_attestation_grammar_and_bound']
+assert grammar['schema3_canonical_plus_LF_maximum'] == 361287
+constants = '\n\n# Exact compact schema3 extension. Legacy schema1/2 policy constants stay unchanged.\n'
+constants += 'SUCCESSOR_COMPACT_INTERMEDIATE_FACTS = (' + ', '.join(facts) + ',)\n'
+constants += '_SUCCESSOR_COMPACT_AFTERIMAGES = (' + ', '.join(afterimages) + ',)\n'
+constants += '_SUCCESSOR_COMPACT_PROOF_LIMITS = (' + ', '.join(limits) + ',)\n'
+constants += '_SUCCESSOR_COMPACT_RELEASE_KEYS = (' + ', '.join(release_keys) + ',)\n'
+constants += '_SUCCESSOR_COMPACT_ENTRY_KEYS = frozenset(' + repr(tuple(grammar['exact_two_chain_entries_each_keys'])) + ')\n'
+constants += '_SUCCESSOR_COMPACT_PROOF_KEYS = frozenset(' + repr(tuple(grammar['proof_exact_three_keys'])) + ')\n'
+constants += '_SUCCESSOR_COMPACT_PROOF_MAX_BYTES = (6181, 6321)\n'
+constants += '_SUCCESSOR_COMPACT_QA_PATHS = ' + repr(paths) + '\n'
+constants += '_SUCCESSOR_COMPACT_QA_BYTES = 31347\n'
+constants += '_SUCCESSOR_ATTESTATION_SCHEMA3_KEYS = frozenset(' + repr(tuple(grammar['exact_top_keys'])) + ')\n'
+constants += '_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3 = 361287\n'
+anchor = 'SUCCESSOR_ADMISSION_MAX_BYTES = 395799\n'
+assert text_source.count(anchor) == 1
+text_source = text_source.replace(anchor, anchor + constants, 1)
+helpers, _ = read(N / 'AUTHOR_SCHEMA3_HELPERS_004.txt')
+helper_text = helpers.decode('utf8')
+target = 'def _admit_recorded_predecessor(\n'
+assert text_source.count(target) == 1
+text_source = text_source.replace(target, helper_text + '\n' + target, 1)
+replacements = [
+    ('version not in (1, 2):', 'version not in (1, 2, 3):'),
+    ("attestation_keys = (_SUCCESSOR_ATTESTATION_SCHEMA1_KEYS if version == 1\n                        else _SUCCESSOR_ATTESTATION_SCHEMA2_KEYS)",
+     "attestation_keys = (_SUCCESSOR_ATTESTATION_SCHEMA1_KEYS if version == 1\n                        else _SUCCESSOR_ATTESTATION_SCHEMA2_KEYS if version == 2\n                        else _SUCCESSOR_ATTESTATION_SCHEMA3_KEYS)"),
+    ("limit = (_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA1 if version == 1\n             else _SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA2)",
+     "limit = (_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA1 if version == 1\n             else _SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA2 if version == 2\n             else _SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3)"),
+]
+for before, after in replacements:
+    assert text_source.count(before) == 1
+    text_source = text_source.replace(before, after, 1)
+schema3_branch = '''    elif version == 3:
+        entries = attestation['intermediate_chain']
+        if type(entries) is not list or len(entries) != 2:
+            raise AuthorityRefused('schema3 requires exactly two ordered intermediate entries')
+        expected_qa_paths = list(_SUCCESSOR_COMPACT_QA_PATHS)
+        if ([row[0] for row in old_qa] != expected_qa_paths
+                or [row[0] for row in new_qa] != expected_qa_paths
+                or predecessor_candidate_manifest_bytes != _successor_compact_qa_bytes(
+                    old_files, expected_sha256=facts['predecessor_candidate_manifest_sha256'])
+                or successor_candidate_manifest_bytes != _successor_compact_qa_bytes(
+                    new_files, expected_sha256=successor['candidate_manifest_sha256'])):
+            raise AuthorityRefused('schema3 QA grouped sequence or canonical bytes differ')
+        first_rows = _successor_compact_intermediate_rows(entries[0], old_rows, old_release, index=0)
+        last_rows = _successor_compact_intermediate_rows(entries[1], first_rows, old_release, index=1)
+        first_files = {row['path']: row for row in first_rows}
+        last_files = {row['path']: row for row in last_rows}
+        first_changed = sorted(path for path in first_files if first_files[path] != new_files[path])
+        parent_changed = sorted(path for path in last_files if last_files[path] != new_files[path])
+        if (len(changed) != _SUCCESSOR_REQUIRED_FINAL_CHANGED_COUNT
+                or len(first_changed) != _SUCCESSOR_REQUIRED_FINAL_CHANGED_COUNT
+                or len(parent_changed) != _SUCCESSOR_REQUIRED_FINAL_CHANGED_COUNT
+                or type(attestation['successor_parent_changed_paths']) is not list
+                or attestation['successor_parent_changed_paths'] != parent_changed
+                or not set(first_changed).issubset(SUCCESSOR_ALLOWED_CHANGED_PATHS)
+                or not set(parent_changed).issubset(SUCCESSOR_ALLOWED_CHANGED_PATHS)):
+            raise AuthorityRefused('schema3 three final edges differ from finite25 policy')
+        expected_parent = SUCCESSOR_COMPACT_INTERMEDIATE_FACTS[1]['controller_commit']
+        if successor['controller_commit'] in [entry['controller_commit']
+                                             for entry in SUCCESSOR_COMPACT_INTERMEDIATE_FACTS]:
+            raise AuthorityRefused('schema3 final successor reuses an intermediate commit')
+'''
+branch_anchor = "            raise AuthorityRefused('schema2 final successor reuses the intermediate commit')\n"
+assert text_source.count(branch_anchor) == 1
+text_source = text_source.replace(branch_anchor, branch_anchor + schema3_branch, 1)
+new_source = text_source.encode('utf8')
+new_tree = ast.parse(new_source)
+old_defs = {node.name: node for node in old_tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+new_defs = {node.name: node for node in new_tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+assert set(old_defs).issubset(new_defs)
+changed_defs = [name for name in old_defs if ast.dump(old_defs[name]) != ast.dump(new_defs[name])]
+assert changed_defs == ['_admit_recorded_predecessor']
+# Reverse all authored text additions/substitutions to the exact raw003 bytes.
+reverse = text_source.replace(schema3_branch, '', 1)
+for before, after in reversed(replacements):
+    assert reverse.count(after) == 1
+    reverse = reverse.replace(after, before, 1)
+reverse = reverse.replace(helper_text + '\n' + target, target, 1).replace(anchor + constants, anchor, 1)
+assert reverse.encode('utf8') == source
+plan = {
+    'author': '/root/raw_policy_worker', 'created_utc': datetime.now(timezone.utc).isoformat(),
+    'authorization': read(N / 'before/ROOT_REVIEWED_SOURCE_PREPARATION_CHOICES_004.json')[1],
+    'schema3': {'top_keys': grammar['exact_top_keys'], 'entries': 2, 'entry_keys': ['identities', 'proof'],
+                'identity_fields': 11, 'proof_fields': 3, 'middle_release_keys': [36, 37],
+                'old_final_release_keys': 34, 'full_rows': 742, 'middle_deltas': [9, 9],
+                'final_deltas': [25, 25, 25], 'global_cap': 395799, 'private_cap': 361287,
+                'grouped_qa_rows': 263, 'historical_qa_bytes': 31347},
+    'legacy_canonical_byte_equality_preserved_and_extended': True,
+    'legacy_helpers_classes_constant_asts_preserved_except_admission_dispatch': True,
+    'new_helpers': sorted(set(new_defs) - set(old_defs)),
+    'new_globals': [node.targets[0].id for node in ast.parse(constants).body if isinstance(node, ast.Assign)],
+    'api_keyword_count': 12, 'operational_input_roles': 7,
+    'provisional_test_plan': 'Append schema3 families to unchanged accepted415278-byte test004 prefix; healthy old1+old2+new3; positive-before and restored-after causal controls for finite lineage, grouped QA, compact Base64/caps/JSON, immutable history and current/inverse authority.',
+    'deferred': ['Generic consumer/native fresh/reuse protection and typed new constants/functions integration',
+                 'Publisher/verifier fresh four committed742 plus actualQA twice and actual final unique Git parent',
+                 'Final actual source/release/gate/runtime/native receipt semantics and transport closure',
+                 'Different-author source/test review and fresh bounded direct runtime'],
+    'new_source_sha256': digest(new_source), 'new_source_bytes': len(new_source),
+    'target_definitions_compiled_imported_executed': False, 'tests_executed': False,
+    'operational_bindings': None, 'live_or_canonical_candidate_authority': False,
+}
+out(N / 'IMPLEMENTATION_PLAN_004.json', plan)
+put(N / 'drafts/raw003-initial-active-before-edit.py', source)
+# This mutation is limited to our newly staged raw004 source, with raw003 exact before copies retained.
+with (N / 'scripts/week8_recovery_raw_authority.py').open('wb') as f:
+    f.write(new_source); f.flush(); os.fsync(f.fileno())
+out(N / 'AUTHOR_SOURCE_AST_DELTA_004.json', {
+    'before': source_ob, 'after': read(N / 'scripts/week8_recovery_raw_authority.py')[1],
+    'changed_existing_definitions': changed_defs, 'added_definitions': sorted(set(new_defs) - set(old_defs)),
+    'all_other_existing_definition_asts_exact': True, 'all_text_additions_reverse_to_raw003': True,
+    'canonical_check_existing_ast_expression_unchanged': True, 'legacy_functions': len(old_defs),
+    'source_or_test_execution': False,
+})
+print(json.dumps({'source_sha256': digest(new_source), 'source_bytes': len(new_source),
+                  'changed_existing_definitions': changed_defs, 'new_helpers': plan['new_helpers'],
+                  'new_globals': len(plan['new_globals']), 'unrun': True}))

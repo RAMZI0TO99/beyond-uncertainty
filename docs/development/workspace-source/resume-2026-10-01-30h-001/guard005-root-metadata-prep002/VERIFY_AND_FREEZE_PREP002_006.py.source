@@ -1,0 +1,145 @@
+"""Author read-only source/AST/metadata audit and exclusive package freeze.
+
+Does not compile, execute or import any inspected target source/definition.
+"""
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT=Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\guard005-root-metadata-prep002')
+WORK=ROOT.parent
+GUARD=WORK/'consumer-guard-test-runtime005'
+AUTHOR='/root/bootstrap_stage'
+FIELDS=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')
+
+def observe(path):
+    first=path.lstat()
+    assert stat.S_ISREG(first.st_mode) and first.st_nlink==1 and not first.st_file_attributes & 0x400 and 0<=first.st_size<=67108864
+    raw=lambda value:[getattr(value,key) for key in FIELDS]
+    with path.open('rb') as stream:
+        opened=os.fstat(stream.fileno());data=stream.read(first.st_size+1);last_open=os.fstat(stream.fileno())
+    last=path.lstat();p,f=raw(first),raw(opened)
+    assert p==raw(last) and f==raw(last_open) and p[:4]+p[5:]==f[:4]+f[5:] and p[4]==p[8] and len(data)==first.st_size
+    return data,dict(path=str(path),sha256=hashlib.sha256(data).hexdigest(),bytes=len(data),path_raw9=p,descriptor_raw9=f)
+
+def once(name,value):
+    data=(json.dumps(value,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii') if not isinstance(value,bytes) else value
+    with (ROOT/name).open('xb') as stream:stream.write(data)
+    assert observe(ROOT/name)[0]==data
+    return hashlib.sha256(data).hexdigest()
+
+def functions(data):
+    return {node.name:ast.dump(node,include_attributes=False) for node in ast.parse(data).body if isinstance(node,ast.FunctionDef)}
+
+def ps_function(text,name):
+    marker='function '+name+'('
+    start=text.index(marker)
+    candidates=[position for token in ('\nfunction ','\nif ([IO.Path]') for position in [text.find(token,start+len(marker))] if position>=0]
+    return text[start:min(candidates)]
+
+preservation=json.loads(observe(ROOT/'INPUT_PRESERVATION_002.json')[0])
+assert preservation['pair_count']==75 and len(preservation['original_copy_pairs'])==75
+pair_rows=[]
+for entry in preservation['original_copy_pairs']:
+    original,row=observe(Path(entry['original']['path']))
+    copied,copy=observe(Path(entry['copy']['path']))
+    assert original==copied and row==entry['original'] and copy==entry['copy'] and row['path_raw9'][1]!=copy['path_raw9'][1]
+    pair_rows.append(dict(original=row,copy=copy))
+old_template=observe(ROOT/'historical-prep001/capture-guard005-root-metadata.TEMPLATE.py')[0]
+template=observe(ROOT/'capture-guard005-root-metadata.TEMPLATE.py')[0]
+assert len(functions(template))==17 and functions(template)==functions(old_template)
+assert template.replace(b"PREP = WORK / 'guard005-root-metadata-prep002'",b"PREP = WORK / 'guard005-root-metadata-prep001'")==old_template
+old_writer=observe(ROOT/'historical-guard005/PREPARE_ROOT_GUARD005_ACTUAL_RECORDS_001.ps1')[0]
+new_writer=observe(ROOT/'PREPARE_ROOT_GUARD005_ACTUAL_RECORDS_002.ps1')[0]
+assert new_writer.replace(b"$Meta=Join-Path $Work 'guard005-root-metadata-prep002'",b"$Meta=Join-Path $Work 'guard005-root-metadata-prep001'")==old_writer
+parser=json.loads(observe(ROOT/'POWERSHELL_PARSER_AUDIT_002.json')[0])
+assert len(parser['rows'])==7 and all(row['errors']==[] for row in parser['rows'])
+python_rows=[]
+for path in sorted(ROOT.glob('*.py')):
+    data,row=observe(path);tree=ast.parse(data)
+    python_rows.append(dict(path=path.name,sha256=row['sha256'],functions=len([node for node in tree.body if isinstance(node,ast.FunctionDef)]),AST_parsed_only=True))
+ps_binding_probes=[]
+for name in ('WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005','SUPERVISE_ROOT_METADATA_BEFORE_005','WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_005','SUPERVISE_ROOT_METADATA_AFTER_005'):
+    data=observe(ROOT/(name+'.TEMPLATE.ps1'))[0];text=data.decode('utf-8')
+    bound=text
+    for key in ('BoundScriptSha256','BoundReviewSha256'):
+        pattern='(?m)^\\$'+key+r' = \$null\r?$'
+        assert len(re.findall(pattern,bound))==1
+        bound=re.sub(pattern,lambda match:'$'+key+" = '"+'0'*64+"'"+ ('\r' if match.group().endswith('\r') else ''),bound)
+    reverse=bound
+    for key in ('BoundScriptSha256','BoundReviewSha256'):
+        reverse=re.sub('(?m)^\\$'+key+r" = '[0-9a-f]{64}'\r?$",lambda match:'$'+key+' = $null'+ ('\r' if match.group().endswith('\r') else ''),reverse)
+    assert reverse.encode('utf-8')==data
+    ps_binding_probes.append(dict(path=name+'.TEMPLATE.ps1',slots=2,synthetic_text_only_byte_reversal=True,actual_binding_written=False))
+before_ps=observe(ROOT/'historical-guard005/SUPERVISE_ROOT_WHOLE_BEFORE_005.ps1')[0].decode('utf-8')
+parent_ps=observe(ROOT/'SUPERVISE_ROOT_WHOLE_AFTER_005.ps1')[0].decode('utf-8')
+producer_ps=observe(ROOT/'WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_005.ps1')[0].decode('utf-8')
+for name in ('Pin','Write-Once','Authorization-Stamp'):
+    assert ps_function(before_ps,name).strip()==ps_function(parent_ps,name).strip()==ps_function(producer_ps,name).strip()
+old_loop=before_ps[before_ps.index('$info = [Diagnostics.ProcessStartInfo]'):]
+new_loop=parent_ps[parent_ps.index('$info = [Diagnostics.ProcessStartInfo]'):]
+assert new_loop.replace('whole-after','whole-before').replace("phase='after'","phase='before'").replace('After-Authorization','Before-Authorization')==old_loop
+scope='COPIED_CONSUMER_GUARD_UNIT005_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+future_prep_names=['capture-guard005-root-metadata.BOUND.py','ACTUAL_SOURCE_BINDING_002.json','INDEPENDENT_METADATA_STATIC_REVIEW_005.json','INDEPENDENT_BOUND_METADATA_REVIEW_005.json','PHASE_PS_SOURCE_BINDING_002.json','ROOT_METADATA_AUTHORIZATION_BEFORE_005.json','ROOT_METADATA_AUTHORIZATION_AFTER_005.json','phase-before-005','phase-after-005']
+for stem in ('WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005','SUPERVISE_ROOT_METADATA_BEFORE_005','WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_005','SUPERVISE_ROOT_METADATA_AFTER_005'):future_prep_names.append(stem+'.BOUND.ps1')
+for phase in ('BEFORE','AFTER'):
+    for tail in ('PARENT_START_005.json','PARENT_TERMINAL_005.json','STDOUT_005.txt','STDERR_005.txt'):future_prep_names.append('ROOT_METADATA_'+phase+'_'+tail)
+# Source texts select ROOT_METADATA_PARENT_{START,TERMINAL}_{BEFORE,AFTER}, not an invented role spelling.
+future_prep_names=[name for name in future_prep_names if not name.startswith(('ROOT_METADATA_BEFORE_PARENT','ROOT_METADATA_AFTER_PARENT'))]
+for phase in ('BEFORE','AFTER'):
+    for kind in ('START','TERMINAL'):future_prep_names.append('ROOT_METADATA_PARENT_'+kind+'_'+phase+'_005.json')
+guard_future=['ROOT_WHOLE_BEFORE_AUTHORIZATION_005.json','ROOT_WHOLE_AFTER_AUTHORIZATION_005.json','whole-runtime-before','whole-runtime-after','ROOT_LAUNCH_START_005.json','ROOT_LAUNCH_TERMINAL_005.json','ROOT_EXECUTION_ACK_GUARD_UNIT005.json','ROOT_RESOURCE_SNAPSHOT_005.json','ROOT_COORDINATION_ACK_GUARD_UNIT005.json','ROOT_FIRST_LAUNCH_005.BOUND.ps1','ROOT_DRIVER_SCOPED_FINISHED_RECEIPT_005.json','ROOT_DRIVER_SCOPED_FINISHED_RECEIPT_PROVENANCE_005.json']
+for phase in ('BEFORE','AFTER'):
+    for tail in ('START_005.json','TERMINAL_005.json','STDOUT_005.txt','STDERR_005.txt'):guard_future.append('ROOT_WHOLE_'+phase+'_PARENT_'+tail)
+future_paths=list(dict.fromkeys([str(ROOT/name) for name in future_prep_names]+[str(GUARD/name) for name in guard_future]+[str(WORK.parent/'.tmp/cg14-005')]))
+for value in future_paths:
+    try:Path(value).lstat()
+    except FileNotFoundError:pass
+    else:raise AssertionError('actual future role already exists: '+value)
+after_source_data=json.loads(observe(ROOT/'WHOLE_AFTER_SOURCE_PREPARATION_004.json')[0])
+assert after_source_data['driver_finished_closed_key_count']==20
+actual={key:None for key in ('preparer_static_peer','bound_metadata_source','bound_metadata_source_peer','bound_phase_PS_source_peers','before_authorization17','before_capture','before_context8','before_runtime_selection5','whole_before_authorization15','whole_before_result','whole_before_acceptance','resource_snapshot','root_unit_ACK22','unit_bound_review22','unit_PS_late_review14','unit_actual_result_and_collection','unit_driver_finished20','unit_physical_ROOT_terminal18','whole_after_driver_receipt_bridge','whole_after_authorization15','whole_after_result','whole_after_acceptance','metadata_after_authorization17','metadata_after_capture','metadata_after_acceptance','final_context_freshness_and_owner_reconciliation')}
+contract=dict(schema_version=1,author=AUTHOR,status='FROZEN_SOURCE_ONLY_UNBOUND_UNRUN_DIFFERENT_REVIEW_REQUIRED',scope=scope,namespace=str(ROOT),spent001_preserved=True,spent001_cannot_replay_retimestamp_extend_TTL=True,
+    original_copy_pairs=75,original_metadata001_files=68,frozen_guard005_inputs=7,
+    metadata=dict(function_AST_count=17,function_ASTs_unchanged=True,template_only_namespace_delta=True,context_keys=8,runtime_selection_keys=5,phase_authorization_keys=17,source_bindings=9,source_role_selections=3,strict_tracked_paths=742,configurations=55,runtime_separately_guarded_files=4,whole_inventory_trees=0,normal_Git_status_only=True,ignored_clean_claim=False,intrinsic_context_freshness_seconds=600,intrinsic_metadata_owner_reserve_seconds=315,ROOT_parent_owner_reserve_seconds=350,source_and_protocol_reference_files=['capture-guard005-root-metadata.TEMPLATE.py','SOURCE_BINDING_PLAN_002.json','BIND_SOURCE_AND_PHASES_002.TEMPLATE.py']),
+    source_review_protocol=dict(preparer_peer_filename='INDEPENDENT_METADATA_STATIC_REVIEW_005.json',preparer_peer_verdict='PASS_STATIC_METADATA_PREPARATION_ONLY',bound_peer_filename='INDEPENDENT_BOUND_METADATA_REVIEW_005.json',bound_peer_verdict='PASS_STATIC_BOUND_METADATA_ONLY',bound_peer_exact9_keys=['actual_script_sha256','metadata_only','phase_set','record_type','reviewer','schema_version','source_author','source_bindings','verdict'],bound_peer_record_type='guard005_root_metadata_bound_source_review',phase_set=['before','after'],no_source_self_ACK_hash_cycle=True),
+    retained_parent=dict(base_python_isolated_flags=['-I','-S','-B','-X','utf8'],stdin_closed=True,hidden_no_shell=True,environment_removes_GIT_and_PYTHON_prefixes=True,one_thread_environment=True,stdout_stderr_caps=65536,cooperative_kill_seconds=300,cooperative_capture_seconds=315,final_direct_reap_wait_seconds=1,whole_parent_owner_reserve_seconds=350,retained_direct_process_only=True,OS_Job_or_descendant_cleanup_or_hard_IO_deadline_guaranteed=False),
+    typed_timestamp_roles=dict(metadata_context_and_runtime='Python canonical0or6 fractional digits +00:00',ROOT_phase_auth_and_parent_receipts='PowerShell genuine7 fractional digits +00:00; original Python metadata authorization parser permits0or7 only for PS role',legacy_owner='unchanged original Z producer separately pinned',all_records_need_independent_genuine_producer_closed_role_review=True),
+    after_scope_relationships=dict(metadata_after=dict(before_capture=str(ROOT/'phase-before-005/METADATA_CAPTURE_005.json'),unit_terminal=str(GUARD/'ROOT_LAUNCH_TERMINAL_005.json'),fresh_context_selection_is_separate=True,original_four_context_keys_must_match=['head','tracked_rows','git_metadata','configurations']),whole_after=dict(original_runtime_pointer=str(ROOT/'phase-before-005/RUNTIME4_METADATA_SELECTION_005.json'),original_context_pointer=str(ROOT/'phase-before-005/OPAQUE_CURRENT_CONTEXT_005.json'),same_before_pointer_hashes_required=True,before_result=str(GUARD/'whole-runtime-before/result.json'),original_driver_finished=str(WORK.parent/'.tmp/cg14-005/finished.json'),WORK_contained_byte_identical_driver_finished_copy=str(GUARD/'ROOT_DRIVER_SCOPED_FINISHED_RECEIPT_005.json'),copy_provenance=str(GUARD/'ROOT_DRIVER_SCOPED_FINISHED_RECEIPT_PROVENANCE_005.json'),same_original_copy_hash=True,receipt_keys=20,actual_accepted_methods_required=14,actual_subtest_counts_not_guessed=True,physical_unit_terminal_keys=18,physical_unit_terminal_expectedSHA_is_externalCLI_not_fifteenth_auth_field=True,whole_auth_keys=15,original_frozen_observer_driver_profile_unchanged=True,expected_whole_trees=2,whole_trees_observed_by_this_preparation=0,full_site_or_loaded_closure_claim=False)),
+    cap_domains=dict(metadata_source_and_PS_source_bytes=65536,phase_auth_bytes=65536,physical_parent_terminal_bytes=65536,original_opaque_context_bytes=1048576,original_runtime_selection_bytes=65536,whole_before_result_bytes=262144,driver_finished_original_and_copy_bytes=262144,driver_finished_cap_from_frozen_driver_MAX_RECEIPT=True,metadata_capture_bytes=2097152,all_PS_inputs_cap_before_opened_allocation=True,PS_FileInfo_identity_limitation='No nlink/inode/descriptor identity or atomic retained execution lock; different actual evidence review required.'),
+    root_writer=dict(path=str(ROOT/'PREPARE_ROOT_GUARD005_ACTUAL_RECORDS_002.ps1'),sole_functional_delta='Meta namespace prep001 -> prep002',existing6_function_sources_byte_exact=True,intrinsic_source_self_guard_added=False,Root_external_exact_source_pin_mandatory=True,old_partial_nominal_PS_comparisons_not_claimed_closed=True,different_actual_closed_canonical_role_review_before_EACH_stage=True,stage_names=['whole-before-auth','ack','bind-launch']),
+    efficiency_and_ROOT_GO=dict(review_utilities_ready_before_fresh_capture=True,no_after_AUTH_or_phase_namespace_precreation=True,context_remaining_at_unit_GO_min_seconds=450,unit_resource_max_age_seconds=60,unit_ROOT_cooperative_kill_seconds=420,remaining_after_capture_cleanup_budget_must_be_meaningful=True,original_before_context_must_still_be_fresh_through_whole_after_closure=True,Root_late_clock_resource_owner_all_role_review_before_each_entry=True,no_authorization_by_silence_or_this_package=True),actual=actual,future_paths_absent_at_author_metadata_observation=future_paths,
+    planned_controls_UNRUN=['healthy fresh before capture then expired original600s refuses; no replay','wrong namespace source/context/afterlink refuses','Python6 phase authorization refuses; genuinePS7 role','742/config55/runtime4 source drift between two reads refuses','duplicate/nonfinite JSON and bool integer types refuse','whole-after new metadata-AFTER pointers refuse; original BEFORE only','whole-after physical Root terminal substituted for scoped driver receipt refuses','outside-WORK original driver receipt cannot be pointer; exact sameSHA bridge only','driver14 pass vs count/bool/authority/ACK mutation before receipt copy refuses','Root unit terminal exit/failure/flags/PS timestamp mutation refuses','receipt original/copy bytes or metadata drift refuses before publication','missing or wrong externally selected original driver receipt SHA refuses','after producer one-use copy/provenance/auth collision refuses without overwrite','opened source/auth/result/receipt cap refuses before allocation','whole-after process source preserved300315 retained-handle semantics','context expires during original pointer proof refuses before retained child entry','healthy metadata-after compares four original context fields then refuses changed HEAD/index/config/runtime','source binding exact9+3 and two PS slot reversals; wrong peer aliases/role/selfcycle refuse'],target_compilation_import_definitions_tests_Git_FFI_capture_process_native_actions_executed=False,operational_or_native_or_fullQA_fit_authority=False)
+contract_sha=once('PIPELINE_SOURCE_CONTRACT_002.json',contract)
+source_names=['capture-guard005-root-metadata.TEMPLATE.py','BIND_SOURCE_AND_PHASES_002.TEMPLATE.py','PREPARE_ROOT_GUARD005_ACTUAL_RECORDS_002.ps1','WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005.TEMPLATE.ps1','SUPERVISE_ROOT_METADATA_BEFORE_005.TEMPLATE.ps1','WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_005.TEMPLATE.ps1','SUPERVISE_ROOT_METADATA_AFTER_005.TEMPLATE.ps1','WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_005.ps1','SUPERVISE_ROOT_WHOLE_AFTER_005.ps1']
+source_rows=[dict(relative_path=name,**{key:value for key,value in observe(ROOT/name)[1].items() if key in ('sha256','bytes')}) for name in source_names]
+audit=dict(schema_version=1,author=AUTHOR,status='AUTHOR_STATIC_AST_AND_METADATA_ONLY_NOT_INDEPENDENT_PASS',preserved_pairs=pair_rows,metadata17_function_ASTs_exact=True,metadata_template_namespace_exact_byte_reversal=True,Root_record_writer_Meta_only_exact_byte_reversal=True,PS_parser_source_count=7,PS_parser_errors=0,python_AST_rows=python_rows,PS_two_literal_synthetic_text_only_probes=ps_binding_probes,whole_after_parent_Pin_WriteOnce_UTC_and_retained_process_loop_exact_from59ec=True,driver_finished_keys_from_frozen_driver_AST=after_source_data['driver_finished_closed_keys'],source_rows=source_rows,target_execution=False)
+audit_sha=once('AUTHOR_SOURCE_AUDIT_002.json',audit)
+handoff=('Fresh Guard005 metadata/whole-after source preparation002\n\n'
+    'Status: UNBOUND/UNRUN. Different-author source review and every actual role/clock/ROOT GO remain mandatory. This package grants no execution or operational authority.\n\n'
+    'Spent001 ended before whole/unit entry when its actual before context expired09:47:39. All68 original files plus7 selected Guard005 sources are preserved as75 independent byte-identical copies. No replay, retimestamp, TTL extension, primary documentation edit or live source change occurred.\n\n'
+    'The metadata template changes only the fixed namespace; all17 functions remain AST-identical. Root writer002 changes only $Meta fromprep001 toprep002. Its existing partial PS nominal comparisons and lack of intrinsic self guard remain explicit: ROOT pins its actual source externally and a different reviewer checks closed/canonical genuine roles before EACH stage. Guard005 observer1bdaa/driver9f2a/profile606 remain exact/unentered.\n\n'
+    'Before/after metadata source writer/parent pairs retain9+3 Python bindings and two future PS pin literals. Their new actual source/peer/auth/capture records are absent. The UNRUN binder only writes exact-reversal source copies after proper different-author review; no AUTH or capture occurs during binding.\n\n'
+    'Metadata AFTER17 selects its ownprep002 BEFORE capture plus the physical Guard005 ROOT unit terminal. Whole AFTER15 instead retains the ORIGINAL BEFORE runtime/context paths AND SAME SHA values plus actual whole-before result. The actual driver finished receipt is outside WORK; ROOT approved a bounded create-once byte-identical copy inside Guard005, SAME SHA, with separate copy provenance. The producer requires independently selected actual accepted14 driver receipt and successful physical ROOT terminal before creating that copy/Auth. The observer receives the WORK-contained scoped receipt, never a physical terminal disguised as a receipt. No such copy/Auth/after namespace has been created.\n\n'
+    'Whole-after parent/producer enforce actual closed20 driver/18 physical terminal roles, types, scope/flags/source/ACK relationships and original context600s freshness. Full actual result/collection/subtests/rows/trees and authentic Root records must still be independently reconciled. Bridge/result role ceiling262144 is the unchanged frozen driver/observer receipt cap, not a guessed65KiB reduction. Other role-specific finite caps remain unchanged.\n\n'
+    'All7 PS sources parsed with zero errors. Target definitions, compilation, imports, Git, observer, unit tests, process/native/FFI actions did not run. Borrowed Pin/Write-Once/UTC source and whole-after retained process loop match59ec exceptphase naming. FileInfo guards do not prove nlink/inode/descriptor identity or atomic execution locks. Retained direct-child300/315/+1s supervision is cooperative; no Job, descendant-death or unconditional IO deadline claim.\n\n'
+    'Fresh pipeline: review utilities/source peers ready -> ROOT exact source bindings/review -> actual beforeAuth17+parent -> independent actual capture review -> actual wholeBeforeAuth15+parent and whole reconciliation -> fresh ACK22/bound22/PSlate14/resource<=60s + ROOT GO withcontextremaining>=450/meaningful after reserve -> copied14unit once -> independently reconcile actual finished/result/collection/RootTerminal -> actual after receipt bridge/Auth15+parent and whole-after review -> separate metadataAfter17+parent and comparison -> final original context/owner closure. No after role is precreated. Every step is ROOT-owned after actual review.\n\n'
+    f'Contract SHA256: {contract_sha}\nAuthor audit SHA256: {audit_sha}\n')
+handoff_sha=once('HANDOFF.md',handoff.encode('utf-8'))
+payloads=[]
+for path in sorted((path for path in ROOT.rglob('*') if path.is_file()),key=lambda path:path.relative_to(ROOT).as_posix()):
+    data,row=observe(path);payloads.append(dict(relative_path=path.relative_to(ROOT).as_posix(),sha256=row['sha256'],bytes=row['bytes']))
+manifest=dict(schema_version=1,author=AUTHOR,status='FROZEN_SOURCE_ONLY_UNBOUND_UNRUN_DIFFERENT_REVIEW_REQUIRED',payload_file_count=len(payloads),total_including_manifest=len(payloads)+1,original_copy_pair_count=75,source_file_count=len(source_names),PowerShell_parser_sources=7,Python_metadata_function_ASTs_unchanged=17,contract_sha256=contract_sha,audit_sha256=audit_sha,handoff_sha256=handoff_sha,files=payloads,actual_source_bindings_and_capture_authority=None,target_actions_executed=False)
+manifest_sha=once('STAGED_MANIFEST_002.json',manifest)
+for ordinal in range(2):
+    for row in payloads:
+        observed=observe(ROOT/row['relative_path'])[1]
+        assert observed['sha256']==row['sha256'] and observed['bytes']==row['bytes']
+    for pair in pair_rows:
+        assert observe(Path(pair['original']['path']))[1]==pair['original'] and observe(Path(pair['copy']['path']))[1]==pair['copy']
+print(json.dumps(dict(manifest_sha256=manifest_sha,payloads=len(payloads),total=len(payloads)+1,pairs=75,contract_sha256=contract_sha,audit_sha256=audit_sha,handoff_sha256=handoff_sha,sources=source_rows,target_actions_executed=False),sort_keys=True))

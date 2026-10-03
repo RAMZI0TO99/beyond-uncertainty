@@ -1,0 +1,467 @@
+"""UNBOUND one-use ROOT metadata preparation. Never imports project/guard code.
+
+Only a separately reviewed/bound ROOT invocation may capture current file/Git
+metadata. This is not a whole-runtime observer, guard test, policy or native gate.
+"""
+import argparse
+import hashlib
+import json
+import os
+import re
+import stat
+import subprocess
+import sys
+import threading
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+PROJECT = Path('D:/Aenv/pro2')
+WORK = PROJECT / 'resume-2026-10-01-30h-001'
+PREP = WORK / 'guard005-root-metadata-prep001'
+GUARD = WORK / 'consumer-guard-test-runtime005'
+LIVE = PROJECT / 'week8-recovery-controller-worktree'
+GIT = PROJECT / 'runtimes/git/mingw64/bin/git.exe'
+OWNER = WORK / 'OWNER_WORK_WINDOW_30H_20261001_001.json'
+OWNER_SHA = '3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff'
+OWNER_END = '2026-10-02T22:36:15Z'
+SCOPE = 'COPIED_CONSUMER_GUARD_UNIT005_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+ROLE_SHA = '63761e1f122b54d1b75a6884588ec94b6ffd9228df409ccc812f20d94c9809dd'
+PATHSET_SHA = '7cab1e72293f6450d290ee50408a5ce1992c0df22c3f8fd6a9dc159bc66da3c4'
+PATH_REFERENCE_SHA = 'd4d35ae3ad87f7feca0f4770192ce14877d6077ef9543d89b3878cc094863db1'
+AUTHOR = '/root/bootstrap_stage'
+REVIEWERS = frozenset(('/root/candidate_review', '/root/keepawake_stage',
+                       '/root/window_docs', '/root/raw_policy_worker'))
+RUNTIME4 = [
+    {'path': str(PROJECT / 'pro2/.venv/Scripts/python.exe'), 'sha256': '935016795f3e6908e75acbc2040a01e2e4cdb494a57c42f63a0d6eedb2372256', 'size': 254800},
+    {'path': str(GIT), 'sha256': 'c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9', 'size': 4344704},
+    {'path': str(PROJECT / 'pro2/.venv/pyvenv.cfg'), 'sha256': 'e4d43703e6bfd6ad7296ee63e3441af275a4b8a89d72796b316f6458f120e418', 'size': 290},
+    {'path': str(PROJECT / 'runtimes/week8-python313-frozen-001/python.exe'), 'sha256': '5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed', 'size': 105816},
+]
+BINDINGS = {
+    'guard_profile_sha256': None,
+    'source_projection_sha256': None,
+    'raw_source_sha256': None,
+    'source_manifest_sha256': None,
+    'source_peer_sha256': None,
+    'guard_harness_static_review_sha256': None,
+    'preparer_static_review_sha256': None,
+    'coordination_peer_reply_sha256': None,
+    'coordination_root_response_sha256': None,
+}
+UNIT_TERMINAL_RELATIVE = None
+COORDINATION_PEER_REPLY_RELATIVE = None
+COORDINATION_ROOT_RESPONSE_RELATIVE = None
+CONFIG_NAMES = ('pyproject.toml', 'setup.cfg', 'pytest.ini', 'pytest.toml', '.pytest.toml',
+                'tox.ini', 'conftest.py', 'sitecustomize.py', 'usercustomize.py', '.python-version', 'AGENTS.md')
+CONFIG_PARENTS = (Path('D:/'), Path('D:/Aenv'), PROJECT, WORK, GUARD)
+HEAD_PATHS = (
+    LIVE / '.git',
+    PROJECT / 'pro2/.git/worktrees/week8-recovery-controller-worktree/HEAD',
+    PROJECT / 'pro2/.git/worktrees/week8-recovery-controller-worktree/commondir',
+    PROJECT / 'pro2/.git/refs/heads/sol2-week8-recovery',
+)
+OPTIONAL_GIT = (PROJECT / 'pro2/.git/packed-refs', PROJECT / 'pro2/.git/config',
+                PROJECT / 'pro2/.git/worktrees/week8-recovery-controller-worktree/index')
+FILE_CAP = 8388608
+META_CAP = 1048576
+JSON_CAP = 2097152
+CONTEXT_CAP = 1048576
+RUNTIME_CAP = 65536
+GIT_CAPTURE_CAP = 1048576
+MAX_SECONDS = 300
+
+
+def require(ok, message):
+    if not ok:
+        raise RuntimeError(message)
+
+
+def digest(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, separators=(',', ':'),
+                       ensure_ascii=True, allow_nan=False) + '\n').encode('ascii')
+
+
+def hex64(value):
+    return type(value) is str and re.fullmatch('[0-9a-f]{64}', value) is not None
+
+
+def exact(value, keys, label):
+    require(type(value) is dict and set(value) == set(keys), label + ' keys differ')
+
+
+def decode(value):
+    def pairs(items):
+        result = {}
+        for key, item in items:
+            require(key not in result, 'duplicate JSON key')
+            result[key] = item
+        return result
+    return json.loads(value.decode('utf-8', errors='strict'), object_pairs_hook=pairs,
+                      parse_float=lambda value: (_ for _ in ()).throw(ValueError('JSON floats are outside this role grammar')),
+                      parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+
+
+def utc(value, *, ps_allowed=False):
+    require(type(value) is str, 'timestamp type differs')
+    width = 7 if ps_allowed else 6
+    require(re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{' + str(width) + r'})?\+00:00', value)
+            is not None and len(value) <= (33 if ps_allowed else 32), 'canonical UTC differs')
+    has_fraction = '.' in value
+    # datetime retains six digits; validate PS's seventh textual digit separately.
+    comparable = value[:26] + value[27:] if ps_allowed and has_fraction else value
+    parsed = datetime.fromisoformat(comparable)
+    require(parsed.isoformat(timespec='microseconds' if has_fraction else 'seconds') == comparable,
+            'UTC timestamp round-trip differs')
+    return parsed
+
+
+def raw(info):
+    names = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns',
+             'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')
+    row = [getattr(info, name, None) for name in names]
+    require(all(type(item) is int for item in row) and row[8] >= 0,
+            'required integer/birth raw9 differs')
+    return row
+
+
+def ancestors(path):
+    result = []
+    for parent in reversed(path.absolute().parents):
+        info = parent.lstat()
+        require(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+                and not info.st_file_attributes & 0x400, 'linked/reparse ancestor')
+        result.append((str(parent), info.st_dev, info.st_ino))
+    return result
+
+
+def absent(path):
+    chain = ancestors(path)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        require(ancestors(path) == chain, 'absence ancestor drift')
+        return True
+    return False
+
+
+def read(path, maximum, pin=None, *, runtime_role=False):
+    require(type(maximum) is int and 0 <= maximum <= FILE_CAP, 'read cap differs')
+    chain = ancestors(path)
+    before = path.lstat()
+    require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+            and not before.st_file_attributes & 0x400 and 0 <= before.st_size <= maximum,
+            'plain source/runtime metadata or pre-open cap differs')
+    with path.open('rb', buffering=0) as stream:
+        opened = os.fstat(stream.fileno())
+        require(opened.st_size == before.st_size and opened.st_nlink == 1
+                and stat.S_ISREG(opened.st_mode) and not opened.st_file_attributes & 0x400,
+                'opened plain metadata/cap differs')
+        a, b = raw(before), raw(opened)
+        mode_a, mode_b = a[5], b[5]
+        executable = runtime_role and str(path) in {r['path'] for r in RUNTIME4 if r['path'].endswith('.exe')}
+        if runtime_role:
+            fixed = next((row for row in RUNTIME4 if row['path'] == str(path)), None)
+            require(fixed is not None and pin == fixed['sha256'] and maximum == fixed['size'],
+                    'runtime mode exception requires fixed authenticated path/hash/size')
+        if executable:
+            require(mode_a & 0o111 == 0o111 and mode_b & 0o111 == 0
+                    and mode_a & ~0o111 == mode_b, 'fixed Windows executable mode role differs')
+        else:
+            require(mode_a == mode_b, 'ordinary cross-API mode differs')
+        require(a[:4] + [a[8], a[6], a[7]] == b[:4] + [b[8], b[6], b[7]]
+                and a[4] == a[8], 'Windows cross-API birth/identity differs')
+        data = stream.read(before.st_size + 1)
+        require(raw(os.fstat(stream.fileno())) == b, 'descriptor raw9 drift')
+    require(raw(path.lstat()) == a and ancestors(path) == chain and len(data) == before.st_size,
+            'pathname raw9/ancestor/length drift')
+    if pin is not None:
+        require(hex64(pin) and digest(data) == pin, 'authenticated bytes differ')
+    return data, {'path': str(path), 'sha256': digest(data), 'bytes': len(data),
+                  'path_raw9': a, 'descriptor_raw9': b}
+
+
+def write_once(path, value, maximum):
+    require(absent(path), 'one-use output already exists')
+    blob = encoded(value)
+    require(len(blob) <= maximum, 'bounded output exceeds cap')
+    chain = ancestors(path)
+    with path.open('xb') as stream:
+        stream.write(blob)
+        stream.flush()
+        os.fsync(stream.fileno())
+    require(ancestors(path) == chain, 'output ancestor drift')
+    observed, _ = read(path, maximum, digest(blob))
+    require(observed == blob, 'output readback differs')
+    return {'path': str(path), 'sha256': digest(blob)}
+
+
+def runtime_rows():
+    result = []
+    for fixed in RUNTIME4:
+        data, row = read(Path(fixed['path']), fixed['size'], fixed['sha256'], runtime_role=True)
+        require(len(data) == fixed['size'], 'fixed runtime size differs')
+        result.append(row)
+    return result
+
+
+def optional_rows(paths, required=()):
+    result = []
+    for path in paths:
+        if absent(path):
+            require(path not in required, 'required HEAD file absent')
+            result.append({'path': str(path), 'exists': False, 'identity': None})
+        else:
+            _, row = read(path, META_CAP)
+            result.append({'path': str(path), 'exists': True, 'identity': row})
+    return result
+
+
+def git(args, deadline):
+    fixed = RUNTIME4[1]
+    read(GIT, fixed['size'], fixed['sha256'], runtime_role=True)
+    controls = ['--no-pager', '--no-optional-locks', '-c', 'core.fsmonitor=false',
+                '-c', 'core.untrackedCache=false', '-c', 'core.hooksPath=NUL',
+                '-c', 'core.quotepath=false', '-c', 'safe.directory=' + LIVE.as_posix(), '-C', str(LIVE)]
+    allowed = {('rev-parse', 'HEAD'), ('ls-files', '-z'),
+               ('status', '--porcelain=v1', '--untracked-files=normal')}
+    require(tuple(args) in allowed, 'Git command outside finite read-only set')
+    env = {key: value for key, value in os.environ.items()
+           if not key.upper().startswith(('GIT_', 'PYTHON'))}
+    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull,
+               GIT_CONFIG_NOSYSTEM='1', GIT_TERMINAL_PROMPT='0', LC_ALL='C')
+    child = subprocess.Popen([str(GIT), *controls, *args], env=env,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             creationflags=subprocess.CREATE_NO_WINDOW)
+    chunks = [[], []]
+    failures = []
+    def pump(stream, index):
+        count = 0
+        try:
+            while True:
+                blob = stream.read(65536)
+                if not blob:
+                    break
+                count += len(blob)
+                if count > GIT_CAPTURE_CAP:
+                    failures.append('Git bounded capture overflow')
+                    break
+                chunks[index].append(blob)
+        except Exception as error:
+            failures.append(type(error).__name__)
+    threads = [threading.Thread(target=pump, args=(stream, index), daemon=True)
+               for index, stream in enumerate((child.stdout, child.stderr))]
+    for thread in threads:
+        thread.start()
+    try:
+        limit = min(deadline, time.monotonic() + 30)
+        while child.poll() is None and not failures and time.monotonic() < limit:
+            time.sleep(0.02)
+        if child.poll() is None:
+            child.kill()
+        code = child.wait(timeout=5)
+        for thread in threads:
+            thread.join(timeout=5)
+        require(not failures and all(not thread.is_alive() for thread in threads)
+                and code == 0, 'Git timeout/output/exit refusal')
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(timeout=5)
+        child.stdout.close()
+        child.stderr.close()
+    stdout, stderr = (b''.join(value) for value in chunks)
+    require(not stderr, 'Git stderr must be empty')
+    read(GIT, fixed['size'], fixed['sha256'], runtime_role=True)
+    return stdout
+
+
+def snapshot(paths, deadline):
+    runtime = runtime_rows()
+    metadata = optional_rows(HEAD_PATHS + OPTIONAL_GIT, HEAD_PATHS)
+    configurations = optional_rows(tuple(parent / name for parent in CONFIG_PARENTS for name in CONFIG_NAMES))
+    head = git(('rev-parse', 'HEAD'), deadline).decode('ascii').strip()
+    require(re.fullmatch('[0-9a-f]{40}', head) is not None, 'actual HEAD differs')
+    sequence = git(('ls-files', '-z'), deadline)
+    actual_paths = [value.decode('utf-8', errors='strict') for value in sequence.split(b'\0') if value]
+    require(actual_paths == paths, 'current742 Git sequence differs')
+    status = git(('status', '--porcelain=v1', '--untracked-files=normal'), deadline)
+    rows = []
+    for relative in paths:
+        require(time.monotonic() < deadline, 'metadata cooperative deadline expired')
+        _, row = read(LIVE / relative, FILE_CAP)
+        row['path'] = relative
+        rows.append(row)
+    require(read(HEAD_PATHS[-1], 128)[0].decode('ascii').strip() == head, 'actual branch HEAD bytes differ')
+    return {'head': head, 'tracked_rows': rows, 'git_metadata': metadata,
+            'configurations': configurations, 'runtime4': runtime,
+            'porcelain_normal': status.decode('utf-8', errors='strict').splitlines(),
+            'tracked_sequence_sha256': digest(sequence)}
+
+
+def main():
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument('--phase', choices=('before', 'after'), required=True)
+    parser.add_argument('--expected-script-sha256', required=True)
+    parser.add_argument('--expected-review-sha256', required=True)
+    parser.add_argument('--expected-authorization-sha256', required=True)
+    args = parser.parse_args()
+    require(os.name == 'nt' and sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode,
+            'fixed isolated Windows metadata runtime required')
+    require(all(hex64(getattr(args, name)) for name in ('expected_script_sha256', 'expected_review_sha256', 'expected_authorization_sha256')),
+            'external CLI pins malformed')
+    _, self_row = read(Path(__file__).absolute(), 65536, args.expected_script_sha256)
+    require(Path(__file__).absolute() == PREP / 'capture-guard005-root-metadata.BOUND.py',
+            'fixed separately reviewed bound source required')
+    run = PREP / ('phase-' + args.phase + '-005')
+    require(absent(run), 'phase already consumed')
+    run.mkdir()
+    start = datetime.now(timezone.utc).isoformat()
+    error = None
+    try:
+        write_once(run / 'started.json', {'schema_version': 1, 'phase': args.phase, 'started_utc': start,
+                   'script_sha256': args.expected_script_sha256, 'metadata_only': True}, 65536)
+        require(all(hex64(value) for value in BINDINGS.values()), 'future source/coordination bindings unbound')
+        require(UNIT_TERMINAL_RELATIVE == 'ROOT_LAUNCH_TERMINAL_005.json'
+                and type(UNIT_TERMINAL_RELATIVE) is str, 'fixed future ROOT unit terminal role unbound/differs')
+        review_bytes, review_row = read(PREP / 'INDEPENDENT_BOUND_METADATA_REVIEW_005.json', JSON_CAP, args.expected_review_sha256)
+        review = decode(review_bytes)
+        exact(review, ('schema_version', 'record_type', 'reviewer', 'source_author', 'verdict', 'actual_script_sha256', 'source_bindings', 'phase_set', 'metadata_only'), 'bound metadata review')
+        require(all(type(review[name]) is str for name in ('record_type', 'reviewer', 'source_author', 'verdict', 'actual_script_sha256')),
+                'bound review nominal strings differ')
+        require(type(review['schema_version']) is int and review['schema_version'] == 1
+                and review['record_type'] == 'guard005_root_metadata_bound_source_review'
+                and review['reviewer'] in REVIEWERS and review['source_author'] == AUTHOR
+                and review['verdict'] == 'PASS_STATIC_BOUND_METADATA_ONLY'
+                and review['actual_script_sha256'] == args.expected_script_sha256
+                and review['source_bindings'] == BINDINGS and review['phase_set'] == ['before', 'after']
+                and review['metadata_only'] is True, 'independent bound review differs')
+        auth_bytes, auth_row = read(PREP / ('ROOT_METADATA_AUTHORIZATION_' + args.phase.upper() + '_005.json'), JSON_CAP,
+                                   args.expected_authorization_sha256)
+        auth = decode(auth_bytes)
+        exact(auth, ('schema_version', 'record_type', 'author', 'decision', 'phase', 'created_utc', 'owner_sha256', 'owner_end_utc',
+                     'script_sha256', 'bound_review_sha256', 'profile_sha256', 'source_projection_sha256', 'coordination_peer_reply_sha256',
+                     'coordination_root_response_sha256', 'before_capture', 'unit_terminal', 'scope'), 'ROOT metadata authorization')
+        require(all(type(auth[name]) is str for name in ('record_type', 'author', 'decision', 'phase', 'created_utc', 'owner_sha256',
+                    'owner_end_utc', 'script_sha256', 'bound_review_sha256', 'profile_sha256', 'source_projection_sha256',
+                    'coordination_peer_reply_sha256', 'coordination_root_response_sha256', 'scope')),
+                'authorization nominal strings differ')
+        require(type(auth['schema_version']) is int and auth['schema_version'] == 1
+                and auth['record_type'] == 'root_guard005_metadata_phase_authorization'
+                and auth['author'] == '/root' and auth['decision'] == 'capture_current_metadata_once'
+                and auth['phase'] == args.phase and auth['scope'] == SCOPE
+                and auth['owner_sha256'] == OWNER_SHA and auth['owner_end_utc'] == OWNER_END
+                and auth['script_sha256'] == args.expected_script_sha256 and auth['bound_review_sha256'] == args.expected_review_sha256,
+                'ROOT phase authorization differs')
+        require(0 <= (datetime.now(timezone.utc) - utc(auth['created_utc'], ps_allowed=True)).total_seconds() <= 600,
+                'fresh phase authorization required')
+        for key in ('profile_sha256', 'source_projection_sha256', 'coordination_peer_reply_sha256', 'coordination_root_response_sha256'):
+            binding = 'guard_profile_sha256' if key == 'profile_sha256' else key
+            require(type(auth[key]) is str and hex64(auth[key]) and auth[key] == BINDINGS[binding], 'authorization external binding differs')
+        owner_bytes, owner_row = read(OWNER, 65536, OWNER_SHA)
+        owner = decode(owner_bytes)
+        require(owner['work_end_utc'] == OWNER_END and datetime.now(timezone.utc) < datetime(2026, 10, 2, 22, 36, 15, tzinfo=timezone.utc),
+                'owner interval expired')
+        profile_bytes, profile_row = read(GUARD / 'GUARD_RUNTIME_PROFILE_005.json', JSON_CAP, BINDINGS['guard_profile_sha256'])
+        profile = decode(profile_bytes)
+        require(profile['scope'] == SCOPE and profile['runtime4_roles'] == RUNTIME4
+                and profile['runtime_roles_projection_sha256'] == ROLE_SHA, 'actual005 profile/runtime roles differ')
+        cfg = profile['context_profile']
+        require(type(cfg) is dict and type(cfg['tracked_count']) is int and cfg['tracked_count'] == 742
+                and str(Path(cfg['live_root'])) == str(LIVE)
+                and cfg['historical_authenticated_pathset_sha256'] == PATHSET_SHA
+                and [str(Path(value)) for value in cfg['head_paths']] == [str(value) for value in HEAD_PATHS]
+                and [str(Path(value)) for value in cfg['optional_git_metadata_paths']] == [str(value) for value in OPTIONAL_GIT]
+                and [str(Path(value)) for value in cfg['configuration_parents']] == [str(value) for value in CONFIG_PARENTS]
+                and cfg['configuration_names'] == list(CONFIG_NAMES)
+                and all(type(cfg[name]) is int for name in ('maximum_file_bytes', 'maximum_git_metadata_bytes', 'maximum_opaque_context_bytes'))
+                and cfg['maximum_file_bytes'] == FILE_CAP and cfg['maximum_git_metadata_bytes'] == META_CAP
+                and cfg['maximum_opaque_context_bytes'] == CONTEXT_CAP,
+                'actual005 finite context profile differs')
+        for relative in (COORDINATION_PEER_REPLY_RELATIVE, COORDINATION_ROOT_RESPONSE_RELATIVE):
+            require(type(relative) is str and 0 < len(relative) <= 399 and '\\' not in relative
+                    and not Path(relative).is_absolute()
+                    and all(part not in ('', '.', '..') and ':' not in part for part in relative.split('/')),
+                    'actual coordination role paths unbound/noncanonical')
+        pinned_inputs = (
+            (GUARD / 'SOURCE_PROJECTION_005.json', 'source_projection_sha256'),
+            (GUARD / 'inputs/raw003-source.bytes', 'raw_source_sha256'),
+            (GUARD / 'inputs/SOURCE_STAGED_MANIFEST_003.json', 'source_manifest_sha256'),
+            (GUARD / 'inputs/ACTUAL_SOURCE_PEER_003.json', 'source_peer_sha256'),
+            (GUARD / 'INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_005.json', 'guard_harness_static_review_sha256'),
+            (PREP / 'INDEPENDENT_METADATA_STATIC_REVIEW_005.json', 'preparer_static_review_sha256'),
+            (WORK / COORDINATION_PEER_REPLY_RELATIVE, 'coordination_peer_reply_sha256'),
+            (WORK / COORDINATION_ROOT_RESPONSE_RELATIVE, 'coordination_root_response_sha256'),
+        )
+        input_rows = [self_row, review_row, auth_row, owner_row, profile_row]
+        input_rows += [read(path, JSON_CAP, BINDINGS[key])[1] for path, key in pinned_inputs]
+        reference = decode(read(PREP / 'AUTHENTICATED_742_PATH_SEQUENCE_005.json', JSON_CAP, PATH_REFERENCE_SHA)[0])
+        paths = reference['paths']
+        require(type(paths) is list and all(type(value) is str for value in paths)
+                and len(paths) == len(set(value.casefold() for value in paths)) == 742
+                and paths == sorted(paths) and digest(encoded(paths)) == PATHSET_SHA
+                and all(type(value) is str and len(value) <= 399 and '\\' not in value and not value.startswith('/')
+                        and all(part not in ('', '.', '..') and ':' not in part for part in value.split('/')) for value in paths),
+                'authenticated742 path-only reference differs')
+        before_capture = None
+        if args.phase == 'before':
+            require(auth['before_capture'] is None and auth['unit_terminal'] is None
+                    and absent(PREP / 'phase-after-005') and absent(PREP / 'ROOT_METADATA_AUTHORIZATION_AFTER_005.json'),
+                    'after phase must not be precreated')
+        else:
+            for value in (auth['before_capture'], auth['unit_terminal']):
+                exact(value, ('path', 'sha256'), 'after prerequisite pointer')
+                require(type(value['path']) is str and hex64(value['sha256']), 'after prerequisite pointer type')
+            require(auth['before_capture']['path'] == str(PREP / 'phase-before-005/METADATA_CAPTURE_005.json'), 'fixed before pointer differs')
+            require(type(UNIT_TERMINAL_RELATIVE) is str and UNIT_TERMINAL_RELATIVE == 'ROOT_LAUNCH_TERMINAL_005.json'
+                    and auth['unit_terminal']['path'] == str(GUARD / UNIT_TERMINAL_RELATIVE), 'future unit terminal role unbound/differs')
+            before_capture = decode(read(Path(auth['before_capture']['path']), JSON_CAP, auth['before_capture']['sha256'])[0])
+            read(Path(auth['unit_terminal']['path']), JSON_CAP, auth['unit_terminal']['sha256'])
+        require(Path(sys.executable).absolute() in (Path(RUNTIME4[0]['path']), Path(RUNTIME4[3]['path'])), 'actual runtime image path differs')
+        require((datetime(2026, 10, 2, 22, 36, 15, tzinfo=timezone.utc) - datetime.now(timezone.utc)).total_seconds()
+                >= MAX_SECONDS + 15, 'metadata phase owner reserve insufficient')
+        deadline = time.monotonic() + MAX_SECONDS
+        first = snapshot(paths, deadline)
+        second = snapshot(paths, deadline)
+        require(first == second, 'current742/HEAD/index/config/runtime/status changed between paired reads')
+        for row in input_rows:
+            _, fresh = read(Path(row['path']), JSON_CAP, row['sha256'])
+            require(fresh == row, 'bound input bytes/raw9 drift during capture')
+        if before_capture is not None:
+            old_context = decode(read(Path(before_capture['context']['path']), CONTEXT_CAP, before_capture['context']['sha256'])[0])
+            require(all(old_context[key] == first[key] for key in ('head', 'tracked_rows', 'git_metadata', 'configurations')),
+                    'before-to-after current context drift')
+        require(datetime.now(timezone.utc) < datetime(2026, 10, 2, 22, 36, 15, tzinfo=timezone.utc)
+                and 0 <= (datetime.now(timezone.utc) - utc(auth['created_utc'], ps_allowed=True)).total_seconds() <= 600,
+                'owner/authorization expired before metadata publication')
+        stamp = datetime.now(timezone.utc).isoformat()
+        context = {'schema_version': 1, 'scope': SCOPE, 'captured_utc': stamp,
+                   'runtime_roles_projection_sha256': ROLE_SHA,
+                   **{key: first[key] for key in ('head', 'tracked_rows', 'git_metadata', 'configurations')}}
+        context_ref = write_once(run / 'OPAQUE_CURRENT_CONTEXT_005.json', context, CONTEXT_CAP)
+        runtime = {'schema_version': 1, 'scope': SCOPE, 'captured_utc': stamp,
+                   'entries': first['runtime4'], 'context_selection': context_ref}
+        runtime_ref = write_once(run / 'RUNTIME4_METADATA_SELECTION_005.json', runtime, RUNTIME_CAP)
+        result = {'schema_version': 1, 'phase': args.phase, 'started_utc': start, 'captured_utc': stamp,
+                  'context': context_ref, 'runtime_selection': runtime_ref,
+                  'head': first['head'], 'porcelain_normal': first['porcelain_normal'],
+                  'paired742_and_git_config_runtime_matched': True, 'bound_inputs': input_rows,
+                  'metadata_only': True, 'whole_inventory_trees_observed': 0,
+                  'guard_or_test_or_native_executed': False, 'operational_authority_granted': False}
+        write_once(run / 'METADATA_CAPTURE_005.json', result, JSON_CAP)
+    except BaseException as failure:
+        error = failure
+        raise
+    finally:
+        write_once(run / 'terminal.json', {'schema_version': 1, 'phase': args.phase, 'finished_utc': datetime.now(timezone.utc).isoformat(),
+                   'status': 'REFUSED' if error is not None else 'CAPTURED_METADATA_ONLY',
+                   'error_type': None if error is None else type(error).__name__,
+                   'guard_or_test_or_native_executed': False, 'operational_authority_granted': False}, 65536)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,85 @@
+"""Stdlib staging editor only. It never imports or executes any staged helper."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+ROOT = Path(r'D:\Aenv\pro2')
+FRONT = ROOT / 'resume-2026-10-01-30h-001/native-attempt013-front-001'
+PATH = FRONT / 'native_successor_front_common_013_001.py.template'
+text = PATH.read_text(encoding='utf-8')
+tree = ast.parse(text)
+
+def assigned(name):
+    node = next(n for n in tree.body if isinstance(n, ast.Assign)
+                and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name)
+    return node, json.loads(node.value.args[0].value)
+
+def replace_json(name, value):
+    global text
+    node, _ = assigned(name)
+    lines = text.splitlines(keepends=True)
+    payload = json.dumps(value, sort_keys=True, separators=(',', ':'))
+    lines[node.lineno - 1:node.end_lineno] = [name + ' = json.loads(' + repr(payload) + ')\n']
+    text = ''.join(lines)
+
+_, facts = assigned('PROGRAMMATIC_FACTS')
+oldrelease = json.loads((ROOT / 'resume-2026-09-28-001/controller-release-007-proposal016.json').read_bytes())
+sourcefields = {'EntrySha256', 'HelperSha256', 'InspectorSha256', 'WorkerSha256',
+                'FitChildSha256', 'NativeLauncherSha256', 'OuterSha256'}
+facts['provenance_fields'] = sorted({k for k in oldrelease if k.endswith('Sha256')}
+                                  - sourcefields - {'FinalCandidateManifestSha256', 'NewOwnerWindowSha256'})
+facts['retained_release_fields'] = {k: oldrelease[k] for k in (
+    'Proposal014DocumentationApplicationSha256', 'Proposal015DocumentationApplicationSha256',
+    'Adjudicate010FinalRefusalSha256', 'OwnerWindow08Sha256')}
+common = {'publication_schema_version', 'record_type', 'created_at_utc', 'helper_sha256',
+          'output_root', 'bindings', 'release_provenance_bindings', 'owner_sha256',
+          'operational_authority_granted', 'public_action_performed',
+          'historical_evidence_modified', 'project_code_imported_or_executed', 'record_digest'}
+facts['external_proof_keys'] = sorted(common | {
+    'intent_sha256', 'publisher_sha256', 'publication_end_sha256', 'files',
+    'attestation_record_digest', 'successor', 'changed_paths', 'attestation_sha256',
+    'input_hashes', 'runtime', 'verification_observations', 'native_gate_still_required'})
+incident = json.loads((ROOT / facts['historical_records']['incident.json']['path']).read_bytes())
+canon = lambda d: json.dumps(d, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('ascii')
+authority = incident['authority']
+no_modules = {k: v for k, v in authority.items() if k != 'loaded_controller_modules'}
+rows = json.loads((FRONT / 'predecessor-tracked-rows-001.json').read_bytes())
+# Every current source path is in this immutable full742 path set. A module id
+# cannot be longer than its corresponding dotted source path; escape expansion
+# is accounted for by canonicalizing a maximal placeholder row.
+max_rel = max(len(row['path']) for row in rows)
+max_path = len(str(ROOT / 'week8-recovery-controller-worktree')) + 1 + max_rel
+max_module = max_rel
+max_row = canon({'module': 'x' * max_module, 'path': 'x' * max_path,
+                 'sha256': 'f' * 64, 'git_blob': 'f' * 40})
+facts['readiness_size_basis'] = {
+    'tracked_row_bound': 742, 'historical_raw_bytes': len(canon(authority['preimport_authority_record'])),
+    'historical_authority_without_modules_bytes': len(canon(no_modules)),
+    'max_loaded_module_row_bytes': len(max_row), 'max_relative_path_characters': max_rel,
+    'fixed_config_bytes': len(canon(facts['frozen_config'])),
+    'fixed_protocol_structural_allowance_bytes': 16384,
+}
+status_verdict = json.loads((ROOT / 'resume-2026-09-28-001/native-status-012-verification-001.json').read_bytes())
+facts['historical_counts'] = status_verdict['status']['counts']
+facts['historical_inspector_digest'] = incident['inventory']['control']['old_source_inspector']['inspector_digest']
+replace_json('PROGRAMMATIC_FACTS', facts)
+tree = ast.parse(text)
+_, schema = assigned('BINDING_SCHEMA')
+schema.update(native_review_path='path', native_review_sha256='sha256', release_provenance='provenance')
+replace_json('BINDING_SCHEMA', schema)
+tree = ast.parse(text)
+_, proof_bindings = assigned('PROOF_BINDINGS')
+proof_bindings['native_review_sha256'] = 'native_review_sha256'
+replace_json('PROOF_BINDINGS', proof_bindings)
+ast.parse(text)
+PATH.write_text(text, encoding='utf-8', newline='\n')
+(FRONT / 'FRONT_BINDINGS_UNBOUND_001.json').write_text(
+    json.dumps({name: None for name in sorted(schema)}, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+for path in FRONT.glob('*.ps1.template'):
+    ps = path.read_text(encoding='utf-8')
+    if '$FrontBindings = [ordered]@{' in ps:
+        marker = '$FrontBindings = [ordered]@{\n'
+        ps = ps.replace(marker, marker + '    native_review_path = $null\n    native_review_sha256 = $null\n    release_provenance = $null\n', 1)
+        path.write_text(ps, encoding='utf-8', newline='\n')
+print(json.dumps({'binding_slots':len(schema), 'readiness_size_basis':facts['readiness_size_basis']}))

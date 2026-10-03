@@ -1,0 +1,219 @@
+"""Own finite documentation Source staging; no publisher or target call."""
+import ast
+import datetime as dt
+from decimal import Decimal
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+
+ROOT=Path('D:/Aenv/pro2')
+WORK=ROOT/'resume-2026-10-03-continuation001'
+OWN=WORK/'root-docs-major035'
+OLD=WORK/'root-docs-major034'
+AUTHOR='/root/actual_record_checker'
+PRIMARY=('AGENTS.md','HANDOFF.md','START_HERE.md','resume-2026-09-28-001/SESSION.md','resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md')
+CHECKPOINT='resume-2026-10-03-continuation001/CONTINUATION_CHECKPOINT_006.md'
+MAXIMUM=8388608
+STAMP=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds')
+KEYS=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')
+def need(v,m):
+    if not v:raise ValueError(m)
+def sha(b):return hashlib.sha256(b).hexdigest()
+def wire(v):return (json.dumps(v,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def raw(s):
+    r=[getattr(s,k,None)for k in KEYS];need(all(type(v)is int for v in r),'typed raw9')
+    return r
+def observe(p):
+    a=p.lstat();ar=raw(a);need(stat.S_ISREG(a.st_mode)and a.st_nlink==1 and not a.st_file_attributes&1024 and 0<=a.st_size<=MAXIMUM,'plain bounded input')
+    chain=[]
+    for q in p.parents:
+        s=q.lstat();need(stat.S_ISDIR(s.st_mode)and not stat.S_ISLNK(s.st_mode)and not s.st_file_attributes&1024,'plain ancestor')
+        chain.append([str(q),s.st_dev,s.st_ino])
+    with p.open('rb')as h:
+        s=os.fstat(h.fileno());hr=raw(s);need(ar[:4]+ar[5:]==hr[:4]+hr[5:]and ar[4]==ar[8],'cross API8 excludes ctime/path birth')
+        data=h.read(MAXIMUM+1);need(raw(os.fstat(h.fileno()))==hr,'same descriptor raw9')
+    need(raw(p.lstat())==ar and len(data)==ar[2]and len(data)<=MAXIMUM,'same path raw9/bytes')
+    need(chain==[[str(q),q.lstat().st_dev,q.lstat().st_ino]for q in p.parents],'ancestor identities')
+    return data,dict(path=str(p),bytes=len(data),sha256=sha(data),path_raw9=ar,descriptor_raw9=hr)
+def decode(b,physical=False):
+    def pairs(rows):
+        d={}
+        for k,v in rows:need(k not in d,'duplicate JSON key');d[k]=v
+        return d
+    def bad(v):raise ValueError('ordinary float/nonfinite Source JSON')
+    return json.loads(b,object_pairs_hook=pairs,parse_float=Decimal if physical else bad,parse_constant=bad)
+def once(p,b):
+    need(p.is_relative_to(OWN)and type(b)is bytes and len(b)<=MAXIMUM and not p.exists(),'own createonce Source')
+    p.parent.mkdir(parents=True,exist_ok=True)
+    with p.open('xb')as h:need(h.write(b)==len(b),'complete own write');h.flush();os.fsync(h.fileno())
+    need(observe(p)[0]==b,'own readback')
+def pointer(p,b):return dict(path=p.relative_to(ROOT).as_posix(),bytes=len(b),sha256=sha(b))
+def AST(n):return ast.dump(n,include_attributes=False)
+
+need(not (OWN/'STAGED_DOCUMENTATION_MANIFEST_035_001.json').exists(),'new Source stage only')
+need(not (ROOT/CHECKPOINT).exists(),'fresh checkpoint absent')
+old_manifest_body,_=observe(OLD/'STAGED_DOCUMENTATION_MANIFEST_034_001.json')
+need(sha(old_manifest_body)=='1a73af8a6e5dd49dde9446ff6355c2fe230140971bfe0853ce5f2ed82e03d34d','selected034 Source manifest')
+old_manifest=decode(old_manifest_body)
+selection_body,_=observe(OLD/'ROOT_CREATION_SELECTION_034_001.json');selection=decode(selection_body,physical=True)
+need(selection['author']=='/root'and selection['verdict']=='SELECTED_GENUINE_DIFFERENT_CREATION_ACCEPTANCE'and selection['creation_review']['sha256']=='bd59d4beca4c277f2eb9ca02fbf1c26f7008cb82326a6274deec866c026386e5','genuine034 creation selection')
+baseline={}
+for relative,row in zip(PRIMARY,old_manifest['primaries'],strict=True):
+    need(relative==row['destination'],'exact034 primary order');current,_=observe(ROOT/relative)
+    candidate,_=observe(ROOT/row['candidate']['path'])
+    need(current==candidate and sha(current)==row['candidate']['sha256']and len(current)==row['candidate']['bytes'],'current034 candidate baseline exact')
+    baseline[relative]=current
+
+old_publisher,_=observe(OLD/'PUBLISH_MAJOR034_DOCS_001.py')
+need(sha(old_publisher)=='ca34fbead31440147a60e51b6a26aa196755c7ae284ed3d31f48954a6e728ac8','unchanged034 publisher')
+substitutions=[(b'034',b'035'),(b'CONTINUATION_CHECKPOINT_005.md',b'CONTINUATION_CHECKPOINT_006.md')]
+publisher=old_publisher;declared=[]
+for a,b in substitutions:
+    count=publisher.count(a);need(count>0,'declared publisher identity');declared.append(dict(original=a.decode(),selected=b.decode(),occurrences=count));publisher=publisher.replace(a,b)
+reversed_body=publisher
+for a,b in reversed(substitutions):reversed_body=reversed_body.replace(b,a)
+need(reversed_body==old_publisher,'exact publisher byte reversal')
+t0,t1=ast.parse(old_publisher),ast.parse(publisher)
+f0={n.name:AST(n)for n in t0.body if isinstance(n,ast.FunctionDef)};f1={n.name:AST(n)for n in t1.body if isinstance(n,ast.FunctionDef)}
+changed=[n for n in f0 if f0[n]!=f1[n]];need(set(f0)==set(f1)and changed==['main'],'publisher guard bodies inherited')
+publisher_path=OWN/'PUBLISH_MAJOR035_DOCS_001.py';once(publisher_path,publisher)
+
+selected=[
+ 'OWNER_CONTINUATION_20261003_001.json',
+ 'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json',
+ 'EXECUTION_LEASE_GG6_M3_001.json',
+ 'CONTINUATION_CHECKPOINT_005.md',
+ 'root-docs-major034/STAGED_DOCUMENTATION_MANIFEST_034_001.json',
+ 'root-docs-major034/PUBLISH_MAJOR034_DOCS_001.py',
+ 'root-docs-major034/ROOT_CREATION_SELECTION_034_001.json',
+ 'root-docs-major034/ROOT_PUBLISH_RECEIPT_034.json',
+ 'root-docs-independent-major034/INDEPENDENT_MAJOR034_PREPUBLICATION_SOURCE_REVIEW_001.json',
+ 'root-docs-independent-major034/INDEPENDENT_MAJOR034_CREATION_REVIEW_001.json',
+ 'root-docs-independent-major034/POST_MAJOR034_CREATION_REVIEW_001.json',
+ 'root-guard006-pipeline-prep001/BIND_ROOT_PIPELINE_SOURCE_003.TEMPLATE.py',
+ 'root-guard006-pipeline-prep001/SOURCE_BINDER_MANIFEST_003.json',
+ 'root-guard006-pipeline-prep001/SOURCE_BINDING_CONTRACT_003.json',
+ 'root-guard006-pipeline-prep001/ROOT_PIPELINE_BINDING_001.json',
+ 'root-guard006-pipeline-prep001/ROOT_PIPELINE_BINDING_002.json',
+ 'root-guard006-pipeline-prep001/ROOT_PIPELINE_SOURCE_BINDING_PROVENANCE_002.json',
+ 'root-guard006-pipeline-prep001/RUN_ROOT_METADATA_PIPELINE_007.BOUND.ps1',
+ 'root-guard006-pipeline-prep001/ROOT_BINDER003_PHYSICAL_SOURCE_PRODUCER_001.json',
+ 'root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_002.json',
+ 'root-pipeline-independent-review001/actual-source-002/INDEPENDENT_ACTUAL_ROOT_SOURCE_DETAILS_002.json',
+ 'root-pipeline-independent-review001/actual-source-002/POST_ACTUAL_ROOT_SOURCE_REVIEW_002.json',
+ 'root-pipeline-independent-review001/actual-source-002/HANDOFF_ACTUAL_ROOT_SOURCE_002.md',
+ 'utility010-regression-prep001/AUTHOR_FROZEN_SOURCE_MANIFEST_001.json',
+ 'utility010-regression-prep001/SOURCE_CONTRACT_001.json',
+ 'utility010-regression-prep001/PLANNED_TEST_PACKET_001.json',
+ 'utility010-regression-independent001/INDEPENDENT_UTILITY010_REGRESSION_SOURCE_REVIEW_001.json',
+ 'utility010-regression-independent001/INDEPENDENT_UTILITY010_REGRESSION_SOURCE_DETAILS_001.json',
+ 'utility010-regression-independent001/INDEPENDENT_UTILITY010_REGRESSION_SOURCE_POST_READBACK_001.json',
+ 'utility010-regression-independent001/HANDOFF_INDEPENDENT_UTILITY010_REGRESSION_SOURCE_001.md',
+ 'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_003.json',
+ 'root-checker28-runtime-prep001/ROOT_ACTUAL_CHECKER28_PRECHILD_REFUSAL_001.json',
+ 'root-checker28-runtime-prep001/ROOT_PARENT_TERMINAL_001.json',
+ 'root-checker28-runtime-prep001/ROOT_SYNTHETIC_CHECKER28_GO_001.json',
+ 'root-checker28-runtime-prep001/PRO3_CHECKER28_INTERVAL_ACK_001.json',
+ 'root-checker28-runtime-prep001/ROOT_PARENT_STDOUT_001.bin',
+ 'root-checker28-runtime-prep001/ROOT_PARENT_STDERR_001.bin',
+]
+# Root must supply the genuine current TYPE003 external-observation selection
+# before this script can be spent. A draft is not a producer witness.
+SOURCE_SELECTION=WORK/'root-pro3-type003-observation001/ROOT_EXTERNAL_TYPE003_FAILURE_SOURCE_SELECTION_001.json'
+source_selection_body,_=observe(SOURCE_SELECTION);source_selection=decode(source_selection_body)
+need(sha(source_selection_body)=='91642b9e4b207d056dfb476228c00b37a54d980057aa050ee37f1edc2f6a49a1'and source_selection['author']=='/root'and source_selection['record_type']=='root_selected_external_pro3_type003_failed_evidence_observation'and source_selection['science_or_operational_authority']is False,'genuine Root TYPE003 fixed Source selection')
+for outer in source_selection['external_source_observations']:
+    row=outer['before_copy']
+    p=Path(row['path']);need(p.is_relative_to(WORK),'finite genuine Root-selected TYPE003 Source path')
+    b,_=observe(p);need(len(b)==row['bytes']and sha(b)==row['sha256'],'Root-selected TYPE003 exact Source bytes')
+    selected.append(p.relative_to(WORK).as_posix())
+selected=list(dict.fromkeys(selected))
+paths=[ROOT/p for p in PRIMARY]+[WORK/p for p in selected]+[SOURCE_SELECTION,OWN/'PREPARE_MAJOR035_SOURCE_STAGE_001.py',publisher_path]
+need(len(paths)==len({str(p).casefold()for p in paths})and len(paths)<95,'finite selected inputs')
+content={};observations=[]
+for p in paths:
+    rows=[observe(p)for _ in range(3)];need(rows[0]==rows[1]==rows[2],'three same API observations')
+    content[str(p)]=rows[0][0];observations.append(dict(original_path=str(p),observations=[r[1]for r in rows]))
+get=lambda r:content[str(WORK/r)]
+need(get('root-guard006-pipeline-prep001/ROOT_PIPELINE_BINDING_001.json')==get('root-guard006-pipeline-prep001/ROOT_PIPELINE_BINDING_002.json'),'config002 byte-identical canonical001')
+need(sha(get('root-guard006-pipeline-prep001/ROOT_PIPELINE_BINDING_002.json'))=='ef3a6f208158ca2809aecf6d92b62b63777d4b795574c8cdccec1f882c669488','exact C20 pin')
+need(sha(get('root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_002.json'))=='8de3824c7f54cb096f7d3e3cc155a477559c19278fe903179a12df254dafefcb','new genuine P16 pin')
+need(sha(get('root-pipeline-independent-review001/actual-source-002/INDEPENDENT_ACTUAL_ROOT_SOURCE_DETAILS_002.json'))=='c6b64b9965ba85ecc20e8e39acdbd8483d64cc15aae997794efedf7b3a77a6a2','full P16 report')
+need(sha(get('root-pipeline-independent-review001/actual-source-002/POST_ACTUAL_ROOT_SOURCE_REVIEW_002.json'))=='c997ce86e4c7609d504e0755ee1eb6cd287f937b82eb7d8c08c0fbf4ba9992c2','P16 post')
+producer=decode(get('root-guard006-pipeline-prep001/ROOT_BINDER003_PHYSICAL_SOURCE_PRODUCER_001.json'),physical=True)
+need(producer['author']=='/root'and producer['owning_tool']['chunk_id']=='0854a9'and producer['owning_tool']['exit_code']==0 and producer['three_fresh_files_only']is True and producer['six_bound_sources_retained_read_only']is True and producer['pipeline_INIT_started']is False,'genuine Source-only binder producer')
+refusal=decode(get('root-checker28-runtime-prep001/ROOT_ACTUAL_CHECKER28_PRECHILD_REFUSAL_001.json'))
+need(sha(get('root-checker28-runtime-prep001/ROOT_ACTUAL_CHECKER28_PRECHILD_REFUSAL_001.json'))=='6649c3ebd31bdc3408397c72b945eee461f44d5065071efdcdc4b2c5d5f33c86','Root prechild refusal pin')
+need(refusal['author']=='/root'and refusal['actual_root_physical_tool']['chunk_id']=='ee39ea'and refusal['actual_root_physical_tool']['exit_code']==1 and refusal['python_test_job_started']is False and refusal['synthetic_tests_run']is False and refusal['whole_host_quiet_or_global_process_scan']is False,'prechild scope never test failure')
+terminal=decode(get('root-checker28-runtime-prep001/ROOT_PARENT_TERMINAL_001.json'))
+need(terminal['failure']=='Genuine PS7'and terminal['exit_code']is None and terminal['stdout_bytes']==0 and terminal['stderr_bytes']==0,'null unentered child versus owning exit1')
+regression=decode(get('utility010-regression-independent001/INDEPENDENT_UTILITY010_REGRESSION_SOURCE_REVIEW_001.json'))
+need(regression['reviewer']==AUTHOR and regression['source_author']=='/root/pubnative_review'and regression['verdict']=='PASS_STATIC_ISOLATED_REGRESSION_SOURCE_WITH_F1_DEFERRED'and regression['tests_executed']is False and regression['explicit_F1_deferred_skip']is True,'genuine limited isolated Source review')
+need(sha(get('utility010-regression-independent001/INDEPENDENT_UTILITY010_REGRESSION_SOURCE_DETAILS_001.json'))=='2f1707098598c531af5aaca92614219a632b4787aa098f16ebd15250b75956a6','full isolated Source review')
+
+common='Owner de8f remains ongoing/endNone, separate from finite lease43cb ending20:39:32.1487556 UTC. CurrentConsumer00524, Raw58, Metadata30+2 and Native128 remain UNRUN. Preserve600 original context/runtime, both90 ages at unit GO, resources60 through spawn, reserve510=Root450+after60, all source/transport/evidence caps, spent identities, frozen science/twins/epoch and no replay/retimestamp/public/push/unrelated stops. Historical monitor restoration does not establish current whole-host quiet.'
+binder='[Binder003 Root producer](_WORK_/root-guard006-pipeline-prep001/ROOT_BINDER003_PHYSICAL_SOURCE_PRODUCER_001.json) records owning0854a9 exit0/0.6091388s: exactly three fresh Source outputs (BOUND007, byte-identical C20 config002ef3, provenance17) and six retained read-only bound sources. The binder is spent. This is actual Source transformation, not pipeline INIT, capture, model fit or tool/OS/Job attestation. [Genuine P16 Source002](_WORK_/root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_002.json)8de3824c, [full188-input review](_WORK_/root-pipeline-independent-review001/actual-source-002/INDEPENDENT_ACTUAL_ROOT_SOURCE_DETAILS_002.json)c6b64b99 and [post](_WORK_/root-pipeline-independent-review001/actual-source-002/POST_ACTUAL_ROOT_SOURCE_REVIEW_002.json)c997ce86 were completed before INIT2; eight Source-reviewed argv arrays retain11 flat placeholders/six names. Four RootPS stages continue canonical config001ef3; Source provenance qualifies that delegation.'
+utility='[Independent utility010 regression Source review](_WORK_/utility010-regression-independent001/INDEPENDENT_UTILITY010_REGRESSION_SOURCE_REVIEW_001.json)06292ff6 with [full review](_WORK_/utility010-regression-independent001/INDEPENDENT_UTILITY010_REGRESSION_SOURCE_DETAILS_001.json)2f170709 and [post](_WORK_/utility010-regression-independent001/INDEPENDENT_UTILITY010_REGRESSION_SOURCE_POST_READBACK_001.json)16a133e7 accepts preparation only: six runnable methods and one explicit F1 DEFERRED skip, seven planned IDs/ten subtests/24 hypothetical events. All remain UNRUN. Thirty direct physical_provenance calls are planned (20 healthy/restored,10 negatives); L1/L2 are inert AST/token proofs. Detail15/Trace13 unused machine_core fields establish no full Core/lease/Source-pool or real Root provenance. Constructor004/table002/complete actual model cap coverage remains deferred, never counted as PASS.'
+checker='[Root checker28 prechild refusal](_WORK_/root-checker28-runtime-prep001/ROOT_ACTUAL_CHECKER28_PRECHILD_REFUSAL_001.json)6649c3eb records owningee39ea exit1/1.0891236s, external15:49:51-53 conservative upper3s. Root GO supplied six fraction digits; the unchanged parent required genuine native seven-digit roundtrip timestamps and raised Genuine PS7 before child Start, resource sampling or STARTED publication. PS7 denotes timestamp precision, not PowerShell version. [Parent terminal](_WORK_/root-checker28-runtime-prep001/ROOT_PARENT_TERMINAL_001.json)1370069c has null unentered-child exit_code and zero streams; false reap/drain fields reflect nonentry, not completed child cleanup. No test, helper, event or result occurred. Parent001/GO001/ACK001 are spent/no replay. Fresh namespace002 preparation requires a different complete Source review, fresh peer ACK, genuine seven-digit Root GO and new physical interval; no future PASS is inferred.'
+need(source_selection['independent_pro3_failure_evidence_review_selected']is True and source_selection['type_validation_accepted']is False and source_selection['runtime_validation_accepted']is False and source_selection['root_independent_os_job_process_scan']is False and source_selection['TYPE001_unretained_query_cause_explained']is False,'qualified failed TYPE003 selection')
+pro3='[Root external TYPE003 failure Source selection](_WORK_/root-pro3-type003-observation001/ROOT_EXTERNAL_TYPE003_FAILURE_SOURCE_SELECTION_001.json)91642b9e authenticates seven fixed Source records: six external evidence/log records and genuine Root grant5abf. [Different failed audit](_WORK_/root-pro3-type003-observation001/before/type_execution_audit_001.json)e7103786 records15:43:50.463Z (completion reported15:44). Pro3 attributed actual physical56.482255099999996s/exit1, actual selected Job peak826376192 bytes below1GiB, and mypy four errors in evaluation/phase2_cho_execution.py across205 checked files: line419 optional isfinite argument, two optional comparisons at420 and optional parameter default at920. [Physical witness](_WORK_/root-pro3-type003-observation001/before/root_type_physical_witness_001.json)2c8ce6e9 and [cleanup closeout](_WORK_/root-pro3-type003-observation001/before/root_failed_type_cleanup_closeout_001.json)285fbad7 retain parent Job empty/closed and known PID absences with native failed-candidate whole-cleanup=false, unqueried extraPID83372 and incomplete final Source/runtime/operation checks. [Explicit release](_WORK_/root-pro3-type003-observation001/before/root_type_peer_release_closeout_001.json)8510f04d completed15:28:40; earlier15:27 label was an estimate, and Root resumed metadata only after explicit release. Attempt/grant spent/no automatic retry. Root only read exact attributed Source evidence, without its own OS/process/timing proof or repeated full38-input audit. No TYPE/runtime PASS, whole-host quiet, or retrospective explanation of TYPE001 unknown cap-query cause follows.'
+pending='New Pub constructor004/table002 remain Source preparation; no different final constructor004 Source acceptance or actual fit/model/pool20 is selected here. INIT2/trust2/actual models/retained reviewers READY/metadata GO/Auth/capture/current24 remain absent/unready. Completed synthetic19/25 history applies only to the older fixture helpers; it cannot validate the new28 or utility controls. Prior major034 pending language remains its immutable earlier snapshot.'
+checkpoint=f'''# Continuation checkpoint006 - major035\n\nPrepared {STAMP}. Documentation Source stage only; no publication performed by its author.\n\n{binder}\n\n{utility}\n\n{checker}\n\n{pro3}\n\n{pending}\n\n{common}\n\nBefore a fresh capture timer, complete constructor004/table002 full different Source acceptance, genuine Root actual selection/model fit and full independent bound-pool20 admission; both independently owned retained reviewers must be ready. All old caps/spent artifacts remain unchanged. The Source publisher035 is a two-literal successor of034 with exact reverse bytes, twelve unchanged helper function ASTs and only main identity literals changed. Root must genuinely review closed12 Source, publish once, then obtain a different creation audit.\n\nRead [HANDOFF](../HANDOFF.md), [START_HERE](../START_HERE.md) and newest [SESSION](../resume-2026-09-28-001/SESSION.md).\n'''
+short='Binder003 created three Source files/retained six, with genuine full P16 Source002 completed. Checker28 parent001 refused a six-digit GO before child/test entry;28 remain UNRUN and old attempts are spent. Utility regressions have Source acceptance only:6 runnable+1 deferred skip. Pro3 TYPE003 returned four mypy errors; qualified failed audit supplies no TYPE PASS. Constructor004/table002/model fit/pool20/READY/capture remain unready.'
+sections={
+PRIMARY[0]:f'**MAJOR STEP035 - SOURCE BINDING/P16 COMPLETE; CHECKER28 PRECHILD REFUSAL; UTILITY CONTROLS SOURCE ONLY.**\nPrepared {STAMP}. Read [checkpoint035](_WORK_/CONTINUATION_CHECKPOINT_006.md), HANDOFF/START_HERE/newest SESSION. {short} {common}\n',
+PRIMARY[1]:f'# Current pro2 handoff - major035\n\nPrepared {STAMP}. Read [checkpoint035](_WORK_/CONTINUATION_CHECKPOINT_006.md).\n\n{binder}\n\n{utility}\n\n{checker}\n\n{pro3}\n\n{pending}\n\n{common}\n',
+PRIMARY[2]:f'# Start here - major035\n\nPrepared {STAMP}. Read [HANDOFF](HANDOFF.md), [checkpoint035](_WORK_/CONTINUATION_CHECKPOINT_006.md) and newest [SESSION](resume-2026-09-28-001/SESSION.md).\n\n{short}\n\nComplete fresh Source/control reviews and actual bound-pool admission before any capture timer. {common}\n',
+PRIMARY[3]:f'## Major035 - actual Source binding and failed prechild checker interval\n\nPrepared {STAMP}. [checkpoint035](../_WORK_/CONTINUATION_CHECKPOINT_006.md).\n\n{binder}\n\n{checker}\n\n{utility}\n\n{pro3}\n\n{pending}\n\n{common}\n',
+PRIMARY[4]:f'## Major035 - failed attempts remain spent; Source preparation only\n\nPrepared {STAMP}. [checkpoint035](../_WORK_/CONTINUATION_CHECKPOINT_006.md).\n\n{checker}\n\n{pro3}\n\nNo elapsed ACK/window/release supplies new execution or whole-host quiet authority. Fresh checker002 and utility controls need separately approved Source, new genuine coordination and bounded physical attempts. No INIT2/models/capture/current24 begun. {common}\n',
+}
+checkpoint=checkpoint.replace('_WORK_/','')
+checkpoint_body=checkpoint.encode('utf8');checkpoint_candidate=OWN/'candidates'/CHECKPOINT;once(checkpoint_candidate,checkpoint_body)
+candidate_rows=[];new_link_origins=[(ROOT/CHECKPOINT,checkpoint_body)]
+for index,relative in enumerate(PRIMARY):
+    text=sections[relative]
+    replacement=WORK.relative_to(ROOT).as_posix()
+    # Session/resource files reside one directory below ROOT.
+    if index>=3:text=text.replace('](_WORK_/','](../_WORK_/')
+    text=text.replace('_WORK_',replacement)
+    b=text.encode('utf8');once(OWN/'selected-sections'/f'section-{index}.md',b);new_link_origins.append((ROOT/relative,b))
+    old=baseline[relative];direction='suffix'if index<3 else'prefix'
+    note=b'\n\n---\n\nEarlier primary bytes below remain exact history; their pending statements describe the earlier selected snapshot.\n\n'
+    new=b+note+old if index<3 else old+b'\n\n'+b
+    need(new.endswith(old)if index<3 else new.startswith(old),'whole034 preservation')
+    before=OWN/'before'/relative;candidate=OWN/'candidates'/relative;once(before,old);once(candidate,new)
+    candidate_rows.append(dict(destination=relative,before=pointer(before,old),candidate=pointer(candidate,new),preservation=direction))
+links=[]
+for origin,b in new_link_origins:
+    for target in re.findall(r'\]\(([^)]+)\)',b.decode('utf8')):
+        need(not re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:',target),'local new link')
+        resolved=(origin.parent/target).resolve();need(resolved.is_relative_to(ROOT)and(resolved==ROOT/CHECKPOINT or resolved.is_file()),'new selected link exists: '+str(resolved))
+        links.append(dict(origin=origin.relative_to(ROOT).as_posix(),target=target,resolved_path=resolved.relative_to(ROOT).as_posix()))
+need(len(links)<=200,'new link cap')
+contract=dict(schema_version=1,record_type='major035_documentation_source_contract',source_author=AUTHOR,prepared_utc=STAMP,scope='LOCAL_PRIVATE_MAJOR035_DOCUMENTATION_ONLY',publisher_sha256=sha(publisher),inherited_publisher034_sha256=sha(old_publisher),declared_literal_substitutions=declared,exact_publisher_byte_reversal=True,publisher_function_count=len(f0),changed_function_ASTs=changed,all_other_function_ASTs_exact=True,validation_and_publication_logic_preserved=True,primary_paths=list(PRIMARY),checkpoint=CHECKPOINT,fixed_review_path='resume-2026-10-03-continuation001/root-docs-independent-major035/INDEPENDENT_MAJOR035_PREPUBLICATION_SOURCE_REVIEW_001.json',genuine_future_review_keys=['schema_version','record_type','created_utc','reviewer','source_author','scope','verdict','publisher_sha256','manifest_sha256','publication_performed','target_execution','operational_authority'],genuine_future_review_nominals=dict(schema_version=1,record_type='independent_major035_documentation_prepublication_source_review',reviewer='/root',source_author=AUTHOR,scope='LOCAL_PRIVATE_MAJOR035_DOCUMENTATION_ONLY',verdict='PASS_MAJOR035_DOCUMENTATION_SOURCE_ONLY',publication_performed=False,target_execution=False,operational_authority=False),actual_review=None,actual_Root_publication=None,different_creation_review=None,publisher_main_or_definitions_executed=False,target_execution=False,operational_authority=False)
+contract_path=OWN/'DOCUMENTATION_SOURCE_CONTRACT_035_001.json';once(contract_path,wire(contract))
+context=dict(schema_version=1,record_type='major035_selected_Source_context',source_author=AUTHOR,prepared_utc=STAMP,scope=contract['scope'],prior034_creation_sha256=sha(selection_body),current_P16_source_only_sha256='8de3824c7f54cb096f7d3e3cc155a477559c19278fe903179a12df254dafefcb',checker28_prechild_refusal_sha256='6649c3ebd31bdc3408397c72b945eee461f44d5065071efdcdc4b2c5d5f33c86',Root_selected_TYPE003_Source_selection_sha256=sha(source_selection_body),utility_regression_full_Source_sha256='2f1707098598c531af5aaca92614219a632b4787aa098f16ebd15250b75956a6',publication_performed=False,target_execution=False,operational_authority=False)
+context_path=OWN/'SELECTED_SOURCE_CONTEXT_035_001.json';once(context_path,wire(context))
+for p in (contract_path,context_path):
+    rows=[observe(p)for _ in range(3)];need(rows[0]==rows[1]==rows[2],'own Source triples');paths.append(p);content[str(p)]=rows[0][0];observations.append(dict(original_path=str(p),observations=[r[1]for r in rows]))
+inputs=[]
+for p,row in zip(paths,observations,strict=True):
+    b=content[str(p)];copy=OWN/'stage-evidence'/p.relative_to(ROOT);once(copy,b);copied,cr=observe(copy);need(copied==b,'Source copy exact');row['owned_copy_path']=str(copy);row['owned_copy_observation']=cr;inputs.append(dict(original=pointer(p,b),copy=pointer(copy,b)))
+need(len(inputs)<=100,'finite source pairs unchanged cap')
+named=['root-guard006-pipeline-prep001/ROOT_PIPELINE_INIT_TRACE_002.json','root-guard006-pipeline-prep001/ROOT_PIPELINE_TRUST_SELECTION_002.json','root-guard006-pipeline-prep001/ROOT_METADATA_PIPELINE_GO_002.json','metadata3-actual-checker-prep001/ACTUAL_CHECKER_BINDING_002.json','metadata3-actual-checker-prep001/CHECKER_READY_BEFORE_006.json','metadata3-actual-checker-prep001/CHECKER_READY_AFTER_006.json','guard006-bound-late-checker-prep001/BOUND_LATE_CHECKER_READY_006.json']
+absences=[]
+for r in named:need(not(WORK/r).exists(),'named downstream role already present');absences.append(dict(path=str(WORK/r),observed_absent=True,scope='named filesystem role only, no process/quiet claim'))
+for row in observations:
+    p=Path(row['original_path']);b,post=observe(p);copied,cpost=observe(Path(row['owned_copy_path']));need(b==content[str(p)]and post==row['observations'][0]and copied==b and cpost==row['owned_copy_observation'],'whole Source post stability');row['post_read']=post;row['owned_copy_post_read']=cpost
+for r in PRIMARY:need(observe(ROOT/r)[0]==baseline[r],'primary current034 unchanged')
+audit=dict(schema_version=1,record_type='major035_author_Source_stage_audit',source_author=AUTHOR,prepared_utc=STAMP,scope=contract['scope'],finite_input_count=len(inputs),selected_link_count=len(links),observations=observations,named_role_absences=absences,whole_five_primary034_bytes_preserved=True,publisher_function_count=len(f0),changed_function_ASTs=changed,exact_publisher_byte_reversal=True,publisher_definitions_import_main_executed=False,helper_test_target_execution=False,publication_performed=False,operational_authority=False,current28_UNRUN=True,utility6_plus_F1_deferred_UNRUN=True,actual_models_or_fit_or_capture=None,selected_pro3_evidence_attributed_only=True,selected_pro3_TYPE_PASS=False,old_pending_snapshot_bytes_preserved=True,initial_read_only_discovery='Top-level SESSION.md absent; corrected canonical path read. Finite directory discovery output truncated and narrowed to fixed top-level records; no primary change or target entry.')
+audit_path=OWN/'AUTHOR_MAJOR035_STAGE_AUDIT_001.json';once(audit_path,wire(audit))
+manifest=dict(schema_version=1,record_type='major035_documentation_stage',author=AUTHOR,prepared_utc=STAMP,checkpoint=pointer(checkpoint_candidate,checkpoint_body),primaries=candidate_rows,inputs=inputs,links=links,source_only=True,publication_performed=False,target_execution=False,operational_authority=False)
+manifest_body=wire(manifest);need(len(manifest_body)<=2097152,'unchanged manifest cap')
+for row in observations:need(observe(Path(row['original_path']))[1]==row['observations'][0],'final Source originals')
+for r in PRIMARY:need(observe(ROOT/r)[0]==baseline[r],'final034 primary bytes')
+manifest_path=OWN/'STAGED_DOCUMENTATION_MANIFEST_035_001.json';once(manifest_path,manifest_body)
+print(json.dumps(dict(manifest_sha256=sha(manifest_body),manifest_bytes=len(manifest_body),publisher_sha256=sha(publisher),publisher_bytes=len(publisher),audit_sha256=sha(wire(audit)),audit_bytes=len(wire(audit)),finite_pairs=len(inputs),links=len(links),checkpoint_bytes=len(checkpoint_body),publisher_functions=len(f0),changed_functions=changed,publication_performed=False,target_execution=False),sort_keys=True))

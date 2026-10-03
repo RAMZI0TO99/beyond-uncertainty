@@ -1,0 +1,121 @@
+"""Independent full documentation metadata/AST review. Never invokes publisher."""
+import ast,datetime,hashlib,json,os,re,stat
+from pathlib import Path
+ROOT=Path('D:/Aenv/pro2')
+WORK=ROOT/'resume-2026-10-03-continuation001'
+STAGE=WORK/'root-docs-major032'
+OUT=WORK/'root-docs-independent-major032'
+MANIFEST_SHA='30bb3abe1b49858b47269af2e91fa835acb13d39dc51ce5bd9405dd12b5910fb'
+PUBLISHER_SHA='1f10a210327f949ecf108317984087ad4e5d693a1f71219779af6e01da746922'
+PRIMARY=('AGENTS.md','HANDOFF.md','START_HERE.md','resume-2026-09-28-001/SESSION.md','resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md')
+CHECKPOINT=WORK/'CONTINUATION_CHECKPOINT_003.md'
+SCOPE='LOCAL_PRIVATE_MAJOR032_DOCUMENTATION_ONLY'
+def sha(data):return hashlib.sha256(data).hexdigest()
+def enc(v):return (json.dumps(v,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def now():return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+def exact(v,keys):assert type(v)is dict and set(v)==set(keys)
+def decode(data):
+    def pairs(rows):
+        d={}
+        for key,value in rows:assert key not in d;d[key]=value
+        return d
+    def bad(value):raise ValueError('float/nonfinite source record')
+    assert not data.startswith(b'\xef\xbb\xbf')
+    return json.loads(data.decode('utf8','strict'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def raw(s):return [getattr(s,k)for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+def ancestors(p):
+    rows=[]
+    for q in reversed(p.parents):
+        s=q.lstat();assert stat.S_ISDIR(s.st_mode)and not stat.S_ISLNK(s.st_mode)and not s.st_file_attributes&1024
+        rows.append([str(q),s.st_dev,s.st_ino])
+    return rows
+def read(p,pin=None,size=None):
+    chain=ancestors(p);a=p.lstat();ar=raw(a)
+    assert stat.S_ISREG(a.st_mode)and a.st_nlink==1 and not a.st_file_attributes&1024 and 0<=a.st_size<=8388608
+    with p.open('rb')as f:
+        b=os.fstat(f.fileno());br=raw(b);assert ar[:4]+ar[5:]==br[:4]+br[5:]and ar[4]==ar[8]
+        data=f.read(a.st_size+1);assert raw(os.fstat(f.fileno()))==br
+    assert raw(p.lstat())==ar and ancestors(p)==chain and len(data)==a.st_size
+    if pin is not None:assert sha(data)==pin
+    if size is not None:assert len(data)==size
+    return data,dict(path=str(p),sha256=sha(data),bytes=len(data),path_raw9=ar,descriptor_raw9=br,ancestors=chain)
+def local(name):
+    assert type(name)is str and not name.startswith('/')and '\\'not in name and ':'not in name and all(p not in ('','.','..')for p in name.split('/'))
+    return ROOT.joinpath(*name.split('/'))
+def once(name,data):
+    p=OUT/name;p.parent.mkdir(parents=True,exist_ok=True)
+    with p.open('xb')as f:assert f.write(data)==len(data)
+def ticks(value):
+    assert type(value)is str and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6,7}\+00:00',value)
+    simple=value[:26]+'+00:00';d=datetime.datetime.fromisoformat(simple);assert d.isoformat(timespec='microseconds')==simple
+    delta=d-datetime.datetime(1970,1,1,tzinfo=datetime.timezone.utc)
+    return (delta.days*86400+delta.seconds)*10000000+delta.microseconds*10+(int(value[26])if len(value)==33 else 0)
+def main():
+    source_details_path=OUT/'INDEPENDENT_MAJOR032_SOURCE_DETAILS_002.json'
+    source_details=decode(read(source_details_path,'9f37549df6a8431935b46f3e5895cdd1a532fb328fb3af4a228d20ddcc727ca1',2519773)[0])
+    assert source_details['verdict']=='PASS_MAJOR032_DOCUMENTATION_SOURCE_ONLY'and source_details['publication_performed']is False and len(source_details['finite_inputs'])==320
+    manifest_path=STAGE/'STAGED_DOCUMENTATION_MANIFEST_032_002.json'
+    manifest=decode(read(manifest_path,MANIFEST_SHA,95719)[0])
+    receipt_path=STAGE/'ROOT_PUBLISH_RECEIPT_032.json'
+    receipt=decode(read(receipt_path,'4018d1fa1f6672d46e091934a4b0884f92a7df174b190136e5e5ef1494ac8f04',870)[0])
+    exact(receipt,('schema_version','record_type','author','created_utc','publisher_sha256','manifest_sha256','source_review_sha256','changes','checkpoint_retained','batch_atomicity_guaranteed','external_Root_invocation_required','different_creation_review','target_execution','operational_authority'))
+    for key,value in dict(schema_version=1,record_type='root_documentation_publish',author='/root',publisher_sha256=PUBLISHER_SHA,manifest_sha256=MANIFEST_SHA,source_review_sha256='21a9ff663c17b741c0e384e61c9d2a246aed2cf5c9d497da422d714faa425929',changes=list(PRIMARY),checkpoint_retained=CHECKPOINT.relative_to(ROOT).as_posix(),batch_atomicity_guaranteed=False,external_Root_invocation_required=True,different_creation_review=None,target_execution=False,operational_authority=False).items():assert type(receipt[key])is type(value)and receipt[key]==value
+    published=ticks(receipt['created_utc']);assert published>=ticks(manifest['prepared_utc'])
+    peer_path=OUT/'INDEPENDENT_MAJOR032_PREPUBLICATION_SOURCE_REVIEW_002.json'
+    peer=decode(read(peer_path,'21a9ff663c17b741c0e384e61c9d2a246aed2cf5c9d497da422d714faa425929',645)[0])
+    assert peer['verdict']=='PASS_MAJOR032_DOCUMENTATION_SOURCE_ONLY'and peer['publication_performed']is False and ticks(peer['created_utc'])<=published
+    registry={Path(row['path']):(row['sha256'],row['bytes'])for row in source_details['finite_inputs']}
+    assert len(registry)==320
+    history=[]
+    for row in manifest['primaries']:
+        old=read(local(row['before']['path']),row['before']['sha256'],row['before']['bytes'])[0]
+        candidate=read(local(row['candidate']['path']),row['candidate']['sha256'],row['candidate']['bytes'])[0]
+        actual=read(local(row['destination']),row['candidate']['sha256'],row['candidate']['bytes'])[0]
+        assert actual==candidate and (actual.endswith(old)if row['preservation']=='suffix'else actual.startswith(old))
+        registry[local(row['destination'])]=(row['candidate']['sha256'],row['candidate']['bytes'])
+        history.append(dict(destination=row['destination'],candidate=row['candidate'],before=row['before'],preservation=row['preservation'],actual_equals_exact_reviewed_candidate=True,entire_prior031_primary_history_exact=True))
+    registry.update({CHECKPOINT:('18285b311774fc9179b1d64cdd8b63bd38c30597d00e4196aa14e89592d3bbad',12338),receipt_path:('4018d1fa1f6672d46e091934a4b0884f92a7df174b190136e5e5ef1494ac8f04',870),peer_path:('21a9ff663c17b741c0e384e61c9d2a246aed2cf5c9d497da422d714faa425929',645),source_details_path:('9f37549df6a8431935b46f3e5895cdd1a532fb328fb3af4a228d20ddcc727ca1',2519773),OUT/'POST_MAJOR032_SOURCE_REVIEW_002.json':('cb346fb911ff15bfe0c6771f431f27f417a02915436cfc015b783feb298f86b9',1149553),OUT/'HANDOFF_MAJOR032_SOURCE_REVIEW_002.md':('b45062cb05158bdc68055ea7d3e401d4021b6605eaed0e2cf4cb499f78369200',3112),OUT/'OWN_SOURCE_OBSERVER_PREPARATION_REFUSAL_002.json':('f6485eaefa1eae962b57dfa2f9e6cf9043391131e90070bf58e1e1bf32a19354',710)})
+    assert read(CHECKPOINT,registry[CHECKPOINT][0],registry[CHECKPOINT][1])[0]==read(local(manifest['checkpoint']['path']),manifest['checkpoint']['sha256'],manifest['checkpoint']['bytes'])[0]
+    observations=[];bodies={}
+    for index,(path,(pin,size))in enumerate(sorted(registry.items(),key=lambda x:str(x[0]))):
+        passes=[read(path,pin,size)for _ in range(3)];assert passes[0]==passes[1]==passes[2]
+        copy='creation002-inputs/'+str(index).zfill(3)+'.bytes';once(copy,passes[0][0]);body,meta=read(OUT/copy,pin,size);assert body==passes[0][0]and meta['path_raw9'][:2]!=passes[0][1]['path_raw9'][:2]
+        observations.append(dict(path=str(path),sha256=pin,bytes=size,passes=[x[1]for x in passes],copy_path=copy,copy_observation=meta));bodies[path]=body
+    unchanged=[];primary_set={local(name)for name in PRIMARY}
+    for row in source_details['finite_inputs']:
+        path=Path(row['path'])
+        if path in primary_set:continue
+        current=next(x for x in observations if x['path']==str(path))
+        assert current['passes'][0]==row['passes'][0]
+        source_copy,source_copy_meta=read(OUT/row['copy_path'],row['sha256'],row['bytes']);assert source_copy==bodies[path]and source_copy_meta==row['copy_observation']
+        unchanged.append(str(path))
+    links=[]
+    for row in manifest['links']:
+        resolved=(local(row['origin']).parent/row['target']).resolve();assert resolved==local(row['resolved_path'])and resolved in bodies
+        links.append(dict(origin=row['origin'],target=row['target'],resolved_path=row['resolved_path'],actual_sha256=sha(bodies[resolved]),actual_bytes=len(bodies[resolved])))
+    assert len(links)==110
+    paths=[STAGE/'ROOT_RESTORE_RECEIPT_032.json',STAGE/'PARTIAL_PUBLISH_032.json',Path(str(CHECKPOINT)+'.staging'),Path(str(receipt_path)+'.staging')]
+    for name in PRIMARY:
+        temp=local(name).with_name(local(name).name+'.major032-publish.tmp');paths.extend((temp,Path(str(temp)+'.staging')))
+    def absent(path):
+        try:path.lstat()
+        except FileNotFoundError:return str(path)
+        raise ValueError('Unexpected restoration/partial/staging role: '+str(path))
+    absences=[absent(path)for path in paths]
+    report=dict(schema_version=1,record_type='independent_major032_documentation_creation_review',created_utc=now(),reviewer='/root/capsule_design_review',source_author='/root/root_pipeline_binder',scope=SCOPE,verdict='PASS_ACTUAL_MAJOR032_DOCUMENTATION_CREATION_ONLY',root_receipt_sha256='4018d1fa1f6672d46e091934a4b0884f92a7df174b190136e5e5ef1494ac8f04',manifest_sha256=MANIFEST_SHA,publisher_sha256=PUBLISHER_SHA,prepublication_source_review_sha256='21a9ff663c17b741c0e384e61c9d2a246aed2cf5c9d497da422d714faa425929',external_Root_physical_publication=dict(owning_tool_chunk='4fb80d',exit_code=0,wall_seconds='0.679283',native_verification_tool='a4b901',evidence_source='Root direct task report and genuine pinned publication receipt',independent_OS_tool_attestation=False),published_created_utc=receipt['created_utc'],primary_count=5,history=history,checkpoint=dict(path=str(CHECKPOINT),sha256=registry[CHECKPOINT][0],bytes=registry[CHECKPOINT][1],actual_equals_reviewed_candidate=True),selected_link_count=110,links=links,finite_input_count=len(observations),finite_inputs=observations,unchanged_prepublication_source_paths=unchanged,prepublication_source_payload_and_raw9_unchanged_except_five_declared_primary_replacements=True,source001_refusal_and_source002_and_own_observer_refusal_preserved=True,post_publication_staging_partial_restore_absences=absences,publication_performed_by_Root=True,publisher_executed_by_reviewer=False,target_execution=False,runtime_acceptance=False,operational_authority=False,limitations=['This is actual local/private documentation creation only. It supplies no modelpool, Auth/capture/READY/current24/native/science/Job/quiet acceptance.', 'Root owning physical tool4fb80d/0.679283 and nativea4b901 correlation is externally attributed to Root, alongside its genuine receipt; this reviewer did not invoke the publisher or independently attest an OS tool.', 'All five exact candidate bytes and complete031 prefix/suffix history are reconciled after publication. Publisher remains atomic per file, not as a batch, with best-effort concurrency checks and no automatic rollback.', 'The frozen11:50 Source002 snapshot selects constructor002 author freeze without a full peer in that cohort. Root later compactb35/source acceptance remains outside this cohort; no global absence or fresh primary factual update is inferred.'])
+    post=[]
+    for row in observations:
+        data,meta=read(Path(row['path']),row['sha256'],row['bytes']);copy,cm=read(OUT/row['copy_path'],row['sha256'],row['bytes']);assert data==copy and meta==row['passes'][0]and cm==row['copy_observation'];post.append(dict(path=row['path'],observation=meta,copy_observation=cm))
+    assert [absent(path)for path in paths]==absences
+    once('POST_MAJOR032_CREATION_REVIEW_002.json',enc(dict(schema_version=1,created_utc=now(),observations=post,all_source_and_copy_bytes_and_raw9_exact=True,post_publication_named_absences=absences,target_execution=False,operational_authority=False)))
+    once('INDEPENDENT_MAJOR032_CREATION_REVIEW_002.json',enc(report))
+    once('HANDOFF_MAJOR032_CREATION_REVIEW_002.md',('Major032 correctedSource002 documentation creation accepted only in its local/private documentation scope.
+
+Five primary files equal the exact reviewed candidates and retain all031 history as suffix3/prefix2. Actual checkpoint003, genuine Root receipt4018d1fa and Sourcepeer21a9 are correlated. All110 selected links resolve to observed actual bytes. Entire selected source/predecessor closure remains byte/raw9 exact apart from the five authorized primary replacements; all own copies and post-checks are retained.
+
+'+'
+
+'.join(report['limitations'])+'
+').encode('utf8'))
+    print(json.dumps(dict(receipt_sha256=sha(enc(report)),receipt_bytes=len(enc(report)),finite_inputs=len(observations),links=110,verdict=report['verdict'],publisher_or_targets_executed_by_reviewer=False)))
+if __name__=='__main__':main()

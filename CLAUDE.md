@@ -1,8 +1,215 @@
+# 2026-10-02 D-177 status — complete gate008 on the two-file lineage candidate
+
+**STAGED DOCUMENTATION.** This block records the D-177 cycle state; earlier checkpoints below remain unchanged history. Nothing here authorizes a release, native action or public step by itself.
+
+The current local released controller is D-176 `597eb048a1bc441030bfcd88b70fdf9c56f882d0` (2026-10-01; release008/proposal017, parent `ea9c28aa82a1e8559e9c67e62b06dac7f5cea9b7`). Attempt012 remains terminal: its status, adjudication and pre-recover phases passed, the existing epoch-001→002 lease transition was performed, and its sole recover invocation refused before recovery mutations because the incident authority record embeds seven command-bound fields a recover launch cannot reproduce. It is spent; no resumed fit or new scientific result followed.
+
+The D-177 candidate is the live two-file change on that release: `src/bu/experiments/week8_exp2a_recovery.py` `a5ca433fb4a49d6e516c8da91c7fe546dce520ab3c153c1c9ef754640adadf11` adds a succession-aware cross-launch authority lineage that records and verifies each controller succession's commit, candidate manifest, loaded-module inventory and sealed authority fields, and `tests/test_week8_exp2a_recovery.py` `07f075f4d6794231fd803f17f80533a88ad4f8a59812b2f168f02fa5b3c8e6b3` adds the seven focused lineage tests. Complete gate008 over this exact candidate reconciled 5,569 distinct nodes across 45 accepted QA operations: 5,550 passed, 19 expected Windows symlink-privilege skips, 51 passing subtests, zero failures/errors (report `7153cd8c9a94306bad97741a259bb50144f2d1918d1e5ba9efd0fd897e11547c`, manifest `4e9bcede341db914feae2b80607295a5fbea30ea90386bf8defca28c7350ed30`).
+
+Next: apply the reviewed proposal018 documentation supplement, run fresh 14-case governance021, runtime016, residue017, inspection009 and commit009 for a clean local D-177 release, then a distinct attempt013 native front and D-161's still-unconsumed sole recovery. Supervised local/private authority runs under the reviewed 30-hour owner record `3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff` and ends **2026-10-02T22:36:15Z**. Distinct attempt013 requires original guards, a durable coordinated Python-free host, seven-hour/390-minute reserves and piped GO; never `-NonInteractive`. No replay, automatic retry, second recovery epoch, changed science or public action.
+
+Read [PROJECT_STATE.md](PROJECT_STATE.md), [DECISIONS.md](DECISIONS.md), [production runbook](docs/week8_production_runbook.md) and [release verification](docs/week8_release_verification.md).
+
+---
+
+# 2026-10-01 D-176 status — complete gate007 on the two-file projection candidate
+
+**STAGED DOCUMENTATION.** This block records the D-176 cycle state; earlier checkpoints below remain unchanged history. Nothing here authorizes a release, native action or public step by itself.
+
+The current local released controller is D-175 `ea9c28aa82a1e8559e9c67e62b06dac7f5cea9b7` (2026-09-30; release007/proposal016). Attempt012 status, adjudication and pre-recover verification passed; adjudication wrote the immutable schema-3 incident `30607bbcc65c4bef9ba1857c89c2c0c97c9f8b4230189191c2a8ebcc4a5d6e8b` and epoch-001 terminal `a4334cd6308d1f8c8cf6a6b95a25624e62e08fd0a4066a45481267ee5d4dc749` with twins and performed the existing epoch-001→002 lease transition. The sole attempt012 recover invocation then refused before recovery mutations because the incident authority record embeds seven command-bound fields a recover launch cannot reproduce; it is spent and its evidence is terminal. No resumed fit or new scientific result followed.
+
+The D-176 candidate is the live two-file change on that release: `_cross_launch_authority_projection` in `src/bu/experiments/week8_exp2a_recovery.py` normalizes exactly the seven sealed command-bound fields at the recovery authority comparison and its five parallel sites, with two projection tests and three fixture extensions in `tests/test_week8_exp2a_recovery.py`. Complete gate007 over this exact candidate reconciled 5,562 distinct nodes across 45 accepted QA operations: 5,543 passed, 19 expected Windows symlink-privilege skips, 51 passing subtests, zero failures/errors (report `469aa1c1d89d10235bd43d003b656054e5fe16d985c2eecc04b2dc7f910127c5`, manifest `e83cbc6666aecb0e896530a1164c9d30f418583bd74f02715e0cdcfd11f60dd9`).
+
+Next: apply the reviewed proposal017 documentation supplement, run fresh 14-case governance019, runtime015, residue016, inspection008 and commit008 for a clean local D-176 release, then a distinct attempt013 native front and D-161's still-unconsumed sole recovery. Supervised local/private authority runs under the reviewed 30-hour owner record `3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff` and ends **2026-10-02T22:36:15Z**. Distinct attempt013 requires original guards, a durable coordinated Python-free host, seven-hour/390-minute reserves and piped GO; never `-NonInteractive`. No replay, automatic retry, second recovery epoch, changed science or public action.
+
+Read [PROJECT_STATE.md](PROJECT_STATE.md), [DECISIONS.md](DECISIONS.md), [production runbook](docs/week8_production_runbook.md) and [release verification](docs/week8_release_verification.md).
+
+---
+
+# 2026-09-27 D-174 authority config correction
+
+Clean local D-173 release `50e6a789153b0454b8808bf4e9fa9979853a22bb` invoked native status007 once. Attempt007 is final: it refused before counts/liveness with exact reason SHA256 `55e1fb7027ffa46e70b455b071caf7f12adf612a5d48a4f1e4c7f5a07b0d63f5` for `authority config keys differ from the fixed contract`. The refusal occurred while the inspector revalidated the sealed entrypoint gate, before static authority re-observation; no scientific values were emitted. Its receipt, audit, stdout, stderr and exit code are preserved. D-174 adds the already pinned original C user `LOCALAPPDATA` path as `pinned_local_appdata` in the inspector, bootstrap worker and nested fit child raw-authority config builders, with contract regressions for all three. This corrects their missing config key without relaxing the raw authority mapping, changing the path, or altering scientific settings. D-174 gate005 reconciled 5,559 distinct nodes across 45 accepted QA operations: 5,540 passed, 19 expected Windows symlink-privilege skips, 51 passing subtests and zero failures/errors. Combined JUnit SHA256 042a7628388b3745682421cd89966cf011bc15b225008d88788e5d18348229c3; candidate manifest SHA256 2dff5f7d5a5faae9b8646d4b9982c373e046befb8e6462df0927be07c2cdd094. The complete exact-candidate gate005 is the prerequisite; documentation governance, all four pinned runtime inventories, controller QA-residue preservation and a clean local release remain required before distinct native attempt008. Recheck the original empty-startup, 8 GiB, evidence, lease and global no-unrelated-Python liveness guards. Any attempt008 refusal is final. No adjudication, lease transition, recovery, fit, outcome consultation or public action has occurred. D-161's sole recovery remains unconsumed. Read resume-2026-09-27-001/STATUS007_FINDING.md.
+
+# 2026-09-27 D-173 native startup and fixed-candidate gate
+
+The clean local D-172 release 1e14ef696c6d80cbc81a659a2032e9775ad7e799 invoked native status006 once. It refused before counts/liveness with exact reason digest 8654e6c2d919f2d75a54777db1bf565061ff698ab78a4d2f3825441a3a444b92 for a nonempty native startup runtime. Injected DesktopCentral/Endpoint DLP logs appeared under a literal `%LOCALAPPDATA%` directory when the native launcher's exact environment omitted that variable; the logs and attempt006 streams are preserved. D-173 pins native `LOCALAPPDATA` to the already reviewed original C user profile and admits exactly 13 native environment rows. The required-empty startup check and original liveness, evidence, lease and one-use recovery guards remain in force. This is an operational correction; status007 has not yet established production acceptance. D-173 gate004 reconciled 5,557 distinct nodes across 45 accepted QA operations: 5538 passed, 19 expected Windows symlink-privilege skips, 51 passing subtests and zero remaining failures/errors. Combined JUnit SHA256 f5e62413492e43faabadfb0d273e5b2ea999f57d9e3393271804f8a7c088d3ad. The Windows stack-overflow attempts batch01-001, batch03-001 and the final test_gate_evidence file group have no accepted coverage; their reports and host events are preserved, and the fault's exact cause remains unproved. Continuation002 paused before batch08 solely for the 10 GiB start buffer; its 18 prior accepted receipts were retained. Continuation003 accepted batch08, then a 3,500-second batch09 timeout was excluded. Continuation004 accepted the isolated long test, then paused for disk space; continuation005 completed the other two exact batch09 groups and untouched nodes through new02-00 before another disk-buffer pause. Continuation006 accepted new02-01 through new02-03, then paused for disk space. Continuation007 accepted new03 through new06, then its final 66-node file group crashed during fixture copying; continuation008 covered those 66 nodes in eleven fresh six-node groups. The same fixed source candidate was checked throughout. Post-gate documentation governance14/14, four-tree pinned runtime audit, QA residue preservation, clean local release, distinct immutable attempt007 and independent native status with original counts/liveness remain before adjudication or the sole D-161 recovery. No fit, scientific outcome consultation, push, publication, deployment or external message occurred in this gate. Read resume-2026-09-27-001/WINDOW.md and STATUS006_FINDING.md.
+
+# 2026-09-23 D-172 fixed-candidate gate
+
+D-172 gate003 reconciled all 22 fixed-candidate partitions: 5537 passed, 19 expected skips, 51 passing subtests across 5,556 unique nodes, with zero remaining failures/errors. Combined JUnit SHA256 ae7bfe5c1fb2bb624147a2fd3efc8eca3ec704ced9612939c34bea37b7400aa7. The native batch03-001 stack-overflow attempt contributes no coverage; fresh batch03-002 passed all 640 nodes. Its crash dumps and event records are preserved. The crash's exact root cause is unproved. Verifier002 stopped before report creation on a BOM-prefixed PowerShell JSON record; distinct verifier003 decoded those preserved bytes and reconciled the complete gate. Documentation governance, runtime audit, clean local release and distinct native attempt006 status/counts/liveness remain before the sole unconsumed D-161 recovery. No push, publication, deployment or external message. Read resume-2026-09-23-001/full-gate-003/release-verification.json and the current state/delta.
+
+# 2026-09-23 native status005 refusal and D-172 candidate
+
+The clean local D-171 release is b84b6b35caf9f6043e859531e6ce5cb71bcc8ab8.
+Native stage0 status005 was invoked once and refused in the old-source inspector
+before counts or liveness. Preserve attempt005, receipt, audit and streams; never
+replay it. Its bounded reason digest identifies the exact import-finder check.
+A pinned pandas import reproduces one appended six finder. D-172's uncommitted
+inspector correction admits only that pinned finder; focused QA passed2+34,
+but a fresh complete gate, governance, runtime audit, clean local release and
+distinct attempt006 status remain before the unconsumed sole recovery. Keep
+all work local/private; no adjudication, fit, lease transition or public action.
+Read resume-2026-09-23-001/STATUS005_FINDING.md and the latest state/delta.
+
+# 2026-09-23 owner-resumed local release checkpoint
+
+Owner explicitly resumed the September20 stop. The controller's263 reviewed files and clean frozen4515 checkout matched the stop handoff; runtime-release-004 freshly verified all four pinned inventories. The active runbook now states the production child's original C:user LOCALAPPDATA pin. Fresh governance, local release inspection/commit and independent native status remain before the one-use recovery. Preserve every earlier attempt and evidence byte; keep work local/private with no push, deployment, publication or external message. Read resume-2026-09-23-001 and the September20 owner-stop receipt before proceeding.
+
+# 2026-09-20 complete relocation QA checkpoint
+
+Fresh fullgate002 reconciled all22partitions: 5536 passed, 19 expected skips, 51 passing subtests; 5,555 unique nodes, zero remaining failures/errors. Combined JUnit SHA256=a26ce16652ce08271a06ac334d2613d445a6c549a2f4cfee13cf36e0369360d2. The failed batch09attempt001 (163pass/1child-exit timeout) contributes no gate coverage; diagnostic15pass/2hostskips is separate, and fresh262-node batch09attempt002 passed258/4hostskips on the unchanged candidate. The timeout cause remains unproved. The first continuation helper stopped before QA because LF/CRLF manifest serialization differed; all263rows were identical, and continuation002 corrected only that orchestration comparison. All failed/diagnostic attempts remain preserved. Final documentation governance, fresh runtime verification, clean local commit and immutable native attempt005 status/counts/liveness remain before the unconsumed sole recovery. No production fit, adjudication, ownership transition, outcome consultation, GPU or public action; external Sol review/student prose remain open.
+
+Use full-gate-002/release-verification.json and the latest external SESSION/RELEASE_NEXT handoff. Earlier checkpoints below are preserved history. Do not replay any attempt or treat this passing gate as production admission. The local/private autonomous window ends2026-09-20T06:51:05UTC.
+
+# 2026-09-20 QA runtime continuation
+
+The first fresh5555-node gate stopped on an intermittent native CopyFile2 crash.
+Preserve its results. One test's child launch now passes-B;90runtime caches were
+restored to exact pins, and allfour runtime inventories verified. Focused122-node
+checks passed with both original and diagnostic profiles; no production profile
+or security-software change is justified by that comparison. See the new
+release-verification disclosure and latest external SESSION.md. Fresh fullgate002,
+clean local release and native status remain; no production recovery or public
+action. The owner's autonomous local/private window ends06:51:05UTC.
+
+# 2026-09-20 consolidated provenance checkpoint
+
+D-171/DEV-024 binds current relocated files independently of preserved historical
+identity claims. Workspace/dependencies are under D:/Aenv/pro2; do not recreate
+old paths. Captured metadata scopes, two-epoch final validation and downstream
+provenance are implemented with focused QA. Fresh fullgate/governance/clean local
+release/native status remain before the sole recovery. No public actions or new
+production fit/outcome consultation. Read delta82, release-verification, and the
+latest START_HERE/SESSION handoff outside this repo. Frozen4515science is unchanged;
+external Sol review/student prose remain open. Earlier checkpoints follow.
+
+# 2026-09-09 inspector diagnostic checkpoint
+
+D-170 adds bounded operational fingerprints for inspector refusals. The fresh
+5226-node gate is complete; finish governance/new clean commit/attempt004 status.
+Releasea9fba937 status003 still represents an unresolved recovery refusal;
+Git runtime was separately restored to its unchanged frozen pin. No adjudication
+or recovery has run. Preserve all attempts; see delta81 and release-verification.
+
+# 2026-09-08 controller correction checkpoint
+
+Release50251fb3 passed its full gate but independent status refused a stale
+Python environment requirement before recovery. D-169 fixes the controller
+contract; the real-entrypoint regression and fresh full gate are green.
+The prior release/refusal remain preserved. Finish documentation governance,
+clean commit, a fresh attempt002 receipt/audit and independent status before
+the unconsumed sole recovery. See delta80 and qa-cfix; no science or pins changed.
+
+# 2026-09-06 release-preparation checkpoint
+
+Full implementation QA is reconciled: 5193 passed, 18 expected skips, 51 passing subtests; 5,211 distinct collected nodes, zero remaining failures/errors.
+One extra base-Python json.tool bytecode cache was preserved in quarantine;
+removing only that file restored the original frozen runtime inventory exactly.
+The native startup smoke now passes. No source, dependency or pin was changed.
+See delta79 and D:/Aenv/pro2/resume-2026-09-05 for the explicit failed-run/rerun
+history. Check this documentation-only update, relocate ignored QA residue,
+commit the release, create receipt V2/stage audits and require independent status
+before consuming the sole recovery. No production recovery has run yet.
+
+# 2026-09-05 continuation checkpoint
+
+The owner authorized resuming Week8. The original operational paths under
+D:/Aenv/pro/pro have been restored and verified after their absence was
+discovered. The preserved collection remains at D:/Aenv/pro2/project 2(ongoing).
+Pinned executables and source/evidence hashes were checked; one verified
+duplicate QA scratch tree was removed with explicit approval. Operational
+receipts and the resumed release tests are in D:/Aenv/pro2/resume-2026-09-05.
+No recovery authority was consumed. Complete the existing D-168 release
+gate and independent status before production. Delta78 records restoration.
+
 # CLAUDE.md — operational handoff
 
-You are Claude, working on a Bachelor's thesis in AI with a student and a second
-agent called Sol. **You have no memory of previous sessions.** This file and
-`PROJECT_STATE.md` are how you recover. Read both before doing anything.
+**2026-09-02 D-161–D-168 E2A recovery supersedes the Week8 next-step wording below:**
+the first E2A launch at execution commit `4515d516` was externally terminated
+after150starts/149syncs, with0failure events. One complete local-only job
+`178f4ef3ae1e-s1001` and its interrupted 11/15-file durable partial are
+preserved;111jobs are untouched. Do not release the stale lease, delete the
+partial, rerun the ordinary wrapper, run a live monitor, or expose outcomes.
+D-161 authorizes exactly one outcome-blind recovery after committed tests:
+kernel-backed liveness proof (the Windows controller is only the exact stable
+pinned venv-launcher/direct base-interpreter pair), twin incident seal, explicit orphan-lease archive,
+partial quarantine+copy, reuse150, execute only111 from clean old source, then
+require counts111executed/150resumed/261synced and523events. Any second
+interruption is terminal. Recovery code/finalization use a later separately
+pinned commit; scientific fitting remains old commit. External Sol review and
+student Week6/7/8 own-voice work remain open; GPU remains prohibited.
+Cross-account Git trust is exact and process-local; never add global
+`safe.directory` state (D-163). D-168 supersedes D-167's startup mechanics:
+all recovery and E2A downstream commands must use the fixed compressed stage-0
+source, exact cleared `cmd.exe` environment, strict release receipt V2, tracked
+native launcher and externally hash-checked outer `-c` bootstrap. Every
+authority-bearing Python process receives exact `-I -S -B -X utf8 -c`; no
+startup `PYTHON*` variable is trusted. Never invoke the entrypoint path,
+controller or E2A module directly, and never execute a stage audit record—the
+only executable stage payload is renderer stdout retained in memory. The raw
+verifier must accept and retain handles for every controller/execution/Git/site
+file before captured project/dependency imports and propagate schema-4 stage
+and startup bindings. Each nested fit uses a fresh one-use verified context,
+the captured fixed child/helper, exact retained launcher/base-interpreter
+ownership, a raw-authority historical Git adapter, no native `multiprocessing`
+spawn and no pickle serialization. Worker
+terminal and lower-complete postmortem publication share the persistent
+lease-transition lock; a partial twin, replaced runtime/guard, incomplete
+lower epoch or identity drift is permanent stop evidence (D-164).
+
+**2026-09-01 Week8 bounded start supersedes next-step wording below:** the owner
+opened Week8 during calendar Week3 and deferred personal prose/review, without
+moving dates or Gate2 (D-160/DEV-022). CPU remains the only frozen production
+route; GPU stays unused. Exact new scope is E2A261fits/441models (not316/556:
+all60 smoke fits are reused), E2B125/625 and sweep-0023/15. First-sweep
+exclusion is source-reported before reserve; reserve remains unauthorized.
+Sign consistency is fixed pre-application as the five per-seed observed-class
+ratio contrasts, strict delta<0, 5/5 required; it is not an H2 verdict. The E2A
+smoke label was already known, so this is explicitly post-outcome and
+post-collection; the other19 labels and all E2A H2 ratios remained unopened.
+Retain
+the already frozen/used training batch size128 despite the Word table's256 and
+disclose the departure; changing it would mix procedures under unchanged fit
+identities. Student Week6/7/8 own-voice work and external Sol review remain
+open. Read `docs/week8_readiness_audit.md`, the reporting/sign specifications
+and `docs/week8_production_runbook.md`; delta71 will carry the closeout.
+
+**2026-09-01 Week7 computational closeout supersedes the next-step wording below:**
+Sol2 completed exact578newfits/1330models on CPU,GPU0,with0failed/resumed/other/
+unknown attempts. E1474/834,E2A95/475,firstsweep3/15+6/6. All30E1labels are
+verified:N0=29,N1=0,ambiguous0,undiagnosed1;firstsweep separately undiagnosed.
+Guarded fullQA4085pass/8skip/51subtests; E2A95+5reuses source-readback passed;
+accounting/report pins and every failure/correction are in
+`docs/week7_execution_results.md` and mandatory `docs/week7_sol_closeout.md`.
+Student~400Week6/~500Week7 own-voice prose, delivery and externalSol review are
+still open. Do not advance dates/run E2Alabels,H2/H3,exclusionrates,reserve or
+the remaining224sweep groups. Same-volume evidence is not off-device backup.
+Read `docs/week7_execution_log.md`; plans/reuse records are in the project-local
+`week7-execution-preparation-2026-08-31-attempt-001` directory. New sweep repairs
+use a distinct qualified evidence schema; the old D-155 guard stays strict.
+D-159/DEV-021 discloses registered input pools regenerated by untrained test
+fixtures; subsequent fixture collection uses development-only RNGs. No claim
+of pristine input blinding; do not use these fake-provenance fixtures as fits.
+D-158 fixes secondary Pearson diagnostic details after disclosed exposure,
+without running H2 or repeating D-156. Week-6/7 own-voice prose and Sol review
+remain open. Deltas 64–70 are undelivered; generated is not certified.
+
+**2026-08-31 D-154/D-155 update:** the owner expressly delegated the missing
+scientific choices to Sol2. Read `docs/week7_scientific_amendment.md` and its
+implementation log: fixed width-512 extension for 173 previously uncovered
+conditions; separate five-configuration H1 reporting, one Week-7 analysis reused
+at Week 10; prior exposure disclosed. These choices no longer await permission.
+External Sol certification remains pending (deltas 64–69). Full verification:
+2,293 passed, 7 expected skips, 0 failures. D-156's single source-bound report
+found all 5/5 disagreement criteria met; it is an amended operational result,
+not full H1 adjudication. The 225-unit sweep repair stream mismatch
+must refuse before execution until a versioned baseline-pairing correction is
+verified. Do not silently change old stream meanings or retrain old fits.
+
+You are the active implementation agent (Claude/Codex; the student currently
+calls this role **Sol2**) working on a Bachelor's thesis with the student and an
+external reviewing agent called Sol. **You have no memory of previous sessions.**
+This file and `PROJECT_STATE.md` are how you recover. Read both before acting.
 
 ---
 
@@ -50,8 +257,8 @@ is authoritative for state.
 
 | | |
 |---|---|
-| **You** | Hold the repo. All implementation, run orchestration, logging, prose drafts |
-| **Sol** (ChatGPT, one persistent session) | Adversarial reviewer. Never writes project code. **Remembers everything you forget** |
+| **You / Sol2** | Hold the repo. All implementation, run orchestration, logging, prose drafts. “Sol2” is the owner's label, not review authority |
+| **External Sol** (ChatGPT, one persistent session) | Adversarial reviewer/certifier. Never writes project code. **Remembers everything you forget** |
 | **Student** | Owns the thesis, decides, carries files between the two of you |
 
 **The asymmetry that shapes everything:** Sol is continuous, you are not. It is
@@ -109,18 +316,21 @@ test.**
 ## Environment
 
 ```bash
-.venv/bin/python -m pytest -q                      # 895 passing, 2 skipped, 0 xfailed
-.venv/bin/python -m bu.experiments.enumerate_units # design matrix report
-BASE=4e55291 ./scripts/sol_bundle.sh              # bundle for Sol; 4e55291 is CERTIFIED
+.venv/Scripts/python.exe -m pytest -q              # Windows snapshot; count in PROJECT_STATE §1
+.venv/Scripts/python.exe -m bu.experiments.enumerate_units
+BASE=4e55291 ./scripts/sol_bundle.sh               # real checkout, after applying the series
 ```
 
-- venv is `--system-site-packages` (reuses CUDA torch); `pyproject.toml` pins all.
+- This snapshot's venv is fully isolated, Python 3.13.5 with CPU-only torch;
+  `pyproject.toml` pins every dependency exactly. The real checkout may have a
+  CUDA-enabled environment, so skip counts differ by host (D-137).
 - Git identity is set repo-locally to the student. **`git pull --rebase` needs
   it** — a rebase stalled once because the machine had none configured.
 - Auth is an SSH key at `~/.ssh/id_ed25519_github`. **Never accept a token.**
 - `.claude/settings.local.json` is untracked and rewrites itself; it can dirty
   the tree mid-command. Harmless.
-- Remote: `RAMZI0TO99/beyond-uncertainty`, private, branch `main`.
+- Real remote: `RAMZI0TO99/beyond-uncertainty`, private, branch `main`. This
+  reconstructed snapshot has **no remote** and uses local branch `master`.
 
 ---
 
@@ -129,7 +339,7 @@ BASE=4e55291 ./scripts/sol_bundle.sh              # bundle for Sol; 4e55291 is C
 ```
 src/bu/
   constants.py   the preregistration, in one file, deliberately
-  config.py      UnitSpec / Arm / Config; the three identities; stage registry
+  config.py      UnitSpec / Arm / Config; the four identities; stage registry
   runrecord.py   provenance: config, seed, commit, dirty flag, package versions
   metrics.py     JSONL logging (flushed per line) + load_runs()
   critic/schema.py  frozen critic feature whitelist; fails closed
@@ -160,9 +370,9 @@ src/bu/
                     A wrapper over trend_test, never a second implementation
                     (D-070 … D-073). `select_attempt()` refuses to guess
   stats/acceptance.py  the repair acceptance test (P§7.3) and its permutation
-                    null. Three conditions, all required; episode-mean fallback
-                    is a labelled different method; permutes whole runs, never
-                    transitions (D-079)
+                    null. Three conditions, all required; no fallback — fails
+                    closed rather than degrading to a second method (D-094,
+                    D-100); permutes whole runs, never transitions (D-079)
   stats/mde.py      the W5 MDE simulation. Reproduces the ACTUAL estimator --
                     unit-weighted balanced accuracy over correlated groups,
                     paired, group-bootstrap interval. Deliberately exports NO
@@ -283,16 +493,67 @@ wearing two roles, not 25 runs (D-033). Conflating them cost 375 phantom fits.
 
 ## Where the project stands
 
-*Last session: **2026-08-22**. Week 1 Monday was 2026-08-17, so by the calendar
-it is **Week 1 Saturday** — the project runs roughly **4 weeks ahead** (DEV-002).
+*Last session: **2026-08-31**. Week 1 Monday was 2026-08-17, so by the calendar
+it is **Week 3 Monday** — Week-7 implementation is early (DEV-018).
 Gate 2's date is 2026-10-24, and gates never move.*
 
 **START HERE — read this before touching anything.**
 
+**2026-08-31 D-153 / DEV-018 overrides the implementation wait below:** the
+owner explicitly said to proceed to the next step and that Sol would review
+later. Week-7 source-bound Experiment-1 inputs/descriptive figures and exact
+Experiment-2A/sweep baseline configuration preparation are built and verified.
+Final full CPU suite: **1,798 passed, 7 skipped, 0 failed in 1,519.40 s**.
+Read `docs/week7_implementation_log.md`. Do not stop
+routine implementation merely because review or the student's Week-6 prose is
+pending. Do not invent missing scientific choices. Deltas **64–68** are
+undelivered; external Sol still owns certification. Phase B is in Week-7
+engineering while Week-6 human prose remains open. Historical execution
+evidence is untouched; all new writes stay inside the project workspace.
+
+**2026-08-30 SOL2 UPDATE (read D-133…D-152 and DEV-013…017 before older
+claims):** exact Config/Git/run/fit provenance and serialized gate/threshold
+evidence were hardened. Week-6 software now includes a source-reverifying
+persisted 20-seed repair-label pipeline, one-fit/many-role evidence, a physical
+X/y/groups leakage boundary, fresh-process isolation, exact preflight, private
+registered launch, crash-durable sync, live-lease protection and evidence-only
+monitoring. D-144 corrects the first blocker reading:
+**173/300 units lack a model-repair arm, but that is Week-7+/whole-design work,
+not a blocker to the registered Week-6 smoke unit or baseline Experiment 1**;
+the 30/150 multi-role fits are represented once. C-007 reaches persisted-label evidence
+but still lacks the final label-to-`SplitCandidate` bridge. **Deltas 64–68 are
+undelivered.** Exact real patch target
+`66edf4a11dce39b91974d5c331cca81424f83b6e`; Sol review base `4e55291`.
+
+**Verification:** D-146 stopped the launch with every execution root empty and
+fixed five pre-execution gaps. D-147 corrected a real fail-closed feature-
+encoding finalizer defect; D-148 makes the historical C-volume evidence
+read-only and confines every new file to the project. D-149 then finalized the
+60 immutable smoke fits with zero retraining: observed label 0 and counts
+attempted/N0/N1/ambiguous/undiagnosed = 1/1/0/0/0. D-150 then completed
+Experiment 1: 150/150 executed and project-synchronized, 0 failures/recoveries,
+750 member trainings, CPU only. The current repository-
+wide gate passed **1,669 tests, skipped 7 and failed 0 in 1,610.29 s** on the
+CPU-only Windows host. The
+seven skips are three CUDA checks, three unprivileged Windows-symlink cases and
+one intentionally vacuous identity case. D-150's final state/preflight/batch/
+launch/monitor closeout passed **184/1/0 in 121.95 s**. D-151 restored the
+preregistered strict `>20%` repair boundary in creation and persisted-evidence
+validation; the focused suite passed **104/0/0 in 178.30 s**, the state gate
+**13/0/0 in 0.64 s**, and the final full CPU suite **1,671/7/0 in 1,722.04 s**.
+The recorded smoke label is unchanged. D-152 corrects the stale phase label:
+scheduled Phase A (Weeks 1–5) is complete/certified with Gate 1 FAIL; current
+work is Phase B Week-6 closeout. Plan §13.6's separate “PHASE 1” is a repeated
+per-condition data-generation loop, not authority for a global unattended run.
+
 **Weeks 1–3 are certified and frozen at `9c0d89d`. WEEKS 4 AND 5 ARE COMPLETE
-AND CERTIFIED** (D-120, 2026-08-23). **No week is open** — the first time since
-Week 3. The certified base is **`4e55291`**; Sol certified delta 63 (D-131)
-and named that exact commit, and said a later one **must not be inferred**.
+AND CERTIFIED** (D-120, 2026-08-23). Calendar time is Week 3 Monday; scheduled
+Week 6 begins 2026-09-21. The owner opened Week 6 **readiness** early under
+DEV-015/016 and then explicitly authorised real confirmatory execution on the
+disclosed frozen local CPU under D-145/DEV-017. Preflight precedes every fit;
+the machine rows are closed; the week remains locally incomplete until the
+student supplies and defends the Thursday own-voice prose. Certified base is `4e55291`;
+no later certified commit may be inferred.
 
 **The prose closeout is CERTIFIED** (D-125): D-121 … D-124, with four documents
 accepted **in stated roles**. `docs/method_own_voice.md` is a **student-confirmed
@@ -303,19 +564,23 @@ assisted draft — NOT final independently authored thesis prose**;
 pass, strip the interview/provenance apparatus, and keep only wording they can
 personally explain and defend.**
 
-**Nothing is authorised to be built.** Q-012 was ruled **against** building
-C-005/C-007: they do not consume data, but they are **future-week
-implementation**, which is the verification lag Q-004 names. Sol's sentence —
-*completing W4/W5 obligations repaired omissions; it did not authorise pulling
-later implementation forward*. **Prose, review and read-only audit only. No
-source code, no executable tests, no real data, no labels, no reserve.**
+**Scope now:** the student authorised Week-6 integration under DEV-013…016 and
+real CPU execution under D-145/DEV-017; external Sol has not reviewed it. The
+registered smoke/label and Experiment-1 paths may run only after exact preflight.
+Reserve, split registration, threshold changes and expansion remain stopped.
+Delta 67 asks Sol to audit the resulting evidence and restart policy. D-146
+records the independent stop-before-launch audit, D-147 the first real
+fail-closed execution correction, D-148 the owner's project-only write
+boundary, D-149 the resulting smoke label/count evidence, D-150 the full
+Experiment-1 execution plus disclosed raw-tail inspection, and D-151 the
+strict-boundary correction plus source-only Week-7 readiness audit. Missing
+whole-design model repairs and the final label-to-critic bridge remain later
+rulings, not guessed prerequisites.
 
-**Do not write anywhere that W4/W5 are finished until Sol certifies.** That
-claim was already made prematurely once: §1 carried *"Weeks 1–5 are complete"*
-for many sessions until D-113 checked the schedule's own *Done when* column and
-found W4 Friday's timing harness and W5 Friday's balancer had never been built,
-and that the acceptance-model change had no deviation record. **The ledger tracks
-decisions; it does not track cells.** Nothing checks schedule coverage.
+**W4/W5 are now certified complete (D-120), but preserve the lesson:** that
+claim was made prematurely before D-113 checked the schedule's *Done when*
+column and found missing work. **The ledger tracks decisions; it does not track
+cells.** Verify schedule coverage before declaring a week complete.
 
 **The failure threshold is FROZEN and CERTIFIED:**
 `FAILURE_THRESHOLD = 0.610702633857727` in `src/bu/constants.py` (D-107,
@@ -327,8 +592,9 @@ registered construction and takes no threshold.
 
 **W4 Friday's timing is COMPLETE and attempt-003 is CERTIFIED** (D-119). Sol
 verified the record itself — recomputing from the raw repetitions — and ruled it
-complete under DEV-011. **No fourth timing attempt is required.** **W5 is open
-for one micro-closeout**, returned as **delta 56**, which is undelivered.
+complete under DEV-011. **No fourth timing attempt is required.** The W5
+micro-closeout went back as delta 56, which Sol **certified** (D-120,
+2026-08-23) — **Weeks 4 and 5 are complete.**
 
 **Gate 1 = FAIL** (D-098), on the five-point MDE. Reliability PASS, permutation
 calibration PASS. **Condition 2 (compute) is NOT ADJUDICABLE across hosts — it
@@ -358,33 +624,24 @@ a Kaggle T4 and **nothing has ever run there** (DEV-011). Local wall-hours and
 GPU-hours are different units and **must never be compared as a PASS**; the
 record says `comparison_status: not adjudicable across hosts`.
 
-### ⚠ The biggest open thing: Gate 1 is at risk (D-078)
+### Gate 1 failed; the exact final-inference MDE remains unsettled
 
-C-006 is built and both of D-044's validations pass — and the answer is that
-**the design cannot resolve a five-point balanced-accuracy difference at 80%
-power.** At the scheduled held-out counts the MDE is **18–22 points**.
+C-006 is built and both D-044 validations pass. Its diagnostic says the design
+does not resolve a five-point balanced-accuracy difference at 80% power; at the
+scheduled held-out counts its **uncertified optimistic table is 18–22 points**.
+Gate 1 is already a signed FAIL (D-098).
 
-**Sample size is the driver, not correlation.** At ICC = 0 it is still 18
-points, so the conclusion does not rest on the parameter least knowable before
-data. Checked against hand arithmetic (19.8 analytic vs 19.0 simulated). Every
-lever tested: pairing takes it to 8.0 at correlation 0.99; holding out *all 300*
-units gives 6.0 paired. Clearing five points conservatively needs on the order
-of **1,500–2,000 held-out units** against the 60–80 scheduled.
+**Sample size is the driver in that diagnostic, not correlation.** At ICC = 0
+it is still 18 points (19.8 analytic vs 19.0 simulated). Pairing takes it to 8.0
+at correlation 0.99; holding out all 300 units gives 6.0 paired. The often-cited
+**1,500–2,000 held-out** figure is a rough extrapolation, not a computed
+sample-size requirement.
 
-**The numbers are if anything optimistic** (D-082 audit). The power test is
-anti-conservative — type-I error 0.06–0.09 vs 0.05, worse at higher ICC —
-because it uses a Wald `1.96×SE` rule rather than D-044's group-bootstrap
-percentile, and both over-reject at ~20–40 clusters. So the true MDE is *larger*
-than 18–22; the risk is real, not a simulation artefact.
-
-**Do not act on this number.** P§14.3's remedy is configuration count — never
-seeds — but that is the student's and Sol's decision, and **three** things need
-adversarial review first: whether the simulated estimand is the one H3's test
-will use, whether comparing an **MDE** against an **equivalence margin** is
-coherent at all, and (D-082) which inference procedure the MDE should use, since
-the current one over-rejects. The plan frames it that way (P§10.7) and the simulation follows
-the plan exactly; if the framing is wrong, the table is the right computation of
-the wrong thing.
+**The current table is optimistic for its Wald procedure** (D-082): its type-I
+error is 0.06–0.09 instead of 0.05 at ~20–40 clusters. **Do not infer an exact
+"true MDE" or its direction for H3's final procedure**; that procedure is not
+registered yet. D-089 permits the table only as a diagnostic and gates any
+exact report on the final group-level inference and a validated null size.
 
 ### W4 Tuesday's result, certified
 
@@ -424,50 +681,30 @@ certified cells at 4 threads instead of 8 reproduced N=100 exactly and moved
 N=250 by 0.19%. Now recorded **additively** — making it a required field would
 invalidate the certified attempt, which is Sol's call (delta 40).
 
-**Zero GPU-hours.** The only compute ever spent is 450 CPU fits (W4 Tue) plus
-~25 CPU fits of smoke and probe work in scratch directories.
+**Zero GPU-hours.** Prior official experimental compute is **675 CPU member
+fits**: 450 W4 gate plus 225 W4 threshold calibration. D-147 adds **60 Week-6
+physical sidecars / 140 member-model trainings**, pending Sol, with no retry or
+rerun. These are confirmatory smoke evidence, not development diagnostics.
 
 ### Next, in order
 
-*Rewritten 2026-08-22 at session end. **This list has now gone stale three
-times** — it has twice described work as blocked that had already run. Nothing
-mechanical catches that, because the protocol suite checks §1's structure and
-never its truth. **So read it as a dated snapshot, not as state.** If the ledger
-disagrees, the ledger wins: check the highest D-number in `DECISIONS.md` and the
-newest §7 entry in `PROJECT_STATE.md` before trusting anything here.*
+1. D-153 implementation/audit is complete and travels as patch 0016. Read the
+   final verification and `docs/week7_open_decisions.md` before the next step;
+   never repeat the 150 Experiment-1 fits or the 60 smoke fits.
+2. Keep Week-6 student's independent ~400-word rewrite/explain-and-defend task
+   open alongside engineering, not as a substitute for it. Fact-check, never
+   ghost-author that requirement.
+3. For further execution, distinguish prepared configurations from outstanding
+   work: five Experiment-2A baselines already exist in smoke evidence. Reuse
+   source-verified physical fits, preserving roles, rather than rerunning them.
+4. Carry the owner's D-154 scientific amendments and D-155 pairing finding to Sol.
+   Do not infer repair labels from baseline-only fits. Deliver deltas **64–69**
+   with the cumulative patches; nothing is certified by the name Sol2.
 
-**As of 2026-08-23, W4 and W5 are certified complete and NOTHING is authorised
-to be built.** This is not a lull to fill with implementation — it is the
-allocation Sol ruled.
-
-1. **Only this prose-correction round is open.** Delta 62 was delivered and
-   WITHHELD for narrow prose/handoff staleness (D-130); **delta 63 returns the
-   fixes**. Nothing else is authorised — no C-005/C-007 implementation, no W6+
-   work, no experiment execution, no compute.
-2. **Do not build C-005 or C-007.** Q-012 is closed (D-120), reaffirmed at
-   D-125/D-128. Data consumption is a **necessary bar, not a sufficient one** —
-   the operative question is whether the work is *this* week's obligation or a
-   *later* week's. C-005/C-007 begin at their scheduled time (W6–W11) or on a
-   **fresh explicit authorisation**. The C-005/C-007 **prose spec** is written
-   and substantively accepted (D-128); its implementation is not authorised.
-3. **The plan/schedule `.docx` audit is COMPLETE** (D-126, accepted), its
-   findings F1–F8 all ruled and applied (D-128) — it is **no longer** open work.
-4. **The base is `4e55291`** (certified through delta 63 / D-131) and **delta 64
-   carries one thing: a student-obligation progress report** — the student's
-   full methodology chapter draft, provenance disclosed (student-written,
-   AI-polished, D-132), audited 32/32 clean, **explain-and-defend walkthrough
-   pending, no ruling requested**. Do not infer a later base; D-043 exists
-   because a challenged commit was nearly used as one.
-5. **The exclusion-rate assumption is settled** — ratified by Sol as **DEV-012**,
-   a **zero-inflation planning convention** of 0.00, never to be described as
-   observed, estimated or pilot-derived. **S§W6 Monday checks batch 1 against
-   it**, so it must survive intact to Week 6.
-6. **Week 6 execution stays closed.** Q-004 still bars it. C-005 and C-007
-   remain W6–W11 work. C-003, C-006, C-008 … C-011 are done.
-
-**Do not, without a fresh Sol ruling:** recalibrate the threshold, expand the
-design, consume reserve units, generate repair labels, or run anything on real
-labelled data. The balancer is synthetic-inputs-only until C-005 exists.
+**Owner authority now also covers D-154's specified scientific choices.** Follow
+its explicit verification and single-report boundary before result access; do not
+invent baseline roles, duplicate multi-role fits, recalibrate the threshold, expand the design,
+consume reserve units, or use the splitter/balancer on real inputs.
 
 ### What exists in Week 3
 
@@ -497,13 +734,16 @@ labelled data. The balancer is synthetic-inputs-only until C-005 exists.
   (D-107) and certified it (D-109) on 2026-08-22 after independently verifying
   135 digests and recomputing the percentile to a binary-identical float. This
   bullet described delta 50 as carrying "the only live blocker" for several
-  sessions after that was false — **the live delta is 56**. Deltas 39–55 are all
-  answered (D-089, D-100 … D-102, D-106, D-111, D-118, D-119).
+  sessions after that was false, then said the live delta was 56 after that too
+  had been certified (D-120) — **the live undelivered deltas are 64–67**.
+  Deltas 39–63 are all answered or certified (D-089, D-100 … D-102, D-106,
+  D-111, D-118 … D-120, D-125, D-131).
 - **W4 Friday has run** (D-103) and **will not be rerun** — the threshold has
   been inspected, so Sol's invalidation protocol can no longer be satisfied. The
-  number is calibrated but **not frozen**: promotion into `constants.py` is the
-  outstanding D-035 Change Record. Freezing it remains the most irreversible act
-  in the project so far.
+  number is **frozen and certified**: the D-035 promotion into `constants.py`
+  was executed as the D-107 Change Record and certified by Sol (D-109) —
+  nothing about the threshold is outstanding. Freezing it was the most
+  irreversible act in the project so far, and it is done.
 - **Numbers taken before D-051/D-052 are void.** D-020's coverage evidence and
   the Q-011 disagreement measurements were both taken under the non-stationary
   policy and the derived split. Re-measure; do not quote them.
@@ -527,12 +767,32 @@ labelled data. The balancer is synthetic-inputs-only until C-005 exists.
   repair efficacy may need reading on the **activation** task, not position
   alone. Tentative — a whole-pool smoke test with no threshold — but check it
   when real repair validation runs (P§7.3, the failure set needs W4 Friday).
-- **C-005 / C-007** — the grouped critic splitter and the remaining
-  confirmatory-guard call sites in the critic loaders. W6–W11 work. Everything
-  else on the obligation list is **done**: C-003 (D-092), C-006 (D-078), C-008
-  (D-096), C-009 (D-077), C-010 (D-076), C-011 (D-072).
+- **C-005 / C-007 / Week 6** — built early under DEV-013…017 and awaiting Sol.
+  C-005 has complete feasibility and positive type/seed guards. C-007 now has a
+  persisted fit-to-label evidence boundary, but its final label-to-
+  `SplitCandidate` bridge is future work. Week-6 current registered software is
+  implementation-complete and fail-closed. D-146 adds commit-bound workers,
+  crash-durable synchronization, token-only lease release, a fixed production
+  smoke launcher/count artifact and an evidence-only Experiment-1 monitor. The
+  owner supplied execution authority and selected the frozen CPU route. D-147's
+  preflight and all 60 smoke sidecars completed and synchronized; first label
+  finalization failed closed on an incorrect feature-encoding equality rule.
+  D-148 confines all new correction evidence to the project while reading the
+  historical C copy only. D-149 finalized without retraining: data repair
+  passed, feature repair failed, observed label 0, and exact counts are
+  1/1/0/0/0. D-150 completed Experiment 1 at 150/150 with byte-identical
+  project copies and a final validated monitor. A raw journal tail exposed two
+  per-fit summaries mid-run; no adaptation occurred, and Sol must audit it.
+  D-151 restores strict `>20%` semantics and records the still-missing Week-7
+  evidence adapters. D-152 records that Phase A is already complete and that
+  pipeline PHASE 1 is not a global launch. External certification remains
+  pending (D-141…D-152).
 
-Still blocked by Sol, correctly: confirmatory collection and critic splitting.
+Still scientifically gated: registered split seed/targets, real critic
+splitting and reserve use. Whole-design repair assignments are now complete;
+sweep pairing and label execution still need verified engineering. Owner-authorised
+Week-6 collection is DEV-017; Week-7 routine implementation before review is
+DEV-018; the specifically delegated scientific amendments are DEV-019/D-154.
 **The MDE is not among them — that claim was stale.** Sol ruled on all three
 questions in **D-089**: the simulation is a **diagnostic**, not H3's estimator;
 MDE-vs-margin is a **necessary sensitivity check and explicitly not an
@@ -557,3 +817,9 @@ still 150/150. Power is **simulated** at W5 — there is deliberately no `n_eff(
 
 **Comparison groups.** Units sharing one were *given* related data by design, so
 a group must never span a critic split or a CV fold (D-039).
+
+### D-175 proposed operational correction after adjudicate010
+
+The clean D-174 controller release c0e97606a20f66b8b379bd42666b3a3e392d146f produced a mechanically verified status010, but the sole adjudicate010 invocation finally refused before transition or recovery. The refusal record SHA256 is 409cf5248f7c7a392d7136667d9d0909ae39a1f64d9695af04160269a1f29ad9; the exact error SHA256 28fe21d125fe37ca07a99d284433d3dda3d68f012885150237847facad1d20c6 identifies a non-bu relocation provenance helper loaded from the controller source root. Preserve attempt010's ten files and both refused adjudication transports without replay. D-175 proposes an exception only for the exact active provenance helper already validated by relocation admission. It does not admit unrelated source-root modules.
+
+The full exact-candidate gate006 result must be bound from its verified report: D-175 gate006 reconciled 5,560 distinct nodes across 45 accepted QA operations: 5,541 passed, 19 expected Windows symlink-privilege skips, 51 passing subtests and zero failures/errors. Combined JUnit SHA256 8609635798966799bdf6c24320f98f7e6621e608c06723649a0331cda7cc7ced; candidate manifest SHA256 fc05526d22b99fb6c52e0977a8aa29c8b9a506ffe7e9b76986af7489e8999c23. Documentation governance, unchanged pinned runtime inventories, QA-residue preservation, clean local release and a distinct reviewed status011 and adjudicate011 remain required before the sole D-161 recovery. The owner-supervised local/private window ends 2026-09-29 08:00 UTC; it does not authorize public action. Retain the original evidence, lease, 8 GiB, empty-startup, two-snapshot liveness, global no-unrelated-Python and no-retry guards. Frozen scientific source and values remain untouched.

@@ -1,0 +1,114 @@
+
+import ast,datetime as dt,hashlib,json,math,os,pathlib,stat,re
+P=pathlib.Path(r"D:\Aenv\pro2");B=P/"resume-2026-10-01-30h-001";R=B/"raw-component-runtime-prep004"
+INPUTS={};BYTES={}
+FIXED_EXE_ROLES={str(P/"pro2/.venv/Scripts/python.exe"),str(P/"runtimes/git/mingw64/bin/git.exe"),str(P/"runtimes/week8-python313-frozen-001/python.exe")}
+RAW_FIELDS=("st_dev","st_ino","st_mode","st_size","st_mtime_ns","st_ctime_ns","st_nlink","st_file_attributes","st_birthtime_ns")
+def raw9(s):return [getattr(s,k) for k in RAW_FIELDS]
+def ancestors(p):
+    rows=[]
+    for d in [*reversed(p.parent.parents),p.parent]:
+        s=d.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not s.st_file_attributes&1024,d
+        rows.append([str(d),s.st_dev,s.st_ino,s.st_mode,s.st_file_attributes])
+    return rows
+def read(p,pin=None,size=None,maximum=8388608):
+    p=pathlib.Path(p);chain=ancestors(p);pre=p.lstat()
+    assert stat.S_ISREG(pre.st_mode) and pre.st_nlink==1 and not pre.st_file_attributes&1024,p
+    assert type(maximum) is int and 0<maximum<=134217728 and 0<=pre.st_size<=maximum,p
+    with p.open("rb") as f:
+        first=os.fstat(f.fileno());assert 0<=first.st_size<=maximum
+        x=f.read(maximum+1);last=os.fstat(f.fileno())
+    post=p.lstat()
+    assert len(x)<=maximum and len(x)==pre.st_size and raw9(pre)==raw9(post) and raw9(first)==raw9(last),p
+    for key in ("st_dev","st_ino","st_size","st_mtime_ns","st_nlink","st_file_attributes","st_birthtime_ns"):
+        assert getattr(pre,key)==getattr(first,key),str(p)+key
+    if pre.st_mode!=first.st_mode:
+        assert os.name=="nt" and str(p) in FIXED_EXE_ROLES,p
+        assert stat.S_IFMT(pre.st_mode)==stat.S_IFMT(first.st_mode) and stat.S_IMODE(pre.st_mode)&~0o111==stat.S_IMODE(first.st_mode)&~0o111,p
+        assert stat.S_IMODE(pre.st_mode)&0o111==0o111 and stat.S_IMODE(first.st_mode)&0o111==0,p
+    assert ancestors(p)==chain,p
+    r={"path":str(p),"sha256":hashlib.sha256(x).hexdigest(),"size":len(x),"path_raw9":raw9(pre),"handle_raw9":raw9(first)}
+    if pin is not None:assert r["sha256"]==pin,p
+    if size is not None:assert len(x)==size,p
+    INPUTS[str(p)]=r;BYTES[str(p)]=x
+    return x
+def pairs(v):
+    d={}
+    for k,x in v:
+        assert k not in d,"duplicate JSON key"
+        d[k]=x
+    return d
+def finite(token):
+    value=float(token);assert math.isfinite(value),"nonfinite JSON number";return value
+def J(x):return json.loads(x,object_pairs_hook=pairs,parse_float=finite,parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def hex64(x):return type(x) is str and re.fullmatch("[0-9a-f]{64}",x) is not None
+def bindings_reverse(source,names,expected):
+    rows=source.splitlines(keepends=True);t=ast.parse(source.decode("utf-8"));edits=[];found={}
+    for n in t.body:
+        if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in names:
+            key=n.targets[0].id;assert key not in found and isinstance(n.value,ast.Constant) and hex64(n.value.value)
+            found[key]=n.value.value
+            assert expected[key]==n.value.value,key
+            start=sum(map(len,rows[:n.value.lineno-1]))+n.value.col_offset
+            end=sum(map(len,rows[:n.value.end_lineno-1]))+n.value.end_col_offset
+            edits.append((start,end))
+    assert set(found)==set(names) and len(edits)==len(names)
+    back=source
+    for start,end in sorted(edits,reverse=True):back=back[:start]+b"None"+back[end:]
+    return back,found,edits
+
+R=B/"raw-consumer-binding-integration-prep004";S=B/"raw-consumer-binding-integration-prep003"
+def create(p,x):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open("xb") as f:f.write(x)
+ assert read(p)==x
+prior=J(read(R/"BEFORE_PRESERVATION_004.json"))
+expected={r["relative_path"]:r for r in prior["pairs"]}
+assert len(expected)==764
+paths=sorted(p for p in S.rglob("*") if p.is_file())
+assert [p.relative_to(S).as_posix() for p in paths]==sorted(expected)
+final_before=[]
+for p in paths:
+ old=expected[p.relative_to(S).as_posix()]
+ x=read(p,old["original"]["sha256"],old["original"]["size"],maximum=134217728)
+ assert INPUTS[str(p)]["path_raw9"]==old["original"]["path_raw9"] and INPUTS[str(p)]["handle_raw9"]==old["original"]["handle_raw9"]
+ q=R/"before/revision003"/p.relative_to(S);assert read(q,old["copy"]["sha256"],old["copy"]["size"],maximum=134217728)==x
+ assert INPUTS[str(q)]["path_raw9"]==old["copy"]["path_raw9"] and INPUTS[str(q)]["handle_raw9"]==old["copy"]["handle_raw9"]
+ final_before.append({"relative_path":p.relative_to(S).as_posix(),"original":INPUTS[str(p)].copy(),"copy":INPUTS[str(q)].copy()})
+# Source4/context authorization pairs receive three fresh bounded observations.
+extras=prior["extra_input_pairs"]+[
+ {"original":{"path":str(B/"ROOT_CONSUMER_MAPPING_TYPE_CORRECTION_006.json")},"copy":{"path":str(R/"inputs/source-choice006.json")}},
+ {"original":{"path":str(B/"ROOT_CONSUMER_MAPPING_TYPE_CORRECTION_006.md")},"copy":{"path":str(R/"inputs/source-choice006.md")}}]
+extra_snapshots=[];observation_times=[]
+for observation in range(3):
+ rows=[]
+ for row in extras:
+  p=pathlib.Path(row["original"]["path"]);q=pathlib.Path(row["copy"]["path"])
+  x=read(p);assert read(q)==x
+  rows.append({"original":INPUTS[str(p)].copy(),"copy":INPUTS[str(q)].copy()})
+ if extra_snapshots:assert rows==extra_snapshots[0]
+ extra_snapshots.append(rows);observation_times.append(dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"))
+receipt={"schema_version":1,"record_type":"author_final_input_stability_observation","author":"/root/candidate_review","created_at_utc":dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"),"historical_before_pair_count":764,"historical_before_original_bytes":sum(r["original"]["size"] for r in final_before),"historical_pairs_triple_plus_final_same_bytes_raw9":True,"final_before_pairs":final_before,"source_choice_and_raw4_extra_input_pairs":extra_snapshots[0],"extra_pair_observations":3,"extra_pair_observation_times_utc":observation_times,"source_and_test_execution":False,"CodeType_metadata_only_already_recorded":True}
+create(R/"AUTHOR_FINAL_INPUT_STABILITY_004.json",json.dumps(receipt,sort_keys=True,indent=2).encode()+b"\n")
+bindings=J(read(R/"SOURCE_GUARD_TEST_BINDINGS_004.json"))
+files=sorted(p for p in R.rglob("*") if p.is_file())
+assert not (R/"STAGED_MANIFEST_004.json").exists()
+payload=[]
+for p in files:
+ x=read(p,maximum=134217728)
+ payload.append({"path":p.relative_to(R).as_posix(),"sha256":hashlib.sha256(x).hexdigest(),"size":len(x),"path_raw9":INPUTS[str(p)]["path_raw9"],"handle_raw9":INPUTS[str(p)]["handle_raw9"]})
+test=read(R/"test_raw_consumer_guards_004.TEMPLATE.py")
+manifest={"schema_version":4,"record_type":"raw_consumer_binding_source_preparation_manifest","author":"/root/candidate_review","frozen_utc":dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"),"status":"SOURCE_AND_TEST_PREPARATION_ONLY_UNRUN_PEER_PENDING","declared_payload_file_count":len(payload),"creation_total_including_manifest":len(payload)+1,"declared_payload_bytes":sum(r["size"] for r in payload),"excluded_self":"STAGED_MANIFEST_004.json","files":payload,"preserved_actual_revision003_files":764,"preserved_actual_revision003_bytes":78172347,"raw_helper_sha256":bindings["raw_sha256"],"raw_helper_input":"inputs/raw004-source.bytes","raw_helper_function_count":85,"raw_helper_class_count":7,"raw_helper_initializer_genexpr_count":1,"raw4_source_peer":"inputs/raw004-peer.json","source_author":"/root/candidate_review","source_bindings":bindings["consumers"],"root_source_choice005_sha256":hashlib.sha256(read(R/"inputs/source-choice005.json")).hexdigest(),"root_mapping_choice006_sha256":hashlib.sha256(read(R/"inputs/source-choice006.json")).hexdigest(),"source_mapping_algorithm_delta":"Exact dict/MappingProxyType only; trusted direct import added; other raw executable/API/default/import/registry/CodeType guards unchanged.","old14_method_ASTs_exact":True,"prepared_test_methods_AST_count":19,"active_test_path":"test_raw_consumer_guards_004.TEMPLATE.py","active_test_sha256":hashlib.sha256(test).hexdigest(),"active_test_bytes":len(test),"appended_static_contexts_only":680,"independent_consumer_source_peer":None,"actual_bound_review":None,"root_execution_ACK":None,"actual_collection_nodes":None,"actual_test_results":None,"healthy_runtime_acceptance":None,"final_generated_source_release_binding":None,"current_attestation_sha256":None,"current_native_proof":None,"target_definitions_or_imports_or_tests_execution":False,"inert_compile_metadata_scope":"authenticated Raw4 +six fixed selected AST projections only; no exec/eval/FunctionType/calls/imports","historical_schema3_incident_terminal_twins_modified":False,"live_source_or_docs_modified":False,"frozen_raw005_unit_or_metadata2_modified":False,"public_actions":False,"scientific_outcomes_consulted":False,"scientific_values_emitted":False,"owner_sha256":hashlib.sha256(read(R/"inputs/owner.json")).hexdigest(),"owner_end_utc":"2026-10-02T22:36:15Z","allowed_post_manifest_artifacts":["AUTHOR_POST_FREEZE_STABILITY_004.json","INDEPENDENT_RAW_CONSUMER_GUARD_STATIC_REVIEW_004.json","INDEPENDENT_RAW_CONSUMER_GUARD_STATIC_REVIEW_004.md"],"historical_manifests_or_reviews_expanded_or_rewritten":False}
+create(R/"STAGED_MANIFEST_004.json",json.dumps(manifest,sort_keys=True,indent=2).encode()+b"\n")
+# A separately saved post-freeze readback does not change manifest creation facts.
+post=[]
+for row in payload:
+ p=R/row["path"];read(p,row["sha256"],row["size"],maximum=134217728)
+ assert INPUTS[str(p)]["path_raw9"]==row["path_raw9"] and INPUTS[str(p)]["handle_raw9"]==row["handle_raw9"]
+ post.append({"path":row["path"],"sha256":INPUTS[str(p)]["sha256"],"size":row["size"],"same_bytes_path_raw9_handle_raw9":True})
+manifestbytes=read(R/"STAGED_MANIFEST_004.json")
+postrecord={"schema_version":1,"record_type":"author_post_freeze_stability_readback","author":"/root/candidate_review","created_at_utc":dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"),"manifest_sha256":hashlib.sha256(manifestbytes).hexdigest(),"manifest_bytes":len(manifestbytes),"declared_payload_count":len(post),"all_declared_payload_bytes_and_raw9_stable_after_manifest":True,"entries":post,"before_pairs_triple_plus_final":764,"source_code_and_tests_remain_UNRUN":True,"allowed_extra_not_added_to_manifest":True}
+create(R/"AUTHOR_POST_FREEZE_STABILITY_004.json",json.dumps(postrecord,sort_keys=True,indent=2).encode()+b"\n")
+print(json.dumps({"manifest_sha256":hashlib.sha256(manifestbytes).hexdigest(),"manifest_bytes":len(manifestbytes),"payload_count":len(payload),"creation_total":len(payload)+1,"post_freeze_total":len(payload)+2,"payload_bytes":sum(r["size"] for r in payload),"handoff_sha256":hashlib.sha256(read(R/"HANDOFF_004.md")).hexdigest(),"post_readback_sha256":INPUTS[str(R/"AUTHOR_POST_FREEZE_STABILITY_004.json")]["sha256"],"test_sha256":hashlib.sha256(test).hexdigest(),"test_size":len(test),"source_bindings":bindings["consumers"],"actual_results":None}))
+

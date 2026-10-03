@@ -1,0 +1,1396 @@
+"""Durable batch orchestration for unattended confirmatory runs (S§W6 Fri).
+
+The scientific runner in :mod:`bu.experiments.confirmatory` deliberately owns
+the rules for *one* fit.  This module owns the operational rules around many
+fits: an immutable plan, append-only checkpoints, one directory per job,
+failure isolation, resume, incremental result writes, and a mandatory sync
+callback after every locally completed result.
+
+There is no Kaggle API or shell command here.  Authentication and transport are
+deployment concerns; accepting an arbitrary command would turn a scientific
+runner into a command-execution surface.  The public ``run_synthetic_batch``
+test harness requires a callable sync boundary, while the production launcher
+uses the private fixed-executor hand-off only after its own validation and
+lease.  ``sync_to_directory`` is the concrete mounted-directory adapter.
+
+Nothing in this module launches work at import time.  In particular, defining
+the registered Experiment-1 plan is not evidence that Experiment 1 ran.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import shutil
+import stat
+import tempfile
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from .. import constants as K
+from ..config import Arm, Config, UnitSpec
+from ..durable import (
+    DivergentTargetError,
+    DurabilityError,
+    append_jsonl,
+    atomic_write_json,
+    fsync_directory,
+    read_jsonl,
+    recover_unterminated_jsonl,
+)
+from .fit_evidence import (
+    FIT_EVIDENCE_FILE,
+    FIT_EVIDENCE_SCHEMA_VERSION,
+    load_fit_evidence,
+    run_confirmatory_fit,
+)
+from .supervisor import run_isolated_attempt
+from .prefit_storage import PreflightStorageGuard
+from .enumerate_units import design_units, execution_plan
+
+
+BATCH_SCHEMA_VERSION = 2
+SYNC_RECEIPT_SCHEMA_VERSION = 2
+MANIFEST_FILE = "batch_manifest.json"
+EVENTS_FILE = "batch_events.jsonl"
+RESULT_FILE = "job_result.json"
+
+
+@dataclass(frozen=True)
+class BatchJob:
+    """One isolated registered run in a batch."""
+
+    unit: UnitSpec
+    stage: str
+    seed: int
+    arm: str = "baseline"
+    roles: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        # Only the exact default empty tuple means "this stage only".  Falsy
+        # substitutes such as [] must not slip past the public type boundary.
+        roles = (self.stage,) if self.roles == () else self.roles
+        if (
+            not isinstance(roles, tuple)
+            or not roles
+            or any(type(role) is not str for role in roles)
+            or len(set(roles)) != len(roles)
+            or tuple(sorted(roles)) != roles
+            or self.stage not in roles
+        ):
+            raise ValueError(
+                f"roles must be a sorted unique nonempty tuple containing the "
+                f"execution stage {self.stage!r}, got {roles!r}"
+            )
+        object.__setattr__(self, "roles", roles)
+        # Config performs the authoritative stage/arm/applicability checks for
+        # every obligation this one computation discharges.
+        for role in roles:
+            Config(unit=self.unit, arm=Arm(self.arm), stage=role, seed=self.seed)
+
+    @property
+    def config(self) -> Config:
+        return Config(
+            unit=self.unit, arm=Arm(self.arm), stage=self.stage, seed=self.seed
+        )
+
+    @property
+    def job_id(self) -> str:
+        # A batch schedules computations. Several run/role identities can be
+        # discharged by one fit (D-033), so using run_id here would double-run
+        # shared exp1/repair_validation fits.
+        return self.config.fit_id
+
+    def as_record(self) -> dict[str, Any]:
+        cfg = self.config
+        return {
+            "job_id": self.job_id,
+            "run_id": cfg.run_id,
+            "config_id": cfg.config_id,
+            "unit_id": cfg.unit_id,
+            "fit_id": cfg.fit_id,
+            "stage": self.stage,
+            "seed": self.seed,
+            "arm": self.arm,
+            "roles": list(self.roles),
+            "config": cfg.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
+class BatchReport:
+    batch_id: str
+    total: int
+    executed: int
+    resumed: int
+    synced: int
+    failed: int
+    sync_failed: int
+
+    @property
+    def complete(self) -> bool:
+        """True only when every registered job has a durable sync receipt."""
+        return self.synced == self.total and self.failed == self.sync_failed == 0
+
+
+@dataclass(frozen=True)
+class SyncReceipt:
+    """A transport attestation bound to the exact local job evidence."""
+
+    destination: str
+    job_id: str
+    result_digest: str
+    job_tree_digest: str
+    copy_evidence_digest: str
+    schema_version: int = SYNC_RECEIPT_SCHEMA_VERSION
+
+    def as_record(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "destination": self.destination,
+            "job_id": self.job_id,
+            "result_digest": self.result_digest,
+            "job_tree_digest": self.job_tree_digest,
+            "copy_evidence_digest": self.copy_evidence_digest,
+        }
+
+
+SyncCallback = Callable[[Path, BatchJob, Mapping[str, Any]], SyncReceipt]
+Executor = Callable[[BatchJob, Path], Mapping[str, Any]]
+
+
+@dataclass(frozen=True)
+class _RegisteredFitRequest:
+    """Spawn-safe production payload bound to one preflight commit."""
+
+    job: BatchJob
+    expected_git_commit: str
+
+
+def _execute_in_spawned_child(
+    attempt_dir: Path,
+    payload: tuple[Executor, BatchJob],
+) -> Mapping[str, Any]:
+    """Picklable bridge from the generic supervisor to a batch executor."""
+    executor, job = payload
+    return executor(job, attempt_dir)
+
+
+def _execute_registered_in_spawned_child(
+    attempt_dir: Path,
+    payload: _RegisteredFitRequest,
+) -> Mapping[str, Any]:
+    """Run the fixed executor with its exact launch-bound Git commit."""
+
+    if type(payload) is not _RegisteredFitRequest:
+        raise ValueError(
+            "registered child payload must be an exact _RegisteredFitRequest"
+        )
+    return _default_executor(
+        payload.job,
+        attempt_dir,
+        expected_git_commit=payload.expected_git_commit,
+    )
+
+
+def experiment_1_jobs() -> tuple[BatchJob, ...]:
+    """The registered 6×5×5 plan, deduplicated at the computation identity.
+
+    Thirty jobs also discharge ``repair_validation``. They remain one job with
+    two roles; fit-evidence schema v2 writes both obligation projections from
+    that one physical fit without duplication (D-144).
+    """
+
+    jobs = tuple(
+        BatchJob(
+            unit=fit.unit,
+            stage="exp1",
+            seed=K.CONFIRMATORY_SEED_BASE + fit.seed,
+            arm=fit.arm,
+            roles=fit.roles,
+        )
+        for fit in execution_plan(design_units())
+        if "exp1" in fit.roles
+    )
+    if len(jobs) != 6 * 5 * 5 or len({job.job_id for job in jobs}) != len(jobs):
+        raise RuntimeError(
+            "Experiment-1 batch is not the registered 6×5×5 unique-run plan"
+        )
+    return jobs
+
+
+def _canonical_json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def _manifest(jobs: Sequence[BatchJob]) -> dict[str, Any]:
+    if not jobs:
+        raise ValueError("a batch must contain at least one job")
+    if any(type(job) is not BatchJob for job in jobs):
+        raise ValueError("every batch entry must be an exact BatchJob")
+    records = [job.as_record() for job in jobs]
+    ids = [record["job_id"] for record in records]
+    if len(ids) != len(set(ids)):
+        raise ValueError("batch contains duplicate job identities")
+    payload = {"schema_version": BATCH_SCHEMA_VERSION, "jobs": records}
+    batch_id = hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()[:16]
+    return {"batch_id": batch_id, **payload}
+
+
+def _write_json_exclusive(path: Path, value: Mapping[str, Any]) -> None:
+    try:
+        atomic_write_json(path, dict(value))
+    except DivergentTargetError as exc:
+        raise ValueError(
+            f"{path} already exists with different content; refusing to "
+            "overwrite evidence from another job or plan"
+        ) from exc
+
+
+_ALLOWED_TRANSITIONS = {
+    None: {"started"},
+    "started": {"completed", "failed"},
+    "completed": {"synced", "sync_failed"},
+    "failed": {"started", "failed"},
+    "sync_failed": {"synced", "sync_failed"},
+    # A resume may name a newly approved durable destination.  Its receipt is
+    # another append-only attestation, not a mutation of the first one.
+    "synced": {"synced"},
+}
+
+
+def _append_event(path: Path, event: Mapping[str, Any]) -> None:
+    append_jsonl(path, event)
+
+
+def _append_transition(
+    path: Path,
+    latest: dict[str, dict[str, Any]],
+    event: dict[str, Any],
+) -> None:
+    """Validate, append, and expose one state transition atomically to this run."""
+    job_id = event["job_id"]
+    prior = latest.get(job_id)
+    prior_status = None if prior is None else prior["status"]
+    if event["status"] not in _ALLOWED_TRANSITIONS[prior_status]:
+        raise ValueError(
+            f"refusing illegal live transition {prior_status!r} -> "
+            f"{event['status']!r} for {job_id}"
+        )
+    _append_event(path, event)
+    latest[job_id] = event
+
+
+def _events(path: Path, known: set[str]) -> dict[str, dict[str, Any]]:
+    latest: dict[str, dict[str, Any]] = {}
+    result_digests: dict[str, str] = {}
+    if not path.exists():
+        return latest
+    try:
+        rows = read_jsonl(path)
+    except DurabilityError as exc:
+        raise ValueError(f"malformed batch event journal: {exc}") from exc
+    for line_no, event in enumerate(rows, 1):
+        if event.get("schema_version") != BATCH_SCHEMA_VERSION:
+            raise ValueError(f"batch event line {line_no} has the wrong schema")
+        job_id = event.get("job_id")
+        if job_id not in known:
+            raise ValueError(
+                f"batch event line {line_no} names unknown job {job_id!r}"
+            )
+        if event.get("status") not in {
+            "started", "completed", "failed", "synced", "sync_failed"
+        }:
+            raise ValueError(f"batch event line {line_no} has unknown status")
+        prior = latest.get(job_id)
+        prior_status = None if prior is None else prior["status"]
+        if event["status"] not in _ALLOWED_TRANSITIONS[prior_status]:
+            raise ValueError(
+                f"batch event line {line_no} makes illegal transition "
+                f"{None if prior is None else prior['status']!r} -> "
+                f"{event['status']!r} for {job_id}"
+            )
+        digest = event.get("result_digest")
+        if event["status"] in {"completed", "synced", "sync_failed"}:
+            if (
+                not isinstance(digest, str)
+                or len(digest) != 64
+                or any(ch not in "0123456789abcdef" for ch in digest)
+            ):
+                raise ValueError(
+                    f"batch event line {line_no} has no exact result digest"
+                )
+            if job_id in result_digests and result_digests[job_id] != digest:
+                raise ValueError(
+                    f"batch events disagree on the completed result for {job_id}"
+                )
+            result_digests[job_id] = digest
+        if event["status"] == "synced":
+            receipt = event.get("sync_receipt")
+            if not isinstance(receipt, dict):
+                raise ValueError(
+                    f"batch event line {line_no} has no sync receipt"
+                )
+            if (
+                receipt.get("schema_version") != SYNC_RECEIPT_SCHEMA_VERSION
+                or receipt.get("job_id") != job_id
+                or receipt.get("result_digest") != digest
+                or not _is_sha256(receipt.get("job_tree_digest"))
+                or not _is_sha256(receipt.get("copy_evidence_digest"))
+            ):
+                raise ValueError(
+                    f"batch event line {line_no} has an inconsistent sync receipt"
+                )
+        latest[job_id] = event
+    return latest
+
+
+def _event(job: BatchJob, status: str, **extra: Any) -> dict[str, Any]:
+    return {
+        "schema_version": BATCH_SCHEMA_VERSION,
+        "job_id": job.job_id,
+        "status": status,
+        **extra,
+    }
+
+
+def _result_digest(result: Mapping[str, Any]) -> str:
+    return hashlib.sha256(_canonical_json(result).encode("utf-8")).hexdigest()
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        type(value) is str
+        and len(value) == 64
+        and all(ch in "0123456789abcdef" for ch in value)
+    )
+
+
+def _expected_git_commit(value: object) -> str:
+    if (
+        type(value) is not str
+        or len(value) != 40
+        or any(ch not in "0123456789abcdef" for ch in value)
+    ):
+        raise ValueError(
+            "expected_git_commit must be an exact lowercase 40-hex commit, "
+            f"got {value!r}"
+        )
+    return value
+
+
+def _is_link_or_reparse(metadata: os.stat_result) -> bool:
+    attributes = int(getattr(metadata, "st_file_attributes", 0))
+    reparse = int(getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400))
+    return stat.S_ISLNK(metadata.st_mode) or bool(attributes & reparse)
+
+
+def _lstat_regular_file(path: Path) -> os.stat_result:
+    """Return immutable-file metadata without following mutable links."""
+    try:
+        metadata = path.lstat()
+    except OSError as exc:
+        raise ValueError(f"cannot inspect durable evidence file {path}: {exc}") from exc
+    if _is_link_or_reparse(metadata):
+        raise ValueError(
+            f"durable evidence path is a symbolic-link/reparse-point: {path}"
+        )
+    if not stat.S_ISREG(metadata.st_mode):
+        raise ValueError(f"durable evidence path is not a regular file: {path}")
+    if getattr(metadata, "st_nlink", 1) != 1:
+        raise ValueError(f"durable evidence path is hard-linked: {path}")
+    return metadata
+
+
+def _require_plain_directory_components(path: Path) -> None:
+    """Reject every existing symlink or Windows reparse/junction component."""
+    absolute = Path(os.path.abspath(path))
+    components = (absolute, *absolute.parents)
+    for component in reversed(components):
+        if not os.path.lexists(component):
+            continue
+        try:
+            metadata = component.lstat()
+        except OSError as exc:
+            raise ValueError(
+                f"cannot inspect plain directory component {component}: {exc}"
+            ) from exc
+        if _is_link_or_reparse(metadata):
+            raise ValueError(
+                f"path contains a symbolic-link/reparse-point component: "
+                f"{component}"
+            )
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise ValueError(
+                f"plain path component is not a directory: "
+                f"{component}"
+            )
+
+
+def _require_plain_tree(root: Path) -> None:
+    """Reject link/reparse and special descendants in an existing tree."""
+    try:
+        root_metadata = root.lstat()
+    except OSError as exc:
+        raise ValueError(f"plain tree cannot be inspected: {root}: {exc}") from exc
+    if _is_link_or_reparse(root_metadata) or not stat.S_ISDIR(root_metadata.st_mode):
+        raise ValueError(f"plain tree root is not a plain directory: {root}")
+    for current, directory_names, file_names in os.walk(root, followlinks=False):
+        current_path = Path(current)
+        for name in directory_names:
+            child = current_path / name
+            try:
+                metadata = child.lstat()
+            except OSError as exc:
+                raise ValueError(f"plain tree entry cannot be inspected: {child}: {exc}") from exc
+            if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
+                raise ValueError(
+                    f"plain tree contains a linked/reparse or special directory: {child}"
+                )
+        for name in file_names:
+            _lstat_regular_file(current_path / name)
+
+
+def _regular_tree_inventory(root: Path) -> list[dict[str, Any]]:
+    """Inventory a plain directory tree, rejecting links and special files."""
+    try:
+        root_metadata = root.lstat()
+    except OSError as exc:
+        raise ValueError(f"job evidence directory cannot be inspected: {root}: {exc}") from exc
+    if _is_link_or_reparse(root_metadata) or not stat.S_ISDIR(root_metadata.st_mode):
+        raise ValueError(f"job evidence root is not a plain directory: {root}")
+
+    inventory: list[dict[str, Any]] = []
+    for current, directory_names, file_names in os.walk(root, followlinks=False):
+        current_path = Path(current)
+        for name in directory_names:
+            child = current_path / name
+            metadata = child.lstat()
+            if _is_link_or_reparse(metadata) or not stat.S_ISDIR(metadata.st_mode):
+                raise ValueError(
+                    f"job evidence contains a linked/reparse or special directory: {child}"
+                )
+        for name in file_names:
+            child = current_path / name
+            metadata = _lstat_regular_file(child)
+            inventory.append(
+                {
+                    "path": child.relative_to(root).as_posix(),
+                    "size": metadata.st_size,
+                    "sha256": hashlib.sha256(child.read_bytes()).hexdigest(),
+                    "device": metadata.st_dev,
+                    "inode": metadata.st_ino,
+                }
+            )
+    if not inventory:
+        raise ValueError(f"job evidence directory is empty: {root}")
+    return sorted(inventory, key=lambda row: row["path"])
+
+
+def _content_inventory(root: Path) -> list[dict[str, Any]]:
+    return [
+        {name: row[name] for name in ("path", "size", "sha256")}
+        for row in _regular_tree_inventory(root)
+    ]
+
+
+def _job_tree_digest(job_dir: Path) -> str:
+    """Hash every regular file in one link-free published job tree."""
+    return hashlib.sha256(
+        _canonical_json(_content_inventory(job_dir)).encode("utf-8")
+    ).hexdigest()
+
+
+def _copy_evidence_digest(source: Path, destination: Path) -> str:
+    """Prove equal bytes were materialised as independent filesystem objects."""
+    source_rows = _regular_tree_inventory(source)
+    destination_rows = _regular_tree_inventory(destination)
+    source_content = [
+        {name: row[name] for name in ("path", "size", "sha256")}
+        for row in source_rows
+    ]
+    destination_content = [
+        {name: row[name] for name in ("path", "size", "sha256")}
+        for row in destination_rows
+    ]
+    if source_content != destination_content:
+        raise ValueError(
+            "durable sync destination does not contain the complete local job tree"
+        )
+    evidence: list[dict[str, Any]] = []
+    for source_row, destination_row in zip(source_rows, destination_rows, strict=True):
+        source_file = source / source_row["path"]
+        destination_file = destination / destination_row["path"]
+        try:
+            same_object = os.path.samefile(source_file, destination_file)
+        except OSError as exc:
+            raise ValueError(
+                f"cannot compare source and destination evidence objects: {exc}"
+            ) from exc
+        if same_object:
+            raise ValueError(
+                f"durable sync destination aliases the local evidence file: "
+                f"{destination_file}"
+            )
+        evidence.append(
+            {
+                "path": source_row["path"],
+                "source_device": source_row["device"],
+                "source_inode": source_row["inode"],
+                "destination_device": destination_row["device"],
+                "destination_inode": destination_row["inode"],
+                "sha256": source_row["sha256"],
+            }
+        )
+    return hashlib.sha256(_canonical_json(evidence).encode("utf-8")).hexdigest()
+
+
+def _validate_sync_receipt(
+    receipt: object,
+    *,
+    batch_dir: Path,
+    job: BatchJob,
+    result: Mapping[str, Any],
+) -> SyncReceipt:
+    if type(receipt) is not SyncReceipt:
+        raise ValueError(
+            "sync callback must return an exact SyncReceipt; returning None or "
+            "merely not raising does not prove evidence was copied off-worker"
+        )
+    expected_result = _result_digest(result)
+    source_job = batch_dir / "jobs" / job.job_id
+    expected_tree = _job_tree_digest(source_job)
+    if receipt.schema_version != SYNC_RECEIPT_SCHEMA_VERSION:
+        raise ValueError("sync receipt has the wrong schema version")
+    if type(receipt.destination) is not str or not receipt.destination.strip():
+        raise ValueError("sync receipt has no durable destination identity")
+    if receipt.job_id != job.job_id:
+        raise ValueError("sync receipt names a different job identity")
+    if receipt.result_digest != expected_result:
+        raise ValueError("sync receipt is not bound to the completed result digest")
+    if receipt.job_tree_digest != expected_tree:
+        raise ValueError("sync receipt is not bound to the complete job tree digest")
+    if not _is_sha256(receipt.copy_evidence_digest):
+        raise ValueError("sync receipt has no independent-copy evidence digest")
+    raw_destination = Path(receipt.destination)
+    try:
+        _require_plain_directory_components(raw_destination)
+        destination = Path(os.path.abspath(raw_destination))
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(
+            f"sync receipt destination cannot be read back: {exc}"
+        ) from exc
+    local_batch = batch_dir.resolve()
+    if destination == local_batch or local_batch in destination.parents:
+        raise ValueError(
+            "sync receipt points inside the local batch tree; sync-off requires "
+            "an independently mounted destination"
+        )
+    if _job_tree_digest(destination) != expected_tree:
+        raise ValueError("sync receipt destination does not contain the complete local job tree")
+    expected_copy_evidence = _copy_evidence_digest(source_job, destination)
+    if receipt.copy_evidence_digest != expected_copy_evidence:
+        raise ValueError(
+            "sync receipt is not bound to independently materialised destination files"
+        )
+    return receipt
+
+
+def _default_executor(
+    job: BatchJob,
+    job_dir: Path,
+    *,
+    expected_git_commit: str,
+) -> Mapping[str, Any]:
+    expected = _expected_git_commit(expected_git_commit)
+    result = run_confirmatory_fit(
+        job.unit,
+        seed=job.seed,
+        arm=job.arm,
+        out_dir=job_dir,
+        expected_git_commit=expected,
+    )
+    row = result.as_row()
+    return row
+
+
+def _validate_result(job: BatchJob, result: object) -> dict[str, Any]:
+    if not isinstance(result, Mapping):
+        raise ValueError(
+            f"executor for {job.job_id} returned {type(result).__name__}, not a mapping"
+        )
+    out = dict(result)
+    for name, expected in (
+        ("run_id", job.config.run_id),
+        ("config_id", job.config.config_id),
+        ("unit_id", job.config.unit_id),
+        ("fit_id", job.config.fit_id),
+        ("stage", job.stage),
+        ("seed", job.seed),
+        ("arm", job.arm),
+        ("fit_roles", list(job.roles)),
+        ("role_run_ids", {
+            role: Config(
+                unit=job.unit, arm=Arm(job.arm), stage=role, seed=job.seed
+            ).run_id
+            for role in job.roles
+        }),
+    ):
+        if out.get(name) != expected:
+            raise ValueError(
+                f"executor result for {job.job_id} has {name}={out.get(name)!r}; "
+                f"expected {expected!r}"
+            )
+    # Prove serialisability before an event claims completion.
+    _canonical_json(out)
+    return out
+
+
+def _validate_fit_evidence(
+    job: BatchJob,
+    job_dir: Path,
+    result: Mapping[str, Any],
+    *,
+    expected_git_commit: str,
+) -> None:
+    if result.get("fit_evidence_schema_version") != FIT_EVIDENCE_SCHEMA_VERSION:
+        raise ValueError("default executor result has no fit-evidence schema")
+    if result.get("fit_evidence_file") != FIT_EVIDENCE_FILE:
+        raise ValueError("default executor result names a noncanonical fit-evidence file")
+    verified = load_fit_evidence(
+        job_dir,
+        expected_git_commit=_expected_git_commit(expected_git_commit),
+    )
+    if verified.fit_id != job.job_id or verified.roles != job.roles:
+        raise ValueError("fit evidence disagrees with the batch job identity or roles")
+    if result.get("fit_evidence_digest") != verified.execution_digest:
+        raise ValueError("job result is not bound to its fit-evidence execution digest")
+    if job.stage == "config_sweep" and job.arm == "baseline":
+        from .fit_evidence import validate_sweep_pool_anchors
+
+        validate_sweep_pool_anchors(job_dir, expected_git_commit=expected_git_commit)
+
+
+def _recover_result(
+    job: BatchJob,
+    job_dir: Path,
+    *,
+    require_fit_evidence: bool = False,
+    expected_git_commit: str | None = None,
+) -> dict[str, Any] | None:
+    if require_fit_evidence:
+        expected_git_commit = _expected_git_commit(expected_git_commit)
+    elif expected_git_commit is not None:
+        raise ValueError(
+            "expected_git_commit is reserved for registered fit-evidence recovery"
+        )
+    result_path = job_dir / RESULT_FILE
+    if result_path.exists():
+        result = _validate_result(
+            job, json.loads(result_path.read_text(encoding="utf-8"))
+        )
+        if require_fit_evidence:
+            _validate_fit_evidence(
+                job,
+                job_dir,
+                result,
+                expected_git_commit=expected_git_commit,
+            )
+        return result
+    if require_fit_evidence and (job_dir / FIT_EVIDENCE_FILE).exists():
+        verified = load_fit_evidence(
+            job_dir, expected_git_commit=expected_git_commit
+        )
+        confirmatory_path = (
+            job_dir / verified.execution_run_id / "confirmatory.json"
+        )
+        if not confirmatory_path.is_file():
+            raise ValueError(
+                f"fit evidence for {job.job_id} has no physical confirmatory record"
+            )
+        result = json.loads(confirmatory_path.read_text(encoding="utf-8"))
+        result.update(
+            {
+                "fit_evidence_schema_version": FIT_EVIDENCE_SCHEMA_VERSION,
+                "fit_evidence_file": FIT_EVIDENCE_FILE,
+                "fit_evidence_digest": verified.execution_digest,
+            }
+        )
+        result = _validate_result(job, result)
+        _validate_fit_evidence(
+            job,
+            job_dir,
+            result,
+            expected_git_commit=expected_git_commit,
+        )
+        _write_json_exclusive(result_path, result)
+        return result
+    confirmatory = job_dir / job.config.run_id / "confirmatory.json"
+    if confirmatory.exists():
+        if require_fit_evidence:
+            raise ValueError(
+                f"job {job.job_id} reached confirmatory.json but has no verified "
+                f"{FIT_EVIDENCE_FILE}; this is partial evidence and may not be "
+                "recovered or synced as a completed fit"
+            )
+        result = _validate_result(
+            job, json.loads(confirmatory.read_text(encoding="utf-8"))
+        )
+        _write_json_exclusive(result_path, result)
+        return result
+    partial = job_dir / job.config.run_id
+    if partial.exists():
+        raise ValueError(
+            f"job {job.job_id} has a partial immutable run directory but no "
+            "recoverable confirmatory.json. Refusing to overwrite or pretend the "
+            "fit completed; inspect and quarantine that directory before resuming"
+        )
+    return None
+
+
+def _run_batch(
+    jobs: Sequence[BatchJob],
+    *,
+    root: str | Path,
+    sync: SyncCallback,
+    executor: Executor,
+    require_fit_evidence: bool,
+    expected_git_commit: str | None = None,
+    attempt_timeout_seconds: float | None = None,
+    attempt_staging_root: str | Path | None = None,
+    preflight_storage_guard: PreflightStorageGuard | None = None,
+) -> BatchReport:
+    """Internal common engine for registered and explicitly synthetic batches.
+
+    ``sync`` is mandatory.  A caller cannot accidentally start an unattended
+    batch whose only copy lives on an ephemeral worker.  When
+    ``attempt_timeout_seconds`` is supplied, each executor call runs in a fresh
+    spawned process and is published from staging only after success.
+    Exceptions from one executor or sync call are recorded and the next job
+    still runs.
+    """
+
+    if preflight_storage_guard is not None and type(preflight_storage_guard) is not PreflightStorageGuard:
+        raise ValueError("preflight_storage_guard must be the exact source-bound guard")
+    if not callable(sync):
+        raise ValueError("sync must be a callable; unattended runs require sync-off")
+    if not callable(executor):
+        raise ValueError("executor must be callable")
+    if require_fit_evidence:
+        expected_git_commit = _expected_git_commit(expected_git_commit)
+        if executor is not _default_executor:
+            raise ValueError(
+                "registered fit evidence requires the fixed production executor"
+            )
+    elif expected_git_commit is not None:
+        raise ValueError(
+            "expected_git_commit is reserved for the registered production path"
+        )
+    if attempt_staging_root is not None and attempt_timeout_seconds is None:
+        raise ValueError(
+            "attempt_staging_root requires process isolation with a positive "
+            "attempt_timeout_seconds"
+        )
+    try:
+        job_tuple = tuple(jobs)
+    except TypeError as exc:
+        raise ValueError("jobs must be an iterable of exact BatchJob records") from exc
+    # Validate the public boundary before reading attributes below.
+    manifest = _manifest(job_tuple)
+    root_path = Path(os.path.abspath(root))
+    _require_plain_directory_components(root_path)
+    root_path.mkdir(parents=True, exist_ok=True)
+    _require_plain_directory_components(root_path)
+    batch_dir = root_path / manifest["batch_id"]
+    _require_plain_directory_components(batch_dir)
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    _require_plain_directory_components(batch_dir)
+    _require_plain_tree(batch_dir)
+    _write_json_exclusive(batch_dir / MANIFEST_FILE, manifest)
+    _lstat_regular_file(batch_dir / MANIFEST_FILE)
+    events_path = batch_dir / EVENTS_FILE
+    events_path.touch(exist_ok=True)
+    _lstat_regular_file(events_path)
+    recover_unterminated_jsonl(
+        events_path,
+        evidence_dir=batch_dir / "journal_recovery",
+    )
+    by_id = {job.job_id: job for job in job_tuple}
+    latest = _events(events_path, set(by_id))
+
+    executed = resumed = synced = failed = sync_failed = 0
+    for job in job_tuple:
+        job_dir = batch_dir / "jobs" / job.job_id
+        _require_plain_directory_components(job_dir)
+        if os.path.lexists(job_dir):
+            _require_plain_tree(job_dir)
+        state = latest.get(job.job_id)
+        if state and state["status"] == "synced":
+            result = _recover_result(
+                job,
+                job_dir,
+                require_fit_evidence=require_fit_evidence,
+                expected_git_commit=expected_git_commit,
+            )
+            if result is None:
+                raise ValueError(
+                    f"synced job {job.job_id} has no recoverable local result"
+                )
+            digest = _result_digest(result)
+            if state.get("result_digest") != digest:
+                raise ValueError(
+                    f"synced job {job.job_id} no longer matches its result digest"
+                )
+            # Always re-attest against the destination supplied by this call.
+            # A prior receipt may name a different mounted store; treating that
+            # as sufficient would let a resume report complete while the
+            # currently approved destination contains nothing.
+            receipt = _validate_sync_receipt(
+                sync(batch_dir, job, result),
+                batch_dir=batch_dir,
+                job=job,
+                result=result,
+            )
+            prior_receipt = state.get("sync_receipt")
+            if prior_receipt != receipt.as_record():
+                _append_transition(
+                    events_path,
+                    latest,
+                    _event(
+                        job,
+                        "synced",
+                        result_digest=digest,
+                        sync_receipt=receipt.as_record(),
+                        re_attestation=True,
+                    ),
+                )
+                final_receipt = _validate_sync_receipt(
+                    sync(batch_dir, job, result),
+                    batch_dir=batch_dir,
+                    job=job,
+                    result=result,
+                )
+                if final_receipt != receipt:
+                    raise ValueError(
+                        f"sync receipt for {job.job_id} changed while persisting "
+                        "the destination re-attestation"
+                    )
+            resumed += 1
+            synced += 1
+            continue
+
+        try:
+            result = _recover_result(
+                job,
+                job_dir,
+                require_fit_evidence=require_fit_evidence,
+                expected_git_commit=expected_git_commit,
+            )
+        except Exception as exc:
+            # A completed/sync-failed checkpoint must never be downgraded to a
+            # generic fit failure.  Its result is evidence and corruption is a
+            # batch-level refusal, not a retryable condition.
+            if state and state["status"] in {"completed", "sync_failed"}:
+                raise ValueError(
+                    f"checkpointed result for {job.job_id} cannot be recovered: {exc}"
+                ) from exc
+            _append_transition(
+                events_path, latest,
+                _event(job, "failed", error_type=type(exc).__name__, error=str(exc)),
+            )
+            failed += 1
+            continue
+
+        if result is not None:
+            digest = _result_digest(result)
+            if state is None:
+                raise ValueError(
+                    f"job {job.job_id} has a result but no append-only start "
+                    "checkpoint; refusing unbound evidence"
+                )
+            if state["status"] in {"completed", "sync_failed"}:
+                if state.get("result_digest") != digest:
+                    raise ValueError(
+                        f"recovered job_result.json for {job.job_id} disagrees "
+                        "with the append-only checkpoint digest"
+                    )
+            elif state["status"] == "started":
+                # Crash window: the immutable result reached disk before the
+                # completed event.  Bind that exact result now; never refit it.
+                _append_transition(
+                    events_path, latest,
+                    _event(
+                        job, "completed", result=result,
+                        result_digest=digest, recovered_after_interruption=True,
+                    ),
+                )
+            elif state["status"] == "failed":
+                # A valid result may have become durable just before an error was
+                # recorded.  Open a fresh recovery attempt, then bind the bytes.
+                _append_transition(
+                    events_path, latest,
+                    _event(job, "started", recovery=True),
+                )
+                _append_transition(
+                    events_path, latest,
+                    _event(
+                        job, "completed", result=result,
+                        result_digest=digest, recovered_after_failure=True,
+                    ),
+                )
+
+        if result is None:
+            # A capacity refusal is not an attempted fit. Halt before any new
+            # attempt transition, outside the executor failure/continue block.
+            if preflight_storage_guard is not None:
+                preflight_storage_guard.check(
+                    output_root=root, staging_root=attempt_staging_root,
+                )
+            if state and state["status"] == "started":
+                # The prior process stopped before a result or immutable run
+                # directory existed.  Close that incomplete attempt before a
+                # new one starts so the event sequence remains auditable.
+                _append_transition(
+                    events_path, latest,
+                    _event(
+                        job, "failed", error_type="InterruptedRun",
+                        error="prior started checkpoint had no recoverable result",
+                    ),
+                )
+            _append_transition(events_path, latest, _event(job, "started"))
+            try:
+                if attempt_timeout_seconds is None:
+                    _require_plain_directory_components(job_dir)
+                    job_dir.mkdir(parents=True, exist_ok=True)
+                    _require_plain_directory_components(job_dir)
+                    if require_fit_evidence:
+                        raw_result = _default_executor(
+                            job,
+                            job_dir,
+                            expected_git_commit=expected_git_commit,
+                        )
+                    else:
+                        raw_result = executor(job, job_dir)
+                    _require_plain_tree(job_dir)
+                else:
+                    child_target: Callable[..., Mapping[str, Any]]
+                    child_payload: object
+                    if require_fit_evidence:
+                        child_target = _execute_registered_in_spawned_child
+                        child_payload = _RegisteredFitRequest(
+                            job=job,
+                            expected_git_commit=expected_git_commit,
+                        )
+                    else:
+                        child_target = _execute_in_spawned_child
+                        child_payload = (executor, job)
+                    outcome = run_isolated_attempt(
+                        child_target,
+                        root=batch_dir,
+                        staging_root=(
+                            None
+                            if attempt_staging_root is None
+                            else Path(attempt_staging_root) / manifest["batch_id"]
+                        ),
+                        job_id=job.job_id,
+                        payload=child_payload,
+                        timeout_seconds=attempt_timeout_seconds,
+                    )
+                    if not outcome.succeeded:
+                        raise RuntimeError(
+                            f"isolated attempt {outcome.attempt_token} ended as "
+                            f"{outcome.status}: {outcome.error_type}: "
+                            f"{outcome.error}"
+                        )
+                    _require_plain_tree(job_dir)
+                    raw_result = json.loads(
+                        (job_dir / RESULT_FILE).read_text(encoding="utf-8")
+                    )
+                result = _validate_result(job, raw_result)
+                if require_fit_evidence:
+                    _validate_fit_evidence(
+                        job,
+                        job_dir,
+                        result,
+                        expected_git_commit=expected_git_commit,
+                    )
+                _write_json_exclusive(job_dir / RESULT_FILE, result)
+                digest = _result_digest(result)
+                _append_transition(
+                    events_path, latest,
+                    _event(job, "completed", result=result, result_digest=digest),
+                )
+                executed += 1
+            except Exception as exc:
+                _append_transition(
+                    events_path, latest,
+                    _event(
+                        job, "failed", error_type=type(exc).__name__, error=str(exc)
+                    ),
+                )
+                failed += 1
+                continue
+        else:
+            resumed += 1
+
+        digest = _result_digest(result)
+
+        try:
+            _require_plain_tree(job_dir)
+            receipt = _validate_sync_receipt(
+                sync(batch_dir, job, result),
+                batch_dir=batch_dir,
+                job=job,
+                result=result,
+            )
+        except Exception as exc:
+            _append_transition(
+                events_path, latest,
+                _event(
+                    job,
+                    "sync_failed",
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                    result_digest=digest,
+                ),
+            )
+            sync_failed += 1
+            continue
+
+        _append_transition(
+            events_path,
+            latest,
+            _event(
+                job,
+                "synced",
+                result_digest=digest,
+                sync_receipt=receipt.as_record(),
+            ),
+        )
+        # The first transport necessarily precedes the local acknowledgement.
+        # Repeat it after the append so a mounted durable destination receives
+        # the terminal journal row as well as the evidence tree.  Failure here
+        # is a batch-level interruption: the synced state will force this exact
+        # read-back operation again on resume before completion is reported.
+        final_receipt = _validate_sync_receipt(
+            sync(batch_dir, job, result),
+            batch_dir=batch_dir,
+            job=job,
+            result=result,
+        )
+        if final_receipt != receipt:
+            raise ValueError(
+                f"sync receipt for {job.job_id} changed while finalising the "
+                "remote event journal"
+            )
+        synced += 1
+
+    return BatchReport(
+        batch_id=manifest["batch_id"],
+        total=len(job_tuple),
+        executed=executed,
+        resumed=resumed,
+        synced=synced,
+        failed=failed,
+        sync_failed=sync_failed,
+    )
+
+
+def _run_registered_batch(
+    jobs: Sequence[BatchJob],
+    *,
+    root: str | Path,
+    sync: SyncCallback,
+    expected_git_commit: str,
+    attempt_timeout_seconds: float | None = None,
+    attempt_staging_root: str | Path | None = None,
+) -> BatchReport:
+    """Private launch hand-off for the exact registered production batch.
+
+    The public batch surface intentionally has no production launcher or
+    importable authorization token.  ``bu.experiments.launch`` calls this only
+    after it has revalidated preflight state and acquired the batch lease.
+    Executor injection is absent by construction.
+    """
+
+    expected = _expected_git_commit(expected_git_commit)
+    if (
+        attempt_timeout_seconds is None
+        or attempt_staging_root is None
+    ):
+        raise ValueError(
+            "the private registered batch hand-off requires mandatory "
+            "fresh-process timeout and separate staging"
+        )
+    job_tuple = tuple(jobs)
+    if job_tuple != experiment_1_jobs():
+        raise ValueError(
+            "the private registered batch hand-off requires the exact "
+            "Experiment-1 plan"
+        )
+    return _run_batch(
+        job_tuple,
+        root=root,
+        sync=sync,
+        executor=_default_executor,
+        require_fit_evidence=True,
+        expected_git_commit=expected,
+        attempt_timeout_seconds=attempt_timeout_seconds,
+        attempt_staging_root=attempt_staging_root,
+    )
+
+
+def run_synthetic_batch(
+    jobs: Sequence[BatchJob],
+    *,
+    root: str | Path,
+    sync: SyncCallback,
+    executor: Executor,
+    attempt_timeout_seconds: float | None = None,
+    attempt_staging_root: str | Path | None = None,
+) -> BatchReport:
+    """Run synthetic test jobs without access to the production executor path."""
+
+    if not callable(executor):
+        raise ValueError("executor must be callable")
+    if executor is _default_executor:
+        raise ValueError(
+            "the registered executor cannot be selected through the synthetic API"
+        )
+    return _run_batch(
+        jobs,
+        root=root,
+        sync=sync,
+        executor=executor,
+        require_fit_evidence=False,
+        attempt_timeout_seconds=attempt_timeout_seconds,
+        attempt_staging_root=attempt_staging_root,
+    )
+
+
+def _durable_directory(path: Path) -> None:
+    """Create plain directories and sync every new directory entry."""
+
+    absolute = Path(os.path.abspath(path))
+    missing: list[Path] = []
+    cursor = absolute
+    while not os.path.lexists(cursor):
+        missing.append(cursor)
+        if cursor.parent == cursor:
+            break
+        cursor = cursor.parent
+    _require_plain_directory_components(cursor)
+    absolute.mkdir(parents=True, exist_ok=True)
+    _require_plain_directory_components(absolute)
+    for created in reversed(missing):
+        fsync_directory(created)
+        fsync_directory(created.parent)
+
+
+def _fsync_regular_file(path: Path) -> None:
+    """Flush one already-written regular file before it can be acknowledged."""
+
+    _lstat_regular_file(path)
+    try:
+        # Windows' ``_commit`` (the implementation behind ``os.fsync``) rejects
+        # a read-only descriptor with EBADF. Open read/write without writing;
+        # the file's bytes and position remain unchanged.
+        with path.open("r+b") as handle:
+            os.fsync(handle.fileno())
+    except OSError as exc:
+        raise ValueError(f"cannot fsync durable evidence file {path}: {exc}") from exc
+
+
+def _fsync_regular_tree(root: Path) -> None:
+    """Flush all bytes and supported directory entries in a private tree."""
+
+    inventory = _regular_tree_inventory(root)
+    for row in inventory:
+        _fsync_regular_file(root / row["path"])
+    directories = [
+        path
+        for path in root.rglob("*")
+        if path.is_dir()
+    ]
+    for directory in sorted(
+        directories, key=lambda path: len(path.parts), reverse=True
+    ):
+        fsync_directory(directory)
+    fsync_directory(root)
+
+
+def _stage_file_bytes(target: Path, data: bytes) -> Path:
+    """Write and fsync bytes under a unique same-directory temporary name."""
+
+    descriptor: int | None = None
+    temporary: Path | None = None
+    try:
+        descriptor, name = tempfile.mkstemp(
+            prefix=f".{target.name}.", suffix=".partial", dir=target.parent
+        )
+        temporary = Path(name)
+        with os.fdopen(descriptor, "wb", closefd=True) as handle:
+            descriptor = None
+            written = handle.write(data)
+            if written != len(data):
+                raise ValueError(
+                    f"short durable write for {target}: wrote {written} of "
+                    f"{len(data)} bytes"
+                )
+            handle.flush()
+            os.fsync(handle.fileno())
+        _lstat_regular_file(temporary)
+        if temporary.read_bytes() != data:
+            raise ValueError(
+                f"same-directory durable temporary for {target} failed read-back"
+            )
+        return temporary
+    except Exception:
+        if descriptor is not None:
+            os.close(descriptor)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+        raise
+
+
+def _publish_file(
+    source: Path,
+    target: Path,
+    *,
+    append_only_prefix: bool,
+) -> None:
+    """Durably publish one immutable file or one append-only journal snapshot."""
+
+    _lstat_regular_file(source)
+    _require_plain_directory_components(target.parent)
+    source_bytes = source.read_bytes()
+    if os.path.lexists(target):
+        _lstat_regular_file(target)
+        if os.path.samefile(source, target):
+            raise ValueError(f"durable sync target aliases its local source: {target}")
+        target_bytes = target.read_bytes()
+        if append_only_prefix:
+            if not source_bytes.startswith(target_bytes):
+                raise ValueError(
+                    f"durable event log {target} is not an exact prefix of the "
+                    "local append-only stream; refusing to overwrite either history"
+                )
+        elif source_bytes != target_bytes:
+            raise ValueError(
+                f"durable sync target {target} already exists with different "
+                "bytes; refusing to overwrite batch identity evidence"
+            )
+        if source_bytes == target_bytes:
+            _fsync_regular_file(target)
+            fsync_directory(target.parent)
+            return
+
+    temporary = _stage_file_bytes(target, source_bytes)
+    try:
+        # Recheck after staging so a conflicting final that appeared while the
+        # temporary was written is never silently replaced.
+        if os.path.lexists(target):
+            _lstat_regular_file(target)
+            target_bytes = target.read_bytes()
+            if append_only_prefix:
+                if not source_bytes.startswith(target_bytes):
+                    raise ValueError(
+                        f"durable event log {target} changed to a non-prefix "
+                        "during publication"
+                    )
+            elif source_bytes != target_bytes:
+                raise ValueError(
+                    f"durable sync target {target} changed during publication"
+                )
+            if source_bytes == target_bytes:
+                _fsync_regular_file(target)
+                fsync_directory(target.parent)
+                return
+        os.replace(temporary, target)
+        temporary = None
+        fsync_directory(target.parent)
+        _lstat_regular_file(target)
+        if target.read_bytes() != source_bytes:
+            raise ValueError(
+                f"durable sync target {target} failed post-publication read-back"
+            )
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _publish_job_tree(source: Path, target: Path) -> None:
+    """Durably publish a complete job tree without exposing a partial final."""
+
+    _regular_tree_inventory(source)
+    _durable_directory(target.parent)
+    if os.path.lexists(target):
+        _copy_evidence_digest(source, target)
+        _fsync_regular_tree(target)
+        fsync_directory(target.parent)
+        return
+
+    temporary = Path(
+        tempfile.mkdtemp(
+            prefix=f".{target.name}.", suffix=".partial", dir=target.parent
+        )
+    )
+    try:
+        shutil.copytree(source, temporary, dirs_exist_ok=True)
+        _copy_evidence_digest(source, temporary)
+        _fsync_regular_tree(temporary)
+        if os.path.lexists(target):
+            # Another publisher cannot be assumed equivalent. Validate it and
+            # use its already-final tree only when every independent byte agrees.
+            _copy_evidence_digest(source, target)
+            _fsync_regular_tree(target)
+            fsync_directory(target.parent)
+            return
+        os.replace(temporary, target)
+        temporary = None
+        fsync_directory(target.parent)
+        _copy_evidence_digest(source, target)
+    finally:
+        if temporary is not None:
+            shutil.rmtree(temporary)
+
+
+def sync_to_directory(destination: str | Path) -> SyncCallback:
+    """Return an atomic, fsynced adapter for a mounted output directory."""
+
+    target_root = Path(os.path.abspath(destination))
+
+    def sync(
+        batch_dir: Path, job: BatchJob, result: Mapping[str, Any]
+    ) -> SyncReceipt:
+        _require_plain_directory_components(target_root)
+        target = target_root / batch_dir.name
+        _durable_directory(target)
+        _require_plain_tree(target)
+        source_job = batch_dir / "jobs" / job.job_id
+        target_job = target / "jobs" / job.job_id
+        _publish_job_tree(source_job, target_job)
+        copy_evidence = _copy_evidence_digest(source_job, target_job)
+        _publish_file(
+            batch_dir / MANIFEST_FILE,
+            target / MANIFEST_FILE,
+            append_only_prefix=False,
+        )
+        _publish_file(
+            batch_dir / EVENTS_FILE,
+            target / EVENTS_FILE,
+            append_only_prefix=True,
+        )
+        _require_plain_tree(target)
+        return SyncReceipt(
+            destination=str(target_job.resolve()),
+            job_id=job.job_id,
+            result_digest=_result_digest(result),
+            job_tree_digest=_job_tree_digest(source_job),
+            copy_evidence_digest=copy_evidence,
+        )
+
+    return sync

@@ -1,0 +1,117 @@
+"""Stdlib staging only; no imports/execution of helpers or protected inputs."""
+import ast
+from pathlib import Path
+FRONT=Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-attempt013-front-001')
+common=FRONT/'native_poststatus_result_common_013_window30h_001.py.template'
+text=common.read_text(encoding='utf-8');tree=ast.parse(text)
+node=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='verify')
+prefix=''.join(text.splitlines(keepends=True)[:node.lineno-1])
+new='''
+# Active attempt013 API. Earlier routines are retained historical source only.
+def verify(*,front,bindings,prior_sha,pre_sha,audit_sha,intent_sha,
+           stdout_sha,stdout_bytes,stderr_sha):
+    C,F=front,bindings
+    C.checked_bindings(F,receipt_only=False)
+    for pin in (prior_sha,pre_sha,audit_sha,intent_sha,stdout_sha,stderr_sha):
+        C.require(type(pin) is str and C.HEX64.fullmatch(pin) is not None,'recover first-capture/phase pin unbound')
+    C.require(type(stdout_bytes) is int and 5<=stdout_bytes<=8192,
+              'recover mechanical stdout first-capture bound differs')
+    C.boundary(F)
+    C.absent(C.verdict_path('recover'))
+    C.require({p.name for p in C.ATTEMPT.iterdir()}==C.STATUS_FILES|C.ADJUDICATE_FILES|C.RECOVER_FILES,
+              'recover exact fifteen-file native inventory differs')
+    witness={}
+    for name in C.STATUS_FILES|C.ADJUDICATE_FILES|C.RECOVER_FILES:
+        C.read(C.ATTEMPT/name,witness=witness,maximum=C.readiness_byte_limit() if name.endswith('-stdout.txt') else 65536)
+    prior=C.validate_ready_verdict('adjudicate',prior_sha,F)
+    pre=C.validate_pre_recover_verdict(pre_sha,F,reobserve=False)
+    C.require(pre['prior_verdict_sha256']==prior_sha,'recover prior/pre-proof chain differs')
+    intent=C.checked_launch_intent(C.read(C.ATTEMPT/'recover-launch-intent.json',intent_sha),F,'recover',prior_sha,pre_sha)
+    C.require(intent['prelaunch_file_sha256']==pre['attempt_file_sha256'],'recover intent does not bind independent predecessor inventory')
+    audit=C.checked_audit(C.read(C.ATTEMPT/'stage0-recover-audit.txt',audit_sha),F,'recover')
+    raw=C.read(C.ATTEMPT/'recover-stdout.txt',stdout_sha,maximum=8192)
+    C.require(len(raw)==stdout_bytes and raw.endswith(b'}\\r\\n\\r\\n')
+              and b'\\r' not in raw[:-4] and b'\\n' not in raw[:-4], 'recover actual binary response framing differs')
+    raw[:-4].decode('ascii',errors='strict');result=C.parse(raw[:-4])
+    C.require(type(result) is dict and set(result)=={'command','status','transition_digest','counts','new_lease_token'}
+              and result['command']=='recover' and result['status']=='recovery_complete_ready_to_seal'
+              and C.HEX64.fullmatch(result['transition_digest']) is not None
+              and type(result['new_lease_token']) is str and re.fullmatch(r'[0-9a-f]{32}',result['new_lease_token']) is not None
+              and type(result['counts']) is dict and set(result['counts'])=={'executed','resumed','synced','total'}
+              and all(type(value) is int for value in result['counts'].values())
+              and result['counts']=={'executed':111,'resumed':150,'synced':261,'total':261},
+              'recover mechanical response/counts differ')
+    stderr=C.read(C.ATTEMPT/'recover-stderr.txt',stderr_sha)
+    C.require(stderr==C.read(C.ATTEMPT/'adjudicate-stderr.txt',prior['stderr_sha256'])
+              and C.read(C.ATTEMPT/'recover-exitcode.txt')==b'0\\n', 'recover exit/warning lineage differs')
+    E=C.load_phase(F)
+    incident,incident_sha,files=E.twin('incident.json','incident');witness.update({k:(C.read(Path(k)),C.identity(C.plain(Path(k)))) for k in files})
+    terminal,terminal_sha,files=E.twin('epoch-001-terminal.json','epoch001_terminal');witness.update({k:(C.read(Path(k)),C.identity(C.plain(Path(k)))) for k in files})
+    C.require(incident_sha==C.PROGRAMMATIC_FACTS['predecessor']['incident_sha256']
+              and terminal_sha==C.PROGRAMMATIC_FACTS['predecessor']['terminal_sha256'], 'historical twins changed during recovery')
+    mechanical_witness={}
+    material,bootstrap,synced=E.normal_lower_material(incident,incident_sha,terminal_sha,result['new_lease_token'],mechanical_witness)
+    invocation,context=E.operating_invocation()
+    C.require(material['counts']==result['counts'] and material['transition']['record_digest']==result['transition_digest']
+              and invocation['authority']==context.operating_authority
+              and invocation['historical_admission']==context.admission_binding==pre['historical_admission'],
+              'recover current operating bootstrap/transition completion differs')
+    for name in ('recovery-completion.json','bootstrap-postmortem-completion.json'):
+        E.absent_twins(name)
+    quiet=C.quiet_host_twice()
+    file_hashes={name:C.sha(C.read(C.ATTEMPT/name)) for name in sorted(C.STATUS_FILES|C.ADJUDICATE_FILES|C.RECOVER_FILES)}
+    document={
+        'schema':'pro2_native_recover_mechanical_verification_v2','operation':'recover','mechanical_verdict':'pass',
+        'controller_commit':F['controller_commit'],'receipt_sha256':F['receipt_sha256'],
+        'launcher_sha256':F['launcher_sha256'],'owner_record_sha256':C.PROGRAMMATIC_FACTS['owner_sha256'],
+        'successor_admission_sha256':F['admission_sha256'],'external_proof_sha256':F['external_proof_sha256'],
+        'prior_verdict_sha256':prior_sha,'phase_evidence_sha256':pre_sha,'intent_sha256':intent_sha,
+        'audit_sha256':audit_sha,'stdout_sha256':stdout_sha,'stdout_bytes':stdout_bytes,
+        'stderr_sha256':stderr_sha,'exitcode_sha256':C.sha(b'0\\n'),'envelope_sha256':audit['envelope_sha256'],
+        'attempt_file_sha256':file_hashes,'historical_admission':context.admission_binding,
+        'operating_authority':context.operating_authority,'bootstrap':bootstrap,'result':result,
+        'independent_poststage_evidence_verified':False,'global_python_quiet':quiet,
+        'scientific_outcomes_consulted':False,'scientific_values_emitted':False,'production_mutation_performed':False,
+        'verified_utc':datetime.now(timezone.utc).isoformat(),
+    }
+    C.repeat(witness)
+    E.require(E.file_identity_witness(mechanical_witness)==E.file_identity_witness(mechanical_witness),
+              'mechanical files changed before final recover verifier')
+    E.operating_invocation()
+    C.quiet_host_twice()
+    return C.publish_verdict(C.verdict_path('recover'),document,F)
+'''
+# datetime/Path/re are already imported by the retained stdlib common prefix.
+result=prefix+new;ast.parse(result);common.write_text(result,encoding='utf-8',newline='\n')
+status=(FRONT/'verify-native-status-013-window30h-success-001.py.template').read_text()
+header=status[status.index('# ATTEMPT013 ACTIVE INTERFACE.'):status.index('def main():',status.index('# ATTEMPT013 ACTIVE INTERFACE.'))]
+wrapper='''"""Unbound attempt013 first-clean recovery result verifier; no native invocation."""
+from __future__ import annotations
+import hashlib,json,os,re,stat,types,sys
+from datetime import datetime,timezone
+from pathlib import Path
+'''+header+'''
+RESULT_COMMON_SHA256=None
+PRE_RECOVER_VERDICT_SHA256=None
+
+def main():
+    C=load_front();F=FRONT_BINDINGS
+    C.require(type(RESULT_COMMON_SHA256) is str and C.HEX64.fullmatch(RESULT_COMMON_SHA256) is not None,
+              'current result common byte pin unbound')
+    path=C.FRONT/'native_poststatus_result_common_013_window30h_001.py'
+    source=C.read(path,RESULT_COMMON_SHA256)
+    module=types.ModuleType('_attempt013_poststatus_result')
+    module.__file__=str(path)
+    exec(compile(source,str(path),'exec',dont_inherit=True),module.__dict__)
+    C.read(path,RESULT_COMMON_SHA256)
+    result=module.verify(front=C,bindings=F,prior_sha=PRIOR_ADJUDICATE_VERDICT_SHA256,
+                         pre_sha=PRE_RECOVER_VERDICT_SHA256,audit_sha=CURRENT_AUDIT_SHA256,
+                         intent_sha=CURRENT_LAUNCH_INTENT_SHA256,stdout_sha=FIRST_STDOUT_SHA256,
+                         stdout_bytes=FIRST_STDOUT_BYTES,stderr_sha=FIRST_STDERR_SHA256)
+    print('native_recover_verification_sha256='+result)
+
+if __name__=='__main__':
+    main()
+'''
+ast.parse(wrapper);(FRONT/'verify-native-recover-013-window30h-success-001.py.template').write_text(wrapper,encoding='utf-8',newline='\n')
+print('recover result current authority/admission and inherited mechanical backbone staged')

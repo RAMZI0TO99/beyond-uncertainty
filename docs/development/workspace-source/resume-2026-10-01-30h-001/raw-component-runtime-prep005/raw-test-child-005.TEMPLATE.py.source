@@ -1,0 +1,99 @@
+"""Future isolated pytest child. Inert during preparation; no operational authority."""
+import hashlib
+import json
+import os
+import sys
+from pathlib import Path
+
+COPY = Path(sys.argv[1]).resolve(strict=True)
+RUNS = Path(sys.argv[2]).resolve(strict=True)
+MODE = sys.argv[3]
+OUT = Path(sys.argv[4]).resolve(strict=True)
+SITE = Path("D:/Aenv/pro2/pro2/.venv/Lib/site-packages").resolve(strict=True)
+require = lambda ok, text: None if ok else (_ for _ in ()).throw(RuntimeError(text))
+require(MODE in ("collection", "tests"), "unknown child phase")
+require(sys.flags.no_user_site == sys.flags.safe_path == sys.flags.dont_write_bytecode == 1,
+        "child interpreter flags differ")
+require(sys.flags.utf8_mode == 1 and os.environ.get("PYTEST_DISABLE_PLUGIN_AUTOLOAD") == "1",
+        "child import profile differs")
+require(sys.flags.no_site == sys.flags.isolated == 1, "direct base child must disable ambient site initialization")
+require(Path(sys.executable).resolve(strict=True) ==
+        Path("D:/Aenv/pro2/runtimes/week8-python313-frozen-001/python.exe").resolve(strict=True),
+        "direct base interpreter differs")
+require(os.environ.get("PYTHONPATH") == str(COPY), "child source binding differs")
+require(Path.cwd().resolve(strict=True) == COPY, "child cwd differs")
+require(Path(os.environ["TEMP"]).resolve(strict=True).is_relative_to(RUNS), "TEMP escaped scratch")
+require(Path(os.environ["TMP"]).resolve(strict=True).is_relative_to(RUNS), "TMP escaped scratch")
+for key in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    require(os.environ.get(key) == "1", "thread profile differs")
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"),
+                       ensure_ascii=True, allow_nan=False) + "\n").encode("ascii")
+
+def once(name, value):
+    with (OUT / name).open("xb") as stream:
+        stream.write(encoded(value))
+        stream.flush()
+        os.fsync(stream.fileno())
+
+class Observer:
+    def __init__(self):
+        self.nodeids = []
+        self.tests = []
+
+    def pytest_collection_finish(self, session):
+        self.nodeids = [item.nodeid for item in session.items]
+        require(len(self.nodeids) == len(set(self.nodeids)), "duplicate collected node IDs")
+        # No guessed count: both phases record their actual collection, including parameter IDs.
+        once("collected-nodeids.json", self.nodeids)
+
+    def pytest_runtest_logreport(self, report):
+        self.tests.append({"nodeid": report.nodeid, "when": report.when,
+                           "outcome": report.outcome})
+
+observer = Observer()
+rc = 1
+pytest_origin = None
+remaining = []
+try:
+    # One explicitly declared venv site directory supplies pytest; no .pth processing or user site.
+    # Its full transitive byte closure is NOT established by the pytest entry-file binding.
+    sys.path.insert(0, str(SITE))
+    import pytest
+    require(pytest.__version__ == "9.1.1", "pytest version differs")
+    pytest_path = Path(pytest.__file__).resolve(strict=True)
+    expected = json.loads((OUT / "pytest-binding.json").read_bytes())
+    require(str(pytest_path) == expected["path"], "pytest origin differs")
+    require(hashlib.sha256(pytest_path.read_bytes()).hexdigest() == expected["sha256"],
+            "pytest entry source differs")
+    pytest_origin = {"path": str(pytest_path), "sha256": expected["sha256"], "version": pytest.__version__}
+    args = ["tests/test_week8_recovery_raw_authority.py", "-q", "-p", "no:cacheprovider",
+            "--basetemp", str(RUNS / MODE / "pytest"), "-ra", "--tb=short", "--maxfail=1"]
+    if MODE == "collection":
+        args.append("--collect-only")
+    else:
+        args.extend(["--junitxml", str(OUT / "junit.xml")])
+    rc = int(pytest.main(args, plugins=[observer]))
+finally:
+    invalid = []
+    for name, module in sorted(tuple(sys.modules.items())):
+        if name == "bu" or name.startswith("bu."):
+            invalid.append(name)
+            remaining.append({"module": name, "allowed": False,
+                              "reason": "raw-only suite must not leave bu imports"})
+        elif name in ("week8_recovery_raw_authority_under_test",):
+            path = Path(getattr(module, "__file__", "")).resolve(strict=True)
+            good = path == COPY / "scripts/week8_recovery_raw_authority.py"
+            remaining.append({"module": name, "path": str(path), "allowed": good})
+            if not good:
+                invalid.append(name)
+    once("child-observation.json", {
+        "schema_version": 1, "phase": MODE, "pytest_exit_code": rc,
+        "pytest_origin": pytest_origin, "remaining_selected_modules": remaining,
+        "no_remaining_bu_modules": not invalid, "reports": observer.tests,
+        "inspection_boundary": "finally_after_pytest_only_not_complete_import_trace",
+        "full_runtime_site_closure_verified": False, "os_write_sandbox_enforced": False,
+        "canonical_qa": False, "native_science_production_authority": False})
+    require(not invalid, "unexpected remaining project module")
+sys.exit(rc)

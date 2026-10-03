@@ -1,0 +1,186 @@
+"""Own metadata/AST-only Source freezer. Never imports/compiles/runs target/tests."""
+import ast
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+
+OWN=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001/utility010-regression-prep001')
+WORK=OWN.parent
+U=WORK/'guard006-bound-late-checker-prep001'
+PEER=WORK/'guard010-utility-source-independent-review001'
+KEYS=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')
+API8=(0,1,2,3,5,6,7,8)
+def wire(value):return (json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def sha(data):return hashlib.sha256(data).hexdigest()
+def raw(info):
+    row=[getattr(info,k,None)for k in KEYS]
+    assert all(type(v)is int for v in row)
+    return row
+def read(p):
+    a=p.lstat();ar=raw(a)
+    assert stat.S_ISREG(a.st_mode)and a.st_nlink==1 and not a.st_file_attributes&0x400 and 0<a.st_size<=2097152
+    before=[]
+    for parent in p.parents:
+        item=parent.lstat();assert stat.S_ISDIR(item.st_mode)and not stat.S_ISLNK(item.st_mode)and not item.st_file_attributes&0x400
+        before.append((str(parent),item.st_dev,item.st_ino))
+    with p.open('rb')as stream:
+        h=os.fstat(stream.fileno());hr=raw(h)
+        assert stat.S_ISREG(h.st_mode)and h.st_nlink==1 and not h.st_file_attributes&0x400
+        assert all(ar[i]==hr[i]for i in API8)and a.st_ctime_ns==a.st_birthtime_ns
+        data=stream.read(2097153);assert raw(os.fstat(stream.fileno()))==hr
+    assert raw(p.lstat())==ar and len(data)==a.st_size and len(data)<=2097152
+    assert before==[(str(q),q.lstat().st_dev,q.lstat().st_ino)for q in p.parents]
+    return data,dict(path=str(p),bytes=len(data),sha256=sha(data),path_raw9=ar,descriptor_raw9=hr,
+                     paired_API8=[ar[i]for i in API8],cross_API_ctime_equality_asserted=False)
+def once(p,data):
+    with p.open('xb')as stream:stream.write(data);stream.flush();os.fsync(stream.fileno())
+    assert read(p)[0]==data
+
+inputs=[
+ ('utility010.py',U/'review_guard006_actual_records_001-corrected010.TEMPLATE.py','2811fe89f1c8580563c436b2f11c45db35ad1ee8c02ba312a00db399e5924de8'),
+ ('utility008.py',U/'review_guard006_actual_records_001-corrected008.TEMPLATE.py','98167867d0feedd106054a884222d16f9fb77dcf40df6c9f42bda9a14939f0e1'),
+ ('utility007.py',U/'review_guard006_actual_records_001-corrected007.TEMPLATE.py','8f620adad426d38315392b94e5a9e46a66f1a1eb63613aa5fb79a9715abbc8fd'),
+ ('pipeline_peer16.json',WORK/'root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_001.json','d45a6cf273dd8ea8df2db150969e438c2ef7f1a042830dddfaf58b528d13b5fc'),
+ ('utility010_review.json',PEER/'INDEPENDENT_UTILITY010_SOURCE_REVIEW_001.json','846d37306356953d7a882cd5f846eefab908bfedd9f1a171ed3cec3ad237555d'),
+ ('utility010_details.json',PEER/'INDEPENDENT_UTILITY010_SOURCE_DETAILS_001.json','8f721aa9d806f91e28a0d71993a725bd02e5dcd9c4b566e135381f1b1cbb39b1'),
+ ('utility010_post.json',PEER/'INDEPENDENT_UTILITY010_SOURCE_POST_READBACK_001.json','1e48dc52802b90aae2bf3d4f87641940ce982c69465b78f6aa88719155a7f8c5'),
+ ('plans7.json',U/'UTILITY010_CAUSAL_SOURCE_CONTROL_PLAN_001.json',None),
+ ('utility010_contract.json',U/'UTILITY010_SOURCE_CONTRACT_001.json','ef923a187f962aacb652530bcab5d71be14e1861ca3265251798e40af5683f92'),
+ ('compaction_facts.json',U/'UTILITY008_COMPACTION_SOURCE_FACTS_001.json',None),
+ ('composer.py',U/'compose-root-review-packet-006.TEMPLATE.py','1b909f93c795c1d162b025ccf4917513ee20eb2edfd5d1db80ff78afebd1d911'),
+ ('choice004.json',WORK/'root-pipeline-source-successor-design001/ROOT_SUCCESSOR_SOURCE_CHOICE_004.json','81051a31a93a93e5539454ea11e732152f3a1d4796b730d2eeb8a987aba65589'),
+ ('manifest007.json',U/'AUTHOR_FROZEN_SOURCE_MANIFEST_007.json','4d95dc21c9606090a6ddab6344dc63bf062e62e3ead27846f08165ceebadb73e'),
+ ('manifest008.json',U/'AUTHOR_FROZEN_SOURCE_MANIFEST_008.json','4b7cbd49afcb3153a73835119ef1634c71f62b246eb4ad958bb69c4ffb855da1'),
+ ('manifest010.json',U/'AUTHOR_FROZEN_SOURCE_MANIFEST_010.json','289726ace3beb286d8b37642afd527df952f9535186be0ad320a2ae7937277b5'),
+]
+test=OWN/'test_utility010_isolated_preparation_001.py'
+test_data,test_row=read(test)
+tree=ast.parse(test_data)
+cls=next(n for n in tree.body if isinstance(n,ast.ClassDef)and n.name=='Utility010IsolatedRegressions')
+methods=sorted(n.name for n in cls.body if isinstance(n,ast.FunctionDef)and n.name.startswith('test_'))
+assert len(methods)==7
+assert len([n for n in ast.walk(cls)if isinstance(n,ast.Call)and isinstance(n.func,ast.Attribute)and n.func.attr=='physical_provenance'])==1
+assert all(word in test_data.decode()for word in ('private pinned plain Source input','Source SHA/byte authentication before compile',
+    'no arbitrary argv interpolation','closed source substitution','constructor004/table002/full selected actual model absent'))
+assert sum(isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id=='compile'for n in ast.walk(tree))==1
+assert sum(isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id=='exec'for n in ast.walk(tree))==1
+pins=ast.literal_eval(next(n.value for n in tree.body if isinstance(n,ast.Assign)and any(isinstance(t,ast.Name)and t.id=='PINS'for t in n.targets)))
+assert pins['utility010.py']==(inputs[0][2],81410)
+
+preserved=[]
+for name,path,pin in inputs[-3:]:
+    data,row=read(path);assert row['sha256']==pin
+    expected={'manifest007.json':41,'manifest008.json':17,'manifest010.json':24}[name]
+    rows=json.loads(data)['payloads'];assert len(rows)==expected
+    for entry in rows:
+        original=U/entry['path'];body,facts=read(original)
+        assert facts['sha256']==entry['sha256']and facts['bytes']==entry['bytes']
+        preserved.append(facts)
+
+copies=OWN/'inputs';copies.mkdir(exist_ok=False)
+finite=[]
+for name,path,pin in inputs:
+    observations=[]
+    for _ in range(3):data,row=read(path);observations.append(row)
+    assert observations[0]==observations[1]==observations[2]
+    if pin is not None:assert row['sha256']==pin
+    if name in pins:
+        assert row['sha256']==pins[name][0]and(row['bytes']==pins[name][1]or pins[name][1]is None)
+    copy_path=copies/name;once(copy_path,data)
+    finite.append(dict(original_path=str(path),copy_path=str(copy_path),triple_original=observations,
+                       copy=read(copy_path)[1]))
+assert len(finite)==15
+plan=json.loads(read(copies/'plans7.json')[0]);assert plan['total_plan_count']==7
+peer=json.loads(read(copies/'pipeline_peer16.json')[0]);assert len(peer)==16
+tokens=[token for values in peer['phase_argv_templates'].values()for token in values if '{'in token or '}'in token]
+assert len(tokens)==11 and len({token[1:-1]for token in tokens})==6
+assert all(re.fullmatch(r'\{[a-z][a-z0-9_]*\}',token)for token in tokens)
+assert len(read(copies/'utility010.py')[0])==81410
+
+ids=['isolated_utility010_regressions.Utility010IsolatedRegressions.'+method for method in methods]
+subtests=[]
+for method in methods:
+    if method.startswith(('test_P1','test_P2','test_P3')):
+        for role in ('capture_before','whole_before_result'):
+            subtests.append(dict(parent_id='isolated_utility010_regressions.Utility010IsolatedRegressions.'+method,
+                parameters=dict(role=role),id='isolated_utility010_regressions.Utility010IsolatedRegressions.'+method+" (role='"+role+"')"))
+    elif method.startswith('test_argv'):
+        for role in ('capture_before','whole_before_result'):
+            for mutation in ('nested','unknown'):
+                subtests.append(dict(parent_id='isolated_utility010_regressions.Utility010IsolatedRegressions.'+method,
+                    parameters=dict(role=role,mutation=mutation),id='isolated_utility010_regressions.Utility010IsolatedRegressions.'+method+" (role='"+role+"', mutation='"+mutation+"')"))
+assert len(subtests)==10
+packet=dict(schema_version=1,record_type='utility010_isolated_fixture_planned_test_packet',source_author='/root/pubnative_review',
+    sorted_parent_ids=ids,parent_count=7,implemented_runnable_method_count=6,deferred_method_count=1,
+    declared_source_control_count=7,subtests=subtests,subtest_count=10,
+    hypothetical_healthy_event_counts=dict(start=7,success=6,skip=1,subtest=10,failure=0,error=0,total=24),
+    event_semantics='FixtureEventResult emits start and terminal outcome once per parent; emits each successful subtest once. Counts are static hypothetical, not results.',
+    full_physical_provenance_calls_planned=dict(total=30,healthy_or_restored=20,single_negative=10),
+    full_function_roles=['capture_before','whole_before_result'],all_eight_argv_templates_copied=True,
+    genuine_P16_flat_placeholder_count=11,genuine_P16_unique_placeholder_names=6,
+    deferred_control='U8F1: constructor004/table002/complete selected actual model absent; no byte-cap stand-in or runtime PASS',
+    planned_results=None,actual_results=None,tests_executed=False,target_execution=False,operational_authority=False)
+once(OWN/'PLANNED_TEST_PACKET_001.json',wire(packet))
+
+contract=dict(schema_version=1,record_type='utility010_isolated_regression_Source_contract',source_author='/root/pubnative_review',
+    prepared_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'),status='SOURCE_ONLY_UNRUN_DIFFERENT_REVIEW_REQUIRED',
+    selected_utility=dict(path=str(inputs[0][1]),sha256=inputs[0][2],bytes=81410),
+    selected_production_source_review=dict(path=str(inputs[4][1]),sha256=inputs[4][2],scope='architecture only; actual pool unready'),
+    regression_source=dict(path=str(test),sha256=test_row['sha256'],bytes=test_row['bytes']),
+    future_loader='Authenticates exactly81410 Source bytes, SHA, regular/singlelink/plain ancestors, raw9/API8 and size before compile/exec; executes same verified bytes with non-main module name ONLY after independent Source review and runtime GO.',
+    author_operations='Own AST/JSON/hash/raw9/copy metadata only; no target definitions/import/compile/main or tests run.',
+    fixtures='Private TemporaryDirectory only; complete physical_provenance code plus actual reader/open spies. All logical Root records/PID17/nonces/trace flags are synthetic inert fixtures, never Root producer, OS or tool attestations.',
+    fixture_scope_limits='Detail15 and Trace13 closed shape; this control invokes physical_provenance directly. Source-closure/check fields unused by that function are synthetic and are not machine_core acceptance. No full Core/metadata capture/lease test is inferred.',
+    controls=dict(P1='Full function healthy, source006-only negative before any open, healthy restore for bothroles.',
+      P2='Full function healthy, missing trust002 with same authentic fixture bytes at001; exact missing002 filename and zero fallback read, healthy restore bothroles.',
+      P3='Full function healthy, authenticated trust points INIT001 only; exact fixed-init refusal before either INIT open, restore bothroles.',
+      L1='Inert whole actual Module AST/byte compaction proof; change read-budget literal in Source fixture, exact AST inequality, restore and reverse three paths to007.',
+      L2='Inert full Source protected multiline/token proof; one interior leading-space mutation, exact byte/AST refusal, restore.',
+      F1='Explicit deferred unittest skip: future fullconstructor004+table002+actual selection prerequisite, no mirrored len assertion.',
+      argv='Full physical_provenance bothroles, updated synthetic peer/trust/phase/ticket pins; nested then unknown token singly cause exact no-braces/membership refusals after all6 real reads, restore each.'),
+    counts=dict(source_plans=7,implemented_runnable_methods=6,deferred_methods=1,parent_ids=7,subtests=10,hypothetical_events=24),
+    output_and_cleanup='TemporaryDirectory removes only owned synthetic tree on every outcome. Stdout bounded4096 bytes per synthetic JSONL event; stderr unittest diagnostics. Future physical child supervision/runtime resource/deadline guard not supplied by this Source preparation.',
+    unchanged_limits=dict(utility_and_composer_bytes=131072,detail_bytes=2097152,retained_observations=4096,whole_table_bytes=4194304,
+       original_context_seconds=600,both_age_seconds=90,resource_seconds=60,remaining_reserve_seconds=510,Root_seconds=450,after_seconds=60),
+    constructor004_selection=None,actual_models=None,actual_binding=None,actual_pool_peer20=None,READY=None,GO=None,
+    tests_executed=False,runtime_acceptance=False,operational_authority=False)
+once(OWN/'SOURCE_CONTRACT_001.json',wire(contract))
+
+handoff='''Utility010 isolated regressions: Source-only preparation
+
+Seven declared Source controls; six runnable methods and one explicitly deferred constructor004 prerequisite. Planned seven parent IDs, ten subtests and24 hypothetical fixture events (7start/6success/1skip/10subtest). These are static plans, not results. All tests remain UNRUN.
+
+Full physical_provenance uses actual selected utility010 bytes and its real bounded reader, private regular files and delegating read/open spies. Both capture_before and whole_before_result receive healthy→one exact causal negative→restored controls. Pipeline006 refuses before open; absent trust002 never falls back to001; authenticated INIT001 refuses before INIT open; nested and unknown placeholders reach their exact intended guards after six reads. Synthetic P16-derived argv retains all8 roles/11 placeholders/6names as inert data. Synthetic logical Root records/PID17/nonces/trace flags never represent real Root producer/OS/tool identity. Detail15/Trace13 shape is complete; unused source_closure/check fields do not establish machine_core acceptance.
+
+Whole-Module and protected multiline controls are inert Source AST/token proofs, separately classified from helper runtime. U8F1 remains deferred because constructor004/table002/complete selected actual model are unavailable in this selected cohort. Do not replace it with a length-only stand-in or count the skip as a cap PASS.
+
+Future loader authenticates81410 bytes/SHA/raw9/API8 before compiling the same bytes in a non-main module namespace. No author compile/import/exec/main/test happened. Source bundle needs a different full Source review followed by separately bounded runtime approval before any loader/test execution. No Root nominal authority path is written: all generated fixtures live inside private TemporaryDirectory and are removed on outcome. No publisher, PowerShell, process spawn, bindings, actual models, READY, pool20, capture/current24 or native/science authority supplied. Caps and600/both90/resource60/510/450+after60 unchanged.
+
+Frozen inputs include genuine U010 review846d/details8f721/post1e48, seven plans, utility007/008/010 and untouched composer, Rootchoice004 and P16. All41+17+24 historical author payloads were read/hashed before and after this own metadata freeze; selected15 originals have triple raw9/API8/hash observations, exact independent copies and post-read. See SOURCE_CONTRACT_001.json, PLANNED_TEST_PACKET_001.json and AUTHOR_FROZEN_SOURCE_MANIFEST_001.json.
+'''
+once(OWN/'HANDOFF_UTILITY010_REGRESSIONS_001.md',handoff.encode('utf8'))
+for pair in finite:
+    pair['post_original']=read(Path(pair['original_path']))[1];pair['post_copy']=read(Path(pair['copy_path']))[1]
+    assert pair['post_original']==pair['triple_original'][0]and pair['post_copy']==pair['copy']
+for row in preserved:assert read(Path(row['path']))[1]==row
+assert read(test)[1]==test_row
+once(OWN/'FINITE_SOURCE_OBSERVATIONS_001.json',wire(dict(schema_version=1,record_type='own_finite_Source_metadata_only',
+    source_author='/root/pubnative_review',raw9_fields=list(KEYS),cross_API8_indices=list(API8),selected_pair_count=15,
+    selected_pairs=finite,preserved_manifest_payload_counts=[41,17,24],preserved_before_and_post=preserved,
+    test_source_initial_and_post=test_row,target_execution=False,tests_executed=False,actual_actions=None)))
+payload=[]
+for p in sorted(OWN.rglob('*')):
+    if p.is_file():
+        data,row=read(p);payload.append(dict(path=str(p.relative_to(OWN)),bytes=len(data),sha256=row['sha256']))
+manifest=dict(schema_version=1,record_type='author_frozen_utility010_regression_Source_manifest',source_author='/root/pubnative_review',
+    created_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'),payloads=payload,payload_count=len(payload),
+    source_test_sha256=test_row['sha256'],selected_input_pair_count=15,implemented_runnable_methods=6,deferred_methods=1,
+    tests_executed=False,results=None,actual_actions=None,operational_authority=False)
+once(OWN/'AUTHOR_FROZEN_SOURCE_MANIFEST_001.json',wire(manifest))
+print(json.dumps(dict(manifest_sha256=sha(wire(manifest)),payload_count=len(payload),test_sha256=test_row['sha256'],
+                     test_bytes=test_row['bytes'],contract_sha256=sha(wire(contract)),counts=packet['hypothetical_healthy_event_counts'],
+                     tests_executed=False),sort_keys=True))

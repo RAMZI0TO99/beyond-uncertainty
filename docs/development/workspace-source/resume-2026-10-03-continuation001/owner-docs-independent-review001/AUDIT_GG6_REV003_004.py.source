@@ -1,0 +1,123 @@
+"""Own finite source metadata only; never execute reviewed code."""
+import ast, datetime, hashlib, json, os
+from pathlib import Path
+BASE=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001')
+GG=BASE/'consumer005-guard006-runtime-prep001';OUT=BASE/'gg6-source-independent-review001'
+def sha(b):return hashlib.sha256(b).hexdigest()
+def utc():return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+def enc(x):return (json.dumps(x,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('ascii')
+def pairs(rows):
+ d={}
+ for k,v in rows:assert k not in d;d[k]=v
+ return d
+def parse(b):return json.loads(b.decode('utf-8','strict'),object_pairs_hook=pairs,parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def raw(s):return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,getattr(s,'st_file_attributes',0),getattr(s,'st_birthtime_ns',None)]
+def read(p):
+ a=p.lstat();b=p.read_bytes();z=p.lstat();assert raw(a)==raw(z)
+ return b,dict(path=str(p),sha256=sha(b),bytes=len(b),raw9=raw(z),observed_utc=utc())
+def once(p,b):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open('xb') as f:f.write(b);f.flush();os.fsync(f.fileno())
+def literal(t,n):
+ v=[x.value for x in t.body if isinstance(x,ast.Assign) and len(x.targets)==1 and isinstance(x.targets[0],ast.Name) and x.targets[0].id==n];assert len(v)==1,n
+ return ast.literal_eval(v[0])
+def fn(t):return {x.name:ast.dump(x,include_attributes=False) for x in t.body if isinstance(x,ast.FunctionDef)}
+oldreview=OUT/'INDEPENDENT_GG6_SOURCE_REVIEW_002.json'
+assert sha(oldreview.read_bytes())=='3d18fc54bb9ba6413f8a106de2d01337bf67f457f98849103a66c9d4d8b96bb7'
+old=parse(oldreview.read_bytes());manifest_path=GG/'FINAL_AUTHOR_SOURCE_MANIFEST_009.json'
+pin='78320743b0076e5a8cc5056a6f003202a4dcdb19f3bc59a3cbf5da8924bbdba9'
+assert sha(manifest_path.read_bytes())==pin;manifest=parse(manifest_path.read_bytes())
+pins={Path(r['path']):r['sha256'] for r in old['preserved_inputs']}
+pins[oldreview]=sha(oldreview.read_bytes());pins[manifest_path]=pin
+for r in manifest['selected_files']+manifest['preserved_source_rows']:pins[GG/r['path']]=r['sha256']
+writer=BASE/'guard006-bound-late-checker-prep001/review_guard006_actual_records_001.TEMPLATE.py'
+pins[writer]=sha(writer.read_bytes())
+data=None;observations=[]
+for phase in range(1,4):
+ current={};rows=[]
+ for p in sorted(pins,key=str):
+  b,r=read(p);assert sha(b)==pins[p],str(p);current[p]=b;rows.append(r)
+ if data is None:data=current
+ else:assert current==data
+ observations.append(dict(phase=phase,rows=rows))
+for r in manifest['selected_files']+manifest['preserved_source_rows']:assert len(data[GG/r['path']])==r['bytes']
+assert len(manifest['selected_files'])==19 and len(manifest['preserved_source_rows'])==52
+profile=parse(data[GG/'GUARD_RUNTIME_PROFILE_006-rev003.json']);contract=parse(data[GG/'EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_006-rev003.json'])
+owner=parse(data[BASE/'OWNER_CONTINUATION_20261003_001.json']);peer=parse(data[BASE/'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json'])
+names=['consumer-guard-child-006-rev003.TEMPLATE.py','run-consumer-guard-unit006-rev003.TEMPLATE.py','observe-whole-runtime-006-rev003.TEMPLATE.py']
+oldnames=['consumer-guard-child-006.TEMPLATE.py','run-consumer-guard-unit006.TEMPLATE.py','observe-whole-runtime-006.TEMPLATE.py']
+syntax=[];deltas=[];trees=[]
+for name,oldname in zip(names,oldnames):
+ p=GG/name;t=ast.parse(data[p],filename=str(p));code=compile(data[p],str(p),'exec',dont_inherit=True,optimize=0);trees.append(t)
+ syntax.append(dict(path=str(p),sha256=sha(data[p]),inert_code_flags=code.co_flags,functions=list(fn(t)),execution=False))
+ assert literal(t,'TIMESTAMP_ROLE_CONTRACT')==contract
+ assert literal(t,'OWNER_MASTER_EXPECTED')==owner and len(owner)==27
+ assert set(literal(t,'OWNER_REVIEW_KEYS'))==set(peer) and len(peer)==19
+ assert literal(t,'MAX_RECEIPT')==262144 and literal(t,'MAX_CAPTURE')==131072
+ a=fn(ast.parse(data[GG/oldname]));b=fn(t)
+ added=sorted(set(b)-set(a));changed=sorted(n for n in a if a[n]!=b.get(n));removed=sorted(set(a)-set(b))
+ assert removed==[]
+ allowed={'consumer-guard-child-006-rev003.TEMPLATE.py':['capsule_snapshot','child_main'],'run-consumer-guard-unit006-rev003.TEMPLATE.py':['capsule_snapshot','driver_main'],'observe-whole-runtime-006-rev003.TEMPLATE.py':['capsule_snapshot','observer_main']}[name]
+ assert changed==sorted(allowed),(name,changed)
+ assert added==(['reconcile_events'] if name.startswith('run-') else [])
+ deltas.append(dict(path=name,changed_functions=changed,added_functions=added,unchanged_function_count=len(a)-len(changed)))
+ for n in ['typed_equal','exact_ticks','lease_entry','source_snapshot','capsule_snapshot']:assert n in b
+ for n in ['typed_equal','exact_ticks','lease_entry','source_snapshot']:assert a[n]==b[n]
+ for call in ast.walk(t):
+  if isinstance(call,ast.Call) and isinstance(call.func,ast.Attribute) and call.func.attr=='isoformat':assert any(k.arg=='timespec' and isinstance(k.value,ast.Constant) and k.value.value=='microseconds' for k in call.keywords),(name,call.lineno)
+assert literal(trees[1],'PROFILE_SHA256')==sha(data[GG/'GUARD_RUNTIME_PROFILE_006-rev003.json'])
+for k in ['child','whole_observer','root_supervisor','external_canonical_timestamp_role_contract']:
+ r=profile[k];assert sha(data[GG/r['path']])==r['sha256'] and len(data[GG/r['path']])==r['bytes']
+assert profile['driver_evidence_rows']==26
+assert all(profile[k] is None for k in ['execution_lease','root_ack','bound_driver','current_context_before','fresh_runtime4_metadata_snapshot','fresh_whole_runtime_before','actual_late_launch_review','harness_static_review'])
+test=ast.parse(data[GG/'test_raw_consumer_guards_005.TEMPLATE.py']);classes=[n for n in test.body if isinstance(n,ast.ClassDef)]
+methods={n.name:sorted(x.name for x in n.body if isinstance(x,ast.FunctionDef) and x.name.startswith('test_')) for n in classes}
+assert [len(methods[n.name]) for n in classes]==[19,5] and methods==profile['prepared_class_method_names']
+ids=['isolated_consumer_guard_unit006.'+n.name+'.'+m for n in classes for m in methods[n.name]];assert ids==profile['prepared_full_ids'] and len(set(ids))==24
+projection=parse(data[GG/'CURRENT24_BODY_AND_FULL_ID_PROJECTION_006.json'])
+for c in classes:
+ for n in c.body:
+  if isinstance(n,ast.FunctionDef) and n.name.startswith('test_'):assert sha(ast.dump(n,include_attributes=False).encode())==projection['body_AST_sha256'][c.name][n.name]
+driver=data[GG/names[1]].decode();ps=data[GG/'ROOT_FIRST_LAUNCH_006-rev003.TEMPLATE.ps1'].decode()
+assert 'reconcile_events(events,collection["ordered_ids"],diagnostics,result["methods"])' in driver
+assert 'started==finished==ids' in driver and 'diagnostic_offset==len(diagnostics)' in driver
+assert 'row["parent_id"]==active' in driver and 'ref["offset"]==diagnostic_offset' in driver
+assert 'len(evidence)==26' in driver and '"both original90 throughspawn"' in driver and '"resource60 throughspawn"' in driver
+assert profile['fixed_runtime_leaves']['driver'] in driver and profile['fixed_runtime_leaves']['driver'] in ps
+assert profile['fixed_runtime_leaves']['root_launcher'] in ps
+assert all(not value.startswith('bound-review.') for value in contract['external_python6_roles'])
+assert 'created_utc' not in literal(trees[1],'BOUND_KEYS') and 'expires_utc' not in literal(trees[1],'BOUND_KEYS')
+assert literal(trees[1],'OWNER_REVIEW_CORE')['reviewer']=='owner_docs_review'
+for role,constant in [('ack','ROOT_ACK_KEYS'),('bound','BOUND_KEYS')]:
+ phase=parse(data[GG/manifest['selected_source_map'][role]])
+ assert set(phase)==set(literal(trees[1],constant))
+ assert all(phase[k] is None for k in phase if k not in ['schema_version','record_type','scope','author','executor','max_collection_seconds','max_test_seconds','target_execution'])
+late=parse(data[GG/manifest['selected_source_map']['late']])
+assert set(late)==set(('schema_version','record_type','verdict','reviewer','scope','author','root_ack_sha256','driver_sha256','bound_review_sha256','launch_sha256','profile_sha256','created_utc','expires_utc','target_execution'))
+assert all(late[k] is None for k in late if k not in ['schema_version','record_type','scope','author','target_execution'])
+assert contract['untimestamped_phase_records']['INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_006.json']==dict(closed_keys=22,timestamp_fields=[])
+assert contract['external_observation_python6_roles']['writer_source_role_path']==str(writer)
+assert contract['external_observation_python6_roles']['actual_writer_sha256_selection'] is None
+writerbody=data[writer].decode('utf-8','strict')
+assert 'proof_path = OWN/("ACTUAL_" + phase.upper() + "_REVIEW_OBSERVATION_001.json")' in writerbody or 'proof_path = OWN / ("ACTUAL_" + phase.upper() + "_REVIEW_OBSERVATION_001.json")' in writerbody or "proof_path = OWN/('ACTUAL_'+phase.upper()+'_REVIEW_OBSERVATION_001.json')" in writerbody
+assert '"captured_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="microseconds")' in writerbody
+findings=[]
+checks=['Full initial finite source closure re-read from genuine source reviews, including12 current source/test/capsule pairs and5 old leaf originals; all52 declared preserved rows unchanged.','All19 selected rev003 payload pins and full active Python AST/inert compile verified; exact named-function deltas record unchanged guard routes.','Ongoing owner27, distinct peer19 and finite lease12 remain authentic; strict PS7 seventh digit chronology and max43200 guards are unchanged, owner end remains None.','Current24 copied test methods/full IDs reconstructed19+5 and AST hashes unchanged.','Pinned strict typed timestamp contract before capsule I/O; truthful untimestamped BOUND22 and concrete bound/late observation captured_utc writers inspected, actual producer selection remains None.','Exact current6 inert ACK22/BOUND22/LATE14 templates match active source literals; no future decision/pin/time manufactured.','Driver independently reconstructs exact ordered24 starts/single success terminals and active subtest parents, closed methods, complete contiguous diagnostic bytes and evidence26.','RootPS versioned driver/profile/root source mappings and ACK/BOUND/LATE fixed namespace inspected; source launch remains unbound.','Full inherited caps and original context/runtime90 throughspawn, resource60,context600,driver420,Root450,after60 preserved; no actual result or operational acceptance.']
+before=OUT/'selected-before003';assert not before.exists();before.mkdir();preserved=[]
+for idx,p in enumerate(sorted(data,key=str)):
+ d=before/f'{idx:02d}.bytes';once(d,data[p]);assert d.read_bytes()==data[p];preserved.append(dict(path=str(p),copy=str(d),sha256=sha(data[p]),bytes=len(data[p])))
+pre=[]
+for p in sorted(data,key=str):b,r=read(p);assert b==data[p];pre.append(r)
+result=dict(schema_version=1,record_type='independent_gg6_complete_finite_source_review',source_author='/root/capsule_design_review',reviewer='/root/owner_docs_review',created_utc=utc(),verdict='PASS_COMPLETE_SOURCE_PREPARATION_ONLY',scope=profile['scope'],source_manifest_sha256=pin,manifest_payload_count=19,finite_input_count=len(data),observations=observations,preserved_inputs=preserved,prepublication_observations=pre,syntax_and_inert_metadata=syntax,source_function_deltas=deltas,source_checks=checks,findings=findings,implementation_conditions=['Source only: no reviewed definitions/imports/main/tests/Git/FFI/PS target/binding/lease entry executed.','No physical loaded-source, hard OS sandbox, Job, descendant, memory or atomic lock proof.','Canonical actual role provenance and full different actual before/BOUND/LATE/after acceptance still required.','Compact static20 is a source-only selection derived from this full acceptance; it is not an actual binding or entry decision.'],actual_results=None,runtime_acceptance=False,operational_authority=False)
+review=OUT/'INDEPENDENT_GG6_SOURCE_REVIEW_003.json';once(review,enc(result))
+md=OUT/'INDEPENDENT_GG6_SOURCE_REVIEW_003.md';once(md,b'GG6 final rev003: PASS_COMPLETE_SOURCE_PREPARATION_ONLY. Complete finite closure and current24 identities audited. Actual producer provenance, bindings, lease, BOUND/LATE and results remain absent. No target executed.\n')
+post=[]
+for p in sorted(data,key=str):b,r=read(p);assert b==data[p];post.append(r)
+postpath=OUT/'INDEPENDENT_GG6_SOURCE_POST_003.json';once(postpath,enc(dict(schema_version=1,created_utc=utc(),review_sha256=sha(review.read_bytes()),source_post_observations=post)))
+print(json.dumps(dict(verdict=result['verdict'],finite_input_count=len(data),outputs=[dict(path=str(p),sha256=sha(p.read_bytes()),bytes=len(p.read_bytes())) for p in [review,md,postpath]])))
+# Genuine compact ABI derived only after the full independent source acceptance.
+compact=dict(schema_version=1,record_type='consumer_guard_unit006_harness_static_review',verdict='PASS_STATIC_PREPARATION_ONLY',scope=profile['scope'],author='/root/capsule_design_review',reviewer='/root/owner_docs_review',profile_sha256=sha(data[GG/'GUARD_RUNTIME_PROFILE_006-rev003.json']),driver_template_sha256=sha(data[GG/names[1]]),child_template_sha256=sha(data[GG/names[0]]),source_manifest_sha256=profile['source_manifest_sha256'],consumer_source_peer_sha256='007a4fa04849b2b497046609fcc7058abc4db19d933aa932fd61420394fce2e1',source_projection_sha256=profile['source_projection_sha256'],raw_source_sha256=profile['raw_source_sha256'],test_sha256=profile['test']['sha256'],runtime_manifest_sha256=profile['runtime_roles_projection_sha256'],owner_master_sha256=sha(data[BASE/'OWNER_CONTINUATION_20261003_001.json']),tests_executed=False,target_definitions_executed=False,native_authority=False,limitation='Complete distinct final rev003 source closure only; actual canonical producer provenance, fresh finite lease, before/BOUND/LATE/result decisions and separate Root unit GO remain required. No target tests or operational action executed.')
+assert len(compact)==20
+compactpath=OUT/'INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_006.json';once(compactpath,enc(compact))
+selection=OUT/'INDEPENDENT_GG6_STATIC_SELECTION_003.json';once(selection,enc(dict(schema_version=1,record_type='independent_gg6_source_selection',reviewer='/root/owner_docs_review',full_review_sha256=sha(review.read_bytes()),full_review_post_sha256=sha(postpath.read_bytes()),source_manifest_sha256=pin,compact_static20_sha256=sha(compactpath.read_bytes()),actual_bindings=None,runtime_acceptance=False,operational_authority=False)))
+print(json.dumps(dict(compact_sha256=sha(compactpath.read_bytes()),compact_bytes=len(compactpath.read_bytes()),selection_sha256=sha(selection.read_bytes()))))

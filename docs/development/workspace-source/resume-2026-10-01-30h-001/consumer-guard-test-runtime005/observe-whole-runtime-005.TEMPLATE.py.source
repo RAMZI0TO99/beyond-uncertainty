@@ -1,0 +1,487 @@
+import argparse
+import ast
+import hashlib
+import json
+import math
+import os
+import stat
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+PROJECT = Path("D:/Aenv/pro2")
+WORK = PROJECT / "resume-2026-10-01-30h-001"
+PREP = WORK / "consumer-guard-test-runtime005"
+RUNS = PROJECT / ".tmp/cg14-005"
+BASE_PYTHON = PROJECT / "runtimes/week8-python313-frozen-001/python.exe"
+BASE_PYTHON_SHA256 = "5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed"
+OWNER_PATH = WORK / "OWNER_WORK_WINDOW_30H_20261001_001.json"
+OWNER_SHA256 = "3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff"
+OWNER_END = datetime(2026, 10, 2, 22, 36, 15, tzinfo=timezone.utc)
+SCOPE = "COPIED_CONSUMER_GUARD_UNIT005_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY"
+AUTHOR = "/root/raw_policy_worker"
+REVIEWERS = frozenset(("/root/candidate_review", "/root/keepawake_stage", "/root/window_docs"))
+SOURCE_AUTHORS = ("/root/raw_policy_worker", "/root/bootstrap_stage")
+MAX_JSON = 2 * 1024 * 1024
+MAX_RECEIPT = 262144
+MAX_CAPTURE = 131072
+MAX_TRANSCRIPT = 262144
+MAX_EVENTS = 4096
+MAX_COLLECTION = 60
+MAX_TESTS = 300
+MAX_TOTAL = 420
+
+
+def require(ok, message):
+    if not ok:
+        raise RuntimeError(message)
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def hex64(value):
+    return type(value) is str and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def ancestors(path):
+    result = []
+    for parent in [*reversed(path.absolute().parents), path.absolute()]:
+        info = parent.lstat()
+        require(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+                and not getattr(info, "st_file_attributes", 0) & 0x400, "linked/reparse ancestor")
+        result.append((str(parent), info.st_dev, info.st_ino))
+    return tuple(result)
+
+
+def raw(info):
+    return tuple(getattr(info, name, None) for name in
+                 ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_mode",
+                  "st_nlink", "st_file_attributes", "st_birthtime_ns"))
+
+
+def cross(info):
+    return tuple(getattr(info, name, None) for name in
+                 ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink"))
+
+
+def read(path, pin=None, maximum=MAX_JSON):
+    require(type(maximum) is int and maximum > 0, "read cap type")
+    chain = ancestors(path.parent)
+    before = path.lstat()
+    require(stat.S_ISREG(before.st_mode) and not stat.S_ISLNK(before.st_mode)
+            and before.st_nlink == 1 and not getattr(before, "st_file_attributes", 0) & 0x400,
+            "not a plain one-link file")
+    require(0 <= before.st_size <= maximum, "path exceeds pre-read cap")
+    with path.open("rb") as stream:
+        first = os.fstat(stream.fileno())
+        require(cross(before) == cross(first) and 0 <= first.st_size <= maximum,
+                "opened identity or cap differs")
+        value = stream.read(maximum + 1)
+        last = os.fstat(stream.fileno())
+    after = path.lstat()
+    require(len(value) <= maximum and len(value) == before.st_size
+            and raw(before) == raw(after) and raw(first) == raw(last)
+            and cross(before) == cross(first) == cross(last) == cross(after)
+            and ancestors(path.parent) == chain, "changed capture")
+    if pin is not None:
+        require(hex64(pin) and digest(value) == pin, "source byte pin differs")
+    return value, {"sha256": digest(value), "bytes": len(value),
+                   "path_raw9": raw(before), "descriptor_raw9": raw(first)}
+
+
+def duplicates(rows):
+    result = {}
+    for key, value in rows:
+        require(key not in result, "duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def finite(token):
+    value = float(token)
+    require(math.isfinite(value), "nonfinite JSON")
+    return value
+
+
+def decode(data):
+    return json.loads(data.decode("utf-8"), object_pairs_hook=duplicates, parse_float=finite,
+                      parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+                       allow_nan=False) + "\n").encode("ascii")
+
+
+def exact(value, names, what):
+    require(type(value) is dict and set(value) == set(names), what + " keys")
+
+
+# The inherited timestamp parser checks aware UTC, not canonical producer syntax.
+# Independent actual-record review must enforce each genuine producer role before
+# binding, per EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_005.json.
+def timestamp(value):
+    require(type(value) is str, "timestamp type")
+    result = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    require(result.tzinfo is not None and result.utcoffset() == timedelta(0), "aware UTC required")
+    return result
+
+
+def work_path(value):
+    require(type(value) is str, "evidence path type")
+    path = Path(value)
+    require(path.is_absolute() and path == path.absolute() and ".." not in path.parts
+            and path.is_relative_to(WORK), "outside work path")
+    ancestors(path.parent)
+    return path
+
+
+def pointer(value):
+    exact(value, ("path", "sha256"), "external pointer")
+    require(hex64(value["sha256"]), "external pin type")
+    return work_path(value["path"]), value["sha256"]
+
+
+def absent(path):
+    ancestors(path.parent)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return True
+    return False
+
+
+def once(path, data, maximum=MAX_RECEIPT):
+    require(len(data) <= maximum and absent(path), "one-use output exists or cap")
+    chain = ancestors(path.parent)
+    with path.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    require(ancestors(path.parent) == chain and read(path, digest(data), maximum)[0] == data,
+            "output changed")
+
+
+def runtime_entry():
+    require(Path(sys.executable).resolve(strict=True) == BASE_PYTHON.resolve(strict=True)
+            and sys.version_info[:3] == (3, 13, 5), "direct frozen base/version required")
+    require(sys.flags.isolated == 1 and sys.flags.no_site == 1
+            and sys.flags.dont_write_bytecode == 1 and sys.flags.safe_path
+            and sys.flags.utf8_mode == 1 and sys.flags.optimize == 0,
+            "I-S-B safe flags required")
+    read(BASE_PYTHON, BASE_PYTHON_SHA256, 105816)
+    read(OWNER_PATH, OWNER_SHA256, 2227)
+    require(datetime.now(timezone.utc) < OWNER_END, "owner expired")
+
+
+def source_snapshot(profile):
+    require(profile["source_projection_sha256"] == profile["source_projection"]["sha256"], "projection identity")
+    projection = decode(read(PREP / profile["source_projection"]["path"],
+                             profile["source_projection_sha256"], MAX_JSON)[0])
+    answer = []
+    for row in projection["entries"]:
+        if not row["runtime_source_reobserve_required"]:
+            continue
+        original = work_path(row["original_path"])
+        relative = Path(row["copy_path"])
+        require(not relative.is_absolute() and ".." not in relative.parts, "copy projection escape")
+        original_bytes, original_meta = read(original, row["sha256"], row["bytes"])
+        copied_bytes, copied_meta = read(PREP / relative, row["sha256"], row["bytes"])
+        require(original_bytes == copied_bytes, "copy original differs")
+        require(encoded(original_meta) == encoded(row["original_metadata"])
+                and encoded(copied_meta) == encoded(row["copy_metadata"]), "frozen source/copy metadata differs")
+        answer.append({"path": row["copy_path"], "original": original_meta, "copy": copied_meta})
+    return answer
+
+def metadata_row(path, expected, maximum):
+    exact(expected, ("path", "sha256", "bytes", "path_raw9", "descriptor_raw9"), "opaque metadata row")
+    require(expected["path"] == str(path) and type(expected["bytes"]) is int
+            and 0 <= expected["bytes"] <= maximum, "opaque row path/size")
+    require(all(type(expected[name]) is list and len(expected[name]) == 9
+                and all(type(value) is int for value in expected[name])
+                for name in ("path_raw9", "descriptor_raw9")), "opaque raw9 metadata type")
+    data, observed = read(path, expected["sha256"], maximum)
+    require(len(data) == expected["bytes"] and list(observed["path_raw9"]) == expected["path_raw9"]
+            and list(observed["descriptor_raw9"]) == expected["descriptor_raw9"], "opaque byte/metadata drift")
+    return {"path": str(path), **observed}
+
+
+def context_snapshot(profile, value):
+    exact(value, ("schema_version", "scope", "captured_utc", "head", "tracked_rows",
+                  "git_metadata", "configurations", "runtime_roles_projection_sha256"), "opaque context")
+    require(type(value["schema_version"]) is int and value["schema_version"] == 1
+            and value["scope"] == SCOPE
+            and value["runtime_roles_projection_sha256"] == profile["runtime_roles_projection_sha256"], "opaque context role")
+    require(0 <= (datetime.now(timezone.utc)-timestamp(value["captured_utc"])).total_seconds() <= 600,
+            "fresh opaque context required")
+    cfg = profile["context_profile"]
+    live = Path(cfg["live_root"])
+    require(live == PROJECT / "week8-recovery-controller-worktree", "fixed opaque live root")
+    require(type(value["head"]) is str and len(value["head"]) == 40
+            and all(c in "0123456789abcdef" for c in value["head"]), "opaque HEAD syntax")
+    require(type(value["tracked_rows"]) is list and len(value["tracked_rows"]) == cfg["tracked_count"] == 742,
+            "opaque tracked row count")
+    paths = [row.get("path") for row in value["tracked_rows"] if type(row) is dict]
+    require(len(paths) == 742 and all(type(path) is str for path in paths)
+            and paths == sorted(paths) and len(set(path.casefold() for path in paths)) == 742
+            and digest(encoded(paths)) == cfg["historical_authenticated_pathset_sha256"], "fixed opaque742 path sequence")
+    result = {"head": value["head"], "tracked_rows": [], "git_metadata": [], "configurations": []}
+    for row in value["tracked_rows"]:
+        relative = Path(row["path"])
+        require(not relative.is_absolute() and ".." not in relative.parts and relative.as_posix() == row["path"]
+                and len(row["path"]) <= 399, "opaque relative path")
+        actual = dict(row)
+        actual["path"] = str(live / relative)
+        observed = metadata_row(live / relative, actual, cfg["maximum_file_bytes"])
+        observed["path"] = row["path"]
+        result["tracked_rows"].append(observed)
+    git_paths = cfg["head_paths"] + cfg["optional_git_metadata_paths"]
+    config_paths = [str(Path(parent) / name) for parent in cfg["configuration_parents"]
+                    for name in cfg["configuration_names"]]
+    for field, allowed in (("git_metadata", git_paths), ("configurations", config_paths)):
+        require(type(value[field]) is list and [row.get("path") for row in value[field] if type(row) is dict] == allowed,
+                "opaque fixed path coverage")
+        for row in value[field]:
+            exact(row, ("path", "exists", "identity"), "opaque optional row")
+            require(type(row["exists"]) is bool, "opaque existence type")
+            path = Path(row["path"])
+            if row["exists"]:
+                observed = metadata_row(path, row["identity"], cfg["maximum_git_metadata_bytes"])
+                result[field].append({"path": str(path), "exists": True, "identity": observed})
+            else:
+                require(row["identity"] is None and absent(path), "opaque absence drift")
+                require(field != "git_metadata" or row["path"] not in cfg["head_paths"], "required HEAD metadata absent")
+                result[field].append({"path": str(path), "exists": False, "identity": None})
+    # These explicit bytes anchor the observed branch HEAD without invoking Git.
+    head_path = Path(cfg["head_paths"][-1])
+    expected_head = next(row["identity"]["sha256"] for row in value["git_metadata"] if row["path"] == str(head_path))
+    require(read(head_path, expected_head, 128)[0].decode("ascii").strip() == value["head"], "opaque actual branch HEAD differs")
+    return result
+
+
+
+
+def runtime_snapshot(profile, snapshot):
+    exact(snapshot, ("schema_version", "scope", "captured_utc", "entries", "context_selection"), "runtime metadata snapshot")
+    require(snapshot["schema_version"] == 1 and type(snapshot["schema_version"]) is int
+            and snapshot["scope"] == SCOPE and type(snapshot["entries"]) is list, "runtime metadata role")
+    require(0 <= (datetime.now(timezone.utc)-timestamp(snapshot["captured_utc"])).total_seconds() <= 600,
+            "fresh runtime metadata snapshot required")
+    require(len(snapshot["entries"]) == len(profile["runtime4_roles"]) == 4, "four runtime roles")
+    observed = []
+    for actual, fixed in zip(snapshot["entries"], profile["runtime4_roles"]):
+        exact(actual, ("path", "sha256", "bytes", "path_raw9", "descriptor_raw9"), "runtime row")
+        require(type(actual["path_raw9"]) is list and type(actual["descriptor_raw9"]) is list
+                and len(actual["path_raw9"]) == len(actual["descriptor_raw9"]) == 9
+                and all(type(value) is int for value in actual["path_raw9"] + actual["descriptor_raw9"]),
+                "required integer runtime metadata")
+        require(actual["path"] == fixed["path"] and actual["sha256"] == fixed["sha256"]
+                and type(actual["bytes"]) is int and actual["bytes"] == fixed["size"], "fixed runtime path/hash/size")
+        data, meta = read(Path(actual["path"]), actual["sha256"], actual["bytes"])
+        require(list(meta["path_raw9"]) == actual["path_raw9"]
+                and list(meta["descriptor_raw9"]) == actual["descriptor_raw9"], "runtime metadata identity differs")
+        observed.append({"path": actual["path"], **meta})
+    context_path, context_pin = pointer(snapshot["context_selection"])
+    observed_context = context_snapshot(profile, decode(read(context_path, context_pin, profile["context_profile"]["maximum_opaque_context_bytes"])[0]))
+    return {"runtime4": observed, "context": observed_context}
+
+
+import struct
+
+HARNESS_STATIC_PEER_SHA256 = None
+WHOLE_MAX_BYTES = 4194304
+WHOLE_MAX_ROWS = 6000
+WHOLE_ROOTS = {"base": PROJECT / "runtimes/week8-python313-frozen-001",
+               "scripts": PROJECT / "pro2/.venv/Scripts"}
+WHOLE_EXPECTED = {"base": {"files": 5368, "directories": 504, "bytes": 155022742,
+                           "sha256": "0a5aff918e4a46fae2427a593261f8e3640ba439ba4ffebf5081b15eb7df6760"},
+                  "scripts": {"files": 22, "directories": 0, "bytes": 2145329,
+                              "sha256": "baa95b3f7e3e50a9b388fca6c4fd238fb55fc2e62f4cdc07c1b7c57caa9a54ad"}}
+WHOLE_AUTH_KEYS = ("schema_version", "record_type", "author", "scope", "phase", "created_utc",
+                   "expires_utc", "observer_sha256", "profile_sha256", "static_review_sha256",
+                   "owner_sha256", "runtime_snapshot", "context_selection", "before_record_sha256", "unit_receipt")
+
+
+def ordinal(value):
+    data = value.encode("utf-16-le", "surrogatepass")
+    return struct.unpack("<" + "H" * (len(data)//2), data)
+
+
+def whole_tree(root):
+    chain = ancestors(root)
+    root_meta = raw(root.lstat())
+    rows = []
+    directory_meta = {}
+    def walk(folder):
+        parents = ancestors(folder)
+        before = folder.lstat()
+        with os.scandir(folder) as entries:
+            names = [item.name for item in entries]
+        require(len(names) == len(set(name.casefold() for name in names)), "whole path alias")
+        for name in names:
+            require(len(rows) < WHOLE_MAX_ROWS, "whole finite row cap")
+            path = folder / name
+            relative = path.relative_to(root).as_posix()
+            require(len(relative) <= 399 and not any(c in relative for c in "\t\r\n"), "whole path framing")
+            info = path.lstat()
+            require(not getattr(info, "st_file_attributes", 0) & 0x400 and not stat.S_ISLNK(info.st_mode), "whole reparse entry")
+            if stat.S_ISDIR(info.st_mode):
+                rows.append({"kind": "directory", "path": relative, "path_raw9": raw(info)})
+                walk(path)
+            else:
+                require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "whole nonplain entry")
+                require(0 <= info.st_size <= 67108864, "whole file cap")
+                parents_before = ancestors(path.parent)
+                hasher = hashlib.sha256()
+                total = 0
+                with path.open("rb") as stream:
+                    fd1 = os.fstat(stream.fileno())
+                    require(cross(info) == cross(fd1) and fd1.st_size == info.st_size, "whole opened identity")
+                    while chunk := stream.read(1048576):
+                        total += len(chunk)
+                        require(total <= info.st_size, "whole growth")
+                        hasher.update(chunk)
+                    fd2 = os.fstat(stream.fileno())
+                post = path.lstat()
+                require(total == info.st_size and raw(info) == raw(post) and raw(fd1) == raw(fd2)
+                        and cross(info) == cross(fd1) == cross(fd2) == cross(post)
+                        and ancestors(path.parent) == parents_before, "whole read drift")
+                rows.append({"kind": "file", "path": relative, "bytes": total, "sha256": hasher.hexdigest(),
+                             "path_raw9": raw(info), "descriptor_raw9": raw(fd1)})
+        require(raw(before) == raw(folder.lstat()) and ancestors(folder) == parents, "whole directory drift")
+        directory_meta[str(folder)] = raw(before)
+    walk(root)
+    rows.sort(key=lambda row: ordinal(row["path"]))
+    require(len(rows) == len(set(row["path"].casefold() for row in rows)), "whole row aliases")
+    files = directories = total = 0
+    lines = []
+    for row in rows:
+        if row["kind"] == "directory":
+            directories += 1
+            lines.append("D\t" + row["path"] + "\n")
+        else:
+            files += 1
+            total += row["bytes"]
+            lines.append("F\t" + row["path"] + "\t" + str(row["bytes"]) + "\t" + row["sha256"] + "\n")
+        require(raw((root / row["path"]).lstat()) == row["path_raw9"], "whole post-tree metadata drift")
+    require(raw(root.lstat()) == root_meta and ancestors(root) == chain, "whole root drift")
+    return {"root": str(root), "identity": {"files": files, "directories": directories, "bytes": total,
+             "sha256": digest("".join(lines).encode("utf-8"))}, "rows": rows,
+             "root_raw9": root_meta, "directory_metadata": directory_meta}
+
+
+def template_projection(source):
+    text = source.decode("utf-8")
+    lines = text.splitlines(keepends=True)
+    nodes = [node.value for node in ast.parse(text).body if isinstance(node, ast.Assign)
+             and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+             and node.targets[0].id == "HARNESS_STATIC_PEER_SHA256"]
+    require(len(nodes) == 1 and isinstance(nodes[0], ast.Constant) and hex64(nodes[0].value), "observer one exact binding")
+    node = nodes[0]
+    start = sum(map(len, lines[:node.lineno-1])) + node.col_offset
+    end = sum(map(len, lines[:node.end_lineno-1])) + node.end_col_offset
+    return digest((text[:start] + "None" + text[end:]).encode("utf-8"))
+
+
+def observer_main():
+    require(hex64(HARNESS_STATIC_PEER_SHA256), "UNBOUND GUARD005 metadata observer")
+    parser = argparse.ArgumentParser()
+    for name in ("expected-self-sha256", "expected-profile-sha256", "authorization-path", "authorization-sha256", "static-review-path"):
+        parser.add_argument("--" + name, required=True)
+    args = parser.parse_args()
+    runtime_entry()
+    require(sys.flags.utf8_mode == 1 and sys.flags.optimize == 0, "metadata entry flags")
+    own = Path(__file__).absolute()
+    require(own == PREP / "observe-whole-runtime-005.BOUND.py", "fixed metadata observer path")
+    source = read(own, args.expected_self_sha256, 65536)[0]
+    profile = decode(read(PREP / "GUARD_RUNTIME_PROFILE_005.json", args.expected_profile_sha256, 65536)[0])
+    require(profile["scope"] == SCOPE and profile["whole_observer"]["sha256"] == template_projection(source), "observer profile source")
+    review = decode(read(work_path(args.static_review_path), HARNESS_STATIC_PEER_SHA256, MAX_JSON)[0])
+    require(review["verdict"] == "PASS_STATIC_PREPARATION_ONLY" and review["scope"] == SCOPE
+            and review["author"] == AUTHOR and review["profile_sha256"] == args.expected_profile_sha256
+            and review["reviewer"] in REVIEWERS and review["reviewer"] not in SOURCE_AUTHORS,
+            "observer independent static role")
+    auth = decode(read(work_path(args.authorization_path), args.authorization_sha256, 65536)[0])
+    exact(auth, WHOLE_AUTH_KEYS, "whole observation authorization15")
+    now = datetime.now(timezone.utc)
+    require(type(auth["schema_version"]) is int and auth["schema_version"] == 1
+            and auth["record_type"] == "consumer_guard_unit005_metadata_observation_authorization"
+            and auth["author"] == "/root" and auth["scope"] == SCOPE
+            and auth["phase"] in ("before", "after")
+            and timestamp(auth["created_utc"]) <= now < timestamp(auth["expires_utc"]) <= OWNER_END
+            and timestamp(auth["expires_utc"])-timestamp(auth["created_utc"]) <= timedelta(minutes=30)
+            and auth["observer_sha256"] == args.expected_self_sha256
+            and auth["profile_sha256"] == args.expected_profile_sha256
+            and auth["static_review_sha256"] == HARNESS_STATIC_PEER_SHA256
+            and auth["owner_sha256"] == OWNER_SHA256, "whole external authorization role/pins")
+    runtime_path, runtime_pin = pointer(auth["runtime_snapshot"])
+    context_path, context_pin = pointer(auth["context_selection"])
+    runtime = decode(read(runtime_path, runtime_pin, 65536)[0])
+    context = decode(read(context_path, context_pin, profile["context_profile"]["maximum_opaque_context_bytes"])[0])
+    before = None
+    if auth["phase"] == "before":
+        require(auth["before_record_sha256"] is None and auth["unit_receipt"] is None, "before no future receipt cycle")
+    else:
+        require(hex64(auth["before_record_sha256"]), "after external before pin")
+        before = decode(read(PREP / "whole-runtime-before/result.json", auth["before_record_sha256"], MAX_RECEIPT)[0])
+        require(before["phase"] == "before" and before["observer_sha256"] == args.expected_self_sha256
+                and before["profile_sha256"] == args.expected_profile_sha256
+                and before["static_review_sha256"] == HARNESS_STATIC_PEER_SHA256, "actual before identity")
+        receipt_path, receipt_pin = pointer(auth["unit_receipt"])
+        receipt = decode(read(receipt_path, receipt_pin, MAX_RECEIPT)[0])
+        require(receipt["scope"] == SCOPE and receipt["canonical_fullQA_native_fit_authority"] is False,
+                "after scoped unit receipt")
+    output = PREP / ("whole-runtime-" + auth["phase"])
+    require(absent(output), "metadata one-use output exists")
+    output.mkdir()
+    once(output / "intent.json", encoded({"scope": SCOPE, "phase": auth["phase"], "observer_sha256": args.expected_self_sha256,
+         "authorization_sha256": args.authorization_sha256, "created_utc": now.isoformat(), "target_execution": False}), 65536)
+    try:
+        runtime_before = runtime_snapshot(profile, runtime)
+        context_before = context_snapshot(profile, context)
+        sources_before = source_snapshot(profile)
+        files = []
+        identities = {}
+        for role, root in WHOLE_ROOTS.items():
+            first = whole_tree(root)
+            second = whole_tree(root)
+            require(first == second and first["identity"] == WHOLE_EXPECTED[role], "whole pinned bytes/metadata unstable")
+            if before is not None:
+                old = next(row for row in before["observation_files"] if row["path"] == str(PREP / "whole-runtime-before" / (role + "-first.json")))
+                old_tree = decode(read(Path(old["path"]), old["sha256"], WHOLE_MAX_BYTES)[0])
+                require(old_tree == first, "whole runtime bytes/metadata changed after unit")
+            for suffix, value in (("first", first), ("second", second)):
+                data = encoded(value)
+                path = output / (role + "-" + suffix + ".json")
+                once(path, data, WHOLE_MAX_BYTES)
+                files.append({"path": str(path), "sha256": digest(data), "bytes": len(data)})
+            identities[role] = first["identity"]
+        require(runtime_snapshot(profile, runtime) == runtime_before
+                and context_snapshot(profile, context) == context_before
+                and source_snapshot(profile) == sources_before, "whole source/context/runtime reobservation drift")
+        if before is not None:
+            require(before["runtime_snapshot_sha256"] == runtime_pin and before["context_selection_sha256"] == context_pin
+                    and before["source_snapshot_sha256"] == digest(encoded(sources_before)), "before/after guard identities")
+        record = {"schema_version": 1, "record_type": "consumer_guard_unit005_whole_metadata_result", "scope": SCOPE,
+                  "phase": auth["phase"], "verdict": "MATCHES_PINNED_BYTES_METADATA_TWICE",
+                  "captured_utc": datetime.now(timezone.utc).isoformat(), "observer_sha256": args.expected_self_sha256,
+                  "static_review_sha256": HARNESS_STATIC_PEER_SHA256, "profile_sha256": args.expected_profile_sha256,
+                  "owner_sha256": OWNER_SHA256, "runtime_snapshot_sha256": runtime_pin,
+                  "context_selection_sha256": context_pin, "source_snapshot_sha256": digest(encoded(sources_before)),
+                  "trees": identities, "observation_files": files, "before_record_sha256": auth["before_record_sha256"],
+                  "unit_receipt": auth["unit_receipt"], "target_execution": False,
+                  "whole_site_loaded_closure_retained_lock_OS_Job_guaranteed": False}
+        data = encoded(record)
+        once(output / "result.json", data, MAX_RECEIPT)
+        sys.stdout.write(encoded({"result_path": str(output / "result.json"), "result_sha256": digest(data)}).decode("ascii"))
+    except BaseException as error:
+        once(output / "refused.json", encoded({"scope": SCOPE, "phase": auth["phase"], "spent": True,
+             "error": str(error)[:4096], "type": type(error).__name__, "target_execution": False}), 65536)
+        raise
+
+
+if __name__ == "__main__":
+    observer_main()

@@ -1,0 +1,501 @@
+
+import ast,datetime as dt,hashlib,json,math,os,pathlib,stat,re
+P=pathlib.Path(r"D:\Aenv\pro2");B=P/"resume-2026-10-01-30h-001";R=B/"raw-component-runtime-prep004"
+INPUTS={};BYTES={}
+FIXED_EXE_ROLES={str(P/"pro2/.venv/Scripts/python.exe"),str(P/"runtimes/git/mingw64/bin/git.exe"),str(P/"runtimes/week8-python313-frozen-001/python.exe")}
+RAW_FIELDS=("st_dev","st_ino","st_mode","st_size","st_mtime_ns","st_ctime_ns","st_nlink","st_file_attributes","st_birthtime_ns")
+def raw9(s):return [getattr(s,k) for k in RAW_FIELDS]
+def ancestors(p):
+    rows=[]
+    for d in [*reversed(p.parent.parents),p.parent]:
+        s=d.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not s.st_file_attributes&1024,d
+        rows.append([str(d),s.st_dev,s.st_ino,s.st_mode,s.st_file_attributes])
+    return rows
+def read(p,pin=None,size=None,maximum=8388608):
+    p=pathlib.Path(p);chain=ancestors(p);pre=p.lstat()
+    assert stat.S_ISREG(pre.st_mode) and pre.st_nlink==1 and not pre.st_file_attributes&1024,p
+    assert type(maximum) is int and 0<maximum<=134217728 and 0<=pre.st_size<=maximum,p
+    with p.open("rb") as f:
+        first=os.fstat(f.fileno());assert 0<=first.st_size<=maximum
+        x=f.read(maximum+1);last=os.fstat(f.fileno())
+    post=p.lstat()
+    assert len(x)<=maximum and len(x)==pre.st_size and raw9(pre)==raw9(post) and raw9(first)==raw9(last),p
+    for key in ("st_dev","st_ino","st_size","st_mtime_ns","st_nlink","st_file_attributes","st_birthtime_ns"):
+        assert getattr(pre,key)==getattr(first,key),str(p)+key
+    if pre.st_mode!=first.st_mode:
+        assert os.name=="nt" and str(p) in FIXED_EXE_ROLES,p
+        assert stat.S_IFMT(pre.st_mode)==stat.S_IFMT(first.st_mode) and stat.S_IMODE(pre.st_mode)&~0o111==stat.S_IMODE(first.st_mode)&~0o111,p
+        assert stat.S_IMODE(pre.st_mode)&0o111==0o111 and stat.S_IMODE(first.st_mode)&0o111==0,p
+    assert ancestors(p)==chain,p
+    r={"path":str(p),"sha256":hashlib.sha256(x).hexdigest(),"size":len(x),"path_raw9":raw9(pre),"handle_raw9":raw9(first)}
+    if pin is not None:assert r["sha256"]==pin,p
+    if size is not None:assert len(x)==size,p
+    INPUTS[str(p)]=r;BYTES[str(p)]=x
+    return x
+def pairs(v):
+    d={}
+    for k,x in v:
+        assert k not in d,"duplicate JSON key"
+        d[k]=x
+    return d
+def finite(token):
+    value=float(token);assert math.isfinite(value),"nonfinite JSON number";return value
+def J(x):return json.loads(x,object_pairs_hook=pairs,parse_float=finite,parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def hex64(x):return type(x) is str and re.fullmatch("[0-9a-f]{64}",x) is not None
+def bindings_reverse(source,names,expected):
+    rows=source.splitlines(keepends=True);t=ast.parse(source.decode("utf-8"));edits=[];found={}
+    for n in t.body:
+        if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in names:
+            key=n.targets[0].id;assert key not in found and isinstance(n.value,ast.Constant) and hex64(n.value.value)
+            found[key]=n.value.value
+            assert expected[key]==n.value.value,key
+            start=sum(map(len,rows[:n.value.lineno-1]))+n.value.col_offset
+            end=sum(map(len,rows[:n.value.end_lineno-1]))+n.value.end_col_offset
+            edits.append((start,end))
+    assert set(found)==set(names) and len(edits)==len(names)
+    back=source
+    for start,end in sorted(edits,reverse=True):back=back[:start]+b"None"+back[end:]
+    return back,found,edits
+receipt=J(read(R/"BOUND_PREPARATION_004_ROOT_001.json","028d91649eae90a15b670c97f9b078e08fed900fff1a2d34b0312aaa58d4bc4f"))
+assert receipt["status"]=="BOUND_SOURCES_AWAITING_INDEPENDENT_ACTUAL_BOUND_REVIEW" and receipt["actual_rootACK_PS_or_whole_observer_or_test_execution_performed"] is False
+def rb(v):
+    assert set(v)=={"bytes","path","sha256"} and hex64(v["sha256"]) and type(v["bytes"]) is int
+    return read(pathlib.Path(v["path"]),v["sha256"],v["bytes"])
+static=J(rb(receipt["static_review"]))
+assert static["verdict"]==static["decision"]=="PASS_STATIC_PREPARATION_ONLY" and static["reviewer"]==static["reviewer_agent"]=="/root/window_docs"
+assert static["execution_authorized"] is False and static["scope"]=="DIRECT_ISOLATED_RAW004_HARNESS_SOURCE_PREPARATION_ONLY"
+read(R/"INDEPENDENT_RAW_HARNESS_STATIC_REVIEW_004.md","7c884a749607549b28036ab3ae94056bc3c6bd36cc61a6885aaa4e8f54c9e87f",3772)
+manifest=J(read(R/"RAW_COMPONENT_PREPARATION_MANIFEST_004.json",static["manifest_sha256"]))
+assert len(manifest["files"])==manifest["file_count_excluding_manifest"]==72
+for row in manifest["files"]:
+    path=R/row["path"];assert path.is_relative_to(R)
+    read(path,row["sha256"],row["size"])
+    assert stat.S_IMODE(path.lstat().st_mode)==row["mode"]
+driver=rb(receipt["driver"]);observer=rb(receipt["observer"])
+template_driver=rb(receipt["templates"]["driver"]);template_observer=rb(receipt["templates"]["observer"]);child=rb(receipt["templates"]["child"])
+expected={"RAW_SOURCE_PEER_REVIEW_SHA256":receipt["source003_peer"]["sha256"],"RAW_TEST_PEER_REVIEW_SHA256":receipt["test004_peer"]["sha256"],"HARNESS_STATIC_REVIEW_SHA256":receipt["static_review"]["sha256"]}
+back_d,bindings_d,edits_d=bindings_reverse(driver,set(expected),expected)
+back_o,bindings_o,edits_o=bindings_reverse(observer,{"HARNESS_STATIC_REVIEW_SHA256"},{"HARNESS_STATIC_REVIEW_SHA256":expected["HARNESS_STATIC_REVIEW_SHA256"]})
+assert back_d==template_driver and back_o==template_observer
+assert hashlib.sha256(back_d).hexdigest()==static["driver_template_sha256"] and hashlib.sha256(back_o).hexdigest()==static["whole_observer_template_sha256"] and hashlib.sha256(child).hexdigest()==static["child_template_sha256"]
+assert receipt["driver_bindings"]==bindings_d and receipt["observer_bindings"]==bindings_o
+rawpeer=J(rb(receipt["source003_peer"]));testpeer=J(rb(receipt["test004_peer"]))
+assert rawpeer["decision"]=="PASS_STATIC" and rawpeer["raw_helper_sha256"]==static["raw_source_sha256"] and rawpeer["raw_tests_sha256"]=="b4bf5499506b6521ce6278254bffb9ba5fbde8f71f3e734edd4e148783dc2a7c"
+assert testpeer["decision"]==testpeer["verdict"]=="PASS_STATIC_TEST_REVISION_ONLY" and testpeer["raw_helper_sha256"]==testpeer["raw_source_sha256"]==static["raw_source_sha256"]
+assert testpeer["raw_tests_sha256"]==static["raw_tests_sha256"] and type(testpeer["raw_tests_bytes"]) is int and testpeer["raw_tests_bytes"]==415278
+for peer in (rawpeer,testpeer):
+    identifier=peer["reviewer"];identifier=identifier.get("canonical_identity") if type(identifier) is dict else identifier
+    assert identifier=="/root/candidate_review"
+projection=J(read(R/"SOURCE_AND_HISTORICAL_INPUTS_004.json",static["source_projection_sha256"]))
+assert len(projection["eight_primary_inputs"])==8
+copychecks=[]
+for row in projection["all_current_copied_inputs"]+projection["eight_primary_inputs"]:
+    orig=pathlib.Path(row["original"]);copy=pathlib.Path(row["copy"])
+    a=read(orig,row["sha256"],row["size"]);z=read(copy,row["sha256"],row["size"])
+    assert a==z and stat.S_IMODE(orig.lstat().st_mode)==stat.S_IMODE(copy.lstat().st_mode)==row["mode"]
+    assert INPUTS[str(orig)]["path_raw9"][:2]!=INPUTS[str(copy)]["path_raw9"][:2]
+    copychecks.append({"original":str(orig),"copy":str(copy),"sha256":row["sha256"],"size":row["size"],"distinct_identity":True})
+context=J(rb(receipt["fresh_root_context"]));live=J(rb(receipt["selected_live_guard"]));runtime=J(rb(receipt["selected_runtime_guard"]))
+assert receipt["fresh_root_context"]["sha256"]=="dc3f7711acdda70f63f3bf528365ed8547b9fb4d234ea7fd8ab4041c88752863"
+assert context["live_guard_snapshot"]==receipt["selected_live_guard"] and context["runtime_snapshot"]==receipt["selected_runtime_guard"]
+assert context["tracked_count"]==742 and context["head"]=="597eb048a1bc441030bfcd88b70fdf9c56f882d0"
+assert context["scope"]=="ROOT_FRESH_READ_ONLY_TRACKED_SET_OPAQUE_BYTE_SELECTION_NOT_EXECUTION_OR_POLICY_AUTHORITY"
+assert context["native_quiet"] is False and context["sole_executor_ack_received"] is False and context["mutating_Git_or_source_or_binding_or_ACK_or_execution_performed"] is False
+paths=[v["path"] for v in live["rows"]];assert len(paths)==len(set(paths))==len({x.lower() for x in paths})==742
+assert [e["path"] for e in context["git_entries"]]==paths and set(context["source_captures"])==set(paths)
+stage=b"".join((e["git_mode"]+" "+e["git_blob"]+" 0\t"+e["path"]+"\0").encode("utf-8") for e in context["git_entries"])
+assert hashlib.sha256(stage).hexdigest()==context["git_ls_files_stage_sha256"]
+assert set(context["executable_normalization_roles"])==FIXED_EXE_ROLES
+author=J(BYTES[str(R/"OBSERVED_LIVE_GUARD_004.json")]);assert author["rows"]==live["rows"]
+LIVE=P/"week8-recovery-controller-worktree";assert pathlib.Path(live["root"])==LIVE
+def rootorder(r):return [r[i] for i in (0,1,3,4,5,2,6,7,8)]
+opaque=[]
+for row in live["rows"]:
+    assert set(row)=={"mode","path","sha256","size"} and type(row["mode"]) is int and type(row["size"]) is int
+    parts=row["path"].split("/");assert all(x not in ("",".","..") for x in parts) and not pathlib.PureWindowsPath(row["path"]).is_absolute()
+    p=LIVE.joinpath(*parts);x=read(p,row["sha256"],row["size"],maximum=max(row["size"],1))
+    info=INPUTS[str(p)];old=context["source_captures"][row["path"]]
+    assert info["sha256"]==old["sha256"] and info["size"]==old["size"] and str(p)==old["path"]
+    assert rootorder(info["path_raw9"])==old["path_raw9"] and rootorder(info["handle_raw9"])==old["handle_raw9"]
+    assert stat.S_IMODE(p.lstat().st_mode)==row["mode"]==old["mode"]
+    opaque.append({"path":row["path"],"sha256":row["sha256"],"size":row["size"],"mode":row["mode"]})
+assert len(runtime["entries"])==4 and {r["path"] for r in runtime["entries"]}=={r["path"] for r in context["runtime_captures"]}
+for row in runtime["entries"]+[runtime["pytest"]]:
+    p=pathlib.Path(row["path"]);read(p,row["sha256"],row["size"])
+    prior=context["pytest_capture"] if row is runtime["pytest"] else next(x for x in context["runtime_captures"] if x["path"]==str(p))
+    assert rootorder(INPUTS[str(p)]["path_raw9"])==prior["path_raw9"] and rootorder(INPUTS[str(p)]["handle_raw9"])==prior["handle_raw9"]
+findpaths=P/"pro2/.venv/Lib/site-packages/_pytest/config/findpaths.py"
+read(findpaths,"535d149e6f3962e44260b6645bb354976e19531f5dd248e14ee7d7fff61c8848")
+directory=R/"source/tests";dirs=[directory,*directory.parents];assert len(dirs)==7
+names=("pytest.toml",".pytest.toml","pytest.ini",".pytest.ini","pyproject.toml","tox.ini","setup.cfg","conftest.py")
+absences=[str(d/n) for d in dirs for n in names]
+assert len(absences)==56
+for p in absences:
+    try:pathlib.Path(p).lstat()
+    except FileNotFoundError:pass
+    else:raise AssertionError(p)
+
+def ordinal(s):
+    b=s.encode("utf-16-le","surrogatepass");return tuple(b[i]|b[i+1]<<8 for i in range(0,len(b),2))
+def checked_tree(v,expected_root,expected_identity):
+    assert set(v)=={"directory_metadata","finished_at_utc","identity","non_ascii_paths","root","root_identity","rows","started_at_utc"}
+    assert v["root"]==str(expected_root) and type(v["rows"]) is list and type(v["directory_metadata"]) is dict
+    assert set(v["identity"])=={"bytes","directories","files","sha256"} and all(type(v["identity"][x]) is int for x in ("bytes","directories","files")) and hex64(v["identity"]["sha256"])
+    paths=[x["path"] for x in v["rows"]];assert len(paths)==len(set(paths))==len({x.lower() for x in paths}) and paths==sorted(paths,key=ordinal)
+    lines=[];files=dirs=total=0;file_rows={};directory_rows={}
+    for row in v["rows"]:
+        p=row["path"];assert type(p) is str and p and not any(x in p for x in ("\t","\n","\r"))
+        assert all(x not in ("",".","..") for x in p.split("/")) and not pathlib.PureWindowsPath(p).is_absolute()
+        assert type(row["path_identity"]) is list and len(row["path_identity"])==9 and all(type(n) is int for n in row["path_identity"])
+        if row["kind"]=="directory":
+            assert set(row)=={"kind","path","path_identity"}
+            assert stat.S_ISDIR(row["path_identity"][5]) and not row["path_identity"][7]&1024
+            directory_rows[str(expected_root/pathlib.PurePosixPath(p))]=row["path_identity"];dirs+=1;lines.append(("D\t"+p+"\n").encode("utf-8"))
+        else:
+            assert row["kind"]=="file" and set(row)=={"handle_identity","kind","path","path_identity","sha256","size"}
+            assert hex64(row["sha256"]) and type(row["size"]) is int and row["size"]>=0
+            assert type(row["handle_identity"]) is list and len(row["handle_identity"])==9 and all(type(n) is int for n in row["handle_identity"])
+            assert row["path_identity"][2]==row["handle_identity"][2]==row["size"] and row["path_identity"][6]==row["handle_identity"][6]==1
+            assert stat.S_ISREG(row["path_identity"][5]) and stat.S_ISREG(row["handle_identity"][5]) and not row["path_identity"][7]&1024 and not row["handle_identity"][7]&1024
+            assert all(row["path_identity"][i]==row["handle_identity"][i] for i in (0,1,2,3,6,7,8))
+            file_rows[p]=row;files+=1;total+=row["size"];lines.append(("F\t"+p+"\t"+str(row["size"])+"\t"+row["sha256"]+"\n").encode("utf-8"))
+    calc={"bytes":total,"directories":dirs,"files":files,"sha256":hashlib.sha256(b"".join(lines)).hexdigest()}
+    assert calc==v["identity"]==expected_identity
+    assert v["non_ascii_paths"]==[p for p in paths if not p.isascii()]
+    assert type(v["root_identity"]) is list and len(v["root_identity"])==9 and all(type(n) is int for n in v["root_identity"]) and stat.S_ISDIR(v["root_identity"][5])
+    assert v["directory_metadata"]=={**directory_rows,str(expected_root):v["root_identity"]}
+    assert dt.datetime.fromisoformat(v["started_at_utc"])<=dt.datetime.fromisoformat(v["finished_at_utc"])
+    return {"identity":calc,"file_rows":file_rows,"directory_rows":v["directory_metadata"],"root_identity":v["root_identity"],"rows":v["rows"]}
+
+import xml.etree.ElementTree as ET
+from collections import Counter
+def utc(s):
+    x=dt.datetime.fromisoformat(s.replace("Z","+00:00"));assert x.tzinfo is not None and x.utcoffset()==dt.timedelta(0),s;return x
+def typed1(v):
+    assert type(v["schema_version"]) is int and v["schema_version"]==1
+def currentrow(row,path):
+    assert set(row)=={"path","path_identity","sha256","size"}
+    assert type(row["size"]) is int and row["size"]>=0 and hex64(row["sha256"]) and row["path"]==str(path)
+    read(path,row["sha256"],row["size"],maximum=max(row["size"],1))
+    assert rootorder(INPUTS[str(path)]["path_raw9"])==row["path_identity"],path
+actual_pins=[{"path":"ROOT_LAUNCH_TERMINAL_004.json","sha256":"32e8c324e334243d189f62c4d14168181cb279c2a45991ccdb7b1b0c7405a72d","size":447},{"path":"finished.json","sha256":"7ac21c356baa1eea25dd7df130c515e36b31effcdf1124783146bb6621efd778","size":227252},{"path":"collection/result.json","sha256":"e05177ca309725baa8ddadde24f5b4ae84ae401350bbe2445ca56a580f03c324","size":605},{"path":"collection/collection-summary.json","sha256":"631f671b81c9b3479a6b5e3408e7b733dbd54682d56c300f028f9c1ada08cb2f","size":163},{"path":"tests/result.json","sha256":"8beb006f833dc023fbab78deb642fb79d6802158459294ab11c2222eeb76b2ea","size":599},{"path":"tests/junit.xml","sha256":"2ded422cc66c20d89b4144727f3d551219cb1b105d952eb417c6bf4e9ed3b0f1","size":27992},{"path":"tests/child-observation.json","sha256":"d7d4f2f0795c4810cad467996055053073f9c8d7ac34cf471dda5904121ea66d","size":82833},{"path":"whole-runtime-after/result.json","sha256":"583bcdf6d3f48e8fa193497efb5aabf0393aa619753557ff3c0c9a4e52d82282","size":2019}]
+for pin in actual_pins:read(R/pin["path"],pin["sha256"],pin["size"])
+boundpeer=J(read(R/"INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_004.json","77a904e459450adf2276ea1629fc298bf72c7a7d23119c3a1590fd3580564b43",1260901))
+assert boundpeer["decision"]==boundpeer["verdict"]=="PASS_BOUND_FOR_ROOT_FIRST_EXECUTION_ONLY"
+assert boundpeer["reviewer"]==boundpeer["reviewer_agent"]=="/root/candidate_review"
+assert boundpeer["actual_bound_driver_sha256"]==receipt["driver"]["sha256"] and boundpeer["actual_bound_observer_sha256"]==receipt["observer"]["sha256"]
+read(R/"INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_004.md","cd62ead97131c0485faa0d259803b6d15e0e857cdc83067b21d72f30bfa3d697",4495)
+ack=J(read(R/"ROOT_FIRST_EXECUTION_ACK_RAW004.json","bb58e6044b1d67c77f2b1b25aaf4c15f0f4b797d1ccccc35f068c1cee6733647",2284))
+assert len(ack)==22 and ack["scope"]=="ISOLATED_RAW_UNIT_TESTS_ONLY_NO_OPERATIONAL_AUTHORITY"
+assert ack["decision"]=="execute_isolated_raw004_collection_then_tests_once"
+assert ack["bound_driver_sha256"]==receipt["driver"]["sha256"] and ack["bound_review_sha256"]==INPUTS[str(R/"INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_004.json")]["sha256"]
+assert ack["static_review_sha256"]==receipt["static_review"]["sha256"] and ack["source_projection_sha256"]==static["source_projection_sha256"]
+assert ack["raw_source_peer_review_sha256"]==expected["RAW_SOURCE_PEER_REVIEW_SHA256"] and ack["raw_test_peer_review_sha256"]==expected["RAW_TEST_PEER_REVIEW_SHA256"]
+assert ack["raw_source_sha256"]==static["raw_source_sha256"] and ack["raw_test_sha256"]==static["raw_tests_sha256"]
+assert type(ack["maximum_collection_seconds"]) is int and ack["maximum_collection_seconds"]==600
+assert type(ack["maximum_test_seconds"]) is int and ack["maximum_test_seconds"]==3500
+assert type(ack["min_free_ram_bytes"]) is int and ack["min_free_ram_bytes"]==1073741824
+assert ack["child_sha256"]==static["child_template_sha256"]
+read(R/"ROOT_FIRST_LAUNCH_004.BOUND.ps1","e4528cb636234d876f3b70cf38108e73178a9f3054f559d450e017b6de782243",5611)
+late=J(read(R/"INDEPENDENT_RAW004_ACK_LAUNCH_LATE_REVIEW_001.json","ce73e0c70fde1267166c75734f2b376820e39c35adc54e33ce8adfe2bc8fd498",108249))
+read(R/"INDEPENDENT_RAW004_ACK_LAUNCH_LATE_REVIEW_001.md","f39b07f6343fd4d9baa63b59fb34252e6ead6599084009a80a83290ccf3e7e4d",2749)
+assert late["decision"]==late["verdict"]=="PASS_ACTUAL_ACK_LAUNCH_SOURCE_CONDITIONAL_FRESH_ROOT_CHECK"
+assert late["reviewer"]==late["reviewer_agent"]=="/root/window_docs"
+assert late["actual_ack_sha256"]==INPUTS[str(R/"ROOT_FIRST_EXECUTION_ACK_RAW004.json")]["sha256"]
+assert late["actual_bound_launcher_sha256"]==INPUTS[str(R/"ROOT_FIRST_LAUNCH_004.BOUND.ps1")]["sha256"] and late["first_entry_executed"] is False
+firstauth=J(read(R/"ROOT_RAW004_FIRST_ENTRY_AUTHORIZATION_001.json","4e67fc4b066a9bf5452bf20fd9005e7dffd6218999c2e4c856a360f02d8190d9",539208))
+afterauth=J(read(R/"ROOT_RAW004_WHOLE_AFTER_AUTHORIZATION_001.json"))
+read(R/"ROOT_ACK_LAUNCH_BINDING_004_001.json")
+read(R/"ROOT_RAW004_WHOLE_BEFORE_AUTHORIZATION_001.json")
+read(R/"ROOT_RAW004_ENVIRONMENT_PROFILE_001.json")
+env=J(BYTES[str(R/"ROOT_RAW004_ENVIRONMENT_PROFILE_001.json")])
+assert env["root_launch_temporarily_removes_prefixes"]==["PYTEST","PYTHON","GIT_","COVERAGE"]
+assert env["root_launch_restores_ambient_process_environment_in_finally"] is True and env["full_site_runtime_closure_or_import_trace_proven"] is False
+own=J(BYTES[str(R/"inputs/OWNER_WORK_WINDOW_30H_20261001_001.json")])
+assert own["work_end_utc"]=="2026-10-02T22:36:15Z" and ack["owner_sha256"]==INPUTS[str(R/"inputs/OWNER_WORK_WINDOW_30H_20261001_001.json")]["sha256"]
+start=J(read(R/"started.json"));finish=J(BYTES[str(R/"finished.json")])
+terminal=J(BYTES[str(R/"ROOT_LAUNCH_TERMINAL_004.json")]);launch=J(read(R/"ROOT_LAUNCH_START_004.json"))
+intentroot=J(read(R/"ROOT_RUN_INTENT_004.json"))
+assert intentroot=={k:v for k,v in start.items() if k not in ("authority_evidence","before")}
+for v in (start,finish,terminal,launch,intentroot,ack,firstauth,afterauth):typed1(v)
+assert terminal["exit_code"]==0 and type(terminal["exit_code"]) is int and terminal["timed_out"] is False and terminal["failure"] is None
+assert terminal["driver_spent"] is True and terminal["automatic_cleanup_performed"] is False and terminal["descendant_cleanup_guaranteed"] is False
+assert finish["driver_spent"] is True and finish["no_automatic_cleanup"] is True and finish["descendant_cleanup_guaranteed"] is False
+assert start["root_ack_sha256"]==launch["ack_sha256"]==terminal["ack_sha256"]==INPUTS[str(R/"ROOT_FIRST_EXECUTION_ACK_RAW004.json")]["sha256"]
+assert start["self_sha256"]==launch["bound_driver_sha256"]==terminal["bound_driver_sha256"]==receipt["driver"]["sha256"]
+assert start["bound_review_sha256"]==launch["bound_review_sha256"]==ack["bound_review_sha256"]
+for name in ("ROOT_LAUNCH_STDOUT_004.txt","ROOT_LAUNCH_STDERR_004.txt"):assert read(R/name)==b""
+for row in start["authority_evidence"]:currentrow(row,pathlib.Path(row["path"]))
+assert len(start["authority_evidence"])==9 and len({x["path"] for x in start["authority_evidence"]})==9
+guardkeys={"configuration56","free_disk_bytes","free_ram_bytes","live","primary_inputs","pytest","runtime","whole_runtime_before"}
+for guard in (start["before"],finish["after"]):
+    assert set(guard)==guardkeys and guard["configuration56"]==absences
+    assert type(guard["free_ram_bytes"]) is int and guard["free_ram_bytes"]>=ack["min_free_ram_bytes"] and type(guard["free_disk_bytes"]) is int and guard["free_disk_bytes"]>=2147483648
+    assert len(guard["live"])==742 and len(guard["primary_inputs"])==16 and len(guard["runtime"])==4
+    assert [x["path"] for x in guard["live"]]==paths
+    for row in guard["live"]:
+        p=LIVE.joinpath(*row["path"].split("/"));info=INPUTS[str(p)]
+        assert set(row)=={"path","path_identity","sha256","size"} and row["sha256"]==info["sha256"] and row["size"]==info["size"] and row["path_identity"]==rootorder(info["path_raw9"])
+    for row in guard["primary_inputs"]:currentrow(row,pathlib.Path(row["path"]))
+    assert set(guard["runtime"])=={x["path"] for x in runtime["entries"]}
+    for p,row in guard["runtime"].items():
+        assert set(row)=={"path_identity","sha256","size"} and row["sha256"]==INPUTS[p]["sha256"] and row["size"]==INPUTS[p]["size"] and row["path_identity"]==rootorder(INPUTS[p]["path_raw9"])
+    assert guard["pytest"]==runtime["pytest"]
+assert {k:v for k,v in start["before"].items() if k not in ("free_ram_bytes","free_disk_bytes")}=={k:v for k,v in finish["after"].items() if k not in ("free_ram_bytes","free_disk_bytes")}
+assert firstauth["author"]=="/root" and firstauth["target_execution_before_authorization"] is False and firstauth["opaque_guard_not_policy_authority"] is True
+assert firstauth["canonical_qa_native_science_release_or_executor_transfer_authority"] is False
+assert firstauth["free_ram_bytes"]>=ack["min_free_ram_bytes"] and firstauth["d_free_bytes"]>=2147483648
+assert 0<=firstauth["whole_before_age_seconds"]<600 and firstauth["remaining_ack_seconds"]>=4440
+phase_results={};phase_intents={};observations={};phase_nodeids={}
+for phase in ("collection","tests"):
+    d=R/phase
+    intent=J(read(d/"intent.json"));result=J(read(d/"result.json"))
+    typed1(result)
+    assert set(result)=={"canonical_qa","descendant_cleanup_guaranteed","direct_child_reaped","elapsed_seconds","exit_code","finished_utc","full_runtime_site_closure_verified","live_opaque_guard_unchanged","native_science_production_authority","os_write_sandbox_enforced","phase","schema_version","source_and_runtime_unchanged","stderr_sha256","stdout_sha256","timed_out"}
+    assert result["phase"]==phase and type(result["exit_code"]) is int and result["exit_code"]==0 and result["timed_out"] is False
+    assert result["direct_child_reaped"] is True and result["source_and_runtime_unchanged"] is True and result["live_opaque_guard_unchanged"] is True
+    for k in ("canonical_qa","descendant_cleanup_guaranteed","full_runtime_site_closure_verified","native_science_production_authority","os_write_sandbox_enforced"):assert result[k] is False
+    assert type(result["elapsed_seconds"]) in (int,float) and 0<result["elapsed_seconds"]<ack["maximum_"+("collection" if phase=="collection" else "test")+"_seconds"]
+    for stream in ("stdout","stderr"):read(d/(stream+".txt"),result[stream+"_sha256"])
+    assert intent["command"]==[str(P/"runtimes/week8-python313-frozen-001/python.exe"),"-I","-S","-B","-X","utf8","-c",child.decode("utf-8"),str(R/"source"),str(P/".tmp/raw4-004"),phase,str(d)]
+    assert intent["env_profile"]=="filtered_python_git_one_thread_plugin_cache_off" and intent["phase"]==phase
+    assert type(intent["timeout_seconds"]) is int and intent["timeout_seconds"]==ack["maximum_"+("collection" if phase=="collection" else "test")+"_seconds"]
+    origin=J(read(d/"pytest-binding.json"));assert origin==runtime["pytest"]
+    obs=J(read(d/"child-observation.json"));typed1(obs)
+    assert set(obs)=={"canonical_qa","full_runtime_site_closure_verified","inspection_boundary","native_science_production_authority","no_remaining_bu_modules","os_write_sandbox_enforced","phase","pytest_exit_code","pytest_origin","remaining_selected_modules","reports","schema_version"}
+    assert obs["pytest_exit_code"]==0 and type(obs["pytest_exit_code"]) is int and obs["phase"]==phase and obs["pytest_origin"]=={k:v for k,v in origin.items() if k!="size"}
+    assert obs["no_remaining_bu_modules"] is True and obs["remaining_selected_modules"]==[]
+    assert obs["inspection_boundary"]=="finally_after_pytest_only_not_complete_import_trace"
+    for k in ("canonical_qa","full_runtime_site_closure_verified","native_science_production_authority","os_write_sandbox_enforced"):assert obs[k] is False
+    nodes=J(read(d/"collected-nodeids.json"));assert type(nodes) is list and all(type(n) is str and n for n in nodes) and len(nodes)==len(set(nodes))
+    phase_results[phase]=result;phase_intents[phase]=intent;observations[phase]=obs;phase_nodeids[phase]=nodes
+nodes=phase_nodeids["collection"];assert nodes==phase_nodeids["tests"]
+node_bytes=BYTES[str(R/"collection/collected-nodeids.json")]
+assert node_bytes==BYTES[str(R/"tests/collected-nodeids.json")]
+node_digest=hashlib.sha256(node_bytes).hexdigest()
+assert node_digest=="f53615d3696c2b083e2cb6f6e6f63016d54cd48e104f158758e8bf5c51408ba0"
+assert observations["collection"]["reports"]==[]
+reports=observations["tests"]["reports"];assert len(reports)==3*len(nodes)
+calls=[]
+for i,node in enumerate(nodes):
+    trio=reports[i*3:(i+1)*3]
+    assert all(set(x)=={"nodeid","outcome","when"} and x["nodeid"]==node for x in trio)
+    assert [x["when"] for x in trio]==["setup","call","teardown"]
+    assert trio[0]["outcome"]==trio[2]["outcome"]=="passed" and trio[1]["outcome"] in ("passed","skipped")
+    calls.append(trio[1])
+xml=BYTES[str(R/"tests/junit.xml")];assert b"<!DOCTYPE" not in xml and b"<!ENTITY" not in xml
+xmlroot=ET.fromstring(xml);assert xmlroot.tag=="testsuites"
+suites=list(xmlroot);assert len(suites)==1 and suites[0].tag=="testsuite"
+cases=list(suites[0]);assert all(c.tag=="testcase" for c in cases) and len(cases)==len(nodes)
+xml_nodes=[];skips=[];passed=failures=errors=0
+for c,call in zip(cases,calls):
+    assert c.attrib["classname"]=="tests.test_week8_recovery_raw_authority"
+    node="tests/test_week8_recovery_raw_authority.py::"+c.attrib["name"];xml_nodes.append(node)
+    assert node==call["nodeid"] and all(e.tag in ("skipped","failure","error") for e in c)
+    assert len(c)<=1
+    if c.find("failure") is not None:failures+=1
+    elif c.find("error") is not None:errors+=1
+    elif c.find("skipped") is not None:
+        s=c.find("skipped");assert s.attrib["type"]=="pytest.skip" and "WinError 1314" in s.attrib["message"] and "required privilege" in s.attrib["message"].lower()
+        assert call["outcome"]=="skipped"
+        skips.append({"nodeid":node,"type":s.attrib["type"],"reason":s.attrib["message"],"source_line":re.search(r":(\d+): symlinks unavailable",s.text).group(1)})
+    else:passed+=1;assert call["outcome"]=="passed"
+assert xml_nodes==nodes
+assert {s["nodeid"].split("::")[1] for s in skips}=={"test_tracked_symlink_or_reparse_refuses","test_plain_tree_refuses_symlink_or_reparse_entries"}
+assert (len(nodes),passed,len(skips),failures,errors)==(171,169,2,0,0)
+assert {k:int(suites[0].attrib[k]) for k in ("tests","skipped","failures","errors")}=={"tests":len(nodes),"skipped":len(skips),"failures":failures,"errors":errors}
+summary=J(read(R/"tests/acceptance-summary.json"));cs=J(read(R/"collection/collection-summary.json"))
+assert summary=={"canonical_qa":False,"errors":errors,"failures":failures,"junit_sha256":INPUTS[str(R/"tests/junit.xml")]["sha256"],"operational_admission_or_fullgate_coverage":False,"ordered_nodeids_sha256":node_digest,"passed":passed,"schema_version":1,"skipped":len(skips),"testcases":len(nodes)}
+assert cs["actual_collected_nodes"]==len(nodes) and cs["ordered_nodeids_sha256"]==node_digest and cs["canonical_qa"] is False;typed1(cs)
+assert finish["actual_collected_nodes"]==len(nodes) and finish["ordered_nodeids_sha256"]==node_digest
+assert finish["accepted_phases"]==[{"phase":p,"result_sha256":INPUTS[str(R/p/"result.json")]["sha256"]} for p in ("collection","tests")]
+testtree=ast.parse(BYTES[str(R/"source/tests/test_week8_recovery_raw_authority.py")].decode("utf-8"))
+test_functions=[n.name for n in testtree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) and n.name.startswith("test_")]
+actual_functions=[n.split("::")[1].split("[",1)[0] for n in nodes]
+assert len(test_functions)==len(set(test_functions))==45 and set(actual_functions)==set(test_functions)
+assert actual_functions==sorted(actual_functions,key=lambda n:test_functions.index(n))
+function_cases=dict(Counter(actual_functions))
+before=J(read(R/"whole-runtime-before/result.json","fa93a4d06703bb52a46588b4fc09b5b829009459cf8c968bb0534fcbbe737a7d"))
+after=J(BYTES[str(R/"whole-runtime-after/result.json")])
+tree_roots={"base":P/"runtimes/week8-python313-frozen-001","scripts":P/"pro2/.venv/Scripts"}
+snapshots={}
+wholekeys={"before_record_sha256","finished_utc","observation_files","observer_sha256","owner_sha256","phase","runtime_mutation","schema_version","started_utc","static_review_sha256","target_execution","trees","verdict"}
+for record in (before,after):
+    assert set(record)==wholekeys;typed1(record)
+    phase=record["phase"];assert phase in ("before","after") and record["runtime_mutation"] is False and record["target_execution"] is False
+    assert record["owner_sha256"]==ack["owner_sha256"] and record["static_review_sha256"]==receipt["static_review"]["sha256"] and record["observer_sha256"]==receipt["observer"]["sha256"]
+    assert set(record["trees"])==set(tree_roots)
+    assert len(record["observation_files"])==4 and [pathlib.Path(x["path"]).name for x in record["observation_files"]]==["base-first.json","base-second.json","scripts-first.json","scripts-second.json"]
+    snapshots[phase]={}
+    for row in record["observation_files"]:
+        assert set(row)=={"path","sha256","size"} and type(row["size"]) is int and 0<row["size"]<=4194304
+        p=pathlib.Path(row["path"]);assert p.parent==R/("whole-runtime-"+phase)
+        kind=p.name.split("-")[0]
+        data=J(read(p,row["sha256"],row["size"],maximum=4194304))
+        snapshots[phase][p.name]=checked_tree(data,tree_roots[kind],record["trees"][kind])
+    for kind in tree_roots:assert snapshots[phase][kind+"-first.json"]==snapshots[phase][kind+"-second.json"]
+assert before["before_record_sha256"] is None and before["verdict"]=="MATCHES_PINNED_RUNTIME_TWICE"
+assert after["before_record_sha256"]==INPUTS[str(R/"whole-runtime-before/result.json")]["sha256"] and after["verdict"]=="MATCHES_BEFORE_BYTES_AND_METADATA_TWICE"
+assert before["trees"]==after["trees"] and snapshots["before"]==snapshots["after"]
+for guard in (start["before"],finish["after"]):
+    assert guard["whole_runtime_before"]=={"path":str(R/"whole-runtime-before/result.json"),"sha256":INPUTS[str(R/"whole-runtime-before/result.json")]["sha256"],"finished_utc":before["finished_utc"],"observer_sha256":receipt["observer"]["sha256"]}
+assert afterauth["before_sha256"]==INPUTS[str(R/"whole-runtime-before/result.json")]["sha256"] and afterauth["terminal_sha256"]==INPUTS[str(R/"ROOT_LAUNCH_TERMINAL_004.json")]["sha256"]
+assert afterauth["bound_driver_sha256"]==receipt["driver"]["sha256"] and afterauth["observer_sha256"]==receipt["observer"]["sha256"]
+times=[utc(before["started_utc"]),utc(before["finished_utc"]),utc(ack["created_utc"]),utc(late["reviewed_utc"]),utc(firstauth["created_utc"]),utc(launch["started_utc"]),utc(start["created_utc"]),utc(phase_intents["collection"]["started_utc"]),utc(phase_results["collection"]["finished_utc"]),utc(phase_intents["tests"]["started_utc"]),utc(phase_results["tests"]["finished_utc"]),utc(finish["finished_utc"]),utc(terminal["finished_utc"]),utc(afterauth["created_utc"]),utc(after["started_utc"]),utc(after["finished_utc"])]
+assert times==sorted(times)
+assert (utc(start["created_utc"])-utc(before["finished_utc"])).total_seconds()<600
+assert utc(after["finished_utc"])<utc(ack["expires_utc"])<utc(own["work_end_utc"])
+assert utc(ack["created_utc"])<=utc(start["created_utc"])<utc(ack["expires_utc"])
+assert (utc(ack["expires_utc"])-utc(start["created_utc"])).total_seconds()>=4440
+# All previous failed runtime003 bytes and independent actual-failure record remain intact.
+oldtestmanifest=J(BYTES[str(B/"raw-test-revision004/STAGED_MANIFEST_004.json")])
+presrow=next(x for x in oldtestmanifest["files"] if x["path"]=="BEFORE_PRESERVATION_004.json")
+pres=J(read(B/"raw-test-revision004"/presrow["path"],presrow["sha256"],presrow.get("size",presrow.get("bytes"))))
+assert pres["imports_definitions_tests_Git_native_executed"] is False and pres["production_source_modified"] is False and len(pres["pairs"])==102
+legacy_pairs=[]
+for pair in pres["pairs"]:
+    original=pathlib.Path(pair["original"]["path"])
+    if not original.is_relative_to(B/"raw-component-runtime-prep003"):continue
+    for row in (pair["original"],pair["copied"]):
+        p=pathlib.Path(row["path"]);read(p,row["sha256"],row["bytes"])
+        actual=INPUTS[str(p)]
+        assert rootorder(actual["path_raw9"])==row["path_identity_raw9"] and rootorder(actual["handle_raw9"])==row["descriptor_identity_raw9"],p
+    assert BYTES[pair["original"]["path"]]==BYTES[pair["copied"]["path"]]
+    legacy_pairs.append({"original":pair["original"]["path"],"copy":pair["copied"]["path"],"sha256":pair["original"]["sha256"],"size":pair["original"]["bytes"]})
+assert len(legacy_pairs)==78
+oldnodes=J(read(B/"raw-component-runtime-prep003/collection/collected-nodeids.json"))
+assert oldnodes==nodes and BYTES[str(B/"raw-component-runtime-prep003/collection/collected-nodeids.json")]==node_bytes
+oldactual=J(read(B/"raw-component-runtime-prep003/INDEPENDENT_RAW_COMPONENT_RUNTIME_REVIEW_003.json","729e91772de9dbb0582a9d1af842507df0b3742bf27714ff6cf00c242f1b20a1",1701978))
+# Actual previous JUnit independently retains161 executed and the one failure.
+oldxml=ET.fromstring(read(B/"raw-component-runtime-prep003/tests/junit.xml"));oldcases=list(oldxml.iter("testcase"))
+oldcounts={"testcases":len(oldcases),"passed":sum(not len(c) for c in oldcases),"skipped":sum(c.find("skipped") is not None for c in oldcases),"failures":sum(c.find("failure") is not None for c in oldcases),"errors":sum(c.find("error") is not None for c in oldcases)}
+assert oldcounts=={"testcases":161,"passed":158,"skipped":2,"failures":1,"errors":0}
+for p in [R/"failed.json",R/"paused.json"]:
+    try:p.lstat()
+    except FileNotFoundError:pass
+    else:raise AssertionError("conflicting terminal "+str(p))
+proof={
+"actual_counts":{"collected":len(nodes),"executed":len(cases),"passed":passed,"skipped":len(skips),"failures":failures,"errors":errors,"collected_but_unrun":0,"hook_reports":len(reports),"test_functions":len(test_functions)},
+"ordered_nodeids_sha256":node_digest,"ordered_nodeids":nodes,"function_case_counts":function_cases,"expected_skips":skips,
+"manifest_files":72,"source_copy_pair_count":len({(x["original"],x["copy"]) for x in copychecks}),
+"primary_guards":16,"initial_primary_source_count":8,"selected_live_paths":742,"selected_live_bytes":sum(x["size"] for x in opaque),
+"selected_git_stage_metadata_sha256":context["git_ls_files_stage_sha256"],
+"opaque_current_HEAD_metadata":context["head"],"not_clean_or_release_authority":True,
+"runtime_files":4,"pytest_version":runtime["pytest"]["version"],"configuration_absences":56,
+"fresh_guard_arrays_match_recorded_before_and_after":True,"authority_evidence_rows":9,
+"whole_runtime_before_sha256":INPUTS[str(R/"whole-runtime-before/result.json")]["sha256"],
+"whole_runtime_after_sha256":INPUTS[str(R/"whole-runtime-after/result.json")]["sha256"],
+"whole_runtime_tree_identities":before["trees"],"whole_snapshot_rows_per_observation":{k:len(snapshots["before"][k+"-first.json"]["rows"]) for k in tree_roots},
+"whole_saved_all_four_snapshot_full_rows_and_root_and_directory_metadata_equal":True,
+"whole_inventory_stream_recomputed_independently":True,"reviewer_fresh_physical_global_runtime_inventory_performed":False,
+"whole_before_age_seconds_at_driver_claim":(utc(start["created_utc"])-utc(before["finished_utc"])).total_seconds(),
+"initial_reserve_seconds":(utc(ack["expires_utc"])-utc(start["created_utc"])).total_seconds(),
+"timeline_utc":[t.isoformat() for t in times],
+"phase_results":phase_results,"phase_stdout_stderr_pins":{p:{s:INPUTS[str(R/p/(s+".txt"))] for s in ("stdout","stderr")} for p in phase_results},
+"child_observation_limits":{"remaining_selected_modules":[],"no_remaining_bu_modules":True,"inspection_boundary":"finally_after_pytest_only_not_complete_import_trace","complete_import_trace":False,"full_site_runtime_closure":False,"os_write_sandbox":False,"descendant_cleanup_guaranteed":False},
+"legacy003_preserved_original_copy_pairs":legacy_pairs,"legacy003_runtime_counts":oldcounts,
+"legacy003_collected":len(oldnodes),"legacy003_collected_but_unrun":len(oldnodes)-len(oldcases),"legacy003_ordered_ids_exact_retained":True,
+"legacy003_independent_runtime_failure_sha256":INPUTS[str(B/"raw-component-runtime-prep003/INDEPENDENT_RAW_COMPONENT_RUNTIME_REVIEW_003.json")]["sha256"],
+"raw_source_peer_scope":"unchanged raw0037fe source and historical oldb4bf tests only; no semantic self-reapproval",
+"raw_test_peer_scope":"367a1 one test-only revision separately accepted by3cfa; no new semantic self-reapproval",
+"ignored_status_hash_and_size_only":{"sha256":hashlib.sha256(context["status_porcelain_with_ignored"].encode()).hexdigest(),"size":len(context["status_porcelain_with_ignored"].encode()),"payload_in_this_probe":False},
+"execution_by_reviewer":False,"findings":[]}
+# Reviewer-owned utility is itself pinned as inert metadata reconciliation source.
+utility_bytes=read(pathlib.Path(__file__))
+ast.parse(utility_bytes.decode("utf-8"))
+raw_ast=ast.parse(BYTES[str(R/"source/scripts/week8_recovery_raw_authority.py")].decode("utf-8"))
+selected_constants={}
+constant_expected={"_SUCCESSOR_INTERMEDIATE_PROOF_MAX_BYTES":48008,"_SUCCESSOR_INTERMEDIATE_SUMMARY_MAX_BYTES":959,"_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA1":345810,"_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA2":395799,"SUCCESSOR_ADMISSION_MAX_BYTES":395799,"_SUCCESSOR_REQUIRED_FINAL_CHANGED_COUNT":25}
+for n in raw_ast.body:
+    if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in constant_expected:
+        assert n.targets[0].id not in selected_constants and isinstance(n.value,ast.Constant) and type(n.value.value) is int
+        selected_constants[n.targets[0].id]=n.value.value
+assert selected_constants==constant_expected
+proof["source_literal_constants_authenticated_only"]=selected_constants
+# All inputs observed two further times, with independent plain-file and raw9 checks.
+first=dict(INPUTS);observations_all={"first":first}
+for label in ("second","third"):
+    for p,row in first.items():
+        read(pathlib.Path(p),row["sha256"],row["size"],maximum=max(row["size"],1))
+        assert INPUTS[p]==row,p
+    observations_all[label]=dict(INPUTS)
+proof["observed_input_count"]=len(first);proof["verification_observations"]=3
+RESULT={"proof":proof,"inputs":observations_all}
+print(json.dumps({"counts":proof["actual_counts"],"input_count":len(first),"legacy_pairs":len(legacy_pairs),"whole":proof["whole_runtime_tree_identities"],"all_three_observations_equal":True},separators=(",",":")))
+
+# Create-once independent review pair. No target or original evidence is written.
+out_json=R/"INDEPENDENT_RAW_COMPONENT_RUNTIME_REVIEW_004.json"
+out_md=R/"INDEPENDENT_RAW_COMPONENT_RUNTIME_REVIEW_004.md"
+for p in (out_json,out_md):
+    try:p.lstat()
+    except FileNotFoundError:pass
+    else:raise AssertionError("review output already exists "+str(p))
+now=dt.datetime.now(dt.timezone.utc).isoformat()
+limits=[
+"Acceptance covers the one consumed isolated direct raw004 collection/test run against captured7fe source and367a1 tests only.",
+"Previous7c source and3c test static reviews are authenticated as frozen scoped receipts. Their semantics and the reviewer's own4780 diagnosis are not independently reapproved here.",
+"Current742 guards authenticate opaque working bytes and saved Git stage metadata, including current D177 working bytes. They do not admit a clean release, accept an actor's design, establish sole-executor transfer or provide native quiet.",
+"Whole runtime acceptance reconstructs every saved observer row, file hash/size, raw path/handle metadata, root identity and directory identity before and after. The reviewer did not perform another physical whole-runtime traversal.",
+"Child observations inspect remaining modules finally after pytest. Empty selected/bu modules do not prove a complete import trace or complete runtime/site closure.",
+"The harness reports direct children reaped without guaranteed descendant timeout cleanup or an OS write sandbox. No cleanup was performed by the reviewer.",
+"The separately reported five-consumer top-level generator guard defect remains a blocker. Direct raw tests do not cover those controller/worker/native guards, an integrated candidate, fullgate, release, operational publication or native recovery.",
+"No scientific outcomes/values were consulted. No target helper, observer, test, selected definition, project module, native transport, Git operation or process operation was executed by this reviewer."
+]
+md=(
+"# Independent raw004 actual runtime review\n\n"
+"Verdict: **PASS_ISOLATED_RAW_COMPONENT_RUNTIME_ONLY**.\n\n"
+"Reviewer: /root/candidate_review. Reviewed "+now+".\n\n"
+"All171 ordered cases were collected and executed:169 passed,2 skipped for exact Windows1314 symlink privilege limitations,0 failures,0 errors,0 unrun cases.513 setup/call/teardown reports match every JUnit case in order. All45 source test functions have actual cases. Both collection lists have SHA256 "+node_digest+" and exactly retain raw003's171 collected IDs.\n\n"
+"Raw source SHA256 "+static["raw_source_sha256"]+" (178209 bytes), tests SHA256 "+static["raw_tests_sha256"]+" (415278 bytes). The source remains unchanged. The spent raw003 failure remains preserved:161 executed=158 pass+2 skip+1 fail, with10 collected cases unrun. All78 old runtime original/copy pairs retain hashes and raw metadata.\n\n"
+"The72-file preparation manifest,13 distinct current copy pairs,16 published primary guard rows,742 opaque live paths,4 runtime pins, pytest9.1.1 and its installed configuration reader,56 absent configuration paths and9 authority rows were authenticated. "+str(len(first))+" inputs were equal across three guarded observations. Fresh hashes/metadata match the driver's before/final guards. Per-phase results report unchanged sources/runtime; complete guard arrays are published only at start and finish.\n\n"
+"Eight saved whole-runtime files were independently reconstructed as mixed directory/file streams in UTF16 ordinal order. All rows, root identities and directory metadata match first/second and before/after. Base:5368 files+504 directories,155022742 bytes, digest "+before["trees"]["base"]["sha256"]+". Scripts:22 files+0 directories,2145329 bytes, digest "+before["trees"]["scripts"]["sha256"]+". Every observation contains5872 base rows and22 Scripts rows. Before record "+proof["whole_runtime_before_sha256"]+"; after "+proof["whole_runtime_after_sha256"]+". These saved observations were checked in full; no additional physical whole-runtime traversal was performed by the reviewer.\n\n"
+"Actual binding receipt, scoped static/bound/late peers,22-field ACK, launcher, first-entry authorization, environment profile, both child intents/results/captures, driver terminal and post-run observer authorization form an ordered evidence chain. Driver claim occurred "+str(round(proof["whole_before_age_seconds_at_driver_claim"],6))+" seconds after the before record, below600, with "+str(round(proof["initial_reserve_seconds"],6))+" seconds of ACK reserve, above4440. Captured entry/final resource floors pass. Terminal exit0/timed_out=false; capture hashes match. Raw004 and raw003 are consumed and cannot be replayed.\n\n"
+"JSON records exact counts, ordered IDs, function case counts, skip reasons, source literal pins, runtime digests, legacy bindings and three observations per input. Previous source/static peers retain their original scopes. Known consumer and integration/native blockers remain unresolved.\n\n"
+"Read-only review preparation initially guessed schema keys and hit Windows command-length refusal before execution. The final reviewer-owned metadata utility used actual record schemas and passed every check before creating this pair. No target code or original one-use action was replayed.\n\n"
+"Limits:\n\n"+''.join("- "+x+"\n" for x in limits)+
+"\nThis report grants no replay, evidence change, fullgate, publication, native or scientific authority.\n"
+).encode("utf-8")
+report={
+"schema_version":1,"reviewer":"/root/candidate_review","reviewer_agent":"/root/candidate_review",
+"verdict":"PASS_ISOLATED_RAW_COMPONENT_RUNTIME_ONLY","decision":"PASS_ISOLATED_RAW_COMPONENT_RUNTIME_ONLY",
+"reviewed_utc":now,"scope":"ACTUAL_CONSUMED_ISOLATED_DIRECT_RAW004_RUNTIME_EVIDENCE_RECONCILIATION_ONLY",
+"raw_helper_sha256":static["raw_source_sha256"],"raw_source_sha256":static["raw_source_sha256"],"raw_source_bytes":178209,
+"raw_tests_sha256":static["raw_tests_sha256"],"raw_test_sha256":static["raw_tests_sha256"],"raw_tests_bytes":415278,
+"raw_source_peer_review_sha256":expected["RAW_SOURCE_PEER_REVIEW_SHA256"],"raw_test_peer_review_sha256":expected["RAW_TEST_PEER_REVIEW_SHA256"],
+"counts":proof["actual_counts"],"ordered_nodeids_sha256":node_digest,
+"actual_junit_sha256":INPUTS[str(R/"tests/junit.xml")]["sha256"],"actual_collection_result_sha256":INPUTS[str(R/"collection/result.json")]["sha256"],
+"actual_test_result_sha256":INPUTS[str(R/"tests/result.json")]["sha256"],"actual_finished_sha256":INPUTS[str(R/"finished.json")]["sha256"],
+"actual_root_terminal_sha256":INPUTS[str(R/"ROOT_LAUNCH_TERMINAL_004.json")]["sha256"],
+"bound_driver_sha256":receipt["driver"]["sha256"],"bound_observer_sha256":receipt["observer"]["sha256"],
+"driver_spent":True,"legacy003_spent_failure_preserved":True,"legacy003_result_accepted_as_pass":False,
+"source_policy_semantics_reapproved":False,"own_previous_static_or_diagnosis_semantics_reapproved":False,
+"fullgate_or_integrated_candidate_or_consumer_coverage_accepted":False,"native_or_scientific_or_production_authority":False,
+"operational_release_or_attestation_admission_accepted":False,"sole_executor_transfer_or_native_quiet_proved":False,
+"scientific_outcomes_consulted":False,"scientific_values_emitted":False,"reviewer_target_code_imported_or_executed":False,
+"reviewer_observer_or_helper_or_test_or_native_or_Git_or_process_replayed":False,"reviewer_source_primary_historical_environment_mutations_performed":False,
+"whole_runtime_before_sha256":proof["whole_runtime_before_sha256"],"whole_runtime_after_sha256":proof["whole_runtime_after_sha256"],
+"whole_runtime_tree_identities":proof["whole_runtime_tree_identities"],"all_saved_before_after_bytes_metadata_rows_equal":True,
+"reviewer_fresh_physical_whole_runtime_traversal_performed":False,"owner_sha256":ack["owner_sha256"],"owner_end_utc":own["work_end_utc"],
+"root_ack_sha256":INPUTS[str(R/"ROOT_FIRST_EXECUTION_ACK_RAW004.json")]["sha256"],
+"root_launcher_sha256":INPUTS[str(R/"ROOT_FIRST_LAUNCH_004.BOUND.ps1")]["sha256"],
+"static_review_sha256":receipt["static_review"]["sha256"],"bound_review_sha256":ack["bound_review_sha256"],
+"late_review_sha256":INPUTS[str(R/"INDEPENDENT_RAW004_ACK_LAUNCH_LATE_REVIEW_001.json")]["sha256"],
+"first_entry_authorization_sha256":INPUTS[str(R/"ROOT_RAW004_FIRST_ENTRY_AUTHORIZATION_001.json")]["sha256"],
+"whole_after_authorization_sha256":INPUTS[str(R/"ROOT_RAW004_WHOLE_AFTER_AUTHORIZATION_001.json")]["sha256"],
+"metadata_review_utility_sha256":INPUTS[str(pathlib.Path(__file__))]["sha256"],
+"proof":proof,"input_observations":observations_all,"verification_observations":3,"paired_and_third_all_input_bytes_raw9_identities_equal":True,
+"read_only_review_preparation_issues":["Overlong inline metadata-probe command refused before execution; moved own utility to a fixed new file.","Read-only key guesses corrected against actual before/ack_sha256/env_profile records before the final utility passed."],
+"findings":[],"limitations":limits,"markdown_sha256":hashlib.sha256(md).hexdigest(),"markdown_bytes":len(md)
+}
+canonical=lambda v:json.dumps(v,sort_keys=True,separators=(",",":"),ensure_ascii=True,allow_nan=False).encode("ascii")+b"\n"
+report["record_digest"]=hashlib.sha256(canonical(report)).hexdigest()
+raw_report=canonical(report);assert len(raw_report)<8388608
+for p,data in ((out_md,md),(out_json,raw_report)):
+    ancestors(p)
+    with p.open("xb") as f:f.write(data);f.flush();os.fsync(f.fileno())
+    assert read(p,hashlib.sha256(data).hexdigest(),len(data))==data
+# Fourth observation after publication; the frozen report is not rewritten.
+for p,row in first.items():
+    read(pathlib.Path(p),row["sha256"],row["size"],maximum=max(row["size"],1));assert INPUTS[p]==row,p
+print(json.dumps({"verdict":report["verdict"],"json":{"path":str(out_json),"sha256":hashlib.sha256(raw_report).hexdigest(),"size":len(raw_report)},"markdown":{"path":str(out_md),"sha256":hashlib.sha256(md).hexdigest(),"size":len(md)},"input_count":len(first),"observations_before_publication":3,"fourth_postwrite_input_observation_identical":True,"counts":report["counts"]},separators=(",",":")))

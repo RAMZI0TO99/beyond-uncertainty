@@ -1,0 +1,130 @@
+import ast, datetime, hashlib, json, os, re
+from pathlib import Path
+
+ROOT = Path('D:/Aenv/pro2')
+OLD = ROOT / 'resume-2026-10-01-30h-001'
+CAP = OLD / 'consumer005-compact-source-capsule-prep001'
+DES = OLD / 'guard005-fresh-metadata-pipeline-design001'
+OUT = ROOT / 'resume-2026-10-03-continuation001/capsule-design-independent-review001'
+def sha(b): return hashlib.sha256(b).hexdigest()
+def utc(): return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+def enc(v): return (json.dumps(v, sort_keys=True, indent=2, ensure_ascii=True, allow_nan=False)+'\n').encode('ascii')
+def pairs(rows):
+    d = {}
+    for k,v in rows:
+        assert k not in d, 'duplicate JSON key'
+        d[k] = v
+    return d
+def parse(b): return json.loads(b, object_pairs_hook=pairs, parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
+def raw(s): return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,getattr(s,'st_file_attributes',0),getattr(s,'st_birthtime_ns',None)]
+observations = {}; data = {}
+def read(p):
+    p = Path(p); before = os.lstat(p)
+    with p.open('rb') as f:
+        opened = os.fstat(f.fileno()); b = f.read(); ended = os.fstat(f.fileno())
+    after = os.lstat(p)
+    assert raw(before)==raw(after) and raw(opened)==raw(ended)
+    assert len(b)==before.st_size==opened.st_size
+    row = dict(path=str(p), bytes=len(b), sha256=sha(b), path_raw9=raw(after), descriptor_raw9=raw(ended))
+    if str(p) in observations: assert row == observations[str(p)] and b == data[str(p)]
+    observations[str(p)] = row; data[str(p)] = b
+    return b
+def get(p): return parse(read(p))
+def check(condition, text, findings):
+    if not condition: findings.append(text)
+def shape(v,s):
+    kinds = {'exact_builtin_dict':dict,'exact_builtin_list':list,'exact_builtin_str':str,'exact_builtin_int_not_bool':int,'exact_builtin_bool':bool,'None':type(None)}
+    assert type(v) is kinds[s['kind']], s['kind']
+    if type(v) is dict:
+        assert sorted(v)==s['closed_keys']
+        for k in v: shape(v[k],s['fields'][k])
+    elif type(v) is list:
+        assert len(v)==s['length']
+        for x,n in zip(v,s['items']): shape(x,n)
+    else:
+        assert v==s['value']
+        if type(v) is str: assert len(v.encode('utf-8'))<=s['maximum_UTF8_bytes']
+
+def main():
+    cap_findings=[]; des_findings=[]
+    preservation=get(CAP/'SELECTED_INPUT_PRESERVATION_001.json')
+    cm=get(CAP/'CAPSULE_PREPARATION_MANIFEST_001.json')
+    cp=get(CAP/'CAPSULE_PREPARATION_POST_STABILITY_001.json')
+    for row in preservation['pairs']:
+        a=read(row['original']); b=read(row['copy'])
+        assert a==b and len(a)==row['bytes'] and sha(a)==row['sha256']
+    for row in cm['files'].values():
+        b=read(row['path']); assert sha(b)==row['sha256'] and len(b)==row['bytes']
+    c=get(CAP/'COMPACT_STATIC_SOURCE_CAPSULE_001.json'); s=get(CAP/'COMPACT_CAPSULE_CLOSED_SCHEMA_001.json'); der=get(CAP/'CAPSULE_DERIVATION_MAP_001.json')
+    precision=get(CAP/'OLD_SOURCE_PEER_READER_PRECISION_001.json')
+    shape(c,s['closed_entire_fixed_capsule_shape']); shape(c['nominal_core'],s['exact_nominal_core'])
+    assert len(c)==18 and len(read(CAP/'COMPACT_STATIC_SOURCE_CAPSULE_001.json'))==24627<=131072
+    assert sha(read(CAP/'COMPACT_STATIC_SOURCE_CAPSULE_001.json'))=='4c81e41d926eea61805eac23b5c616931fa3c86b4db1e794f8f28a2f04c26fa8'
+    assert der['generated_capsule_sha256']==sha(read(CAP/'COMPACT_STATIC_SOURCE_CAPSULE_001.json'))
+    dt=datetime.datetime.fromisoformat(c['created_utc']); assert re.fullmatch(r'.*\.\d{6}\+00:00', c['created_utc'])
+    for a in c['anchors'].values():
+        b=read(a['path']); assert sha(b)==a['sha256'] and len(b)==a['bytes']
+    inp={r['key']:read(r['copy']) for r in preservation['pairs']}
+    full=parse(inp['full_peer']); old=parse(inp['old_source003_peer']); binding=parse(inp['binding'])
+    assert len(full)==38 and len(inp['full_peer'])==2553985 and len(old)==51 and len(old['raw_policy_facts'])==12
+    assert len(inp['full_peer'])-2097152==456833 and 'raw_policy_facts' not in full
+    rt=ast.parse(inp['raw4']); fs=[n for n in rt.body if isinstance(n,ast.FunctionDef)]; cs=[n for n in rt.body if isinstance(n,ast.ClassDef)]
+    api=next(n for n in fs if n.name=='admit_recorded_predecessor')
+    req=[a.arg for a,d in zip(api.args.kwonlyargs,api.args.kw_defaults) if d is None]
+    caps={}
+    for n in rt.body:
+        if isinstance(n,ast.Assign):
+            for t in n.targets:
+                if isinstance(t,ast.Name) and t.id in c['raw_AST_facts']['caps']: caps[t.id]=ast.literal_eval(n.value)
+    facts=dict(functions=len(fs),classes=len(cs),class_methods=sum(isinstance(n,ast.FunctionDef) for cl in cs for n in cl.body),initializer_genexprs=sum(isinstance(x,ast.GeneratorExp) for n in rt.body if not isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)) for x in ast.walk(n)),API_required_keyword_only=req,caps=caps,operational_input_roles=sum(x.endswith('_bytes') and x not in ('incident_bytes','terminal_bytes') for x in req))
+    assert facts==c['raw_AST_facts']==full['raw_AST_facts']
+    swaps=[(b'if value is None or kind is bool or kind is int or kind is float or kind is str:',b'if value is None or kind in (bool, int, float, str):'),(b'if kind is dict or kind is MappingProxyType:',b'if kind in (dict, MappingProxyType):'),(b'if kind is tuple or kind is list or kind is set or kind is frozenset:',b'if kind in (tuple, list, set, frozenset):'),(b'if kind is set or kind is frozenset:',b'if kind in (set, frozenset):')]
+    for role in c['consumer_roles']:
+        r=role['role']; b=inp['consumer_'+r]; prior=inp['before004_'+r]; rev=b
+        for new,oldp in swaps: assert rev.count(new)==1; rev=rev.replace(new,oldp)
+        assert rev==prior and len(b)-len(prior)==72
+        tree=ast.parse(b); helper=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=='_raw_helper_value_identity')
+        assert sha(ast.dump(helper,include_attributes=False).encode())==role['helper_AST_sha256']
+        assert sha(b)==role['sha256']==binding['consumers'][r]['sha256']
+        assert any(isinstance(n,ast.Call) and ast.unparse(n)=='isinstance(value, Path)' for n in ast.walk(helper))
+        iscount=sum(isinstance(n,ast.Compare) and isinstance(n.left,ast.Name) and n.left.id=='kind' and any(isinstance(op,ast.Is) for op in n.ops) for n in ast.walk(helper))
+        assert iscount==14 and not any(isinstance(n,ast.Compare) and isinstance(n.left,ast.Name) and n.left.id=='kind' and any(isinstance(op,ast.In) for op in n.ops) for n in ast.walk(helper))
+    tt=ast.parse(inp['test']); prior=ast.parse(inp['before004_test']); tcs=[n for n in tt.body if isinstance(n,ast.ClassDef)]
+    counts=[sum(isinstance(n,ast.FunctionDef) and n.name.startswith('test_') for n in cl.body) for cl in tcs]; assert counts==[19,5]
+    assert all([ast.unparse(b) for b in cl.bases]==['unittest.TestCase'] and not cl.keywords for cl in tcs)
+    assert ast.dump(tcs[0],include_attributes=False)==ast.dump(next(n for n in prior.body if isinstance(n,ast.ClassDef)),include_attributes=False)
+    assert [r['direct_method_count'] for r in c['discovery']['classes']]==counts
+    assert c['operational_authority_granted'] is False and c['discovery']['actual_collection'] is None and c['discovery']['actual_results'] is None
+    handoff=read(CAP/'HANDOFF_001.md').decode(); completion=get(CAP/'METADATA_COMPLETION_SCOPE_002.json'); failure=get(CAP/'PREPARATION_WRITER_FAILURE_001.json')
+    assert 'initial001prewrite timestamps/raw9 receipt were not persisted' in handoff
+    dm=get(DES/'DESIGN_MANIFEST_002.json'); d=get(DES/'FRESH_METADATA_PIPELINE_SOURCE_DESIGN_002.json'); d1=get(DES/'FRESH_METADATA_PIPELINE_SOURCE_DESIGN_001.json'); m1=get(DES/'DESIGN_MANIFEST_001.json')
+    for row in dm['files']:
+        b=read(DES/row['path']); assert sha(b)==row['sha256'] and len(b)==row['bytes']
+    assert sha(read(DES/'FRESH_METADATA_PIPELINE_SOURCE_DESIGN_002.json'))=='3590467cf4edb20351e47ebdf36ed4f0fd9919c7abbe4accdcb524cdf4cf89b0'
+    for row in m1['files']:
+        b=read(DES/row['path']); assert sha(b)==row['sha256'] and len(b)==row['bytes']
+    for k in ['decision_checker_contract','execution_ownership','limits','namespace_options','meaningful_UNRUN_validation_families','preserved_invariants','required_new_source_packages','authority']:
+        assert d[k]==d1[k], k
+    writer=read(DES/'inputs/10-root_writer.ps1').decode('utf-8-sig'); launcher=read(DES/'inputs/17-root_unit_template.ps1').decode('utf-8-sig')
+    assert writer.index('INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_005.json')<writer.index('ROOT_FIRST_LAUNCH_005.BOUND.ps1')
+    assert 'ROOT_EXECUTION_ACK_GUARD_UNIT005.json' in writer and 'ROOT_LAUNCH_START_005.json' in writer
+    assert 'ROOT_EXECUTION_ACK_GUARD_UNIT005.json' in launcher and 'ROOT_LAUNCH_START_005.json' in launcher
+    order=d['DAG_and_bindings']['order']; assert [next(i for i,x in enumerate(order) if needle in x) for needle in ['Root resources/coordination/ACK','BOUND22','launcher three-literal','LATE14','Separate fresh Root GO']]==sorted(next(i for i,x in enumerate(order) if needle in x) for needle in ['Root resources/coordination/ACK','BOUND22','launcher three-literal','LATE14','Separate fresh Root GO'])
+    context=get(DES/'inputs/22-actual_context.json'); git=d['source_derived_Gitmetadata7']; assert git['count']==7 and git['runtime_four_files_separate'] is True
+    paths=[x['path'] for x in git['role_keys']]; assert len(paths)==7 and len(set(paths))==7
+    assert all(x in paths for x in [str(ROOT/'week8-recovery-controller-worktree/.git'),str(ROOT/'pro2/.git/packed-refs'),str(ROOT/'pro2/.git/config')])
+    source_refusal=get(d['revision_provenance']['different_refusal001_path']); assert sha(read(d['revision_provenance']['different_refusal001_path']))==d['revision_provenance']['different_refusal001_sha256']
+    for _ in range(2):
+        for p in list(observations): read(p)
+    for i,(p,b) in enumerate(sorted(data.items())):
+        dest=OUT/'inputs'/f'{i:03d}.bytes'; dest.parent.mkdir(parents=True,exist_ok=True)
+        with dest.open('xb') as f: f.write(b)
+    post={p:dict(observations[p]) for p in observations}
+    for p in list(observations): read(p)
+    common=dict(schema_version=1,reviewer='/root/capsule_design_review',created_utc=utc(),target_compilation=False,target_definitions_or_calls=False,target_tests=False,operational_authority=False,finite_input_count=len(observations),selected_inputs_three_reads_plus_post=True)
+    cap_result=dict(common,record_type='independent_consumer005_compact_capsule_source_review',verdict='PASS_STATIC_COMPACT_CAPSULE_DERIVATION_WITH_IMPLEMENTATION_CONDITIONS',capsule_sha256=sha(read(CAP/'COMPACT_STATIC_SOURCE_CAPSULE_001.json')),findings=cap_findings,rederived_raw_AST_facts=facts,rederived_direct_methods=counts,source_predicate_reversal_all_five_roles_byte_exact=True,closed_schema_all_nested_fields_valid=True,full_peer_top_keys=38,old_peer_top_keys=51,old_nested_raw_facts_keys=12,full_peer_old_cap_excess=456833,conditions=['New reader must enforce exact pinned capsule/schema and nominal nested fields with duplicate/nonfinite rejection and pre-open/descriptor/read caps.','Do not consume this as old Source003 peer or widen its general 2MiB reader.','Inert CodeType metadata is attributed, not recompiled or runtime-proven.','Path isinstance remains unchanged and qualified.','Harness/event1024 grammar, runtime binding and unit entry require separate source implementation choices and audits.','Old owner input is historical and cannot authorize renewed runtime execution.'],actual_collection=None,actual_results=None)
+    des_result=dict(common,record_type='independent_fresh_metadata_design002_narrow_review',verdict='PASS_STATIC_DESIGN002_NARROW_CORRECTIONS_WITH_IMPLEMENTATION_CONDITIONS',design_sha256=sha(read(DES/'FRESH_METADATA_PIPELINE_SOURCE_DESIGN_002.json')),findings=des_findings,closed_findings=['B01 ACK22 then BOUND22 then RootPS3 binding then LATE14 then separate Root GO','P02 authentic fixed ACK/start names; timestamped absence remains historical only','P03 all seven Gitmetadata roles; four runtime files separate'],original001_preserved=True,full001_semantic_review_reused_from_different_peer=True,conditions=['No implementation or execution approved by this design review.','Both before and after sources/checkers must be prepared and independently reviewed before timer.','Actual machine decisions require reviewed full predicates and authentic producer provenance, not caller PASS strings.','Original timestamps and 90/600/resource60/450 plus after60 budgets must remain unchanged.','Fresh owner, coordination and current source selections required; no replay/retimestamp of Metadata002.'])
+    for name,val in [('INDEPENDENT_COMPACT_CAPSULE_REVIEW_001.json',cap_result),('INDEPENDENT_DESIGN002_NARROW_REVIEW_001.json',des_result),('INPUT_POST_STABILITY_001.json',dict(schema_version=1,created_utc=utc(),observations=post,unknown_file_absence_claimed=False))]:
+        with (OUT/name).open('xb') as f: f.write(enc(val))
+    print(json.dumps(dict(capsule_verdict=cap_result['verdict'],design_verdict=des_result['verdict'],inputs=len(observations),capsule_review_sha256=sha(enc(cap_result)),design_review_sha256=sha(enc(des_result)))))
+if __name__=='__main__': main()

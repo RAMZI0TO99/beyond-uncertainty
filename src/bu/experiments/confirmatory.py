@@ -46,18 +46,33 @@ import numpy as np
 import torch
 
 from functools import lru_cache
+from typing import NoReturn
 
 from .. import constants as K
 from ..config import Arm, Config, STAGE_SEEDS, TrainConfig, UnitSpec
-from ..env.collect import collect_pools
+from ..durable import atomic_write_json
+from ..env.collect import collect_pools, collect_pools_with_anchors
 from ..metrics import RunLogger
 from ..models.ensemble import assert_pools_match, train_ensemble
-from ..models.uncertainty import NormalisationScale, ScaledEvaluation, normalised_error
+from ..models.uncertainty import (
+    NormalisationScale,
+    ScaledEvaluation,
+    normalised_error,
+    per_transition_table,
+)
 from ..models.world_model import MOVEMENT_ACTIONS
 from ..runrecord import git_state
-from ..streams import is_confirmatory
-from .enumerate_units import execution_plan
-from .repair import ArmEvaluation, REPAIR_ENSEMBLE_SIZE, REPAIR_STAGE
+from ..streams import (
+    DATA_PURPOSES,
+    assert_roles_share_one_stream,
+    is_confirmatory,
+    stream_key,
+)
+from .enumerate_units import design_units, execution_plan, stage_of
+from .repair import (
+    ArmEvaluation,
+    REPAIR_ENSEMBLE_SIZE,
+)
 from ..stats.gate import METRIC_SCHEMA_VERSION
 from .w4_gate import _pin_threading, torch_threading
 
@@ -83,17 +98,41 @@ REPAIRED_TRAIN = TrainConfig(ensemble_size=REPAIR_ENSEMBLE_SIZE)
 CONFIRMATORY_THREADS = 4
 CONFIRMATORY_INTEROP_THREADS = 4
 
+# The historical and certified execution route is CPU (DEV-011).  Leaving the
+# device implicit would make a Kaggle worker silently run a different numerical
+# procedure if a future caller changed the global default device.  This records
+# and verifies the route without exposing a result-changing caller knob.
+CONFIRMATORY_DEVICE = "cpu"
+
+
+class _EpochLogger:
+    """Bind an epoch-curve row to one ensemble member."""
+
+    def __init__(self, logger: RunLogger, member: int) -> None:
+        self._logger = logger
+        self._member = member
+
+    def log(self, **fields) -> None:
+        self._logger.log(
+            record_type="epoch", member=self._member, **fields
+        )
+
 
 @lru_cache(maxsize=1)
 def _registered_obligations() -> frozenset:
     """Every (unit, arm, stage, seed-index) the design actually registers.
 
-    Built from `execution_plan()`, which is the artefact the compute estimate is
-    taken over -- so "registered" here means the same thing it means in the
-    budget, rather than a second opinion about what the design contains.
+    Built from `execution_plan(design_units())` -- the registered 300-unit
+    design, the artefact the compute estimate (D-033) and the certified timing
+    harness (D-119) are taken over -- so "registered" here means the same thing
+    it means in the budget. The argument is load-bearing: `execution_plan()`
+    with no argument defaults to `full_matrix()`, the ~531-unit POOL the design
+    draws on ("the pool, not the plan"), and a guard built from the pool
+    accepted confirmatory fits on the 231 sweep units the design leaves out
+    (D-133).
     """
     out = set()
-    for fit in execution_plan():
+    for fit in execution_plan(design_units()):
         unit_id = Config(unit=fit.unit).unit_id
         for role in fit.roles:
             out.add((unit_id, fit.arm, role, fit.seed))
@@ -121,6 +160,34 @@ def assert_registered_obligation(unit: UnitSpec, *, arm: str, stage: str, seed: 
         )
 
 
+def _assert_repair_pairing(unit: UnitSpec, *, arm: str, stage: str) -> None:
+    """Refuse unpaired repair execution without changing the registered inventory.
+
+    D-155's safety guard is not a stream correction: sweep-only baselines use
+    unit-keyed data while their repair stages currently select a family group.
+    Compare the original, unresolved unit against its authoritative baseline
+    stage; neither a repaired unit nor the repair's family supplies that stage.
+    """
+    if arm == "baseline":
+        return
+    baseline_stage = stage_of(unit)
+    mismatched = [
+        purpose
+        for purpose in sorted(DATA_PURPOSES)
+        if stream_key(unit, baseline_stage, purpose) != stream_key(unit, stage, purpose)
+    ]
+    if mismatched:
+        raise ValueError(
+            f"Wrong pairing for unit {Config(unit=unit).unit_id}, arm={arm!r}: "
+            f"repair stage {stage!r} and authoritative baseline stage "
+            f"{baseline_stage!r} have mismatched data stream keys for {mismatched}. "
+            "Execution is refused before output, pool collection or training. "
+            "An explicit versioned procedure decision is needed to correct this "
+            "pairing (D-155); registration remains inventory, and this guard "
+            "does not change stream meanings, stage identities or legacy recorded fits."
+        )
+
+
 @dataclass(frozen=True)
 class ConfirmatoryRun:
     """One completed confirmatory fit, and the record that lets it be checked."""
@@ -141,6 +208,11 @@ class ConfirmatoryRun:
     #: repair path consumes this rather than training a second time, so the
     #: number and the record provably describe the same model.
     evaluation: ArmEvaluation | None = None
+    #: Durable-fit writers persist this complete transition-level diagnostic
+    #: inventory.  Repaired single-model arms carry error/episode/step and the
+    #: scale; ensemble baselines additionally carry disagreement and predictive
+    #: variance.  The arrays are not embedded in JSON.
+    diagnostics: dict[str, np.ndarray] | None = None
 
     def as_row(self) -> dict:
         return dict(self.run)
@@ -153,9 +225,25 @@ def _digest_file(path: Path) -> str:
 def _digest_pool(pools) -> str:
     """Identify the evaluation pool by its contents, not by its label."""
     h = hashlib.sha256()
-    for arr in (pools.evaluation.obs, pools.evaluation.action,
-                pools.evaluation.next_obs, pools.evaluation.episode):
-        h.update(np.ascontiguousarray(arr).tobytes())
+    h.update(b"bu-evaluation-pool-digest-v2\0")
+    arrays = (
+        ("obs", pools.evaluation.obs),
+        ("action", pools.evaluation.action),
+        ("next_obs", pools.evaluation.next_obs),
+        ("episode", pools.evaluation.episode),
+    )
+    for name, value in arrays:
+        array = np.ascontiguousarray(value)
+        header = json.dumps(
+            {"name": name, "shape": list(array.shape), "dtype": array.dtype.str},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        data = array.tobytes()
+        h.update(len(header).to_bytes(8, "big"))
+        h.update(header)
+        h.update(len(data).to_bytes(8, "big"))
+        h.update(data)
     return h.hexdigest()
 
 
@@ -190,6 +278,7 @@ def run_confirmatory(
     arm: str = "baseline",
     out_dir: str | Path,
     scale: NormalisationScale | None = None,
+    _fit_roles: tuple[str, ...] | None = None,
 ) -> ConfirmatoryRun:
     """Fit one confirmatory ensemble, score it, and write a complete run record.
 
@@ -212,6 +301,30 @@ def run_confirmatory(
     """
     check_confirmatory(stage=stage, seed=seed, arm=arm, unit=unit)
     assert_registered_obligation(unit, arm=arm, stage=stage, seed=seed)
+    _assert_repair_pairing(unit, arm=arm, stage=stage)
+
+    fit_roles = (stage,) if _fit_roles is None else _fit_roles
+    if (
+        type(fit_roles) is not tuple
+        or not fit_roles
+        or any(type(role) is not str for role in fit_roles)
+        or fit_roles != tuple(sorted(set(fit_roles)))
+        or stage not in fit_roles
+    ):
+        raise ValueError(
+            f"_fit_roles must be a sorted unique nonempty tuple containing the "
+            f"execution stage {stage!r}, got {fit_roles!r}"
+        )
+    for role in fit_roles:
+        assert_registered_obligation(unit, arm=arm, stage=role, seed=seed)
+    assert_roles_share_one_stream(unit, fit_roles)
+    role_run_ids = {
+        role: Config(
+            unit=unit, arm=Arm(arm), seed=seed, stage=role,
+            train=(CONFIRMATORY_TRAIN if arm == "baseline" else REPAIRED_TRAIN),
+        ).run_id
+        for role in fit_roles
+    }
 
     if arm != "baseline" and scale is None:
         raise ValueError(
@@ -219,16 +332,23 @@ def run_confirmatory(
             "once on the baseline's full movement evaluation pool, before any "
             "mask, and reused for every arm sharing that pool (D-061)"
         )
+    if arm == "baseline" and scale is not None:
+        raise ValueError(
+            "a baseline cannot accept a caller-supplied normalising scale. Its "
+            "scale is measured once from its own full movement evaluation pool "
+            "before any failure mask exists (D-061)"
+        )
 
     git = git_state()
-    if git.dirty:
+    if not git.trustworthy:
         raise ValueError(
-            f"the working tree is dirty at commit {git.commit[:7]}. A confirmatory "
-            "fit is evidence for a thesis claim and must name one reproducible code "
-            "state. There is deliberately no override (Sol, delta 45): an opt-out "
-            "produces registered evidence under a configuration that is not "
-            "represented in run identity, which is the same defect as an "
-            "unrecorded thread count."
+            f"the working tree is not trustworthy at commit {git.commit!r} "
+            f"(dirty={git.dirty}). A confirmatory fit is evidence for a thesis "
+            "claim and must name one exact reproducible commit. There is "
+            "deliberately no override (Sol, delta 45): an opt-out produces "
+            "registered evidence under a configuration that is not represented "
+            "in run identity, which is the same defect as an unrecorded thread "
+            "count. A git-less tree reports UNCOMMITTED and is refused too."
         )
 
     _pin_threading(CONFIRMATORY_THREADS, CONFIRMATORY_INTEROP_THREADS)
@@ -243,7 +363,23 @@ def run_confirmatory(
         )
     train = CONFIRMATORY_TRAIN if arm == "baseline" else REPAIRED_TRAIN
     config = Config(unit=unit, arm=Arm(arm), seed=seed, stage=stage, train=train)
-    pools = collect_pools(unit, stage=stage, seed=seed, arm=arm)
+    # New sweep baselines capture their complete symbolic/encoded inputs before
+    # fitting. This is companion provenance, not a change to any legacy stream,
+    # Config identity or model input. Canonical historical paths stay unchanged.
+    anchor = None
+    if stage == "config_sweep" and arm == "baseline":
+        from . import pool_anchors as A
+
+        captured = collect_pools_with_anchors(unit, stage=stage, seed=seed, arm=arm)
+        pools = captured.pools
+        assert_pools_match(pools, unit=unit, arm=arm, stage=stage, seed=seed)
+        anchor = A.write_pool_anchors(
+            Path(out_dir) / A.POOL_ANCHORS_DIRECTORY, captured,
+            unit=unit, seed=seed, stage=stage, source_commit=git.commit,
+        )
+        A.assert_pools_equal(pools, anchor.pools)
+    else:
+        pools = collect_pools(unit, stage=stage, seed=seed, arm=arm)
     assert_pools_match(pools, unit=unit, arm=arm, stage=stage, seed=seed)
     pool_digest = _digest_pool(pools)
 
@@ -253,11 +389,34 @@ def run_confirmatory(
         "seed_partition": "confirmatory",
         "evaluation_pool_digest": pool_digest,
         "threading": torch_threading(),
+        "device": CONFIRMATORY_DEVICE,
+        "fit_roles": list(fit_roles),
+        "role_run_ids": role_run_ids,
     }
     with RunLogger.start(config, root=root, extra=extra) as logger:
+        if anchor is not None:
+            # The first fsynced metric binds the before-training anchor through
+            # the existing metrics digest, preserving the strict run/fit schema.
+            logger.log(event="pool_anchors", pool_anchor_schema_version=1,
+                       pool_anchor_sha256=anchor.anchor_sha256)
         ensemble = train_ensemble(
             unit, pools, config.train, stage=stage, seed=seed, arm=arm,
-            granularity=CONFIRMATORY_GRANULARITY, logger=logger,
+            granularity=CONFIRMATORY_GRANULARITY,
+            logger=logger,
+            epoch_logger=lambda member: _EpochLogger(logger, member),
+            device=CONFIRMATORY_DEVICE,
+        )
+
+    actual_devices = {
+        parameter.device.type
+        for member in ensemble.members
+        for parameter in member.parameters()
+    }
+    if actual_devices != {CONFIRMATORY_DEVICE}:
+        raise ValueError(
+            f"confirmatory fit used devices {sorted(actual_devices)}, not the "
+            f"frozen execution route {CONFIRMATORY_DEVICE!r}. Device changes "
+            "floating-point execution and are not part of run identity"
         )
 
     obs = torch.as_tensor(pools.evaluation.obs)
@@ -286,10 +445,34 @@ def run_confirmatory(
     has_members = config.train.ensemble_size > 1
     summary = evaluation.whole_pool() if has_members else None
     keep = move.numpy()
+    transition_error = normalised_error(
+        members.mean(dim=0), targets, evaluation.scale
+    ).detach().numpy()
+    diagnostics: dict[str, np.ndarray] = {
+        "episode": np.asarray(pools.evaluation.episode[keep]),
+        "step": np.asarray(pools.evaluation.step[keep]),
+        "error": transition_error,
+        "scale": np.asarray(evaluation.scale.vector, dtype=np.float64),
+        "scale_n_reference": np.asarray(evaluation.scale.n_reference),
+        "scale_domain": np.asarray(evaluation.scale.domain),
+        "scale_source": np.asarray(evaluation.scale.source),
+    }
+    if has_members:
+        diagnostics = per_transition_table(
+            members,
+            targets,
+            episode=pools.evaluation.episode[keep],
+            step=pools.evaluation.step[keep],
+            scale=evaluation.scale,
+        )
+    # The scored arrays above contain only movement transitions.  Persist the
+    # complete action inventory as well, so the fit-evidence boundary can derive
+    # that mask independently and refuse dropped, duplicated, reordered, or
+    # otherwise post-selected movement rows.
+    diagnostics["evaluation_action"] = np.asarray(pools.evaluation.action)
     per_transition = ArmEvaluation(
         arm=arm, seed=seed,
-        error=normalised_error(members.mean(dim=0), targets, evaluation.scale)
-        .detach().numpy(),
+        error=transition_error,
         episode=pools.evaluation.episode[keep], step=pools.evaluation.step[keep],
         scale=evaluation.scale, config_id=config.config_id, run_id=config.run_id,
         n_train=len(pools.train), ensemble_size=config.train.ensemble_size,
@@ -321,14 +504,25 @@ def run_confirmatory(
         # a record attesting its own schema version proves nothing (D-073).
         "metric_schema_version": METRIC_SCHEMA_VERSION,
         "threading": torch_threading(),
+        "device": CONFIRMATORY_DEVICE,
+        "fit_roles": list(fit_roles),
+        "role_run_ids": role_run_ids,
         "mean_disagreement": (
             summary.as_row()["mean_disagreement"] if summary is not None else None
         ),
+        "mean_error": (
+            summary.as_row()["mean_error"]
+            if summary is not None
+            else float(transition_error.mean())
+        ),
+        "mean_predictive_variance": (
+            summary.as_row()["mean_predictive_variance"]
+            if summary is not None else None
+        ),
+        "ratio": summary.as_row()["ratio"] if summary is not None else None,
         "n_train": len(pools.train),
     }
-    (record_dir / "confirmatory.json").write_text(
-        json.dumps(run, indent=2), encoding="utf-8"
-    )
+    atomic_write_json(record_dir / "confirmatory.json", run)
     return ConfirmatoryRun(
         run_id=config.run_id, config_id=config.config_id, unit_id=config.unit_id,
         fit_id=config.fit_id, stage=stage, arm=arm, seed=seed,
@@ -338,6 +532,7 @@ def run_confirmatory(
             else float("nan")
         ),
         record_dir=record_dir, run=run, evaluation=per_transition,
+        diagnostics=diagnostics,
     )
 
 
@@ -347,41 +542,42 @@ def run_repair_validation(
     seed: int,
     arm: str,
     out_dir: str | Path,
-) -> tuple[ConfirmatoryRun, ConfirmatoryRun]:
-    """One baseline and one repaired arm, both recorded, both scored from THEIR OWN fit.
+) -> NoReturn:
+    """Refuse the legacy pair runner that could refit one baseline per repair.
 
-    This is what closes C-008. Previously the complete-record path
-    (`run_confirmatory`) and the per-transition repair-scoring path
-    (`repair.evaluate_arm`) trained separately, so a repair-validation number and
-    the evidence attesting it came from two different models with nothing
-    guaranteeing they matched. Sol: *"Two parallel paths do not satisfy C-008."*
-
-    Order matters and is not incidental. The baseline runs first because it is
-    where the normalising scale is created, from its full movement evaluation
-    pool before any mask exists; the repaired arm is then handed **that same
-    scale object** rather than measuring its own, which is the D-061 rule that
-    `ScaledEvaluation` exists to make structural.
-
-    Returns both runs. The caller passes their `.evaluation` values to
-    `acceptance_inputs`, which re-checks the pairing, the stage, the attested
-    ensemble size and the failure masks before any label is built (D-095).
+    The persisted repair-label orchestrator owns one baseline, both independent
+    repairs, all twenty seeds, and their immutable source evidence.  Calling
+    this historical pair helper once for each repair trained the same baseline
+    twice and left neither call able to prove the complete label inventory.
     """
-    if arm == "baseline":
-        raise ValueError(
-            "run_repair_validation compares a repair against its baseline; pass the "
-            "repaired arm and the baseline is run for you, in the order the scale "
-            "rule requires"
-        )
-    baseline = run_confirmatory(
-        unit, stage=REPAIR_STAGE, seed=seed, arm="baseline", out_dir=out_dir,
+
+    del unit, seed, arm, out_dir
+    raise ValueError(
+        "run_repair_validation is disabled because pair-by-pair execution can "
+        "duplicate a baseline fit and cannot attest the complete repair label. "
+        "Use bu.experiments.repair_label_run.run_repair_label"
     )
-    repaired = run_confirmatory(
-        unit, stage=REPAIR_STAGE, seed=seed, arm=arm, out_dir=out_dir,
-        scale=baseline.evaluation.scale,
+
+
+def run_repair_condition(
+    unit: UnitSpec,
+    *,
+    seed: int,
+    out_dir: str | Path,
+) -> NoReturn:
+    """Refuse the obsolete one-seed, in-memory repair-condition path.
+
+    A repair label is defined over the complete registered twenty-seed ladder
+    and must remain independently reconstructable from immutable fit sidecars.
+    This historical helper did neither: it returned three in-memory runs for one
+    seed.  Keeping it executable would leave a bypass around the source-verified
+    boundary in :func:`bu.experiments.repair_label_run.run_repair_label`.
+    """
+
+    del unit, seed, out_dir
+    raise ValueError(
+        "run_repair_condition is disabled because a one-seed in-memory result "
+        "cannot be repair-label evidence. Use "
+        "bu.experiments.repair_label_run.run_repair_label, which owns the exact "
+        "20-seed x 3-arm plan and persists source-verifiable fit sidecars"
     )
-    if baseline.evaluation.scale is not repaired.evaluation.scale:
-        raise AssertionError(
-            "the two arms carry different scale objects; D-061 requires one scale, "
-            "measured on the baseline's full movement pool, reused verbatim"
-        )
-    return baseline, repaired

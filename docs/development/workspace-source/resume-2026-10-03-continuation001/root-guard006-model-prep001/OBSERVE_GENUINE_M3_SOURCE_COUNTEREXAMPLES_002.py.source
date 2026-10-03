@@ -1,0 +1,88 @@
+"""Own metadata witnesses only. Never imports/calls constructor or M3 helpers."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+OWN=Path(__file__).parent
+WORK=OWN.parent
+M=WORK/'metadata3-producer-core-prep001'
+G=WORK/'consumer005-guard006-runtime-prep001'
+selected=[OWN/'ASSEMBLE_GUARD006_SOURCE_MODELS_001.TEMPLATE.py',OWN/'ASSEMBLE_GUARD006_SOURCE_MODELS_002.TEMPLATE.py',
+ M/'capture-root-metadata003-corrected005.TEMPLATE.py',M/'capture-root-metadata003.BOUND.py',M/'ACTUAL_SOURCE_BINDING_003.json',
+ WORK/'EXECUTION_LEASE_GG6_M3_001.json',OWN/'IMMUTABLE_MODEL_INPUTS_001.json',G/'GUARD_RUNTIME_PROFILE_006-rev003.json',Path(__file__).absolute()]
+data=[path.read_bytes() for path in selected]
+sha=lambda value:hashlib.sha256(value).hexdigest()
+binding=json.loads(data[4]);lease=json.loads(data[5]);table=json.loads(data[6])
+assert sha(data[0])=='3e165f33ca9ff2179751fec17d25be1346c2cf5d373278838ca91b1b0f66b7bd'
+assert sha(data[2])==binding['template_sha256']
+assert sha(data[3])==binding['actual_script_sha256']=='133e68be431896253adb6880170409adc53c27d56adc7d2ee43a7225ca2feb37'
+assert sha(data[5])=='43cb0552e3117842868eb78ff4e6b52913a16e78f3c26b8caa754cfb6b29fc48'
+names=('BINDINGS','UNIT_TERMINAL_RELATIVE','COORDINATION_PEER_REPLY_RELATIVE','COORDINATION_ROOT_RESPONSE_RELATIVE','OWNER_SHA','OWNER_END')
+
+
+def slots(value):
+ text=value.decode('utf8');lines=text.splitlines(keepends=True);tree=ast.parse(value);out={}
+ for node in tree.body:
+  if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in names:
+   name=node.targets[0].id;assert name not in out
+   start=sum(map(len,lines[:node.value.lineno-1]))+node.value.col_offset
+   end=sum(map(len,lines[:node.value.end_lineno-1]))+node.value.end_col_offset
+   out[name]=(start,end,ast.literal_eval(node.value))
+ assert set(out)==set(names)
+ return text,tree,out
+
+
+def dense(value):
+ if type(value)is dict:return '{'+','.join(ascii(key)+':'+dense(value[key]) for key in sorted(value))+'}'
+ if type(value)is list:return '['+','.join(dense(item) for item in value)+']'
+ return ascii(value)
+
+
+old_text,old_tree,old_slots=slots(data[2]);actual_text,actual_tree,actual_slots=slots(data[3])
+expected=dict(binding['role_selections'],BINDINGS=binding['bindings'],OWNER_SHA=sha(data[5]),OWNER_END=lease['lease_end_utc'])
+assert {name:value[2] for name,value in actual_slots.items()}==expected
+reversed_text=actual_text
+for name,(start,end,value) in sorted(actual_slots.items(),key=lambda item:item[1][0],reverse=True):
+ old_start,old_end,unused=old_slots[name]
+ reversed_text=reversed_text[:start]+old_text[old_start:old_end]+reversed_text[end:]
+assert reversed_text.encode('utf8')==data[2]
+kinds=(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)
+assert [ast.dump(node,include_attributes=False) for node in old_tree.body if isinstance(node,kinds)]==[ast.dump(node,include_attributes=False) for node in actual_tree.body if isinstance(node,kinds)]
+compact=old_text
+for name,(start,end,value) in sorted(old_slots.items(),key=lambda item:item[1][0],reverse=True):
+ compact=compact[:start]+dense(expected[name])+compact[end:]
+assert compact.encode('utf8')!=data[3]
+unit=binding['role_selections']['UNIT_TERMINAL_RELATIVE']
+assert unit=='ROOT_LAUNCH_TERMINAL_006.json'
+assert WORK/unit!=G/unit
+for key in ('COORDINATION_PEER_REPLY_RELATIVE','COORDINATION_ROOT_RESPONSE_RELATIVE'):
+ assert (WORK/binding['role_selections'][key]).is_relative_to(WORK)
+profile_key=str(G/'GUARD_RUNTIME_PROFILE_006-rev003.json')
+profile_bytes=len(data[7]);profile_pin=sha(data[7])
+assert profile_bytes<=65536<table['immutable']['profile']['cap']==2097152
+old_ledger_a=dict(path=profile_key,sha256=profile_pin,bytes=profile_bytes,maximum=2097152)
+old_ledger_b=dict(path=profile_key,sha256=profile_pin,bytes=profile_bytes,maximum=65536)
+assert old_ledger_a!=old_ledger_b
+assert {key:value for key,value in old_ledger_a.items() if key!='maximum'}=={key:value for key,value in old_ledger_b.items() if key!='maximum'}
+for unused in range(2):
+ for path,value in zip(selected,data):assert path.read_bytes()==value
+copies=OWN/'selected-genuine-counterexamples-002';copies.mkdir()
+rows=[]
+for index,(path,value) in enumerate(zip(selected,data)):
+ copied=copies/(str(index).zfill(2)+'.bytes')
+ with copied.open('xb') as stream:stream.write(value)
+ assert copied.read_bytes()==value and path.read_bytes()==value
+ rows.append(dict(path=str(path),sha256=sha(value),bytes=len(value),copy_path=str(copied),three_reads_exact=True,copy_exact=True))
+facts=dict(schema_version=1,record_type='guard006_constructor_genuine_source_data_counterexamples',author='/root/pubnative_review',
+ finite_inputs=rows,M3_actual_source_sha256=sha(data[3]),M3_actual_source_bytes=len(data[3]),
+ actual_six_literal_values_equal_authenticated_binding_and_lease=True,actual_exact_six_literal_byte_reversal=True,all_functions_classes_ASTs_unchanged=True,
+ old_constructor_compact_render_sha256=sha(compact.encode('utf8')),old_constructor_compact_render_bytes=len(compact.encode('utf8')),old_constructor_render_not_equal_genuine_Source=True,
+ unit_role_relative=unit,old_WORK_join=str(WORK/unit),actual_GUARD_join=str(G/unit),old_unit_join_wrong=True,
+ profile_caps=dict(initial_immutable=2097152,later_fixed_role=65536,actual_bytes=profile_bytes),same_source_identity_different_annotation_only=True,
+ exact_current_LATE_role=str(G/'INDEPENDENT_GUARD_ROOT_LAUNCH_LATE_REVIEW_006.json'),old_alias_not_selected_role=True,
+ target_imports=False,target_definitions_executed=False,target_functions_called=False,constructor_main_executed=False,tests_executed=False,
+ actual_model_outputs_created=False,actual_phase_execution=False,candidate_final_freeze=False,SourceActualInputs=None,post_readback_exact=True,
+ limitations='These are author-attributed finite source-data and AST witnesses. No constructor/helper execution, actual unit acceptance, bound-model admission or Root physical producer attestation is inferred.')
+with (OWN/'GENUINE_M3_SOURCE_COUNTEREXAMPLES_002.json').open('xb') as stream:stream.write((json.dumps(facts,sort_keys=True,indent=2)+'\n').encode('ascii'))
+print(json.dumps(dict(source_counterexamples=4,genuine_M3_Source=sha(data[3]),candidate_final_freeze=False,target_execution=False),sort_keys=True))

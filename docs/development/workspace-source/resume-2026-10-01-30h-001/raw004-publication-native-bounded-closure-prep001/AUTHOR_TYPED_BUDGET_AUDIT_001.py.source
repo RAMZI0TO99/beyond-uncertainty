@@ -1,0 +1,25 @@
+"""Walk serialized own metadata, never selected target definitions."""
+import json
+from pathlib import Path
+stage=Path(__file__).absolute().parent
+data=json.loads((stage/'ALL31_TYPED_POLICY_COMMITMENT_001.json').read_bytes())
+nodes=0
+tags={}
+def quoted(text):
+    return 2+sum(2 if c in ('"','\\') else 6 if ord(c)<32 else 1 for c in text)
+def walk(row):
+    global nodes
+    nodes+=1
+    tag,body=row
+    tags[tag]=tags.get(tag,0)+1
+    if tag=='str': return quoted(tag)+quoted(body)+3
+    if tag=='int': return quoted(tag)+len(str(body))+3
+    if tag in ('dict','mappingproxy'): costs=[quoted(k)+walk(v)+3 for k,v in body]
+    elif tag=='frozenset': costs=[quoted(v) for v in body]
+    else: costs=[walk(v) for v in body]
+    return quoted(tag)+5+sum(costs)+max(0,len(body)-1)
+costs=[quoted(name)+walk(value)+3 for name,value in data[2]]
+result={'typed_walker_nodes':nodes,'predicted_bytes':quoted(data[0])+quoted(data[1])+6+sum(costs)+len(data[2])-1,'tags':tags}
+with (stage/'TYPED_SNAPSHOT_BUDGET_AUDIT_001.json').open('x',encoding='utf-8') as stream:
+    json.dump(result,stream,indent=2);stream.write('\n')
+print(result)

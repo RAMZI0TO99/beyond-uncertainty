@@ -1,0 +1,95 @@
+"""UNRUN bounded once-only Root documentation publisher. Never a target gate.
+
+Author preparation does not call main. Every selected byte and primary baseline
+is checked before Root publication. Before/candidate copies and partial records
+remain available; concurrent edits are refused rather than absorbed or undone.
+"""
+import argparse, hashlib, json, os, re, stat
+from datetime import datetime, timezone
+from pathlib import Path
+ROOT=Path(r'D:\Aenv\pro2')
+OWN=ROOT/'resume-2026-10-03-continuation001/root-docs-major033'
+MANIFEST=OWN/'STAGED_DOCUMENTATION_MANIFEST_033_001.json'
+PRIMARY=('AGENTS.md','HANDOFF.md','START_HERE.md','resume-2026-09-28-001/SESSION.md','resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md')
+CHECKPOINT='resume-2026-10-03-continuation001/CONTINUATION_CHECKPOINT_004.md'
+REVIEW=ROOT/'resume-2026-10-03-continuation001/root-docs-independent-major033/INDEPENDENT_MAJOR033_PREPUBLICATION_SOURCE_REVIEW_001.json'
+MAX_FILE=8388608
+def need(v,m):
+ if not v: raise ValueError(m)
+def sha(v): return hashlib.sha256(v).hexdigest()
+def encoded(v): return (json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('ascii')
+def exact(v,keys): need(type(v) is dict and set(v)==set(keys),'closed keyset differs')
+def decode(v):
+ def pairs(rows):
+  d={}
+  for k,x in rows: need(k not in d,'duplicate decoded JSON key');d[k]=x
+  return d
+ def bad(v): raise ValueError('float/nonfinite JSON refused')
+ need(not v.startswith(b'\xef\xbb\xbf'),'JSON BOM')
+ return json.loads(v.decode('utf-8',errors='strict'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def local(relative):
+ need(type(relative) is str and 0<len(relative)<=399 and '\\' not in relative and not relative.startswith('/') and all(p not in ('','.','..') and ':' not in p for p in relative.split('/')),'canonical Root-relative path')
+ value=ROOT.joinpath(*relative.split('/'));need(value!=ROOT,'Root is not a file');return value
+def raw(s): return tuple(getattr(s,k) for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns'))
+def chain(p):
+ rows=[]
+ for q in [*reversed(p.parents),p]:
+  s=q.lstat();need(stat.S_ISDIR(s.st_mode) and not s.st_file_attributes&1024,'nonplain directory');rows.append((str(q),s.st_dev,s.st_ino))
+ return rows
+def read(path,pin,cap):
+ need(type(cap) is int and 0<cap<=MAX_FILE and type(pin) is str and re.fullmatch('[0-9a-f]{64}',pin),'bounded external pin')
+ ancestry=chain(path.parent);a=path.lstat();need(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and not a.st_file_attributes&1024 and a.st_size<=cap,'plain one-link pre-read cap')
+ with path.open('rb',buffering=0) as f:
+  b=os.fstat(f.fileno());x,y=raw(a),raw(b);need(x[:4]+x[5:]==y[:4]+y[5:] and x[4]==x[8] and b.st_size<=cap,'ordinary crossAPI8/birth');data=f.read(a.st_size+1);need(raw(b)==raw(os.fstat(f.fileno())),'descriptor raw9')
+ need(raw(a)==raw(path.lstat()) and chain(path.parent)==ancestry and len(data)==a.st_size and sha(data)==pin,'path/bytes/raw9 changed');return data
+def pinned(row):
+ exact(row,('path','bytes','sha256'));need(type(row['bytes']) is int and 0<=row['bytes']<=MAX_FILE,'row byte domain');data=read(local(row['path']),row['sha256'],max(1,row['bytes']));need(len(data)==row['bytes'],'row exact size');return data
+def absent(path):
+ ancestry=chain(path.parent)
+ try:path.lstat()
+ except FileNotFoundError:need(chain(path.parent)==ancestry,'absence ancestor drift');return
+ raise ValueError('one-use role already exists: '+str(path))
+def once(path,data):
+ need(type(data) is bytes and len(data)<=MAX_FILE,'own write cap');absent(path);stage=Path(str(path)+'.staging');absent(stage);ancestry=chain(path.parent)
+ with stage.open('xb') as f:need(f.write(data)==len(data),'complete write');f.flush();os.fsync(f.fileno())
+ need(read(stage,sha(data),max(1,len(data)))==data and chain(path.parent)==ancestry,'staging bytes');os.rename(stage,path);need(read(path,sha(data),max(1,len(data)))==data,'published readback')
+def main():
+ p=argparse.ArgumentParser();p.add_argument('--expected-self-sha256',required=True);p.add_argument('--expected-manifest-sha256',required=True);p.add_argument('--expected-review-sha256',required=True);p.add_argument('--expected-publish-receipt-sha256');p.add_argument('--root-selected-action',choices=('publish','restore'),required=True);a=p.parse_args()
+ need(Path(__file__).absolute()==OWN/'PUBLISH_MAJOR033_DOCS_001.py','fixed Root publisher');read(Path(__file__),a.expected_self_sha256,65536)
+ manifest=decode(read(MANIFEST,a.expected_manifest_sha256,2097152));exact(manifest,('schema_version','record_type','author','prepared_utc','checkpoint','primaries','inputs','links','source_only','publication_performed','target_execution','operational_authority'))
+ need(type(manifest['schema_version']) is int and manifest['schema_version']==1 and manifest['record_type']=='major033_documentation_stage' and manifest['author']=='/root/root_pipeline_binder' and manifest['source_only'] is True and all(manifest[k] is False for k in ('publication_performed','target_execution','operational_authority')),'Source stage nominals')
+ review=decode(read(REVIEW,a.expected_review_sha256,2097152));exact(review,('schema_version','record_type','created_utc','reviewer','source_author','scope','verdict','publisher_sha256','manifest_sha256','publication_performed','target_execution','operational_authority'))
+ need(type(review['schema_version']) is int and review['schema_version']==1 and review['record_type']=='independent_major033_documentation_prepublication_source_review' and review['reviewer']=='/root/capsule_design_review' and review['source_author']=='/root/root_pipeline_binder' and review['scope']=='LOCAL_PRIVATE_MAJOR033_DOCUMENTATION_ONLY' and review['verdict']=='PASS_MAJOR033_DOCUMENTATION_SOURCE_ONLY' and review['publisher_sha256']==a.expected_self_sha256 and review['manifest_sha256']==a.expected_manifest_sha256 and all(review[k] is False for k in ('publication_performed','target_execution','operational_authority')),'Different genuine complete documentation source review')
+ need(type(manifest['inputs']) is list and len(manifest['inputs'])<=100,'finite selected local evidence')
+ for row in manifest['inputs']:
+  exact(row,('original','copy'));need(pinned(row['original'])==pinned(row['copy']),'evidence copy differs')
+ checkpoint=pinned(manifest['checkpoint']);checkpoint_path=local(CHECKPOINT)
+ rows=manifest['primaries'];need(type(rows) is list and tuple(row['destination'] for row in rows)==PRIMARY,'exact primary set/order')
+ prepared=[]
+ for row in rows:
+  exact(row,('destination','before','candidate','preservation'));old=pinned(row['before']);new=pinned(row['candidate']);need(row['preservation'] in ('prefix','suffix'),'history direction');need(new.startswith(old) if row['preservation']=='prefix' else new.endswith(old),'exact old-byte history');prepared.append((local(row['destination']),old,new))
+ need(type(manifest['links']) is list and len(manifest['links'])<=200,'finite local links')
+ for row in manifest['links']:
+  exact(row,('origin','target','resolved_path'));destination=local(row['resolved_path']);need(destination==checkpoint_path or destination.is_file(),'selected link missing')
+ action=a.root_selected_action;receipt=OWN/('ROOT_'+action.upper()+'_RECEIPT_033.json');absent(receipt);absent(Path(str(receipt)+'.staging'))
+ if action=='publish':
+  need(a.expected_publish_receipt_sha256 is None,'publish cannot select a future receipt')
+  absent(checkpoint_path);absent(Path(str(checkpoint_path)+'.staging'));source_index,target_index=1,2
+ else:
+  old_receipt=decode(read(OWN/'ROOT_PUBLISH_RECEIPT_033.json',a.expected_publish_receipt_sha256,65536));need(old_receipt['manifest_sha256']==a.expected_manifest_sha256 and old_receipt['publisher_sha256']==a.expected_self_sha256 and old_receipt['changes']==list(PRIMARY),'genuine publication history');need(read(checkpoint_path,sha(checkpoint),len(checkpoint))==checkpoint,'checkpoint history');source_index,target_index=2,1
+ temporary=[]
+ for item in prepared:
+  destination=item[0];source=item[source_index];target=item[target_index];need(read(destination,sha(source),max(1,len(source)))==source,'exact current primary baseline');temporary.append((destination,destination.with_name(destination.name+'.major033-'+action+'.tmp'),source,target))
+ # Whole-cohort recheck precedes the first primary replacement.
+ for destination,temp,source,target in temporary:absent(temp);absent(Path(str(temp)+'.staging'))
+ for destination,temp,source,target in temporary:once(temp,target)
+ for destination,temp,source,target in temporary:need(read(destination,sha(source),max(1,len(source)))==source,'primary changed during temporary preparation')
+ if action=='publish':once(checkpoint_path,checkpoint)
+ changed=[]
+ try:
+  for destination,temp,source,target in temporary:
+   need(read(destination,sha(source),max(1,len(source)))==source,'concurrent primary edit');os.replace(temp,destination);need(read(destination,sha(target),max(1,len(target)))==target,'primary readback');changed.append(destination.relative_to(ROOT).as_posix())
+ except BaseException as error:
+  once(OWN/('PARTIAL_'+action.upper()+'_033.json'),encoded(dict(schema_version=1,record_type='partial_documentation_change',author='/root',changed=changed,error_type=type(error).__name__,automatic_rollback=False,old_and_candidate_copies_retained=True,target_execution=False,operational_authority=False)));raise
+ once(receipt,encoded(dict(schema_version=1,record_type='root_documentation_'+action,author='/root',created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),publisher_sha256=a.expected_self_sha256,manifest_sha256=a.expected_manifest_sha256,source_review_sha256=a.expected_review_sha256,changes=changed,checkpoint_retained=CHECKPOINT,batch_atomicity_guaranteed=False,external_Root_invocation_required=True,different_creation_review=None,target_execution=False,operational_authority=False)))
+if __name__=='__main__':main()

@@ -1,0 +1,135 @@
+"""Owned finite documentation/AST/data review only. No reviewed code executes."""
+from pathlib import Path
+from datetime import datetime,timezone
+import hashlib,json,os,re,stat,ast
+
+ROOT=Path(r'D:\Aenv\pro2');BASE=ROOT/'resume-2026-10-01-30h-001'
+CAP=4194304
+def sha(b):return hashlib.sha256(b).hexdigest()
+def enc(v):return (json.dumps(v,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def once(p,b):
+    with p.open('xb') as f:f.write(b)
+def raw(s):return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,getattr(s,'st_file_attributes',0),getattr(s,'st_birthtime_ns',None)]
+def read(p):
+    a=p.lstat();assert stat.S_ISREG(a.st_mode) and a.st_nlink==1 and not getattr(a,'st_file_attributes',0)&1024 and a.st_size<=CAP
+    with p.open('rb') as f:
+        b=os.fstat(f.fileno());data=f.read(CAP+1);c=os.fstat(f.fileno())
+    d=p.lstat();assert raw(a)==raw(d) and raw(b)==raw(c) and len(data)==a.st_size
+    return data,dict(path=str(p),bytes=len(data),sha256=sha(data),path_raw9=raw(a),descriptor_raw9=raw(b))
+audit_path=BASE/'DOCS_REFRESH_AUDIT_026.json'
+ab,ar=read(audit_path);assert sha(ab)=='024e2be1321032bc0599c123dc77040f85836bb31260f3eb30fa94b2ee27a2b3'
+audit=json.loads(ab);pairs=json.loads(read(BASE/'DOCS_REFRESH_INPUTS_026.json')[0])['inputs']
+baseline=json.loads(read(BASE/'DOCS_REFRESH_BASELINE_026.json')[0])['files']
+design=BASE/'consumer005-isolated-unit-harness-design001'
+extra=[BASE/'PREPARE_ROOT_DOCS_REFRESH_026.py',BASE/'INDEPENDENT_DOCS_REFRESH_REVIEW_025.json',
+       BASE/'consumer-guard-test-runtime005/inputs/ACTUAL_SOURCE_PEER_003.json',
+       design/'inputs/legacyGG5/run-consumer-guard-unit005.TEMPLATE.py',
+       design/'inputs/legacyGG5/consumer-guard-child-005.TEMPLATE.py',
+       design/'inputs/legacyGG5/GUARD_RUNTIME_PROFILE_005.json',
+       design/'inputs/source005/test_raw_consumer_guards_005.TEMPLATE.py',
+       design/'inputs/source005/SOURCE_GUARD_TEST_BINDINGS_005.json',
+       design/'EMPTY_NAMESPACE_STRICT_LOWER_BOUND.bytes']
+paths=list(dict.fromkeys([audit_path]+[ROOT/r['path'] for r in audit['files']]+[ROOT/r['original']['path'] for r in pairs]+extra))
+data={};rounds=[]
+for iteration in range(3):
+    rows=[]
+    for p in paths:
+        b,r=read(p);rows.append(r)
+        if iteration==0:data[str(p)]=b
+    rounds.append(rows)
+assert rounds[0]==rounds[1]==rounds[2]
+assert len(audit['files'])==38 and len(pairs)==25
+for r in audit['files']:
+    b=data[str(ROOT/r['path'])];assert len(b)==r['bytes'] and sha(b)==r['sha256']
+for pair in pairs:
+    ob=data[str(ROOT/pair['original']['path'])];cb=data[str(ROOT/pair['copy']['path'])]
+    assert ob==cb and sha(ob)==pair['original']['sha256']==pair['copy']['sha256']
+history=[];added={}
+for item in baseline:
+    p=ROOT/item['primary'];old=data[str(ROOT/item['before']['path'])];current=data[str(p)]
+    if item['proof']=='exact_retained_suffix':
+        assert current.endswith(old);added[item['primary']]=current[:-len(old)]
+    elif item['proof']=='exact_retained_prefix':
+        assert current.startswith(old);added[item['primary']]=current[len(old):]
+    else:added[item['primary']]=current
+    history.append(dict(path=item['primary'],before_bytes=len(old),before_sha256=sha(old),proof=item['proof'],verified=True))
+cp='resume-2026-10-01-30h-001/30H_RESUME_CHECKPOINT_026.md';added[cp]=data[str(ROOT/cp)]
+links=[]
+for document in ['AGENTS.md','HANDOFF.md','START_HERE.md',cp,'resume-2026-09-28-001/SESSION.md','resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md']:
+    b=added[document]
+    for target in re.findall(r'\]\(([^)]+)\)',b.decode('utf-8')):
+        resolved=(ROOT/document).parent/target
+        assert resolved.resolve().is_file()
+        links.append(dict(document=document,target=target,resolved_path=str(resolved.resolve())))
+assert links==audit['maintained_links'] and len(links)==22
+prior=json.loads(data[str(BASE/'INDEPENDENT_DOCS_REFRESH_REVIEW_025.json')])
+absence=[dict(path=r['path'],absent=not Path(r['path']).exists()) for r in prior['time_local_actual_phase_absences']]
+assert len(absence)==33 and all(r['absent'] for r in absence)
+consumer=json.loads(data[str(BASE/'consumer005-complete-static-audit001/INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.json')])
+before=json.loads(data[str(BASE/'guard005-root-metadata-prep002/independent-fast-before-source-audit002/INDEPENDENT_FAST_BEFORE_SOURCE_DELTA_REVIEW_002.json')])
+after=json.loads(data[str(BASE/'guard005-root-metadata-prep002/independent-fast-after-metadata-review-prep001/INDEPENDENT_AFTER_REVIEW_UTILITY_SOURCE_REVIEW_002.json')])
+assert consumer['verdict']=='PASS_STATIC_CONSUMER005_COMPLETE_SOURCE_AND_CAUSAL_TEST_PREPARATION_ONLY_WITH_PATH_AND_RUNTIME_LIMITS'
+assert before['verdict']=='PASS_STATIC_BEFORE006_EXPLICIT_TRANSITIVE_BINDING_EVIDENCE_DELTA_ONLY'
+assert after['verdict']=='PASS_STATIC_SOURCE_UTILITY_PREPARATION_ONLY'
+assert consumer['actual_collection'] is None and consumer['actual_results'] is None and not consumer['operational_authority_granted']
+assert after['utility_main_executed'] is False and after['future_actual_records_none'] is True
+event=json.loads(data[str(design/'EVENT_RECEIPT_CAP_LOWER_BOUND_001.json')]);lower=data[str(design/'EMPTY_NAMESPACE_STRICT_LOWER_BOUND.bytes')]
+lowerrows=json.loads(lower);model=event['models']['EMPTY_NAMESPACE_STRICT_LOWER_BOUND']
+assert len(lowerrows)==780 and len(lower)==276146 and sha(lower)==model['canonical_subset_sha256']
+assert (json.dumps(lowerrows,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')==lower
+assert sum(len(v) for v in event['cases38_from_AST_return_labels'].values())==38
+assert 16*5*2+38*5*2+4*6*5*2==780 and 276146-262144==14002
+oldpeer_blob=data[str(BASE/'consumer-guard-test-runtime005/inputs/ACTUAL_SOURCE_PEER_003.json')]
+oldpeer=json.loads(oldpeer_blob);assert sha(oldpeer_blob)=='54b19d3611ebb51bd6504a0ef6b23c689c86b5c5c163688be868fa51c0808050'
+assert len(oldpeer)==51 and len(oldpeer['raw_policy_facts'])==12 and len(consumer)==38
+assert all(key not in consumer for key in ('raw_policy_facts','source_bindings','source_authors'))
+driver_source=data[str(design/'inputs/legacyGG5/run-consumer-guard-unit005.TEMPLATE.py')].decode('utf-8')
+driver_AST=ast.parse(driver_source)
+assert 'facts = source_peer["raw_policy_facts"]' in driver_source and 'exact(facts, profile["raw_policy_facts"]' in driver_source
+assert 'source_peer = decode(read(work_path(args.source_peer_path), SOURCE003_PEER_SHA256, MAX_JSON)[0])' in driver_source
+profile=json.loads(data[str(design/'inputs/legacyGG5/GUARD_RUNTIME_PROFILE_005.json')])
+assert len(profile['prepared_method_names'])==14 and profile['raw_source_sha256'].startswith('7fe7dc19')
+assert len(data[str(BASE/'consumer005-complete-static-audit001/INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.json')])==2553985>2*1024*1024
+postabsence=[dict(path=r['path'],absent=not Path(r['path']).exists()) for r in absence]
+assert postabsence==absence
+report=dict(schema_version=1,record_type='independent_documentation_refresh_review',checkpoint=26,
+    reviewer='/root/native_frame_explorer',reviewed_utc=datetime.now(timezone.utc).isoformat(),
+    verdict='REFUSED_DOCUMENTATION_FROZEN_CREATION_SCOPE_ONLY',
+    selected_checkpoint_sha256='62aef8cce843b57cbe4f5ba7413b032d767fc181ab99f27147379b6101eeef8c',
+    selected_publication_audit_sha256=sha(ab),declared_files=38,input_pairs=25,maintained_links=22,
+    finite_read_inputs=len(paths),read_rounds=3,all_selected_bytes_sameAPI_raw9_stable=True,
+    exact_before_copy_and_AGENTS_suffix_SESSION_RESOURCE_prefix=history,links=links,
+    blockers=[dict(id='D026-01',documents=['30H_RESUME_CHECKPOINT_026.md:24','HANDOFF.md:24','resume-2026-09-28-001/SESSION.md:4475'],
+        claim='Old source peer reader expects12 keys versus new complete source peer38 keys.',
+        finding='The old whole peer54b19 has51 top-level keys. Exact12 applies to nested raw_policy_facts only: driver395-396. Whole peer read391 is pinned with MAX_JSON2MiB; selected core fields393-394 and nested/source author maps395-408 also differ. The new peer lacks old raw_policy_facts/source_bindings/source_authors fields. Thus12-versus38 conflates a nested fact schema with a top-level report schema.',
+        corrected_scope='State old peer has51 top-level fields and nested12 raw_policy_facts; old reader requires the old pinned source003/core/fact shape and2MiB. New38-field2553985B peer is incompatible due size and role/shape, not an old closed12 top-level keyset.',
+        target_code_executed=False)],
+    separately_verified_facts=[
+        '38declared files/25original-copy input pairs and22maintained local links match; all five before copies preserved, AGENTS196205-byte suffix and SESSION323005/RESOURCE20510-byte prefixes exact.',
+        'Consumer005 complete source peer5a283 correctly qualified:1737 inputs/884payload/847before+14active/19+5 sibling method ASTs; collection/results None and Path semantics qualified.',
+        'BEFORE0064b456 is narrow source delta over full00530d1; AFTER0024bb5 is source utility preparation only. No main/actual core/runtime approval inferred.',
+        'Future Consumer005 harness design remains author-only/unapproved; old child selects one class, actual collection/results remain absent, no cap increase or implementation approved.',
+        'Pure data reconstruction:three event families160+380+240=780; canonical subset276146 exceeds262144 by14002. This is hypothetical data arithmetic, not runtime failure.',
+        'GG5 profile has14 prepared methods and raw7fe source003, not current Raw4/Consumer005/native/publication validation.',
+        'Gate009f95/b0b2 remains attributed11:55 timed finite evidence:1accepted13nodes/twofailures/44partitions5562unaccepted/sixknownnames/no fixedcontinuation002, not global absence/failure-cause/full742263 authority.',
+        'Bootstrap directly confirmed178891 draft and32489/578node31-fact witness as historical unfrozen/unaccepted author report; current draft has evolved. No source/cap/native approval is derived from those sizes.',
+        'Original600 context/boundlate90/unit450+after60/resource60/noReplay and primary docs fixed during proof interval are instructions, not achieved actual readiness.',
+        'Canonical/Pro3/soleACK/lease/quiet holds, owner22:36:15Z, science/twins/epoch/spent/reserves/no public/no replay/monitor-closeout duties remain.'],
+    time_local_actual_phase_absences=absence,post_phase_absences=postabsence,
+    author_attribution=dict(author='/root/bootstrap_stage',confirmation_received=True,common_reported_bytes=178891,typed31_reported_bytes=32489,reported_nodes=578,creation_time_only=True,current_source_or_caps_independently_approved=False),
+    inputs=rounds[0],post=rounds[2],target_compile_import_definitions_tests_Git_FFI_PS_native_executed=False,
+    primary_or_source_edits=False,actual_authority_granted=False,
+    limitation='Scoped documentation refusal; source reviews and all frozen history remain accepted at their own scopes. No operational timer approval is issued by this review.')
+once(BASE/'INDEPENDENT_DOCS_REFRESH_REVIEW_026.json',enc(report))
+md='''Root026 documentation is REFUSED in its frozen creation scope for one schema-description error.
+
+The checkpoint/HANDOFF say the old source-peer reader expects12 keys and compare that with the new complete peer38. Actual old peer54b19 has51 top-level keys; the exact12 check applies to nested raw_policy_facts at driver395-396. Driver391 reads the pinned whole peer under2MiB;393-408 validates old source003 core/facts/source maps. The new38-field2,553,985-byte peer remains incompatible in size and role/shape, but there is no old closed12 top-level schema. SESSION repeats the same conflation. Preserve026 bytes and correct this precision explicitly before unconditional documentation acceptance.
+
+All38 declarations,25 original/copy pairs and22 local links matched three byte/raw9 reads. AGENTS196205-byte suffix and SESSION323005/RESOURCE20510-byte prefixes remain exact; HANDOFF/START before copies are preserved. Consumer005/BEFORE006/AFTER002 source-only scopes, sibling19+5 discovery, Path/runtime limits, author-only harness status and canonical holds are otherwise supported.
+
+Pure data reproduces780 hypothetical event rows and276146 canonical bytes,14002 above262144. GG5 still selects the old14-method Consumer003 profile.33 fixed fresh-phase paths were absent before/post. Bootstrap confirmed178891/32489/578 as historical unfrozen author attribution, not a current draft/cap/native proof.
+
+No target compile/import/definitions/tests/Git/FFI/PS/native/live action or primary edit occurred. No actual phase, operational readiness or timer approval is issued. The valid source reviews remain preserved at their separate scopes.
+'''
+once(BASE/'INDEPENDENT_DOCS_REFRESH_REVIEW_026.md',md.encode('utf-8'))
+print(json.dumps({n:sha((BASE/n).read_bytes()) for n in ('INDEPENDENT_DOCS_REFRESH_REVIEW_026.json','INDEPENDENT_DOCS_REFRESH_REVIEW_026.md')}))

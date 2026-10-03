@@ -1,0 +1,188 @@
+"""Root-invoked, reversible documentation publication; author stage never runs main."""
+from pathlib import Path
+from datetime import datetime, timezone
+import argparse
+import hashlib
+import json
+import os
+import re
+
+ROOT = Path('D:/Aenv/pro2')
+OWN = ROOT / 'resume-2026-10-03-continuation001/root-docs-major031'
+MANIFEST = OWN / 'STAGED_DOCUMENTATION_MANIFEST_031.json'
+PRIMARY = (
+    'AGENTS.md', 'HANDOFF.md', 'START_HERE.md',
+    'resume-2026-09-28-001/SESSION.md',
+    'resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md',
+)
+CHECKPOINT = 'resume-2026-10-03-continuation001/CONTINUATION_CHECKPOINT_002.md'
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def encoded(value):
+    return (json.dumps(value, indent=2, sort_keys=True, allow_nan=False) + '\n').encode('ascii')
+
+
+def path(relative):
+    if type(relative) is not str or not relative or '\\' in relative:
+        raise ValueError('invalid relative path')
+    value = (ROOT / relative).resolve()
+    value.relative_to(ROOT.resolve())
+    if value == ROOT.resolve():
+        raise ValueError('root is not a file')
+    return value
+
+
+def pinned(row, external=False):
+    if type(row) is not dict or set(row) != {'path', 'bytes', 'sha256'}:
+        raise ValueError('invalid file row')
+    if type(row['bytes']) is not int or row['bytes'] < 0:
+        raise ValueError('invalid byte count')
+    if type(row['sha256']) is not str or re.fullmatch('[0-9a-f]{64}', row['sha256']) is None:
+        raise ValueError('invalid digest')
+    if external:
+        if row['path'] != 'D:\\Aenv\\pro3\\runs\\coordination\\next_step_20261003\\admission_refusal_audit_001.json' or row['sha256'] != 'ec9900b62bca94acb9ce60da7f8a08c14fc42e07e49f77090a6e8911f9f866d1':
+            raise ValueError('unexpected external source')
+        source = Path(row['path'])
+    else:
+        source = path(row['path'])
+    data = source.read_bytes()
+    if len(data) != row['bytes'] or digest(data) != row['sha256']:
+        raise ValueError('changed selected file: ' + row['path'])
+    return data
+
+
+def once(destination, data):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open('xb') as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    if destination.read_bytes() != data:
+        raise ValueError('readback mismatch')
+
+
+def replacements(rows, data_key, expected_key, label):
+    # Every input and output is preflighted before the first primary mutation.
+    if tuple(row['destination'] for row in rows) != PRIMARY:
+        raise ValueError('primary set/order mismatch')
+    selected = []
+    for row in rows:
+        data = pinned(row[data_key])
+        expected = pinned(row[expected_key])
+        destination = path(row['destination'])
+        if destination.read_bytes() != expected:
+            raise ValueError('primary changed: ' + row['destination'])
+        selected.append((destination, data, expected))
+    temporary = []
+    for destination, data, expected in selected:
+        temp = destination.with_name(destination.name + '.major031-' + label + '.tmp')
+        once(temp, data)
+        temporary.append((destination, temp, data, expected))
+    # Recheck the whole baseline after temporary writes; no concurrent edit is absorbed.
+    for destination, temp, data, expected in temporary:
+        if destination.read_bytes() != expected:
+            raise ValueError('primary changed during preflight: ' + str(destination))
+    changes = []
+    try:
+        for destination, temp, data, expected in temporary:
+            if destination.read_bytes() != expected:
+                raise ValueError('primary changed before replacement: ' + str(destination))
+            os.replace(temp, destination)
+            if destination.read_bytes() != data:
+                raise ValueError('published readback mismatch')
+            changes.append(destination.relative_to(ROOT).as_posix())
+    except BaseException as error:
+        # No blind rollback across an agent edit. Exact before copies remain available.
+        once(OWN / ('PARTIAL_' + label.upper() + '_031.json'), encoded({
+            'record_type': 'partial_documentation_change', 'changed': changes,
+            'error_type': type(error).__name__, 'automatic_rollback': False,
+            'operational_authority': False,
+        }))
+        raise
+    return changes
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--expected-self-sha256', required=True)
+    parser.add_argument('--expected-manifest-sha256', required=True)
+    parser.add_argument('--root-selected-action', choices=('publish', 'restore'), required=True)
+    arguments = parser.parse_args()
+    if digest(Path(__file__).read_bytes()) != arguments.expected_self_sha256:
+        raise ValueError('publisher source mismatch')
+    manifest_bytes = MANIFEST.read_bytes()
+    if digest(manifest_bytes) != arguments.expected_manifest_sha256:
+        raise ValueError('stage manifest mismatch')
+    manifest = json.loads(manifest_bytes)
+    if set(manifest) != {'schema_version', 'record_type', 'author', 'prepared_utc',
+                         'checkpoint', 'primaries', 'inputs', 'links', 'source_only',
+                         'publication_performed', 'target_execution', 'operational_authority'}:
+        raise ValueError('stage schema mismatch')
+    if type(manifest['schema_version']) is not int or manifest['schema_version'] != 1 or manifest['record_type'] != 'major031_documentation_stage':
+        raise ValueError('stage nominal mismatch')
+    if manifest['author'] != '/root/pubnative_review' or manifest['source_only'] is not True:
+        raise ValueError('stage author/scope mismatch')
+    if any(manifest[key] is not False for key in ('publication_performed', 'target_execution', 'operational_authority')):
+        raise ValueError('stage authority mismatch')
+    for row in manifest['inputs']:
+        if type(row) is not dict or set(row) != {'original', 'copy', 'external'} or type(row['external']) is not bool:
+            raise ValueError('input selection schema mismatch')
+        if pinned(row['original'], row['external']) != pinned(row['copy']):
+            raise ValueError('input copy mismatch')
+    checkpoint = pinned(manifest['checkpoint'])
+    checkpoint_path = path(CHECKPOINT)
+    for row in manifest['primaries']:
+        old = pinned(row['before'])
+        new = pinned(row['candidate'])
+        if row['preservation'] == 'suffix':
+            good = new.endswith(old)
+        elif row['preservation'] == 'prefix':
+            good = new.startswith(old)
+        else:
+            good = False
+        if not good:
+            raise ValueError('old bytes not retained')
+    for row in manifest['links']:
+        destination = path(row['resolved_path'])
+        if destination != checkpoint_path and not destination.is_file():
+            raise ValueError('missing documentation link')
+    stamp = datetime.now(timezone.utc).isoformat(timespec='microseconds')
+    action = arguments.root_selected_action
+    receipt_path = OWN / ('ROOT_' + action.upper() + '_RECEIPT_031.json')
+    if receipt_path.exists():
+        raise ValueError('action already recorded; no replay')
+    if action == 'publish':
+        if checkpoint_path.exists():
+            raise ValueError('checkpoint already exists')
+        # Confirm all primary baselines before publishing the immutable checkpoint.
+        for row in manifest['primaries']:
+            if path(row['destination']).read_bytes() != pinned(row['before']):
+                raise ValueError('primary baseline changed')
+        once(checkpoint_path, checkpoint)
+        changes = replacements(manifest['primaries'], 'candidate', 'before', 'publish')
+    else:
+        published = OWN / 'ROOT_PUBLISH_RECEIPT_031.json'
+        if not published.is_file() or not checkpoint_path.is_file() or checkpoint_path.read_bytes() != checkpoint:
+            raise ValueError('missing genuine publication history')
+        receipt = json.loads(published.read_bytes())
+        if receipt['manifest_sha256'] != arguments.expected_manifest_sha256 or receipt['changes'] != list(PRIMARY):
+            raise ValueError('publication receipt mismatch')
+        changes = replacements(manifest['primaries'], 'before', 'candidate', 'restore')
+        # Preserve checkpoint, receipts and before/candidate copies as immutable history.
+    once(receipt_path, encoded({
+        'schema_version': 1, 'record_type': 'root_documentation_' + action,
+        'author': '/root', 'created_utc': stamp,
+        'publisher_sha256': arguments.expected_self_sha256,
+        'manifest_sha256': arguments.expected_manifest_sha256, 'changes': changes,
+        'checkpoint_retained': CHECKPOINT, 'different_documentation_review': None,
+        'batch_atomicity_guaranteed': False, 'external_Root_invocation_required': True,
+        'target_execution': False, 'operational_authority': False,
+    }))
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,48 @@
+"""Named source guard strengthening; AST/data only, target execution forbidden."""
+import ast,json
+from pathlib import Path
+stage=Path(__file__).absolute().parent
+common=stage/'front/native_successor_front_common_013_001.py.template'
+test=stage/'source/test_native_schema3_admission_001.py'
+for path in(common,test):
+ with(stage/('BEFORE_FUNCTION_METADATA_'+path.name+'.bytes')).open('xb')as f:f.write(path.read_bytes())
+source=common.read_text(encoding='utf8');tree=ast.parse(source)
+node=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='_raw_helper_function_state')
+lines=source.splitlines(keepends=True)
+lines[node.lineno-1:node.end_lineno]=['''def _raw_helper_function_state(function:types.FunctionType)->tuple[Any,...]:
+ text=(function.__name__,function.__qualname__,function.__module__,function.__doc__)
+ require(all(type(v)is str for v in text[:3])and(text[3]is None or type(text[3])is str),'raw helper function metadata text type differs')
+ return(function.__code__,text,_raw_helper_value_identity(function.__defaults__),_raw_helper_value_identity(function.__kwdefaults__),_raw_helper_value_identity(function.__annotations__))
+''']
+source=''.join(lines).replace("{'B%02d'%i for i in range(1,16)}","{'B%02d'%i for i in range(1,17)}")
+ast.parse(source);assert len(source.encode())<=184317
+common.write_text(source,encoding='utf8',newline='\n')
+source=test.read_text(encoding='utf8');tree=ast.parse(source)
+assignments={n.targets[0].id:n for n in tree.body if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)}
+case='BoundedRaw004CausalCases.test_b16_function_and_method_text_metadata_cold_and_reuse'
+groups=ast.literal_eval(assignments['NATIVE_CRITICAL_FAMILY_CASES'].value);groups['B16']=[case]
+events=ast.literal_eval(assignments['NATIVE_SUBTEST_POLICY'].value)
+for i in range(16):events[f'{case}#{i+1:04d}']={'case_id':case,'expected_refusal':True,'observed_boundary':'RawFunctionMethodTextColdReuse','control_case_id':'BoundedRaw004CausalCases.test_b01_all31_exact_typed_commitment_cold_and_reuse'}
+lines=source.splitlines(keepends=True)
+for name,value in sorted((('NATIVE_CRITICAL_FAMILY_CASES',groups),('NATIVE_SUBTEST_POLICY',events)),key=lambda row:assignments[row[0]].lineno,reverse=True):
+ node=assignments[name];lines[node.lineno-1:node.end_lineno]=[name+' = '+repr(value)+'\n']
+source=''.join(lines)+'''
+    def test_b16_function_and_method_text_metadata_cold_and_reuse(self):
+        with bounded_raw004_fixture()as(n,module):
+            targets=(module.admit_recorded_predecessor,module.SuccessorAdmissionContext.__init__)
+            for timing in('cold','reuse'):
+                for target in targets:
+                    for field in('__name__','__qualname__','__module__','__doc__'):
+                        with self.subTest(timing=timing,target=target.__qualname__,field=field):
+                            self.assertEqual(n['_native_attestation_limit']()[1],395799)
+                            if timing=='cold':n['_RAW_HELPER_EXECUTABLE_STATE']=None
+                            original=getattr(target,field);setattr(target,field,'UNREVIEWED_MUTATION')
+                            try:
+                                with self.assertRaises(ValueError):n['_native_attestation_limit']()
+                            finally:setattr(target,field,original)
+                            self.assertEqual(n['_native_attestation_limit']()[1],395799)
+'''
+ast.parse(source);test.write_text(source,encoding='utf8',newline='\n')
+with(stage/'FUNCTION_METADATA_STRENGTHENING_001.json').open('x',encoding='utf8')as f:
+ json.dump({'schema_version':1,'scope':'named source-only strengthening; no target execution','fields':['__name__','__qualname__','__module__','__doc__'],'guard':'_raw_helper_function_state','planned_case':case,'planned_subtests':16,'declared_subtest_policy_total':len(events),'actual_case_results':None},f,indent=2);f.write('\n')
+print({'common_bytes':len(common.read_bytes()),'declared_subtests':len(events),'target_code_executed':False})

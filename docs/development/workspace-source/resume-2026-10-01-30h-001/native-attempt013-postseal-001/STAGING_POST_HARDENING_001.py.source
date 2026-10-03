@@ -1,0 +1,101 @@
+"""Pure source/AST staging editor; generated policies and project are not imported."""
+import ast,json
+from pathlib import Path
+ROOT=Path(__file__).parent
+qpath=ROOT/'native_successor_postseal_common_013_001.py.template'
+q=qpath.read_text(encoding='utf-8')
+bootstrap=ast.get_source_segment(q,next(n for n in ast.parse(q).body if isinstance(n,ast.FunctionDef) and n.name=='bootstrap_capture'))
+inline=bootstrap.replace('require(', 'bootstrap_require(').replace('HEX64.fullmatch','re.fullmatch').replace('re.fullmatch(expected)','re.fullmatch(r\'[0-9a-f]{64}\',expected)').replace('sha(data)','hashlib.sha256(data).hexdigest()')
+prefix="\ndef bootstrap_require(value,message):\n    if not value:raise ValueError(message)\n\n"+inline+'\n\n'
+for path in ROOT.glob('verify*.py.template'):
+    source=path.read_text(encoding='utf-8')
+    source=source.replace('def load_context():',prefix+'def load_context():')
+    old="    if hashlib.sha256(Path(__file__).read_bytes()).hexdigest()!=args.expected_script_sha256:\n        raise ValueError('reviewed downstream verifier source differs')"
+    assert source.count(old)==1
+    source=source.replace(old,"    self_capture=bootstrap_capture(Path(__file__).absolute(),args.expected_script_sha256)")
+    start=source.index('    for component in reversed((path,*path.parents)):')
+    end=source.index("    name='_attempt013_verified_postseal_policy'",start)
+    source=source[:start]+"    source=bootstrap_capture(path,POST_COMMON_SHA256)\n"+source[end:]
+    source=source.replace("    C.read(path,POST_COMMON_SHA256);C.read(Path(__file__).absolute(),args.expected_script_sha256)","    C.require(C.read(path,POST_COMMON_SHA256)==source and C.read(Path(__file__).absolute(),args.expected_script_sha256)==self_capture,'captured verifier/common source changed')")
+    if 'STDOUT_BYTES=str(' in source:
+        source=source.replace("    STDOUT_SHA=STDOUT_SHA256;STDOUT_BYTES=str(globals()['STDOUT_BYTES']);READY_AUDIT_SHA=AUDIT_SHA256", "    C.require(type(STDOUT_BYTES) is int and 5<=STDOUT_BYTES<=8192,'stdout byte count must be a bound exact integer')\n    STDOUT_SHA=STDOUT_SHA256;STDOUT_BYTES=str(STDOUT_BYTES);READY_AUDIT_SHA=AUDIT_SHA256")
+    ast.parse(source);path.write_bytes(source.encode('utf-8'))
+
+template=(ROOT/'verify-native-monitor-013-window30h-terminal-success-001.py.template').read_text(encoding='utf-8')
+header=template[:template.index('\nFROZEN =')]
+seal=header+'''
+def main():
+    Q,C,F=load_context();Q.boundary(C,F,'seal',prior_sha=PRIOR_VERDICT_SHA256,proof_sha=PHASE_EVIDENCE_SHA256,after=True)
+    E,invocation,context=Q.operating(C,F)
+    output=Q.verdict_path(C,'seal');C.absent(output)
+    prior=Q.checked_record(C,F,C.verdict_path('recover'),PRIOR_VERDICT_SHA256)
+    proof=Q.validate_phase(C,F,'pre_seal',PHASE_EVIDENCE_SHA256,reobserve=False)
+    raw,hashes,witness=Q.observed_files(C,Q.file_names(C,'seal'))
+    prior_files={name:hashes[name] for name in Q.file_names(C,'recover')}
+    C.require(prior['attempt_file_sha256']==proof['attempt_file_sha256']==prior_files
+              and proof['prior_verdict_sha256']==PRIOR_VERDICT_SHA256,'seal exact predecessor/independent proof differs')
+    audit=C.checked_audit(raw['stage0-seal-audit.txt'],F,'seal')
+    C.require(C.sha(raw['stage0-seal-audit.txt'])==AUDIT_SHA256
+              and C.sha(raw['seal-launch-intent.json'])==INTENT_SHA256,'seal first audit/intent pin differs')
+    Q.checked_intent(C,F,raw['seal-launch-intent.json'],'seal',PRIOR_VERDICT_SHA256,PHASE_EVIDENCE_SHA256,prior_files)
+    response=Q.checked_response(C,'seal',STDOUT_SHA256,STDOUT_BYTES)
+    expected={'command','status','decision_id','execution_commit','controller_commit','counts','new_lease_token','event_count',
+              'old_completed_tree_count_unchanged','launch_receipt_sha256','scientific_values_emitted'}
+    C.require(type(response) is dict and set(response)==expected and response['command']=='seal' and response['status']=='complete'
+              and response['decision_id']=='D-161' and response['execution_commit']==Q.FROZEN
+              and response['controller_commit']==F['controller_commit']
+              and response['counts']=={'executed':111,'resumed':150,'synced':261,'total':261}
+              and all(type(value) is int for value in response['counts'].values())
+              and type(response['event_count']) is int and response['event_count']==523
+              and type(response['old_completed_tree_count_unchanged']) is int and response['old_completed_tree_count_unchanged']==150
+              and response['new_lease_token']==proof['new_lease_token']==prior['result']['new_lease_token']
+              and type(response['launch_receipt_sha256']) is str and C.HEX64.fullmatch(response['launch_receipt_sha256']) is not None
+              and response['scientific_values_emitted'] is False,'normal-seal exact mechanical result differs')
+    C.require(type(STDERR_SHA256) is str and C.HEX64.fullmatch(STDERR_SHA256) is not None
+              and C.sha(raw['seal-stderr.txt'])==STDERR_SHA256 and raw['seal-stderr.txt']==raw['status-stderr.txt']
+              and raw['seal-exitcode.txt']==b'0\\n','seal exit/warning lineage differs')
+    quiet=C.quiet_host_twice();Q.checked_quiet(C,quiet)
+    verdict={'schema':'pro2_native_seal_mechanical_verification_v2','operation':'seal','mechanical_verdict':'pass',
+             'controller_commit':F['controller_commit'],'execution_commit':Q.FROZEN,'receipt_sha256':F['receipt_sha256'],
+             'launcher_sha256':F['launcher_sha256'],'owner_record_sha256':C.PROGRAMMATIC_FACTS['owner_sha256'],
+             'prior_verdict_sha256':PRIOR_VERDICT_SHA256,'phase_evidence_sha256':PHASE_EVIDENCE_SHA256,
+             'intent_sha256':INTENT_SHA256,'audit_sha256':AUDIT_SHA256,'stdout_sha256':STDOUT_SHA256,'stdout_bytes':STDOUT_BYTES,
+             'stderr_sha256':STDERR_SHA256,'exitcode_sha256':C.sha(b'0\\n'),'envelope_sha256':audit['envelope_sha256'],
+             'attempt_file_sha256':hashes,'result':response,'independent_poststage_evidence_verified':False,'global_python_quiet':quiet}
+    def late():
+        C.repeat(witness);Q.operating(C,F)
+        C.require({path.name for path in C.ATTEMPT.iterdir()}==Q.file_names(C,'seal'),'seal native inventory changed before publication')
+        E.old_processes_dead_twice()
+    digest=Q.publish(C,F,output,verdict,final_check=late)
+    print('native_seal_verification_sha256='+digest)
+
+if __name__=='__main__':main()
+'''
+ast.parse(seal)
+with (ROOT/'verify-native-seal-013-window30h-normal-success-001.py.template').open('xb') as file:file.write(seal.encode('utf-8'))
+
+# The exact record field sets are derived from the staged reviewed producers;
+# no mutable evidence is allowed to select a schema or expand its field set.
+fields={}
+extra={'historical_admission','operating_authority','successor_admission_sha256','external_proof_sha256','full_controller_row_count',
+       'scientific_outcomes_consulted','scientific_values_emitted','production_mutation_performed','verified_utc'}
+for path in ROOT.glob('verify*.py.template'):
+    for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
+        if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='verdict' for t in node.targets) and isinstance(node.value,ast.Dict):
+            keys={k.value for k in node.value.keys if isinstance(k,ast.Constant)}
+            schema=next(v.value for k,v in zip(node.value.keys,node.value.values) if isinstance(k,ast.Constant) and k.value=='schema')
+            if schema=='pro2_native_phase_evidence_v2':
+                phase=next(v.value for k,v in zip(node.value.keys,node.value.values) if isinstance(k,ast.Constant) and k.value=='phase')
+                schema+=':'+phase
+                if phase=='post_seal':keys|={'witness_file_identity','witness_absent_paths','witness_historical_absent_paths','witness_directory_entries','witness_directory_identity'}
+            fields[schema]=sorted(keys|extra)
+old=(ROOT/'before/front-native_poststatus_result_common_013_window30h_001.py.template').read_text(encoding='utf-8')
+doc=next(n.value for n in ast.walk(ast.parse(old)) if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='document' for t in n.targets) and isinstance(n.value,ast.Dict))
+fields['pro2_native_recover_mechanical_verification_v2']=sorted(k.value for k in doc.keys if isinstance(k,ast.Constant))
+q=q.replace("    schema=doc.get('schema') if type(doc) is dict else None", "    schema=doc.get('schema') if type(doc) is dict else None\n    if schema=='pro2_native_phase_evidence_v2':schema+=':'+str(doc.get('phase'))")
+q=q.replace("HEX40=re.compile(r'[0-9a-f]{40}\\Z',re.ASCII)","HEX40=re.compile(r'[0-9a-f]{40}\\Z',re.ASCII)\nRECORD_FIELDS="+repr(fields))
+q=q.replace("{'snapshot_index','process_count','other_python','pro3_processes','owned_verifier_pair'}", "{'snapshot_index','process_count','foreign_python_pypy_count','verifier_pid','owned_verifier_pair'}")
+q=q.replace("and row['other_python']==[] and row['pro3_processes']==[],", "and type(row['foreign_python_pypy_count']) is int and row['foreign_python_pypy_count']==0\n                and type(row['verifier_pid']) is int and row['verifier_pid']>0,")
+q=q.replace("        validator(pair)","        validator(pair)\n        require(pair[0]['ProcessId']==row['verifier_pid'],'quiet verifier PID/pair differs')")
+ast.parse(q);qpath.write_bytes(q.encode('utf-8'))
+print('Seven verifiers and common hardened using only AST/source text; runtime remains unrun.')

@@ -1,0 +1,127 @@
+"""Own AST/data utility: never evaluates or imports the target sources."""
+import ast
+import collections
+import hashlib
+import json
+from pathlib import Path
+
+WORK = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001')
+PREP = WORK / 'raw004-publication-native-bounded-closure-prep001'
+RAW = WORK / 'successor-candidate-raw-revision004/scripts/week8_recovery_raw_authority.py'
+SOURCE_SHA = 'da64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211'
+
+def data_tag(value):
+    if type(value) is str:
+        return ['str', value]
+    if type(value) is int:
+        return ['int', value]
+    if type(value) is dict:
+        return ['dict', [[k, data_tag(v)] for k, v in sorted(value.items())]]
+    raise ValueError('unsupported source JSON data type')
+
+def tag(node):
+    if isinstance(node, ast.Constant):
+        return data_tag(node.value)
+    if isinstance(node, ast.Tuple):
+        return ['tuple', [tag(x) for x in node.elts]]
+    if isinstance(node, ast.Dict):
+        keys = [x.value for x in node.keys]
+        assert all(type(k) is str for k in keys) and len(keys) == len(set(keys))
+        return ['dict', sorted([[k, tag(v)] for k, v in zip(keys, node.values)])]
+    assert isinstance(node, ast.Call) and len(node.args) == 1 and not node.keywords
+    if isinstance(node.func, ast.Attribute):
+        assert isinstance(node.func.value, ast.Name) and node.func.value.id == 'json'
+        assert node.func.attr == 'loads' and isinstance(node.args[0], ast.Constant)
+        assert type(node.args[0].value) is str
+        return data_tag(json.loads(node.args[0].value))
+    assert isinstance(node.func, ast.Name)
+    if node.func.id == 'MappingProxyType':
+        value = tag(node.args[0])
+        assert value[0] == 'dict'
+        return ['mappingproxy', value[1]]
+    if node.func.id == 'frozenset':
+        arg = node.args[0]
+        assert isinstance(arg, (ast.Tuple, ast.List, ast.Set))
+        values = [x.value for x in arg.elts]
+        assert all(type(x) is str for x in values) and len(values) == len(set(values))
+        return ['frozenset', sorted(values)]
+    assert node.func.id == 'tuple' and isinstance(node.args[0], ast.GeneratorExp)
+    generator = node.args[0]
+    assert len(generator.generators) == 1
+    item = generator.generators[0]
+    assert isinstance(item.target, ast.Name) and not item.ifs and item.is_async == 0
+    assert isinstance(item.iter, ast.Tuple)
+    assert isinstance(generator.elt, ast.Call)
+    assert isinstance(generator.elt.func, ast.Name) and generator.elt.func.id == 'MappingProxyType'
+    assert len(generator.elt.args) == 1 and not generator.elt.keywords
+    assert isinstance(generator.elt.args[0], ast.Name) and generator.elt.args[0].id == item.target.id
+    rows = [tag(row) for row in item.iter.elts]
+    assert all(row[0] == 'dict' for row in rows)
+    return ['tuple', [['mappingproxy', row[1]] for row in rows]]
+
+def plain(value):
+    kind, body = value
+    if kind in ('str', 'int'):
+        return body
+    if kind in ('dict', 'mappingproxy'):
+        return {k: plain(v) for k, v in body}
+    if kind == 'frozenset':
+        return body
+    return [plain(v) for v in body]
+
+source = RAW.read_bytes()
+assert hashlib.sha256(source).hexdigest() == SOURCE_SHA
+tree = ast.parse(source)
+assignments = {n.targets[0].id: n.value for n in tree.body
+               if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name)}
+native = ast.parse((PREP / 'front/native_successor_front_common_013_001.py.template').read_bytes())
+old = next(n for n in native.body if isinstance(n, ast.Assign)
+           and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'NATIVE_SCHEMA2_POLICY')
+names = set(json.loads(old.value.args[0].value))
+names.update(n for n in assignments if n == 'SUCCESSOR_COMPACT_INTERMEDIATE_FACTS'
+             or n.startswith('_SUCCESSOR_COMPACT_')
+             or n in ('_SUCCESSOR_ATTESTATION_SCHEMA3_KEYS', '_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3'))
+assert len(names) == 31
+rows = [[name, tag(assignments[name])] for name in sorted(names)]
+document = ['week8_raw004_all31_policy_v1', SOURCE_SHA, rows]
+encoded = json.dumps(document, ensure_ascii=True, separators=(',', ':')).encode('ascii')
+normalized = {name: plain(value) for name, value in rows}
+counts = collections.Counter()
+metrics = dict(nodes=0, depth=0, collection_count=0, string_bytes=0, integer_decimal_bytes=0)
+
+def measure(value, depth):
+    kind, body = value
+    counts[kind] += 1
+    metrics['nodes'] += 1
+    metrics['depth'] = max(metrics['depth'], depth)
+    if kind == 'str':
+        metrics['string_bytes'] = max(metrics['string_bytes'], len(body.encode('ascii')))
+    elif kind == 'int':
+        metrics['integer_decimal_bytes'] = max(metrics['integer_decimal_bytes'], len(str(body)))
+    else:
+        metrics['collection_count'] = max(metrics['collection_count'], len(body))
+        if kind in ('dict', 'mappingproxy'):
+            for key, child in body:
+                metrics['string_bytes'] = max(metrics['string_bytes'], len(key.encode('ascii')))
+                measure(child, depth + 1)
+        elif kind == 'tuple':
+            for child in body:
+                measure(child, depth + 1)
+        else:
+            for text in body:
+                metrics['string_bytes'] = max(metrics['string_bytes'], len(text.encode('ascii')))
+
+for _, value in rows:
+    measure(value, 1)
+record = dict(schema_version=1, record_type='author_all31_raw004_policy_source_derivation',
+              raw_source_sha256=SOURCE_SHA, raw_source_bytes=len(source), names=sorted(names),
+              typed_domain=document[0], typed_bytes=len(encoded), typed_sha256=hashlib.sha256(encoded).hexdigest(),
+              metrics=metrics, tag_counts=dict(counts), runtime_constant_approved=False,
+              target_code_executed=False, actual_runtime_or_binding=None,
+              initial_inert_attempts='Two unpublished metadata attempts refused on source-proven old dict/json.loads/genexpr syntax. This utility explicitly recognizes those exact AST forms without evaluating them.')
+for name, data in [('ALL31_TYPED_POLICY_COMMITMENT_001.json', encoded),
+                   ('ALL31_NORMALIZED_POLICY_001.json', (json.dumps(normalized, sort_keys=True, indent=2) + '\n').encode()),
+                   ('ALL31_POLICY_SOURCE_DERIVATION_001.json', (json.dumps(record, sort_keys=True, indent=2) + '\n').encode())]:
+    with (PREP / name).open('xb') as stream:
+        stream.write(data)
+print(json.dumps(record, sort_keys=True))

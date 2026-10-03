@@ -1,0 +1,121 @@
+"""Own metadata freeze of one corrected Source successor; no helper calls."""
+import ast
+import difflib
+import hashlib
+import json
+from pathlib import Path
+
+OWN=Path(__file__).parent
+WORK=OWN.parent
+AUDIT=WORK/'root-model-constructor-independent-review001'
+
+
+def sha(data):return hashlib.sha256(data).hexdigest()
+
+
+def wire(value):return (json.dumps(value,sort_keys=True,indent=2,ensure_ascii=True)+'\n').encode('ascii')
+
+
+def output(name,value):
+ data=wire(value) if type(value)is not bytes else value
+ with (OWN/name).open('xb') as stream:stream.write(data)
+
+
+old=OWN/'ASSEMBLE_GUARD006_SOURCE_MODELS_001.TEMPLATE.py'
+new=OWN/'ASSEMBLE_GUARD006_SOURCE_MODELS_002.TEMPLATE.py'
+old_data=old.read_bytes();new_data=new.read_bytes()
+assert sha(old_data)=='3e165f33ca9ff2179751fec17d25be1346c2cf5d373278838ca91b1b0f66b7bd'
+old_manifest_data=(OWN/'AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_001.json').read_bytes()
+assert sha(old_manifest_data)=='c35202fc3d9ea45828d5f8f9617165232ad1649b8056c527350b8eac92f05ea4'
+old_manifest=json.loads(old_manifest_data)
+for row in old_manifest['payloads']:
+ data=(OWN/row['path']).read_bytes()
+ assert sha(data)==row['sha256'] and len(data)==row['bytes']
+summary_data=(AUDIT/'INDEPENDENT_MODEL_CONSTRUCTOR_SOURCE_REVIEW_001.json').read_bytes()
+details_data=(AUDIT/'INDEPENDENT_MODEL_CONSTRUCTOR_SOURCE_DETAILS_001.json').read_bytes()
+assert sha(summary_data)=='918e067d9ce18aefe0390dc79b520dcf70757ae2e4b3d0ac124a1b1802c0eb73'
+assert sha(details_data)=='61fca98d08de697f08c809d91b21164c6e5f07e820d4ea2a0c17547f8d9dded5'
+summary=json.loads(summary_data);details=json.loads(details_data)
+assert summary['blocking_group_count']==4
+findings=json.loads((AUDIT/'FULL_REVIEW_FINDINGS_001.json').read_bytes())
+assert [row['id'] for row in findings['findings']]==['MC-SOURCE-001','MC-SOURCE-002','MC-SOURCE-003','MC-SOURCE-004']
+trees=[ast.parse(value) for value in (old_data,new_data)]
+functions=[{node.name:ast.dump(node,include_attributes=False) for node in tree.body if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))} for tree in trees]
+changed=[name for name in functions[0] if functions[0][name]!=functions[1][name]]
+assert sorted(changed)==['capture_absent','main','read','validate_metadata']
+assert [name for name in functions[1] if name not in functions[0]]==['authenticate_bound_literals']
+assert functions[0]['bind']==functions[1]['bind'] and functions[0]['literal']==functions[1]['literal']
+selected=[old,new,OWN/'AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_001.json',OWN/'IMMUTABLE_MODEL_INPUTS_001.json',
+ AUDIT/'INDEPENDENT_MODEL_CONSTRUCTOR_SOURCE_REVIEW_001.json',AUDIT/'INDEPENDENT_MODEL_CONSTRUCTOR_SOURCE_DETAILS_001.json',
+ AUDIT/'FULL_REVIEW_FINDINGS_001.json',AUDIT/'HANDOFF_FULL_SOURCE_REFUSAL_001.md',
+ OWN/'GENUINE_M3_SOURCE_COUNTEREXAMPLES_002.json',OWN/'CORRECTION_CAUSAL_CONTROL_DRAFT_002.json',
+ OWN/'CAUSAL_MODEL_SOURCE_CONTROLS_001.json',OWN/'MODEL_CONSTRUCTOR_SOURCE_CONTRACT_001.json',
+ OWN/'ROLE_BASE_CORRECTION_CANDIDATE_FACTS_002.json',OWN/'AUTHOR_ROLE_BASE_CORRECTION_CANDIDATE_002.py',
+ OWN/'OBSERVE_GENUINE_M3_SOURCE_COUNTEREXAMPLES_002.py',Path(__file__).absolute()]
+witness=json.loads((OWN/'GENUINE_M3_SOURCE_COUNTEREXAMPLES_002.json').read_bytes())
+selected.extend(Path(row['path']) for row in witness['finite_inputs'])
+selected=list(dict.fromkeys(selected))
+contents=[path.read_bytes() for path in selected]
+for unused in range(2):
+ for path,data in zip(selected,contents):assert path.read_bytes()==data
+copies=OWN/'selected-corrected-source-002';copies.mkdir()
+observations=[]
+for index,(path,data) in enumerate(zip(selected,contents)):
+ copy=copies/(str(index).zfill(2)+'.bytes')
+ with copy.open('xb') as stream:stream.write(data)
+ assert copy.read_bytes()==data
+ observations.append(dict(path=str(path),sha256=sha(data),bytes=len(data),copy_path=str(copy),three_reads_exact=True,copy_exact=True))
+patch=''.join(difflib.unified_diff(old_data.decode().splitlines(keepends=True),new_data.decode().splitlines(keepends=True),fromfile=old.name,tofile=new.name))
+output('COMPLETE_CORRECTED_CONSTRUCTOR_DIFF_002.patch',patch.encode('utf8'))
+plan=json.loads((OWN/'CAUSAL_MODEL_SOURCE_CONTROLS_001.json').read_bytes())
+extra=json.loads((OWN/'CORRECTION_CAUSAL_CONTROL_DRAFT_002.json').read_bytes())
+plan.update(record_type='guard006_corrected_model_constructor_causal_source_controls',source_predecessor_plan_sha256=sha((OWN/'CAUSAL_MODEL_SOURCE_CONTROLS_001.json').read_bytes()),
+ correction_controls=extra['controls'],correction_control_count=len(extra['controls']),total_source_control_count=plan['planned_control_count']+len(extra['controls']),
+ old_M3_compact_render_control_superseded_by='CX02/CX03 actual span/value authentication under genuine repr rendering',
+ actual_collection=None,actual_results=None,SourceActualInputs=None,actual_models=None,final_source_freeze=True,
+ qualified_existing_M3_AST_negative_gap=extra['qualified_ast_gap'])
+output('CAUSAL_MODEL_SOURCE_CONTROLS_002.json',plan)
+contract=json.loads((OWN/'MODEL_CONSTRUCTOR_SOURCE_CONTRACT_001.json').read_bytes())
+contract.update(record_type='guard006_corrected_data_only_constructor_source_contract',constructor=dict(path=str(new),sha256=sha(new_data),bytes=len(new_data)),
+ predecessor_constructor_sha256=sha(old_data),predecessor_manifest_sha256=sha(old_manifest_data),
+ complete_predecessor_refusal=dict(path=str(AUDIT/'INDEPENDENT_MODEL_CONSTRUCTOR_SOURCE_REVIEW_001.json'),sha256=sha(summary_data)),
+ correction_groups=[row['id'] for row in findings['findings']],changed_function_ASTs=changed,
+ existing_M3_authentication='Six unique typed literal values; actual value spans reversed to exact template spans; all functions/classes ASTs unchanged. No renderer substitution is required for the accepted repr source.',
+ requested_read_cap_policy='Every read enforces its requested cap. Reobservation compares exact path/hash/bytes/path_raw9/descriptor_raw9, records minimum authenticated requested cap and requires size within minimum; final reread uses that minimum.',
+ actual_unit_relative_base='GUARD',actual_coordination_relative_base='WORK',
+ finite_LATE_absence_role='INDEPENDENT_GUARD_ROOT_LAUNCH_LATE_REVIEW_006.json',
+ Root_compact_source_peer_route='Canonical different full review remains in independent namespace. Root alone may emit genuine Sourcepeer12 reviewer/root at original fixed OWN path after independently reading accepted corrected Source; no compact or impersonation is emitted by author.',
+ Root_source_provenance_delegation=findings['Root_source_provenance_delegation'],
+ acyclic_order='Root externally requires complete owner_docs actual P16/Binder17/C20/nine-output/SourceBinder/architecture/eight-argv audit BEFORE physical INIT. The pipeline itself emits INIT before its later trust/P16 step and does not directly enforce all Binder17 field semantics. Constructor cannot replace external pre-INIT audit or different actual BoundPool20 before capture.',
+ actual_source_peer=None,actual_selection=None,actual_models=None,actual_fit=None,SourceActualInputs=None)
+output('MODEL_CONSTRUCTOR_SOURCE_CONTRACT_002.json',contract)
+facts=dict(schema_version=1,record_type='guard006_corrected_constructor_finite_source_author_audit',author='/root/pubnative_review',
+ finite_inputs=observations,predecessor_payloads_preserved=len(old_manifest['payloads']),complete_refusal_sha256=sha(summary_data),complete_refusal_details_sha256=sha(details_data),
+ predecessor_functions=len(functions[0]),successor_functions=len(functions[1]),changed_function_ASTs=changed,
+ unchanged_function_ASTs=[name for name in functions[0] if name not in changed],new_functions=['authenticate_bound_literals'],
+ all_other_source_changes_listed_in_complete_diff=True,compact_U_composer_bind_and_literal_ASTs_exact=True,
+ candidate_initial_snapshot_is_historical=True,final_AST_parsed=True,target_source_compiled=False,target_definitions_executed=False,target_calls=False,
+ constructor_main_executed=False,tests_executed=False,SourceActualInputs=None,actual_model_outputs=None,actual_bound_fit=None,post_readback_exact=True)
+for path,data in zip(selected,contents):assert path.read_bytes()==data
+output('CORRECTED_CONSTRUCTOR_SOURCE_FACTS_002.json',facts)
+handoff='''# Corrected constructor Source002\n\nSource001/manifestc352 and all61 payloads remain exact refused history. Complete different audit918e/details61fc found exactly four blocking groups. Source002 corrects unit relative base GUARD while coordination remains WORK; authenticates the existing six-literal M3 repr source by typed values/full actual-span reversal/all function and class ASTs; checks the exact ROOT_LAUNCH LATE role; and records the minimum requested cap while preserving every physical requested cap and exact bytes/hash/both raw9. Only read/main/validate_metadata/capture_absent ASTs changed plus one new authenticator. Compact bind/literal for new U/composer are unchanged. Main names select distinct002 Source and manifest; the fixed genuine Root compact12 path stays unchanged.\n\nOwn Source witnesses read genuine M3 Bound133e68be/binding11/lease/template and prove the four source-data properties without invoking helpers. Six new healthy-negative-restored control plans inherit18 earlier Source plans. Both AST-negative dominance qualifications remain explicit: byte reversal precedes AST comparison, so body mutation is not independently advertised as reaching the later invariant. No executable tests/results are supplied.\n\nRoot externally delegates full Binder17/C20/P16/nine-output/SourceBinder/architecture/eight-argv audit to genuine owner_docs before physical INIT. Pipeline itself emits INIT before its later trust/P16 check and does not directly enforce all17 fields; neither constructor Source acceptance nor bound-model admission replaces that separate prerequisite. Different BoundPool20 remains required before capture. All caps/deadlines/ABI/operational boundaries are unchanged; actual model selections/outputs/bytes/fit remain None. Root alone can issue its genuine compact Sourcepeer12 after a separate complete acceptance of002, then execute the constructor under separate Source GO. Author emitted no compact/peer20/READY/GO/INIT/model bindings.\n'''
+output('HANDOFF_CORRECTED_CONSTRUCTOR_002.md',handoff.encode('ascii'))
+payload_names=['ASSEMBLE_GUARD006_SOURCE_MODELS_002.TEMPLATE.py','AUTHOR_ROLE_BASE_CORRECTION_CANDIDATE_002.py','ROLE_BASE_CORRECTION_CANDIDATE_002.patch',
+ 'ROLE_BASE_CORRECTION_CANDIDATE_FACTS_002.json','OBSERVE_GENUINE_M3_SOURCE_COUNTEREXAMPLES_002.py','GENUINE_M3_SOURCE_COUNTEREXAMPLES_002.json',
+ 'CORRECTION_CAUSAL_CONTROL_DRAFT_002.json','FREEZE_CORRECTED_CONSTRUCTOR_SOURCE_002.py','COMPLETE_CORRECTED_CONSTRUCTOR_DIFF_002.patch',
+ 'CAUSAL_MODEL_SOURCE_CONTROLS_002.json','MODEL_CONSTRUCTOR_SOURCE_CONTRACT_002.json','CORRECTED_CONSTRUCTOR_SOURCE_FACTS_002.json','HANDOFF_CORRECTED_CONSTRUCTOR_002.md']
+payload_names.extend(str(path.relative_to(OWN)) for path in copies.iterdir())
+payload_names.extend(str(path.relative_to(OWN)) for path in (OWN/'selected-genuine-counterexamples-002').iterdir())
+payloads=[]
+for name in sorted(payload_names):
+ data=(OWN/name).read_bytes();payloads.append(dict(path=name,sha256=sha(data),bytes=len(data)))
+manifest=dict(schema_version=1,record_type='guard006_corrected_constructor_author_source_manifest',author='/root/pubnative_review',scope=contract['scope'],
+ active_source_rows=[dict(path=new.name,sha256=sha(new_data),bytes=len(new_data))],payloads=payloads,finite_inputs=len(selected),
+ predecessor_manifest=dict(path=str(OWN/'AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_001.json'),sha256=sha(old_manifest_data)),
+ predecessor_payloads_preserved=len(old_manifest['payloads']),complete_different_refusal_sha256=sha(summary_data),complete_different_refusal_details_sha256=sha(details_data),
+ correction_groups=[row['id'] for row in findings['findings']],changed_function_ASTs=changed,source_control_plans=plan['total_source_control_count'],
+ source_peer=None,SourceActualInputs=None,actual_selection=None,actual_source_models=None,actual_bound_fit=None,
+ constructor_main_executed=False,target_execution=False,tests_executed=False,operational_authority=False)
+output('AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_002.json',manifest)
+data=(OWN/'AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_002.json').read_bytes()
+print(json.dumps(dict(manifest_sha256=sha(data),constructor_sha256=sha(new_data),constructor_bytes=len(new_data),payloads=len(payloads),finite_inputs=len(selected),changed_functions=changed,actuals=None),sort_keys=True))

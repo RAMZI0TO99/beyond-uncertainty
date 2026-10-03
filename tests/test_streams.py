@@ -112,7 +112,8 @@ def test_confound_levels_share_their_underlying_draws():
 
 
 @pytest.mark.parametrize("purpose", sorted(PURPOSES))
-def test_the_arm_never_enters_a_stream_key(purpose: str):
+@pytest.mark.parametrize("extension", [False, True])
+def test_the_arm_never_enters_a_stream_key(purpose: str, extension: bool):
     """Baseline and repairs must share the recorded failure set (P§7.2 step 4).
 
     Stated over the key rather than over one arm, so a future arm cannot slip
@@ -120,19 +121,24 @@ def test_the_arm_never_enters_a_stream_key(purpose: str):
     ``effective_unit`` would put the repair's enlarged dataset into the key and
     silently unpair the acceptance test.
     """
-    # A unit every arm is meaningful on: something withheld to restore, and
-    # capacity below the maximum to add to.
-    unit = UnitSpec(
+    # D-154's extension is deliberately inapplicable where feature restoration
+    # or ordinary capacity repair applies. Cover both disjoint applicability
+    # sets rather than attempting to construct an impossible all-arm unit.
+    unit = UnitSpec() if extension else UnitSpec(
         causal_attribute="shape", layout="uniform", confound_rate=0.5,
         family="missing_feature", withheld_features=("shape",),
         n_transitions=500, hidden_size=16,
     )
-    keys = {str(stream_key(Config(unit=unit, arm=Arm(a)).unit, "exp2a", purpose)) for a in ARMS}
+    arms = ("baseline", "data_repair", "capacity_extension_repair") if extension else (
+        "baseline", "data_repair", "feature_repair", "capacity_repair"
+    )
+    assert set(arms) <= set(ARMS)
+    keys = {str(stream_key(Config(unit=unit, arm=Arm(a)).unit, "exp2a", purpose)) for a in arms}
     assert len(keys) == 1, "the arm reached the stream key"
 
     # And the control that shows why the *unresolved* unit is the right input:
     # keying on the repaired unit would give each arm its own stream.
-    resolved = {str(stream_key(Arm(a).resolve(unit), "exp2a", purpose)) for a in ARMS}
+    resolved = {str(stream_key(Arm(a).resolve(unit), "exp2a", purpose)) for a in arms}
     assert len(resolved) > 1, (
         "resolving the arm no longer changes the unit, so this test would pass "
         "even if the key were built from effective_unit"

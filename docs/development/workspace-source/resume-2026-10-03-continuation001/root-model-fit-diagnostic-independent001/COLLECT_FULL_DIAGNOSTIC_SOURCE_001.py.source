@@ -1,0 +1,195 @@
+"""Own Source metadata only; never loads or calls reviewed Source definitions."""
+import ast
+import hashlib
+import json
+import os
+import stat
+from datetime import datetime, timezone
+from pathlib import Path
+
+PROJECT=Path('D:/Aenv/pro2')
+WORK=PROJECT/'resume-2026-10-03-continuation001'
+AUTHOR=WORK/'root-guard006-model-prep001'
+OWN=WORK/'root-model-fit-diagnostic-independent001'
+MANIFEST_SHA='aecff663213fd724eda30988077199405509b09f7a351e5a5d2c6a1c5a6c4051'
+SOURCE_SHA='592bd03b82f2d3ae03faad7d81cfe1eafe3e712c17782e666c00da70899ab67a'
+LEDGER={}
+CONTENTS={}
+
+def need(ok,label):
+    if not ok:raise ValueError(label)
+
+def sha(data):return hashlib.sha256(data).hexdigest()
+
+def wire(value):return (json.dumps(value,ensure_ascii=True,allow_nan=False,sort_keys=True,separators=(',',':'))+'\n').encode('ascii')
+
+def raw(info):
+    values=[getattr(info,key) for key in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+    need(all(type(value) is int for value in values),'raw9 exact builtin integers')
+    return values
+
+def parents(path):
+    rows=[]
+    for p in reversed(path.parents):
+        info=p.lstat();need(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode) and not info.st_file_attributes&1024,'plain ancestry')
+        rows.append([str(p),info.st_dev,info.st_ino])
+    return rows
+
+def observe(path,cap):
+    need(path.is_absolute() and path.is_relative_to(PROJECT),'finite Source project root')
+    need(type(cap) is int and 0<cap<=8388608,'bounded Source metadata cap')
+    chain=parents(path);before=path.lstat();a=raw(before)
+    need(stat.S_ISREG(before.st_mode) and before.st_nlink==1 and not before.st_file_attributes&1024
+        and 0<=before.st_size<=cap and before.st_ctime_ns==before.st_birthtime_ns,'plain Source size/birth')
+    with path.open('rb',buffering=0) as stream:
+        b=raw(os.fstat(stream.fileno()))
+        need(all(a[i]==b[i] for i in (0,1,2,3,5,6,7,8)),'Source cross-api identity')
+        data=stream.read(before.st_size+1)
+        need(raw(os.fstat(stream.fileno()))==b,'descriptor unchanged')
+    need(raw(path.lstat())==a and parents(path)==chain and len(data)==before.st_size,'path/full-byte stable')
+    return data,dict(path=str(path),sha256=sha(data),bytes=len(data),path_raw9=a,descriptor_raw9=b,ancestors=chain)
+
+def collect(path,pin=None,size=None,cap=2097152):
+    path=Path(path);name=str(path)
+    if name in LEDGER:
+        data=CONTENTS[name];entry=LEDGER[name]
+        need(len(data)<=cap and (pin is None or sha(data)==pin) and (size is None or len(data)==size),'repeat Source cap/pins')
+        entry['maximum']=min(entry['maximum'],cap)
+        return data
+    observations=[observe(path,cap) for _ in range(3)]
+    need(all(value==observations[0] for value in observations),'triple Source observations exact')
+    data,row=observations[0]
+    need((pin is None or sha(data)==pin) and (size is None or len(data)==size),'Source selected bytes/pin')
+    copy=OWN/'copies'/('%03d-'%(len(LEDGER)+1)+path.name)
+    with copy.open('xb') as stream:need(stream.write(data)==len(data),'owned complete copy')
+    copied=[observe(copy,cap) for _ in range(3)]
+    need(all(value==copied[0] for value in copied) and copied[0][0]==data,'three owned copy observations exact')
+    LEDGER[name]=dict(maximum=cap,observations=[row for _,row in observations],copy_path=str(copy),copy_observations=[row for _,row in copied])
+    CONTENTS[name]=data
+    return data
+
+def pairs(items):
+    result={}
+    for key,value in items:need(key not in result,'duplicate JSON key');result[key]=value
+    return result
+
+def forbidden(value):raise ValueError('float/nonfinite '+value)
+
+def decode(data):
+    need(not data.startswith(b'\xef\xbb\xbf'),'UTF8 BOM')
+    return json.loads(data.decode('utf8',errors='strict'),object_pairs_hook=pairs,parse_float=forbidden,parse_constant=forbidden)
+
+def record(path,pin=None,cap=2097152):return decode(collect(path,pin,cap=cap))
+
+def syntax(data):
+    tree=ast.parse(data.decode('utf8',errors='strict'))
+    functions={node.name:node for node in tree.body if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))}
+    need(len(functions)==sum(isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)) for node in tree.body),'unique Source definitions')
+    return tree,functions
+
+def spans(data):
+    tree,functions=syntax(data)
+    lines=data.decode('utf8').splitlines()
+    return [dict(name=name,line=node.lineno,end_line=node.end_lineno,source='\n'.join(lines[node.lineno-1:node.end_lineno]),
+        AST_sha256=sha(ast.dump(node,include_attributes=False).encode('utf8'))) for name,node in functions.items()]
+
+def assertions(data):
+    tree=ast.parse(data)
+    return [dict(line=node.lineno,expression=ast.unparse(node)) for node in ast.walk(tree) if isinstance(node,ast.Assert)]
+
+def manifest_payloads(name,pin,count):
+    obj=record(AUTHOR/name,pin)
+    need(len(obj['payloads'])==count,'frozen payload count '+name)
+    for row in obj['payloads']:
+        path=AUTHOR/row['path'];need(path.is_relative_to(AUTHOR),'manifest Source path confined')
+        collect(path,row['sha256'],row['bytes'])
+    return obj
+
+(OWN/'copies').mkdir(exist_ok=False)
+manifest=manifest_payloads('AUTHOR_FROZEN_MODEL_FIT_DIAGNOSTIC_SOURCE_MANIFEST_003.json',MANIFEST_SHA,17)
+manifest2=manifest_payloads('AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_002.json','eb8ef25a758d81abe5f0a296f5e080718f9f072a814873eb559f08d96f4cb99f',43)
+manifest1=manifest_payloads('AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_001.json','c35202fc3d9ea45828d5f8f9617165232ad1649b8056c527350b8eac92f05ea4',61)
+obs=record(AUTHOR/'MODEL_FIT_DIAGNOSTIC_FINITE_OBSERVATIONS_003.json','0825f5771e9ab59f09166e6f92199d34a72c4da72fc26039aea8c56fd4a70126')
+need(len(obs['inputs'])==10,'all10 original-copy pairs')
+pair_links=[]
+for item in obs['inputs']:
+    source=collect(item['original_path'],item['observations'][0]['sha256'],item['observations'][0]['bytes'])
+    copy=collect(item['copy_path'],item['copy_observation']['sha256'],item['copy_observation']['bytes'])
+    need(source==copy,'all10 selected original/copy bytes exact')
+    need(item['observations'][0]==item['observations'][1]==item['observations'][2]==item['post_observation'],'author selected triples/post same')
+    pair_links.append(dict(original_path=item['original_path'],copy_path=item['copy_path'],sha256=sha(source)))
+table=record(AUTHOR/'IMMUTABLE_MODEL_INPUTS_001.json','b01516f22dd1db00323bfaff1a37494e24fec3e6ba8ef6374ebb3c5f8d478890')
+for name,row in table['immutable'].items():collect(row['path'],row['sha256'],row['bytes'],row['cap'])
+selection=record(AUTHOR/'ROOT_ACTUAL_MODEL_SELECTION_001.json','eebf56cc3fad158aa480fca26c01023829252e5a98599841548a6314fa9a0a77')
+paths=table['actual_paths']
+selected=[('pipeline_config','pipeline_config_sha256'),('pipeline_peer','pipeline_source_peer_sha256'),
+    ('root_trust','root_trust_selection_sha256'),('metadata_plan','metadata_plan_sha256'),
+    ('metadata_source_binding','metadata_source_binding_sha256'),('metadata_bound_review','metadata_bound_review_sha256'),
+    ('phase_binding','phase_source_binding_sha256'),('phase_peer','phase_source_review_sha256'),
+    ('checker_binding','checker_binding_sha256'),('checker_peer','checker_source_peer_sha256')]
+for role,field in selected:collect(paths[role],selection[field],cap=131072)
+config=decode(CONTENTS[paths['pipeline_config']])
+peer=decode(CONTENTS[paths['pipeline_peer']])
+trust=decode(CONTENTS[paths['root_trust']])
+binding=decode(CONTENTS[paths['metadata_source_binding']])
+collect(paths['pipeline'],peer['pipeline_source_sha256'],cap=131072)
+collect(trust['init_trace']['path'],trust['init_trace']['sha256'],cap=65536)
+collect(peer['source_binding_provenance']['path'],peer['source_binding_provenance']['sha256'],cap=131072)
+collect(paths['metadata_source'],binding['actual_script_sha256'],cap=65536)
+for category in ('sources','guard_sources'):
+    for row in config[category].values():collect(row['path'],row['sha256'],row['bytes'],131072)
+for name in ('profile','projection','harness_static_review','source_manifest','source_capsule','source_capsule_review',
+    'coordination_peer_reply','coordination_root_response'):
+    row=config[name];collect(row['path'],row['sha256'],row.get('bytes'),2097152)
+collect(WORK/'EXECUTION_LEASE_GG6_M3_001.json',selection['execution_lease_sha256'],cap=65536)
+old=collect(AUTHOR/'ASSEMBLE_GUARD006_SOURCE_MODELS_002.TEMPLATE.py','e6886127e80c85bbdccfc9748b5cdca28917a746feac7389cd514cb649cb092c',52880)
+new=collect(AUTHOR/'DIAGNOSE_GUARD006_SOURCE_MODEL_FIT_003.TEMPLATE.py',SOURCE_SHA,56816)
+oldtree,oldfunc=syntax(old);newtree,newfunc=syntax(new)
+changed=[name for name,node in oldfunc.items() if ast.dump(node,include_attributes=False)!=ast.dump(newfunc[name],include_attributes=False)]
+added=sorted(set(newfunc)-set(oldfunc))
+need(len(oldfunc)==32 and len(newfunc)==35 and changed==['main']
+    and added==['diagnostic_bind','diagnostic_literal','diagnostic_sizes'],'all31 old functions exact and3 additions')
+nonfunctions=lambda tree:[ast.dump(n,include_attributes=False) for n in tree.body if not isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))]
+need(nonfunctions(oldtree)==nonfunctions(newtree),'all module nonfunction ASTs exact')
+calls={name:sorted({n.func.id for n in ast.walk(node) if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id in newfunc}) for name,node in newfunc.items()}
+reachable=set();queue=['main']
+while queue:
+    name=queue.pop()
+    if name in reachable:continue
+    reachable.add(name);queue.extend(calls[name])
+need('once' not in reachable,'no Source publication call from main')
+all_calls=[dict(line=n.lineno,call=ast.unparse(n.func)) for n in ast.walk(newfunc['main']) if isinstance(n,ast.Call)]
+need(not any(c['call'] in ('open','os.rename','os.fsync','exec','eval','compile','__import__') for c in all_calls),'no direct writer/target execution main')
+controls=record(AUTHOR/'DIAGNOSTIC_CONTROL_PLAN_003.json','8bf696c4f9d850cf20a31c8990e8ba06a2b2a65ef6168bbb9acaf250413cc764')
+need(len(controls['cases'])==6 and controls['results'] is None and controls['tests_executed'] is False,'six controls planned only')
+cap_refusal=record(AUTHOR/'ROOT_ACTUAL_CONSTRUCTOR002_CAP_REFUSAL_001.json','695047579f4f5a8f4477e74172ab26598cfb84916c130004a03a36f25f9225fd')
+pool_discrepancy=record(WORK/'guard006-actual-bound-pool-independent001/INDEPENDENT_SOURCE_POOL_PREPARATION_DISCREPANCY_001.json',
+    'b68d3d5d0d18e62897a0c581a629d512e106f384e815a51859fc0765efe1e485')
+code=compile(new,str(AUTHOR/'DIAGNOSE_GUARD006_SOURCE_MODEL_FIT_003.TEMPLATE.py'),'exec',dont_inherit=True)
+need(code.co_name=='<module>','inert module CodeType only')
+syntax_rows=[]
+for name,data in CONTENTS.items():
+    if Path(name).suffix=='.py':
+        tree=ast.parse(data)
+        syntax_rows.append(dict(path=name,sha256=sha(data),lines=len(data.decode('utf8').splitlines()),
+            top_functions=[n.name for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))],
+            top_classes=[n.name for n in tree.body if isinstance(n,ast.ClassDef)]))
+for name,item in LEDGER.items():
+    data,post=observe(Path(name),item['maximum']);need(post==item['observations'][0] and data==CONTENTS[name],'full Source post unchanged')
+    copy,postcopy=observe(Path(item['copy_path']),item['maximum']);need(copy==data and postcopy==item['copy_observations'][0],'own copy post unchanged')
+    item['post_observation']=post;item['post_copy_observation']=postcopy
+result=dict(schema_version=1,record_type='independent_full_model_fit_diagnostic_source_collection',reviewer='/root/actual_record_checker',
+    created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),source_author='/root/pubnative_review',
+    manifest_sha256=MANIFEST_SHA,source_sha256=SOURCE_SHA,source_bytes=len(new),payload_counts=dict(diagnostic003=17,constructor002=43,constructor001=61),
+    selected_original_copy_pairs=pair_links,immutable_source_roles=len(table['immutable']),finite_input_count=len(LEDGER),inputs=list(LEDGER.values()),
+    old_function_count=len(oldfunc),new_function_count=len(newfunc),changed_old_functions=changed,new_functions=added,
+    exact_old_function_count=len(oldfunc)-len(changed),module_nonfunction_AST_exact=True,local_function_callgraph=calls,
+    functions_reachable_from_main=sorted(reachable),publication_once_reachable=False,main_calls=all_calls,
+    full_source_functions=spans(new),syntax_metadata=syntax_rows,inert_CodeType=dict(name=code.co_name,flags=code.co_flags,executed=False),
+    planned_control_count=6,control_results=None,helper_definitions_imports_mains_tests_bindings_executed=False,
+    prior_Root_cap_refusal=cap_refusal,preserved_pool_discrepancy_sha256='b68d3d5d0d18e62897a0c581a629d512e106f384e815a51859fc0765efe1e485',
+    pool_discrepancy_keys=list(pool_discrepancy),actual_diagnostic_sizes=None,actual_fit=None,operational_authority=False)
+output=OWN/'FULL_SOURCE_COLLECTION_001.json';data=wire(result)
+with output.open('xb') as stream:need(stream.write(data)==len(data),'collection complete write')
+need(output.read_bytes()==data,'collection own readback exact')
+print(json.dumps(dict(path=str(output),sha256=sha(data),bytes=len(data),finite_input_count=len(LEDGER),old_functions=len(oldfunc),new_functions=len(newfunc),actual_diagnostic_sizes=None),separators=(',',':')))

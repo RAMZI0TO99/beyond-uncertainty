@@ -1,0 +1,213 @@
+"""Independent complete finite Source metadata/AST audit. No selected code load."""
+import ast
+import datetime as dt
+from decimal import Decimal
+import hashlib
+import json
+import os
+from pathlib import Path
+import stat
+
+WORK=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001')
+AUTHOR=WORK/'root-guard006-model-prep001'
+OWN=WORK/'root-model-constructor-independent004'
+MANIFEST='f4e54b20cafe3c98091a676add0eae0d7fb9678efda6065a0a913c494960388c'
+CTOR='8f0677f2ca4346fb434edcaf174642d01b66f57e59cc4745238a6e1ebac22440'
+TABLE='cb4d87d309fa8379529b9827dab7794cbe9251f22389635204586d2e9bf8dee9'
+P16='8de3824c7f54cb096f7d3e3cc155a477559c19278fe903179a12df254dafefcb'
+P16FULL='c6b64b9965ba85ecc20e8e39acdbd8483d64cc15aae997794efedf7b3a77a6a2'
+KEYS=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')
+API8=(0,1,2,3,5,6,7,8)
+MAXIMUM=8388608
+def sha(b):return hashlib.sha256(b).hexdigest()
+def wire(v):return (json.dumps(v,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def duplicate(rows):
+    d={}
+    for k,v in rows:
+        assert k not in d,('duplicate Source JSON',k)
+        d[k]=v
+    return d
+def bad(v):raise ValueError('float/nonfinite ordinary Source JSON '+v)
+def decode(b):return json.loads(b,object_pairs_hook=duplicate,parse_constant=bad,parse_float=bad)
+def raw(s):
+    r=[getattr(s,k,None)for k in KEYS];assert all(type(v)is int for v in r)
+    return r
+def read(p):
+    assert p.is_absolute()and p.is_relative_to(WORK)and '..'not in p.parts
+    a=p.lstat();ar=raw(a);assert stat.S_ISREG(a.st_mode)and a.st_nlink==1 and not a.st_file_attributes&1024 and 0<=a.st_size<=MAXIMUM
+    ancestors=[]
+    for q in p.parents:
+        s=q.lstat();assert stat.S_ISDIR(s.st_mode)and not stat.S_ISLNK(s.st_mode)and not s.st_file_attributes&1024
+        ancestors.append([str(q),s.st_dev,s.st_ino])
+    with p.open('rb')as h:
+        s=os.fstat(h.fileno());hr=raw(s);assert stat.S_ISREG(s.st_mode)and s.st_nlink==1 and not s.st_file_attributes&1024
+        assert all(ar[i]==hr[i]for i in API8)and ar[4]==ar[8]
+        b=h.read(MAXIMUM+1);assert raw(os.fstat(h.fileno()))==hr
+    assert raw(p.lstat())==ar and len(b)==ar[2]and len(b)<=MAXIMUM
+    assert ancestors==[[str(q),q.lstat().st_dev,q.lstat().st_ino]for q in p.parents]
+    return b,dict(path=str(p),bytes=len(b),sha256=sha(b),path_raw9=ar,descriptor_raw9=hr,cross_API8_indices=list(API8),cross_API_ctime_equality_asserted=False)
+def once(p,b):
+    assert p.is_relative_to(OWN)and type(b)is bytes and len(b)<=MAXIMUM
+    p.parent.mkdir(parents=True,exist_ok=True)
+    with p.open('xb')as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+    assert read(p)[0]==b
+def AST(n):return ast.dump(n,include_attributes=False)
+def defs(t):return {n.name:n for n in t.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))}
+expected={};labels={}
+def select(p,length,pin,label):
+    p=Path(p);key=str(p);assert p.is_relative_to(WORK)and type(length)is int and 0<=length<=MAXIMUM and type(pin)is str and len(pin)==64
+    if key in expected:assert expected[key]==(length,pin)
+    expected[key]=(length,pin);labels.setdefault(key,[]).append(label)
+mp=AUTHOR/'AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_004.json';mb,mr=read(mp);assert sha(mb)==MANIFEST
+manifest=decode(mb);assert manifest['payload_count']==82 and len(manifest['payloads'])==82 and manifest['selected_input_pair_count']==71
+assert manifest['source_author']=='/root/pubnative_review'and manifest['actual_selection']is None and manifest['actual_models']is None and manifest['actual_fit']is None and manifest['SourceActualInputs']is None
+assert manifest['target_execution']is False and manifest['tests_executed']is False and manifest['source_bindings_created']is False
+select(mp,len(mb),MANIFEST,'frozen004manifest')
+for r in manifest['payloads']:select(AUTHOR/r['path'],r['bytes'],r['sha256'],'new004payload')
+obs=decode(read(AUTHOR/'CONSTRUCTOR_FINITE_SOURCE_OBSERVATIONS_004.json')[0]);assert obs['selected_pair_count']==71 and len(obs['selected_pairs'])==71
+assert obs['tests_executed']is False and obs['helper_main_or_definitions_executed']is False and obs['actuals']is None
+author_proofs=[]
+for p in obs['selected_pairs']:
+    t=p['triple_original'];assert len(t)==3 and t[0]==t[1]==t[2]==p['post_original']and p['copy']==p['post_copy']
+    original=t[0];copy=p['copy'];assert (original['bytes'],original['sha256'])==(copy['bytes'],copy['sha256'])
+    select(p['original_path'],original['bytes'],original['sha256'],'author071original');select(p['copy_path'],copy['bytes'],copy['sha256'],'author071copy')
+    author_proofs.append(dict(original=p['original_path'],copy=p['copy_path'],bytes=original['bytes'],sha256=original['sha256'],three_plus_post_exact=True))
+for r in obs['preserved_payload_observations']:select(r['path'],r['bytes'],r['sha256'],'author_preserved_history')
+history=[]
+for leaf in ('AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_001.json','AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_002.json','AUTHOR_FROZEN_MODEL_FIT_DIAGNOSTIC_SOURCE_MANIFEST_003.json'):
+    p=AUTHOR/leaf;b,r=read(p);select(p,len(b),sha(b),'prior_manifest');m=decode(b)
+    for row in m['payloads']:select(AUTHOR/row['path'],row['bytes'],row['sha256'],'prior_frozen_payload')
+    history.append(dict(path=str(p),bytes=len(b),sha256=sha(b),payload_count=len(m['payloads'])))
+tb,tr=read(AUTHOR/'IMMUTABLE_MODEL_INPUTS_002.json');assert sha(tb)==TABLE;table=decode(tb)
+t1=decode(read(AUTHOR/'IMMUTABLE_MODEL_INPUTS_001.json')[0]);assert len(table)==27 and set(table)==set(t1)
+assert len(table['immutable'])==46 and set(table['immutable'])==set(t1['immutable'])and len(table['actual_paths'])==16 and set(table['actual_paths'])==set(t1['actual_paths'])
+for k,r in table['immutable'].items():
+    assert set(r)=={'path','sha256','bytes','cap'}and type(r['bytes'])is int and type(r['cap'])is int and 0<r['bytes']<=r['cap']<=MAXIMUM
+    assert r['cap']==t1['immutable'][k]['cap'];select(r['path'],r['bytes'],r['sha256'],'current_immutable_'+k)
+phase4=('before_writer','before_parent','after_writer','after_parent')
+assert set(table['phase_templates'])==set(phase4)
+for r in table['phase_templates'].values():select(r['path'],r['bytes'],r['sha256'],'phase_template')
+
+# Read immutable genuine P16 full Source report as reviewer metadata. Finite
+# historical Decimal values never enter constructor decode/clone/model output.
+p16_full_path=WORK/'root-pipeline-independent-review001/actual-source-002/INDEPENDENT_ACTUAL_ROOT_SOURCE_DETAILS_002.json'
+p16_body,p16_row=read(p16_full_path);assert sha(p16_body)==P16FULL
+p16_metadata=json.loads(p16_body,object_pairs_hook=duplicate,parse_constant=bad,parse_float=Decimal)
+def named_rows(v,wanted):
+    result=[]
+    if type(v)is dict:
+        if type(v.get('path'))is str and type(v.get('sha256'))is str and type(v.get('bytes'))is int:
+            if str(Path(v['path']))==str(wanted):result.append(v)
+        for q in v.values():result.extend(named_rows(q,wanted))
+    elif type(v)is list:
+        for q in v:result.extend(named_rows(q,wanted))
+    return result
+actual_source_observed=[];future_absences=[]
+for key,name in table['actual_paths'].items():
+    p=Path(name)
+    if key in ('root_init','root_trust','checker_binding'):
+        assert not p.exists();future_absences.append(dict(role=key,path=str(p),observed_absent=True));continue
+    rows=named_rows(p16_metadata,p)
+    if rows:
+        pins={(r['bytes'],r['sha256'])for r in rows};assert len(pins)==1
+        length,pin=next(iter(pins));select(p,length,pin,'authenticated_P16_actual_Source_'+key);actual_source_observed.append(dict(role=key,path=str(p),bytes=length,sha256=pin,authentication='genuine externally selected full P16 c6b64b99 row'))
+    elif key=='checker_peer':
+        r=table['immutable']['checker_peer'];select(p,r['bytes'],r['sha256'],'immutable_checker_peer_actual_role')
+    else:raise AssertionError(('P16 full Source lacks compiled actual Source role',key))
+
+copies=OWN/'inputs';copies.mkdir(exist_ok=False)
+collection=[];content={};inventory=[];historical_decimal_records=[]
+for i,(name,(length,pin))in enumerate(sorted(expected.items())):
+    p=Path(name);samples=[]
+    for _ in range(3):b,r=read(p);samples.append(r)
+    assert samples[0]==samples[1]==samples[2]and len(b)==length and sha(b)==pin
+    cp=copies/(f'{i:03d}_'+p.name);once(cp,b);cr=read(cp)[1]
+    collection.append(dict(original_path=str(p),copy_path=str(cp),triple_original=samples,copy=cr));content[str(p)]=b
+    record=dict(path=str(p),bytes=len(b),sha256=pin,selection_roles=labels[name])
+    if p.suffix=='.py':
+        tree=ast.parse(b,filename=str(p));record.update(kind='Python_AST_only',module_AST_sha256=sha(AST(tree).encode()),definitions=[dict(name=n.name,line=n.lineno,end_line=n.end_lineno,AST_sha256=sha(AST(n).encode()))for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))])
+    elif p.suffix=='.json':
+        try:v=decode(b)
+        except ValueError as e:
+            # Historical metadata records are reviewed byteexact; finite decimal
+            # representation is scoped to each recorded SHA, never normalized
+            # into constructor's ordinary JSON model boundary.
+            assert str(e).startswith('float/nonfinite ordinary Source JSON ')
+            v=json.loads(b,object_pairs_hook=duplicate,parse_constant=bad,parse_float=Decimal)
+            locations=[]
+            def decimal_locations(x,path=''):
+                if type(x)is Decimal:
+                    assert x.is_finite();locations.append(dict(path=path,decimal_text=str(x)))
+                elif type(x)is dict:
+                    for k,y in x.items():decimal_locations(y,path+'/'+k)
+                elif type(x)is list:
+                    for j,y in enumerate(x):decimal_locations(y,path+'/'+str(j))
+            decimal_locations(v);assert locations
+            historical_decimal_records.append(dict(path=str(p),sha256=pin,record_type=v.get('record_type')if type(v)is dict else None,exact_locations=locations,reviewer_metadata_only_not_constructor_JSON=True))
+        record.update(kind='JSON_Source_metadata',top_level_keys=sorted(v)if type(v)is dict else None,record_type=v.get('record_type')if type(v)is dict else None)
+    else:record['kind']='preserved_byte_content'
+    inventory.append(record)
+
+source_path=AUTHOR/'ASSEMBLE_GUARD006_SOURCE_MODELS_004.TEMPLATE.py';sb=content[str(source_path)];assert sha(sb)==CTOR and len(sb)==53538
+old_body=content[str(AUTHOR/'ASSEMBLE_GUARD006_SOURCE_MODELS_002.TEMPLATE.py')]
+told,tnew=ast.parse(old_body),ast.parse(sb);fold,fnew=defs(told),defs(tnew);assert len(fnew)==32 and set(fold)==set(fnew)
+changed=[n for n in fold if AST(fold[n])!=AST(fnew[n])];assert changed==['main','validate_metadata']
+for n in ('read','literal','bind','authenticate_bound_literals','construct','capture_absent','once'):assert AST(fold[n])==AST(fnew[n])
+normalized=sb.replace(TABLE.encode(),b'b01516f22dd1db00323bfaff1a37494e24fec3e6ba8ef6374ebb3c5f8d478890')
+assert AST(ast.Module(body=[n for n in ast.parse(normalized).body if not isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))],type_ignores=[]))==AST(ast.Module(body=[n for n in told.body if not isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))],type_ignores=[]))
+constants={n.targets[0].id:ast.literal_eval(n.value)for n in tnew.body if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)and n.targets[0].id in ('TABLE_SHA','SOURCE_ACTUAL_SELECTION','SELECTED_KEYS','SOURCE_PEER12','ROOT_PEER16','FIXED19','META5','SOURCE6','PHASE4','PHASE8')}
+assert constants['TABLE_SHA']==TABLE and constants['SOURCE_ACTUAL_SELECTION']is None
+template=decode(content[str(AUTHOR/'ROOT_ACTUAL_MODEL_SELECTION_002.TEMPLATE.json')]);assert len(template)==19 and set(template)==set(constants['SELECTED_KEYS'])
+assert all(v is None for k,v in template.items()if k.endswith('_sha256'))and template['actual_context']is None and template['actual_results']is None and template['capture_started']is False
+expected_actual=dict(checker_binding=WORK/'metadata3-actual-checker-prep001/ACTUAL_CHECKER_BINDING_002.json',checker_peer=WORK/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_003.json',pipeline=WORK/'root-guard006-pipeline-prep001/RUN_ROOT_METADATA_PIPELINE_007.BOUND.ps1',pipeline_config=WORK/'root-guard006-pipeline-prep001/ROOT_PIPELINE_BINDING_002.json',pipeline_peer=WORK/'root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_002.json',root_init=WORK/'root-guard006-pipeline-prep001/ROOT_PIPELINE_INIT_TRACE_002.json',root_trust=WORK/'root-guard006-pipeline-prep001/ROOT_PIPELINE_TRUST_SELECTION_002.json')
+for k,p in expected_actual.items():assert table['actual_paths'][k]==str(p)
+assert table['immutable']['checker']['sha256']=='9efa6deb54721a531159545ffa5e4e9bd90606f3dc12d7b0ab6cf5f4af51ee16'and table['immutable']['checker']['cap']==262144
+assert table['immutable']['checker_peer']['sha256']=='6d981aa8a08c4329241c8d4fff7a5a12913123fe320b0f5cefddf69eee63f27e'
+assert table['immutable']['utility']['sha256']=='2811fe89f1c8580563c436b2f11c45db35ad1ee8c02ba312a00db399e5924de8'and table['immutable']['utility']['cap']==131072
+assert table['immutable']['composer']==t1['immutable']['composer']
+root_peer=decode(content[str(expected_actual['pipeline_peer'])]);assert len(root_peer)==16 and sha(content[str(expected_actual['pipeline_peer'])])==P16
+assert content[str(expected_actual['pipeline'])]==content[str(Path(table['immutable']['pipeline_template']['path']))]
+canonical=read(WORK/'root-guard006-pipeline-prep001/ROOT_PIPELINE_BINDING_001.json')[0];assert canonical==content[str(expected_actual['pipeline_config'])]
+main_source=ast.get_source_segment(sb.decode(),fnew['main']);validate_source=ast.get_source_segment(sb.decode(),fnew['validate_metadata'])
+assert main_source.index("'unchanged U/composer131072 caps before any write'")<main_source.index('outputs =')<main_source.index('predicted =')<main_source.index("'finite compact Source pool projection'")<main_source.index('published = [once(')
+assert main_source.index("absent(OWN/'ACTUAL_SOURCE_POOL_PROJECTION_002.json.staging')")<main_source.index('published = [once(')
+assert 'ACTUAL_SOURCE_POOL_PROJECTION_001.json'not in main_source and 'UTILITY_SOURCE_BINDINGS_001.json'not in main_source
+assert "paths['checker_binding']"in main_source and "'Root fixed INIT Source path'"in main_source and P16 in main_source
+assert "base = G if key == 'UNIT_TERMINAL_RELATIVE' else WORK"in validate_source
+assert "SOURCE_REVIEW_ROOT_PIPELINE_002.json"in validate_source and 'RUN_ROOT_METADATA_PIPELINE_007.BOUND.ps1'in validate_source
+assert 'INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_003.json'in main_source
+controls=decode(content[str(AUTHOR/'CAUSAL_MODEL_SOURCE_CONTROLS_004.json')]);assert controls['control_plan_count']==6 and len(controls['controls'])==6 and controls['executable_test_count']==0 and controls['F1_deferred']is True and controls['actual_results']is None
+contract=decode(content[str(AUTHOR/'MODEL_CONSTRUCTOR_SOURCE_CONTRACT_004.json')]);assert contract['actual_models']is None and contract['actual_successor_fit']is None and contract['tests_executed']is False and contract['peer20']is None
+outputs=[AUTHOR/n for n in ('UTILITY_SOURCE_BINDINGS_002.json','UTILITY_SOURCE_PROTOCOL_002.json','COMPOSER_FRESH_SOURCE_MODEL_002.json','ACTUAL_SOURCE_POOL_PROJECTION_002.json')]+[WORK/'guard006-bound-late-checker-prep001'/n for n in ('review_guard006_actual_records_001.BOUND.py','compose-root-review-packet-006.BOUND.py')]
+output_absences=[]
+for p in outputs:
+    for q in (p,p.with_name(p.name+'.staging')):
+        assert not q.exists();output_absences.append(dict(path=str(q),observed_absent=True,scope='named filesystem role only; no global process/quiet proof'))
+for pair in collection:
+    pair['post_original']=read(Path(pair['original_path']))[1];pair['post_copy']=read(Path(pair['copy_path']))[1]
+    assert pair['post_original']==pair['triple_original'][0]and pair['post_copy']==pair['copy']
+
+now=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds')
+checks=[
+dict(group='complete code',evidence='All32 constructor functions read in full;30 ASTs exact versus accepted002. main/validate_metadata alone changed. Nonfunction AST exact after single TABLE_SHA literal reversal; all decoding/read/min-cap/bind/repr authenticator/once algorithms unchanged.'),
+dict(group='immutable table',evidence='Closed27 top-level keys,46 same immutable role names,16 same actual role names and every physical per-row cap unchanged. Eleven immutable rows retarget current accepted sources; seven fixed actual identities match current002/007/003 roles. All selected immutable bytes/hash/size checked independently; bool bytes rejected by selected_source exactint guard.'),
+dict(group='Source authentication',evidence='Future constructor authenticates external compact12/self/active manifest row/constant tableSHA/closed19 actual selection/each hash; genuine owner ongoing and old short ownerpeer literal remain exact. Fixed003 checker peer/6d981 accepted15 Source-only and hardfixed P16peer0028de382 replace older values. Root C20 keeps composer TEMPLATE to avoid C->B->R cycle.'),
+dict(group='Root attribution boundary',evidence='Closed trust8/init8/PS7 source+peer/hash/path/PID/nonce/chronology are Source consistency checks. Root physically corroborates its own tool identity outside JSON. Genuine full P16 c6b64/postc997 authenticates complete Binder17/Source closure before operational INIT admission; constructor itself does not directly enforce full17 or all witness3 fields. No direct full OS/Job/retained PID proof follows.'),
+dict(group='metadata ABI',evidence='Plan7/binding11/bound9/phaseBinding7/phasePeer20/rows4+6 with typed nominals; exact M3 six literal values reversed to template without imposing compact renderer; all function/class ASTs exact. Unit relative baseG and both coordination basesWORK preserved. Four PS two literal reversals, all peer aggregates and parser int0. Checker config18/sourceClosure5/fourPS/RootBound007-peer002 checked; driver3/observer1 exact binding.'),
+dict(group='composed Source models',evidence='construct creates exact fixed19/Source6/META5/PHASE4/Core12/Detail15 and two direct detail roles only from source records. Runtime input Core/detail/context/whole facts not emitted. Immutable source extras authenticate current checker262144, utility131072, composer65536 template and existing root/metadata caps; strictest repeated readcap retained. Full model values are cloned builtin types only, floats/nonfinite/duplicate Source model JSON refused.'),
+dict(group='all before first write',evidence='All five complete model/helper byte arrays capped131072 before output/staging creation; exact source reverse/full ASTs in bind. All five names/staging and fresh projection002 absent; full OBSERVATIONS reread using minimum cap, lease/capture absences rechecked. Projection built from exact predicted full output pins, independently capped131072/staging-absence BEFORE first once. Early U/composer refusal prints exact sizes and honest projectionNone unmeasured.'),
+dict(group='publication limits',evidence='Windows createonce staging/fsync/readback/nooverwrite rename/readback per output, five outputs then Source projection. No six-file atomic transaction; partial outputs remain spent. No outputs/models/projection written by this audit; named12 output/staging absences checked.'),
+dict(group='planned controls',evidence='Six explicit healthy-negative-restored plans, zero executable tests, all UNRUN. C4P1 hardfixed P16 mismatch precedes peer read; C4P2 requires complete healthy prior gates before fixed config002 missing/nofallback; C4P3 rebinding trust points001 rejected before init read. C4T1 requires independently rebound table/peer to reach hash/exactint checks. C4L1 byte reversal precedes AST comparison, so AST-only negative cannot prove reached AST guard. C4F1 full model cap control remains DEFERRED; no stand-in or measured fit claim.'),
+]
+review=dict(schema_version=1,record_type='independent_constructor004_complete_Source_review',created_utc=now,reviewer='/root/actual_record_checker',source_author='/root/pubnative_review',scope='ARCHITECTURE_AND_DATA_MODEL_SOURCE_ONLY_ACTUAL_EXECUTION_ADMISSION_UNREADY',verdict='PASS_STATIC_CONSTRUCTOR004_SOURCE_ONLY_ACTUAL_MODELS_AND_FIT_UNREADY',blocking_findings=[],advisories=['One inherited error label says checker010 Source peer002; the actual fixed path003 and6d981 nominal prevent aliases. The label is cosmetic only.','Config18 execution_launch_witness3 is not directly fully checked by this constructor; genuine Root configuration selection, independently reviewed checker preflight and bound-pool admission remain required.','Full Binder17 verification remains selected external P16/Root operational pre-INIT prerequisite, not a direct constructor/pipeline full17 claim.','Source plans are unexecuted. The byte-reversal guard dominates the later AST guard in C4L1; no causal runtime AST-guard reachability or complete cap fixture is inferred.'],constructor=dict(path=str(source_path),bytes=len(sb),sha256=CTOR),source_manifest=dict(path=str(mp),bytes=len(mb),sha256=MANIFEST),table=dict(path=str(AUTHOR/'IMMUTABLE_MODEL_INPUTS_002.json'),bytes=len(tb),sha256=TABLE),contract_sha256=sha(content[str(AUTHOR/'MODEL_CONSTRUCTOR_SOURCE_CONTRACT_004.json')]),counts=dict(new_payloads=82,author_selected_pairs=71,prior_frozen_manifests=len(history),prior_payloads=sum(r['payload_count']for r in history),independent_unique_originals=len(collection),constructor_definitions=32,changed_definitions=2,unchanged_definitions=30,immutable_roles=46,actual_path_roles=16,Source_control_plans=6,executable_tests=0),full_checks=checks,history=history,author_pair_proofs=author_proofs,inventory=inventory,independent_observations=collection,current_actual_Source_inputs_authentication=actual_source_observed,future_named_absences=future_absences,output_and_staging_absences=output_absences,historical_finite_decimal_metadata=historical_decimal_records,strict_constructor_and_production_JSON_lexer_unchanged=True,dynamic_selection19=template,all_dynamic_actual_SHA_slots_None=True,changed_function_ASTs=changed,unchanged_constructor_functions=[n for n in fnew if n not in changed],planned_controls=controls['controls'],F1_deferred=True,actual_constructor_compact12_review=None,actual_root_execution_admission='UNREADY: genuine Root compact004/external actual selection/config18_002/physical INIT2/trust2, fit and independent pool20 still required.',correct_future_projection_path=str(AUTHOR/'ACTUAL_SOURCE_POOL_PROJECTION_002.json'),old_projection001_retargeted=False,Root_bound_pool20_must_externally_select_fresh_projection002=True,source_peer_written_into_author_namespace=False,target_import_or_definitions_or_compiler_or_main_executed=False,helper_main_or_tests_executed=False,actual_model_values=None,actual_fit=None,actual_results=None,actual_pool20=None,READY=None,GO=None,capture_started=False,runtime_acceptance=False,operational_authority=False)
+full_path=OWN/'INDEPENDENT_MODEL_CONSTRUCTOR004_SOURCE_DETAILS_001.json';full=wire(review);once(full_path,full)
+post=[]
+for pair in collection:
+    orig=read(Path(pair['original_path']))[1];copy=read(Path(pair['copy_path']))[1];assert orig==pair['triple_original'][0]and copy==pair['copy'];post.append(dict(original=orig,copy=copy))
+post_body=wire(dict(schema_version=1,record_type='independent_constructor004_Source_post_readback',reviewer='/root/actual_record_checker',full_review_sha256=sha(full),source_manifest_sha256=MANIFEST,pair_count=len(post),rows=post,all_originals_and_copies_exact=True,constructor_main_or_definitions_executed=False,tests_executed=False));once(OWN/'POST_MODEL_CONSTRUCTOR004_SOURCE_REVIEW_001.json',post_body)
+summary=wire(dict(schema_version=1,record_type='independent_constructor004_Source_review',created_utc=now,reviewer='/root/actual_record_checker',source_author='/root/pubnative_review',scope=review['scope'],verdict=review['verdict'],constructor_sha256=CTOR,source_manifest_sha256=MANIFEST,table_sha256=TABLE,full_review_sha256=sha(full),post_readback_sha256=sha(post_body),blocking_findings=[],actual_selection=None,actual_models=None,actual_fit=None,tests_executed=False,runtime_acceptance=False,operational_authority=False));once(OWN/'INDEPENDENT_MODEL_CONSTRUCTOR004_SOURCE_REVIEW_001.json',summary)
+nonce='d7b24061509e48d0b9ea526c3b5c0708'
+plan=wire(dict(schema_version=1,record_type='genuine_reviewer_future_retained_checker010_Source_launch_witness_plan',source_author='/root/actual_record_checker',reviewer='/root/actual_record_checker',execution_nonce=nonce,tool_trace_kind='EXTERNALLY_CORROBORATED_REVIEWER_TOOL_CELL_NOT_OS_ATTESTATION',future_config_path=str(WORK/'metadata3-actual-checker-prep001/ACTUAL_CHECKER_BINDING_002.json'),actual_config_sha256=None,actual_tool_cell=None,actual_PID=None,actual_Root_INIT_or_trust_selection=None,retained_checker_launched=False,READY=None,target_execution=False,operational_authority=False));once(OWN/'FUTURE_REVIEWER_CHECKER010_SOURCE_LAUNCH_PLAN_001.json',plan)
+handoff=f'''Independent constructor004/table002 full Source audit\n\nAccepted architecture/data Source only; actual execution admission UNREADY. Different author /root/pubnative_review, genuine reviewer /root/actual_record_checker. No compact12 Root record was written in the author's namespace. Root may externally select this full audit and perform its own genuine compact004 review.\n\nAll82 new payloads/71 author pairs and all three prior frozen cohorts ({sum(r['payload_count']for r in history)} old payloads) preserved. {len(collection)} independent finite originals triple/raw9/API8/copied/post exact. Full32 functions and Table27/46 immutable/16 actual roles read;30 function ASTs exact, only main/validate_metadata change. All binding/read/literal/repr authenticator and caps are preserved. Fixed new Bound007/config002/P16peer002/INIT002/trust002/checkerConfig002/checkerpeer003 align; old cosmetic peer002 label supplies no alias.\n\nFull five outputs and Source projection002 each fit gates131072 BEFORE first write; exact Source reobservations/min-cap ledger/lease/capture and all staging absences precede publication. No actual fit/model assembly was executed or accepted. Output absence observations and dynamic selection19 None slots are Source facts only. Per-file staged writes cannot guarantee six-file atomicity; partial artifacts stay spent. Future bound-pool20 must genuinely select fresh projection002; no projection001 alias.\n\nFull Binder17 verification and genuine Root process/tool attribution are external operational pre-INIT prerequisites from selected different P16/Root admission, not direct constructor/full OS proof. Config18 witness3 remains external Root/checker/pool validation. Six causal plans, zero tests UNRUN; F1 deferred. C4L1 byte-reversal guard dominates AST comparison, so no causal AST/runtime coverage is inferred.\n\nManifest {MANIFEST}\nConstructor {CTOR}/53538\nTable {TABLE}/24496\nFull {sha(full)}/{len(full)}\nPost {sha(post_body)}/{len(post_body)}\nSummary {sha(summary)}/{len(summary)}\n\nGenuine future reviewer Source witness: nonce {nonce}; reviewer /root/actual_record_checker; tool_trace_kind EXTERNALLY_CORROBORATED_REVIEWER_TOOL_CELL_NOT_OS_ATTESTATION. Actual config SHA/PID/cell/INIT/trust remainNone; no retained checker or Python test Job launched. Root must separately externally correlate a future genuine owned retained tool cell.\n'''
+hb=handoff.encode('utf8');once(OWN/'HANDOFF_INDEPENDENT_CONSTRUCTOR004_SOURCE_001.md',hb)
+print(json.dumps(dict(verdict=review['verdict'],new_payloads=82,selected_pairs=71,old_payloads=sum(r['payload_count']for r in history),unique_originals=len(collection),full_sha256=sha(full),full_bytes=len(full),post_sha256=sha(post_body),post_bytes=len(post_body),summary_sha256=sha(summary),summary_bytes=len(summary),handoff_sha256=sha(hb),handoff_bytes=len(hb),planned_reviewer_nonce=nonce,actual_models=None,tests_executed=False),sort_keys=True))

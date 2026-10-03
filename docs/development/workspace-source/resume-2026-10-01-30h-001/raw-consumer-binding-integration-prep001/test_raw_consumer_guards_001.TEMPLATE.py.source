@@ -1,0 +1,311 @@
+"""Inert regression preparation. Execute only in a separately reviewed isolated harness.
+
+Select actual staged guard definitions and real raw003 definition bytes; do not import
+full consumers, observe production authority, claim, spawn a fit, or run native code.
+These tests prove guarded-loader behavior only, not the full recovery lifecycle.
+"""
+from __future__ import annotations
+
+import ast
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import stat
+import sys
+import tempfile
+import types
+import unittest
+from collections.abc import Mapping
+from contextlib import contextmanager
+from pathlib import Path
+from unittest import mock
+
+PREP = Path(__file__).resolve(strict=True).parent
+RAW = PREP / "inputs/raw003-source.bytes"
+RAW_NAME = "_bu_week8_d161_raw_authority"
+
+def digest(value):
+    return hashlib.sha256(value).hexdigest()
+
+def selected(source, names):
+    tree = ast.parse(source)
+    nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names]
+    if len(nodes) != len(names):
+        raise AssertionError("requested real function definitions are missing")
+    return ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0), *nodes], type_ignores=[])
+
+def module_from_bytes(path, source):
+    loader = importlib.machinery.SourceFileLoader(RAW_NAME, str(path))
+    specification = importlib.util.spec_from_loader(RAW_NAME, loader)
+    module = importlib.util.module_from_spec(specification)
+    module.__source_sha256__ = digest(source)
+    module.__source_identity__ = {"path": str(path.resolve(strict=True)), "sha256": digest(source), "size": len(source)}
+    sys.modules[RAW_NAME] = module
+    exec(compile(source, str(path), "exec", dont_inherit=True), module.__dict__)
+    return module
+
+@contextmanager
+def guard_fixture(role):
+    bindings = json.loads((PREP / "SOURCE_GUARD_TEST_BINDINGS_001.json").read_bytes())
+    row = bindings["consumers"][role]
+    path = PREP / row["path"]
+    source = path.read_bytes()
+    raw = RAW.read_bytes()
+    if digest(source) != row["sha256"] or digest(raw) != bindings["raw_sha256"]:
+        raise AssertionError("test preparation source pins differ")
+    previous = sys.modules.get(RAW_NAME)
+    prior_static = sys.modules.get("_bu_week8_d161_static_raw_authority")
+    class Refused(ValueError):
+        pass
+    namespace = {
+        "__name__": "isolated_selected_consumer_guards", "__file__": str(path),
+        "ast": ast, "hashlib": hashlib, "importlib": importlib, "os": os, "re": re,
+        "stat": stat, "sys": sys, "types": types, "Path": Path, "Mapping": Mapping,
+        "Any": object, "FunctionType": types.FunctionType, "ModuleType": types.ModuleType,
+        "CodeType": types.CodeType, "RAW_AUTHORITY_HELPER": RAW,
+        "RAW_AUTHORITY_MODULE_NAME": RAW_NAME,
+        "EXPECTED_RAW_AUTHORITY_HELPER_SHA256": bindings["raw_sha256"],
+        "RAW_AUTHORITY_HELPER_SHA256": bindings["raw_sha256"],
+        "_FILE_ATTRIBUTE_REPARSE_POINT": 0x400,
+        "_STATIC_RAW_AUTHORITY": None, "_RAW_HELPER_EXECUTABLE_STATE": None,
+        "sha256_bytes": digest, "_sha_bytes": digest,
+        "_sha_file": lambda path: digest(path.read_bytes()),
+        "_is_reparse": lambda info: stat.S_ISLNK(info.st_mode) or bool(getattr(info, "st_file_attributes", 0) & 0x400),
+        row["exception"]: Refused,
+    }
+    exec(compile(selected(source, set(row["selected_functions"])), str(path), "exec", dont_inherit=True), namespace)
+    try:
+        module = module_from_bytes(RAW, raw)
+        if role == "entrypoint":
+            load = lambda: namespace["_load_raw_authority"](RAW, bindings["raw_sha256"])[0]
+        else:
+            load = namespace[row["loader"]]
+        yield module, load, namespace, Refused, bindings
+    finally:
+        if previous is None:
+            sys.modules.pop(RAW_NAME, None)
+        else:
+            sys.modules[RAW_NAME] = previous
+        if prior_static is None:
+            sys.modules.pop("_bu_week8_d161_static_raw_authority", None)
+        else:
+            sys.modules["_bu_week8_d161_static_raw_authority"] = prior_static
+
+class RawConsumerGuardRegressions(unittest.TestCase):
+    def test_valid_fresh_and_reuse_keep_one_real_raw_module(self):
+        for role in ("controller", "worker", "entrypoint", "fit_child", "inspector"):
+            with self.subTest(role=role), guard_fixture(role) as (module, load, _, _, _):
+                self.assertIs(load(), module)
+                module._OBSERVED_WORKTREES["synthetic-registry-content-control"] = {}
+                self.assertIs(load(), module)
+
+    def test_all_sixteen_new_policies_refuse_before_first_acceptance_and_reuse(self):
+        for role in ("controller", "worker", "entrypoint", "fit_child", "inspector"):
+            for reuse in (False, True):
+                with guard_fixture(role) as (_, _, _, _, bindings):
+                    policies = bindings["new_policy_names"]
+                self.assertEqual(len(policies), 16)
+                for name in policies:
+                    with self.subTest(role=role, reuse=reuse, name=name), guard_fixture(role) as (module, load, _, Refused, _):
+                        if reuse:
+                            self.assertIs(load(), module)
+                        module.__dict__[name] = object()
+                        with self.assertRaises(Refused):
+                            load()
+
+    def test_new_helper_code_defaults_and_kwdefaults_refuse_cold_and_reuse(self):
+        for role in ("controller", "worker", "entrypoint", "fit_child", "inspector"):
+            for reuse in (False, True):
+                with guard_fixture(role) as (_, _, _, _, bindings):
+                    helpers = bindings["new_helper_names"]
+                self.assertEqual(len(helpers), 3)
+                for name in helpers:
+                    for damage in ("code", "defaults", "kwdefaults"):
+                        with self.subTest(role=role, reuse=reuse, name=name, damage=damage), guard_fixture(role) as (module, load, _, Refused, _):
+                            if reuse:
+                                self.assertIs(load(), module)
+                            function = module.__dict__[name]
+                            if damage == "code":
+                                function.__code__ = (lambda: None).__code__
+                            elif damage == "defaults":
+                                function.__defaults__ = ({"unreviewed": [1]},)
+                            else:
+                                function.__kwdefaults__ = {"unreviewed": {"nested": [1]}}
+                            with self.assertRaises(Refused):
+                                load()
+
+    def test_base64_and_binascii_import_rebindings_refuse_cold_and_reuse(self):
+        for role in ("controller", "worker", "entrypoint", "fit_child", "inspector"):
+            for reuse in (False, True):
+                for name in ("base64", "binascii"):
+                    with self.subTest(role=role, reuse=reuse, name=name), guard_fixture(role) as (module, load, _, Refused, _):
+                        if reuse:
+                            self.assertIs(load(), module)
+                        module.__dict__[name] = types.ModuleType("foreign_binding")
+                        with self.assertRaises(Refused):
+                            load()
+
+    def test_guarded_module_function_rebinding_and_foreign_globals_refuse(self):
+        for role in ("controller", "worker", "entrypoint", "fit_child", "inspector"):
+            for reuse in (False, True):
+                for damage in ("replacement", "foreign_globals"):
+                    with self.subTest(role=role, reuse=reuse, damage=damage), guard_fixture(role) as (module, load, _, Refused, bindings):
+                        if reuse:
+                            self.assertIs(load(), module)
+                        name = bindings["new_helper_names"][0]
+                        original = module.__dict__[name]
+                        if damage == "replacement":
+                            module.__dict__[name] = lambda: None
+                        else:
+                            module.__dict__[name] = types.FunctionType(original.__code__, dict(module.__dict__),
+                                                                      original.__name__, original.__defaults__)
+                        with self.assertRaises(Refused):
+                            load()
+
+    def test_source_byte_change_refuses_on_guarded_reuse(self):
+        with tempfile.TemporaryDirectory() as directory:
+            altered = Path(directory) / "raw.py"
+            raw = RAW.read_bytes()
+            altered.write_bytes(raw)
+            with guard_fixture("worker") as (module, _, namespace, Refused, bindings):
+                namespace["RAW_AUTHORITY_HELPER"] = altered
+                module = module_from_bytes(altered, raw)
+                self.assertIs(namespace["_load_raw_authority_module"](), module)
+                altered.write_bytes(raw + b"\n# changed after verified reuse\n")
+                with self.assertRaises(Refused):
+                    namespace["_load_raw_authority_module"]()
+
+    def test_worker_cap_equal_limit_accepts_but_limit_plus_one_refuses_before_open_or_hash(self):
+        with guard_fixture("worker") as (_, _, namespace, Refused, _), tempfile.TemporaryDirectory() as directory:
+            read = namespace["_read_successor_input"]
+            path = Path(directory) / "attestation.json"
+            path.write_bytes(b"a" * 17)
+            self.assertEqual(read(path, what="synthetic twin", maximum_bytes=17), b"a" * 17)
+            path.write_bytes(b"a" * 18)
+            with mock.patch.object(Path, "open", side_effect=AssertionError("overflow opened")), mock.patch.dict(namespace, {"_sha_bytes": lambda _: (_ for _ in ()).throw(AssertionError("overflow hashed"))}):
+                with self.assertRaises(Refused):
+                    read(path, what="synthetic twin", maximum_bytes=17)
+            path.write_bytes(b"a" * 17)
+            self.assertEqual(read(path, what="synthetic twin", maximum_bytes=17), b"a" * 17)
+
+    def test_worker_bad_bounds_refuse_before_open(self):
+        with guard_fixture("worker") as (_, _, namespace, Refused, _), tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "attestation.twin.json"
+            path.write_bytes(b"x")
+            for bound in (True, False, 0, -1, 1.5, "1"):
+                with self.subTest(bound=bound), mock.patch.object(Path, "open", side_effect=AssertionError("invalid bound opened")):
+                    with self.assertRaises(Refused):
+                        namespace["_read_successor_input"](path, what="synthetic twin", maximum_bytes=bound)
+
+    def test_worker_opened_descriptor_overflow_refuses_before_read_or_hash(self):
+        with guard_fixture("worker") as (_, _, namespace, Refused, _), tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "attestation.json"
+            path.write_bytes(b"x" * 17)
+            stream = path.open("rb")
+            class Opened:
+                def __enter__(self):
+                    return self
+                def __exit__(self, *args):
+                    stream.close()
+                def fileno(self):
+                    return stream.fileno()
+                def read(self, *_):
+                    raise AssertionError("descriptor overflow read")
+            with mock.patch.object(Path, "open", return_value=Opened()), mock.patch.object(os, "fstat", return_value=types.SimpleNamespace(st_size=18)), mock.patch.dict(namespace, {"_sha_bytes": lambda _: (_ for _ in ()).throw(AssertionError("descriptor overflow hashed"))}):
+                with self.assertRaises(Refused):
+                    namespace["_read_successor_input"](path, what="synthetic twin", maximum_bytes=17)
+
+    def test_worker_second_bounded_observation_refuses_growth_without_unbounded_hash(self):
+        with guard_fixture("worker") as (_, _, namespace, Refused, _), tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "attestation.twin.json"
+            path.write_bytes(b"x" * 17)
+            original = namespace["_capture_bound_successor_input"]
+            calls = []
+            def capture(*args, **kwargs):
+                calls.append(kwargs["maximum_bytes"])
+                if len(calls) == 2:
+                    path.write_bytes(b"x" * 18)
+                return original(*args, **kwargs)
+            with mock.patch.dict(namespace, {"_capture_bound_successor_input": capture,
+                                             "_sha_file": lambda _: (_ for _ in ()).throw(AssertionError("unbounded hash used"))}):
+                with self.assertRaises(Refused):
+                    namespace["_read_successor_input"](path, what="synthetic twin", maximum_bytes=17)
+            self.assertEqual(calls, [17, 17])
+
+    def test_controller_and_worker_cap_policy_mutation_refuses_on_same_module_reuse(self):
+        for role in ("controller", "worker"):
+            for damage in (True, 395800, None):
+                with self.subTest(role=role, damage=damage), guard_fixture(role) as (module, load, _, Refused, _):
+                    self.assertIs(load(), module)
+                    module.SUCCESSOR_ADMISSION_MAX_BYTES = damage
+                    with self.assertRaises(Refused):
+                        load()
+
+    def test_worker_postproof_transport_reuses_captured_bound_and_refuses_callback_growth(self):
+        # Context/gate/records are explicit framing doubles. This exercises the actual
+        # worker transport and bounded reader, not real raw admission or native proof.
+        for damage in (None, "changed_bound", "bool_bound", "grown_twin"):
+            with self.subTest(damage=damage), guard_fixture("worker") as (_, _, namespace, Refused, bindings), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                evidence = root / "synthetic-evidence"
+                records = root / "synthetic-records"
+                evidence.mkdir(); records.mkdir()
+                for name in ("attestation.json", "attestation.twin.json", "predecessor-release.json", "successor-release.json", "predecessor-candidate-manifest.json", "successor-candidate-manifest.json", "current-native-release-receipt.txt"):
+                    (evidence / name).write_bytes(b"x" * 17 if name.startswith("attestation.") else b"synthetic")
+                for name in ("incident", "terminal"):
+                    (records / name).write_bytes(name.encode("ascii"))
+                incident = {"record_digest": "incident-seal", "inventory_digest": "inventory-seal"}
+                terminal = {"record_digest": "terminal-seal"}
+                incident_sha, terminal_sha = digest(b"incident"), digest(b"terminal")
+                pin = "a" * 64
+                authority = {"preimport_authority_record": {"native_startup": {"successor_admission_sha256": pin}},
+                             "preimport_authority": {"successor_admission_sha256": pin}}
+                expected = {"file_sha256": pin}
+                invocation = {"authority": authority, "historical_admission": expected,
+                              "incident": {"record_digest": incident["record_digest"], "file_sha256": incident_sha, "inventory_digest": incident["inventory_digest"]},
+                              "epoch001_terminal": {"record_digest": terminal["record_digest"], "file_sha256": terminal_sha}}
+                context = types.SimpleNamespace(admission_binding=expected, historical_incident_sha256=incident_sha,
+                    historical_terminal_sha256=terminal_sha, historical_incident=incident,
+                    historical_terminal=terminal, operating_authority=authority)
+                fake_raw = types.SimpleNamespace(SUCCESSOR_ADMISSION_MAX_BYTES=17, AuthorityRefused=ValueError)
+                seen = []
+                real_read = namespace["_read_successor_input"]
+                def read(path, *, what, maximum_bytes=None):
+                    seen.append((path.name, maximum_bytes))
+                    return real_read(path, what=what, maximum_bytes=maximum_bytes)
+                def admit(**kwargs):
+                    self.assertEqual(len(kwargs), 12)
+                    self.assertEqual(kwargs["expected_attestation_sha256"], pin)
+                    if damage == "changed_bound":
+                        fake_raw.SUCCESSOR_ADMISSION_MAX_BYTES = 18
+                    elif damage == "bool_bound":
+                        fake_raw.SUCCESSOR_ADMISSION_MAX_BYTES = True
+                    elif damage == "grown_twin":
+                        (evidence / "attestation.twin.json").write_bytes(b"x" * 18)
+                    return context
+                fake_raw.admit_recorded_predecessor = admit
+                namespace.update({"WORKSPACE_ROOT": root, "SUCCESSOR_EVIDENCE_DIRECTORY": evidence.name,
+                    "INCIDENT_FILE": "incident", "EPOCH001_TERMINAL_FILE": "terminal",
+                    "_validate_authority": lambda value: value, "_binding": lambda value, **_: value,
+                    "_load_record": lambda name, **_: (incident, incident_sha) if name == "incident" else (terminal, terminal_sha),
+                    "_record_paths": lambda name: (records / name, records / (name + ".twin")),
+                    "_same_bytes": lambda *_, what: incident_sha if what == "incident" else terminal_sha,
+                    "_canonical": lambda value: json.dumps(value, sort_keys=True),
+                    "_load_raw_authority_module": lambda: fake_raw, "_read_successor_input": read})
+                source = (PREP / bindings["consumers"]["worker"]["path"]).read_bytes()
+                exec(compile(selected(source, {"_validate_historical_admission"}), "selected_worker_transport", "exec", dont_inherit=True), namespace)
+                if damage is None:
+                    self.assertIs(namespace["_validate_historical_admission"](invocation), context)
+                    self.assertEqual([bound for name, bound in seen if name.startswith("attestation.")], [17, 17, 17, 17])
+                    self.assertTrue(all(bound is None for name, bound in seen if not name.startswith("attestation.")))
+                else:
+                    with self.assertRaises(Refused):
+                        namespace["_validate_historical_admission"](invocation)
+                    if damage in ("changed_bound", "bool_bound"):
+                        self.assertEqual(len(seen), 9)  # Two old records plus seven initial inputs; no post-proof reread.
+
+if __name__ == "__main__":
+    raise RuntimeError("INERT TEST PREPARATION; a reviewed future isolated harness must select execution")

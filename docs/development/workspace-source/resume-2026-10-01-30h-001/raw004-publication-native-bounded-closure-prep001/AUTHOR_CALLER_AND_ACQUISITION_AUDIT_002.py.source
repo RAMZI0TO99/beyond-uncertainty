@@ -1,0 +1,115 @@
+"""Own metadata only: AST, byte arithmetic and inert CodeType inspection.
+
+No selected target definitions, target imports, Git, FFI or process launches.
+"""
+import ast,base64,collections,hashlib,json,re,types
+from pathlib import Path
+stage=Path(__file__).absolute().parent
+preservation=json.loads((stage/'PRESERVATION_BEFORE_IMPLEMENTATION_002.json').read_bytes())
+def sha(data):return hashlib.sha256(data).hexdigest()
+def captured(name):
+ row=next(row for row in preservation['pairs']if row['original_relative']==name)
+ data=(stage/row['copy_relative']).read_bytes()
+ assert sha(data)==row['sha256']
+ return data
+def assignments(tree):
+ return{n.targets[0].id:n.value for n in tree.body if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)}
+def literal(node):
+ if isinstance(node,ast.Call)and isinstance(node.func,ast.Attribute)and node.func.attr=='loads':return json.loads(ast.literal_eval(node.args[0]))
+ return ast.literal_eval(node)
+def named(tree):return{n.name:n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+def dump(node):return ast.dump(node,include_attributes=False)
+def write(name,data):
+ with(stage/name).open('xb')as f:f.write((json.dumps(data,sort_keys=True,indent=2)+'\n').encode('ascii'))
+mapping=json.loads(captured('native-schema2-admission-closure-prep003/before/design003/SOURCE_AND_CALLER_METADATA_003.json'))
+common=(stage/'front/native_successor_front_common_013_001.py.template').read_bytes()
+common_tree=ast.parse(common);common_named=named(common_tree)
+schema=literal(assignments(common_tree)['BINDING_SCHEMA'])
+assert len(schema)==44 and collections.Counter(schema.values())==collections.Counter(dict(sha256=39,commit=1,count=1,path=2,provenance=1))
+assert schema==mapping['bindings_schema']
+bootstrap=captured('native-schema2-admission-closure-prep003/CAPTURED_FRAME_BOOTSTRAP_003.py.txt')
+bt=ast.parse(bootstrap);bc=compile(bootstrap,'<captured-frame-bootstrap-metadata>','exec',dont_inherit=True,optimize=0)
+assert type(bc)is types.CodeType
+frame_names={'_native_frame_binding_shape','_native_frame_decode','_native_frame_read'}
+assert set(named(bt))==frame_names
+assert all(dump(node)==dump(common_named[name])for name,node in named(bt).items())
+positions={}
+for index,node in enumerate(bt.body):
+ if isinstance(node,ast.Assign)and isinstance(node.value,ast.Call)and isinstance(node.value.func,ast.Name):
+  if node.value.func.id=='q':positions['physical_commandline']=index
+  if node.value.func.id=='_native_frame_read':positions['bounded_frame']=index
+ if isinstance(node,ast.Assign)and any(isinstance(t,ast.Subscript)and isinstance(t.value,ast.Attribute)and t.value.attr=='argv'for t in node.targets):positions['internal_argv']=index
+ if isinstance(node,ast.Expr)and isinstance(node.value,ast.Call)and isinstance(node.value.func,ast.Name)and node.value.func.id=='exec':positions['common_execution']=index
+assert list(positions)==['physical_commandline','bounded_frame','internal_argv','common_execution']
+assert "len(w.encode('utf-16-le'))//2<=8191"in bootstrap.decode()
+callers=[];tables=[];python_sites=[];ps_sites=[]
+ps_metadata=json.loads((stage/'POWERSHELL_PARSE_METADATA_001.json').read_bytes())
+assert ps_metadata['source_count']==15 and ps_metadata['all_parsed_without_errors']is True
+ps_pins={row['path']:row for row in ps_metadata['files']}
+for item in mapping['callers']:
+ relative=item['relative_path'];data=(stage/relative).read_bytes();old=captured('native-schema2-admission-closure-prep003/'+relative)
+ changed=data!=old
+ assert changed==(relative=='front/native_successor_front_common_013_001.py.template')
+ if item['language']=='Python':
+  tree=ast.parse(data)
+  if item['literal_44_table']:
+   found=[literal(n)for n in assignments(tree).values()if isinstance(n,ast.Call)and isinstance(n.func,ast.Attribute)and n.func.attr=='loads'and len(n.args)==1 and isinstance(n.args[0],ast.Constant)and isinstance(n.args[0].value,str)and 'publisher_sha256'in n.args[0].value]
+   found=[value for value in found if type(value)is dict and set(value)==set(schema)]
+   assert len(found)==1 and all(value is None for value in found[0].values()),relative
+   tables.append(relative)
+  if item['direct_capture_boundary']:python_sites.append(relative)
+ elif item['language']=='PowerShell':
+  text=data.decode('utf8');assert ps_pins[relative]['sha256']==sha(data)and ps_pins[relative]['error_count']==0
+  if relative in mapping['powershell_direct_capture_sites']:
+   variable='frontBootstrap'if '$frontBootstrap ='in text else'bootstrap'
+   match=re.search(r'\$'+variable+r"\s*=\s*'((?:[^']|'')*)'",text)
+   assert match and match.group(1).replace("''", "'").encode()==bootstrap,relative
+   assert "'--bindings-base64',"not in text and 'frontPayload | &'not in text and '$payload | &'not in text
+   assert '$input.Write($Frame,$offset,$take); $offset += $take'in text
+   assert '$input.Flush()'in text and '$input.Close()'in text
+   assert 'sender encoded sum exceeds262142'in text and 'Frame sender complete byte cap differs'in text
+   ps_sites.append(relative)
+  if item['literal_44_table']:
+   match=re.search(r'\$FrontBindings\s*=\s*\[ordered\]@\{([^}]+)\}',text,re.I)
+   assert match
+   fields=re.findall(r'^\s*([A-Za-z0-9_]+)\s*=\s*\$null(?:\s*#[^\n]*)?\s*$',match.group(1),re.M)
+   assert len(fields)==44 and set(fields)==set(schema)
+   tables.append(relative)
+ else:assert item['language']=='CSharp'and not changed
+ callers.append({**item,'bytes':len(data),'sha256':sha(data),'before_sha256':sha(old),'changed':changed})
+assert len(callers)==31 and len(tables)==21 and len(python_sites)==12 and len(ps_sites)==8
+assert sum(row['nonliteral_dependency']for row in callers)==9
+pubs={}
+for relative in('publication/publish-successor-admission-schema3-001.py.template','publication/verify-successor-admission-schema3-001.py.template'):
+ data=(stage/relative).read_bytes();tree=ast.parse(data);pubs[relative]=(data,tree,named(tree),assignments(tree))
+first,second=list(pubs.values())
+shared=set(first[2])&set(second[2]);equal=sorted(name for name in shared if dump(first[2][name])==dump(second[2][name]))
+different=sorted(shared-set(equal))
+assert '_bounded_git_run'in equal
+assert dump(common_named['_bounded_git_run'])==dump(first[2]['_bounded_git_run'])
+policy=json.loads((stage/'ALL31_NORMALIZED_POLICY_001.json').read_bytes())
+assert literal(first[3]['COMPILED_POLICY'])==policy==literal(second[3]['COMPILED_POLICY'])
+pair_inputs=literal(first[3]['MIDDLE_INPUTS'])
+assert pair_inputs==literal(second[3]['MIDDLE_INPUTS'])==literal(assignments(common_tree)['NATIVE_MIDDLE_INPUTS'])
+pair_caps={role:sum(row['size']for row in pair)for role,pair in pair_inputs.items()}
+assert pair_caps=={'middle_commit_object':587,'middle_manifest':62694,'middle_release':6030}
+old=json.loads((stage/'source/before/predecessor_rows.bytes').read_bytes())
+assert len(old)==742 and len({r['path']for r in old})==742
+tables742=[old]
+for afterimages in policy['_SUCCESSOR_COMPACT_AFTERIMAGES']:
+ table={r['path']:r for r in tables742[-1]}
+ for row in afterimages:table[row['path']]=row
+ tables742.append([table[path]for path in sorted(table)])
+historical=[]
+for index,rows in enumerate(tables742):
+ assert len(rows)==742 and all(type(r['size'])is int and 0<=r['size']<=9223372036854775807 for r in rows)
+ paths=[r['path']for r in rows];sizes=[r['size']for r in rows]
+ qa=(json.dumps([[p,next(r['sha256']for r in rows if r['path']==p)]for p in policy['_SUCCESSOR_COMPACT_QA_PATHS']],indent=2,ensure_ascii=True)+'\n').encode('ascii')
+ fact=policy['SUCCESSOR_PREDECESSOR_FACTS']if index==0 else policy['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS'][index-1]
+ qapin=fact.get('predecessor_candidate_manifest_sha256',fact.get('candidate_manifest_sha256'))
+ assert len(qa)==31347 and sha(qa)==qapin
+ historical.append({'commit':fact['controller_commit'],'count':742,'zero_size_count':sizes.count(0),'ls_tree_rz_bytes':sum(54+len(p.encode('utf8'))for p in paths),'ls_files_sz_bytes':sum(51+len(p.encode('utf8'))for p in paths),'cat_file_batch_request_bytes':742*41,'cat_file_batch_response_bytes':sum(s+48+len(str(s))for s in sizes),'maximum_single_blob_bytes':max(sizes),'total_blob_bytes':sum(sizes),'qa_bytes':len(qa),'qa_sha256':sha(qa)})
+assert all(row['cat_file_batch_request_bytes']==30422 for row in historical)
+write('CALLER_BOOTSTRAP_SHARED_SOURCE_AUDIT_001.json',{'schema_version':1,'scope':'AST/byte/inert CodeType metadata only; no target execution','callers':callers,'caller_count':31,'literal44_tables':tables,'python_direct_sites':python_sites,'powershell_direct_sites':ps_sites,'nonliteral_dependencies':9,'bootstrap_sha256':sha(bootstrap),'bootstrap_bytes':len(bootstrap),'bootstrap_utf16_units':len(bootstrap.decode().encode('utf-16-le'))//2,'bootstrap_order':positions,'bootstrap_selected_functions_AST_equal':True,'physical_commandline_ceiling':8191,'actual_eight_OS_commands':None,'actual_GetCommandLineW_captures':None,'shared_publisher_verifier_AST_equal_names':equal,'different_shared_names':different,'bounded_git_three_sources_AST_equal':True,'uniform_binding_schema':schema,'target_code_executed':False})
+write('FINITE_ACQUISITION_DERIVATION_CONTRACT_001.json',{'schema_version':1,'scope':'proposed pure bound derivation; no operational ceiling selected','historical_three_full742_derivations':historical,'fixed_compiled_pair_caps':pair_caps,'finite_raw_snapshot':{'names':31,'nodes':578,'depth':4,'maximum_collection_items':263,'maximum_ASCII_string_chars':64,'integer_max':9223372036854775807,'typed_bytes':32489,'typed_sha256':'dbaa86c401cd0694eab1e80392f7dfe7207fa564750e3d9adfcfb908ce00c893'},'Git_formula_contract':{'ls_tree_rz':'sum(54 + UTF8(path)) for742 fixed paths','ls_files_sz':'sum(51 + UTF8(path)) for742 fixed paths','batch_request':'742 *41 =30422','batch_response':'sum(blob_size +48 +decimal_digits(blob_size))','single_blob':'max(the742 exact nonnegative sizes)','final_table':'retain717 fixed outside-finite25 rows; replace only25 selected sizes/identities','aggregate_ceiling':'max(all reviewed captured stdout/stderr command-role bounds), exact int1..i63Max before Popen'},'required_future_parameters':{'selected_final25_file_caps':None,'final_commit_object_cap':None,'status_stdout_cap':None,'Git_stderr_cap':None,'actual_GIT_ACQUISITION_MAX_BYTES':None,'selected17_metadata_paths':None,'selected35_input_caps':None,'selected7_output_caps':None,'external_metadata_derived_cap':None,'selected_behavior22_profile_and11_validation_caps':None,'actual16_paths':None,'actual_eight_quoted_OS_command_lengths':None,'actual_cap_parity':None},'literal_caps':{'native_common':184317,'native_growth':5731,'canonical_frame':262142,'raw_frame':262144,'read_sentinel':262145,'encoded_bindings':16384,'decoded_bindings':12288,'raw_JSON_global':395799,'schema3_private_JSON':361287,'readiness_response':383105,'physical_OS_command_utf16':8191},'domains':{'zero_size_valid':True,'bool_not_int':True,'u64_digits':20,'signed_i63_min_digits':20,'Python_UTC_chars':32,'supporting_PS_UTC_chars':33,'error_identifier_chars':128},'runtime_reader_limits':'retained direct child, cooperative30s plus1s wait; no descendant/Job/kernel/provider hard deadline','actual_runtime_or_authority':None})
+print({'callers':31,'tables':21,'direct_python':12,'direct_PS':8,'shared_AST':len(equal),'different':different,'historical_Git_bounds':historical,'pair_caps':pair_caps})

@@ -1,0 +1,237 @@
+"""Metadata-only author utility. Target sources are read and parsed, never executed."""
+import ast
+import hashlib
+import json
+import os
+import stat
+from datetime import datetime, timezone
+from pathlib import Path
+
+W = Path(r"D:\Aenv\pro2\resume-2026-10-01-30h-001")
+P = W / "raw-component-runtime-prep004"
+OLD = W / "raw-component-runtime-prep003"
+TEST = W / "raw-test-revision004"
+FIELDS = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_mode", "st_nlink", "st_file_attributes", "st_birthtime_ns")
+
+def require(ok, why):
+    if not ok:
+        raise RuntimeError(why)
+
+def read(path):
+    for ancestor in reversed(path.parents):
+        info = ancestor.lstat()
+        require(stat.S_ISDIR(info.st_mode) and not info.st_file_attributes & 1024, "unsafe ancestor")
+    before = path.lstat()
+    require(stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and not before.st_file_attributes & 1024, "unsafe input")
+    with path.open("rb") as stream:
+        first = os.fstat(stream.fileno())
+        value = stream.read()
+        last = os.fstat(stream.fileno())
+    after = path.lstat()
+    raw = lambda info: [getattr(info, field) for field in FIELDS]
+    cross = lambda info: tuple(getattr(info, field) for field in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink", "st_file_attributes", "st_birthtime_ns"))
+    require(raw(before) == raw(after) and raw(first) == raw(last) and cross(before) == cross(first) == cross(last) == cross(after), "input changed")
+    return {"path": str(path), "sha256": hashlib.sha256(value).hexdigest(), "size": len(value), "mode": stat.S_IMODE(before.st_mode), "path_identity": raw(before), "handle_identity": raw(first)}, value
+
+def once(relative, value):
+    path = P / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        with path.open("xb") as stream:
+            stream.write(value)
+    # Only author metadata continuation: existing draft input/output must be exact bytes, never overwritten.
+    observed, actual = read(path)
+    require(actual == value, "output readback")
+    return observed
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, ensure_ascii=True, indent=2, allow_nan=False) + "\n").encode("ascii")
+
+def js(relative, value):
+    return once(relative, encoded(value))
+
+copies = []
+def copy(original, relative):
+    source, value = read(original)
+    copied = once(relative, value)
+    require(source["path_identity"][:2] != copied["path_identity"][:2], "copy aliases original")
+    row = {"original": str(original), "copy": str(P / relative), "relative_copy": relative,
+           "sha256": source["sha256"], "size": source["size"], "mode": source["mode"]}
+    copies.append(row)
+    return row
+
+test_manifest, manifest_bytes = read(TEST / "STAGED_MANIFEST_004.json")
+require(test_manifest["sha256"] == "f08d7f78e591ee568037e4fc62e709533cdb18c8f02a9f9349509c837e3fc475", "test manifest pin")
+peer, peer_bytes = read(TEST / "INDEPENDENT_RAW_TEST_REVISION_STATIC_REVIEW_004.json")
+require(peer["sha256"] == "3cfa089d2be91d30095a6515cb3efbbaaead65130239d48015b1690a667507a6", "test peer pin")
+peer_record = json.loads(peer_bytes)
+require(peer_record["decision"] == peer_record["verdict"] == "PASS_STATIC_TEST_REVISION_ONLY" and peer_record["reviewer"] == "/root/candidate_review", "test peer scope")
+source_rows = [copy(TEST / relative, relative) for relative in (
+    "source/scripts/week8_recovery_raw_authority.py", "source/tests/test_week8_recovery_raw_authority.py",
+    "source/scripts/week8_relocation_metadata.py", "source/src/bu/experiments/week8_relocation_provenance.py")]
+raw_sha, test_sha, test_size = source_rows[0]["sha256"], source_rows[1]["sha256"], source_rows[1]["size"]
+require(raw_sha == peer_record["raw_helper_sha256"] == peer_record["raw_source_sha256"] and test_sha == peer_record["raw_tests_sha256"] and test_size == peer_record["raw_tests_bytes"] == 415278, "new peer exact payload")
+primary = source_rows + [copy(W / "successor-candidate-raw-revision003/RAW_POLICY_STAGED_MANIFEST_003.json", "inputs/RAW_POLICY_STAGED_MANIFEST_003.json"),
+                         copy(TEST / "STAGED_MANIFEST_004.json", "inputs/STAGED_MANIFEST_004.json")]
+for name in ("OWNER_WORK_WINDOW_30H_20261001_001.json", "OWNER_WORK_WINDOW_30H_20261001_001_REVIEW.md"):
+    original, _ = read(W / name)
+    copied, _ = read(P / "inputs" / name)
+    require(original["sha256"] == copied["sha256"] and original["size"] == copied["size"], "owner copy")
+    primary.append({"original": str(W / name), "copy": str(P / "inputs" / name), "relative_copy": "inputs/" + name, "sha256": original["sha256"], "size": original["size"], "mode": original["mode"]})
+copy(TEST / "INDEPENDENT_RAW_TEST_REVISION_STATIC_REVIEW_004.json", "inputs/INDEPENDENT_RAW_TEST_REVISION_STATIC_REVIEW_004.json")
+copy(TEST / "INDEPENDENT_RAW_TEST_REVISION_STATIC_REVIEW_004.md", "inputs/INDEPENDENT_RAW_TEST_REVISION_STATIC_REVIEW_004.md")
+for name in ("HANDOFF_004.md", "CAUSAL_REGRESSION_MAP_004.json", "AUTHOR_TEST_AST_DELTA_004.json"):
+    copy(TEST / name, "inputs/raw-test004/" + name)
+projection = {"schema_version": 1, "scope": "FROZEN_SOURCE_AND_INDEPENDENT_TEST_PEERS_ONLY_NO_EXECUTION_AUTHORITY",
+              "eight_primary_inputs": primary, "all_current_copied_inputs": copies,
+              "raw_source003_peer_scope": "source7fe7 unchanged; its old b4bf test approval is historical, not approval of367a1",
+              "raw_test004_peer_sha256": peer["sha256"], "raw_test_size": test_size,
+              "current_root_binding_or_execution_completed": False}
+projection_file = js("SOURCE_AND_HISTORICAL_INPUTS_004.json", projection)
+
+driver_before, driver_bytes = read(P / "before003/run-isolated-raw-component-003.TEMPLATE.py")
+driver = driver_bytes.decode("utf-8")
+for old, new in (("raw-component-runtime-prep003", "raw-component-runtime-prep004"), ("raw3-003", "raw4-004"),
+                 ("run-isolated-raw-component-003", "run-isolated-raw-component-004"), ("raw-test-child-003", "raw-test-child-004"),
+                 ("INDEPENDENT_RAW_HARNESS_STATIC_REVIEW_003", "INDEPENDENT_RAW_HARNESS_STATIC_REVIEW_004"),
+                 ("INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_003", "INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_004"),
+                 ("ROOT_FIRST_EXECUTION_ACK_RAW003", "ROOT_FIRST_EXECUTION_ACK_RAW004"),
+                 ("ROOT_LAUNCH_START_003", "ROOT_LAUNCH_START_004"), ("ROOT_RUN_INTENT_003", "ROOT_RUN_INTENT_004"),
+                 ("RAW003_ISOLATED_RUNTIME_GUARD_ONLY", "RAW004_ISOLATED_RUNTIME_GUARD_ONLY"),
+                 ("execute_isolated_raw003", "execute_isolated_raw004")):
+    driver = driver.replace(old, new)
+driver = driver.replace("RAW_PEER_REVIEW_SHA256", "RAW_SOURCE_PEER_REVIEW_SHA256")
+driver = driver.replace("HARNESS_STATIC_REVIEW_SHA256 = None", "RAW_TEST_PEER_REVIEW_SHA256 = None\nHARNESS_STATIC_REVIEW_SHA256 = None", 1)
+driver = driver.replace("if RAW_SOURCE_PEER_REVIEW_SHA256 is None or HARNESS_STATIC_REVIEW_SHA256 is None:", "if RAW_SOURCE_PEER_REVIEW_SHA256 is None or RAW_TEST_PEER_REVIEW_SHA256 is None or HARNESS_STATIC_REVIEW_SHA256 is None:")
+driver = driver.replace('SOURCE_PROJECTION_SHA256 = "15ed4f1deb07b3ebef9abd1df5e0f82937f7bc046ad89887ea63252617d2fa72"', "SOURCE_PROJECTION_SHA256 = " + repr(projection_file["sha256"]))
+driver = driver.replace('RAW_TEST_SHA256 = "b4bf5499506b6521ce6278254bffb9ba5fbde8f71f3e734edd4e148783dc2a7c"', "RAW_TEST_SHA256 = " + repr(test_sha) + "\nRAW_TEST_SIZE = " + str(test_size))
+driver = driver.replace('{"RAW_SOURCE_PEER_REVIEW_SHA256", "HARNESS_STATIC_REVIEW_SHA256"}', '{"RAW_SOURCE_PEER_REVIEW_SHA256", "RAW_TEST_PEER_REVIEW_SHA256", "HARNESS_STATIC_REVIEW_SHA256"}')
+driver = driver.replace('len(replacements) == 2, "exact two binding sites required"', 'len(replacements) == 3, "exact three binding sites required"')
+driver = driver.replace('"SOURCE_AND_HISTORICAL_INPUTS_003.json"', '"SOURCE_AND_HISTORICAL_INPUTS_004.json"')
+driver = driver.replace('len(projection["seven_primary_inputs"]) == 7, "seven primary inputs required"', 'len(projection["eight_primary_inputs"]) == 8, "eight primary inputs required"')
+driver = driver.replace('projection["seven_primary_inputs"]', 'projection["eight_primary_inputs"]')
+driver = driver.replace('RAW_TEST_SHA256, 411000', 'RAW_TEST_SHA256, RAW_TEST_SIZE')
+
+helpers = r'''
+REVIEWER_ALIASES = {name: canonical for canonical in (
+    "/root", "/root/raw_policy_worker", "/root/keepawake_stage", "/root/candidate_review",
+    "/root/bootstrap_stage", "/root/window_docs", "/root/gate_evidence")
+    for name in (canonical, canonical.rsplit("/", 1)[-1])}
+CONFIG_NAMES = ("pytest.toml", ".pytest.toml", "pytest.ini", ".pytest.ini", "pyproject.toml", "tox.ini", "setup.cfg", "conftest.py")
+PYTEST_CONFIG_SOURCE_SHA256 = "535d149e6f3962e44260b6645bb354976e19531f5dd248e14ee7d7fff61c8848"
+WHOLE_EXPECTED = {
+    "base": {"files":5368,"directories":504,"bytes":155022742,"sha256":"0a5aff918e4a46fae2427a593261f8e3640ba439ba4ffebf5081b15eb7df6760"},
+    "scripts": {"files":22,"directories":0,"bytes":2145329,"sha256":"baa95b3f7e3e50a9b388fca6c4fd238fb55fc2e62f4cdc07c1b7c57caa9a54ad"},
+}
+
+def independent_reviewer(review, *, harness):
+    identifier = review.get("reviewer")
+    if type(identifier) is dict:
+        identifier = identifier.get("canonical_identity")
+    require(type(identifier) is str and identifier in REVIEWER_ALIASES, "unknown reviewer identity")
+    canonical = REVIEWER_ALIASES[identifier]
+    excluded = {"/root", "/root/raw_policy_worker"}
+    if harness:
+        excluded.add("/root/keepawake_stage")
+    require(canonical not in excluded, "source/harness author or root cannot supply independent review")
+    return canonical
+
+def configuration_guard():
+    read(PROJECT / "pro2/.venv/Lib/site-packages/_pytest/config/findpaths.py", PYTEST_CONFIG_SOURCE_SHA256)
+    directories = [COPY / "tests", *(COPY / "tests").parents]
+    require(len(directories) == 7, "exact configuration ancestors differ")
+    paths = [directory / name for directory in directories for name in CONFIG_NAMES]
+    require(len(paths) == 56 and all(absent(path) for path in paths), "recognized pytest/config/conftest present")
+    return [str(path) for path in paths]
+
+def whole_before_guard(ack):
+    path, digest = binding(ack["whole_runtime_before"])
+    require(path == PREP / "whole-runtime-before/result.json", "whole before fixed path differs")
+    value = parsed(path, digest)
+    exact(value, ("schema_version", "phase", "verdict", "started_utc", "finished_utc", "observer_sha256", "static_review_sha256", "owner_sha256", "trees", "observation_files", "before_record_sha256", "runtime_mutation", "target_execution"), "external whole before")
+    require(type(value["schema_version"]) is int and value["schema_version"] == 1 and value["phase"] == "before"
+            and value["verdict"] == "MATCHES_PINNED_RUNTIME_TWICE" and value["owner_sha256"] == OWNER_SHA256
+            and value["static_review_sha256"] == HARNESS_STATIC_REVIEW_SHA256
+            and hex64(value["observer_sha256"]) and value["before_record_sha256"] is None
+            and value["runtime_mutation"] is False and value["target_execution"] is False,
+            "external whole before facts differ")
+    require(timestamp(value["started_utc"]) <= timestamp(value["finished_utc"]) <= datetime.now(timezone.utc), "whole before times")
+    exact(value["trees"], ("base", "scripts"), "whole trees")
+    require(value["trees"] == WHOLE_EXPECTED, "whole runtime identity differs")
+    require(type(value["observation_files"]) is list and len(value["observation_files"]) == 4, "four whole observations")
+    paths = set()
+    for row in value["observation_files"]:
+        exact(row, ("path", "sha256", "size"), "whole observation binding")
+        captured = within_work(row["path"])
+        require(captured.parent == PREP / "whole-runtime-before" and captured.name in
+                ("base-first.json", "base-second.json", "scripts-first.json", "scripts-second.json")
+                and str(captured) not in paths and type(row["size"]) is int and 0 < row["size"] <= 4194304, "whole row path or cap")
+        paths.add(str(captured)); read(captured, row["sha256"], row["size"])
+    # This authenticates external time-local observations. It is NOT a fresh global-tree reread by this driver.
+    return {"path":str(path),"sha256":digest,"finished_utc":value["finished_utc"],"observer_sha256":value["observer_sha256"]}
+
+'''
+driver = driver.replace("def fresh_guard(ack, expected_live=None):", helpers + "def fresh_guard(ack, expected_live=None):", 1)
+driver = driver.replace("    inputs = primary_inputs()\n", "    configuration_paths = configuration_guard()\n    whole_before = whole_before_guard(ack)\n    inputs = primary_inputs()\n", 1)
+driver = driver.replace('return {"primary_inputs": inputs, "live": live, "runtime": actual_runtime,', 'return {"configuration56": configuration_paths, "whole_runtime_before": whole_before,\n            "primary_inputs": inputs, "live": live, "runtime": actual_runtime,', 1)
+driver = driver.replace('    bound = parsed(PREP / "INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_004.json", bound_review_sha)', '    independent_reviewer(static, harness=True)\n    bound = parsed(PREP / "INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_004.json", bound_review_sha)', 1)
+driver = driver.replace('    launch_path = PREP / "ROOT_LAUNCH_START_004.json"', '    independent_reviewer(bound, harness=True)\n    launch_path = PREP / "ROOT_LAUNCH_START_004.json"', 1)
+old_peer = '''    require(raw_peer["decision"] == "PASS_STATIC"
+            and raw_peer["raw_helper_sha256"] == RAW_SOURCE_SHA256
+            and raw_peer["raw_tests_sha256"] == RAW_TEST_SHA256
+            and RAW_SOURCE_PEER_REVIEW_SHA256 == "7c263719ad75c3f48554b6e592d11747ed6ad9e2377723320adf114d71834d5f",
+            "exact independent raw003 peer receipt required")'''
+new_peer = '''    independent_reviewer(raw_peer, harness=False)
+    require(raw_peer["decision"] == "PASS_STATIC" and raw_peer["raw_helper_sha256"] == RAW_SOURCE_SHA256
+            and raw_peer["raw_tests_sha256"] == "b4bf5499506b6521ce6278254bffb9ba5fbde8f71f3e734edd4e148783dc2a7c"
+            and RAW_SOURCE_PEER_REVIEW_SHA256 == "7c263719ad75c3f48554b6e592d11747ed6ad9e2377723320adf114d71834d5f",
+            "exact historical raw003 SOURCE peer receipt required")
+    test_peer = parsed(PREP / "inputs/INDEPENDENT_RAW_TEST_REVISION_STATIC_REVIEW_004.json", RAW_TEST_PEER_REVIEW_SHA256)
+    independent_reviewer(test_peer, harness=False)
+    require(test_peer["decision"] == test_peer["verdict"] == "PASS_STATIC_TEST_REVISION_ONLY"
+            and test_peer["raw_helper_sha256"] == test_peer["raw_source_sha256"] == RAW_SOURCE_SHA256
+            and test_peer["raw_tests_sha256"] == RAW_TEST_SHA256 and type(test_peer["raw_tests_bytes"]) is int
+            and test_peer["raw_tests_bytes"] == RAW_TEST_SIZE, "exact new raw004 TEST peer receipt required")'''
+require(old_peer in driver, "old peer exact source anchor")
+driver = driver.replace(old_peer, new_peer, 1)
+driver = driver.replace('"raw_peer_review_sha256"', '"raw_source_peer_review_sha256"')
+driver = driver.replace('"static_review_sha256", "raw_source_peer_review_sha256",', '"static_review_sha256", "raw_source_peer_review_sha256", "raw_test_peer_review_sha256",')
+driver = driver.replace('"runtime_snapshot", "live_guard_snapshot", "coordination_acknowledgement",', '"runtime_snapshot", "live_guard_snapshot", "whole_runtime_before", "coordination_acknowledgement",')
+driver = driver.replace('and ack["raw_source_peer_review_sha256"] == RAW_SOURCE_PEER_REVIEW_SHA256', 'and ack["raw_source_peer_review_sha256"] == RAW_SOURCE_PEER_REVIEW_SHA256\n            and ack["raw_test_peer_review_sha256"] == RAW_TEST_PEER_REVIEW_SHA256', 1)
+driver = driver.replace('    first = fresh_guard(ack)\n', '    first = fresh_guard(ack)\n    require(datetime.now(timezone.utc) - timestamp(first["whole_runtime_before"]["finished_utc"]) < timedelta(minutes=10),\n            "whole before observation is not fresh at sole claim")\n', 1)
+driver = driver.replace('                      (PREP / "ROOT_FIRST_EXECUTION_ACK_RAW004.json", ack_sha, MAX_JSON_BYTES),', '                      (PREP / "inputs/INDEPENDENT_RAW_TEST_REVISION_STATIC_REVIEW_004.json", RAW_TEST_PEER_REVIEW_SHA256, MAX_JSON_BYTES),\n                      (PREP / "ROOT_FIRST_EXECUTION_ACK_RAW004.json", ack_sha, MAX_JSON_BYTES),', 1)
+future_names = {"RAW_SOURCE_PEER_REVIEW_SHA256", "RAW_TEST_PEER_REVIEW_SHA256", "HARNESS_STATIC_REVIEW_SHA256"}
+future_bindings = [n for n in ast.parse(driver).body if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name) and n.targets[0].id in future_names]
+require('411000' not in driver and 'seven_primary_inputs' not in driver and len(future_bindings) == 3 and all(isinstance(n.value, ast.Constant) and n.value.value is None for n in future_bindings), "driver finite source/binding shape")
+ast.parse(driver)
+driver_file = once("run-isolated-raw-component-004.TEMPLATE.py", driver.encode("utf-8"))
+child_file = once("raw-test-child-004.TEMPLATE.py", read(P / "before003/raw-test-child-003.TEMPLATE.py")[1])
+ps = read(P / "before003/ROOT_FIRST_LAUNCH_003.TEMPLATE.ps1")[1].decode("utf-8")
+for old, new in (("raw-component-runtime-prep003", "raw-component-runtime-prep004"), ("run-isolated-raw-component-003", "run-isolated-raw-component-004"),
+                 ("ROOT_FIRST_EXECUTION_ACK_RAW003", "ROOT_FIRST_EXECUTION_ACK_RAW004"), ("INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_003", "INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_004"),
+                 ("ROOT_LAUNCH_START_003", "ROOT_LAUNCH_START_004"), ("ROOT_LAUNCH_TERMINAL_003", "ROOT_LAUNCH_TERMINAL_004"),
+                 ("ROOT_LAUNCH_STDOUT_003", "ROOT_LAUNCH_STDOUT_004"), ("ROOT_LAUNCH_STDERR_003", "ROOT_LAUNCH_STDERR_004"), ("RAW003", "RAW004"), ("Raw003", "Raw004")):
+    ps = ps.replace(old, new)
+ps = ps.replace("if ($value -cnotmatch '^[0-9a-f]{64}$')", "if ($value -isnot [string] -or $value -cnotmatch '^[0-9a-f]{64}$')")
+ps = ps.replace("    if (Test-Path -LiteralPath $path) { throw 'One-use root capture exists' }", "    try { [void](Get-Item -LiteralPath $path -Force -ErrorAction Stop); throw 'One-use root capture exists' }\n    catch [System.Management.Automation.ItemNotFoundException] { } # Only absent paths are accepted; access errors propagate.")
+ps_file = once("ROOT_FIRST_LAUNCH_004.TEMPLATE.ps1", ps.encode("utf-8"))
+ack = json.loads(read(P / "before003/ROOT_FIRST_EXECUTION_ACK_RAW003.TEMPLATE.json")[1])
+ack["decision"] = "execute_isolated_raw004_collection_then_tests_once"
+ack["raw_source_peer_review_sha256"] = ack.pop("raw_peer_review_sha256")
+ack["raw_test_peer_review_sha256"] = None
+ack["whole_runtime_before"] = None
+ack["raw_test_sha256"] = test_sha
+ack["source_projection_sha256"] = projection_file["sha256"]
+require(len(ack) == 22, "exact ACK22")
+ack_file = js("ROOT_FIRST_EXECUTION_ACK_RAW004.TEMPLATE.json", ack)
+js("DRIVER_AUTHOR_STAGE_004_002.json", {"schema_version": 1, "status": "SOURCE_TEMPLATES_PREPARED_PENDING_WHOLE_OBSERVER_AND_FINAL_PEER_REVIEW",
+   "driver": driver_file, "child": child_file, "PS": ps_file, "ACK": ack_file, "source_projection": projection_file,
+   "actual_test_source_size_derived": test_size, "raw_source_peer_sha256": "7c263719ad75c3f48554b6e592d11747ed6ad9e2377723320adf114d71834d5f",
+   "raw_test_peer_sha256": peer["sha256"], "primary_count": len(primary), "driver_future_literals": 3,
+   "ACK_key_count": len(ack), "target_execution": False, "runtime_execution_authority": False})
+for row in copies:
+    first, _ = read(Path(row["original"])); second, _ = read(Path(row["copy"]))
+    require(first["sha256"] == second["sha256"] == row["sha256"], "final copy drift")
+print(json.dumps({"driver": driver_file, "child": child_file, "PS": ps_file, "ACK": ack_file, "source_projection": projection_file, "source_copies": len(copies), "primary": len(primary), "test_size": test_size}))

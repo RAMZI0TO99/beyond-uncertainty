@@ -1,0 +1,143 @@
+"""Source/text compositor only; generated PowerShell definitions never execute."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+ROOT = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\guard005-root-metadata-prep002')
+OLD = ROOT/'historical-guard005/SUPERVISE_ROOT_WHOLE_BEFORE_005.ps1'
+
+def once(name, data):
+    with (ROOT/name).open('xb') as stream:
+        stream.write(data.encode('utf-8') if isinstance(data,str) else data)
+
+old = OLD.read_bytes().decode('utf-8')
+pin = old[old.index('function Pin('):old.index('\nfunction Write-Once(')]
+write_once = old[old.index('function Write-Once('):old.index('\nfunction Authorization-Stamp(')]
+stamp = old[old.index('function Authorization-Stamp('):old.index('\nfunction Before-Authorization(')]
+before_guard = old[old.index('function Before-Authorization('):old.index('\nif ([IO.Path]')]
+finished_keys = []
+driver = ast.parse((ROOT/'historical-guard005/run-consumer-guard-unit005.py').read_bytes())
+for node in ast.walk(driver):
+    if isinstance(node,ast.Dict) and any(isinstance(key,ast.Constant) and key.value=='accepted_copied_guard_units' for key in node.keys):
+        finished_keys = [ast.literal_eval(key) for key in node.keys]
+assert len(finished_keys)==20
+finished_ps = ','.join("'"+key+"'" for key in finished_keys)
+common = r'''
+function Exact-Object($Value,[string[]]$Keys,[string]$Label) {
+    if ($Value -isnot [pscustomobject]) { throw ($Label+' object type differs') }
+    $names=@($Value.PSObject.Properties.Name)
+    if ($names.Count -ne $Keys.Count -or @($names | Where-Object { $Keys -cnotcontains $_ }).Count -ne 0) { throw ($Label+' closed keys differ') }
+}
+function Hex-Pin($Value) { return ($Value -is [string] -and $Value -cmatch '\A[0-9a-f]{64}\z') }
+function Python-Stamp($Value) {
+    if ($Value -isnot [string] -or $Value -cnotmatch '\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{6})?\+00:00\z') { throw 'Python metadata UTC requires0or6 fractional digits' }
+    $format=if($Value.Contains('.')){"yyyy-MM-dd'T'HH:mm:ss.ffffffzzz"}else{"yyyy-MM-dd'T'HH:mm:sszzz"}
+    $valueStamp=[DateTimeOffset]::ParseExact($Value,$format,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::None)
+    if ($valueStamp.Offset -ne [TimeSpan]::Zero -or $valueStamp.ToString($format,[Globalization.CultureInfo]::InvariantCulture) -cne $Value) { throw 'Python UTC canonical roundtrip differs' }
+    return $valueStamp
+}
+function Decode-Captured([byte[]]$Bytes) { return ([Text.UTF8Encoding]::new($false,$true).GetString($Bytes) | ConvertFrom-Json) }
+function Original-Pointer($Value,[string]$ExpectedPath) {
+    Exact-Object $Value @('path','sha256') 'Original before pointer'
+    if ($Value.path -isnot [string] -or $Value.path -cne $ExpectedPath -or -not (Hex-Pin $Value.sha256)) { throw 'Original before pointer role/pin differs' }
+}
+function Original-Context-Fresh($Authorization) {
+    Original-Pointer $Authorization.runtime_snapshot (Join-Path $Meta 'phase-before-005\RUNTIME4_METADATA_SELECTION_005.json')
+    Original-Pointer $Authorization.context_selection (Join-Path $Meta 'phase-before-005\OPAQUE_CURRENT_CONTEXT_005.json')
+    $runtime=Decode-Captured (Pin $Authorization.runtime_snapshot.path $Authorization.runtime_snapshot.sha256 65536)
+    Exact-Object $runtime @('captured_utc','context_selection','entries','schema_version','scope') 'Original runtime selection'
+    $context=Decode-Captured (Pin $Authorization.context_selection.path $Authorization.context_selection.sha256 1048576)
+    Exact-Object $context @('captured_utc','configurations','git_metadata','head','runtime_roles_projection_sha256','schema_version','scope','tracked_rows') 'Original opaque context'
+    foreach($record in @($runtime,$context)) {
+        if (($record.schema_version -isnot [int] -and $record.schema_version -isnot [long]) -or $record.schema_version -ne 1 -or $record.scope -isnot [string] -or $record.scope -cne $Scope) { throw 'Original context/runtime role types differ' }
+        $age=([DateTimeOffset]::UtcNow-(Python-Stamp $record.captured_utc)).TotalSeconds
+        if ($age -lt 0 -or $age -gt 600) { throw 'Original before600-second context expired; no refresh/replay' }
+    }
+    Original-Pointer $runtime.context_selection $Authorization.context_selection.path
+    if ($runtime.context_selection.sha256 -cne $Authorization.context_selection.sha256 -or $runtime.captured_utc -cne $context.captured_utc -or $runtime.entries -isnot [array] -or $runtime.entries.Count -ne 4 -or $context.tracked_rows -isnot [array] -or $context.tracked_rows.Count -ne 742 -or $context.configurations -isnot [array] -or $context.configurations.Count -ne 55) { throw 'Original before runtime/context relationship differs' }
+    if ($context.runtime_roles_projection_sha256 -isnot [string] -or $context.runtime_roles_projection_sha256 -cne '63761e1f122b54d1b75a6884588ec94b6ffd9228df409ccc812f20d94c9809dd') { throw 'Original runtime projection differs' }
+    # Fresh actual-record review independently checks nested raw9/path/hash rows and canonical JSON; FileInfo checks are not an atomic lock.
+}
+function Whole-Before-Result($Authorization,[string]$Expected) {
+    $value=Decode-Captured (Pin (Join-Path $Prep 'whole-runtime-before\result.json') $Expected 262144)
+    Exact-Object $value @('schema_version','record_type','scope','phase','verdict','captured_utc','observer_sha256','static_review_sha256','profile_sha256','owner_sha256','runtime_snapshot_sha256','context_selection_sha256','source_snapshot_sha256','trees','observation_files','before_record_sha256','unit_receipt','target_execution','whole_site_loaded_closure_retained_lock_OS_Job_guaranteed') 'Actual whole-before result'
+    foreach($key in @('record_type','scope','phase','verdict','observer_sha256','static_review_sha256','profile_sha256','owner_sha256','runtime_snapshot_sha256','context_selection_sha256','source_snapshot_sha256')) { if($value.$key -isnot [string]) { throw 'Whole-before nominal string differs' } }
+    if (($value.schema_version -isnot [int] -and $value.schema_version -isnot [long]) -or $value.schema_version -ne 1 -or $value.record_type -cne 'consumer_guard_unit005_whole_metadata_result' -or $value.scope -cne $Scope -or $value.phase -cne 'before' -or $value.verdict -cne 'MATCHES_PINNED_BYTES_METADATA_TWICE' -or $value.observer_sha256 -cne $ObserverSha -or $value.static_review_sha256 -cne $ReviewSha -or $value.profile_sha256 -cne $ProfileSha -or $value.owner_sha256 -cne $OwnerSha -or $value.runtime_snapshot_sha256 -cne $Authorization.runtime_snapshot.sha256 -or $value.context_selection_sha256 -cne $Authorization.context_selection.sha256 -or -not (Hex-Pin $value.source_snapshot_sha256) -or $null -ne $value.before_record_sha256 -or $null -ne $value.unit_receipt -or $value.target_execution -isnot [bool] -or $value.target_execution -ne $false -or $value.whole_site_loaded_closure_retained_lock_OS_Job_guaranteed -isnot [bool] -or $value.whole_site_loaded_closure_retained_lock_OS_Job_guaranteed -ne $false) { throw 'Whole-before actual scope/source/pointer facts differ' }
+    [void](Python-Stamp $value.captured_utc)
+    Exact-Object $value.trees @('base','scripts') 'Expected two tree roles'
+    if ($value.observation_files -isnot [array] -or $value.observation_files.Count -ne 4) { throw 'Four actual whole-before row streams required' }
+    # Whole result is not accepted merely by these parent checks; independent full tree/row reconciliation is mandatory.
+}
+function Driver-Finished($Value,[string]$BeforePin) {
+    Exact-Object $Value @(__FINISHED_KEYS__) 'Actual driver finished receipt'
+    foreach($key in @('scope','result_sha256','collection_sha256','root_ack_sha256','profile_sha256','source_peer_sha256','harness_static_peer_sha256','whole_before_result_sha256','driver_sha256')) { if($Value.$key -isnot [string]) { throw 'Driver receipt nominal string differs' } }
+    foreach($key in @('result_sha256','collection_sha256','root_ack_sha256','profile_sha256','source_peer_sha256','harness_static_peer_sha256','whole_before_result_sha256','driver_sha256')) { if(-not (Hex-Pin $Value.$key)) { throw 'Driver receipt pin type differs' } }
+    foreach($key in @('collected_methods','passed','reported_subtests','passing_subtests')) { if(($Value.$key -isnot [int] -and $Value.$key -isnot [long]) -or $Value.$key -lt 0) { throw 'Driver actual count type differs' } }
+    foreach($key in @('accepted_copied_guard_units','direct_child_reaped','external_whole_after_acceptance_pending','canonical_fullQA_native_fit_authority','hard_Job_OS_sandbox_descendant_cleanup_proved')) { if($Value.$key -isnot [bool]) { throw 'Driver receipt nominal boolean differs' } }
+    if ($Value.scope -cne $Scope -or $Value.accepted_copied_guard_units -ne $true -or $Value.collected_methods -ne 14 -or $Value.passed -ne 14 -or $Value.reported_subtests -ne $Value.passing_subtests -or $Value.profile_sha256 -cne $ProfileSha -or $Value.source_peer_sha256 -cne '54b19d3611ebb51bd6504a0ef6b23c689c86b5c5c163688be868fa51c0808050' -or $Value.harness_static_peer_sha256 -cne $ReviewSha -or $Value.whole_before_result_sha256 -cne $BeforePin -or $Value.driver_sha256 -cne '9f2add33e9dc9c2e3b3931f6565beede64ebe44baff5d07a519104afa6c0ab8d' -or $Value.direct_child_reaped -ne $true -or $Value.external_whole_after_acceptance_pending -ne $true -or $Value.canonical_fullQA_native_fit_authority -ne $false -or $Value.hard_Job_OS_sandbox_descendant_cleanup_proved -ne $false) { throw 'Actual accepted copied14 guard receipt required; no canonical/native authority' }
+    if ($Value.evidence_initial -isnot [array] -or $Value.evidence_final -isnot [array] -or ($Value.evidence_initial | ConvertTo-Json -Compress -Depth 16) -cne ($Value.evidence_final | ConvertTo-Json -Compress -Depth 16)) { throw 'Driver initial/final evidence differs' }
+    # Actual result/collection/events and genuine ROOT ACK are independently reviewed before this producer is authorized; no acceptance is inferred here.
+}
+function Root-Unit-Terminal([string]$Expected) {
+    $value=Decode-Captured (Pin (Join-Path $Prep 'ROOT_LAUNCH_TERMINAL_005.json') $Expected 65536)
+    Exact-Object $value @('schema_version','scope','finished_utc','exit_code','timed_out','capture_overflow','capture_drain_complete','direct_driver_reaped','failure','stdout_bytes','stderr_bytes','driver_sha256','root_ack_sha256','spent','canonical_qa_native_fit_authority','descendant_cleanup_guaranteed','OS_Job_hard_memory_bound','automatic_cleanup_performed') 'Physical ROOT unit terminal'
+    foreach($key in @('scope','driver_sha256','root_ack_sha256')) { if($value.$key -isnot [string]) { throw 'ROOT terminal nominal string differs' } }
+    foreach($key in @('schema_version','exit_code','stdout_bytes','stderr_bytes')) { if(($value.$key -isnot [int] -and $value.$key -isnot [long]) -or $value.$key -lt 0) { throw 'ROOT terminal integer differs' } }
+    foreach($key in @('timed_out','capture_overflow','capture_drain_complete','direct_driver_reaped','spent','canonical_qa_native_fit_authority','descendant_cleanup_guaranteed','OS_Job_hard_memory_bound','automatic_cleanup_performed')) { if($value.$key -isnot [bool]) { throw 'ROOT terminal nominal boolean differs' } }
+    if ($value.schema_version -ne 1 -or $value.scope -cne $Scope -or $value.exit_code -ne 0 -or $value.timed_out -ne $false -or $value.capture_overflow -ne $false -or $value.capture_drain_complete -ne $true -or $value.direct_driver_reaped -ne $true -or $null -ne $value.failure -or $value.stdout_bytes -gt 131072 -or $value.stderr_bytes -gt 131072 -or $value.driver_sha256 -cne '9f2add33e9dc9c2e3b3931f6565beede64ebe44baff5d07a519104afa6c0ab8d' -or -not (Hex-Pin $value.root_ack_sha256) -or $value.spent -ne $true -or $value.canonical_qa_native_fit_authority -ne $false -or $value.descendant_cleanup_guaranteed -ne $false -or $value.OS_Job_hard_memory_bound -ne $false -or $value.automatic_cleanup_performed -ne $false) { throw 'Physical ROOT unit terminal did not complete successful scoped first entry' }
+    [void](Authorization-Stamp $value.finished_utc)
+    return $value.root_ack_sha256
+}
+'''.replace('__FINISHED_KEYS__',finished_ps)
+header=old[:old.index('\nfunction Pin(')]
+settings=header[header.index("$Prep ="):]
+settings=settings.replace("$Auth = Join-Path $Prep 'ROOT_WHOLE_BEFORE_AUTHORIZATION_005.json'", "$Auth = Join-Path $Prep 'ROOT_WHOLE_AFTER_AUTHORIZATION_005.json'")
+settings=settings.replace('ROOT_WHOLE_BEFORE_PARENT_', 'ROOT_WHOLE_AFTER_PARENT_')
+settings += "\n$Meta = 'D:\\Aenv\\pro2\\resume-2026-10-01-30h-001\\guard005-root-metadata-prep002'\n$ReceiptCopy = Join-Path $Prep 'ROOT_DRIVER_SCOPED_FINISHED_RECEIPT_005.json'\n"
+after_guard=before_guard.replace('Before-Authorization','After-Authorization').replace('Whole-before','Whole-after').replace("$Record.phase -cne 'before'","$Record.phase -cne 'after'")
+after_guard=after_guard.replace("$null -ne $Record.before_record_sha256 -or $null -ne $Record.unit_receipt", "-not (Hex-Pin $Record.before_record_sha256)")
+after_guard=after_guard.replace('    $created = Authorization-Stamp', "    Original-Pointer $Record.unit_receipt $ReceiptCopy\n    Whole-Before-Result $Record $Record.before_record_sha256\n    $actualReceipt=Decode-Captured (Pin $ReceiptCopy $Record.unit_receipt.sha256 262144)\n    Driver-Finished $actualReceipt $Record.before_record_sha256\n    if ((Root-Unit-Terminal $ExpectedUnitTerminalSha256) -cne $actualReceipt.root_ack_sha256) { throw 'Physical ROOT terminal and scoped driver receipt ACK differ' }\n    Original-Context-Fresh $Record\n    $created = Authorization-Stamp")
+parent_tail=old[old.index('\nif ([IO.Path]'):]
+parent_tail=parent_tail.replace("(Join-Path $Prep 'SUPERVISE_ROOT_WHOLE_BEFORE_005.ps1')", "(Join-Path $Meta 'SUPERVISE_ROOT_WHOLE_AFTER_005.ps1')")
+parent_tail=parent_tail.replace("(Join-Path $Prep 'whole-runtime-before'),(Join-Path $Prep 'whole-runtime-after'),(Join-Path $Prep 'ROOT_WHOLE_AFTER_AUTHORIZATION_005.json')", "(Join-Path $Prep 'whole-runtime-after')")
+parent_tail=parent_tail.replace('Before-Authorization','After-Authorization').replace('whole-before','whole-after').replace("phase='before'","phase='after'")
+parent_header=header[:header.index("$Prep =")].replace('[string]$ExpectedAuthorizationSha256)', '[string]$ExpectedAuthorizationSha256,[Parameter(Mandatory=$true)][string]$ExpectedUnitTerminalSha256)')
+parent=parent_header + settings + '\n' + pin + '\n' + write_once + '\n' + stamp + common + after_guard + parent_tail
+once('SUPERVISE_ROOT_WHOLE_AFTER_005.ps1',parent)
+
+producer_param="param([Parameter(Mandatory=$true)][string]$ExpectedSelfSha256,[Parameter(Mandatory=$true)][string]$ExpectedBeforeAuthorizationSha256,[Parameter(Mandatory=$true)][string]$ExpectedWholeBeforeResultSha256,[Parameter(Mandatory=$true)][string]$ExpectedDriverFinishedSha256,[Parameter(Mandatory=$true)][string]$ExpectedUnitTerminalSha256)\nSet-StrictMode -Version Latest\n$ErrorActionPreference = 'Stop'\n"
+producer_settings=settings[:settings.index('$Start =')] + settings[settings.index('$ObserverSha ='):]
+producer_settings += "$BeforeAuth = Join-Path $Prep 'ROOT_WHOLE_BEFORE_AUTHORIZATION_005.json'\n$DriverFinished = 'D:\\Aenv\\pro2\\.tmp\\cg14-005\\finished.json'\n"
+producer_tail=r'''
+if ([IO.Path]::GetFullPath($PSCommandPath) -cne (Join-Path $Meta 'WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_005.ps1')) { throw 'Fixed whole-after producer path required' }
+[void](Pin $PSCommandPath $ExpectedSelfSha256 65536)
+[void](Pin $Owner $OwnerSha 65536)
+[void](Pin $Script $ObserverSha 26697)
+[void](Pin $Profile $ProfileSha 65536)
+[void](Pin $Review $ReviewSha 65536)
+foreach($path in @($Auth,$ReceiptCopy,(Join-Path $Prep 'whole-runtime-after'),(Join-Path $Prep 'ROOT_WHOLE_AFTER_PARENT_START_005.json'),(Join-Path $Prep 'ROOT_WHOLE_AFTER_PARENT_TERMINAL_005.json'),(Join-Path $Prep 'ROOT_WHOLE_AFTER_PARENT_STDOUT_005.txt'),(Join-Path $Prep 'ROOT_WHOLE_AFTER_PARENT_STDERR_005.txt'))) {
+    try { [void](Get-Item -LiteralPath $path -Force -ErrorAction Stop); throw 'One-use whole-after namespace exists' } catch [System.Management.Automation.ItemNotFoundException] { }
+}
+$original=Decode-Captured (Pin $BeforeAuth $ExpectedBeforeAuthorizationSha256 65536)
+[void](Before-Authorization $original)
+Original-Context-Fresh $original
+Whole-Before-Result $original $ExpectedWholeBeforeResultSha256
+$receiptBytes=Pin $DriverFinished $ExpectedDriverFinishedSha256 262144
+$actualReceipt=Decode-Captured $receiptBytes
+Driver-Finished $actualReceipt $ExpectedWholeBeforeResultSha256
+if ((Root-Unit-Terminal $ExpectedUnitTerminalSha256) -cne $actualReceipt.root_ack_sha256) { throw 'Physical ROOT terminal and scoped driver receipt ACK differ' }
+$now=[DateTimeOffset]::UtcNow
+$ownerEnd=[DateTimeOffset]::Parse('2026-10-02T22:36:15Z',[Globalization.CultureInfo]::InvariantCulture)
+if (($ownerEnd-$now).TotalSeconds -lt 900) { throw '900-second genuine whole-after authorization must fit owner; no fabricated future expiry' }
+# The observer pointer grammar permits WORK-contained evidence only. ROOT authorization separately reviews this byte-identical bridge before any observer entry.
+$copyStream=[IO.File]::Open($ReceiptCopy,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+try { $copyStream.Write($receiptBytes,0,$receiptBytes.Length);$copyStream.Flush($true) } finally { $copyStream.Dispose() }
+[void](Pin $ReceiptCopy $ExpectedDriverFinishedSha256 262144)
+Original-Context-Fresh $original
+$record=[ordered]@{schema_version=1;record_type='consumer_guard_unit005_metadata_observation_authorization';author='/root';scope=$Scope;phase='after';created_utc=$now.ToString('o');expires_utc=$now.AddMinutes(15).ToString('o');observer_sha256=$ObserverSha;profile_sha256=$ProfileSha;static_review_sha256=$ReviewSha;owner_sha256=$OwnerSha;runtime_snapshot=$original.runtime_snapshot;context_selection=$original.context_selection;before_record_sha256=$ExpectedWholeBeforeResultSha256;unit_receipt=([ordered]@{path=$ReceiptCopy;sha256=$ExpectedDriverFinishedSha256})}
+Write-Once $Auth $record
+'''
+once('WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_005.ps1',producer_param+producer_settings+'\n'+pin+'\n'+write_once+'\n'+stamp+common+before_guard+producer_tail)
+once('WHOLE_AFTER_SOURCE_PREPARATION_004.json',(json.dumps({'schema_version':1,'author':'/root/bootstrap_stage','driver_finished_closed_key_count':len(finished_keys),'driver_finished_closed_keys':finished_keys,'root_pointer_bridge_approved_SOURCE_ONLY':True,'bridge_cap_bytes':262144,'bridge_cap_origin':'unchanged frozen driver MAX_RECEIPT, checked before allocation','whole_after_uses_original_before_context_and_runtime':True,'whole_after_driver_receipt_copy_SHA_must_equal_actual_driver_receipt_SHA':True,'metadata_after_uses_own_before_capture_and_physical_ROOT_unit_terminal':True,'whole_after_requires_independently_reviewed_driver_finished_and_physical_ROOT_terminal':True,'generated_target_definitions_executed':False,'actual_after_authorization':None,'actual_after_parent':None},sort_keys=True,indent=2)+'\n'))
+print(json.dumps({'target_definitions_executed':False,'generated_PS_sources':2,'finished_keys':len(finished_keys)}))

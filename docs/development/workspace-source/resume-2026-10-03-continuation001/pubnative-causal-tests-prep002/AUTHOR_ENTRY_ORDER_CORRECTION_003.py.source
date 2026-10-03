@@ -1,0 +1,44 @@
+"""Own metadata/source composition only; no target execution."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+from datetime import datetime,timezone
+P=Path(__file__).parent
+sha=lambda b:hashlib.sha256(b).hexdigest()
+old=P/'source/test_schema3_metadata_grammar_001.py'
+data=old.read_bytes();text=data.decode()
+tree=ast.parse(text)
+main=[n for n in tree.body if isinstance(n,ast.If)and any(isinstance(x,ast.Constant)and x.value=='__main__'for x in ast.walk(n.test))]
+assert len(main)==1
+lines=text.splitlines(keepends=True);start=main[0].lineno-1;end=main[0].end_lineno
+assert lines[start].startswith("if __name__ == '__main__':")
+new=''.join(lines[:start])+''.join(lines[end:])+'\n'+''.join(lines[start:end])
+newtree=ast.parse(new)
+assert isinstance(newtree.body[-1],ast.If)
+beforeclasses={n.name:ast.dump(n,include_attributes=False)for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+afterclasses={n.name:ast.dump(n,include_attributes=False)for n in newtree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+assert beforeclasses==afterclasses
+path=P/'source/test_schema3_metadata_grammar_002.py'
+with path.open('x',encoding='utf-8',newline='\n')as f:f.write(new)
+code=compile(new,str(path),'exec',dont_inherit=True)
+record={'schema_version':1,'record_type':'causal_preparation_entry_order_correction','created_utc':datetime.now(timezone.utc).isoformat(),'author':'/root/pubnative_review','superseded_manifest_sha256':sha((P/'STAGED_MANIFEST_002.json').read_bytes()),'preserved_unselected_metadata_source_sha256':sha(data),'selected_metadata_source':'source/test_schema3_metadata_grammar_002.py','selected_metadata_source_sha256':sha(path.read_bytes()),'all_function_class_ASTs_exact':True,'main_guard_AST_exact':ast.dump(main[0],include_attributes=False)==ast.dump(newtree.body[-1],include_attributes=False),'module_code_flags':code.co_flags,'target_definitions_executed':False,'test_execution':False,'actual_results':None,'operational_authority':False,'status':'FROZEN_SOURCE_TEST_PREPARATION_DIFFERENT_REVIEW_PENDING','qualification':'Initial manifest002 is preserved but superseded for selection: its new metadata class followed unittest.main and could be omitted by direct-script discovery. Explicit successor selection uses metadata002 before the unchanged main guard.'}
+with (P/'ENTRY_ORDER_CORRECTION_003.json').open('xb')as f:f.write((json.dumps(record,sort_keys=True,indent=2)+'\n').encode())
+with (P/'HANDOFF_003.md').open('x',encoding='utf-8',newline='\n')as f:f.write('''# Causal correction003 selection
+
+Use STAGED_MANIFEST_003 and its active_source_map. All33 production files and the corrected native128 source remain exact. Select source/test_schema3_metadata_grammar_002.py (30methods) with the new helper/class before the unchanged unittest.main guard. The first manifest002 and metadata001 remain preserved but unselected; their source-order deficiency was caught before any test execution. All function/class ASTs match the first correction, and29 predecessor metadata test ASTs remain exact. CAUSAL_CORRECTION_002 documents the B05/B15 controls. ENTRY_ORDER_CORRECTION_003 documents the only further change. All tests are UNRUN, with fresh runtime/binding and a different peer required.
+''')
+ancestor=json.loads((P/'ANCESTOR_STAGED_MANIFEST_001.json').read_bytes())
+source_diff=json.loads((P.parents[1]/'resume-2026-10-01-30h-001/raw004-publication-native-bounded-closure-prep001/SOURCE_BEFORE_AFTER_DIFF_MANIFEST_001.json').read_bytes())
+active=[]
+for row in source_diff['sources']:
+    selected='source/test_schema3_metadata_grammar_002.py'if row['path']=='source/test_schema3_metadata_grammar_001.py'else row['path']
+    b=(P/selected).read_bytes()
+    active.append({'ancestor_path':row['path'],'selected_path':selected,'sha256':sha(b),'bytes':len(b),'production':not row['path'].startswith('source/test_')})
+assert len(active)==35 and sum(x['production']for x in active)==33
+files=[]
+for q in sorted(P.rglob('*')):
+    if q.is_file():
+        b=q.read_bytes();files.append({'path':q.relative_to(P).as_posix(),'bytes':len(b),'sha256':sha(b)})
+with (P/'STAGED_MANIFEST_003.json').open('xb')as f:f.write((json.dumps({'schema_version':1,'status':record['status'],'files':files,'payload_count':len(files),'active_source_map':active,'active_sources':35,'production_sources_byte_identical':33,'native_methods':128,'metadata_methods':30,'actual_results':None,'operational_authority':False},sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps({'manifest_sha256':sha((P/'STAGED_MANIFEST_003.json').read_bytes()),'selected_metadata_sha256':sha(path.read_bytes()),'payload_count':len(files),'target_execution':False}))

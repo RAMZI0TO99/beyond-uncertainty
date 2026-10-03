@@ -1,0 +1,136 @@
+"""Author metadata/text composer only; never executes copied target definitions."""
+import ast
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+
+work = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001')
+old = work / 'guard005-root-metadata-prep001'
+root = work / 'guard005-root-metadata-prep002'
+guard = work / 'consumer-guard-test-runtime005'
+
+
+def observe(path):
+    before = path.lstat()
+    assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and not before.st_file_attributes & 0x400
+    assert before.st_size <= 67108864
+    with path.open('rb') as stream:
+        opened = os.fstat(stream.fileno())
+        data = stream.read(before.st_size + 1)
+        final = os.fstat(stream.fileno())
+    after = path.lstat()
+    names = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')
+    raw = lambda item: [getattr(item, name) for name in names]
+    p, f = raw(before), raw(opened)
+    assert p == raw(after) and f == raw(final) and p[:4] + p[5:] == f[:4] + f[5:] and p[4] == p[8]
+    assert len(data) == before.st_size
+    return data, dict(path=str(path), sha256=hashlib.sha256(data).hexdigest(), bytes=len(data), path_raw9=p, descriptor_raw9=f)
+
+
+def once(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('xb') as stream:
+        stream.write(data)
+
+
+def record(name, value):
+    once(root / name, (json.dumps(value, sort_keys=True, indent=2) + '\n').encode('ascii'))
+
+
+pairs = []
+for path in sorted((path for path in old.rglob('*') if path.is_file()), key=lambda path: path.relative_to(old).as_posix()):
+    data, original = observe(path)
+    destination = root / 'historical-prep001' / path.relative_to(old)
+    once(destination, data)
+    copied = observe(destination)[1]
+    assert original['sha256'] == copied['sha256'] and original['path_raw9'][1] != copied['path_raw9'][1]
+    pairs.append(dict(original=original, copy=copied))
+guard_selected = ['GUARD_RUNTIME_PROFILE_005.json', 'INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_005.json',
+                  'SOURCE_PROJECTION_005.json', 'observe-whole-runtime-005.BOUND.py', 'run-consumer-guard-unit005.py',
+                  'PREPARE_ROOT_GUARD005_ACTUAL_RECORDS_001.ps1', 'SUPERVISE_ROOT_WHOLE_BEFORE_005.ps1']
+for name in guard_selected:
+    data, original = observe(guard / name)
+    destination = root / 'historical-guard005' / name
+    once(destination, data)
+    copied = observe(destination)[1]
+    assert original['sha256'] == copied['sha256'] and original['path_raw9'][1] != copied['path_raw9'][1]
+    pairs.append(dict(original=original, copy=copied))
+source_before = observe(old / 'capture-guard005-root-metadata.TEMPLATE.py')[0]
+assert source_before.count(b"PREP = WORK / 'guard005-root-metadata-prep001'") == 1
+source_after = source_before.replace(b"PREP = WORK / 'guard005-root-metadata-prep001'", b"PREP = WORK / 'guard005-root-metadata-prep002'")
+before_ast, after_ast = ast.parse(source_before), ast.parse(source_after)
+before_functions = {node.name: ast.dump(node, include_attributes=False) for node in before_ast.body if isinstance(node, ast.FunctionDef)}
+after_functions = {node.name: ast.dump(node, include_attributes=False) for node in after_ast.body if isinstance(node, ast.FunctionDef)}
+assert before_functions == after_functions and len(before_functions) == 17
+assert source_after.replace(b"PREP = WORK / 'guard005-root-metadata-prep002'", b"PREP = WORK / 'guard005-root-metadata-prep001'") == source_before
+once(root / 'capture-guard005-root-metadata.TEMPLATE.py', source_after)
+for name in ('AUTHENTICATED_742_PATH_SEQUENCE_005.json', 'OPAQUE_CURRENT_CONTEXT_005.TEMPLATE.json', 'RUNTIME4_METADATA_SELECTION_005.TEMPLATE.json'):
+    once(root / name, observe(old / name)[0])
+
+binding_before = json.loads(observe(old / 'ACTUAL_SOURCE_BINDING_001.json')[0])
+selected = dict(binding_before['bindings'])
+selected['preparer_static_review_sha256'] = None
+role_assignments = ast.parse(observe(old / 'capture-guard005-root-metadata.BOUND.py')[0])
+roles = {node.targets[0].id: ast.literal_eval(node.value) for node in role_assignments.body if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id in ('UNIT_TERMINAL_RELATIVE', 'COORDINATION_PEER_REPLY_RELATIVE', 'COORDINATION_ROOT_RESPONSE_RELATIVE')}
+assert len(selected) == 9 and len(roles) == 3
+record('SOURCE_BINDING_PLAN_002.json', dict(schema_version=1, author='/root/bootstrap_stage', status='EIGHT_UPSTREAM_SOURCE_PINS_SELECTED_NEW_PEER_UNBOUND',
+       bindings=selected, role_selections=roles, actual_bound_source=None, actual_bound_review=None, actual_before_authorization=None,
+       actual_after_authorization=None, target_bind_or_capture_executed=False,
+       required_preparer_peer_path=str(root / 'INDEPENDENT_METADATA_STATIC_REVIEW_005.json'),
+       required_bound_review_path=str(root / 'INDEPENDENT_BOUND_METADATA_REVIEW_005.json'),
+       bound_target_path=str(root / 'capture-guard005-root-metadata.BOUND.py')))
+
+writer = observe(old / 'WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005.ps1')[0].decode('utf-8')
+parent = observe(old / 'SUPERVISE_ROOT_METADATA_BEFORE_005.ps1')[0].decode('utf-8')
+assert writer.count("$Prep = '" + str(old) + "'") == parent.count("$Prep = '" + str(old) + "'") == 1
+slots = "$BoundScriptSha256 = $null\n$BoundReviewSha256 = $null\n"
+guard_unbound = "if ($BoundScriptSha256 -isnot [string] -or $BoundScriptSha256 -cnotmatch '^[0-9a-f]{64}$' -or $BoundReviewSha256 -isnot [string] -or $BoundReviewSha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'UNBOUND metadata source/review pins' }\n"
+writer = writer.replace("$Prep = '" + str(old) + "'", "$Prep = '" + str(root) + "'", 1)
+parent = parent.replace("$Prep = '" + str(old) + "'", "$Prep = '" + str(root) + "'", 1)
+writer = writer.replace("$ErrorActionPreference = 'Stop'\r\n", "$ErrorActionPreference = 'Stop'\r\n" + slots, 1) if '\r\n' in writer else writer.replace("$ErrorActionPreference = 'Stop'\n", "$ErrorActionPreference = 'Stop'\n" + slots, 1)
+parent = parent.replace("$ErrorActionPreference = 'Stop'\r\n", "$ErrorActionPreference = 'Stop'\r\n" + slots, 1) if '\r\n' in parent else parent.replace("$ErrorActionPreference = 'Stop'\n", "$ErrorActionPreference = 'Stop'\n" + slots, 1)
+for name, text in (('writer', writer), ('parent', parent)):
+    assert text.count("'0885d76f0d4e6cb3f496dcdbde80bb2e53d45eb3ff04cc7c7952f525980515a0'") >= 1
+    text = text.replace("'0885d76f0d4e6cb3f496dcdbde80bb2e53d45eb3ff04cc7c7952f525980515a0'", '$BoundScriptSha256')
+    text = text.replace("'b56bc1f9fbf376eaba8de4137e8c628e44ffd7eeb37aa830c45b2a2f534e8479'", '$BoundReviewSha256')
+    if name == 'writer': writer = text
+    else: parent = text
+writer = writer.replace("if ([IO.Path]::GetFullPath($PSCommandPath)", guard_unbound + "if ([IO.Path]::GetFullPath($PSCommandPath)", 1)
+parent = parent.replace("if ([IO.Path]::GetFullPath($PSCommandPath)", guard_unbound + "if ([IO.Path]::GetFullPath($PSCommandPath)", 1)
+parent = parent.replace('--expected-script-sha256 0885d76f0d4e6cb3f496dcdbde80bb2e53d45eb3ff04cc7c7952f525980515a0 --expected-review-sha256 b56bc1f9fbf376eaba8de4137e8c628e44ffd7eeb37aa830c45b2a2f534e8479 --expected-authorization-sha256 ', "--expected-script-sha256 ' + $BoundScriptSha256 + ' --expected-review-sha256 ' + $BoundReviewSha256 + ' --expected-authorization-sha256 ")
+assert '0885d76f' not in writer + parent and 'b56bc1f9' not in writer + parent
+writer = writer.replace("'WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005.ps1'", "'WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005.BOUND.ps1'")
+parent = parent.replace("'SUPERVISE_ROOT_METADATA_BEFORE_005.ps1'", "'SUPERVISE_ROOT_METADATA_BEFORE_005.BOUND.ps1'")
+once(root / 'WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005.TEMPLATE.ps1', writer.encode('utf-8'))
+once(root / 'SUPERVISE_ROOT_METADATA_BEFORE_005.TEMPLATE.ps1', parent.encode('utf-8'))
+
+root_writer_before = observe(guard / 'PREPARE_ROOT_GUARD005_ACTUAL_RECORDS_001.ps1')[0]
+assert root_writer_before.count(b"$Meta=Join-Path $Work 'guard005-root-metadata-prep001'") == 1
+root_writer_after = root_writer_before.replace(b"$Meta=Join-Path $Work 'guard005-root-metadata-prep001'", b"$Meta=Join-Path $Work 'guard005-root-metadata-prep002'")
+assert root_writer_after.replace(b"$Meta=Join-Path $Work 'guard005-root-metadata-prep002'", b"$Meta=Join-Path $Work 'guard005-root-metadata-prep001'") == root_writer_before
+once(root / 'PREPARE_ROOT_GUARD005_ACTUAL_RECORDS_002.ps1', root_writer_after)
+
+capture = json.loads(observe(old / 'phase-before-005/METADATA_CAPTURE_005.json')[0])
+record('SPENT001_EXPIRY_AND_SUCCESSOR_SCOPE_002.json', dict(schema_version=1, author='/root/bootstrap_stage',
+       metadata001_spent=True, old_capture_path=str(old / 'phase-before-005/METADATA_CAPTURE_005.json'),
+       old_capture_utc=capture['captured_utc'], freshness_seconds_unchanged=600,
+       before_context_cannot_be_replayed_retimestamped_or_extended=True,
+       actual_whole_or_unit_before_expiry=False, fresh_capture_permitted=False,
+       metadata002_scope='SOURCE_PREPARATION_ONLY', frozen_Guard005_changed=False,
+       fixed_Guard005_inputs=guard_selected, new_root_record_writer_delta='Only $Meta source string retarget; new filename and external source identity',
+       original_root_writer_intrinsic_self_guard=False, actual_root_record_writer_external_self_pin_required=True,
+       phase_source_protocol_names_retained=True, after_must_reference_own_metadata002_before_and_actual_Guard005_terminal=True,
+       review_utilities_ready_before_next_capture_required=True, actual_metadata002_context=None,
+       actual_runtime002_selection=None, actual_unit_result=None, author_target_execution=False))
+for pair in pairs:
+    assert observe(Path(pair['original']['path']))[1] == pair['original']
+    assert observe(Path(pair['copy']['path']))[1] == pair['copy']
+record('INPUT_PRESERVATION_002.json', dict(schema_version=1, author='/root/bootstrap_stage',
+       original_copy_pairs=pairs, pair_count=len(pairs), historical_metadata001_file_count=len(pairs)-len(guard_selected),
+       selected_guard005_file_count=len(guard_selected), exact17_function_ASTs=True,
+       metadata_template_only_delta='PREP top-level fixed namespace constant', raw9_originals_and_copies_reobserved=True,
+       target_compilation_definitions_import_tests_Git_FFI_metadata_capture_process_native_executed=False))
+print(json.dumps(dict(preserved_pairs=len(pairs), metadata001_file_count=len(pairs)-len(guard_selected),
+                     template_sha256=hashlib.sha256(source_after).hexdigest(), exact17_functions=True, new_PS_source_count=3), sort_keys=True))

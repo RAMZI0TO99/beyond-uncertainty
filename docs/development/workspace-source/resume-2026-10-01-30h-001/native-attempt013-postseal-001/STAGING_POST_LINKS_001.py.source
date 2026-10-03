@@ -1,0 +1,27 @@
+"""Pure staged-source link/guard correction; no generated runtime import."""
+import ast
+from pathlib import Path
+ROOT=Path(__file__).parent
+for path in ROOT.glob('*.ps1.template'):
+    source=path.read_text(encoding='utf-8')
+    for prefix in ('native-','recovery-evidence-before-seal-','sealed-recovery-independent-evidence-'):
+        source=source.replace('resume-2026-09-28-001\\'+prefix,'resume-2026-10-01-30h-001\\native-attempt013-postseal-001\\'+prefix)
+    # The intent itself is part of the immutable native prefix after claim.
+    # It is deliberately rechecked by the Q boundary immediately before Run.
+    source=source.replace("    if ($C.Operation -ceq 'recover' -and\n        ($prior.result.event_count -cne 299 -or\n         $prior.recovery_invoked -cne $false)) {\n        throw 'Adjudication verdict is not first clean outcome'\n    }\n",'')
+    # The controlled stdin bootstrap decodes actual CRLF, not literal slashes.
+    source=source.replace("b''\\\\r\\\\n''","b''\\r\\n''").replace("b''\\\\n''","b''\\n''")
+    path.write_bytes(source.encode('utf-8'))
+for path in ROOT.glob('verify-native-*.py.template'):
+    source=path.read_text(encoding='utf-8')
+    # Existing phase body checks compare these counts; enforce exact nonbool
+    # integers as well so False cannot masquerade as a required zero.
+    marker="    C.require(C.sha(raw['"
+    if marker in source and 'def captured_read(' in source:
+        index=source.index(marker)
+        guard="    C.require(type(result) is dict and (\n        'counts' not in result or (type(result['counts']) is dict and all(type(value) is int for value in result['counts'].values()))),\n        'mechanical result count fields must be exact integers')\n"
+        # Every original output function verified its declared results before
+        # this added guard; this supplements their value/schema validation.
+        source=source[:index]+guard+source[index:]
+    ast.parse(source);path.write_bytes(source.encode('utf-8'))
+print('Current postseal paths, exact integer guards, stdin framing closed by source editing only.')

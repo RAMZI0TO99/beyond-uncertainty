@@ -1,0 +1,127 @@
+"""Fresh ROOT metadata checks and create-once authorization; does not launch."""
+import ctypes
+import hashlib
+import json
+import os
+import stat
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path('D:/Aenv/pro2')
+PREP = ROOT / 'resume-2026-10-01-30h-001/raw-component-runtime-prep004'
+
+def raw(s):
+    return (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns,
+            s.st_mode, s.st_nlink, s.st_file_attributes, s.st_birthtime_ns)
+
+def read(path, expected=None):
+    path = Path(path)
+    for parent in [path.parent, *path.parent.parents]:
+        s = parent.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not (s.st_file_attributes & 0x400)
+    first = path.lstat()
+    assert stat.S_ISREG(first.st_mode) and first.st_nlink == 1 and not (first.st_file_attributes & 0x400)
+    with path.open('rb') as f:
+        hf = os.fstat(f.fileno())
+        data = f.read()
+        assert raw(hf) == raw(os.fstat(f.fileno()))
+    assert raw(first) == raw(path.lstat())
+    assert tuple(raw(first)[i] for i in (0, 1, 2, 3, 6, 7, 8)) == tuple(raw(hf)[i] for i in (0, 1, 2, 3, 6, 7, 8))
+    sha = hashlib.sha256(data).hexdigest()
+    assert expected is None or expected == sha
+    return data, {'path': str(path), 'sha256': sha, 'size': len(data),
+                  'path_raw9': raw(first), 'handle_raw9': raw(hf)}
+
+def parsed(path, expected=None):
+    data, row = read(path, expected)
+    return json.loads(data), row
+
+ack, ack_row = parsed(PREP / 'ROOT_FIRST_EXECUTION_ACK_RAW004.json')
+late, late_row = parsed(PREP / 'INDEPENDENT_RAW004_ACK_LAUNCH_LATE_REVIEW_001.json')
+assert late['verdict'] == 'PASS_ACTUAL_ACK_LAUNCH_SOURCE_CONDITIONAL_FRESH_ROOT_CHECK'
+assert late['reviewer'] == '/root/window_docs'
+assert late['ack_sha256'] == ack_row['sha256']
+ps_data, ps_row = read(PREP / 'ROOT_FIRST_LAUNCH_004.BOUND.ps1')
+assert late['bound_launcher_sha256'] == ps_row['sha256']
+bound, bound_row = parsed(PREP / 'INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_004.json', ack['bound_review_sha256'])
+assert bound['verdict'] == 'PASS_BOUND_FOR_ROOT_FIRST_EXECUTION_ONLY'
+read(PREP / 'run-isolated-raw-component-004.BOUND.py', ack['bound_driver_sha256'])
+read(PREP / 'raw-test-child-004.TEMPLATE.py', ack['child_sha256'])
+read(PREP / 'source/scripts/week8_recovery_raw_authority.py', ack['raw_source_sha256'])
+read(PREP / 'source/tests/test_week8_recovery_raw_authority.py', ack['raw_test_sha256'])
+projection, projection_row = parsed(PREP / 'SOURCE_AND_HISTORICAL_INPUTS_004.json', ack['source_projection_sha256'])
+assert len(projection['eight_primary_inputs']) == 8
+primary_checks = []
+for row in projection['eight_primary_inputs']:
+    original, original_row = read(row['original'], row['sha256'])
+    copied, copied_row = read(row['copy'], row['sha256'])
+    assert original == copied and len(original) == row['size']
+    primary_checks.extend((original_row, copied_row))
+runtime, runtime_row = parsed(ack['runtime_snapshot']['path'], ack['runtime_snapshot']['sha256'])
+runtime_checks = [read(row['path'], row['sha256'])[1] for row in runtime['entries']]
+runtime_checks.append(read(runtime['pytest']['path'], runtime['pytest']['sha256'])[1])
+live, live_row = parsed(ack['live_guard_snapshot']['path'], ack['live_guard_snapshot']['sha256'])
+assert len(live['rows']) == 742
+live_checks = []
+for row in live['rows']:
+    path = Path(live['root']) / row['path']
+    data, actual = read(path, row['sha256'])
+    assert len(data) == row['size'] and stat.S_IMODE(path.lstat().st_mode) == row['mode']
+    live_checks.append(actual)
+configs = []
+for parent in [PREP / 'source/tests', *(PREP / 'source/tests').parents]:
+    for name in ('pytest.toml', '.pytest.toml', 'pytest.ini', '.pytest.ini',
+                 'pyproject.toml', 'tox.ini', 'setup.cfg', 'conftest.py'):
+        path = parent / name
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            configs.append(str(path))
+        else:
+            raise AssertionError(str(path))
+assert len(configs) == 56
+before, before_row = parsed(ack['whole_runtime_before']['path'], ack['whole_runtime_before']['sha256'])
+for row in before['observation_files']:
+    data, actual = read(row['path'], row['sha256'])
+    assert len(data) == row['size']
+assert before['verdict'] == 'MATCHES_PINNED_RUNTIME_TWICE'
+now = datetime.now(timezone.utc)
+assert 0 <= (now - datetime.fromisoformat(before['finished_utc'])).total_seconds() < 600
+expiry = datetime.fromisoformat(ack['expires_utc'])
+assert datetime.fromisoformat(ack['created_utc']) <= now < expiry
+assert (expiry - now).total_seconds() >= 4500
+owner, owner_row = parsed(PREP / 'inputs/OWNER_WORK_WINDOW_30H_20261001_001.json', ack['owner_sha256'])
+assert now < expiry < datetime.fromisoformat(owner['work_end_utc'].replace('Z', '+00:00'))
+memory_buffer = ctypes.create_string_buffer(64)
+ctypes.c_ulong.from_buffer(memory_buffer).value = 64
+assert ctypes.windll.kernel32.GlobalMemoryStatusEx(memory_buffer)
+free_ram = ctypes.c_ulonglong.from_buffer(memory_buffer, 16).value
+disk = ctypes.c_ulonglong()
+assert ctypes.windll.kernel32.GetDiskFreeSpaceExW(str(ROOT), ctypes.byref(disk), None, None)
+assert free_ram >= ack['min_free_ram_bytes'] >= 1073741824 and disk.value >= 10737418240
+for name in ('ROOT_LAUNCH_START_004.json', 'ROOT_LAUNCH_TERMINAL_004.json',
+             'ROOT_LAUNCH_STDOUT_004.txt', 'ROOT_LAUNCH_STDERR_004.txt',
+             'ROOT_RUN_INTENT_004.json', 'started.json', 'finished.json', 'failed.json', 'collection', 'tests'):
+    assert not (PREP / name).exists(), name
+assert not (ROOT / '.tmp/raw4-004').exists()
+record = {'schema_version': 1, 'created_utc': now.isoformat(), 'author': '/root',
+          'decision': 'EXECUTE_REVIEWED_BOUND_RAW004_COLLECTION_THEN_TESTS_ONCE',
+          'scope': ack['scope'], 'ack': ack_row, 'late_review': late_row,
+          'bound_source_review': bound_row, 'launcher': ps_row,
+          'whole_before': before_row, 'whole_before_age_seconds': (now - datetime.fromisoformat(before['finished_utc'])).total_seconds(),
+          'free_ram_bytes': free_ram, 'd_free_bytes': disk.value,
+          'remaining_ack_seconds': (expiry - now).total_seconds(),
+          'configuration56_absent': configs, 'runtime_checks': runtime_checks,
+          'primary_checks': primary_checks, 'live742_checks': live_checks,
+          'opaque_guard_not_policy_authority': True,
+          'target_execution_before_authorization': False,
+          'canonical_qa_native_science_release_or_executor_transfer_authority': False}
+data = (json.dumps(record, sort_keys=True, indent=2, allow_nan=False) + '\n').encode('ascii')
+with (PREP / 'ROOT_RAW004_FIRST_ENTRY_AUTHORIZATION_001.json').open('xb') as f:
+    f.write(data)
+    f.flush()
+    os.fsync(f.fileno())
+print(json.dumps({'authorization_sha256': hashlib.sha256(data).hexdigest(),
+                  'free_ram_bytes': free_ram, 'd_free_bytes': disk.value,
+                  'before_age_seconds': record['whole_before_age_seconds'], 'configuration_absent': 56,
+                  'opaque_live_files': 742, 'remaining_ack_seconds': record['remaining_ack_seconds']}))

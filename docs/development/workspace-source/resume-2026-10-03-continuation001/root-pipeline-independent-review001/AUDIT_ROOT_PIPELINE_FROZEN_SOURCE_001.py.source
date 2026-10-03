@@ -1,0 +1,129 @@
+"""Own finite source audit metadata; never import or invoke reviewed code."""
+import ast, datetime, hashlib, json, os
+from pathlib import Path
+BASE=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001')
+ROOT=BASE/'root-guard006-pipeline-prep001'; OUT=BASE/'root-pipeline-independent-review001'
+SCOPE='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+MANIFEST_SHA='e2593d620eb6a645ea48b28027c94301391132895174f7f3e2af3e5733e01845'
+MAIN_SHA='9b7dbc059cc51601e08bbf4ff748123b53034533173dca5a6254352e47f997e8'
+def sha(b):return hashlib.sha256(b).hexdigest()
+def utc():return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+def enc(x):return (json.dumps(x,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('ascii')
+def pairs(rows):
+ d={}
+ for k,v in rows:assert k not in d;d[k]=v
+ return d
+def bad(x):raise ValueError(x)
+def parse(b):return json.loads(b.decode('utf-8','strict'),object_pairs_hook=pairs,parse_constant=bad,parse_float=bad)
+def raw(s):return [getattr(s,k) for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+def read(p):
+ a=p.lstat();assert a.st_nlink==1 and not a.st_file_attributes&1024
+ b=p.read_bytes();z=p.lstat();assert raw(a)==raw(z)
+ return b,dict(path=str(p),sha256=sha(b),bytes=len(b),raw9=raw(z),observed_utc=utc())
+def once(p,b):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open('xb') as f:assert f.write(b)==len(b);f.flush();os.fsync(f.fileno())
+def literal(t,n):
+ found=[x.value for x in t.body if isinstance(x,ast.Assign) and len(x.targets)==1 and isinstance(x.targets[0],ast.Name) and x.targets[0].id==n]
+ assert len(found)==1,n
+ return ast.literal_eval(found[0])
+mp=ROOT/'SOURCE_BINDER_MANIFEST_001.json';mb=mp.read_bytes();assert sha(mb)==MANIFEST_SHA;m=parse(mb)
+assert m['source_author']=='/root/root_pipeline_binder' and m['scope']==SCOPE and m['payload_count']==3
+assert all(m[k] is None for k in ('actual_binding','actual_capture','actual_configuration','actual_lease','actual_tests','source_acceptance'))
+assert m['target_execution'] is False and m['operational_authority'] is False
+table=m['immutable_inputs'];assert len(table)==29
+pins={mp:MANIFEST_SHA}
+for r in m['payloads']:pins[ROOT/r['path']]=r['sha256']
+for r in table.values():pins[Path(r['path'])]=r['sha256']
+four=parse(Path(table['four_root_manifest']['path']).read_bytes())
+for key in ('payloads','preserved_rev002_draft_preimages'):
+ for r in four[key]:pins[ROOT/r['path']]=r['sha256']
+for r in four['historical_inputs']:pins[Path(r['path'])]=r['sha256']
+sp=OUT/'INDEPENDENT_ROOT_SOURCE_PS_SYNTAX_001.json';pins[sp]='ba63b85bf38962dadcd965acb7f55d24b33a568f1f2bbb3a500c1ebb538825ca'
+observations=[];data=None
+for phase in range(1,4):
+ current={};rows=[]
+ for p in sorted(pins,key=str):
+  b,r=read(p);assert sha(b)==pins[p],str(p);current[p]=b;rows.append(r)
+ if data is None:data=current
+ else:assert current==data
+ observations.append(dict(phase=phase,rows=rows))
+for r in m['payloads']:assert len(data[ROOT/r['path']])==r['bytes']
+for r in table.values():assert len(data[Path(r['path'])])==r['bytes']<=r['cap']
+for key in ('payloads','preserved_rev002_draft_preimages'):
+ for r in four[key]:assert len(data[ROOT/r['path']])==r['bytes']
+bp=ROOT/'BIND_ROOT_PIPELINE_SOURCE_001.TEMPLATE.py';tree=ast.parse(data[bp],filename=str(bp))
+inert=compile(data[bp],str(bp),'exec',dont_inherit=True,optimize=0)
+assert literal(tree,'PINNED_INPUTS')==table
+contract=parse(data[ROOT/'SOURCE_BINDING_CONTRACT_001.json']);template=parse(data[ROOT/'ROOT_PIPELINE_BINDING_001.TEMPLATE.json'])
+assert contract['immutable_source_table']==table and contract['actual_binding'] is None and contract['target_execution'] is False
+assert set(template)==set(literal(tree,'CONFIG_KEYS')) and contract['configuration_keys']==list(literal(tree,'CONFIG_KEYS'))
+assert contract['source_peer_keys']==list(literal(tree,'PEER_KEYS')) and len(contract['source_peer_keys'])==12
+assert contract['driver_bound_assignments']==['OWNER_SHA256','OWNER_END','SOURCE_CAPSULE_PEER_SHA256','HARNESS_STATIC_PEER_SHA256']
+assert contract['observer_bound_assignments']==['OWNER_SHA256','OWNER_END','HARNESS_STATIC_PEER_SHA256']
+source_rows=literal(tree,'SOURCE_ROWS');assert len(source_rows)==9
+for role in ('metadata_before_writer','metadata_before_parent','metadata_after_writer','metadata_after_parent'):
+ assert template['sources'][role]['path']==str(BASE/'metadata3-producer-core-prep001'/source_rows[role])
+for role in ('root_records','whole_before_parent','whole_after_writer','whole_after_parent'):
+ assert template['sources'][role]['path']==str(ROOT/source_rows[role])
+assert template['harness_static_review']['path']==table['static_review']['path']
+assert data[Path(table['static_review']['path'])]==(BASE/'gg6-source-independent-review001/INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_006.json').read_bytes()
+assert len([n for n in tree.body if isinstance(n,ast.FunctionDef)])==m['source_function_count']==27
+allowed={'argparse','ast','hashlib','json','os','re','stat','datetime','pathlib'}
+for node in tree.body:
+ if isinstance(node,ast.Import):assert all(a.name in allowed for a in node.names)
+ if isinstance(node,ast.ImportFrom):assert node.module in allowed
+main=data[Path(table['pipeline_template']['path'])].decode('utf-8');assert sha(main.encode())==MAIN_SHA and len(main.encode())==45560
+for text in ('Different bound pipeline Source peer16','Different retained metadata READY13','Different retained bound/late READY9','Root metadata GO13 post-trust Source binding','Source-derived Core12 role type','Genuine different READY6 nominals','Original post-unit60 budget remains','Both original600 before any further stage or poll'):
+ assert text in main,text
+assert main.index('[void](Source-Pool)')<main.index("$authBefore=Checked-Phase 'auth_before'")
+assert 'Lease-Check $Reserve;$record=Record' in main and '$script:OriginalDeadline=if($a -lt $b){$a}else{$b}' in main
+assert "$AfterDeadline=(Stamp $unit.value.finished_utc 'PS').AddSeconds(60)" in main
+assert "Lease-Check 0\n[void](Publish (Join-Path $Pipeline 'ROOT_PIPELINE_FINISHED_006.json')" in main.replace('\r\n','\n')
+assert 'requires_external_owned_observer_cleanup_audit=$true' in main and 'unit_launched_by_pipeline=$false' in main
+syntax=parse(data[sp]);assert len(syntax['rows'])==5 and syntax['target_execution'] is False
+for r in syntax['rows']:assert pins[Path(r['path'])]==r['sha256'] and r['parser_errors']==[]
+master=parse(data[Path(table['master']['path'])]);ownerpeer=parse(data[Path(table['master_peer']['path'])])
+assert len(master)==27 and master['work_end_utc'] is None and master['fixed_deadline_invented'] is False
+assert len(ownerpeer)==19 and ownerpeer['reviewer']=='owner_docs_review'
+assert parse(data[Path(table['guard_peer']['path'])])['verdict']=='PASS_COMPLETE_SOURCE_PREPARATION_ONLY'
+assert parse(data[Path(table['metadata_peer']['path'])])['verdict']=='PASS_STATIC_METADATA_PREPARATION_ONLY'
+before=OUT/'selected-before001';assert not before.exists();before.mkdir();preserved=[]
+for i,p in enumerate(sorted(data,key=str)):
+ copy=before/f'{i:02d}.bytes';once(copy,data[p]);assert copy.read_bytes()==data[p]
+ preserved.append(dict(path=str(p),copy=str(copy),sha256=sha(data[p]),bytes=len(data[p])))
+pre=[]
+for p in sorted(data,key=str):b,r=read(p);assert b==data[p];pre.append(r)
+checks=[
+ 'Complete final Root main and all four frozen stage bodies reviewed; genuine selected29 immutable input pool, three binder payloads, stage manifest dependencies and historical preimages independently pinned in three observations and preserved byte-exact.',
+ 'Five active Root PowerShell sources independently ParseFile with zero syntax errors; all definitions remained inert. Selected four M3 phase templates retain prior independent syntax/source acceptance.',
+ 'Binder exact12 reader, immutable29 source table, strict UTF8 duplicate/floating refusal, depth40, plain one-link paired raw9/API8 source reads and ancestor checks audited. No target import, compile, definition, main, binder or phase called.',
+ 'Exact None4 driver and None3 observer source binding; complete reversal and function/class AST preservation; five Root PS copies byte-exact, unchanged child TEMPLATE; existing M3 capture six-literal observed-span reversal and four CR-preserving two-literal PS reversals authenticate genuine selected source receipts.',
+ 'Config20, eight fixed program paths/argv routes, canonical coordinate pointer3, Guard static peer copy and fixed source row3 interfaces match all four stage readers. Nine final and staging paths must be absent before first write; fsync/readback/non-replacing rename; partial failures are consumed and require distinct namespace.',
+ 'Acyclic order: preliminary architecture/binder peers then actual finite lease and M3 source bindings, binder configuration C, different actual bound P16 resolving phaseargv8, physical INIT, externally correlated RootTrust8, post-trust utility/composer models and different actual pool20, READY13/9 and GO13 before original capture timer. Composer TEMPLATE only is selected by C.',
+ 'Main authenticates P16 and provenance pointer plus same source/C/INIT trust; actual independent metadata Core12 phase-specific type/verdict and original Py6 stamp, different bound/late READY6 and RootTrust8/GO13 closed nominals are explicit. Source peer does not claim independent OS/tool attestation.',
+ 'Complete post-trust source pool gate before auth_before, repeated before each metadata packet; exact actual utility/composer/model hashes and READY linkage. Separate direct fixed BASE packet helper grants no reviewer decision.',
+ 'Original context and runtime stamps are never refreshed: shared minimum original600 deadline, both90 before unit readiness, resource60 through spawn in accepted GG6, physical Root450 plus original post-unit60. Wait-Record guards existing records before/after reads; each independent core/detail and final FINISHED rechecks lease/deadlines; after spawn bounds clip to remaining original60.',
+ 'Finite native PS7 phase lease12 max43200 and genuine seventh-tick chronology remain separate from ongoing master27/endNone and historical peer19. Selected direct command physical capture65536 per stream, finite argv64 and owned direct reap/drain/refusal evidence reviewed; failures require observer cleanup audit and never imply Job/descendant cleanup.',
+ 'Whole-before/after metadata source routes, original authorization pointers, current driver20 versus physical Root18 bridge, actualACK links and byte-identical scoped WORK copy/provenance are checked by stage readers and independent actual checker; standalone main never launches unit.',
+ 'All current actual lease, binding, capture, configuration, INIT/trust/GO, bound P16, unit and result slots remain absent or None in this preliminary source acceptance. Source reads and inert CodeType metadata are not test results or runtime producer proof.'
+]
+conditions=[
+ 'This accepts preliminary source architecture and binder preparation only. Actual configuration C and reversible source bindings require their own genuine different full audit; future actual P16 and argv rows must be derived from observed C and source provenance, before physical INIT.',
+ 'Root must externally select the authentic architecture/binder receipt hashes, actual lease and coordination; obtain genuine independent bound M3/source-pool/checker reviews and same-trust READY records before capture. No future PASS, PID, trust, record, timer or runtime result is invented here.',
+ 'After stages share the original physical unit-finished plus60 deadline. Expanded nominal stage maxima do not guarantee fitting60; a budget refusal stays consumed, without replay/retimestamp/TTL or cap growth.',
+ 'Source acceptance proves no physical Root tool identity, loaded source, retained lock, hard OS Job, memory or descendant/observer cleanup. A direct-process failure requires separate owned-observer reconciliation before any fresh phase.',
+ 'No sole executor, quiet, operational/native/public/science/epoch/release or full test acceptance follows. All target functions/main/tests/imports/Git/FFI and actual bindings are unexecuted by this audit.'
+]
+report=dict(schema_version=1,record_type='independent_root_pipeline_complete_source_architecture_review',reviewer='/root/owner_docs_review',source_author='/root',component_source_authors=['/root','/root/renewal_runtime_inventory','/root/root_pipeline_binder'],created_utc=utc(),scope=SCOPE,verdict='PASS_COMPLETE_ROOT_PIPELINE_SOURCE_PREPARATION_ONLY',pipeline_template_sha256=MAIN_SHA,binder_template_sha256=sha(data[bp]),source_manifest_sha256=MANIFEST_SHA,finite_input_count=len(data),observations=observations,preserved_inputs=preserved,prepublication_observations=pre,source_checks=checks,findings=[],implementation_conditions=conditions,syntax_and_inert_metadata=dict(ps_syntax_sha256=sha(data[sp]),binder_function_count=27,inert_code_flags=inert.co_flags,target_execution=False),actual_binding=None,actual_configuration=None,actual_results=None,runtime_acceptance=False,operational_authority=False)
+assert len(enc(report))<=2097152
+rp=OUT/'INDEPENDENT_ROOT_PIPELINE_ARCHITECTURE_REVIEW_001.json';once(rp,enc(report))
+peer=dict(schema_version=1,record_type='root_pipeline_binder_source_review',reviewer='/root/owner_docs_review',source_author='/root/root_pipeline_binder',scope=SCOPE,verdict='PASS_STATIC_ROOT_PIPELINE_BINDER_SOURCE_ONLY',created_utc=utc(),binder_template_sha256=sha(data[bp]),pipeline_template_sha256=MAIN_SHA,source_manifest_sha256=MANIFEST_SHA,target_execution=False,actual_binding=None)
+assert len(peer)==12 and set(peer)==set(literal(tree,'PEER_KEYS'))
+pp=OUT/'INDEPENDENT_ROOT_PIPELINE_BINDER_SOURCE_REVIEW_001.json';once(pp,enc(peer))
+selection=OUT/'INDEPENDENT_ROOT_PIPELINE_SOURCE_SELECTION_001.json';once(selection,enc(dict(schema_version=1,created_utc=utc(),architecture_review_sha256=sha(rp.read_bytes()),binder_source_review_sha256=sha(pp.read_bytes()),source_manifest_sha256=MANIFEST_SHA,actual_binding=None,target_execution=False)))
+md=OUT/'INDEPENDENT_ROOT_PIPELINE_ARCHITECTURE_REVIEW_001.md';once(md,b'Final Root pipeline and binder source preparation accepted. Complete finite selected source pool, current stage readers, timestamp/budget guards and acyclic source-binding order reviewed. No actual binding, lease, configuration, capture, INIT/trust/GO, P16, unit or runtime result is accepted.\n')
+post=[]
+for p in sorted(data,key=str):b,r=read(p);assert b==data[p];post.append(r)
+postpath=OUT/'INDEPENDENT_ROOT_PIPELINE_SOURCE_POST_001.json';once(postpath,enc(dict(schema_version=1,created_utc=utc(),architecture_review_sha256=sha(rp.read_bytes()),binder_source_review_sha256=sha(pp.read_bytes()),source_post_observations=post)))
+print(json.dumps(dict(verdict=report['verdict'],finite_input_count=len(data),outputs=[dict(path=str(p),sha256=sha(p.read_bytes()),bytes=len(p.read_bytes())) for p in (rp,pp,selection,md,postpath)])))

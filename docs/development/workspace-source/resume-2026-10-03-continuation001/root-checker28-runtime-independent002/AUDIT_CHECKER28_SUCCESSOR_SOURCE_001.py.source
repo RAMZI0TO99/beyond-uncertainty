@@ -1,0 +1,181 @@
+"""Owned source metadata audit only: no reviewed definition execution or compilation."""
+import ast, datetime as dt, hashlib, json, os, re, stat
+from decimal import Decimal
+from pathlib import Path
+ROOT=Path('D:/Aenv/pro2'); WORK=ROOT/'resume-2026-10-03-continuation001'
+PREP=WORK/'root-checker28-runtime-prep002'; OLD=WORK/'root-checker28-runtime-prep001'
+OWN=WORK/'root-checker28-runtime-independent002'; META=WORK/'metadata3-actual-checker-prep001'
+DATA={}; FIRST={}; DECIMALS=[]
+def need(v,m):
+    if not v: raise ValueError(m)
+def sha(v): return hashlib.sha256(v).hexdigest()
+def raw(s):
+    v=[getattr(s,k) for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+    need(all(type(x) is int for x in v),'Windows raw9');return v
+def ancestors(p):
+    v=[]
+    for q in reversed(p.parents):
+        s=q.lstat();need(stat.S_ISDIR(s.st_mode) and not s.st_file_attributes&1024,'plain ancestor');v.append([str(q),s.st_dev,s.st_ino])
+    return sha(json.dumps(v).encode())
+def observe(p,pin=None,size=None):
+    p=p.absolute();need(p.is_relative_to(ROOT),'workspace only');parent=ancestors(p);a=p.lstat();x=raw(a)
+    need(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and not a.st_file_attributes&1024 and 0<=a.st_size<=8388608,'finite plain file cap')
+    with p.open('rb',buffering=0) as f:
+        y=raw(os.fstat(f.fileno()));need(all(x[i]==y[i] for i in (0,1,2,3,5,6,7,8)),'cross API8 excluding independent ctime');v=f.read(a.st_size+1);need(raw(os.fstat(f.fileno()))==y,'same handle raw9')
+    need(raw(p.lstat())==x and ancestors(p)==parent and len(v)==a.st_size,'same path raw9')
+    need((pin is None or sha(v)==pin) and (size is None or len(v)==size),'pin bytes');need(p.read_bytes()==v and raw(p.lstat())==x,'different API bytes')
+    return v,dict(path=str(p),sha256=sha(v),bytes=len(v),path_raw9=x,descriptor_raw9=y,parent_identity_sha256=parent)
+def pairs(rows):
+    d={}
+    for k,v in rows:need(k not in d,'duplicate JSON key');d[k]=v
+    return d
+def forbidden(v):raise ValueError('JSON nonfinite')
+def decode(v,source=False,path=''):
+    need(not v.startswith(b'\xef\xbb\xbf'),'BOM');obj=json.loads(v.decode('utf8','strict'),object_pairs_hook=pairs,parse_float=Decimal,parse_constant=forbidden)
+    def walk(x,keys=()):
+        if type(x) is Decimal:
+            need(not source and x.is_finite(),'noFloat Source JSON; documentary finite Decimal only');DECIMALS.append(dict(path=path,key_path=list(keys),exact_decimal=str(x),documentary_only=True))
+        elif type(x) is dict:
+            for k,y in x.items():walk(y,keys+(k,))
+        elif type(x) is list:
+            for i,y in enumerate(x):walk(y,keys+(i,))
+    walk(obj);return obj
+def add(p,pin=None,size=None):
+    p=p.absolute();key=str(p)
+    if key in DATA:
+        need(pin is None or sha(DATA[key])==pin,'consistent pin');need(size is None or len(DATA[key])==size,'consistent size');return DATA[key]
+    v,row=observe(p,pin,size);DATA[key]=v;FIRST[key]=row;return v
+def dump(n):return ast.dump(n,include_attributes=False)
+def methods(tree):return {(c.name,n.name):n for c in tree.body if isinstance(c,ast.ClassDef) for n in c.body if isinstance(n,ast.FunctionDef) and n.name.startswith('test_')}
+def psfunctions(text):
+    lines=text.splitlines(keepends=True);out={}
+    for i,line in enumerate(lines):
+        m=re.match(r'^function ([A-Za-z0-9_-]+)',line)
+        if m:
+            j=i+1 if line.rstrip().endswith('}') else next(k+1 for k in range(i+1,len(lines)) if lines[k].rstrip()=='}');out[m.group(1)]=''.join(lines[i:j])
+    return out
+
+def run():
+    need(os.name=='nt' and os.sys.flags.isolated and os.sys.flags.no_site and os.sys.flags.dont_write_bytecode and os.sys.flags.utf8_mode,'BASE isolated stdlib metadata')
+    need(Path(os.sys.executable).absolute()==ROOT/'runtimes/week8-python313-frozen-001/python.exe','frozen metadata interpreter')
+    mp=PREP/'SOURCE_MANIFEST_002.json';manifest=decode(add(mp,'f76face922b422b3cf90481cb7e422bbe2da6e18b58a1608c0ef1c61bf751d97',94321),True)
+    need(manifest['source_author']=='/root/bootstrap_stage' and manifest['target_execution'] is False and manifest['actual_Runtime'] is None and manifest['payload_count']==len(manifest['payloads'])==609 and manifest['official_pairs']==596,'authentic source envelope/609/596')
+    names=set()
+    for row in manifest['payloads']:
+        need(type(row['path']) is str and not row['path'].startswith(('/', '\\')) and '..' not in Path(row['path']).parts and row['path'] not in names,'finite selected payload paths');names.add(row['path']);add(PREP/row['path'],row['sha256'],row['bytes'])
+    need(sum(r['bytes'] for r in manifest['payloads'])==manifest['payload_bytes']==35277553,'complete payload bytes')
+    provenance=decode(DATA[str(PREP/'BEFORE_PROVENANCE_002.json')],True);authorpost=decode(DATA[str(PREP/'SOURCE_PRESERVATION_POST_002.json')],True)
+    need(provenance['pair_count']==len(provenance['pairs'])==len(authorpost['pairs'])==596 and provenance['all_prior001_files']==326,'author596 distinct official pairs')
+    official=[]
+    for pair,post in zip(provenance['pairs'],authorpost['pairs']):
+        p=Path(pair['original']);q=PREP/pair['copy'];v=add(p,pair['initial']['sha256'],pair['initial']['bytes']);w=add(q,pair['copy_initial']['sha256'],pair['copy_initial']['bytes'])
+        need(v==w and p!=q and FIRST[str(p)]['path_raw9'][:2]!=FIRST[str(q)]['path_raw9'][:2],'exact different author source copies')
+        need(post['original']==pair['original'] and post['copy']==pair['copy'] and post['second']==pair['initial'] and post['copy_second']==pair['copy_initial'],'second source observations exact')
+        need(FIRST[str(p)]['path_raw9']==pair['initial']['path_raw9'] and FIRST[str(p)]['descriptor_raw9']==pair['initial']['descriptor_raw9'],'actual author raw9 original correspondence')
+        need(FIRST[str(q)]['path_raw9']==pair['copy_initial']['path_raw9'] and FIRST[str(q)]['descriptor_raw9']==pair['copy_initial']['descriptor_raw9'],'actual author raw9 copy correspondence')
+        official.append(dict(original=str(p),copy=str(q),sha256=sha(v),bytes=len(v)))
+    need(sum(Path(r['original']).is_relative_to(OLD) for r in provenance['pairs'])==326,'all326 old001files including spent failure')
+    need(sum(Path(r['original']).parent==WORK/'root-checker28-runtime-independent001' for r in provenance['pairs'])==5,'five old genuine different peer topfiles')
+    oldmanifest=decode(DATA[str(OLD/'SOURCE_MANIFEST_001.json')],True);need(sha(DATA[str(OLD/'SOURCE_MANIFEST_001.json')])=='9fb8f37eb94a45ce13d508a49d6ab0923967b0f96ed2bf003da47eda14b36812' and len(oldmanifest['payloads'])==316,'prior316 exact freeze')
+    for row in oldmanifest['payloads']:need(sha(DATA[str(OLD/row['path'])])==row['sha256'] and len(DATA[str(OLD/row['path'])])==row['bytes'],'old316 exact bytes')
+    priorpeerp=WORK/'root-checker28-runtime-independent001/INDEPENDENT_CHECKER28_RUNNER_SOURCE_REVIEW_001.json';need(sha(DATA[str(priorpeerp)])=='cb0e71eeecf38f156761e77ddac8c71bce5e9c0bc0b9a4babbdc32bcf5e9a4bf','genuine prior001 sourcepeer')
+    oldrunner=DATA[str(OLD/'RUN_SYNTHETIC_CHECKER28_001.TEMPLATE.py')];oldparent=DATA[str(OLD/'SUPERVISE_SYNTHETIC_CHECKER28_001.TEMPLATE.ps1')]
+    runner=DATA[str(PREP/'RUN_SYNTHETIC_CHECKER28_002.TEMPLATE.py')];parent=DATA[str(PREP/'SUPERVISE_SYNTHETIC_CHECKER28_002.TEMPLATE.ps1')]
+    need(sha(runner)=='f02c64855d86548653c4b5bac587b475a024fda8728113e9a5b39206a8dbd8f9' and len(runner)==16549 and sha(parent)=='749781f580120b1974614b60572ce919559ef51fa17e626679e41ccae91ea7af' and len(parent)==20451,'selected runner/parent pins')
+    delta=decode(DATA[str(PREP/'SOURCE_DELTA_AUDIT_002.json')],True);changes=[('root-checker28-runtime-prep001','root-checker28-runtime-prep002'),('root-checker28-runtime001','root-checker28-runtime002'),('RUN_SYNTHETIC_CHECKER28_001','RUN_SYNTHETIC_CHECKER28_002'),('SUPERVISE_SYNTHETIC_CHECKER28_001','SUPERVISE_SYNTHETIC_CHECKER28_002'),('ROOT_SYNTHETIC_CHECKER28_GO_001.json','ROOT_SYNTHETIC_CHECKER28_GO_002.json'),('INDEPENDENT_CHECKER28_RUNNER_SOURCE_REVIEW_001.json','INDEPENDENT_CHECKER28_RUNNER_SOURCE_REVIEW_002.json'),('ROOT_PARENT_STARTED_001.json','ROOT_PARENT_STARTED_002.json'),('ROOT_PARENT_TERMINAL_001.json','ROOT_PARENT_TERMINAL_002.json'),('ROOT_PARENT_STDOUT_001.bin','ROOT_PARENT_STDOUT_002.bin'),('ROOT_PARENT_STDERR_001.bin','ROOT_PARENT_STDERR_002.bin')]
+    nr,np=oldrunner.decode(),oldparent.decode();computed=[]
+    for original,selected in changes:
+        computed.append(dict(original=original,selected=selected,occurrences=dict(runner=nr.count(original),parent=np.count(original))));nr,np=nr.replace(original,selected),np.replace(original,selected)
+    need(computed==delta['changes'] and nr.encode()==runner and np.encode()==parent,'independent forward fullbytes/reportedcounts')
+    rr,rp=runner.decode(),parent.decode()
+    for original,selected in reversed(changes):rr,rp=rr.replace(selected,original),rp.replace(selected,original)
+    need(rr.encode()==oldrunner and rp.encode()==oldparent and dump(ast.parse(rr))==dump(ast.parse(oldrunner)),'complete namespace byte/ModuleAST reversal')
+    nt,ot=ast.parse(runner),ast.parse(oldrunner);nd={n.name:dump(n) for n in nt.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))};od={n.name:dump(n) for n in ot.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+    need(set(nd)==set(od) and len(nd)==14 and all(nd[k]==od[k] for k in nd if k!='main'),'all13 nonmain reader/recorder definitions exact')
+    need(psfunctions(parent.decode())==psfunctions(oldparent.decode()) and len(psfunctions(parent.decode()))==9,'all9 PS function texts exact')
+    need(DATA[str(PREP/'CHECKER28_DISCOVERY_PROJECTION_001.json')]==DATA[str(OLD/'CHECKER28_DISCOVERY_PROJECTION_001.json')] and DATA[str(PREP/'CHECKER28_TEST_EVENT_PLAN_001.json')]==DATA[str(OLD/'CHECKER28_TEST_EVENT_PLAN_001.json')],'discovery/eventplan exactbytes')
+    projection=decode(DATA[str(PREP/'CHECKER28_DISCOVERY_PROJECTION_001.json')],True);plan=decode(DATA[str(PREP/'CHECKER28_TEST_EVENT_PLAN_001.json')],True);contract=decode(DATA[str(PREP/'SOURCE_CONTRACT_002.json')],True);oldcontract=decode(DATA[str(OLD/'SOURCE_CONTRACT_001.json')],True)
+    for key in ('Root_GO_keys','Root_GO_nominals','source_peer_keys','source_peer_nominals','source_closure','stream_caps','physical_parent_budget','resources','parent_cli','runner_cli','runtime_scope'):need(contract[key]==oldcontract[key],'unchanged contract guard '+key)
+    need(contract['physical_parent_budget']==dict(child_cutoff_seconds_from_parent_entry=52,cleanup_drain_reap_cutoff_seconds_from_parent_entry=57,seconds=60,stderr_bytes=65536,stdout_bytes=65536) and contract['resources']==dict(D_disk_free_floor_bytes=10737418240,free_physical_memory_floor_bytes=1073741824,maximum_point_age_seconds_through_spawn=60,resource_lease=False),'physical/resources unchanged')
+    need(len(contract['source_peer_keys'])==12 and len(contract['Root_GO_keys'])==15 and contract['actual_GO'] is None and contract['actual_Runtime'] is None and contract['operational_authority'] is False,'source12/go15/futureNone')
+    # Re-audit the exact selected Source010141 closure and complete method graph.
+    packetpath=META/'AUTHOR_FROZEN_SOURCE_MANIFEST_010.json';packet=decode(add(packetpath,'624914bedda69ba654cf8ff273774bfb6054f936d61dec936c332b2e46dd0949',28249),True);need(type(packet['payload_count']) is int and packet['payload_count']==len(packet['payloads'])==141,'finite141 source packet')
+    packetnames=set();nested=0
+    for row in packet['payloads']:
+        name=row['path'];need(set(row)=={'path','bytes','sha256'} and type(name) is str and re.fullmatch(r'(?:source010-finite-inputs001\\)?[A-Za-z0-9_.-]{1,160}',name) and name not in packetnames and type(row['bytes']) is int and 0<=row['bytes']<=2097152,'closed finite prefix packet');packetnames.add(name);nested+=name.startswith('source010-finite-inputs001\\');add(META/name,row['sha256'],row['bytes'])
+    need(nested==72 and len(packetnames)-nested==69 and sum(row['bytes'] for row in packet['payloads'])==4652395 and max(row['bytes'] for row in packet['payloads'])==595356,'14169top/72nested exactbytes')
+    for field in ('manifest','compact_peer','full_peer','source_post','Root_selection'):
+        ref=contract['source_closure'][field];add(Path(ref['path']),ref['sha256'],ref['bytes'])
+    test=add(META/'test_metadata3_actual_checker_preparation_004.py','daf2d526c1d751e6b10b78d8b421bdd2329b652e3a8cba23a761fcde35931fd9',52200);helper=add(META/'review-metadata3-actual006-corrected010.TEMPLATE.py','9efa6deb54721a531159545ffa5e4e9bd90606f3dc12d7b0ab6cf5f4af51ee16',146200);oldtest=DATA[str(META/'test_metadata3_actual_checker_preparation_003.py')]
+    mt,om=methods(ast.parse(test)),methods(ast.parse(oldtest));need(len(mt)==28 and len(om)==25 and all(dump(n)==dump(mt[k]) for k,n in om.items()),'all25 methods preserved/28 total')
+    methodrows=sorted([dict(id=projection['module_name']+'.'+c+'.'+n,name=n,body_ast_sha256=sha(dump(node).encode()),source_line=node.lineno) for (c,n),node in mt.items()],key=lambda x:x['id']);ids=[r['id'] for r in methodrows]
+    need(methodrows==projection['methods'] and ids==projection['ordered_ids'] and sha(('\n'.join(ids)+'\n').encode())==projection['ordered_ids_sha256'],'independent exact ordered28 projection')
+    sites=0;subtests=0
+    for node in mt.values():
+        calls=[n for n in ast.walk(node) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='subTest'];sites+=len(calls);covered=[]
+        for loop in ast.walk(node):
+            if isinstance(loop,ast.For):
+                lc=[n for n in ast.walk(loop) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='subTest']
+                if lc:need(isinstance(loop.iter,(ast.Tuple,ast.List)),'literal healthy subtest-loop source');subtests+=len(loop.iter.elts)*len(lc);covered+=lc
+        need(sorted(n.lineno for n in covered)==sorted(n.lineno for n in calls),'complete causal subtest-site accounting')
+    need(sites==6 and subtests==24 and 2*len(mt)+subtests==plan['conditional_healthy_events']==80,'conditional24subtests/80events not actual')
+    recipe=decode(DATA[str(PREP/'ROOT_LAUNCH_RECIPE_002.json')],True);control=recipe['native_GO_stamp_control_source_only'];expressions=control['minimal_native_PS_statements'];need(control['actual_GO'] is None and control['actual_Root_writer_execution'] is None and control['GO_closed_keys']==contract['Root_GO_keys'],'no nativeGO publication fabricated')
+    need(expressions[0]=='$created=[DateTimeOffset]::UtcNow' and expressions[1]=='$expires=$created.AddSeconds($RootSelectedDurationSeconds)' and "created_utc=$created.ToString('o')" in expressions[2] and "expires_utc=$expires.ToString('o')" in expressions[2] and "[IO.FileMode]::CreateNew" in expressions[4],'native bothstamp generation Source only/createonce')
+    need("function PS7([string]$v)" in parent.decode() and "\\.[0-9]{7}\\+00:00\\z" in parent.decode() and "$d.ToString('o') -ceq $v" in parent.decode(),'unchanged native7 guard not PowerShell version')
+    failurep=OLD/'ROOT_ACTUAL_CHECKER28_PRECHILD_REFUSAL_001.json';failure=decode(add(failurep,'6649c3ebd31bdc3408397c72b945eee461f44d5065071efdcdc4b2c5d5f33c86',12637),True)
+    need(failure['author']=='/root' and failure['actual_root_physical_tool']['chunk_id']=='ee39ea' and failure['actual_root_physical_tool']['exit_code']==1 and failure['actual_root_physical_tool']['wall_time_seconds']=='1.0891236' and failure['python_test_job_started'] is False and failure['helper_execution'] is False and failure['synthetic_tests_run'] is False and failure['current_runtime_PASS'] is False,'old physical Rootprechild refusal qualified')
+    for row in failure['observed_preserved_files']:
+        v=add(Path(row['path']),row['sha256'],row['bytes']);need(FIRST[row['path']]['path_raw9']==row['raw9_before']==row['raw9_after'],'Rootpreserved failure metadata correspondence')
+        if 'record' in row:need(decode(v,True)==row['record'],'Rootpreserved complete rawrecord exact')
+    oldgo=decode(DATA[str(OLD/'ROOT_SYNTHETIC_CHECKER28_GO_001.json')],True);oldterminal=decode(DATA[str(OLD/'ROOT_PARENT_TERMINAL_001.json')],True)
+    need(re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}\+00:00',oldgo['created_utc']) and re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}\+00:00',oldgo['expires_utc']),'exact old Py6 GO explains unchanged native7 refusal')
+    need(oldterminal['failure']=='Genuine PS7' and oldterminal['exit_code'] is None and oldterminal['capture_drain_complete'] is False and oldterminal['direct_child_reaped'] is False and oldterminal['stdout_bytes']==oldterminal['stderr_bytes']==0,'false child fields are nonentry not cleanup PASS')
+    need(DATA[str(OLD/'ROOT_PARENT_STDOUT_001.bin')]==DATA[str(OLD/'ROOT_PARENT_STDERR_001.bin')]==b'' and not (OLD/'ROOT_PARENT_STARTED_001.json').exists() and not (WORK/'root-checker28-runtime001').exists(),'zero raw captures/named nonentry still absent')
+    syntax=[];strict={mp,PREP/'SOURCE_CONTRACT_002.json',PREP/'SOURCE_DELTA_AUDIT_002.json',PREP/'ROOT_LAUNCH_RECIPE_002.json',PREP/'CHECKER28_DISCOVERY_PROJECTION_001.json',PREP/'CHECKER28_TEST_EVENT_PLAN_001.json',packetpath}
+    for key,v in DATA.items():
+        p=Path(key)
+        if p.suffix=='.json':decode(v,p in strict,key)
+        elif p.suffix=='.py':tr=ast.parse(v);syntax.append(dict(path=key,sha256=sha(v),definition_count=sum(isinstance(n,(ast.FunctionDef,ast.ClassDef)) for n in tr.body),AST_only=True))
+        elif p.suffix in ('.ps1','.md'):v.decode('utf8','strict')
+    observations=[dict(phase=1,rows=list(FIRST.values()))]
+    for phase in (2,3):
+        rows=[]
+        for key,v in DATA.items():
+            w,row=observe(Path(key),sha(v),len(v));need(w==v and row==FIRST[key],'triple independent source raw9/hash');rows.append(row)
+        observations.append(dict(phase=phase,rows=rows))
+    copies=[];(OWN/'inputs').mkdir()
+    for i,(key,v) in enumerate(DATA.items()):
+        target=OWN/'inputs'/('%04d.bytes'%i)
+        with target.open('xb') as f:need(f.write(v)==len(v),'own complete binary copy');f.flush();os.fsync(f.fileno())
+        w,row=observe(target,sha(v),len(v));need(w==v and row['path_raw9'][:2]!=FIRST[key]['path_raw9'][:2],'owned exact different copy');copies.append(dict(original=key,copy=str(target),sha256=sha(v),bytes=len(v),copy_raw9=row['path_raw9']))
+    future=[PREP/'INDEPENDENT_CHECKER28_RUNNER_SOURCE_REVIEW_002.json',PREP/'ROOT_SYNTHETIC_CHECKER28_GO_002.json',PREP/'PRO3_CHECKER28_INTERVAL_ACK_002.json',WORK/'root-checker28-runtime002']+[PREP/name for name in contract['parent_outputs']]
+    for p in future:need(not p.exists() and not Path(str(p)+'.staging').exists(),'fresh Sourcepeer/GO/ACK/parent/private absent')
+    now=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds');checks=[
+      'Complete609 payloads/610 total and596 author pairs authenticated;326 prior001complete files,265 inherited originals and5 authentic prior peer top files remain exact, including spent refusal/GO/ACK/terminal/zero pipes.',
+      'Ten declared namespace/name substitutions independently reconstruct new parent/runner and reverse complete bytes/ModuleAST to accepted001;all13 nonmain Python defs and9 PowerShell function texts exact.',
+      'Full retained runner source semantics reviewed: strict duplicate/noFloat/pinned bounded acquisition, exact ordered discovery, complete callbacks/events/diagnostics, full post-read, source cache guards and createonce output all unchanged.',
+      'Parent genuine Sourcepeer12/RootGO15 selection, native7 fraction stamp roundtrip/domain, actualSource/runtime pre/post acquisition, remaining60/resource point/floors/spawn and52/57 direct reap/drain thresholds remain exact.',
+      '141 Source010 closure is exact69top+72 onefixednestedprefix;test004/helper010/current Rootsource peer/full/post/selection exact and no arbitrary directory discovery or input cap expansion.',
+      'All28 methods independently projected;25 inherited bodyASTs exact,3 current path/identity/order controls retained,6 literal subtest sites→24healthy subtests/80events conditional only.',
+      'Native control-only recipe creates BOTH DateTimeOffset stamps directly with ToString(o), expiry from native created.AddSeconds; no Py padding/normalization/retimestamp or actual GO is supplied.',
+      'Root oldee39ea exit1/1.0891236s/6649 witness explains exact Py6GO/native7 guard before childStart;old false drain/reap fields describe nonentry rather than cleanup of launched child;no helper/test/quiet PASS inferred.',
+      'Separate fresh genuine RootGO/Pro3ACK and external physical60/full actual count/diagnostic/source acceptance remain necessary;old001spent objects cannot authorize002.',
+      'Original resource1GiB/D10GiB/age60,52child57cleanup60physical/64KiBpipes/stream4MiB32chunks/4096rows/1024row remain unchanged;timerfit~40MiB acquisition conditional, no OSJob/descendant/site/native/science/current24 authority.'
+    ]
+    details=emit('INDEPENDENT_CHECKER28_SUCCESSOR_SOURCE_DETAILS_002.json',dict(schema_version=1,record_type='independent_complete_checker28_successor_source_review_details',reviewer='/root/owner_docs_review',source_author='/root/bootstrap_stage',created_utc=now,scope=contract['scope'],verdict='PASS_STATIC_SYNTHETIC_CHECKER28_RUNNER_ONLY',source_manifest_sha256=sha(DATA[str(mp)]),finite_input_count=len(DATA),manifest_payload_count=609,author_pair_count=596,official_author_pairs=official,observations=observations,preserved_inputs=copies,syntax_and_inert_metadata=syntax,independent_methods=methodrows,conditional_healthy_subtests=24,conditional_healthy_events=80,source_checks=checks,findings=[],implementation_conditions=['Source-only preparation;no reviewed source import/definitions/compile/main/test/process/Git/FFI/GOwriter/binding execution by reviewer.','Actual current28 methods/subtests/events/results stillUNRUN;future fullphysical60 acquisition/timerfit conditional.','Genuine native7GO stamps/external source+Pro3ACK admission required;no replay/padding/oldACK/quiet or science inference.','Full details/copies are static reviewer evidence, not an added future runtime input;existing activeSource caps remain unchanged.'],documentary_decimal_fields=DECIMALS,future_absences=[str(p) for p in future],prior_physical_prechild_refusal_sha256=sha(DATA[str(failurep)]),physical_Root_tool_attribution_only=True,independent_OS_or_process_attestation=False,target_execution=False,actual_runtime=None,tests_executed=False,operational_authority=False))
+    final=[]
+    for key,v in DATA.items():
+        w,row=observe(Path(key),sha(v),len(v));need(w==v and row==FIRST[key],'full original post');final.append(row)
+    for row in copies:need(observe(Path(row['copy']),row['sha256'],row['bytes'])[1]['path_raw9']==row['copy_raw9'],'full owned copy post')
+    post=emit('POST_CHECKER28_SUCCESSOR_SOURCE_REVIEW_002.json',dict(schema_version=1,reviewer='/root/owner_docs_review',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'),source_details=details,input_count=len(DATA),inputs=final,copies=copies,all_source_bytes_exact=True,target_execution=False,actual_runtime=None))
+    peer=emit('INDEPENDENT_CHECKER28_RUNNER_SOURCE_REVIEW_002.json',dict(schema_version=1,record_type='independent_checker28_runner_source_review',created_utc=now,reviewer='/root/owner_docs_review',source_author='/root/bootstrap_stage',scope=contract['scope'],verdict='PASS_STATIC_SYNTHETIC_CHECKER28_RUNNER_ONLY',runner_source_sha256=sha(runner),parent_source_sha256=sha(parent),source_manifest_sha256=sha(DATA[str(mp)]),target_execution=False,actual_runtime=None))
+    text='Checker28 namespace002 full independent Source review accepted.\n\n609payload/610total;596author original-copy pairs;'+str(len(DATA))+' independently selected files observed3times/raw9/hash/ownexactcopies/post. Complete ten namespace byte reversals/allModuleAST/ninePStexts exact to accepted001;28 projected tests preserve25bodies,conditional24subtests/80events remain plans. Exact141Source010 closure/69top72nested and all caps/floors/timers preserved.\n\nOldRoot6649/ee39ea prechild native7 refusal/GO/ACK/emptystreams remain spent. NativeDateTimeOffset recipe mandates BOTH original seven-digit stamps with no padding;no actual GO/ACK/nonce/runtime created. Timerfit conditional,physicalRootadmission remains external. No reviewed helper/import/definitions/compile/main/tests/process/Git/FFI/GOwriter executed by reviewer. No OSJob/descendants/site/native/science/quiet/current24 or operational acceptance. Full report is static reviewer evidence,not newruntimeinput. Root must externally select/copy genuine compact12 exactly.\n\nPeer '+peer['sha256']+'\nDetails '+details['sha256']+'\nPost '+post['sha256']+'\n'
+    hp=OWN/'HANDOFF_CHECKER28_SUCCESSOR_SOURCE_002.md'
+    with hp.open('xb') as f:f.write(text.encode())
+    print(json.dumps(dict(status='PASS_STATIC_SUCCESSOR_SOURCE_ONLY',finite_inputs=len(DATA),peer=peer,details=details,post=post,handoff=dict(path=str(hp),sha256=sha(hp.read_bytes()),bytes=hp.stat().st_size),target_execution=False,actual_runtime=None)))
+
+if __name__=='__main__':run()
+def emit(name,obj):
+    p=OWN/name;v=(json.dumps(obj,sort_keys=True,ensure_ascii=True,allow_nan=False,separators=(',',':'))+'\n').encode('ascii')
+    with p.open('xb') as f:need(f.write(v)==len(v),'own complete write');f.flush();os.fsync(f.fileno())
+    need(p.read_bytes()==v,'own readback');return dict(path=str(p),sha256=sha(v),bytes=len(v))

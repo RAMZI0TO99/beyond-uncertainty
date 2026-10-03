@@ -1,0 +1,133 @@
+"""Own AST/Source metadata authoring only; never calls any selected definition.
+Writes only distinct004/002 Source candidates, never actual selections/models.
+"""
+import ast
+import difflib
+import hashlib
+import json
+import os
+from pathlib import Path
+import stat
+
+OWN=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001/root-guard006-model-prep001')
+WORK=OWN.parent
+U=WORK/'guard006-bound-late-checker-prep001'
+K=WORK/'metadata3-actual-checker-prep001'
+P=WORK/'root-guard006-pipeline-prep001'
+R=WORK/'root-pipeline-independent-review001'
+def sha(data):return hashlib.sha256(data).hexdigest()
+def wire(value):return (json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def raw(i):return [getattr(i,k)for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+def read(p):
+    a=p.lstat();ar=raw(a);assert all(type(v)is int for v in ar)
+    assert stat.S_ISREG(a.st_mode)and a.st_nlink==1 and not a.st_file_attributes&0x400 and 0<a.st_size<=8388608
+    with p.open('rb')as stream:
+        h=os.fstat(stream.fileno());hr=raw(h)
+        assert all(ar[i]==hr[i]for i in (0,1,2,3,5,6,7,8))and a.st_ctime_ns==a.st_birthtime_ns
+        data=stream.read(8388609);assert raw(os.fstat(stream.fileno()))==hr
+    assert len(data)==a.st_size and raw(p.lstat())==ar
+    return data,dict(path=str(p),bytes=len(data),sha256=sha(data),path_raw9=ar,descriptor_raw9=hr)
+def once(p,data):
+    with p.open('xb')as stream:stream.write(data);stream.flush();os.fsync(stream.fileno())
+    assert read(p)[0]==data
+
+source2=OWN/'ASSEMBLE_GUARD006_SOURCE_MODELS_002.TEMPLATE.py'
+old,old_row=read(source2);assert old_row['sha256']=='e6886127e80c85bbdccfc9748b5cdca28917a746feac7389cd514cb649cb092c'
+table1=OWN/'IMMUTABLE_MODEL_INPUTS_001.json'
+table_data,table_row=read(table1);assert table_row['sha256']=='b01516f22dd1db00323bfaff1a37494e24fec3e6ba8ef6374ebb3c5f8d478890'
+table=json.loads(table_data)
+original_immutable_keys=set(table['immutable']);original_actual_keys=set(table['actual_paths'])
+changes={
+ 'checker':(K/'review-metadata3-actual006-corrected010.TEMPLATE.py','9efa6deb54721a531159545ffa5e4e9bd90606f3dc12d7b0ab6cf5f4af51ee16'),
+ 'checker_manifest':(K/'AUTHOR_FROZEN_SOURCE_MANIFEST_010.json','624914bedda69ba654cf8ff273774bfb6054f936d61dec936c332b2e46dd0949'),
+ 'checker_peer':(WORK/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_003.json','6d981aa8a08c4329241c8d4fff7a5a12913123fe320b0f5cefddf69eee63f27e'),
+ 'checker_protocol':(K/'SOURCE_PROTOCOL_AND_REVIEW_CONTRACT_010.json',None),
+ 'pipeline_template':(P/'RUN_ROOT_METADATA_PIPELINE_009.TEMPLATE.ps1','84ddc157d2c2b9eba3998afc8ca57e09110cd34e24e403422e574a97b20165d3'),
+ 'root_binder':(P/'BIND_ROOT_PIPELINE_SOURCE_003.TEMPLATE.py','ac3d817826dc3862d65f9b8514bf85a30eed9b39647257d142af574946328253'),
+ 'root_binder_manifest':(P/'SOURCE_BINDER_MANIFEST_003.json','bfcb28d7fcbafd946ab0569e8b8072eb59ecfd3b3bbabb6234faa3e4fb9f2eea'),
+ 'root_binder_peer':(R/'INDEPENDENT_ROOT_PIPELINE_BINDER_SOURCE_REVIEW_003.json','71103809f7bfc622508a57bbd6e724904a623d8ced93ff6799d27e68dde64e08'),
+ 'utility':(U/'review_guard006_actual_records_001-corrected010.TEMPLATE.py','2811fe89f1c8580563c436b2f11c45db35ad1ee8c02ba312a00db399e5924de8'),
+ 'utility_manifest':(U/'AUTHOR_FROZEN_SOURCE_MANIFEST_010.json','289726ace3beb286d8b37642afd527df952f9535186be0ad320a2ae7937277b5'),
+ 'utility_peer':(WORK/'guard010-utility-source-independent-review001/INDEPENDENT_UTILITY010_SOURCE_REVIEW_001.json','846d37306356953d7a882cd5f846eefab908bfedd9f1a171ed3cec3ad237555d'),
+}
+changed_rows=[]
+for key,(p,pin)in changes.items():
+    body,row=read(p)
+    if pin is not None:assert row['sha256']==pin
+    cap=table['immutable'][key]['cap'];assert len(body)<=cap
+    before=table['immutable'][key]
+    table['immutable'][key]=dict(path=str(p),sha256=row['sha256'],bytes=len(body),cap=cap)
+    changed_rows.append(dict(role=key,before=before,after=table['immutable'][key]))
+paths={
+ 'checker_binding':K/'ACTUAL_CHECKER_BINDING_002.json',
+ 'checker_peer':WORK/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_003.json',
+ 'pipeline':P/'RUN_ROOT_METADATA_PIPELINE_007.BOUND.ps1',
+ 'pipeline_config':P/'ROOT_PIPELINE_BINDING_002.json',
+ 'pipeline_peer':R/'SOURCE_REVIEW_ROOT_PIPELINE_002.json',
+ 'root_init':P/'ROOT_PIPELINE_INIT_TRACE_002.json',
+ 'root_trust':P/'ROOT_PIPELINE_TRUST_SELECTION_002.json',
+}
+path_changes=[]
+for key,p in paths.items():
+    path_changes.append(dict(role=key,before=table['actual_paths'][key],after=str(p)))
+    table['actual_paths'][key]=str(p)
+assert set(table['immutable'])==original_immutable_keys and set(table['actual_paths'])==original_actual_keys
+assert set(table)==set(json.loads(table_data))
+table2_bytes=wire(table)
+table2=OWN/'IMMUTABLE_MODEL_INPUTS_002.json';once(table2,table2_bytes)
+
+text=old.decode('utf8');replacements={
+ 'ASSEMBLE_GUARD006_SOURCE_MODELS_002.TEMPLATE.py':'ASSEMBLE_GUARD006_SOURCE_MODELS_004.TEMPLATE.py',
+ 'INDEPENDENT_MODEL_CONSTRUCTOR_SOURCE_REVIEW_001.json':'INDEPENDENT_MODEL_CONSTRUCTOR_SOURCE_REVIEW_004.json',
+ 'AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_002.json':'AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_004.json',
+ 'IMMUTABLE_MODEL_INPUTS_001.json':'IMMUTABLE_MODEL_INPUTS_002.json',
+ 'ROOT_ACTUAL_MODEL_SELECTION_001.json':'ROOT_ACTUAL_MODEL_SELECTION_002.json',
+ 'INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_002.json':'INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_003.json',
+ 'RUN_ROOT_METADATA_PIPELINE_006.BOUND.ps1':'RUN_ROOT_METADATA_PIPELINE_007.BOUND.ps1',
+ 'SOURCE_REVIEW_ROOT_PIPELINE_001.json':'SOURCE_REVIEW_ROOT_PIPELINE_002.json',
+ 'UTILITY_SOURCE_BINDINGS_001.json':'UTILITY_SOURCE_BINDINGS_002.json',
+ 'UTILITY_SOURCE_PROTOCOL_001.json':'UTILITY_SOURCE_PROTOCOL_002.json',
+ 'COMPOSER_FRESH_SOURCE_MODEL_001.json':'COMPOSER_FRESH_SOURCE_MODEL_002.json',
+ 'ACTUAL_SOURCE_POOL_PROJECTION_001.json':'ACTUAL_SOURCE_POOL_PROJECTION_002.json',
+ 'checker009':'checker010',
+ 'b01516f22dd1db00323bfaff1a37494e24fec3e6ba8ef6374ebb3c5f8d478890':sha(table2_bytes),
+}
+for before,after in replacements.items():
+    assert before in text
+    text=text.replace(before,after)
+mark="    root_peer = record(paths['pipeline_peer'],selection['pipeline_source_peer_sha256'],131072)"
+assert text.count(mark)==1
+text=text.replace(mark,"    typed(selection['pipeline_source_peer_sha256'], '8de3824c7f54cb096f7d3e3cc155a477559c19278fe903179a12df254dafefcb', 'Root selects genuine successor P16 peer002')\n"+mark)
+guard="    need(len(utility_bytes)<=131072 and len(composer_bytes)<=131072,'unchanged U/composer131072 caps before any write')"
+assert text.count(guard)==1
+text=text.replace(guard,"""    if len(utility_bytes)>131072 or len(composer_bytes)>131072:
+        print(json.dumps(dict(source_fit_refusal=dict(utility_bytes=len(utility_bytes),composer_bytes=len(composer_bytes),
+            utility_cap=131072,composer_cap=131072,bindings_json_bytes=len(wire(bindings)),
+            protocol_json_bytes=len(wire(protocol)),composer_model_json_bytes=len(wire(composer)),
+            projection_bytes=None,source_outputs_written=False,actual_peer20=None,Root_GO=None)),sort_keys=True))
+"""+guard)
+data=text.encode('utf8');new_tree=ast.parse(data);old_tree=ast.parse(old)
+old_defs={n.name:ast.dump(n,include_attributes=False)for n in old_tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+new_defs={n.name:ast.dump(n,include_attributes=False)for n in new_tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+assert set(old_defs)==set(new_defs)
+changed_defs=[name for name in old_defs if old_defs[name]!=new_defs[name]]
+assert set(changed_defs)=={'main','validate_metadata'}
+assert len(data)<=131072
+new=OWN/'ASSEMBLE_GUARD006_SOURCE_MODELS_004.TEMPLATE.py';once(new,data)
+selection=json.loads(read(OWN/'ROOT_ACTUAL_MODEL_SELECTION_001.TEMPLATE.json')[0])
+assert all(value is None for key,value in selection.items()if key.endswith('_sha256'))
+once(OWN/'ROOT_ACTUAL_MODEL_SELECTION_002.TEMPLATE.json',wire(selection))
+delta=''.join(difflib.unified_diff(old.decode('utf8').splitlines(True),text.splitlines(True),fromfile=source2.name,tofile=new.name))
+once(OWN/'COMPLETE_CONSTRUCTOR_SOURCE_DIFF_004.patch',delta.encode('utf8'))
+facts=dict(schema_version=1,record_type='constructor004_Source_successor_AST_and_table_facts',source_author='/root/pubnative_review',
+    predecessor_source=old_row,constructor_source=read(new)[1],table_predecessor=table_row,table_successor=read(table2)[1],
+    changed_definitions=changed_defs,unchanged_definition_count=len(old_defs)-len(changed_defs),definition_count=len(old_defs),
+    all_binding_read_literal_and_reversal_function_ASTs_unchanged=True,immutable_role_count=len(original_immutable_keys),
+    actual_path_role_count=len(original_actual_keys),immutable_role_set_unchanged=True,actual_path_role_set_unchanged=True,
+    changed_immutable_rows=changed_rows,changed_actual_paths=path_changes,all_caps_unchanged=True,
+    canonical_utility_and_composer_BOUND_paths_unchanged=True,SourceActualInputs=None,actual_models=None,actual_fit=None,
+    actual_selection=None,actual_actions=None,helper_definitions_or_main_executed=False,tests_executed=False)
+once(OWN/'CONSTRUCTOR_SOURCE_FACTS_004.json',wire(facts))
+assert read(source2)[1]==old_row and read(table1)[1]==table_row
+print(json.dumps(dict(source_sha256=sha(data),source_bytes=len(data),table_sha256=sha(table2_bytes),table_bytes=len(table2_bytes),
+    changed_definitions=changed_defs,unchanged_definition_count=facts['unchanged_definition_count'],actuals=None),sort_keys=True))

@@ -1,0 +1,549 @@
+"""UNRUN metadata-only Root source binder; never imports or calls target code.
+
+The independent source receipt precedes this binder. The actual pipeline peer
+and INIT trust follow configuration publication, avoiding a configuration /
+trust / composer cycle. Every output is one-use and partial failures remain
+visible: this program does not delete, repair, replay or manufacture reviews.
+"""
+import argparse
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+from datetime import datetime, timezone
+from pathlib import Path
+
+WORK = Path(r'D:\Aenv\pro2\resume-2026-10-03-continuation001')
+ROOT = WORK / 'root-guard006-pipeline-prep001'
+GUARD = WORK / 'consumer005-guard006-runtime-prep001'
+META = WORK / 'metadata3-producer-core-prep001'
+CHECKER = WORK / 'metadata3-actual-checker-prep001'
+UTILITY = WORK / 'guard006-bound-late-checker-prep001'
+AUTHOR = '/root/root_pipeline_binder'
+SCOPE = 'COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+MASTER_SHA = 'de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'
+MASTER_PEER_SHA = '56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0'
+CAPSULE_PEER_SHA = '007a4fa04849b2b497046609fcc7058abc4db19d933aa932fd61420394fce2e1'
+STATIC_SHA = '787a60b216f1ac00e7e78f1f0c20d232e0656793cc8c4c02fb646c1aa7d21292'
+CONFIG_KEYS = ('schema_version', 'record_type', 'author', 'scope', 'sources',
+    'profile', 'projection', 'owner_lease_sha256', 'owner_lease_end_utc',
+    'coordination_peer_reply', 'coordination_root_response', 'metadata_checker_ready',
+    'bound_checker_ready', 'packet_composer', 'maximum_retained_seconds',
+    'guard_sources', 'harness_static_review', 'source_manifest', 'source_capsule',
+    'source_capsule_review')
+PEER_KEYS = ('schema_version', 'record_type', 'reviewer', 'source_author', 'scope',
+    'verdict', 'created_utc', 'binder_template_sha256', 'pipeline_template_sha256',
+    'source_manifest_sha256', 'target_execution', 'actual_binding')
+LEASE_KEYS = ('schema_version', 'record_type', 'author', 'scope', 'created_utc',
+    'lease_end_utc', 'owner_master_sha256', 'owner_review_sha256', 'decision',
+    'maximum_lease_seconds', 'lease_is_owner_deadline', 'operational_authority')
+# The author freezes this finite table before independent review. It contains
+# only selected immutable sources and genuine source receipts, never actual
+# captures, trust-dependent utility/composer models or future result records.
+PINNED_INPUTS = {'master': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\OWNER_CONTINUATION_20261003_001.json', 'sha256': 'de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583', 'bytes': 1956, 'cap': 2097152}, 'master_peer': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\owner-docs-independent-review001\\INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json', 'sha256': '56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0', 'bytes': 8513, 'cap': 2097152}, 'guard_manifest': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\FINAL_AUTHOR_SOURCE_MANIFEST_009.json', 'sha256': '78320743b0076e5a8cc5056a6f003202a4dcdb19f3bc59a3cbf5da8924bbdba9', 'bytes': 14101, 'cap': 2097152}, 'guard_peer': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\gg6-source-independent-review001\\INDEPENDENT_GG6_SOURCE_REVIEW_003.json', 'sha256': '82b9643b78e4d4c388781e53b79c8a0546f9b07afca641ccfa71ff677483dae1', 'bytes': 242416, 'cap': 2097152}, 'metadata_manifest': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\metadata3-producer-core-prep001\\STAGED_MANIFEST_005.json', 'sha256': 'df54adc4ef8303124590fc5c8f1191815ceff6c61f7db56a511390f9de9f7e5a', 'bytes': 6723, 'cap': 2097152}, 'metadata_peer': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\m3-source-independent-review001\\INDEPENDENT_M3_SOURCE_REVIEW_002.json', 'sha256': '78bc1b1a7a3e06e6752283e632651faac1b07f8f307f1612ceac4b1bd015bf30', 'bytes': 162087, 'cap': 2097152}, 'four_root_manifest': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\root-guard006-pipeline-prep001\\FOUR_ROOT_STAGE_SOURCE_MANIFEST_002.json', 'sha256': '936db4c16c9091d13361023cdc325c2f1671345641dc1685ed176680d3d3d28c', 'bytes': 4733, 'cap': 2097152}, 'driver_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\run-consumer-guard-unit006-rev003.TEMPLATE.py', 'sha256': '969a16a0bfa608cb9e818880b608b9a37a44da38a0a2fae3bb38bd17cea712c6', 'bytes': 61907, 'cap': 65536}, 'observer_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\observe-whole-runtime-006-rev003.TEMPLATE.py', 'sha256': 'f847c07c125fce33f240b9ad8034c8a7efc274c02f95179e8b9fc09242ba0062', 'bytes': 40564, 'cap': 65536}, 'child': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\consumer-guard-child-006-rev003.TEMPLATE.py', 'sha256': '4e82456e83fc0503132f53e355afa57369c54391829fe0f28fc7f51bc4a5bcba', 'bytes': 46076, 'cap': 65536}, 'launcher_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\ROOT_FIRST_LAUNCH_006-rev003.TEMPLATE.ps1', 'sha256': '021a279a81bfd8a86bbf3974edddacd65f40e1233fe3270dc806620606d62b6f', 'bytes': 15047, 'cap': 65536}, 'profile': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\GUARD_RUNTIME_PROFILE_006-rev003.json', 'sha256': '70d4d658ff993181eb4056bdd276763cc8ff6a12b7281637e9332a00fb2fa030', 'bytes': 19774, 'cap': 2097152}, 'projection': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\SOURCE_INPUTS_PROJECTION_006.json', 'sha256': 'aa5e63a985ceda562be395f8f85c8e71baeafd102a3854f5b2299b153f836072', 'bytes': 20160, 'cap': 2097152}, 'static_review': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_006.json', 'sha256': '787a60b216f1ac00e7e78f1f0c20d232e0656793cc8c4c02fb646c1aa7d21292', 'bytes': 1592, 'cap': 2097152}, 'source_manifest': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\inputs\\SOURCE_STAGED_MANIFEST_005.json', 'sha256': '169d559bdb54c32dce439bd815dd1e28e895b65826db3e7d4310315b8a5edabc', 'bytes': 723621, 'cap': 2097152}, 'capsule': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\inputs\\ACTUAL_SOURCE_CAPSULE_005.json', 'sha256': '4c81e41d926eea61805eac23b5c616931fa3c86b4db1e794f8f28a2f04c26fa8', 'bytes': 24627, 'cap': 2097152}, 'capsule_peer': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\capsule-design-independent-review001\\INDEPENDENT_COMPACT_CAPSULE_REVIEW_001.json', 'sha256': '007a4fa04849b2b497046609fcc7058abc4db19d933aa932fd61420394fce2e1', 'bytes': 2384, 'cap': 2097152}, 'raw_source': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\consumer005-guard006-runtime-prep001\\inputs\\raw004-source.bytes', 'sha256': 'da64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211', 'bytes': 210452, 'cap': 2097152}, 'metadata_capture_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\metadata3-producer-core-prep001\\capture-root-metadata003-corrected005.TEMPLATE.py', 'sha256': 'c874f620f7f342e3b04ce7bf6c88969d51ed73d9f5801a45b851563eb8eebdc6', 'bytes': 33210, 'cap': 65536}, 'metadata_before_writer_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\metadata3-producer-core-prep001\\WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_003.TEMPLATE.ps1', 'sha256': '0a425a85c64892d50068d73fef0608139e444c1680589ee1763585100ed0a712', 'bytes': 14471, 'cap': 65536}, 'metadata_before_parent_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\metadata3-producer-core-prep001\\SUPERVISE_ROOT_METADATA_BEFORE_003-corrected004.TEMPLATE.ps1', 'sha256': 'fd63865851f8831295203640215f0dd23438578e8ba7efde2928521f08073d96', 'bytes': 18087, 'cap': 65536}, 'metadata_after_writer_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\metadata3-producer-core-prep001\\WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_003.TEMPLATE.ps1', 'sha256': '14e70a8b801ad6d05930df28d93a5b9313a8c930b43ea2706a0b46b081a30372', 'bytes': 14927, 'cap': 65536}, 'metadata_after_parent_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\metadata3-producer-core-prep001\\SUPERVISE_ROOT_METADATA_AFTER_003-corrected004.TEMPLATE.ps1', 'sha256': 'fd901b68e70e4e55eb53f7f04e5c5b2ed17bf5de2005d7c261004fb843cd2451', 'bytes': 17978, 'cap': 65536}, 'root_records_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\root-guard006-pipeline-prep001\\PREPARE_ROOT_GUARD006_RECORDS_001.TEMPLATE.ps1', 'sha256': '2ca089fa9c94a5ca79bd454daa813982d45b47d2ed0ea2a53312776a81627f34', 'bytes': 27040, 'cap': 65536}, 'whole_before_parent_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\root-guard006-pipeline-prep001\\SUPERVISE_ROOT_WHOLE_BEFORE_006.TEMPLATE.ps1', 'sha256': 'd1e799741d6f75c14a12d8b2ddc44a4aa0b08c96d8e5db5fc9bb65fa353909d7', 'bytes': 28942, 'cap': 65536}, 'whole_after_writer_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\root-guard006-pipeline-prep001\\WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.TEMPLATE.ps1', 'sha256': '0278a79e9c8ddb5327788f99bb3670aea1f71b85b684e3bad01f59fd7e8fda5c', 'bytes': 37024, 'cap': 65536}, 'whole_after_parent_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\root-guard006-pipeline-prep001\\SUPERVISE_ROOT_WHOLE_AFTER_006.TEMPLATE.ps1', 'sha256': 'f791bc77e21ffd8bcd2c68f44ba95f76617a82021e5f07fdd5ab9243afb7aaed', 'bytes': 40508, 'cap': 65536}, 'pipeline_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\root-guard006-pipeline-prep001\\RUN_ROOT_METADATA_PIPELINE_006.TEMPLATE.ps1', 'sha256': '9b7dbc059cc51601e08bbf4ff748123b53034533173dca5a6254352e47f997e8', 'bytes': 45560, 'cap': 65536}, 'composer_template': {'path': 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\guard006-bound-late-checker-prep001\\compose-root-review-packet-006.TEMPLATE.py', 'sha256': '1b909f93c795c1d162b025ccf4917513ee20eb2edfd5d1db80ff78afebd1d911', 'bytes': 14753, 'cap': 65536}}
+SOURCE_ROWS = {
+    'metadata_before_writer': 'WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_003.BOUND.ps1',
+    'metadata_before_parent': 'SUPERVISE_ROOT_METADATA_BEFORE_003.BOUND.ps1',
+    'metadata_after_writer': 'WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_003.BOUND.ps1',
+    'metadata_after_parent': 'SUPERVISE_ROOT_METADATA_AFTER_003.BOUND.ps1',
+    'root_records': 'PREPARE_ROOT_GUARD006_RECORDS_001.BOUND.ps1',
+    'whole_before_parent': 'SUPERVISE_ROOT_WHOLE_BEFORE_006.BOUND.ps1',
+    'whole_after_writer': 'WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.BOUND.ps1',
+    'whole_after_parent': 'SUPERVISE_ROOT_WHOLE_AFTER_006.BOUND.ps1',
+    'pipeline': 'RUN_ROOT_METADATA_PIPELINE_006.BOUND.ps1',
+}
+
+
+def need(value, message):
+    if not value:
+        raise ValueError(message)
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def hex64(value):
+    return type(value) is str and re.fullmatch('[0-9a-f]{64}', value) is not None
+
+
+def raw(info):
+    return tuple(getattr(info, key) for key in ('st_dev', 'st_ino', 'st_size',
+        'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink',
+        'st_file_attributes', 'st_birthtime_ns'))
+
+
+def api8(info):
+    return tuple(getattr(info, key) for key in ('st_dev', 'st_ino', 'st_size',
+        'st_mtime_ns', 'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns'))
+
+
+def ancestors(path):
+    result = []
+    for item in [*reversed(path.parents), path]:
+        info = item.lstat()
+        need(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+             and not info.st_file_attributes & 1024, 'plain source ancestor required')
+        result.append((str(item), info.st_dev, info.st_ino))
+    return tuple(result)
+
+
+def read(path, pin, cap):
+    need(type(path) is Path or isinstance(path, Path), 'owned path required')
+    need(pin is None or hex64(pin), 'external exact SHA required')
+    need(type(cap) is int and 0 < cap <= 2097152, 'input cap required')
+    chain = ancestors(path.parent)
+    before = path.lstat()
+    need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+         and not stat.S_ISLNK(before.st_mode) and not before.st_file_attributes & 1024
+         and 0 <= before.st_size <= cap, 'plain one-link bounded source input')
+    with path.open('rb', buffering=0) as stream:
+        opened = os.fstat(stream.fileno())
+        need(stat.S_ISREG(opened.st_mode) and opened.st_nlink == 1
+             and not opened.st_file_attributes & 1024 and opened.st_size <= cap,
+             'plain bounded opened source')
+        need(api8(before) == api8(opened) and before.st_ctime_ns == before.st_birthtime_ns,
+             'ordinary-file cross-API8 identity/mode/birth differs')
+        data = stream.read(before.st_size + 1)
+        need(raw(opened) == raw(os.fstat(stream.fileno())), 'descriptor raw9 changed')
+    need(raw(before) == raw(path.lstat()) and ancestors(path.parent) == chain
+         and len(data) == before.st_size, 'source bytes/path raw9 changed')
+    need(pin is None or sha(data) == pin, 'selected source hash differs')
+    return data, dict(path=str(path), sha256=sha(data), bytes=len(data),
+                     path_raw9=list(raw(before)), descriptor_raw9=list(raw(opened)))
+
+
+def exact(value, keys, label):
+    need(type(value) is dict and set(value) == set(keys), label + ' closed keys differ')
+
+
+def nominal(value, expected, label):
+    for key, item in expected.items():
+        need(type(value[key]) is type(item) and value[key] == item,
+             label + ' typed nominal differs: ' + key)
+
+
+def decode(data):
+    need(not data.startswith(b'\xef\xbb\xbf'), 'UTF8 BOM refused')
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            need(key not in value, 'duplicate decoded JSON key')
+            value[key] = item
+        return value
+    def no_float(token):
+        raise ValueError('floating/nonfinite JSON number refused')
+    value = json.loads(data.decode('utf-8', errors='strict'), object_pairs_hook=pairs,
+                       parse_float=no_float, parse_constant=no_float)
+    exact_depth(value, 0)
+    return value
+
+
+def exact_depth(value, depth):
+    need(depth <= 40, 'JSON nesting exceeds bound')
+    if type(value) is dict:
+        for key, item in value.items():
+            need(type(key) is str, 'JSON key type')
+            exact_depth(item, depth + 1)
+    elif type(value) is list:
+        for item in value:
+            exact_depth(item, depth + 1)
+    else:
+        need(type(value) in (str, int, bool, type(None)), 'JSON primitive type')
+
+
+def ticks(value, fraction):
+    need(type(value) is str and re.fullmatch(
+        r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.' + r'\d{' + str(fraction) + r'}\+00:00',
+        value) is not None, 'canonical original timestamp role required')
+    short = value if fraction == 6 else value[:26] + value[27:]
+    stamp = datetime.fromisoformat(short)
+    need(stamp.isoformat(timespec='microseconds') == short, 'canonical timestamp body differs')
+    delta = stamp - datetime(1970, 1, 1, tzinfo=timezone.utc)
+    return (delta.days * 86400 + delta.seconds) * 10000000 + delta.microseconds * 10 + (
+        int(value[26]) if fraction == 7 else 0)
+
+
+def now_ticks():
+    delta = datetime.now(timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)
+    return (delta.days * 86400 + delta.seconds) * 10000000 + delta.microseconds * 10
+
+
+def literal_rows(data, names):
+    tree = ast.parse(data.decode('utf-8', errors='strict'))
+    found = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            name = node.targets[0].id
+            if name in names:
+                need(name not in found, 'duplicate source assignment')
+                found[name] = node.value
+    need(set(found) == set(names), 'exact top-level source slots differ')
+    return found
+
+
+def syntax_identity(data):
+    return [ast.dump(node, include_attributes=False) for node in ast.parse(data).body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+
+
+def bind_literals(original, values, expected_original):
+    text = original.decode('utf-8', errors='strict')
+    nodes = literal_rows(original, values)
+    lines = text.splitlines(keepends=True)
+    edits = []
+    old_text = {}
+    for name, node in nodes.items():
+        need(ast.literal_eval(node) == expected_original[name]
+             and type(ast.literal_eval(node)) is type(expected_original[name]),
+             'only exact original source slots may bind')
+        start = sum(map(len, lines[:node.lineno-1])) + node.col_offset
+        end = sum(map(len, lines[:node.end_lineno-1])) + node.end_col_offset
+        old_text[name] = text[start:end]
+        edits.append((start, end, repr(values[name])))
+    for start, end, value in sorted(edits, reverse=True):
+        text = text[:start] + value + text[end:]
+    bound = text.encode('utf-8')
+    need(syntax_identity(original) == syntax_identity(bound), 'function/class AST changed')
+    bound_lines = text.splitlines(keepends=True)
+    reverse = []
+    for name, node in literal_rows(bound, values).items():
+        need(ast.literal_eval(node) == values[name]
+             and type(ast.literal_eval(node)) is type(values[name]), 'bound literal differs')
+        start = sum(map(len, bound_lines[:node.lineno-1])) + node.col_offset
+        end = sum(map(len, bound_lines[:node.end_lineno-1])) + node.end_col_offset
+        reverse.append((start, end, old_text[name]))
+    rebuilt = text
+    for start, end, value in sorted(reverse, reverse=True):
+        rebuilt = rebuilt[:start] + value + rebuilt[end:]
+    need(rebuilt.encode('utf-8') == original, 'complete source byte reversal differs')
+    return bound
+
+
+def verify_literal_binding(original, bound, values, expected_original):
+    original_text = original.decode('utf-8', errors='strict')
+    bound_text = bound.decode('utf-8', errors='strict')
+    original_lines = original_text.splitlines(keepends=True)
+    bound_lines = bound_text.splitlines(keepends=True)
+    original_nodes = literal_rows(original, values)
+    bound_nodes = literal_rows(bound, values)
+    edits = []
+    for name in values:
+        old, new = original_nodes[name], bound_nodes[name]
+        need(ast.literal_eval(old) == expected_original[name]
+             and type(ast.literal_eval(old)) is type(expected_original[name]), 'M3 original source slot differs')
+        observed = ast.literal_eval(new)
+        need(observed == values[name] and type(observed) is type(values[name]), 'M3 bound literal selection differs')
+        if type(values[name]) is dict:
+            need(all(type(observed[key]) is str for key in values[name]), 'M3 nested source SHA literal types')
+        start = sum(map(len, original_lines[:old.lineno-1])) + old.col_offset
+        end = sum(map(len, original_lines[:old.end_lineno-1])) + old.end_col_offset
+        bound_start = sum(map(len, bound_lines[:new.lineno-1])) + new.col_offset
+        bound_end = sum(map(len, bound_lines[:new.end_lineno-1])) + new.end_col_offset
+        edits.append((bound_start, bound_end, original_text[start:end]))
+    rebuilt = bound_text
+    for start, end, value in sorted(edits, reverse=True):
+        rebuilt = rebuilt[:start] + value + rebuilt[end:]
+    need(rebuilt.encode('utf-8') == original and syntax_identity(bound) == syntax_identity(original),
+         'M3 complete source six-literal reversal/function-class AST differs')
+
+
+def pointer(row):
+    return {key: row[key] for key in ('path', 'sha256', 'bytes')}
+
+
+def absent(path):
+    chain = ancestors(path.parent)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        need(ancestors(path.parent) == chain, 'absence ancestor drift')
+        return
+    raise ValueError('one-use output exists: ' + str(path))
+
+
+def publish(path, data, cap):
+    need(path.parent in (ROOT, GUARD) and type(data) is bytes and len(data) <= cap <= 2097152,
+         'fixed bounded output required')
+    absent(path)
+    staging = Path(str(path) + '.staging')
+    absent(staging)
+    chain = ancestors(path.parent)
+    with staging.open('xb', buffering=0) as stream:
+        need(stream.write(data) == len(data), 'complete owned source write')
+        stream.flush()
+        os.fsync(stream.fileno())
+    need(read(staging, sha(data), cap)[0] == data and ancestors(path.parent) == chain,
+         'staging source readback differs')
+    # On Windows os.rename refuses an existing destination. No replace/delete.
+    os.rename(staging, path)
+    need(read(path, sha(data), cap)[0] == data, 'published source readback differs')
+    return pointer(read(path, sha(data), cap)[1])
+
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True) + '\n').encode('ascii')
+
+
+def selected_inputs():
+    need(type(PINNED_INPUTS) is dict and type(SOURCE_ROWS) is dict, 'UNFROZEN source table')
+    result = {}
+    evidence = {}
+    for role, row in PINNED_INPUTS.items():
+        exact(row, ('path', 'sha256', 'bytes', 'cap'), 'immutable source pointer')
+        need(type(row['path']) is str and hex64(row['sha256'])
+             and type(row['bytes']) is int and 0 < row['bytes'] <= row['cap'], 'immutable source pointer domains')
+        data, observed = read(Path(row['path']), row['sha256'], row['cap'])
+        need(len(data) == row['bytes'], 'exact immutable source size')
+        result[role] = data
+        evidence[role] = observed
+    return result, evidence
+
+
+def reviewed_inputs(data):
+    master = decode(data['master'])
+    need(type(master) is dict and master['work_end_utc'] is None
+         and master['fixed_deadline_invented'] is False
+         and master['authorization_mode'] == 'ongoing_until_completion_owner_stop_or_actual_blocker',
+         'ongoing master differs')
+    peer = decode(data['master_peer'])
+    need(type(peer) is dict and peer['reviewer'] == 'owner_docs_review'
+         and peer['source_owner_sha256'] == MASTER_SHA
+         and peer['verdict'] == 'PASS_OWNER_DIRECTIVE_AND_LINEAGE_SOURCE_ONLY'
+         and peer['old_artifacts_renewed'] is False, 'genuine pinned master source receipt differs')
+    for role, expected in (
+        ('guard_peer', dict(schema_version=1, record_type='independent_gg6_complete_finite_source_review',
+            source_author='/root/capsule_design_review', reviewer='/root/owner_docs_review',
+            scope=SCOPE, verdict='PASS_COMPLETE_SOURCE_PREPARATION_ONLY', actual_results=None,
+            runtime_acceptance=False, operational_authority=False,
+            source_manifest_sha256=PINNED_INPUTS['guard_manifest']['sha256'])),
+        ('metadata_peer', dict(schema_version=1, record_type='guard006_metadata_successor_source_preparation_review',
+            source_author='/root/renewal_runtime_inventory', reviewer='/root/owner_docs_review',
+            scope=SCOPE, verdict='PASS_STATIC_METADATA_PREPARATION_ONLY', actual_results=None,
+            runtime_acceptance=False, operational_authority=False,
+            source_manifest_sha256=PINNED_INPUTS['metadata_manifest']['sha256'])),
+    ):
+        value = decode(data[role])
+        need(type(value) is dict and set(expected) <= set(value), 'pinned complete source peer core')
+        nominal(value, expected, role)
+    static = decode(data['static_review'])
+    need(type(static) is dict and static['verdict'] == 'PASS_STATIC_PREPARATION_ONLY'
+         and static['reviewer'] == '/root/owner_docs_review' and static['owner_master_sha256'] == MASTER_SHA
+         and static['driver_template_sha256'] == PINNED_INPUTS['driver_template']['sha256']
+         and static['child_template_sha256'] == PINNED_INPUTS['child']['sha256']
+         and static['profile_sha256'] == PINNED_INPUTS['profile']['sha256']
+         and static['target_definitions_executed'] is False and static['tests_executed'] is False
+         and static['native_authority'] is False, 'genuine pinned static source receipt differs')
+    return master
+
+
+def validate_lease(selection, master):
+    exact(selection, ('path', 'sha256', 'lease_end_utc'), 'execution lease selection')
+    need(selection['path'] == str(WORK / 'EXECUTION_LEASE_GG6_M3_001.json')
+         and type(selection['path']) is str and hex64(selection['sha256']), 'fixed external lease selection')
+    raw_data, row = read(Path(selection['path']), selection['sha256'], 65536)
+    lease = decode(raw_data)
+    exact(lease, LEASE_KEYS, 'finite lease12')
+    nominal(lease, dict(schema_version=1, record_type='root_local_private_execution_lease',
+        author='/root', scope=SCOPE, owner_master_sha256=MASTER_SHA, owner_review_sha256=MASTER_PEER_SHA,
+        decision='authorize_bounded_selected_unit_metadata_and_copied_tests_once', maximum_lease_seconds=43200,
+        lease_is_owner_deadline=False, operational_authority=False), 'finite lease')
+    start, end = ticks(lease['created_utc'], 7), ticks(lease['lease_end_utc'], 7)
+    need(start >= ticks(master['record_created_utc'], 7) and start <= now_ticks() < end
+         and 0 < end - start <= 43200 * 10000000 and end - now_ticks() >= 1200 * 10000000,
+         'original finite lease must leave pre-capture preparation reserve')
+    need(type(selection['lease_end_utc']) is str and selection['lease_end_utc'] == lease['lease_end_utc'],
+         'original finite lease end differs')
+    return lease, row
+
+
+def coordination(row):
+    exact(row, ('path', 'sha256', 'relative'), 'coordination selection')
+    relative = row['relative']
+    need(type(relative) is str and 0 < len(relative) <= 399 and '\\' not in relative
+         and not relative.startswith('/') and all(part not in ('', '.', '..') and ':' not in part
+         for part in relative.split('/')), 'canonical relative coordination role')
+    fixed = WORK.joinpath(*relative.split('/'))
+    need(type(row['path']) is str and row['path'] == str(fixed) and hex64(row['sha256']),
+         'canonical full coordination role')
+    data, observed = read(fixed, row['sha256'], 65536)
+    need(type(decode(data)) is dict, 'coordination record mapping required')
+    return dict(row), observed
+
+
+def m3_sources(args, source, selection, lease):
+    binding_data, binding_row = read(META / 'ACTUAL_SOURCE_BINDING_003.json',
+                                    args.expected_m3_source_binding_sha256, 65536)
+    binding = decode(binding_data)
+    exact(binding, ('schema_version', 'binder', 'template_sha256', 'actual_script_sha256', 'bindings',
+        'role_selections', 'exact_six_assignment_reversal', 'exact_function_ASTs',
+        'actual_before_authorization', 'actual_after_authorization', 'target_capture_executed'), 'M3 source binding11')
+    nominal(binding, dict(schema_version=1, binder='/root', template_sha256=sha(source['metadata_capture_template']),
+        exact_six_assignment_reversal=True, exact_function_ASTs=True, actual_before_authorization=None,
+        actual_after_authorization=None, target_capture_executed=False), 'M3 source binding')
+    bindings = dict(guard_profile_sha256=PINNED_INPUTS['profile']['sha256'],
+        source_projection_sha256=PINNED_INPUTS['projection']['sha256'],
+        raw_source_sha256=PINNED_INPUTS['raw_source']['sha256'],
+        source_manifest_sha256=PINNED_INPUTS['source_manifest']['sha256'],
+        source_peer_sha256=PINNED_INPUTS['capsule']['sha256'], guard_harness_static_review_sha256=STATIC_SHA,
+        preparer_static_review_sha256=PINNED_INPUTS['metadata_peer']['sha256'],
+        coordination_peer_reply_sha256=selection['coordination_peer_reply']['sha256'],
+        coordination_root_response_sha256=selection['coordination_root_response']['sha256'])
+    roles = dict(UNIT_TERMINAL_RELATIVE='ROOT_LAUNCH_TERMINAL_006.json',
+        COORDINATION_PEER_REPLY_RELATIVE=selection['coordination_peer_reply']['relative'],
+        COORDINATION_ROOT_RESPONSE_RELATIVE=selection['coordination_root_response']['relative'])
+    exact(binding['bindings'], bindings, 'M3 nine source selections')
+    nominal(binding['bindings'], bindings, 'M3 source selections')
+    exact(binding['role_selections'], roles, 'M3 three role selections')
+    nominal(binding['role_selections'], roles, 'M3 role selections')
+    values = dict(BINDINGS=bindings, OWNER_SHA=selection['lease_selection']['sha256'],
+                  OWNER_END=lease['lease_end_utc'], **roles)
+    original_values = dict(BINDINGS={key: None for key in bindings}, OWNER_SHA=None, OWNER_END=None,
+                           **{key: None for key in roles})
+    bound_capture, capture_row = read(META / 'capture-root-metadata003.BOUND.py',
+                                     binding['actual_script_sha256'], 65536)
+    verify_literal_binding(source['metadata_capture_template'], bound_capture, values, original_values)
+    phase_data, phase_row = read(META / 'PHASE_PS_SOURCE_BINDING_003.json',
+                                args.expected_m3_phase_binding_sha256, 65536)
+    phase = decode(phase_data)
+    exact(phase, ('schema_version', 'binder', 'sources', 'actual_script_sha256', 'bound_review_sha256',
+                 'actual_authorization', 'prepared_source_actions_executed'), 'M3 phase binding7')
+    nominal(phase, dict(schema_version=1, binder='/root', actual_script_sha256=sha(bound_capture),
+        actual_authorization=None, prepared_source_actions_executed=False), 'M3 phase binding')
+    need(hex64(phase['bound_review_sha256']), 'M3 externally reviewed bound capture pin')
+    review_data, review_row = read(META / 'INDEPENDENT_BOUND_METADATA_REVIEW_003.json',
+                                  phase['bound_review_sha256'], 65536)
+    review = decode(review_data)
+    exact(review, ('actual_script_sha256', 'metadata_only', 'phase_set', 'record_type', 'reviewer',
+                  'schema_version', 'source_author', 'source_bindings', 'verdict'), 'M3 bound source review9')
+    nominal(review, dict(schema_version=1, record_type='guard006_root_metadata_bound_source_review',
+        reviewer='/root/owner_docs_review', source_author='/root/renewal_runtime_inventory',
+        metadata_only=True, verdict='PASS_STATIC_BOUND_METADATA_ONLY', actual_script_sha256=sha(bound_capture),
+        phase_set=['before', 'after'], source_bindings=bindings), 'M3 genuine bound source receipt')
+    need(type(phase['sources']) is list and len(phase['sources']) == 4, 'four ordered M3 PS sources')
+    result = {}
+    observed = [binding_row, phase_row, capture_row, review_row]
+    for index, role in enumerate(('metadata_before_writer', 'metadata_before_parent', 'metadata_after_writer', 'metadata_after_parent')):
+        row = phase['sources'][index]
+        exact(row, ('path', 'sha256', 'template_sha256', 'exact_two_literal_reversal'), 'M3 PS binding row4')
+        original = source[role + '_template']
+        fixed = META / SOURCE_ROWS[role]
+        nominal(row, dict(path=str(fixed), template_sha256=sha(original), exact_two_literal_reversal=True), 'M3 PS row')
+        need(hex64(row['sha256']), 'M3 exact PS source SHA')
+        actual, current = read(fixed, row['sha256'], 65536)
+        text = actual.decode('utf-8', errors='strict')
+        for name, pin in (('BoundScriptSha256', sha(bound_capture)), ('BoundReviewSha256', phase['bound_review_sha256'])):
+            pattern = r'(?m)^\$' + name + r" = '" + pin + r"'(\r?)$"
+            need(len(re.findall(pattern, text)) == 1, 'exact M3 selected two PS literal pins')
+            text = re.sub(pattern, lambda match: '$' + name + ' = $null' + match.group(1), text)
+        need(text.encode('utf-8') == original, 'M3 PS exact two-literal byte reversal differs')
+        result[role] = pointer(current)
+        observed.append(current)
+    return result, observed
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Once-only reviewed Root source binding; no target execution')
+    for name in ('expected-self-sha256', 'expected-selection-sha256', 'expected-source-peer-sha256',
+                 'expected-m3-source-binding-sha256', 'expected-m3-phase-binding-sha256'):
+        parser.add_argument('--' + name, required=True)
+    args = parser.parse_args()
+    need(all(hex64(getattr(args, name.replace('-', '_'))) for name in (
+        'expected-self-sha256', 'expected-selection-sha256', 'expected-source-peer-sha256',
+        'expected-m3-source-binding-sha256', 'expected-m3-phase-binding-sha256')), 'all external selections require exact SHA')
+    own = Path(__file__).absolute()
+    need(own == ROOT / 'BIND_ROOT_PIPELINE_SOURCE_002.TEMPLATE.py', 'fixed reviewed binder path')
+    own_data, own_row = read(own, args.expected_self_sha256, 65536)
+    peer_data, peer_row = read(WORK / 'root-pipeline-independent-review001/INDEPENDENT_ROOT_PIPELINE_BINDER_SOURCE_REVIEW_002.json',
+                               args.expected_source_peer_sha256, 65536)
+    peer = decode(peer_data)
+    exact(peer, PEER_KEYS, 'preliminary independent binder source peer12')
+    nominal(peer, dict(schema_version=1, record_type='root_pipeline_binder_source_review',
+        reviewer='/root/owner_docs_review', source_author=AUTHOR, scope=SCOPE,
+        verdict='PASS_STATIC_ROOT_PIPELINE_BINDER_SOURCE_ONLY', binder_template_sha256=sha(own_data),
+        pipeline_template_sha256=PINNED_INPUTS['pipeline_template']['sha256'], target_execution=False,
+        actual_binding=None), 'genuine preliminary source peer')
+    ticks(peer['created_utc'], 6)
+    manifest_data, manifest_row = read(ROOT / 'SOURCE_BINDER_MANIFEST_002.json', peer['source_manifest_sha256'], 65536)
+    manifest = decode(manifest_data)
+    need(type(manifest) is dict and manifest['source_author'] == AUTHOR and manifest['target_execution'] is False
+         and manifest['actual_binding'] is None and type(manifest['payloads']) is list
+         and len(manifest['payloads']) == 3, 'frozen selected binder source manifest')
+    for expected_path in ('BIND_ROOT_PIPELINE_SOURCE_002.TEMPLATE.py', 'ROOT_PIPELINE_BINDING_002.TEMPLATE.json', 'SOURCE_BINDING_CONTRACT_002.json'):
+        rows = [row for row in manifest['payloads'] if type(row) is dict and row.get('path') == expected_path]
+        need(len(rows) == 1, 'three exact unique binder source payloads')
+        row = rows[0]
+        exact(row, ('path', 'sha256', 'bytes'), 'binder source payload')
+        need(hex64(row['sha256']) and type(row['bytes']) is int and 0 < row['bytes'] <= 65536, 'binder source payload domains')
+        content, observed = read(ROOT / expected_path, row['sha256'], 65536)
+        need(len(content) == row['bytes'], 'binder source payload exact size')
+        if expected_path == 'BIND_ROOT_PIPELINE_SOURCE_002.TEMPLATE.py':
+            need(content == own_data, 'binder manifest own source differs')
+    selection_data, selection_row = read(ROOT / 'ROOT_PIPELINE_SELECTION_001.json',
+                                         args.expected_selection_sha256, 65536)
+    selection = decode(selection_data)
+    exact(selection, ('lease_selection', 'coordination_peer_reply', 'coordination_root_response'), 'three external root selections')
+    source, evidence = selected_inputs()
+    master = reviewed_inputs(source)
+    lease, lease_row = validate_lease(selection['lease_selection'], master)
+    coord_peer, coord_peer_row = coordination(selection['coordination_peer_reply'])
+    coord_root, coord_root_row = coordination(selection['coordination_root_response'])
+    m3, m3_observations = m3_sources(args, source, selection, lease)
+    values = dict(OWNER_SHA256=selection['lease_selection']['sha256'],
+                  SOURCE_CAPSULE_PEER_SHA256=CAPSULE_PEER_SHA, HARNESS_STATIC_PEER_SHA256=STATIC_SHA)
+    driver = bind_literals(source['driver_template'], values, {key: None for key in values})
+    observer_values = dict(HARNESS_STATIC_PEER_SHA256=STATIC_SHA)
+    observer = bind_literals(source['observer_template'], observer_values, {key: None for key in observer_values})
+    outputs = [(GUARD / 'run-consumer-guard-unit006-rev003.bound.py', driver, 65536),
+               (GUARD / 'observe-whole-runtime-006-rev003.BOUND.py', observer, 65536)]
+    for role in ('root_records', 'whole_before_parent', 'whole_after_writer', 'whole_after_parent', 'pipeline'):
+        outputs.append((ROOT / SOURCE_ROWS[role], source[role + '_template'], 65536))
+    final_paths = [path for path, data, cap in outputs] + [ROOT / 'ROOT_PIPELINE_BINDING_001.json', ROOT / 'ROOT_PIPELINE_SOURCE_BINDING_PROVENANCE_001.json']
+    need(len(set(final_paths)) == 9, 'nine distinct fixed one-use outputs')
+    for path in final_paths:
+        absent(path)
+        absent(Path(str(path) + '.staging'))
+    for path, data, cap in outputs:
+        need(len(data) <= cap, 'bound source cap remains unchanged')
+    # Reobserve all immutable and selected actual inputs before the first write.
+    for role, row in evidence.items():
+        data, current = read(Path(row['path']), row['sha256'], PINNED_INPUTS[role]['cap'])
+        need(data == source[role] and current == row, 'final immutable paired observation differs')
+    for row in [own_row, peer_row, manifest_row, selection_row, lease_row, coord_peer_row, coord_root_row, *m3_observations]:
+        need(read(Path(row['path']), row['sha256'], 65536)[1] == row, 'final selected source observation differs')
+    validate_lease(selection['lease_selection'], master)
+    published = [publish(path, data, cap) for path, data, cap in outputs]
+    by_path = {row['path']: row for row in published}
+    config = dict(schema_version=1, record_type='root_metadata_pipeline_source_binding', author='/root', scope=SCOPE,
+        sources=dict(m3, **{role: by_path[str(ROOT / SOURCE_ROWS[role])] for role in
+                           ('root_records', 'whole_before_parent', 'whole_after_writer', 'whole_after_parent')}),
+        profile=pointer(evidence['profile']), projection=pointer(evidence['projection']),
+        owner_lease_sha256=selection['lease_selection']['sha256'], owner_lease_end_utc=lease['lease_end_utc'],
+        coordination_peer_reply=coord_peer, coordination_root_response=coord_root,
+        metadata_checker_ready=dict(path=str(CHECKER / 'CHECKER_READY_ALL_006.json')),
+        bound_checker_ready=dict(path=str(UTILITY / 'BOUND_LATE_CHECKER_READY_006.json')),
+        packet_composer=dict(path=PINNED_INPUTS['composer_template']['path'], sha256=PINNED_INPUTS['composer_template']['sha256']),
+        maximum_retained_seconds=3600,
+        guard_sources=dict(driver=by_path[str(GUARD / 'run-consumer-guard-unit006-rev003.bound.py')],
+            child=pointer(evidence['child']), observer=by_path[str(GUARD / 'observe-whole-runtime-006-rev003.BOUND.py')],
+            launcher_template=pointer(evidence['launcher_template'])), harness_static_review=pointer(evidence['static_review']),
+        source_manifest=pointer(evidence['source_manifest']), source_capsule=pointer(evidence['capsule']),
+        source_capsule_review=pointer(evidence['capsule_peer']))
+    exact(config, CONFIG_KEYS, 'actual Root configuration20')
+    config_row = publish(ROOT / 'ROOT_PIPELINE_BINDING_001.json', encoded(config), 65536)
+    provenance = dict(schema_version=1, record_type='root_pipeline_source_binding_provenance', binder='/root',
+        source_author=AUTHOR, scope=SCOPE, created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),
+        binder_sha256=sha(own_data), source_peer_sha256=peer_row['sha256'], source_manifest_sha256=manifest_row['sha256'],
+        selection_sha256=selection_row['sha256'], owner_lease_sha256=selection['lease_selection']['sha256'],
+        bound_sources=published, metadata_source_bindings=[pointer(row) for row in m3_observations], configuration=config_row,
+        exact_assignment_reversal=True, exact_function_class_ASTs=True, target_execution=False)
+    need(len(provenance) == 17, 'own provenance closed17')
+    provenance_row = publish(ROOT / 'ROOT_PIPELINE_SOURCE_BINDING_PROVENANCE_001.json', encoded(provenance), 65536)
+    print(json.dumps(dict(status='ROOT_SOURCE_BINDING_PUBLISHED_NO_TARGET_EXECUTION', configuration=config_row,
+                          provenance=provenance_row, target_execution=False), sort_keys=True), flush=True)
+
+
+if __name__ == '__main__':
+    main()

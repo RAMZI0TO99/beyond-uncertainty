@@ -57,11 +57,15 @@ The point estimate is rho on the **across-seed mean curve**. Per-seed curves and
 per-seed rho values are reported as diagnostics and do **not** enter the pass
 rule; a "3 of 5 seeds show it" reading is exactly the unreliable-positive that
 Gate 2 exists to refuse.
+
+D-154 amends timing, not mathematics: Experiment 1 saves its sole coefficient
+report in Week 7; Week 10 reviews that same artifact. ``bootstrap_values`` exposes
+the very resamples used below for support/mass reporting, without re-estimation.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import product
 from typing import Mapping
 
@@ -123,6 +127,9 @@ class TrendResult:
     #: Diagnostics. They do **not** enter the pass rule (D-068).
     per_seed_rho: tuple[float, ...]
     mean_curve: tuple[float, ...]
+    #: Same ordered bootstrap values used for the interval, including NaNs.
+    #: Additive diagnostics: legacy equality, repr and as_row stay unchanged.
+    bootstrap_values: tuple[float, ...] = field(default=(), repr=False, compare=False)
 
     def as_row(self) -> dict:
         return {
@@ -316,6 +323,7 @@ def trend_test(
         n_resamples=len(resampled),
         per_seed_rho=per_seed_rho,
         mean_curve=tuple(float(v) for v in mean_curve),
+        bootstrap_values=tuple(float(v) for v in resampled),
     )
 
 

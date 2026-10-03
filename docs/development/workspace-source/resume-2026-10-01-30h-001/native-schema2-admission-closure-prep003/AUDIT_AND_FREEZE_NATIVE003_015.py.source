@@ -1,0 +1,268 @@
+import ast
+import base64
+import collections
+import hashlib
+import json
+import os
+import re
+import stat
+import warnings
+from pathlib import Path
+
+work = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001')
+root = work / 'native-schema2-admission-closure-prep003'
+prior = root / 'before/native002'
+mapping = json.loads((root / 'before/design003/SOURCE_AND_CALLER_METADATA_003.json').read_bytes())
+preservation = json.loads((root / 'PRESERVATION_AND_COMPACTION_001.json').read_bytes())
+common_relative = 'front/native_successor_front_common_013_001.py.template'
+test_relative = 'source/test_native_schema2_admission_002.py'
+
+
+def observe(path):
+    start = path.lstat()
+    assert stat.S_ISREG(start.st_mode) and start.st_nlink == 1 and not start.st_file_attributes & 0x400, path
+    with path.open('rb') as stream:
+        opened = os.fstat(stream.fileno())
+        data = stream.read()
+        final = os.fstat(stream.fileno())
+    finish = path.lstat()
+    names = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')
+    raw = lambda item: [getattr(item, key) for key in names]
+    p, f = raw(start), raw(opened)
+    assert p == raw(finish) and f == raw(final) and p[:4] + p[5:] == f[:4] + f[5:] and p[4] == p[8], path
+    assert len(data) == p[2], path
+    return data, dict(path=str(path), bytes=len(data), sha256=hashlib.sha256(data).hexdigest(), path_raw9=p, descriptor_raw9=f)
+
+
+def write_once(path, value):
+    data = (json.dumps(value, sort_keys=True, indent=2) + '\n').encode('ascii')
+    with path.open('xb') as stream:
+        stream.write(data)
+    return observe(path)[1]
+
+
+def parsed(data):
+    with warnings.catch_warnings(record=True) as notices:
+        warnings.simplefilter('error', SyntaxWarning)
+        tree = ast.parse(data)
+    assert not notices
+    return tree
+
+
+def dump(tree):
+    return ast.dump(tree, include_attributes=False)
+
+
+def assignments(tree):
+    return {node.targets[0].id: node.value for node in tree.body if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)}
+
+
+def literal(node):
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'loads' and len(node.args) == 1:
+        return json.loads(ast.literal_eval(node.args[0]))
+    return ast.literal_eval(node)
+
+
+def methods(tree):
+    return {cls.name + '.' + node.name: dump(node) for cls in tree.body if isinstance(cls, ast.ClassDef) for node in cls.body if isinstance(node, ast.FunctionDef) and node.name.startswith('test_')}
+
+
+external_initial = []
+assert preservation['pair_count'] == len(preservation['original_copy_pairs']) == 580
+for pair in preservation['original_copy_pairs']:
+    values = []
+    for role in ('original', 'copy'):
+        expected = pair[role]
+        actual = observe(Path(expected['path']))[1]
+        assert actual == expected
+        values.append(actual)
+    assert values[0]['sha256'] == values[1]['sha256'] and values[0]['path_raw9'][1] != values[1]['path_raw9'][1]
+    external_initial.append(values)
+
+common_bytes, common_identity = observe(root / common_relative)
+old_common_bytes = observe(prior / common_relative)[0]
+common_tree, old_common_tree = parsed(common_bytes), parsed(old_common_bytes)
+current_named = {node.name: node for node in common_tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+old_named = {node.name: node for node in old_common_tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+frame_names = {'_native_frame_binding_shape', '_native_frame_decode', '_native_frame_encode', '_native_frame_read'}
+assert set(current_named) - set(old_named) == frame_names and set(old_named) - set(current_named) == set()
+changed_named = {name for name in old_named if dump(current_named[name]) != dump(old_named[name])}
+assert changed_named == {'_native_behavior_manifest'}
+reversed_common = ast.Module(body=[old_named[node.name] if isinstance(node, ast.FunctionDef) and node.name == '_native_behavior_manifest' else node for node in common_tree.body if not isinstance(node, ast.FunctionDef) or node.name not in frame_names], type_ignores=[])
+assert dump(reversed_common) == dump(old_common_tree)
+schema = literal(assignments(common_tree)['BINDING_SCHEMA'])
+assert schema == mapping['bindings_schema'] and len(schema) == 44
+assert collections.Counter(schema.values()) == collections.Counter(dict(sha256=39, commit=1, count=1, path=2, provenance=1))
+frame_schema = literal(next(node.value for node in current_named['_native_frame_binding_shape'].body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'schema' for target in node.targets)))
+assert frame_schema == schema
+unbound_names = ['NATIVE_REVIEW_MAX_BYTES', 'NATIVE_REVIEW_BOUND_DERIVATION_SHA256', 'NATIVE_BEHAVIOR_CAPS', 'NATIVE_BEHAVIOR_CAP_DERIVATION_SHA256']
+for name in unbound_names:
+    assert literal(assignments(common_tree)[name]) is None
+
+bootstrap_bytes, bootstrap_identity = observe(root / 'CAPTURED_FRAME_BOOTSTRAP_003.py.txt')
+bootstrap = bootstrap_bytes.decode('utf-8')
+bootstrap_tree = parsed(bootstrap_bytes)
+bootstrap_named = {node.name: node for node in bootstrap_tree.body if isinstance(node, ast.FunctionDef)}
+assert set(bootstrap_named) == frame_names - {'_native_frame_encode'}
+for name in bootstrap_named:
+    assert dump(bootstrap_named[name]) == dump(current_named[name])
+q_call = next(index for index, node in enumerate(bootstrap_tree.body) if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == 'q')
+frame_read = next(index for index, node in enumerate(bootstrap_tree.body) if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == '_native_frame_read')
+argv_insert = next(index for index, node in enumerate(bootstrap_tree.body) if isinstance(node, ast.Assign) and isinstance(node.value, ast.List) and any(isinstance(target, ast.Subscript) and isinstance(target.value, ast.Attribute) and target.value.attr == 'argv' for target in node.targets))
+execution = next(index for index, node in enumerate(bootstrap_tree.body) if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name) and node.value.func.id == 'exec')
+assert q_call < frame_read < argv_insert < execution
+assert "q.argtypes=[]" in bootstrap and "q.restype=ctypes.c_wchar_p" in bootstrap
+assert "len(w.encode('utf-16-le'))//2<=8191" in bootstrap
+
+sender = (root / 'EXPANDED_FRAME_SENDER_003.ps1.txt').read_text(encoding='utf-8')
+ps_metadata = json.loads((root / 'POWERSHELL_PARSE_METADATA_013.json').read_bytes())
+assert ps_metadata['all_parsed_without_errors'] is True and ps_metadata['source_count'] == 15
+ps_pins = {Path(row['path']).relative_to(root).as_posix(): row for row in ps_metadata['files']}
+callers, literal_tables, python_direct_sites, ps_direct_sites = [], [], [], []
+assert len(mapping['callers']) == 31
+for item in mapping['callers']:
+    relative = item['relative_path']
+    data, identity = observe(root / relative)
+    original = observe(prior / relative)[0]
+    changed = data != original
+    if item['language'] == 'Python':
+        tree = parsed(data)
+        if relative != common_relative:
+            assert not changed
+        if item['literal_44_table']:
+            tables = [literal(node) for node in assignments(tree).values() if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'loads' and len(node.args) == 1 and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str) and 'publisher_sha256' in node.args[0].value]
+            tables = [table for table in tables if isinstance(table, dict) and set(table) == set(schema)]
+            assert len(tables) == 1 and all(value is None for value in tables[0].values())
+            literal_tables.append(relative)
+        if item['direct_capture_boundary']:
+            python_direct_sites.append(relative)
+    elif item['language'] == 'PowerShell':
+        text = data.decode('utf-8')
+        assert ps_pins[relative]['sha256'] == identity['sha256'] and ps_pins[relative]['bytes'] == identity['bytes'] and ps_pins[relative]['error_count'] == 0
+        is_bridge = relative in mapping['powershell_direct_capture_sites']
+        assert changed == is_bridge
+        if is_bridge:
+            assert text.count(sender) == 1
+            variable = 'frontBootstrap' if '$frontBootstrap =' in text else 'bootstrap'
+            match = re.search(r'\$' + variable + r"\s*=\s*'((?:[^']|'')*)'", text)
+            assert match and match.group(1).replace("''", "'") == bootstrap
+            assert "'--bindings-base64'," not in text and 'frontPayload | &' not in text and '$payload | &' not in text
+            assert 'sender encoded sum exceeds262142' in text and 'Frame sender complete byte cap differs' in text
+            assert '$input.Write($Frame,$offset,$take); $offset += $take' in text and '$input.Flush()' in text and '$input.Close()' in text
+            assert '$code -lt 32 -or $code -ge 127' in text
+            assert 'Stdout' not in text or 'ReadAsync' in text
+            ps_direct_sites.append(relative)
+        if item['literal_44_table']:
+            match = re.search(r'\$FrontBindings\s*=\s*\[ordered\]@\{([^}]+)\}', text, re.IGNORECASE)
+            assert match
+            fields = re.findall(r'^\s*([A-Za-z0-9_]+)\s*=\s*\$null(?:\s*#[^\n]*)?\s*$', match.group(1), re.MULTILINE)
+            assert len(fields) == 44 and set(fields) == set(schema)
+            literal_tables.append(relative)
+    else:
+        assert item['language'] == 'CSharp' and not changed
+    callers.append(dict(relative_path=relative, language=item['language'], changed=changed, direct_capture_boundary=item['direct_capture_boundary'], nonliteral_dependency=item['nonliteral_dependency'], literal_44_table=item['literal_44_table'], **{key: identity[key] for key in ('bytes', 'sha256')}))
+assert len(literal_tables) == 21 and len(python_direct_sites) == 12 and len(ps_direct_sites) == 8
+assert sum(item['nonliteral_dependency'] for item in callers) == 9
+assert sum(item['changed'] for item in callers) == 9
+
+test_bytes, test_identity = observe(root / test_relative)
+test_tree, old_test_tree = parsed(test_bytes), parsed(observe(prior / test_relative)[0])
+new_methods, old_methods = methods(test_tree), methods(old_test_tree)
+assert len(old_methods) == 85 and len(new_methods) == 111
+assert all(new_methods[name] == value for name, value in old_methods.items())
+new_case_ids = sorted(set(new_methods) - set(old_methods))
+assert len(new_case_ids) == 26 and all(name.startswith('NativeFrameFamilies.test_f') for name in new_case_ids)
+policies = assignments(test_tree)
+old_policies = assignments(old_test_tree)
+families = literal(policies['NATIVE_CRITICAL_FAMILY_CASES'])
+old_families = literal(old_policies['NATIVE_CRITICAL_FAMILY_CASES'])
+events = literal(policies['NATIVE_SUBTEST_POLICY'])
+old_events = literal(old_policies['NATIVE_SUBTEST_POLICY'])
+assert len(old_families) == 32 and len(families) == 58 and all(families[name] == value for name, value in old_families.items())
+assert len(old_events) == 272 and len(events) == 298 and all(events[name] == value for name, value in old_events.items())
+assert literal(policies['NATIVE_FRAME_BOOTSTRAP_TEST_SOURCE']) == bootstrap
+frame_class = next(node for node in test_tree.body if isinstance(node, ast.ClassDef) and node.name == 'NativeFrameFamilies')
+for node in frame_class.body:
+    if isinstance(node, ast.FunctionDef) and node.name.startswith('test_'):
+        calls = [item for item in ast.walk(node) if isinstance(item, ast.Call) and isinstance(item.func, ast.Attribute) and isinstance(item.func.value, ast.Name) and item.func.value.id == 'self' and item.func.attr == 'bad']
+        assert len(calls) == 1
+test_method_pins = {name: hashlib.sha256(value.encode('utf-8')).hexdigest() for name, value in sorted(new_methods.items())}
+
+base64_bytes = len(base64.b64encode(common_bytes))
+max_component = 16384
+canonical_max = ((262142 // 4) * 4) + 2
+assert canonical_max == 262142
+frame_with_max_bindings = base64_bytes + max_component + 2
+assert frame_with_max_bindings <= canonical_max and len(common_bytes) <= 184317
+budget = dict(source_utf8_bytes=len(common_bytes), source_base64_bytes=base64_bytes,
+              encoded_binding_token_ceiling=max_component, decoded_binding_json_ceiling=12288,
+              sender_encoded_sum_ceiling=262142, receiver_whole_frame_ceiling=262144, read_sentinel=262145,
+              maximum_representable_canonical_frame=canonical_max,
+              current_source_frame_with_max_binding_token=frame_with_max_bindings,
+              frame_headroom_before_future_source_literal_growth=canonical_max-frame_with_max_bindings,
+              common_max_utf8_with_max_binding_component=184317,
+              raw_source_ceiling=196605, bootstrap_utf16_units=len(bootstrap.encode('utf-16-le'))//2,
+              physical_command_line_ceiling=8191, internal_encoded_binding_parser_ceiling=16384,
+              actual_selected16_path_literals=None, actual_bound_common_literal_growth=None,
+              actual_eight_quoted_windows_commands=None, actual_GetCommandLineW_captures=None,
+              actual_PS_serializer_and_byte_writer_witness=None, actual_ROOT_whole_Job_custody_and_cleanup=None,
+              historical_decoded16384_to_Base64_formula_not_applicable_to_encoded_token_guard=True)
+
+audit = dict(schema_version=1, author='/root/bootstrap_stage', status='SOURCE_PREPARATION_ONLY_UNBOUND_UNRUN_OPERATIONALLY_UNBINDABLE',
+             source_caller_count=31, languages=dict(collections.Counter(row['language'] for row in callers)), callers=callers,
+             literal44_table_count=len(literal_tables), literal44_tables=literal_tables, schema_owner_count=1,
+             python_direct_capture_sites=python_direct_sites, PowerShell_byte_frame_capture_sites=ps_direct_sites,
+             inherited_forwarder_dependency_count=9, original_caller_bytes_unchanged_count=22,
+             common_identity=common_identity, changed_existing_common_named_definitions=sorted(changed_named),
+             added_common_frame_functions=sorted(frame_names), common_other_module_AST_reversal_exact=True,
+             binding_kind_counts=dict(collections.Counter(schema.values())), bindings_schema=schema,
+             inherited_protocols_unchanged=dict(raw_API_keyword_arguments=12, operational_file_names=7, receipt_bytes=683, receipt_fields=8, receipt_LF=9, envelope='V2', readiness_cap=383105, attestation_cap=395799),
+             bootstrap_identity=bootstrap_identity, bootstrap_three_frame_function_ASTs_exact=True,
+             bootstrap_top_level_order=dict(actual_GetCommandLineW_call=q_call, frame_read_and_validation=frame_read, internal_argv_insertion=argv_insert, captured_source_execution=execution),
+             budget=budget, unbound_common_cap_and_derivation_names=unbound_names,
+             test_identity=test_identity, old_test_methods_count=85, all85_old_method_ASTs_exact=True,
+             new_frame_family_methods_count=26, total_named_test_methods_count=111,
+             old32_family_coverage_exact=True, total_family_count=58, old272_subtest_policy_entries_exact=True,
+             total_planned_subtest_policy_entries=298, source_method_AST_pins=test_method_pins,
+             added_case_ids=new_case_ids, actual_case_result_count=None, actual_subtest_result_count=None,
+             external_original_copy_pair_count=580, exact_preservation_scope=dict(native002=283, design003=295, ROOT_source_choices=2),
+             external_original_copy_pairs_reobserved=True, all_15_PS_sources_parse_without_errors=True,
+             selected_target_definitions_compilation_import_tests_FFI_Git_native_executed=False,
+             source_guard14_actual_acceptance_claimed=False, current_actor_release_policy_accepted=False,
+             limitations=['Raw7fe finite597 schema2 policy is unit context and does not admit current multi-intermediate actor ancestry.',
+                          'Independent current finite raw policy and producer grammar successors remain external prerequisites.',
+                          'Caller tables and operational cap/path/derivation literals remain None; no authority from this author snapshot.',
+                          'ctypes/DLL identities, actual Windows command-line parsing, PS canonical JSON parity and byte transport require independent physical proof.',
+                          'Retained .NET process owns the venv launcher only; its base-Python child is not proven dead by direct Kill.',
+                          'Separate reviewed ROOT whole-Job custody and cleanup must be established before operational binding.',
+                          'No unconditional Windows scheduler, kernel, I/O, GIL or provider responsiveness bound is claimed.'])
+audit_identity = write_once(root / 'SOURCE_CALLER_BUDGET_TEST_AUDIT_015.json', audit)
+
+initial_rows = []
+for path in sorted((path for path in root.rglob('*') if path.is_file()), key=lambda path: path.relative_to(root).as_posix()):
+    identity = observe(path)[1]
+    initial_rows.append(dict(relative_path=path.relative_to(root).as_posix(), **{key: identity[key] for key in ('sha256', 'bytes', 'path_raw9', 'descriptor_raw9')}))
+for row in initial_rows:
+    current = observe(root / row['relative_path'])[1]
+    assert all(current[key] == row[key] for key in ('sha256', 'bytes', 'path_raw9', 'descriptor_raw9'))
+for pair in preservation['original_copy_pairs']:
+    for role in ('original', 'copy'):
+        assert observe(Path(pair[role]['path']))[1] == pair[role]
+manifest = dict(schema_version=1, author='/root/bootstrap_stage', record_type='native_schema2_byte_frame_source_preparation003',
+                status='SOURCE_ONLY_UNBOUND_UNRUN_OPERATIONALLY_UNBINDABLE', payload_file_count=len(initial_rows), total_file_count_including_manifest=len(initial_rows)+1,
+                files=initial_rows, source_audit_sha256=audit_identity['sha256'],
+                common_sha256=common_identity['sha256'], test_sha256=test_identity['sha256'],
+                common_utf8_bytes=len(common_bytes), source_caller_count=31, literal44_table_count=21,
+                preservation_external_pair_count=580, actual_selected_paths_caps_argv_Windows_witnesses=None,
+                actual_tests=None, peer_review_required=True, external_ROOT_whole_Job_custody_required=True,
+                selected_target_definitions_compilation_import_tests_FFI_Git_native_executed=False)
+manifest_identity = write_once(root / 'STAGED_MANIFEST_003.json', manifest)
+for row in initial_rows:
+    current = observe(root / row['relative_path'])[1]
+    assert all(current[key] == row[key] for key in ('sha256', 'bytes', 'path_raw9', 'descriptor_raw9'))
+for pair in preservation['original_copy_pairs']:
+    for role in ('original', 'copy'):
+        assert observe(Path(pair[role]['path']))[1] == pair[role]
+assert observe(root / 'STAGED_MANIFEST_003.json')[1] == manifest_identity
+print(json.dumps(dict(manifest=manifest_identity, source_audit=audit_identity, common=common_identity, test=test_identity,
+                      payload_file_count=len(initial_rows), total_file_count=len(initial_rows)+1, budget=budget),sort_keys=True))

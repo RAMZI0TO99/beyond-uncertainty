@@ -1,0 +1,164 @@
+"""Reviewer-owned metadata audit. No reviewed definition or main is invoked."""
+import ast, datetime, hashlib, json, os, stat
+from pathlib import Path
+BASE=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001')
+ROOT=BASE/'root-guard006-pipeline-prep001'
+OUT=BASE/'root-pipeline-independent-review001'
+SCOPE='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+MSHA='a6250a11017c599f0ea5e29d7e600c339d547db16f8152a8e26b8ddaa4d68c68'
+BSHA='fc71e0169f2479d1d57703452244c1cf9bb5d79296e54a183138e646c6bc6aea'
+PSHA='9b7dbc059cc51601e08bbf4ff748123b53034533173dca5a6254352e47f997e8'
+ASHA='32bdaae92a400d1d117ca7eaa6274d7cb069a79c8abfd62cd7745c7d0a087a57'
+OSHA='389b8131c675637bd91188d0d240deaf0370beacf768d3f64b3ce0d60988f863'
+def sha(b): return hashlib.sha256(b).hexdigest()
+def utc(): return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+def enc(x): return (json.dumps(x,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('ascii')
+def pairs(rows):
+ d={}
+ for k,v in rows: assert k not in d; d[k]=v
+ return d
+def bad(x): raise ValueError(x)
+def parse(b):
+ assert not b.startswith(b'\xef\xbb\xbf')
+ return json.loads(b.decode('utf-8','strict'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def raw(s): return [getattr(s,k) for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+def read(p):
+ a=p.lstat(); assert stat.S_ISREG(a.st_mode) and a.st_nlink==1 and not a.st_file_attributes&1024
+ with p.open('rb',buffering=0) as f:
+  d=os.fstat(f.fileno()); b=f.read(a.st_size+1); z=os.fstat(f.fileno())
+ assert raw(d)==raw(z) and raw(a)==raw(p.lstat()) and len(b)==a.st_size
+ assert [raw(a)[i] for i in (0,1,2,3,5,6,7,8)]==[raw(d)[i] for i in (0,1,2,3,5,6,7,8)]
+ return b,dict(path=str(p),sha256=sha(b),bytes=len(b),path_raw9=raw(a),descriptor_raw9=raw(d),observed_utc=utc())
+def once(p,b):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open('xb') as f: assert f.write(b)==len(b); f.flush(); os.fsync(f.fileno())
+def literal(t,name):
+ nodes=[n.value for n in t.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id==name]
+ assert len(nodes)==1,name
+ return ast.literal_eval(nodes[0])
+def funcs(t): return {n.name:ast.dump(n,include_attributes=False) for n in t.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))}
+def own_literal_edit(b,values):
+ # Independent byte-span model; never calls the author's bind/projection code.
+ t=ast.parse(b); lines=b.splitlines(keepends=True); edits=[]
+ for name,value in values.items():
+  nodes=[n.value for n in t.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id==name]
+  assert len(nodes)==1 and isinstance(nodes[0],ast.Constant),name
+  n=nodes[0]; start=sum(map(len,lines[:n.lineno-1]))+n.col_offset; end=sum(map(len,lines[:n.end_lineno-1]))+n.end_col_offset
+  edits.append((start,end,repr(value).encode('ascii')))
+ for start,end,value in sorted(edits,reverse=True): b=b[:start]+value+b[end:]
+ return b
+mp=ROOT/'SOURCE_BINDER_MANIFEST_002.json'; mb=mp.read_bytes(); assert sha(mb)==MSHA; m=parse(mb)
+ap=OUT/'INDEPENDENT_ROOT_PIPELINE_ARCHITECTURE_REVIEW_001.json'; ab=ap.read_bytes(); assert sha(ab)==ASHA; old=parse(ab)
+assert m['source_author']=='/root/root_pipeline_binder' and m['scope']==SCOPE and m['payload_count']==3
+assert m['immutable_input_count']==29 and m['driver_binding_count']==3 and m['observer_binding_count']==1
+assert m['target_execution'] is False and m['operational_authority'] is False
+assert all(m[k] is None for k in ('actual_binding','actual_capture','actual_configuration','actual_lease','actual_tests','source_acceptance'))
+pins={Path(r['path']):r['sha256'] for r in old['preserved_inputs']}
+pins.update({mp:MSHA,ap:ASHA,OUT/'INDEPENDENT_ROOT_PIPELINE_BINDER_SOURCE_REVIEW_001.json':OSHA})
+for r in m['payloads']: pins[ROOT/r['path']]=r['sha256']
+for p,h in m['original001_bytes_preserved'].items(): pins[ROOT/p]=h
+for r in m['immutable_inputs'].values(): pins[Path(r['path'])]=r['sha256']
+observations=[]; data=None
+for phase in range(3):
+ current={}; rows=[]
+ for p in sorted(pins,key=str):
+  b,r=read(p); assert sha(b)==pins[p],str(p); current[p]=b; rows.append(r)
+ if data is None: data=current
+ else: assert current==data
+ observations.append(dict(phase=phase+1,rows=rows))
+table=m['immutable_inputs']; oldm=parse(data[ROOT/'SOURCE_BINDER_MANIFEST_001.json'])
+assert table==oldm['immutable_inputs'] and len(table)==29
+for r in table.values(): assert len(data[Path(r['path'])])==r['bytes']<=r['cap']
+for r in m['payloads']: assert len(data[ROOT/r['path']])==r['bytes']
+bp=ROOT/'BIND_ROOT_PIPELINE_SOURCE_002.TEMPLATE.py'; b=data[bp]; assert sha(b)==BSHA and len(b)==40422
+t=ast.parse(b); ot=ast.parse(data[ROOT/'BIND_ROOT_PIPELINE_SOURCE_001.TEMPLATE.py'])
+newf,oldf=funcs(t),funcs(ot); assert len(newf)==len(oldf)==27 and set(newf)==set(oldf)
+changed=[name for name in newf if newf[name]!=oldf[name]]; assert changed==['main']
+assert literal(t,'PINNED_INPUTS')==table and literal(t,'SOURCE_ROWS')==literal(ot,'SOURCE_ROWS')
+inert=compile(b,str(bp),'exec',dont_inherit=True,optimize=0)
+contract=parse(data[ROOT/'SOURCE_BINDING_CONTRACT_002.json']); config=parse(data[ROOT/'ROOT_PIPELINE_BINDING_002.TEMPLATE.json'])
+assert contract['immutable_source_table']==table
+assert contract['driver_bound_assignments']==['OWNER_SHA256','SOURCE_CAPSULE_PEER_SHA256','HARNESS_STATIC_PEER_SHA256']
+assert contract['observer_bound_assignments']==['HARNESS_STATIC_PEER_SHA256']
+assert set(config)==set(literal(t,'CONFIG_KEYS')) and len(config)==20
+assert contract['source_peer_keys']==list(literal(t,'PEER_KEYS')) and len(contract['source_peer_keys'])==12
+assert contract['source_peer_path_relative_to_work']=='root-pipeline-independent-review001/INDEPENDENT_ROOT_PIPELINE_BINDER_SOURCE_REVIEW_002.json'
+assert data[ROOT/'ROOT_PIPELINE_BINDING_002.TEMPLATE.json']==data[ROOT/'ROOT_PIPELINE_BINDING_001.TEMPLATE.json']
+main=newf['main']; assert "'OWNER_END'" not in main
+assert "'OWNER_SHA256'" in main and "'SOURCE_CAPSULE_PEER_SHA256'" in main
+driver=data[Path(table['driver_template']['path'])]; observer=data[Path(table['observer_template']['path'])]
+dt,ob=ast.parse(driver),ast.parse(observer)
+df,of=funcs(dt),funcs(ob)
+driver_keys=['OWNER_SHA256','SOURCE_CAPSULE_PEER_SHA256','HARNESS_STATIC_PEER_SHA256']; observer_keys=['HARNESS_STATIC_PEER_SHA256']
+assert set(driver_keys)==set(contract['driver_bound_assignments'])
+assert all(repr(k) in df['driver_projection'] for k in driver_keys) and "'OWNER_END'" not in df['driver_projection']
+assert "'HARNESS_STATIC_PEER_SHA256'" in of['template_projection'] and "'OWNER_SHA256'" not in of['template_projection'] and "'OWNER_END'" not in of['template_projection']
+for tree,keys in ((dt,driver_keys),(ob,observer_keys)):
+ for name in keys: assert literal(tree,name) is None
+ assert literal(tree,'OWNER_END') is None
+assert literal(ob,'OWNER_SHA256') is None
+assert 'OWNER_END' in df['lease_entry'] and 'OWNER_END' in of['lease_entry']
+assert 'OWNER_SHA256' in of['observer_main'] and 'runtime_entry' in of['observer_main']
+models=[]
+for role,original,keys,oldkeys in (
+ ('driver',driver,driver_keys,driver_keys+['OWNER_END']),
+ ('observer',observer,observer_keys,observer_keys+['OWNER_SHA256','OWNER_END'])):
+ values={k:'0'*64 for k in keys}; bound=own_literal_edit(original,values)
+ reversed_bytes=own_literal_edit(bound,{k:None for k in keys})
+ assert reversed_bytes==original and funcs(ast.parse(bound))==funcs(ast.parse(original))
+ oldvalues={k:('SOURCE_ONLY_SYNTHETIC_END_NOT_A_LEASE' if k=='OWNER_END' else '0'*64) for k in oldkeys}
+ oldbound=own_literal_edit(original,oldvalues); oldreversed=own_literal_edit(oldbound,{k:None for k in keys})
+ assert oldreversed!=original
+ models.append(dict(role=role,accepted_reader_keys=keys,source_model_only=True,synthetic_values_not_authority=True,new_complete_reversal_sha256=sha(reversed_bytes),template_sha256=sha(original),function_class_ASTs_unchanged=True,old_plan_complete_reversal_matches=False,old_reversal_sha256=sha(oldreversed)))
+source_rows=literal(t,'SOURCE_ROWS')
+final_paths=[BASE/'consumer005-guard006-runtime-prep001/run-consumer-guard-unit006-rev003.bound.py',BASE/'consumer005-guard006-runtime-prep001/observe-whole-runtime-006-rev003.BOUND.py']
+final_paths += [ROOT/source_rows[role] for role in ('root_records','whole_before_parent','whole_after_writer','whole_after_parent','pipeline')]
+final_paths += [ROOT/'ROOT_PIPELINE_BINDING_001.json',ROOT/'ROOT_PIPELINE_SOURCE_BINDING_PROVENANCE_001.json']
+assert len(final_paths)==len(set(final_paths))==9
+def absence_rows():
+ rows=[]
+ for p in final_paths:
+  for q in (p,Path(str(p)+'.staging')):
+   assert not q.exists(),str(q); rows.append(dict(path=str(q),absent=True,observed_utc=utc()))
+ return rows
+absences=absence_rows()
+pipeline=data[Path(table['pipeline_template']['path'])]; assert sha(pipeline)==PSHA
+syntax=parse(data[OUT/'INDEPENDENT_ROOT_SOURCE_PS_SYNTAX_001.json']); assert len(syntax['rows'])==5
+for r in syntax['rows']: assert pins[Path(r['path'])]==r['sha256'] and r['parser_errors']==[]
+copydir=OUT/'selected-before002'; assert not copydir.exists(); copydir.mkdir(); preserved=[]
+for i,p in enumerate(sorted(data,key=str)):
+ cp=copydir/f'{i:03d}.bytes'; once(cp,data[p]); assert read(cp)[0]==data[p]
+ preserved.append(dict(path=str(p),copy=str(cp),sha256=sha(data[p]),bytes=len(data[p])))
+pre=[]
+for p in sorted(data,key=str): bb,r=read(p); assert bb==data[p]; pre.append(r)
+checks=[
+ 'Full corrected Binder002 source independently read; all27 function bodies and publication call path reviewed. Only main function AST changed; other26 functions, fixed29 immutable input table, config20 and five Root PS sources remain exact.',
+ 'Strict UTF8/noBOM/decoded duplicate refusal/no floating or nonfinite numbers/depth40; exact-key and typed-nominal guards; one-link ordinary files, ancestor identities, bounded descriptor/path raw9 and cross-API8 reads retained.',
+ 'Native PS7 finite lease12 uses all seventh ticks, max43200, original end and1200 preparation reserve; it is separate from genuine ongoing master27/endNone and pinned historical bare reviewer owner_docs_review in peer19.',
+ 'Full M3 source binding11, bound-source peer9 genuine record type, ordered phase binding7 with four closed row4 sources, exact six capture literals and complete function/class preservation, four two-literal CR-preserving PS reversals retained. Actual M3 artifacts require later different source review.',
+ 'Corrected source binding selects driver3 and observer1 exactly as the accepted current readers. Independent inert byte-span models recover complete original bytes; old4/3 models demonstrably leave unprojected literals. These are source-only metadata witnesses, not target calls or runtime results.',
+ 'Driver OWNER_END is initialized by authenticated runtime lease_entry; observer OWNER_END likewise, and observer_main assigns OWNER_SHA256 from its lease argument after runtime_entry. Runtime global changes do not authorize extra source literals.',
+ 'Five fixed Root PowerShell source copies and unchanged child/launcher template roles; nine distinct final outputs plus staging paths all absent in named observations. Before first write immutable and selected actual inputs are reread; native lease is rechecked. Publish is exclusive staging/fsync/readback/nonreplacing Windows rename/readback; partial failures stay consumed.',
+ 'Genuine closed12 source peer002 explicitly requires this canonical reviewer and author; authentic Py6 created timestamp. Config20 points only to composer TEMPLATE before trust and provenance17 is published after config. No future actual source pool, reviewer result or P16 is invented.',
+ 'Unchanged main/fourstage architecture retains full source pool gate before timer, actual P16 before INIT, physical INIT/RootTrust, post-trust actual utility/composer pool20 and READY13/9 before GO13; original600/both90/resource60/Root450+after60/caps and failure cleanup limitations remain unchanged.'
+]
+conditions=[
+ 'Earlier peer389b and architecture32bd are preserved historical bytes. Their four/three-literal binder assumption missed accepted-reader integration and is inapplicable for actual binding. This successor corrects that specific source assumption; unchanged main/fourstage source acceptance remains scoped.',
+ 'This reviewer previously missed that integration check; source approval does not erase the error or provide runtime acceptance. Root must externally select this authentic successor receipt and later obtain genuine audits of actual M3 and Root configuration bindings.',
+ 'An actual finite Root lease may exist outside these source author slots. This audit does not create, renew, approve or claim global absence of a lease; only the nine named binder outputs and staging paths are independently observed absent.',
+ 'Future actual P16 must use observed config and provenance before physical INIT. Loaded source, physical Root tool provenance, retained locks, OS Job/descendants/observer cleanup, resource readiness and actual tests remain separate requirements.',
+ 'No target imports, definitions, mains, tests, bindings, lease actions, Git, FFI or reviewed helper calls were executed; only reviewer-owned metadata and an inert binder CodeType were produced.'
+]
+report=dict(schema_version=1,record_type='independent_root_pipeline_binder_corrected_complete_source_review',reviewer='/root/owner_docs_review',source_author='/root/root_pipeline_binder',created_utc=utc(),scope=SCOPE,verdict='PASS_COMPLETE_CORRECTED_BINDER_SOURCE_PREPARATION_ONLY',binder_template_sha256=BSHA,pipeline_template_sha256=PSHA,source_manifest_sha256=MSHA,finite_input_count=len(data),observations=observations,preserved_inputs=preserved,prepublication_observations=pre,named_output_absences=absences,source_checks=checks,findings=[],implementation_conditions=conditions,projection_source_models=models,syntax_and_inert_metadata=dict(inert_code_flags=inert.co_flags,binder_function_count=27,changed_function_ASTs=changed,unchanged_function_count=26,function_AST_sha256={k:sha(v.encode()) for k,v in newf.items()},retained_PS_syntax_sha256=sha(data[OUT/'INDEPENDENT_ROOT_SOURCE_PS_SYNTAX_001.json']),target_execution=False),actual_binding=None,actual_configuration=None,actual_results=None,tests_executed=False,runtime_acceptance=False,operational_authority=False)
+assert len(enc(report))<=2097152
+rp=OUT/'INDEPENDENT_ROOT_PIPELINE_BINDER_SOURCE_DETAILS_002.json'; once(rp,enc(report))
+supplement=dict(schema_version=1,record_type='independent_root_pipeline_architecture_source_correction_supplement',reviewer='/root/owner_docs_review',source_author='/root',created_utc=utc(),scope=SCOPE,verdict='PASS_UNCHANGED_MAIN_AND_STAGES_WITH_CORRECTED_BINDER_SOURCE_ONLY',historical_architecture_sha256=ASHA,historical_binder_peer_sha256=OSHA,historical_binder_actual_binding_inapplicable=True,pipeline_template_sha256=PSHA,source_manifest_sha256=MSHA,full_source_details_sha256=sha(rp.read_bytes()),driver_source_binding_count=3,observer_source_binding_count=1,runtime_global_setter_precision=checks[5],source_checks=checks,implementation_conditions=conditions,actual_binding=None,target_execution=False,runtime_acceptance=False,operational_authority=False)
+sp=OUT/'INDEPENDENT_ROOT_PIPELINE_ARCHITECTURE_SUPPLEMENT_002.json'; once(sp,enc(supplement))
+peer=dict(schema_version=1,record_type='root_pipeline_binder_source_review',reviewer='/root/owner_docs_review',source_author='/root/root_pipeline_binder',scope=SCOPE,verdict='PASS_STATIC_ROOT_PIPELINE_BINDER_SOURCE_ONLY',created_utc=utc(),binder_template_sha256=BSHA,pipeline_template_sha256=PSHA,source_manifest_sha256=MSHA,target_execution=False,actual_binding=None)
+assert len(peer)==12 and set(peer)==set(literal(t,'PEER_KEYS'))
+pp=OUT/'INDEPENDENT_ROOT_PIPELINE_BINDER_SOURCE_REVIEW_002.json'; once(pp,enc(peer))
+sel=OUT/'INDEPENDENT_ROOT_PIPELINE_SOURCE_SELECTION_002.json'; once(sel,enc(dict(schema_version=1,created_utc=utc(),historical_architecture_review_sha256=ASHA,architecture_supplement_sha256=sha(sp.read_bytes()),full_source_details_sha256=sha(rp.read_bytes()),binder_source_review_sha256=sha(pp.read_bytes()),source_manifest_sha256=MSHA,target_execution=False,actual_binding=None)))
+post=[]
+for p in sorted(data,key=str): bb,r=read(p); assert bb==data[p]; post.append(r)
+postp=OUT/'INDEPENDENT_ROOT_PIPELINE_SOURCE_POST_002.json'; once(postp,enc(dict(schema_version=1,created_utc=utc(),full_source_details_sha256=sha(rp.read_bytes()),architecture_supplement_sha256=sha(sp.read_bytes()),binder_source_review_sha256=sha(pp.read_bytes()),source_post_observations=post,named_output_absences=absence_rows())))
+print(json.dumps(dict(verdict=report['verdict'],finite_input_count=len(data),outputs=[dict(path=str(p),sha256=sha(p.read_bytes()),bytes=len(p.read_bytes())) for p in (rp,sp,pp,sel,postp)])))

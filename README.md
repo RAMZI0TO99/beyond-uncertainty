@@ -220,3 +220,11 @@ Operational material is kept separately from the visitor-facing overview:
 ## License
 
 See [LICENSE](LICENSE) for the repository's existing license.
+
+## Development closeout - 2026-10-03
+
+The accepted Week 7/8 recovery source and a dated handoff are available on this
+branch. Development is paused at the owner's request. Current model-pool admission,
+metadata capture and remaining validation suites are unfinished; no new scientific
+conclusion is claimed. Read the [current closeout](docs/development/CLOSEOUT_2026-10-03.md)
+for completed checks, archived preparations and the unvalidated D178 draft.

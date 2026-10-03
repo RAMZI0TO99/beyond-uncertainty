@@ -1,0 +1,47 @@
+"""Distinct text/AST composition after the preserved metadata001 refusal."""
+from pathlib import Path
+import ast
+import hashlib
+import json
+import os
+ROOT = Path(__file__).parent
+ADD = ('publisher_sha256','external_verifier_sha256','publication_end_sha256','verification_intent_sha256')
+changes, tables = [], []
+for group in ('front','postseal'):
+    for path in sorted((ROOT/group).iterdir()):
+        if path.name.startswith('native_successor_front_') or path.suffix != '.template': continue
+        old = path.read_bytes();text = old.decode('utf-8')
+        if path.name.endswith('.py.template'):
+            for node in reversed(ast.parse(text).body):
+                if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='FRONT_BINDINGS' for t in node.targets):
+                    value = json.loads(ast.literal_eval(node.value.args[0])) if isinstance(node.value,ast.Call) else ast.literal_eval(node.value)
+                    assert type(value) is dict and len(value) == 40
+                    value.update({key:None for key in ADD})
+                    lines = text.splitlines(keepends=True)
+                    text = ''.join(lines[:node.lineno-1]) + 'FRONT_BINDINGS = json.loads(' + repr(json.dumps(value,sort_keys=True,separators=(',',':'))) + ')\n' + ''.join(lines[node.end_lineno:])
+                    tables.append(str(path.relative_to(ROOT)))
+            anchor = '    module.read(FRONT_HELPER, FRONT_HELPER_SHA256)'
+            if anchor in text:
+                assert text.count(anchor) == 1
+                text = text.replace(anchor,'    module.authenticate_common_capture(FRONT_HELPER_SHA256,raw)')
+            for anchor in ["        require(module.read(FRONT_HELPER,expected)==captured,'final front read guard refuses captured bridge')", "        require(module.read(FRONT_HELPER, expected) == captured, 'final front read guard refuses captured bridge')"]:
+                if anchor in text:text=text.replace(anchor,anchor+'\n        module.authenticate_common_capture(expected,captured)')
+        else:
+            marker = '$FrontBindings = [ordered]@{'
+            if marker in text:
+                assert text.count(marker) == 1
+                start=text.index(marker);end=text.index('\n}',start)
+                text=text[:end]+''.join('\n    '+key+' = $null' for key in ADD)+text[end:]
+                tables.append(str(path.relative_to(ROOT)))
+            text=text.replace("globals()[''__file__'']=p; exec(compile(d,p,''exec'',dont_inherit=True),globals())", "globals()[''__file__'']=p; globals()[''__source_sha256__'']=h; globals()[''__source_bytes__'']=d; exec(compile(d,p,''exec'',dont_inherit=True),globals())")
+        new=text.encode('utf-8')
+        if new != old:
+            backup=ROOT/'before/callers002'/path.relative_to(ROOT);backup.parent.mkdir(parents=True,exist_ok=True)
+            with backup.open('xb') as f:f.write(old);f.flush();os.fsync(f.fileno())
+            if path.name.endswith('.py.template'):ast.parse(new)
+            path.write_bytes(new)
+            changes.append(dict(path=str(path.relative_to(ROOT)),before_sha256=hashlib.sha256(old).hexdigest(),after_sha256=hashlib.sha256(new).hexdigest(),before_size=len(old),after_size=len(new)))
+assert len(tables)==21
+data=(json.dumps(dict(schema_version=1,record_type='native002_caller_composition_checkpoint',tables=tables,table_count=21,schema_count=44,changes=changes,source_only=True,tests_imports_target_definitions_executed=False,future_actual_bindings=None,final_freeze=False),indent=2,sort_keys=True)+'\n').encode('ascii')
+with (ROOT/'CALLER_COMPOSITION_CHECKPOINT_002.json').open('xb') as f:f.write(data)
+print('CHECKPOINT',hashlib.sha256(data).hexdigest(),'tables',len(tables),'changed',len(changes))

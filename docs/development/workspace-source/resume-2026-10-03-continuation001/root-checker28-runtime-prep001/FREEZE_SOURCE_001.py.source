@@ -1,0 +1,150 @@
+"""Own finite metadata publication; no selected code execution or compilation."""
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+from datetime import datetime, timezone
+from pathlib import Path
+
+WORK = Path(r'D:\Aenv\pro2\resume-2026-10-03-continuation001')
+PREP = WORK / 'root-checker28-runtime-prep001'
+OLD = WORK / 'root-checker25-runtime-prep001'
+AUTHOR = '/root/bootstrap_stage'
+SCOPE = 'SYNTHETIC_METADATA3_CHECKER28_STDLIB_REGRESSIONS_ONLY'
+RUNNER = 'RUN_SYNTHETIC_CHECKER28_001.TEMPLATE.py'
+PARENT = 'SUPERVISE_SYNTHETIC_CHECKER28_001.TEMPLATE.ps1'
+RUNNER_SHA = 'c9800e96437a341601cd43036fd5ed9d20ff298d58d0be5c3bdb27e93908465d'
+PARENT_SHA = 'e733a2551f6c0b524c173a121733b819fd327d84eebf160f3ef3a83fbd07c5fa'
+
+def need(value, message):
+    if not value:
+        raise ValueError(message)
+
+def sha(value):
+    return hashlib.sha256(value).hexdigest()
+
+def wire(value):
+    return (json.dumps(value, sort_keys=True, ensure_ascii=True, indent=2) + '\n').encode('ascii')
+
+def raw(value):
+    return [getattr(value, name) for name in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')]
+
+def read(path):
+    first = path.lstat()
+    need(stat.S_ISREG(first.st_mode) and first.st_nlink == 1 and not first.st_file_attributes & 1024 and 0 <= first.st_size <= 2097152, 'finite plain metadata input: ' + str(path))
+    with path.open('rb', buffering=0) as stream:
+        opened = os.fstat(stream.fileno())
+        left, right = raw(first), raw(opened)
+        need(left[:4] + [left[8], left[5], left[6], left[7]] == right[:4] + [right[8], right[5], right[6], right[7]] and left[4] == left[8], 'metadata cross API identity')
+        value = stream.read(first.st_size + 1)
+        need(raw(opened) == raw(os.fstat(stream.fileno())), 'metadata descriptor drift')
+    need(raw(first) == raw(path.lstat()) and len(value) == first.st_size, 'metadata path drift')
+    return value, dict(path=str(path), bytes=len(value), sha256=sha(value), path_raw9=left, descriptor_raw9=right)
+
+def put(name, value):
+    path = PREP / name
+    need(not path.exists(), 'create-once freeze output: ' + name)
+    with path.open('xb') as stream:
+        need(stream.write(value) == len(value), 'complete freeze write')
+    need(read(path)[0] == value, 'freeze readback')
+
+def ast_hash(node):
+    return sha(ast.dump(node, include_attributes=False).encode('utf8'))
+
+def ps_functions(text):
+    lines, result = text.splitlines(keepends=True), {}
+    for index, line in enumerate(lines):
+        match = re.match(r'^function ([A-Za-z0-9_-]+)', line)
+        if match:
+            end = index + 1 if line.rstrip().endswith('}') else next(j + 1 for j in range(index + 1, len(lines)) if lines[j].rstrip() == '}')
+            result[match.group(1)] = ''.join(lines[index:end])
+    return result
+
+def main():
+    need(Path(__file__).absolute() == PREP / 'FREEZE_SOURCE_001.py', 'fixed own metadata utility')
+    need(not (PREP / 'SOURCE_MANIFEST_001.json').exists(), 'unfrozen first publication')
+    runner, runner_meta = read(PREP / RUNNER)
+    parent, parent_meta = read(PREP / PARENT)
+    need((sha(runner), len(runner)) == (RUNNER_SHA, 16549) and (sha(parent), len(parent)) == (PARENT_SHA, 20451), 'exact composed source pins')
+    contract_bytes, _ = read(PREP / 'SOURCE_CONTRACT_001.json')
+    contract = json.loads(contract_bytes)
+    need(contract['runner']['sha256'] == RUNNER_SHA and contract['parent']['sha256'] == PARENT_SHA, 'source contract pins')
+    # Correct the inherited historical count label only, preserving exact prior bytes.
+    need(contract['time_policy'].endswith('cannot replay old19.'), 'inherited historical label')
+    put('before-source-contract-label-001.bytes', contract_bytes)
+    contract['time_policy'] = contract['time_policy'][:-len('old19.')] + 'old25.'
+    corrected = wire(contract)
+    with (PREP / 'SOURCE_CONTRACT_001.json').open('wb') as stream:
+        need(stream.write(corrected) == len(corrected), 'complete own unfrozen metadata correction')
+    need(read(PREP / 'SOURCE_CONTRACT_001.json')[0] == corrected, 'corrected contract readback')
+    put('SOURCE_CONTRACT_LABEL_CORRECTION_001.json', wire(dict(schema_version=1, source_author=AUTHOR, before_sha256=sha(contract_bytes), after_sha256=sha(corrected), only_delta='time_policy inherited label old19 -> old25; no source/guard/policy change', target_execution=False)))
+
+    before = json.loads(read(PREP / 'BEFORE_PROVENANCE_001.json')[0])
+    need(len(before['pairs']) == 265, 'finite official pairs')
+    captures = []
+    for row in before['pairs']:
+        original = Path(row['original'])
+        copy = PREP / row['copy']
+        left, left_meta = read(original)
+        right, right_meta = read(copy)
+        need(left == right and left_meta == row['initial'] and right_meta == row['copy_observation'], 'official pair third observation')
+        need(left_meta['path_raw9'][:2] != right_meta['path_raw9'][:2], 'independent copied identity')
+        captures.append(dict(original=str(original), copy=row['copy'], original_third=left_meta, copy_third=right_meta))
+    official = {str(Path(row['original'])) for row in before['pairs']}
+    old_source_files = [path for path in OLD.rglob('*') if path.is_file()]
+    old_actual_files = [path for path in (WORK / 'root-checker25-runtime001').rglob('*') if path.is_file()]
+    need(len(old_source_files) == 102 and len(old_actual_files) == 4 and all(str(path) in official for path in old_source_files + old_actual_files), 'all immutable old102 plus spent4 retained')
+    old_runner = ast.parse(read(OLD / 'RUN_SYNTHETIC_CHECKER25_001.TEMPLATE.py')[0])
+    new_runner = ast.parse(runner)
+    old_defs = {node.name: ast_hash(node) for node in old_runner.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+    new_defs = {node.name: ast_hash(node) for node in new_runner.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+    need(old_defs.keys() == new_defs.keys() and all(old_defs[name] == new_defs[name] for name in old_defs if name != 'main'), 'all inherited reader and result definitions exact')
+    old_parent = read(OLD / 'SUPERVISE_SYNTHETIC_CHECKER25_001.TEMPLATE.ps1')[0].decode('utf8')
+    need(ps_functions(old_parent) == ps_functions(parent.decode('utf8')) and len(ps_functions(old_parent)) == 9, 'all nine PS function source texts exact')
+    packet_path = Path(contract['source_closure']['manifest']['path'])
+    packet_bytes, packet_meta = read(packet_path)
+    need(packet_meta['sha256'] == contract['source_closure']['manifest']['sha256'], 'selected010 manifest')
+    packet = json.loads(packet_bytes)
+    names = [row['path'] for row in packet['payloads']]
+    pattern = next(node.args[0].value for node in ast.walk(new_runner) if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'fullmatch' and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str) and 'source010-finite-inputs001' in node.args[0].value)
+    need(len(names) == len(set(names)) == packet['payload_count'] == 141 and all(re.fullmatch(pattern, name) for name in names), 'all finite141 exact prefix rows')
+    bad_names = ['../escape', r'source010-finite-inputs001\..\escape', r'unknown\escape', r'source010-finite-inputs001\deep\escape']
+    need(all(not re.fullmatch(pattern, name) for name in bad_names), 'prefix traversal/unknown/deeper cases refuse')
+    projection = json.loads(read(PREP / 'CHECKER28_DISCOVERY_PROJECTION_001.json')[0])
+    plan = json.loads(read(PREP / 'CHECKER28_TEST_EVENT_PLAN_001.json')[0])
+    need(len(projection['ordered_ids']) == len(set(projection['ordered_ids'])) == 28 and plan['planned_direct_methods'] == 28 and plan['conditional_healthy_subtests'] == 24 and plan['conditional_healthy_events'] == 80, 'exact Source plan')
+    future_names = [contract['source_peer_path'].split('/')[-1], contract['Root_GO_path'].split('/')[-1], *contract['parent_outputs']]
+    need(all(not (PREP / name).exists() for name in future_names) and not (WORK / contract['private_output']).exists(), 'all future peer/GO/parent/private outputs absent')
+    all_copies = {path.relative_to(PREP).as_posix() for path in (PREP / 'before').rglob('*') if path.is_file()}
+    official_copies = {row['copy'] for row in before['pairs']}
+    extra_partial_copies = sorted(all_copies - official_copies)
+    put('SOURCE_FREEZE_CHECKS_001.json', wire(dict(schema_version=1, source_author=AUTHOR, scope=SCOPE, status='AUTHOR_METADATA_CHECKS_ONLY_UNRUN', official_pairs=265, old25_preparation_files_preserved=102, spent25_private_outputs_preserved=4, copied_files=len(all_copies), retained_partial_copy_count=len(extra_partial_copies), retained_partial_copy_paths=extra_partial_copies, official_original_copy_third_observations=captures, runner_all_reader_Result_ASTs_exact=True, parent_all9_function_texts_exact=True, selected141_prefix_all_match=True, rejected_relative_names=bad_names, python_source_AST_only=True, PS_parser_observation=dict(tool_chunk='44d3c1', errors=0, functions=9, parser_only=True), regex_metadata_observation=dict(tool_chunk='69074b', all141_match=True, selected_definitions_executed=False), planned_methods=28, conditional_subtests=24, conditional_events=80, actual_run=None, target_execution=False, compiler_or_loader_execution=False, native_or_Git_or_project_metadata_execution=False)))
+
+    recipe = dict(schema_version=1, source_author=AUTHOR, scope=SCOPE, status='UNBOUND_UNRUN_SOURCE_ONLY', parent=dict(path=str(PREP / PARENT), sha256=PARENT_SHA, bytes=20451, CLI=contract['parent_cli']), runner=dict(path=str(PREP / RUNNER), sha256=RUNNER_SHA, bytes=16549, CLI=contract['runner_cli']), python_flags=['-I', '-S', '-B', '-X', 'utf8'], required_source_peer=dict(path=str(PREP / contract['source_peer_path'].split('/')[-1]), closed_keys=contract['source_peer_keys'], values=contract['source_peer_nominals'], reviewers=contract['eligible_source_reviewers'], actual_sha256=None), required_Root_GO=dict(path=str(PREP / contract['Root_GO_path'].split('/')[-1]), closed_keys=contract['Root_GO_keys'], values=contract['Root_GO_nominals'], actual_sha256=None), fresh_Pro3_scope_ACK=dict(validation='genuine external Root admission prerequisite; no invented producer schema', actual_record=None, sha256=None), physical_total_limit_seconds=60, physical_supervisor='separate genuine Root retained-parent supervision must cover preflight/source IO/provider/child/cleanup/receipt completion', child_cutoff_seconds=52, reap_drain_cutoff_seconds=57, stdout_cap_bytes=65536, stderr_cap_bytes=65536, free_RAM_floor_bytes=1073741824, D_free_floor_bytes=10737418240, resource_point_age_seconds=60, actual_nonce=None, actual_launch=None, actual_result=None, actual_acceptance=None, timer_fit='conditional only: approximately40MiB aggregate acquisition; no guaranteed throughput or OS responsiveness', no_operational_authority=True, no_U010_fixture7=True)
+    put('ROOT_LAUNCH_RECIPE_001.json', wire(recipe))
+    handoff = '''# Checker28 fresh Source packet\n\nAuthor: /root/bootstrap_stage. This packet is Source-only and UNRUN. A different complete Source review, a genuine fresh Pro3 scope/availability ACK and a separate genuine ROOT physical GO are required before entry.\n\nThe fixed010 helper/test004 and the authenticated141-file Source packet, Root compact peer003, different full peer/post and Root selection are checked before and after by both runner and parent. Only69 top-level and72 exact source010-finite-inputs001 paths are permitted; no arbitrary nested discovery is added. All inherited reader/Results definition ASTs and all nine parent function texts remain exact.\n\nAST data derives28 ordered methods: the old25 bodies remain exact and three fresh path controls are added. Six unchanged literal-loop sites imply24 healthy subtests and80 healthy events only if the fixtures and methods complete. These are plans, not results. The runner records full actual events/subtests/diagnostics; independent acceptance must reconcile their real counts. U010 fixture7, actual metadata/current24, canonical/native/scientific behavior and operating authority are outside this synthetic scope.\n\nThe closed Source peer has12 fields listed in SOURCE_CONTRACT_001.json; genuine eligible reviewer identities are /root, /root/capsule_design_review, /root/owner_docs_review and /root/binder_correction_audit. /root/bootstrap_stage is the Source author and cannot accept it. The closed RootGO15 delegates Pro3 scope admission to ROOT's external authentic-record validation/physical witness. Old25 GO/ACK/parents/results cannot authorize28. The projection is finalized before runner/parent hashes; Source manifest follows all payloads, then independent peer and RootGO are external future inputs, with no embedded future self-hash cycle.\n\nThe parent keeps52-second child and57-second cleanup thresholds inside a separately observed60-second complete ROOT envelope. Both pipe caps stay64KiB; floors remain1GiB RAM/10GiB D disk, resource age60s throughspawn. Runtime scope is exactly four byte/raw9-guarded files, including only the existing three-EXE Windows mode projection. There is no OS Job, unconditional kernel/I/O deadline, descendant cleanup, loaded-site closure, hard memory enforcement, host quiet or operational proof. Approximately40MiB aggregate Source/runtime acquisition makes timer fit conditional; no cap or timer is increased.\n\n265 official original/copy pairs are checked through a third observation, including all102 old25 preparation files and4 spent private outputs. The initial own metadata composer refused before runner/parent publication because a recursively selected historical auditor copy exceeded the unchanged2MiB input cap. That refusal, its exact source and partial copies are preserved. The distinct finalizer narrows only that historical auditor selection to its finite top-level Source/acceptance/post files. Additional partial copies are pinned history and are explicitly excluded from the official265-pair claim. No old evidence is deleted, replayed or reclassified as current acceptance.\n\nSOURCE_FREEZE_CHECKS_001.json records Source AST/metadata observations and the parser-only PowerShell check. No selected definitions, loader, helper import, target compiler, tests, Git, project metadata, native, FFI or parent/runner entry occurred. All future peer/GO/parent/private output paths were absent at freeze.\n\nUse SOURCE_MANIFEST_001.json for the exact finite payload inventory, SOURCE_DELTA_AUDIT_001.json for the Source delta and ROOT_LAUNCH_RECIPE_001.json for future admission contracts. Do not execute preparation utilities again or launch this packet before independent complete Source acceptance and genuine ROOT authorization.\n'''
+    put('HANDOFF.md', handoff.encode('utf8'))
+    # All local files, including retained partial history, are declared exactly once.
+    payloads, local_first = [], {}
+    for path in sorted((path for path in PREP.rglob('*') if path.is_file()), key=lambda path: path.relative_to(PREP).as_posix()):
+        value, observation = read(path)
+        relative = path.relative_to(PREP).as_posix()
+        category = 'official_before_copy' if relative in official_copies else 'retained_partial_composer_history' if relative in extra_partial_copies else 'source_or_author_metadata'
+        payloads.append(dict(path=relative, bytes=len(value), sha256=sha(value), category=category))
+        local_first[path] = observation
+    manifest = dict(schema_version=1, record_type='checker28_author_frozen_source_manifest', source_author=AUTHOR, scope=SCOPE, created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'), status='AUTHOR_FROZEN_SOURCE_ONLY_DIFFERENT_COMPLETE_REVIEW_REQUIRED', payload_count=len(payloads), declared_total_with_manifest=len(payloads)+1, payload_bytes=sum(row['bytes'] for row in payloads), official_original_copy_pairs=265, inherited_old25_preparation_files=102, spent_old25_private_output_files=4, retained_partial_history_files=len(extra_partial_copies), runner_sha256=RUNNER_SHA, parent_sha256=PARENT_SHA, planned_methods=28, conditional_healthy_subtests=24, conditional_healthy_events=80, actual_GO=None, actual_Source_peer=None, actual_Pro3_ACK=None, actual_runtime=None, operational_authority=False, target_execution=False, payloads=payloads)
+    manifest_bytes = wire(manifest)
+    put('SOURCE_MANIFEST_001.json', manifest_bytes)
+    for phase in range(2):
+        for path, first in local_first.items():
+            need(read(path)[1] == first, 'full local payload reread stability')
+        for row in captures:
+            need(read(Path(row['original']))[1] == row['original_third'] and read(PREP / row['copy'])[1] == row['copy_third'], 'official original/copy postpublication stability')
+        need(read(PREP / 'SOURCE_MANIFEST_001.json')[0] == manifest_bytes, 'manifest postpublication stability')
+    result = dict(status='AUTHOR_SOURCE28_FROZEN_UNRUN', manifest_sha256=sha(manifest_bytes), manifest_bytes=len(manifest_bytes), payloads=len(payloads), declared_total=len(payloads)+1, official_pairs=265, partial_history=len(extra_partial_copies), runner_sha256=RUNNER_SHA, parent_sha256=PARENT_SHA, handoff_sha256=read(PREP / 'HANDOFF.md')[1]['sha256'], recipe_sha256=read(PREP / 'ROOT_LAUNCH_RECIPE_001.json')[1]['sha256'], Source_contract_sha256=read(PREP / 'SOURCE_CONTRACT_001.json')[1]['sha256'], full_payloads_triple_and_two_post_reads=True, official_pairs_third_and_two_post_reads=True, target_execution=False, actual_Runtime=None)
+    print(json.dumps(result, sort_keys=True))
+
+if __name__ == '__main__':
+    main()

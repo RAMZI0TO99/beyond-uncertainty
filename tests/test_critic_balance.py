@@ -121,7 +121,9 @@ def test_selection_is_identical_across_processes():
     """)
     outs = set()
     for seed in ("0", "12345"):
-        r = subprocess.run([sys.executable, "-c", script], capture_output=True,
+        # This test replaces the environment, so inherit no-bytecode behavior
+        # explicitly; the child must not rewrite the pinned interpreter caches.
+        r = subprocess.run([sys.executable, "-B", "-c", script], capture_output=True,
                            text=True, env={"PYTHONHASHSEED": seed, "PATH": "/usr/bin:/bin"})
         assert r.returncode == 0, r.stderr
         outs.add(r.stdout.strip())
@@ -318,6 +320,13 @@ def test_duplicate_split_names_are_refused():
     with pytest.raises(ValueError, match="duplicate split names"):
         balance([unit("a", ESTIMATION), unit("b", HYPOTHESIS_CLASS)],
                 splits=("train", "train"))
+
+
+@pytest.mark.parametrize("bad", [(None, 7), ([], "train")])
+def test_malformed_split_names_raise_valueerror_not_incidental_typeerror(bad):
+    from bu.critic.balance import assert_canonical_splits
+    with pytest.raises(ValueError, match="must be strings"):
+        assert_canonical_splits(bad)
 
 
 def test_balance_split_runs_the_cross_split_group_guard_itself():

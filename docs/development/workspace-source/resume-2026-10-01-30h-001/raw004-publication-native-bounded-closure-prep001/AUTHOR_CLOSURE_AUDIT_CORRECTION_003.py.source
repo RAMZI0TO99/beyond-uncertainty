@@ -1,0 +1,96 @@
+"""Own source-text builder only; never loads or executes staged definitions."""
+import ast
+import json
+import hashlib
+from pathlib import Path
+
+STAGE = Path(__file__).absolute().parent
+
+def replace_once(text, before, after):
+    if text.count(before) != 1:
+        raise AssertionError((before[:100], text.count(before)))
+    return text.replace(before, after, 1)
+
+def move_entry(text):
+    tree = ast.parse(text)
+    nodes = [n for n in tree.body if isinstance(n, ast.If)
+             and isinstance(n.test, ast.Compare) and isinstance(n.test.left, ast.Name)
+             and n.test.left.id == '__name__']
+    assert len(nodes) == 1
+    n = nodes[0]
+    lines = text.splitlines(keepends=True)
+    entry = ''.join(lines[n.lineno - 1:n.end_lineno])
+    del lines[n.lineno - 1:n.end_lineno]
+    return ''.join(lines).rstrip() + '\n\n' + entry
+
+results = []
+common = STAGE / 'front/native_successor_front_common_013_001.py.template'
+before = common.read_bytes()
+with (STAGE / 'NATIVE_BEFORE_CLOSURE_AUDIT_003.bytes').open('xb') as stream:
+    stream.write(before)
+text = before.decode('utf-8')
+text = replace_once(text, '_NATIVE_POLICY_ORIGINS=None', '_NATIVE_POLICY_ORIGINS=None\n_NATIVE_POLICY_CONTAINERS=None')
+text = replace_once(text, 'global _NATIVE_RAW_MODULE,_NATIVE_POLICY_ORIGINS', 'global _NATIVE_RAW_MODULE,_NATIVE_POLICY_ORIGINS,_NATIVE_POLICY_CONTAINERS')
+text = replace_once(text, '  _NATIVE_POLICY_ORIGINS={name:module.__dict__[name]for name in NATIVE_POLICY_NAMES}', '  _NATIVE_POLICY_ORIGINS={name:module.__dict__[name]for name in NATIVE_POLICY_NAMES}\n  _NATIVE_POLICY_CONTAINERS=_native_policy_source_containers(_NATIVE_POLICY_ORIGINS)')
+text = replace_once(text, ' _native_policy_origins(module)\n if _RAW_HELPER_EXECUTABLE_STATE is None:', ' _native_policy_snapshot(module)\n if _RAW_HELPER_EXECUTABLE_STATE is None:')
+text = replace_once(text, '  _RAW_HELPER_EXECUTABLE_STATE=(module,name,identity,specification,loader,functions,classes,methods,module.__file__,loader.path,constants,registries,class_states,imports)', '  upper_names=frozenset(key for key in reference if key.isupper()or key=="__all__")\n  require(frozenset(key for key in module.__dict__ if key.isupper()or key=="__all__")==upper_names,"raw-authority helper policy namespace differs")\n  _RAW_HELPER_EXECUTABLE_STATE=(module,name,identity,specification,loader,functions,classes,methods,module.__file__,loader.path,constants,registries,class_states,imports,upper_names)')
+text = replace_once(text, "  require(len(item)<=263,'raw004 policy collection budget')", "  require(type(_NATIVE_POLICY_CONTAINERS)is tuple and any(item is origin for origin in _NATIVE_POLICY_CONTAINERS),'raw004 nested source container replaced before callbacks')\n  require(len(item)<=263,'raw004 policy collection budget')")
+text = replace_once(text, " require(base64.b64encode(data).decode('ascii')==encoded,'bindings Base64 not canonical')", " require(len(data)<=12288 and base64.b64encode(data).decode('ascii')==encoded,'bindings decoded cap or canonical Base64 differs')")
+text += '''\ndef _native_policy_source_containers(origins):
+ """Only first private source execution supplies callback-safe container origins."""
+ result=[]
+ nodes=[0]
+ def visit(item,depth):
+  nodes[0]+=1
+  require(nodes[0]<=578 and depth<=4,'source policy origin budgets')
+  kind=type(item)
+  if kind is str or kind is int:
+   return
+  require(kind is tuple or kind is frozenset or kind is dict or kind is types.MappingProxyType,'source policy origin exact type')
+  require(len(item)<=263,'source policy origin collection budget')
+  result.append(item)
+  if kind is dict or kind is types.MappingProxyType:
+   for child in item.values():
+    visit(child,depth+1)
+  elif kind is tuple:
+   for child in item:
+    visit(child,depth+1)
+ for name in NATIVE_POLICY_NAMES:
+  visit(origins[name],1)
+ require(nodes[0]==578,'source policy origin node coverage')
+ return tuple(result)
+'''
+text = move_entry(text)
+ast.parse(text)
+common.write_text(text, encoding='utf-8', newline='\n')
+results.append({'path':str(common.relative_to(STAGE)), 'before_sha256':hashlib.sha256(before).hexdigest(), 'bytes':len(text.encode()), 'sha256':hashlib.sha256(text.encode()).hexdigest()})
+
+for name in ('publish-successor-admission-schema3-001.py.template', 'verify-successor-admission-schema3-001.py.template'):
+    path = STAGE / 'publication' / name
+    before = path.read_bytes()
+    with (STAGE / ('PUBLICATION_BEFORE_CLOSURE_AUDIT_003_' + name + '.bytes')).open('xb') as stream:
+        stream.write(before)
+    text = before.decode('utf-8')
+    text = text.replace('publish-successor-admission-schema2-004.py', 'publish-successor-admission-schema3-001.py')
+    text = text.replace('verify-successor-admission-schema2-004.py', 'verify-successor-admission-schema3-001.py')
+    text = text.replace('publish-schema2-004-', 'publish-schema3-001-').replace('verify-schema2-004-', 'verify-schema3-001-')
+    text = text.replace('"attestation_schema_version": 2,', '"attestation_schema_version": 3,')
+    text = text.replace('document["attestation_schema_version"] == 2', 'document["attestation_schema_version"] == 3')
+    text = replace_once(text, '"exact17 schema2 attestation"', '"exact16 schema3 attestation"')
+    text = replace_once(text, 'len(data) <= policy["SUCCESSOR_ADMISSION_MAX_BYTES"]', 'len(data) <= min(policy["SUCCESSOR_ADMISSION_MAX_BYTES"],policy["_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3"])')
+    text = replace_once(text, '    require(canonical(document["intermediate"]) == canonical(policy["SUCCESSOR_INTERMEDIATE_FACTS"]),\n            "attestation exact middle summary differs")', '''    chain = document["intermediate_chain"]
+    require(type(chain) is list and len(chain) == 2, "attestation exact two-middle chain differs")
+    for index, entry in enumerate(chain):
+        exact(entry, policy["_SUCCESSOR_COMPACT_ENTRY_KEYS"], "compact middle entry")
+        require(canonical(entry["identities"]) == canonical(policy["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"][index]),
+                "attestation ordered compiled middle summary differs")
+        exact(entry["proof"], policy["_SUCCESSOR_COMPACT_PROOF_KEYS"], "compact middle proof")''')
+    text = replace_once(text, 'and all(INPUT_ROLE_MAX_BYTES[name] == facts["size"] for name, facts in MIDDLE_INPUTS.items()),', 'and all(INPUT_ROLE_MAX_BYTES[name] == sum(facts["size"] for facts in pair) for name, pair in MIDDLE_INPUTS.items()),')
+    text = text.replace('publication_end["intermediate"] == observed["attestation"]["intermediate_chain"]', 'publication_end["intermediate"] == [entry["identities"] for entry in observed["attestation"]["intermediate_chain"]]')
+    text = move_entry(text)
+    ast.parse(text)
+    path.write_text(text, encoding='utf-8', newline='\n')
+    results.append({'path':str(path.relative_to(STAGE)), 'before_sha256':hashlib.sha256(before).hexdigest(), 'bytes':len(text.encode()), 'sha256':hashlib.sha256(text.encode()).hexdigest()})
+with (STAGE / 'DRAFT_CLOSURE_AUDIT_CORRECTIONS_003.json').open('x',encoding='utf-8') as stream:
+    json.dump({'schema_version':1,'scope':'source text only; target definitions and tests unrun','changes':results},stream,indent=2)
+    stream.write('\n')

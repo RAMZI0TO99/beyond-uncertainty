@@ -1,0 +1,74 @@
+import ast
+import hashlib
+import io
+import json
+import re
+import tokenize
+from pathlib import Path
+
+root = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-schema2-admission-closure-prep003')
+bootstrap_path = root / 'CAPTURED_FRAME_BOOTSTRAP_003.py.txt'
+old = bootstrap_path.read_text(encoding='utf-8')
+tokens = list(tokenize.generate_tokens(io.StringIO(old).readline))
+out, levels, previous, line_start = [], [''], None, True
+for token in tokens:
+    if token.type in (tokenize.ENDMARKER, tokenize.ENCODING):
+        continue
+    if token.type == tokenize.INDENT:
+        levels.append(' ' * len(levels))
+        continue
+    if token.type == tokenize.DEDENT:
+        levels.pop()
+        continue
+    if token.type == tokenize.NEWLINE:
+        out.append('\n'); previous = None; line_start = True
+        continue
+    if token.type in (tokenize.NL, tokenize.COMMENT):
+        continue
+    if line_start:
+        out.append(levels[-1]); line_start = False
+    if previous is not None:
+        probe = tokenize.generate_tokens(io.StringIO(previous.string + token.string).readline)
+        observed = []
+        try:
+            for item in probe:
+                if item.type in (tokenize.NL, tokenize.NEWLINE, tokenize.ENDMARKER):
+                    break
+                observed.append((item.type, item.string))
+                if len(observed) == 2:
+                    break
+        except (tokenize.TokenError, IndentationError, SyntaxError):
+            pass
+        if (previous.type == tokenize.NUMBER and token.type == tokenize.NAME) or observed != [(previous.type, previous.string), (token.type, token.string)]:
+            out.append(' ')
+    out.append(token.string); previous = token
+new = ''.join(out)
+assert ast.dump(ast.parse(new), include_attributes=False) == ast.dump(ast.parse(old), include_attributes=False)
+composition = json.loads((root / 'FRAME_SOURCE_COMPOSITION_003.json').read_bytes())
+rows = []
+for relative in [*composition['updated_direct_PS_bridges'], 'CAPTURED_FRAME_BOOTSTRAP_003.py.txt']:
+    path = root / relative
+    data = path.read_bytes()
+    copied = root / 'before' / 'bootstrap-layout006' / relative
+    copied.parent.mkdir(parents=True, exist_ok=True)
+    with copied.open('xb') as stream:
+        stream.write(data)
+    assert path.stat().st_ino != copied.stat().st_ino and data == copied.read_bytes()
+    rows.append(dict(original=str(path), copy=str(copied), sha256=hashlib.sha256(data).hexdigest(), bytes=len(data)))
+for relative in composition['updated_direct_PS_bridges']:
+    path = root / relative
+    text = path.read_text(encoding='utf-8')
+    pattern = r"(\$(?:frontBootstrap|bootstrap)\s*=\s*)'((?:''|[^'])*)'"
+    matches = list(re.finditer(pattern, text))
+    assert len(matches) == 1 and matches[0].group(2).replace("''", "'") == old
+    text = re.sub(pattern, lambda match: match.group(1) + "'" + new.replace("'", "''") + "'", text)
+    path.write_text(text, encoding='utf-8', newline='\n')
+bootstrap_path.write_text(new, encoding='utf-8', newline='\n')
+record = dict(schema_version=1, author='/root/bootstrap_stage', before_pairs=rows,
+              old_UTF16_units=len(old.encode('utf-16-le'))//2, new_UTF16_units=len(new.encode('utf-16-le'))//2,
+              bootstrap_sha256=hashlib.sha256(new.encode('utf-8')).hexdigest(), entire_bootstrap_AST_equal=True,
+              actual_eight_selected_quoted_commands=None, actual_Windows_witness=None,
+              target_definitions_compilation_import_tests_FFI_Git_native_executed=False)
+with (root / 'AST_EQUAL_BOOTSTRAP_LAYOUT_CHECKPOINT_007.json').open('xb') as stream:
+    stream.write((json.dumps(record, sort_keys=True, indent=2) + '\n').encode('ascii'))
+print(json.dumps({key: value for key, value in record.items() if key != 'before_pairs'}, sort_keys=True))

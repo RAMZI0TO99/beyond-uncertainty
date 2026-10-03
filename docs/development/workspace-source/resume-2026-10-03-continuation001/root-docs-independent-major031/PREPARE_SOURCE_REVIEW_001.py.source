@@ -1,0 +1,261 @@
+"""Own documentation source reviewer: finite reads and AST only; never invokes publishers."""
+from pathlib import Path
+import ast
+import datetime
+import hashlib
+import json
+import os
+import re
+
+ROOT = Path('D:/Aenv/pro2')
+WORK = ROOT / 'resume-2026-10-03-continuation001'
+STAGE = WORK / 'root-docs-major031'
+OUT = WORK / 'root-docs-independent-major031'
+MANIFEST = STAGE / 'STAGED_DOCUMENTATION_CLOSEOUT_MANIFEST_031.json'
+MANIFEST_SHA = 'a52d87133599c09efbc8c061ddb93a1e6d0ffc78a76862c5f089d708f85b82cf'
+PUBLISHER = STAGE / 'PUBLISH_MAJOR031_DOCS_002.py'
+PUBLISHER_SHA = 'e81e4cd6d871df604fa160e528fc7c173e3fa45043f23ffc1dbb3838233d10bb'
+CHECKPOINT = WORK / 'CONTINUATION_CHECKPOINT_002.md'
+PRIMARY = ['AGENTS.md', 'HANDOFF.md', 'START_HERE.md', 'resume-2026-09-28-001/SESSION.md', 'resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md']
+EXTERNAL = {
+    'D:\\Aenv\\pro3\\runs\\coordination\\next_step_20261003\\admission_refusal_audit_001.json': 'ec9900b62bca94acb9ce60da7f8a08c14fc42e07e49f77090a6e8911f9f866d1',
+    'D:\\Aenv\\pro3\\runs\\coordination\\next_step_20261003\\root_preflight_002.json': '637d08b9f869e4153f0ef1c01b3e56f06a4c986eb9db4a54423d2b5369e3f81f',
+}
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+def stamp():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+
+def raw9(value):
+    return [value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns,
+            value.st_mode, value.st_nlink, getattr(value, 'st_file_attributes', 0), value.st_birthtime_ns]
+
+def read(path):
+    first = path.stat()
+    if not path.is_file() or path.is_symlink() or first.st_size > 4 * 1024 * 1024:
+        raise ValueError('invalid bounded metadata source ' + str(path))
+    with path.open('rb') as stream:
+        fd_first = os.fstat(stream.fileno())
+        data = stream.read(4 * 1024 * 1024 + 1)
+        fd_last = os.fstat(stream.fileno())
+    last = path.stat()
+    if raw9(first) != raw9(last) or raw9(fd_first) != raw9(fd_last):
+        raise ValueError('source instability ' + str(path))
+    return data, {'path': path.as_posix(), 'bytes': len(data), 'sha256': sha(data),
+                  'path_raw9': raw9(last), 'descriptor_raw9': raw9(fd_last), 'observed_utc': stamp()}
+
+def resolve(relative):
+    path = (ROOT / relative).resolve()
+    path.relative_to(ROOT)
+    return path
+
+def decode(data):
+    return json.loads(data)
+
+def publish(name, value):
+    data = (json.dumps(value, indent=2, ensure_ascii=True, allow_nan=False) + '\n').encode('utf8')
+    path = OUT / name
+    with path.open('xb') as stream:
+        stream.write(data)
+    return {'path': path.as_posix(), 'bytes': len(data), 'sha256': sha(data)}
+
+def main():
+    OUT.mkdir(parents=True, exist_ok=True)
+    first, _ = read(MANIFEST)
+    assert sha(first) == MANIFEST_SHA
+    manifest = decode(first)
+    assert len(manifest['links']) == 81 and [row['destination'] for row in manifest['primaries']] == PRIMARY
+    old_manifest_path = STAGE / 'STAGED_DOCUMENTATION_MANIFEST_031.json'
+    old_manifest_data, _ = read(old_manifest_path)
+    assert sha(old_manifest_data) == '0e9ae4d77b80ffde46e1d666117d1871e4dfd6de3a2d7a7b5d8dd5593617ae0a'
+    old_manifest = decode(old_manifest_data)
+    paths = {MANIFEST, old_manifest_path, PUBLISHER, STAGE / 'PUBLISH_MAJOR031_DOCS_001.py',
+             STAGE / 'PREPARE_CLOSEOUT_STAGE_002.py', STAGE / 'AUTHOR_CLOSEOUT_STAGE_AUDIT_002.json',
+             STAGE / 'ACTUAL_CLOSEOUT_ADDENDUM_031.md', STAGE / 'ACTUAL_CLOSEOUT_ADDENDUM_031.md.source',
+             STAGE / 'DOCUMENTATION_BODY_031.md.source', STAGE / 'BODY_PREPARED_031.md', STAGE / 'HANDOFF_002.md'}
+    for stage in (manifest, old_manifest):
+        paths.add(resolve(stage['checkpoint']['path']))
+        for row in stage['primaries']:
+            paths.update((resolve(row['before']['path']), resolve(row['candidate']['path']), resolve(row['destination'])))
+        for row in stage['inputs']:
+            if row['external']:
+                assert EXTERNAL[row['original']['path']] == row['original']['sha256']
+                paths.add(Path(row['original']['path']))
+            else:
+                paths.add(resolve(row['original']['path']))
+            paths.add(resolve(row['copy']['path']))
+    for row in manifest['links']:
+        resolved = (resolve(row['document']).parent / row['target']).resolve()
+        assert resolved == resolve(row['resolved_path'])
+        if resolved != CHECKPOINT:
+            paths.add(resolved)
+    newer_checker = WORK / 'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_DETAILS_001.json'
+    paths.add(newer_checker)
+    newer_sources = [
+        (WORK / 'root-pipeline-independent-review001/INDEPENDENT_ROOT_PIPELINE_ARCHITECTURE_REVIEW_001.json', '32bdaae92a400d1d117ca7eaa6274d7cb069a79c8abfd62cd7745c7d0a087a57'),
+        (WORK / 'root-pipeline-independent-review001/INDEPENDENT_ROOT_PIPELINE_BINDER_SOURCE_REVIEW_001.json', '389b8131c675637bd91188d0d240deaf0370beacf768d3f64b3ce0d60988f863'),
+        (WORK / 'root-guard006-pipeline-prep001/RUN_ROOT_METADATA_PIPELINE_006.TEMPLATE.ps1', '9b7dbc059cc51601e08bbf4ff748123b53034533173dca5a6254352e47f997e8'),
+        (WORK / 'metadata3-actual-checker-prep001/AUTHOR_FROZEN_SOURCE_MANIFEST_008.json', '93f8754ed186873cba93960ce027558b86f70fbb2a9f9ee37a3c18fde7b5d4ee'),
+    ]
+    paths.update(path for path, _ in newer_sources)
+    paths = sorted(paths, key=lambda value: value.as_posix())
+    observations = []
+    blobs = {}
+    for phase in (1, 2, 3):
+        rows = []
+        for path in paths:
+            data, row = read(path)
+            if phase > 1:
+                assert data == blobs[path]
+            blobs[path] = data
+            rows.append(row)
+        observations.append({'phase': phase, 'rows': rows})
+    assert sha(blobs[PUBLISHER]) == PUBLISHER_SHA
+    assert not CHECKPOINT.exists()
+    for row in manifest['inputs']:
+        orig = Path(row['original']['path']) if row['external'] else resolve(row['original']['path'])
+        copy = resolve(row['copy']['path'])
+        assert blobs[orig] == blobs[copy]
+        for entry in (row['original'], row['copy']):
+            path = Path(entry['path']) if row['external'] and entry is row['original'] else resolve(entry['path'])
+            assert len(blobs[path]) == entry['bytes'] and sha(blobs[path]) == entry['sha256']
+    history = []
+    additions = []
+    for current, earlier in zip(manifest['primaries'], old_manifest['primaries']):
+        before = blobs[resolve(current['before']['path'])]
+        candidate = blobs[resolve(current['candidate']['path'])]
+        original_candidate = blobs[resolve(earlier['candidate']['path'])]
+        primary = blobs[resolve(current['destination'])]
+        assert primary == before
+        for row in (current['before'], current['candidate'], earlier['candidate']):
+            data = blobs[resolve(row['path'])]
+            assert len(data) == row['bytes'] and sha(data) == row['sha256']
+        if current['preservation'] == 'suffix':
+            assert candidate.endswith(before) and candidate.endswith(original_candidate)
+            addition = candidate[:-len(before)]
+        else:
+            assert current['preservation'] == 'prefix' and candidate.startswith(before) and candidate.startswith(original_candidate)
+            addition = candidate[len(before):]
+        assert b'{STAMP}' not in addition and b'{PRO3_UPDATE}' not in addition
+        additions.append({'document': current['destination'], 'new_bytes': len(addition), 'new_sha256': sha(addition), 'text': addition.decode('utf8')})
+        history.append({'destination': current['destination'], 'preservation': current['preservation'],
+                        'before': current['before'], 'candidate': current['candidate'],
+                        'earlier_candidate': earlier['candidate'], 'primary_equals_before': True,
+                        'old_bytes_exact': True, 'earlier_stage_candidate_exact': True})
+    checkpoint_data = blobs[resolve(manifest['checkpoint']['path'])]
+    assert sha(checkpoint_data) == manifest['checkpoint']['sha256']
+    assert checkpoint_data.endswith(blobs[resolve(old_manifest['checkpoint']['path'])])
+    additions.append({'document': CHECKPOINT.relative_to(ROOT).as_posix(), 'new_bytes': len(checkpoint_data),
+                      'new_sha256': sha(checkpoint_data), 'text': checkpoint_data.decode('utf8')})
+    link_checks = []
+    for addition in additions:
+        for target in re.findall(r'\]\(([^)]+)\)', addition['text']):
+            resolved = (resolve(addition['document']).parent / target).resolve()
+            resolved.relative_to(ROOT)
+            assert resolved == CHECKPOINT or resolved in blobs
+            observed_path = resolve(manifest['checkpoint']['path']) if resolved == CHECKPOINT else resolved
+            link_checks.append({'document': addition['document'], 'target': target,
+                                'resolved_path': resolved.relative_to(ROOT).as_posix(),
+                                'observed_path': observed_path.as_posix(), 'sha256': sha(blobs[observed_path]),
+                                'future_checkpoint_uses_selected_candidate': resolved == CHECKPOINT})
+    trees = [ast.parse(blobs[STAGE / ('PUBLISH_MAJOR031_DOCS_00' + n + '.py')]) for n in ('1', '2')]
+    maps = [{node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)} for tree in trees]
+    assert set(maps[0]) == set(maps[1])
+    unchanged = []
+    for name in maps[0]:
+        if name != 'pinned':
+            assert ast.dump(maps[0][name], include_attributes=False) == ast.dump(maps[1][name], include_attributes=False)
+            unchanged.append(name)
+    ast_rows = [{'name': name, 'line': node.lineno, 'end_line': node.end_lineno,
+                 'ast_sha256': sha(ast.dump(node, include_attributes=False).encode('utf8'))} for name, node in maps[1].items()]
+    assert len(unchanged) == 6
+    pubtext = blobs[PUBLISHER].decode('utf8')
+    assert "'batch_atomicity_guaranteed': False" in pubtext
+    assert "'automatic_rollback': False" in pubtext
+    assert "os.replace(temp, destination)" in pubtext
+    assert "if destination.read_bytes() != expected:" in pubtext
+    assert "changes = replacements(manifest['primaries'], 'before', 'candidate', 'restore')" in pubtext
+    stage_audit = decode(blobs[STAGE / 'AUTHOR_CLOSEOUT_STAGE_AUDIT_002.json'])
+    assert stage_audit['publisher_main_executed'] is False and stage_audit['primary_bytes_unchanged'] is True
+    assert stage_audit['original_candidates_preserved'] is True and stage_audit['links_checked'] == 81
+    preflight = decode(blobs[STAGE / 'inputs/pro3/root_preflight_002.json'])
+    assert preflight['state'] == 'refused' and preflight['samples'] == []
+    assert preflight['python_test_job_started'] is False and preflight['consumable_release_created'] is False
+    generic = decode(blobs[WORK / 'guard006-utility-source-independent-review001/INDEPENDENT_GENERIC_PUB_SOURCE_REVIEW_002.json'])
+    assert generic['verdict'] == 'PASS_SOURCE_ARCHITECTURE_ONLY_WITH_BOUND_POOL_UNREADY'
+    assert generic['actual_bound_pool'] is None and generic['runtime_acceptance'] is False
+    assert sha(blobs[newer_checker]) == '92937a787276a18e3d36b012d99febda84fcac5c5f8b2ca5db14dd7e14a419d3'
+    later = decode(blobs[newer_checker])
+    assert later['blocking_finding_count'] == 9
+    for path, pin in newer_sources:
+        assert sha(blobs[path]) == pin
+    detail = publish('SOURCE_CANDIDATE_HISTORY_AND_LINKS_001.json', {
+        'schema_version': 1, 'reviewer': '/root/renewal_runtime_inventory', 'history': history,
+        'new_text_read_in_full': additions, 'manifest_link_rows': manifest['links'],
+        'extracted_new_and_checkpoint_link_checks': link_checks, 'publisher_AST_rows': ast_rows,
+        'unchanged_function_ASTs': unchanged, 'publisher_definitions_mains_imports_executed': False
+    })
+    report = {
+        'schema_version': 1, 'record_type': 'independent_major031_documentation_prepublication_source_review',
+        'source_author': '/root/pubnative_review', 'reviewer': '/root/renewal_runtime_inventory',
+        'created_utc': stamp(), 'verdict': 'PASS_SOURCE_ONLY_DOCUMENTATION_SUCCESSOR002_WITH_CREATION_REVIEW_PENDING',
+        'selected_stage': {'path': MANIFEST.as_posix(), 'sha256': MANIFEST_SHA, 'bytes': len(first)},
+        'selected_publisher': {'path': PUBLISHER.as_posix(), 'sha256': PUBLISHER_SHA, 'bytes': len(blobs[PUBLISHER])},
+        'selected_checkpoint': manifest['checkpoint'], 'primary_count': 5, 'manifest_link_count': 81,
+        'extracted_new_and_checkpoint_link_count': len(link_checks), 'finite_input_count': len(paths),
+        'observations': observations, 'detailed_source_history_and_links': detail, 'findings': [],
+        'source_checks': [
+            'All five baseline/current/candidate triples were read fully. Original primary bytes and the earlier staged candidate bytes remain exact prefix or suffix history.',
+            'All 81 manifest link rows were resolved independently from future published document locations; every extracted new/checkpoint link was also resolved and read. The future checkpoint resolves to the exact selected candidate without claiming publication.',
+            'Publisher002 was read fully and parsed as AST only. Six function ASTs including complete main/replacements/restore behavior remain exact; only pinned external source whitelist and the manifest literal change.',
+            'Source self and manifest pins are mandatory. Originals and selected copies are pinned and identical; Root is the externally selected real publisher, not impersonated by the stage author or this reviewer.',
+            'Publication stages temporary create-once files and rechecks all exact baselines after staging and before each one-file replacement. Restoration accepts only exact published candidate bytes. Partial replacements are recorded without blind rollback.',
+            'Each replacement is atomic for one file; the source explicitly declines batch atomicity. Baseline checks are best-effort concurrency guards, not an OS-level compare-and-swap lock or immunity to an edit racing between check and replacement.',
+            'Root preflight002 source retains exact refused state, empty samples and false test Job/consumable-release flags. Named-path nonentry is attributed to Root; no independent host-global quiet or physical launch attestation is manufactured.',
+            'The current addendum supersedes pending generic006 and open window002 statements in the explicitly retained earlier stage; source scopes and bound-pool None remain distinct from runtime acceptance.',
+            'Accepted GG6 source and equal static copy, M3 source acceptance, causal Native128/Meta30 preparation, unchanged production bytes, old refusal and withdrawn io suspicion are stated only in their independently documented source scopes.',
+            'Ongoing owner master and finite phase lease are separate. Original600/both90/resource60/510reserve/Root450+after60 limits, frozen science/twins/epoch and no-public/no-push/no-replay restrictions are retained.'
+        ],
+        'newer_than_selected_factual_freeze': [{
+            'source': {'path': newer_checker.as_posix(), 'sha256': sha(blobs[newer_checker]), 'bytes': len(blobs[newer_checker])},
+            'fact': 'The separate full independent checker Source007 refusal contains nine blocking findings and requires a distinct corrected successor. This review does not attribute this later formal receipt to the earlier documentation author snapshot.'
+        }] + [{
+            'source': {'path': path.as_posix(), 'sha256': pin, 'bytes': len(blobs[path])},
+            'fact': fact
+        } for (path, pin), fact in zip(newer_sources, [
+            'The genuine different preliminary Root pipeline architecture receipt accepts source preparation with 47 finite inputs and no findings, retaining actual configuration, binding and results as None. This audit observes its exact bytes; it does not replace that full independent source audit or grant actual approval.',
+            'The genuine different binder source receipt passes static source only and retains actual binding None. Its canonical reviewer is owner_docs_review; the stage author is not retroactively credited with observing this later receipt.',
+            'Root main template9b7d is the later selected source. This review records its exact pin only; no PowerShell parser or pipeline entry is performed by this documentation reviewer.',
+            'The distinct checker008 author manifest selects a corrected source after the formal007 refusal. It is an author freeze, with the independent complete successor audit still pending at this review; no source or actual approval is inferred.'
+        ])],
+        'implementation_conditions': [
+            'Reobserve fixed primary baselines at genuine Root publication. A later concurrent edit requires refusal and separately prepared selection, not absorption or blind rollback.',
+            'This is prepublication source review only. After Root publishes, independently audit exact primary bytes, checkpoint and immutable receipt/history as one frozen creation cohort.',
+            'Any new paragraph or source delta after this review is a separate selection; no source PASS is runtime GO, actual lease, bound-pool approval, test result or native/science acceptance.'
+        ],
+        'primary_publication_performed_by_reviewer': False, 'publisher_main_executed': False,
+        'actual_creation_review': None, 'actual_results': None, 'runtime_acceptance': False,
+        'operational_authority': False, 'post_capture_reference': None
+    }
+    # Root may supply separate later exact source observations before report publication.
+    extra_path = OUT / 'ROOT_NEWER_SOURCE_OBSERVATIONS_001.json'
+    if extra_path.is_file():
+        report['newer_than_selected_factual_freeze'].extend(decode(extra_path.read_bytes()))
+    report_row = publish('INDEPENDENT_MAJOR031_PREPUBLICATION_SOURCE_REVIEW_001.json', report)
+    post_rows = []
+    for path in paths:
+        data, row = read(path)
+        assert data == blobs[path]
+        post_rows.append(row)
+    post = publish('POST_PREPUBLICATION_SOURCE_CAPTURE_001.json', {
+        'schema_version': 1, 'reviewer': '/root/renewal_runtime_inventory', 'created_utc': stamp(),
+        'report': report_row, 'finite_input_count': len(paths), 'post_rows': post_rows,
+        'all_observed_source_bytes_preserved': True, 'primary_publication': False, 'operational_authority': False
+    })
+    print(json.dumps({'report': report_row, 'post': post, 'detail': detail,
+                      'finite_inputs': len(paths), 'manifest_links': 81, 'extracted_links': len(link_checks)}, indent=2))
+
+if __name__ == '__main__':
+    main()

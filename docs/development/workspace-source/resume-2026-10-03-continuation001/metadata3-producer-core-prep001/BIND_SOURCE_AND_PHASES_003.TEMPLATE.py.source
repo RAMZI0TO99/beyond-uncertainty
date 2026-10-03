@@ -1,0 +1,225 @@
+"""UNRUN source-binding utility. No target definitions or phase actions execute.
+
+ROOT may use this only after a different author reviews the exact utility and
+source package. It creates bounded source copies, never authorization/capture.
+"""
+import argparse
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(r'D:\Aenv\pro2\resume-2026-10-03-continuation001\metadata3-producer-core-prep001')
+AUTHOR = '/root/renewal_runtime_inventory'
+REVIEWERS = {'/root/owner_docs_review'}
+WORK = ROOT.parent
+OWNER_MASTER_SHA = 'de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'
+OWNER_REVIEW_SHA = '56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0'
+SCOPE = 'COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def ancestors(path):
+    rows = []
+    for parent in [*reversed(path.parents), path]:
+        current = parent.lstat()
+        if not stat.S_ISDIR(current.st_mode) or current.st_file_attributes & 0x400:
+            raise RuntimeError('source binding ancestor is nonplain/reparse')
+        rows.append((str(parent), current.st_dev, current.st_ino))
+    return rows
+
+
+def read(path, pin=None, cap=2097152):
+    directory_rows = ancestors(path.parent)
+    before = path.lstat()
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_file_attributes & 0x400 or not 0 <= before.st_size <= cap:
+        raise RuntimeError('source binding input is nonplain or exceeds cap')
+    with path.open('rb') as stream:
+        opened = os.fstat(stream.fileno())
+        data = stream.read(cap+1)
+        final = os.fstat(stream.fileno())
+    after = path.lstat()
+    fields = ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')
+    raw = lambda item: [getattr(item,name) for name in fields]
+    p, f = raw(before), raw(opened)
+    if directory_rows != ancestors(path.parent) or p != raw(after) or f != raw(final) or p[:4]+p[5:] != f[:4]+f[5:] or p[4] != p[8] or len(data) != before.st_size or (pin is not None and sha(data) != pin):
+        raise RuntimeError('source binding bytes/raw-nine drift')
+    return data
+
+
+def once(path, data):
+    if path.parent != ROOT or len(data) > 2097152:
+        raise RuntimeError('finite source-binding output scope/cap differs')
+    directory_rows = ancestors(path.parent)
+    with path.open('xb') as stream:
+        stream.write(data)
+    if directory_rows != ancestors(path.parent) or read(path, sha(data)) != data:
+        raise RuntimeError('new source changed')
+
+
+def hex64(value):
+    return type(value) is str and re.fullmatch('[0-9a-f]{64}',value) is not None
+
+
+def strict(data):
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value: raise RuntimeError('duplicate source-binding record key')
+            value[key] = item
+        return value
+    def no_float(value): raise RuntimeError('source-binding float/nonfinite record')
+    return json.loads(data.decode('utf-8',errors='strict'),object_pairs_hook=pairs,parse_float=no_float,parse_constant=no_float)
+
+
+def functions(data):
+    return {node.name: ast.dump(node,include_attributes=False) for node in ast.parse(data).body if isinstance(node,ast.FunctionDef)}
+
+
+def lease_selection(plan):
+    value = plan['lease_selection']
+    if type(value) is not dict or set(value) != {'path','sha256','lease_end_utc'}:
+        raise RuntimeError('closed finite lease selection required')
+    fixed = WORK/'EXECUTION_LEASE_GG6_M3_001.json'
+    if type(value['path']) is not str or value['path'] != str(fixed) or not hex64(value['sha256']):
+        raise RuntimeError('fixed externally pinned execution lease required')
+    master = strict(read(WORK/'OWNER_CONTINUATION_20261003_001.json',OWNER_MASTER_SHA,65536))
+    if type(master) is not dict or master.get('work_end_utc') is not None or master.get('fixed_deadline_invented') is not False or master.get('authorization_mode') != 'ongoing_until_completion_owner_stop_or_actual_blocker':
+        raise RuntimeError('pinned ongoing owner master differs')
+    peer = strict(read(WORK/'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json',OWNER_REVIEW_SHA))
+    if type(peer) is not dict or peer.get('source_owner_sha256') != OWNER_MASTER_SHA or peer.get('verdict') != 'PASS_OWNER_DIRECTIVE_AND_LINEAGE_SOURCE_ONLY' or peer.get('old_artifacts_renewed') is not False:
+        raise RuntimeError('pinned ongoing owner source peer differs')
+    lease = strict(read(fixed,value['sha256'],65536))
+    nominal = dict(schema_version=1,record_type='root_local_private_execution_lease',author='/root',scope=SCOPE,
+                   owner_master_sha256=OWNER_MASTER_SHA,owner_review_sha256=OWNER_REVIEW_SHA,
+                   decision='authorize_bounded_selected_unit_metadata_and_copied_tests_once',
+                   maximum_lease_seconds=43200,lease_is_owner_deadline=False,operational_authority=False)
+    if type(lease) is not dict or set(lease) != set(nominal)|{'created_utc','lease_end_utc'}:
+        raise RuntimeError('closed execution lease schema required')
+    for name, expected in nominal.items():
+        if type(lease[name]) is not type(expected) or lease[name] != expected:
+            raise RuntimeError('typed finite lease nominal differs')
+    def ticks(stamp):
+        if type(stamp) is not str or re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}\+00:00',stamp) is None:
+            raise RuntimeError('genuine PS7 execution lease stamp required')
+        parsed=datetime.fromisoformat(stamp[:26]+stamp[27:])
+        if parsed.isoformat(timespec='microseconds') != stamp[:26]+stamp[27:]:
+            raise RuntimeError('canonical execution lease stamp differs')
+        delta=parsed-datetime(1970,1,1,tzinfo=timezone.utc)
+        return (delta.days*86400+delta.seconds)*10000000+delta.microseconds*10+int(stamp[26])
+    created,end=ticks(lease['created_utc']),ticks(lease['lease_end_utc'])
+    now=datetime.now(timezone.utc)-datetime(1970,1,1,tzinfo=timezone.utc)
+    current=(now.days*86400+now.seconds)*10000000+now.microseconds*10
+    if not created <= current < end or not 0 < end-created <= 43200*10000000 or created < ticks(master['record_created_utc']):
+        raise RuntimeError('actual finite execution lease interval differs')
+    if type(value['lease_end_utc']) is not str or value['lease_end_utc'] != lease['lease_end_utc']:
+        raise RuntimeError('externally selected lease end differs')
+    return value
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--expected-self-sha256',required=True)
+    parser.add_argument('--stage',choices=('python','powershell'),required=True)
+    parser.add_argument('--expected-preparer-peer-sha256')
+    parser.add_argument('--expected-bound-review-sha256')
+    args = parser.parse_args()
+    own = Path(__file__).absolute()
+    if own != ROOT/'BIND_SOURCE_AND_PHASES_003.TEMPLATE.py' or not hex64(args.expected_self_sha256):
+        raise RuntimeError('fixed reviewed source binder and external self pin required')
+    read(own,args.expected_self_sha256,65536)
+    plan = strict(read(ROOT/'SOURCE_BINDING_PLAN_003.json'))
+    if type(plan) is not dict or set(plan) != {'schema_version','source_author','scope','bindings','role_selections','lease_selection','actual_binding'} or type(plan['schema_version']) is not int or plan['schema_version'] != 1 or plan['source_author'] != AUTHOR or plan['scope'] != SCOPE or plan['actual_binding'] is not None:
+        raise RuntimeError('exact source-only binding plan required')
+    selected_lease = lease_selection(plan)
+    template = read(ROOT/'capture-root-metadata003.TEMPLATE.py',cap=65536)
+    if args.stage == 'python':
+        if not hex64(args.expected_preparer_peer_sha256) or args.expected_bound_review_sha256 is not None:
+            raise RuntimeError('exact reviewed peer pin required for Python source stage')
+        peer = strict(read(ROOT/'INDEPENDENT_METADATA_STATIC_REVIEW_003.json',args.expected_preparer_peer_sha256))
+        if peer.get('reviewer') not in REVIEWERS or peer.get('reviewer') in (AUTHOR,'/root','root','bootstrap_stage') or peer.get('verdict') != 'PASS_STATIC_METADATA_PREPARATION_ONLY':
+            raise RuntimeError('different-author metadata source peer required')
+        bindings = dict(plan['bindings'])
+        bindings['preparer_static_review_sha256'] = args.expected_preparer_peer_sha256
+        if len(bindings) != 9 or not all(hex64(value) for value in bindings.values()):
+            raise RuntimeError('nine exact source-binding pins required')
+        if type(plan['role_selections']) is not dict or set(plan['role_selections']) != {'UNIT_TERMINAL_RELATIVE','COORDINATION_PEER_REPLY_RELATIVE','COORDINATION_ROOT_RESPONSE_RELATIVE'}:
+            raise RuntimeError('exact three source role selections required')
+        for name,value in plan['role_selections'].items():
+            if type(value) is not str or not 0 < len(value) <= 399 or '\\' in value or Path(value).is_absolute() or any(part in ('','.','..') or ':' in part for part in value.split('/')):
+                raise RuntimeError('canonical finite source role selection required')
+        if plan['role_selections']['UNIT_TERMINAL_RELATIVE'] != 'ROOT_LAUNCH_TERMINAL_006.json':
+            raise RuntimeError('fixed GG6 Root terminal role required')
+        replacements = dict(plan['role_selections'],BINDINGS=bindings,OWNER_SHA=selected_lease['sha256'],OWNER_END=selected_lease['lease_end_utc'])
+        if not hex64(replacements['OWNER_SHA']) or type(replacements['OWNER_END']) is not str or re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}\+00:00',replacements['OWNER_END']) is None:
+            raise RuntimeError('genuine externally reviewed finite lease selection required')
+        text = template.decode('utf-8')
+        lines = text.splitlines(keepends=True)
+        nodes = {node.targets[0].id: node.value for node in ast.parse(template).body if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in replacements}
+        if set(nodes) != set(replacements) or len(replacements) != 6:
+            raise RuntimeError('six original top-level binding assignments required')
+        edits = []
+        original_spans = {}
+        for name,node in nodes.items():
+            old = ast.literal_eval(node)
+            if name=='BINDINGS' and (set(old)!=set(bindings) or any(value is not None for value in old.values())) or name!='BINDINGS' and old is not None:
+                raise RuntimeError('only original None source slots may bind')
+            start=sum(map(len,lines[:node.lineno-1]))+node.col_offset
+            end=sum(map(len,lines[:node.end_lineno-1]))+node.end_col_offset
+            edits.append((start,end,repr(replacements[name]),text[start:end]))
+            original_spans[name] = text[start:end]
+        for start,end,new,old in sorted(edits,reverse=True): text=text[:start]+new+text[end:]
+        bound=text.encode('utf-8')
+        if functions(bound)!=functions(template): raise RuntimeError('source functions changed during binding')
+        tree=ast.parse(bound)
+        reverse_edits=[]
+        bound_lines=text.splitlines(keepends=True)
+        for node in tree.body:
+            if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in replacements:
+                start=sum(map(len,bound_lines[:node.value.lineno-1]))+node.value.col_offset
+                end=sum(map(len,bound_lines[:node.value.end_lineno-1]))+node.value.end_col_offset
+                original=original_spans[node.targets[0].id]
+                reverse_edits.append((start,end,original))
+        reverse=text
+        for start,end,value in sorted(reverse_edits,reverse=True): reverse=reverse[:start]+value+reverse[end:]
+        if reverse.encode('utf-8')!=template: raise RuntimeError('exact source-plus-finite-lease binding reversal differs')
+        once(ROOT/'capture-root-metadata003.BOUND.py',bound)
+        once(ROOT/'ACTUAL_SOURCE_BINDING_003.json',(json.dumps(dict(schema_version=1,binder='/root',template_sha256=sha(template),actual_script_sha256=sha(bound),bindings=bindings,role_selections=plan['role_selections'],exact_six_assignment_reversal=True,exact_function_ASTs=True,actual_before_authorization=None,actual_after_authorization=None,target_capture_executed=False),sort_keys=True,indent=2)+'\n').encode('ascii'))
+    else:
+        if not hex64(args.expected_bound_review_sha256) or args.expected_preparer_peer_sha256 is not None:
+            raise RuntimeError('actual different-author bound source review pin required for PS stage')
+        bound=read(ROOT/'capture-root-metadata003.BOUND.py',cap=65536)
+        review=strict(read(ROOT/'INDEPENDENT_BOUND_METADATA_REVIEW_003.json',args.expected_bound_review_sha256,65536))
+        source_binding=strict(read(ROOT/'ACTUAL_SOURCE_BINDING_003.json',cap=65536))
+        expected_review_keys={'actual_script_sha256','metadata_only','phase_set','record_type','reviewer','schema_version','source_author','source_bindings','verdict'}
+        if type(review) is not dict or set(review)!=expected_review_keys or type(review.get('schema_version')) is not int or review['schema_version']!=1 or review.get('record_type')!='guard006_root_metadata_bound_source_review' or review.get('phase_set')!=['before','after'] or review.get('source_bindings')!=source_binding['bindings'] or source_binding['actual_script_sha256']!=sha(bound) or review.get('actual_script_sha256')!=sha(bound) or review.get('verdict')!='PASS_STATIC_BOUND_METADATA_ONLY' or review.get('reviewer') not in REVIEWERS or review.get('source_author')!=AUTHOR or review.get('metadata_only') is not True:
+            raise RuntimeError('exact different bound-source review required')
+        records=[]
+        for name in ('WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_003','SUPERVISE_ROOT_METADATA_BEFORE_003','WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_003','SUPERVISE_ROOT_METADATA_AFTER_003'):
+            original=read(ROOT/(name+'.TEMPLATE.ps1'),cap=65536)
+            text=original.decode('utf-8')
+            slots={'BoundScriptSha256':sha(bound),'BoundReviewSha256':args.expected_bound_review_sha256}
+            for key,pin in slots.items():
+                pattern='(?m)^\\$'+key+r' = \$null\r?$'
+                if len(re.findall(pattern,text))!=1: raise RuntimeError('exact two PS source pin slots required')
+                text=re.sub(pattern,lambda match:'$'+key+" = '"+pin+"'"+ ('\r' if match.group().endswith('\r') else ''),text)
+            reverse=text
+            for key in slots:
+                pattern='(?m)^\\$'+key+r" = '[0-9a-f]{64}'\r?$"
+                reverse=re.sub(pattern,lambda match:'$'+key+' = $null'+ ('\r' if match.group().endswith('\r') else ''),reverse)
+            if reverse.encode('utf-8')!=original: raise RuntimeError('PS two-literal byte reversal differs')
+            data=text.encode('utf-8')
+            once(ROOT/(name+'.BOUND.ps1'),data)
+            records.append(dict(path=str(ROOT/(name+'.BOUND.ps1')),sha256=sha(data),template_sha256=sha(original),exact_two_literal_reversal=True))
+        once(ROOT/'PHASE_PS_SOURCE_BINDING_003.json',(json.dumps(dict(schema_version=1,binder='/root',sources=records,actual_script_sha256=sha(bound),bound_review_sha256=args.expected_bound_review_sha256,actual_authorization=None,prepared_source_actions_executed=False),sort_keys=True,indent=2)+'\n').encode('ascii'))
+
+
+if __name__=='__main__':
+    main()

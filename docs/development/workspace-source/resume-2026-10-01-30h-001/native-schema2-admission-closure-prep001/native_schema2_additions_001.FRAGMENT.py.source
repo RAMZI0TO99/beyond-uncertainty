@@ -1,0 +1,334 @@
+"""Source composition fragment only; never import or execute this preparation."""
+
+def _native_raw_module(bindings=None, witness=None):
+    """Retain executable identity only; revalidate pinned bytes on every use."""
+    global _NATIVE_RAW_MODULE
+    if bindings is not None:
+        require(bindings['helper_sha256'] == NATIVE_RAW_SOURCE_SHA256,
+                'current native raw helper differs from reviewed raw003')
+    source = read(RAW_HELPER, NATIVE_RAW_SOURCE_SHA256, witness,
+                  maximum=NATIVE_RAW_SOURCE_BYTES)
+    identity_row = {'path': str(RAW_HELPER.resolve(strict=True)),
+                    'sha256': sha(source), 'size': len(source)}
+    if _NATIVE_RAW_MODULE is None:
+        require(RAW_AUTHORITY_MODULE_NAME not in sys.modules,
+                'native raw helper namespace occupied')
+        loader = importlib.machinery.SourceFileLoader(RAW_AUTHORITY_MODULE_NAME, str(RAW_HELPER))
+        spec = importlib.util.spec_from_loader(RAW_AUTHORITY_MODULE_NAME, loader)
+        require(spec is not None, 'native raw helper specification unavailable')
+        module = importlib.util.module_from_spec(spec)
+        module.__source_sha256__ = NATIVE_RAW_SOURCE_SHA256
+        module.__source_identity__ = dict(identity_row)
+        sys.modules[RAW_AUTHORITY_MODULE_NAME] = module
+        try:
+            exec(compile(source, str(RAW_HELPER), 'exec', dont_inherit=True), module.__dict__)
+        except BaseException:
+            sys.modules.pop(RAW_AUTHORITY_MODULE_NAME, None)
+            raise
+        _NATIVE_RAW_MODULE = module
+    module = _validate_raw_helper_executable_identity(_NATIVE_RAW_MODULE, source, identity_row)
+    require(module is _NATIVE_RAW_MODULE, 'native raw helper object changed')
+    return module
+
+
+def _native_attestation_limit(bindings=None, witness=None):
+    module = _native_raw_module(bindings, witness)
+    bound = getattr(module, 'SUCCESSOR_ADMISSION_MAX_BYTES', None)
+    require(type(bound) is int and bound == NATIVE_SCHEMA2_POLICY['SUCCESSOR_ADMISSION_MAX_BYTES']
+            and bound == 395799, 'fresh raw003 attestation ceiling differs')
+    return module, bound
+
+
+def _native_capture_limit(path, maximum):
+    """Select trusted path-specific ceilings before plain/open/read/hash."""
+    if path in (ADMISSION / 'attestation.json', ADMISSION / 'attestation.twin.json'):
+        _, captured = _native_attestation_limit()
+        require(maximum is None or type(maximum) is int and maximum == captured,
+                'attestation reread must retain the exact fresh raw ceiling')
+        return captured
+    if EXTERNAL_PROOF is not None and path == EXTERNAL_PROOF:
+        require(type(EXTERNAL_PROOF_MAX_BYTES) is int and EXTERNAL_PROOF_MAX_BYTES > 0
+                and type(EXTERNAL_PROOF_BOUND_DERIVATION_SHA256) is str
+                and HEX64.fullmatch(EXTERNAL_PROOF_BOUND_DERIVATION_SHA256) is not None,
+                'external proof own finite bound/independent derivation unbound')
+        require(maximum is None or type(maximum) is int and maximum == EXTERNAL_PROOF_MAX_BYTES,
+                'external proof reread ceiling differs')
+        return EXTERNAL_PROOF_MAX_BYTES
+    require(maximum is None or type(maximum) is int and maximum > 0,
+            'native finite capture bound malformed')
+    return maximum
+
+
+def _native_exact(value, keys, what):
+    require(type(value) is dict and set(value) == set(keys), what + ' exact keys differ')
+
+
+def _native_hex(value, width, what):
+    pattern = HEX64 if width == 64 else HEX40
+    require(type(value) is str and pattern.fullmatch(value) is not None,
+            what + ' canonical hex differs')
+    return value
+
+
+def _native_relative(value):
+    require(type(value) is str and value and ':' not in value and '\\' not in value
+            and not value.startswith('/')
+            and all(part not in ('', '.', '..') and not part.endswith(('.', ' '))
+                    for part in value.split('/')), 'native relative path differs')
+    return value
+
+
+def _native_row_identity(rows):
+    return {'controller_inventory_digest': sha(canonical(rows)),
+            'tracked_tree_digest': sha(canonical([
+                {key: row[key] for key in ('path', 'mode', 'git_blob')} for row in rows])),
+            'tracked_file_count': len(rows)}
+
+
+def _native_committed_rows(commit):
+    _native_hex(commit, 40, 'native exact Git commit')
+    raw = git(['ls-tree', '-rz', '--full-tree', commit], REPO)
+    require(raw.endswith(b'\0'), 'native full Git tree framing differs')
+    rows, seen = [], set()
+    for token in raw[:-1].split(b'\0'):
+        metadata, encoded = token.split(b'\t', 1)
+        mode, kind, blob = metadata.decode('ascii').split(' ')
+        path = _native_relative(encoded.decode('utf-8', errors='strict'))
+        require(kind == 'blob' and mode in ('100644', '100755')
+                and path.casefold() not in seen, 'native Git row type/mode/alias differs')
+        seen.add(path.casefold())
+        _native_hex(blob, 40, 'native Git blob')
+        size_token = git(['cat-file', '-s', blob], REPO)
+        require(re.fullmatch(rb'(0|[1-9][0-9]*)\n', size_token) is not None,
+                'native Git blob size differs')
+        size = int(size_token)
+        require(size <= NATIVE_SCHEMA2_POLICY['_SUCCESSOR_MAX_FILE_SIZE'],
+                'native Git row exceeds signed64 policy')
+        body = git(['cat-file', 'blob', blob], REPO)
+        require(len(body) == size and hashlib.sha1(
+            b'blob ' + str(size).encode('ascii') + b'\0' + body).hexdigest() == blob,
+            'native typed Git blob differs')
+        rows.append(dict(path=path, mode=mode, git_blob=blob, sha256=sha(body), size=size))
+    rows.sort(key=lambda row: row['path'])
+    _native_file_rows(rows, policy=NATIVE_SCHEMA2_POLICY, what='native observed')
+    return rows
+
+
+def _native_grouped_qa(data, rows, expected_paths=None):
+    table = {row['path']: row for row in rows}
+    document = parse(data)
+    require(type(document) is list and len(document) == 263,
+            'native QA count differs')
+    paths, seen = [], set()
+    for pair in document:
+        require(type(pair) is list and len(pair) == 2,
+                'native QA row shape differs')
+        path = _native_relative(pair[0])
+        require(path in table and path.casefold() not in seen
+                and pair[1] == table[path]['sha256'], 'native QA row differs from full742')
+        _native_hex(pair[1], 64, 'native QA hash')
+        seen.add(path.casefold()); paths.append(path)
+    if expected_paths is None:
+        require(sha(data) == PROGRAMMATIC_FACTS['predecessor']['predecessor_candidate_manifest_sha256'],
+                'native historical grouped QA sequence lacks immutable pin')
+    else:
+        require(type(expected_paths) is list and paths == expected_paths,
+                'native QA grouped path order differs')
+    return document
+
+
+def _native_schema2_shape(document, inputs, rows, bindings, witness):
+    policy = NATIVE_SCHEMA2_POLICY
+    _native_exact(document, policy['_SUCCESSOR_ATTESTATION_SCHEMA2_KEYS'], 'native schema2 attestation')
+    require(type(document['successor_admission_schema_version']) is int
+            and document['successor_admission_schema_version'] == 2
+            and document['record_type'] == 'week8_d176_successor_admission'
+            and document['decision_id'] == 'D-161'
+            and document['recovery_id'] == 'week8-exp2a-d161-2026-09-02-attempt-001',
+            'native schema2 attestation identity differs')
+    for flag in ('scientific_outcomes_consulted', 'scientific_values_emitted',
+                 'production_mutation_performed', 'automatic_retry_allowed'):
+        require(document[flag] is False, 'native schema2 attestation scope differs')
+    old = parse(read(FRONT / 'predecessor-tracked-rows-001.json',
+                     PROGRAMMATIC_FACTS['predecessor_rows_sha256'], witness))
+    old_qa = _native_grouped_qa(inputs['predecessor-candidate-manifest.json'], old)
+    paths = [row[0] for row in old_qa]
+    middle = policy['SUCCESSOR_INTERMEDIATE_FACTS']
+    observed_old = _native_committed_rows(policy['SUCCESSOR_PREDECESSOR_FACTS']['controller_commit'])
+    observed_middle = _native_committed_rows(middle['controller_commit'])
+    observed_final = _native_committed_rows(bindings['controller_commit'])
+    require(observed_old == old and observed_final == rows, 'native full old/final Git rows differ')
+    middle_rows = _native_middle(document['intermediate_proof'], old, observed_middle,
+                                 policy=policy, expected_paths=paths)
+    changed, parent_changed = _native_diffs(old, middle_rows, rows, policy=policy)
+    _native_grouped_qa(inputs['successor-candidate-manifest.json'], rows, paths)
+    middle_size = git(['cat-file', '-s', middle['controller_commit']], REPO)
+    require(middle_size == str(policy['_SUCCESSOR_INTERMEDIATE_PROOF_LIMITS']
+                              ['git_commit_object_base64'][1]).encode('ascii') + b'\n',
+            'native middle typed object size differs before read')
+    middle_object = git(['cat-file', 'commit', middle['controller_commit']], REPO)
+    require(sha(middle_object) == middle['git_commit_object_sha256'],
+            'native actual middle typed object differs from pinned proof')
+    _native_commit_object(middle_object, commit=middle['controller_commit'],
+                          parent=middle['parent_commit'], tree=middle['git_tree_sha1'])
+    final_object = git(['cat-file', 'commit', bindings['controller_commit']], REPO)
+    _native_commit_object(final_object, commit=bindings['controller_commit'], parent=middle['controller_commit'])
+    require(_native_committed_rows(policy['SUCCESSOR_PREDECESSOR_FACTS']['controller_commit']) == observed_old
+            and _native_committed_rows(middle['controller_commit']) == observed_middle
+            and _native_committed_rows(bindings['controller_commit']) == observed_final
+            and git(['cat-file', 'commit', middle['controller_commit']], REPO) == middle_object
+            and git(['cat-file', 'commit', bindings['controller_commit']], REPO) == final_object,
+            'native old/middle/final full742 or typed objects changed during proof')
+    successor = {'controller_commit': bindings['controller_commit'], **_native_row_identity(rows),
+                 'release_record_sha256': bindings['release_record_sha256'],
+                 'candidate_manifest_sha256': bindings['candidate_manifest_sha256']}
+    require(document['predecessor'] == policy['SUCCESSOR_PREDECESSOR_FACTS']
+            and document['predecessor_files'] == old and document['successor_files'] == rows
+            and document['successor'] == successor and document['intermediate'] == middle
+            and document['changed_paths'] == changed
+            and document['successor_parent_changed_paths'] == parent_changed,
+            'native schema2 complete lineage differs')
+    return {'changed_paths': changed, 'successor_parent_changed_paths': parent_changed,
+            'successor': successor, 'middle_full742_identity': _native_row_identity(middle_rows),
+            'intermediate_proof_sha256': sha(canonical(document['intermediate_proof'])),
+            'final_commit_object_sha256': sha(final_object)}
+
+
+def _native_external_record(document, attestation, inputs, shape, bindings, witness):
+    _native_exact(document, NATIVE_EXTERNAL_PROOF_KEYS, 'native current external verifier record')
+    sealed(document)
+    require(type(document['publication_schema_version']) is int and document['publication_schema_version'] == 2
+            and type(document['attestation_schema_version']) is int and document['attestation_schema_version'] == 2
+            and document['record_type'] == 'successor_verification_pass'
+            and document['policy_source_sha256'] == bindings['helper_sha256'] == NATIVE_RAW_SOURCE_SHA256
+            and document['owner_sha256'] == PROGRAMMATIC_FACTS['owner_sha256']
+            and document['output_root'] == str(ADMISSION)
+            and type(document['external_proof_max_bytes']) is int
+            and document['external_proof_max_bytes'] == EXTERNAL_PROOF_MAX_BYTES
+            and document['attestation_sha256'] == bindings['admission_sha256']
+            and document['attestation_record_digest'] == attestation['record_digest']
+            and type(document['verification_observations']) is int and document['verification_observations'] == 2
+            and document['native_gate_still_required'] is True,
+            'native current external verifier identity/scope differs')
+    for key in ('operational_authority_granted', 'public_action_performed',
+                'historical_evidence_modified', 'project_code_imported_or_executed'):
+        require(document[key] is False, 'native external verifier boolean scope differs')
+    stamp = document['created_at_utc']
+    require(type(stamp) is str, 'native external verifier timestamp type differs')
+    when = datetime.fromisoformat(stamp)
+    require(when.tzinfo == timezone.utc and when.isoformat() == stamp
+            and datetime.fromisoformat(PROGRAMMATIC_FACTS['owner']['work_start_utc'].replace('Z', '+00:00')) <= when
+            and when <= datetime.now(timezone.utc)
+            and when <= datetime.fromisoformat(PROGRAMMATIC_FACTS['owner']['work_end_utc'].replace('Z', '+00:00')),
+            'native external verifier timestamp not canonical owner UTC')
+    for key in ('helper_sha256', 'publisher_sha256', 'publication_end_sha256', 'intent_sha256',
+                'record_digest', 'policy_source_sha256'):
+        _native_hex(document[key], 64, 'native external verifier ' + key)
+    for name, expected in (('helper_sha256', EXTERNAL_VERIFIER_SHA256),
+                           ('publisher_sha256', PUBLISHER_SHA256),
+                           ('publication_end_sha256', PUBLICATION_END_SHA256),
+                           ('intent_sha256', VERIFICATION_INTENT_SHA256)):
+        _native_hex(expected, 64, 'independently bound external ' + name)
+        require(document[name] == expected, 'native external source/receipt pin differs: ' + name)
+    read(EXTERNAL_VERIFIER_SOURCE, EXTERNAL_VERIFIER_SHA256, witness)
+    read(PUBLISHER_SOURCE, PUBLISHER_SHA256, witness)
+    read(PUBLICATION_END, PUBLICATION_END_SHA256, witness, maximum=EXTERNAL_PROOF_MAX_BYTES)
+    read(VERIFICATION_INTENT, VERIFICATION_INTENT_SHA256, witness, maximum=EXTERNAL_PROOF_MAX_BYTES)
+    expected_bindings = {key: bindings[value] for key, value in PROOF_BINDINGS.items()}
+    expected_bindings.update(native_review_path=bindings['native_review_path'],
+        renderer_receipt_path=str(FRONT / 'renderer-attempt013-finished.json'),
+        renderer_receipt_sha256=bindings['renderer_action_sha256'])
+    require(document['bindings'] == expected_bindings
+            and document['release_provenance_bindings'] == bindings['release_provenance'],
+            'native external verifier complete provenance/bindings differ')
+    for key, expected in shape.items():
+        require(document[key] == expected, 'native external actual schema2 ' + key + ' differs')
+    require(document['intermediate'] == NATIVE_SCHEMA2_POLICY['SUCCESSOR_INTERMEDIATE_FACTS'],
+            'native external verifier middle identity differs')
+    _native_exact(document['files'], EVIDENCE_NAMES, 'native external evidence file table')
+    for name, data in inputs.items():
+        row = document['files'][name]
+        _native_exact(row, {'sha256', 'size', 'identity'}, 'native external evidence row')
+        require(type(row['size']) is int and row['size'] == len(data)
+                and row['sha256'] == sha(data)
+                and type(row['identity']) is list and len(row['identity']) == 8
+                and all(type(value) is int for value in row['identity'])
+                and row['identity'] == list(identity(plain(ADMISSION / name))[:8]),
+                'native external physical file identity differs')
+    expected_hashes = {name: facts['sha256'] for name, facts in NATIVE_HISTORICAL_INPUTS.items()}
+    expected_hashes.update({name: facts['sha256'] for name, facts in NATIVE_MIDDLE_INPUTS.items()})
+    expected_hashes.update(current_release=sha(inputs['successor-release.json']),
+        current_manifest=sha(inputs['successor-candidate-manifest.json']),
+        current_receipt=sha(inputs['current-native-release-receipt.txt']), raw_source=bindings['helper_sha256'],
+        raw_review=bindings['raw_policy_review_sha256'], native_review=bindings['native_review_sha256'],
+        renderer_receipt=bindings['renderer_action_sha256'])
+    expected_hashes.update({'release_provenance:' + key: row['sha256']
+                           for key, row in bindings['release_provenance'].items()})
+    require(document['input_hashes'] == expected_hashes, 'native external complete input hashes differ')
+    _native_exact(document['runtime'], NATIVE_PUBLICATION_RUNTIME_FACTS, 'native external runtime tables')
+    for name, expected in NATIVE_PUBLICATION_RUNTIME_FACTS.items():
+        observed = document['runtime'][name]
+        _native_exact(observed, set(expected) | {'file_identity_digest'}, 'native external runtime inventory')
+        require(all(type(observed[key]) is type(value) and observed[key] == value
+                    for key, value in expected.items()), 'native external runtime fixed facts differ')
+        _native_hex(observed['file_identity_digest'], 64, 'native external runtime physical identity digest')
+    return document
+
+
+def _native_external_receipts(document, witness):
+    """Check real publication completion and verifier intent, never review booleans."""
+    def capture(path, pin, kind, helper):
+        data = read(path, pin, witness, maximum=EXTERNAL_PROOF_MAX_BYTES)
+        receipt = parse(data)
+        _native_exact(receipt, NATIVE_PUBLICATION_RECEIPT_KEYS[kind], 'native actual ' + kind)
+        sealed(receipt)
+        require(data == canonical(receipt) + b'\n', 'native publication receipt framing differs')
+        require(receipt['record_type'] == kind and receipt['helper_sha256'] == helper,
+                'native publication actual source identity differs')
+        for key in ('publication_schema_version', 'attestation_schema_version',
+                    'external_proof_max_bytes', 'policy_source_sha256', 'owner_sha256',
+                    'output_root', 'bindings', 'release_provenance_bindings'):
+            require(type(receipt[key]) is type(document[key]) and receipt[key] == document[key],
+                    'native publication current binding differs: ' + key)
+        for key in ('operational_authority_granted', 'public_action_performed',
+                    'historical_evidence_modified', 'project_code_imported_or_executed'):
+            require(receipt[key] is False, 'native publication receipt scope differs')
+        when = datetime.fromisoformat(receipt['created_at_utc'])
+        require(when.tzinfo == timezone.utc and when.isoformat() == receipt['created_at_utc']
+                and datetime.fromisoformat(PROGRAMMATIC_FACTS['owner']['work_start_utc']) <= when
+                <= datetime.fromisoformat(document['created_at_utc']),
+                'native publication receipt timestamp/owner order differs')
+        return receipt
+    publication = capture(PUBLICATION_END, PUBLICATION_END_SHA256,
+                          'successor_publication_complete', PUBLISHER_SHA256)
+    intent = capture(VERIFICATION_INTENT, VERIFICATION_INTENT_SHA256,
+                     'successor_verification_intent', EXTERNAL_VERIFIER_SHA256)
+    require(type(publication['verification_observations']) is int
+            and publication['verification_observations'] == 2
+            and publication['independent_verifier_required'] is True,
+            'native publication completion observation count differs')
+    for key in ('files', 'attestation_record_digest', 'input_hashes', 'runtime', 'successor',
+                'changed_paths', 'successor_parent_changed_paths', 'intermediate',
+                'intermediate_proof_sha256', 'middle_full742_identity', 'final_commit_object_sha256'):
+        require(publication[key] == document[key], 'native completed publication differs: ' + key)
+    _native_hex(publication['intent_sha256'], 64, 'actual publication intent SHA')
+    require(intent['publisher_sha256'] == PUBLISHER_SHA256
+            and intent['publication_end_sha256'] == PUBLICATION_END_SHA256
+            and intent['attestation_sha256'] == document['attestation_sha256'],
+            'native verifier intent differs from real publication/attestation')
+    return publication, intent
+
+
+def _native_behavior_runtime_evidence(data, reference, bindings):
+    """Unbindable pending a reviewed typed actual-runtime profile adapter.
+
+    The reference SHA is already authenticated by the independently supplied
+    native-review SHA. Neither a whole future result nor its SHA may be embedded
+    in this source: that result may itself bind this common's captured source.
+    A future adapter must parse exact fixed keys/verdict/case/runtime fields,
+    compare all current source fields with captured/caller-pinned bytes, and
+    refuse static-review artifacts. Merely filling None cannot enable this draft.
+    """
+    require(NATIVE_BEHAVIOR_TYPED_CONTRACT is not None,
+            'native actual runtime typed contract unbound')
+    raise ValueError('native typed runtime profile interpreter pending separately reviewed source')

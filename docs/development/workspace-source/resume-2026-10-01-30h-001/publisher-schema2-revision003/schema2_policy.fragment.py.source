@@ -1,0 +1,249 @@
+def strict_ast_literal(node):
+    """Interpret only the reviewed data constructors; never execute helper AST."""
+    if isinstance(node, ast.Constant):
+        require(type(node.value) in (str, int, bool, type(None)), "nonliteral scalar policy")
+        return node.value
+    if isinstance(node, (ast.Tuple, ast.List)):
+        return [strict_ast_literal(value) for value in node.elts]
+    if isinstance(node, ast.Set):
+        values = [strict_ast_literal(value) for value in node.elts]
+        require(all(type(value) is str for value in values)
+                and len(values) == len(set(values)), "duplicate/nonstring literal set")
+        return sorted(values)
+    if isinstance(node, ast.Dict):
+        result = {}
+        for key_node, value_node in zip(node.keys, node.values):
+            require(key_node is not None, "policy dictionary unpacking is forbidden")
+            key = strict_ast_literal(key_node)
+            require(type(key) is str and key not in result, "duplicate/nonstring policy key")
+            result[key] = strict_ast_literal(value_node)
+        return result
+    require(isinstance(node, ast.Call) and len(node.args) == 1 and not node.keywords,
+            "policy contains unsupported expression")
+    if isinstance(node.func, ast.Name) and node.func.id == "MappingProxyType":
+        value = strict_ast_literal(node.args[0])
+        require(type(value) is dict, "MappingProxyType policy is not a dictionary")
+        return value
+    if (isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "json" and node.func.attr == "loads"):
+        token = node.args[0]
+        require(isinstance(token, ast.Constant) and type(token.value) is str,
+                "policy JSON argument is not a string literal")
+        return strict_json(token.value.encode("utf-8"))
+    if isinstance(node.func, ast.Name) and node.func.id == "frozenset":
+        values = strict_ast_literal(node.args[0])
+        require(type(values) is list and all(type(value) is str for value in values)
+                and len(values) == len(set(values)), "frozenset policy is not unique literal strings")
+        return sorted(values)
+    if (isinstance(node.func, ast.Name) and node.func.id == "tuple"
+            and isinstance(node.args[0], ast.GeneratorExp)):
+        generator = node.args[0]
+        require(len(generator.generators) == 1, "afterimage generator shape differs")
+        clause = generator.generators[0]
+        require(isinstance(clause.target, ast.Name) and clause.target.id == "row"
+                and not clause.ifs and clause.is_async == 0
+                and isinstance(clause.iter, ast.Tuple), "afterimage literal iterator differs")
+        element = generator.elt
+        require(isinstance(element, ast.Call) and isinstance(element.func, ast.Name)
+                and element.func.id == "MappingProxyType" and len(element.args) == 1
+                and not element.keywords and isinstance(element.args[0], ast.Name)
+                and element.args[0].id == "row", "afterimage constructor differs")
+        values = strict_ast_literal(clause.iter)
+        require(all(type(value) is dict for value in values), "afterimages are not literal rows")
+        return values
+    raise Refused("policy constructor is outside the fixed literal grammar")
+
+
+def schema2_literal_policy(source: bytes) -> dict:
+    module = ast.parse(source.decode("utf-8", errors="strict"))
+    wanted = frozenset(COMPILED_POLICY)
+    values = {}
+    for node in module.body:
+        if isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            require(not isinstance(node.target, ast.Name) or node.target.id not in wanted,
+                    "nonliteral policy assignment")
+        if not isinstance(node, ast.Assign):
+            continue
+        names = {target.id for target in node.targets if isinstance(target, ast.Name)} & wanted
+        for name in names:
+            require(len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                    and name not in values, "duplicate/aliased policy assignment")
+            values[name] = strict_ast_literal(node.value)
+    require(set(values) == wanted and len(values) == 20, "fixed twenty policy values absent")
+    # Canonical bytes distinguish bool/int and tuple/list-normalized values.
+    require(canonical(values) == canonical(COMPILED_POLICY), "reviewed raw003 literal policy changed")
+    require(values["SUCCESSOR_PREDECESSOR_FACTS"] == HISTORICAL["facts"]
+            and values["_SUCCESSOR_FROZEN_NATIVE_RECEIPT"] == HISTORICAL["receipt"]
+            and values["SUCCESSOR_ALLOWED_CHANGED_PATHS"] == sorted(HISTORICAL["allowed_paths"])
+            and values["_SUCCESSOR_RELEASE_SOURCE_FIELDS"] == HISTORICAL["release_source_fields"],
+            "immutable original predecessor policy differs")
+    return values
+
+
+def schema2_file_rows(rows, *, policy, what):
+    require(type(rows) is list and len(rows) == policy["SUCCESSOR_INTERMEDIATE_FACTS"]["tracked_file_count"],
+            what + " full742 count differs")
+    seen, paths = set(), []
+    for row in rows:
+        exact(row, {"path", "mode", "git_blob", "sha256", "size"}, what + " file row")
+        path = relative(row["path"])
+        require(path.casefold() not in seen and row["mode"] in {"100644", "100755"}
+                and type(row["size"]) is int
+                and 0 <= row["size"] <= policy["_SUCCESSOR_MAX_FILE_SIZE"], what + " row metadata differs")
+        hex_value(row["git_blob"], 40, what + " blob")
+        hex_value(row["sha256"], 64, what + " file SHA")
+        seen.add(path.casefold())
+        paths.append(path)
+    require(paths == sorted(paths), what + " Git row order differs")
+    return rows
+
+
+def schema2_qa(data: bytes, rows: list[dict], *, expected_paths=None) -> list:
+    manifest = strict_json(data)
+    files = {row["path"]: row for row in rows}
+    require(type(manifest) is list and len(manifest) == 263, "QA manifest count differs")
+    seen, paths = set(), []
+    for row in manifest:
+        require(type(row) is list and len(row) == 2 and type(row[0]) is str,
+                "QA pair shape differs")
+        path = relative(row[0])
+        require(path in files and path.casefold() not in seen
+                and row[1] == files[path]["sha256"], "QA row differs from complete742 table")
+        hex_value(row[1], 64, "QA SHA256")
+        seen.add(path.casefold())
+        paths.append(path)
+    if expected_paths is None:
+        require(sha(data) == HISTORICAL["inputs"]["predecessor_manifest"]["sha256"],
+                "historical QA sequence lacks its immutable byte pin")
+    else:
+        require(type(expected_paths) is list and len(expected_paths) == 263
+                and paths == expected_paths, "QA grouped path sequence differs from pinned history")
+    return manifest
+
+
+def schema2_commit_object(data: bytes, *, commit: str, parent: str, tree=None):
+    hex_value(commit, 40, "typed Git commit")
+    hex_value(parent, 40, "exact immediate parent")
+    require(type(data) is bytes and b"\n\n" in data, "Git commit framing differs")
+    require(hashlib.sha1(b"commit " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest() == commit,
+            "typed Git commit SHA1 differs")
+    headers = data.split(b"\n\n", 1)[0].split(b"\n")
+    require([row for row in headers if row.startswith(b"parent ")] == [b"parent " + parent.encode("ascii")],
+            "commit must have exactly the fixed immediate parent")
+    trees = [row for row in headers if row.startswith(b"tree ")]
+    require(len(trees) == 1 and trees[0] == headers[0], "commit tree header differs")
+    actual_tree = trees[0][5:].decode("ascii", errors="strict")
+    hex_value(actual_tree, 40, "commit tree")
+    require(tree is None or actual_tree == tree, "compiled intermediate tree differs")
+    return actual_tree
+
+
+def schema2_diffs(old_rows, middle_rows, new_rows, *, policy):
+    for what, rows in (("old", old_rows), ("middle", middle_rows), ("final", new_rows)):
+        schema2_file_rows(rows, policy=policy, what=what)
+    require([row["path"] for row in old_rows] == [row["path"] for row in middle_rows]
+            == [row["path"] for row in new_rows]
+            and [row["mode"] for row in old_rows] == [row["mode"] for row in middle_rows]
+            == [row["mode"] for row in new_rows],
+            "successor adds/removes/renames/changes modes")
+    changed = [old["path"] for old, new in zip(old_rows, new_rows) if old != new]
+    parent_changed = [old["path"] for old, new in zip(middle_rows, new_rows) if old != new]
+    allowed = frozenset(policy["SUCCESSOR_ALLOWED_CHANGED_PATHS"])
+    require(len(changed) == len(parent_changed) == policy["_SUCCESSOR_REQUIRED_FINAL_CHANGED_COUNT"]
+            and set(changed) == set(parent_changed) == allowed,
+            "old-final/middle-final diffs do not equal the same finite25 policy")
+    return changed, parent_changed
+
+
+def schema2_middle(proof: dict, old_rows: list[dict], fresh_rows: list[dict], *, policy, expected_paths):
+    middle = policy["SUCCESSOR_INTERMEDIATE_FACTS"]
+    exact(middle, set(policy["_SUCCESSOR_INTERMEDIATE_KEYS"]), "compiled intermediate summary")
+    require(len(canonical(middle)) <= policy["_SUCCESSOR_INTERMEDIATE_SUMMARY_MAX_BYTES"],
+            "intermediate summary cap exceeded")
+    exact(proof, set(policy["_SUCCESSOR_INTERMEDIATE_PROOF_KEYS"]), "intermediate proof")
+    require(len(canonical(proof)) <= policy["_SUCCESSOR_INTERMEDIATE_PROOF_MAX_BYTES"],
+            "intermediate proof cap exceeded")
+    decoded = {}
+    for name, limits in policy["_SUCCESSOR_INTERMEDIATE_PROOF_LIMITS"].items():
+        token = proof[name]
+        require(type(token) is str and token.isascii() and len(token) == limits[0],
+                "middle base64 type/encoded length differs")
+        try:
+            value = base64.b64decode(token.encode("ascii"), validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise Refused("middle proof base64 is invalid") from exc
+        require(len(value) == limits[1] and sha(value) == limits[2]
+                and base64.b64encode(value).decode("ascii") == token,
+                "middle proof decoded size/SHA/canonical encoding differs")
+        decoded[name] = value
+    require(canonical(proof["changed_files"]) == canonical(policy["_SUCCESSOR_INTERMEDIATE_AFTERIMAGES"]),
+            "exact nine intermediate afterimages differ")
+    old_files = {row["path"]: dict(row) for row in old_rows}
+    reconstructed = {path: dict(row) for path, row in old_files.items()}
+    require(len(proof["changed_files"]) == middle["release_file_count"] == 9,
+            "middle changed row count differs")
+    for row in proof["changed_files"]:
+        exact(row, {"path", "mode", "git_blob", "sha256", "size"}, "middle afterimage")
+        path = relative(row["path"])
+        require(path in old_files and row["mode"] == old_files[path]["mode"]
+                and type(row["size"]) is int and 0 <= row["size"] <= policy["_SUCCESSOR_MAX_FILE_SIZE"],
+                "middle afterimage adds or changes mode/size")
+        hex_value(row["git_blob"], 40, "middle afterimage blob")
+        hex_value(row["sha256"], 64, "middle afterimage SHA")
+        reconstructed[path] = dict(row)
+    rows = [reconstructed[path] for path in sorted(reconstructed)]
+    schema2_file_rows(rows, policy=policy, what="reconstructed intermediate")
+    schema2_file_rows(fresh_rows, policy=policy, what="fresh intermediate")
+    changed = [path for path in sorted(old_files) if old_files[path] != reconstructed[path]]
+    require(changed == middle["changed_paths"] and rows == fresh_rows,
+            "full742 reconstructed middle differs from independently fresh Git blobs")
+    identities = row_identity(rows)
+    require(all(identities[name] == middle[name] for name in identities), "middle full742 identity differs")
+    commit_object = decoded["git_commit_object_base64"]
+    schema2_commit_object(commit_object, commit=middle["controller_commit"],
+                          parent=middle["parent_commit"], tree=middle["git_tree_sha1"])
+    release = strict_json(decoded["release_record_base64"])
+    exact(release, set(policy["_SUCCESSOR_INTERMEDIATE_RELEASE_KEYS"]), "exact36 middle release")
+    require(release["ControllerCommit"] == middle["controller_commit"]
+            and release["ParentCommit"] == policy["SUCCESSOR_PREDECESSOR_FACTS"]["controller_commit"]
+            and release["FinalCandidateManifestSha256"] == middle["candidate_manifest_sha256"]
+            and release["Branch"] == HISTORICAL["release"]["Branch"]
+            and release["FrozenExecutionCommit"] == HISTORICAL["release"]["FrozenExecutionCommit"]
+            and type(release["FileCount"]) is int and release["FileCount"] == 9,
+            "middle release commit/parent/QA/count differs")
+    for name, value in release.items():
+        if name.endswith("Sha256"):
+            hex_value(value, 64, "middle release " + name)
+    for name in ("SourceClean", "FrozenExecutionClean", "CommittedBlobsMatchReviewedWorktreeBytes"):
+        require(release[name] is True, "middle release clean flag differs")
+    for name in ("RemotePushPerformed", "ProductionInvoked"):
+        require(release[name] is False, "middle release public/production flag differs")
+    fields = {**policy["_SUCCESSOR_RELEASE_SOURCE_FIELDS"],
+              "NativeLauncherSha256": "scripts/week8_recovery_native_launcher.ps1",
+              "OuterSha256": "scripts/week8_recovery_outer_bootstrap.txt"}
+    require(all(release[field] == reconstructed[path]["sha256"] for field, path in fields.items()),
+            "middle release source fields differ from complete reconstructed rows")
+    schema2_qa(decoded["candidate_manifest_base64"], rows, expected_paths=expected_paths)
+    return rows
+
+
+def schema2_sealed_attestation(data: bytes, *, expected_sha256: str, policy: dict):
+    require(type(data) is bytes and len(data) <= policy["SUCCESSOR_ADMISSION_MAX_BYTES"],
+            "attestation capture exceeds395799 before hash/parse")
+    hex_value(expected_sha256, 64, "external attestation SHA")
+    require(sha(data) == expected_sha256, "attestation external byte pin differs")
+    document = strict_json(data)
+    exact(document, set(policy["_SUCCESSOR_ATTESTATION_SCHEMA2_KEYS"]), "exact17 schema2 attestation")
+    require(type(document["successor_admission_schema_version"]) is int
+            and document["successor_admission_schema_version"] == 2
+            and document["record_type"] == "week8_d176_successor_admission"
+            and document["decision_id"] == "D-161"
+            and document["recovery_id"] == "week8-exp2a-d161-2026-09-02-attempt-001",
+            "attestation identity/schema differs")
+    require(all(document[name] is False for name in FLAGS), "attestation authority flags differ")
+    body = {name: value for name, value in document.items() if name != "record_digest"}
+    require(document["record_digest"] == sha(canonical(body))
+            and data == canonical(document) + b"\n", "attestation canonical seal differs")
+    require(canonical(document["intermediate"]) == canonical(policy["SUCCESSOR_INTERMEDIATE_FACTS"]),
+            "attestation exact middle summary differs")
+    return document

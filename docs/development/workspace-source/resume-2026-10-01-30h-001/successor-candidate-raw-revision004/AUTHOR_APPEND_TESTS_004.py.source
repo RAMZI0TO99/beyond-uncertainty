@@ -1,0 +1,106 @@
+"""Append inert schema3 regression definitions and check literal metadata/AST only."""
+import runpy
+G = runpy.run_path(__file__.replace('AUTHOR_APPEND_TESTS_004.py', 'AUTHOR_METADATA_UTILS_004.py'))
+globals().update({k: v for k, v in G.items() if not k.startswith('__')})
+d = json.loads(read(N / 'before/FINITE_RELEASE_CHAIN_COMPACT_DESIGN_002.json')[0])
+chain = [d['historical_fact_authority'][key] for key in ('intermediate1', 'intermediate2')]
+before, before_ob = read(N / 'tests/test_week8_recovery_raw_authority.py')
+assert digest(before) == '367a1d34c6a0d90656fdb296bc864b43452f6e8caac2f63a7fdb2ec7ca31661c'
+fragment = read(N / 'AUTHOR_SCHEMA3_TESTS_004.txt')[0]
+literal = ('\n\n_REVISION004_COMPACT_CHAIN_JSON = ' + repr(json.dumps(chain, sort_keys=True,
+                    separators=(',', ':'), ensure_ascii=True, allow_nan=False)) + '\n\n').encode('ascii')
+after = before + literal + fragment
+old_ast = ast.parse(before); new_ast = ast.parse(after)
+assert [ast.dump(node) for node in new_ast.body[:len(old_ast.body)]] == [ast.dump(node) for node in old_ast.body]
+old_defs = {node.name: node for node in old_ast.body if isinstance(node, ast.FunctionDef)}
+new_defs = {node.name: node for node in new_ast.body if isinstance(node, ast.FunctionDef)}
+assert all(ast.dump(node) == ast.dump(new_defs[name]) for name, node in old_defs.items())
+assert after[:415278] == before and after[415278:] == literal + fragment
+families = []
+for node in new_ast.body[len(old_ast.body):]:
+    if not isinstance(node, ast.FunctionDef) or not node.name.startswith('test_'):
+        continue
+    axes = []
+    for decorator in node.decorator_list:
+        if (isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute)
+                and decorator.func.attr == 'parametrize'):
+            axes.append({'fields': ast.literal_eval(decorator.args[0]),
+                         'prepared_values': ast.literal_eval(decorator.args[1])})
+    families.append({'name': node.name, 'parametrize_axes': axes,
+                     'ast_sha256': digest(ast.dump(node).encode()), 'actual_collected_nodes': None,
+                     'actual_runtime_result': None})
+put(N / 'drafts/test004-initial-active-before-append.py', before)
+with (N / 'tests/test_week8_recovery_raw_authority.py').open('wb') as f:
+    f.write(after); f.flush(); os.fsync(f.fileno())
+out(N / 'AUTHOR_TEST_AST_DELTA_004.json', {
+    'before': before_ob, 'after': read(N / 'tests/test_week8_recovery_raw_authority.py')[1],
+    'original_bytes_prefix_exact': 415278, 'original_top_level_function_asts_exact': len(old_defs),
+    'original_test_function_asts_exact': sum(name.startswith('test_') for name in old_defs),
+    'all_original_top_level_asts_exact': True, 'new_test_families': families,
+    'new_helper_names': sorted(set(new_defs) - set(old_defs) - {family['name'] for family in families}),
+    'target_definitions_compiled_imported_executed': False, 'actual_node_count': None,
+    'runtime_acceptance': None,
+})
+# Independently authored data-only tree reconstruction confirms literal middle facts.
+def git_tree(rows):
+    root = {}
+    for row in rows:
+        cursor = root
+        parts = row['path'].split('/')
+        for part in parts[:-1]: cursor = cursor.setdefault(part, {})
+        cursor[parts[-1]] = (row['mode'], row['git_blob'])
+    def emit(cursor):
+        entries = []
+        for name, value in cursor.items():
+            directory = isinstance(value, dict)
+            mode, blob = ('40000', emit(value)) if directory else value
+            entries.append(((name + ('/' if directory else '')).encode('ascii'),
+                            mode.encode('ascii') + b' ' + name.encode('ascii') + b'\0' + bytes.fromhex(blob)))
+        body = b''.join(data for key, data in sorted(entries))
+        return hashlib.sha1(b'tree ' + str(len(body)).encode('ascii') + b'\0' + body).hexdigest()
+    return emit(root)
+old_rows = json.loads(read(N / 'before/publisher-schema2-revision003/before/predecessor_rows.bytes')[0])
+files = {row['path']: row for row in old_rows}
+paths = tuple(d['deterministic_qa_reconstruction']['compiled_grouped_path_sequence'])
+observed = []
+for index, entry in enumerate(chain):
+    base = dict(files)
+    files.update({row['path']: row for row in entry['proof']['changed_files']})
+    rows = [files[path] for path in sorted(files)]
+    qa = (json.dumps([[path, files[path]['sha256']] for path in paths],
+                     indent=2, ensure_ascii=True, allow_nan=False) + '\n').encode('ascii')
+    commit = base64.b64decode(entry['proof']['git_commit_object_base64'], validate=True)
+    tree_sha = git_tree(rows)
+    assert tree_sha == entry['identities']['git_tree_sha1']
+    assert len(qa) == 31347 and digest(qa) == entry['identities']['candidate_manifest_sha256']
+    assert sum(files[path] != base[path] for path in files) == 9
+    assert hashlib.sha1(b'commit ' + str(len(commit)).encode() + b'\0' + commit).hexdigest() == entry['identities']['controller_commit']
+    assert len(json.dumps(entry['identities'],sort_keys=True,separators=(',',':')).encode()) == 959
+    proof_bytes = len(json.dumps(entry['proof'],sort_keys=True,separators=(',',':')).encode())
+    assert proof_bytes == (6181,6321)[index]
+    observed.append({'index': index, 'tree_sha1': tree_sha, 'qa_sha256': digest(qa),
+                     'qa_bytes': len(qa), 'rows': len(rows), 'changed_rows': 9,
+                     'summary_bytes': 959, 'proof_bytes': proof_bytes})
+witness = json.loads(read(N / 'before/successor-candidate-raw-revision003/ATTESTATION_SIZE_WITNESS_SCHEMA1_003.json')[0])
+witness['successor_admission_schema_version'] = 3
+witness['intermediate_chain'] = chain
+witness['successor_parent_changed_paths'] = d['complete_attestation_grammar_and_bound']['max_specimen_construction']['add_successor_parent_changed_paths']
+specimen = (json.dumps(witness,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+assert len(specimen) == 361287 and digest(specimen) == '93140584b3b26e29b1b58a41b1f0a17583dd85ef4601b5ea8caca16cd46823bd'
+put(N / 'ATTESTATION_SIZE_WITNESS_SCHEMA3_004.json', specimen)
+out(N / 'BYTE_BOUND_AND_LITERAL_FACT_DERIVATION_004.json', {
+    'middle_observations': observed, 'schema3_maximum_bytes': len(specimen),
+    'schema3_math_specimen_sha256': digest(specimen), 'specimen_valid_seal_or_operational_authority': False,
+    'legacy1_maximum': 345810, 'legacy2_and_global_maximum': 395799,
+    'sourcefixed_qa_path_count': len(paths), 'sourcefixed_grouped_order_sha256': digest(
+        json.dumps(list(paths),separators=(',',':'),ensure_ascii=True).encode()),
+    'new_globals': ['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS','_SUCCESSOR_COMPACT_AFTERIMAGES',
+        '_SUCCESSOR_COMPACT_PROOF_LIMITS','_SUCCESSOR_COMPACT_RELEASE_KEYS','_SUCCESSOR_COMPACT_ENTRY_KEYS',
+        '_SUCCESSOR_COMPACT_PROOF_KEYS','_SUCCESSOR_COMPACT_PROOF_MAX_BYTES','_SUCCESSOR_COMPACT_QA_PATHS',
+        '_SUCCESSOR_COMPACT_QA_BYTES','_SUCCESSOR_ATTESTATION_SCHEMA3_KEYS','_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3'],
+    'consumer_locked_module_new_constant_and_function_integration': 'PENDING_DIFFERENT_OWNER_AND_REVIEW',
+    'target_execution_performed': False, 'tests_runtime_result': None,
+})
+print(json.dumps({'test_sha256': digest(after), 'test_bytes': len(after),
+    'preserved_top_level_functions': len(old_defs), 'new_test_families': len(families),
+    'actual_collection_count': None, 'schema3_math_maximum': len(specimen), 'source_and_tests_unrun': True}))

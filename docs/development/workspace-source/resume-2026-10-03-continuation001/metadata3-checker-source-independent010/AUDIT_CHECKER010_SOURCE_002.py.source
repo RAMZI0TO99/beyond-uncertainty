@@ -1,0 +1,230 @@
+"""Own finite DATA/AST review. Never loads, compiles, or calls selected Sources."""
+import ast
+import hashlib
+import json
+import os
+import stat
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+PROJECT=Path('D:/Aenv/pro2')
+WORK=PROJECT/'resume-2026-10-03-continuation001'
+SOURCE=WORK/'metadata3-actual-checker-prep001'
+OWN=WORK/'metadata3-checker-source-independent010'
+CAP=8388608
+SCOPE='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+REVIEWER='/root/capsule_design_review'
+AUTHOR='/root/actual_record_checker'
+
+def need(value,message):
+    if not value:raise ValueError(message)
+
+def utc():return datetime.now(timezone.utc).isoformat(timespec='microseconds')
+def sha(data):return hashlib.sha256(data).hexdigest()
+def raw(value):
+    return [value.st_dev,value.st_ino,value.st_size,value.st_mtime_ns,value.st_ctime_ns,value.st_mode,value.st_nlink,value.st_file_attributes,value.st_birthtime_ns]
+
+def ancestors(path):
+    values=[]
+    for item in [*reversed(path.parents)]:
+        row=item.lstat()
+        need(stat.S_ISDIR(row.st_mode) and not row.st_file_attributes&1024,'plain ancestor '+str(item))
+        values.append([str(item),row.st_dev,row.st_ino,row.st_mode,row.st_file_attributes])
+    return values
+
+def observe(path):
+    path=Path(path)
+    need(path.is_absolute() and path.is_relative_to(PROJECT),'finite project source '+str(path))
+    chain=ancestors(path);before=path.lstat();a=raw(before)
+    need(stat.S_ISREG(before.st_mode) and before.st_nlink==1 and not before.st_file_attributes&1024 and 0<=before.st_size<=CAP,'finite plain regular source '+str(path))
+    with path.open('rb',buffering=0) as stream:
+        opened=os.fstat(stream.fileno());b=raw(opened)
+        need(stat.S_ISREG(opened.st_mode) and opened.st_nlink==1 and not opened.st_file_attributes&1024,'opened plain source')
+        need(a[:4]+a[5:]==b[:4]+b[5:],'ordinary cross-API raw9 excluding only ctime '+str(path))
+        data=stream.read(before.st_size+1)
+        need(raw(os.fstat(stream.fileno()))==b,'same descriptor raw9 stable '+str(path))
+    need(raw(path.lstat())==a and ancestors(path)==chain and len(data)==before.st_size,'same path raw9 and ancestor identity stable '+str(path))
+    return data,dict(path=str(path),bytes=len(data),sha256=sha(data),path_raw9=a,descriptor_raw9=b)
+
+def pairs(items):
+    result={}
+    for key,value in items:
+        need(key not in result,'duplicate JSON key')
+        result[key]=value
+    return result
+
+def decode(data):
+    need(not data.startswith(b'\xef\xbb\xbf'),'no BOM')
+    return json.loads(data.decode('utf8','strict'),object_pairs_hook=pairs,parse_constant=lambda value:(_ for _ in ()).throw(ValueError('nonfinite JSON')))
+
+def typed(a,b):
+    if type(a) is not type(b):return False
+    if type(a) is dict:return set(a)==set(b) and all(typed(a[k],b[k]) for k in a)
+    if type(a) in (list,tuple):return len(a)==len(b) and all(typed(x,y) for x,y in zip(a,b))
+    return a==b
+
+def encode(value):return (json.dumps(value,ensure_ascii=True,allow_nan=False,separators=(',',':'))+'\n').encode('ascii')
+
+def write(path,data):
+    need(path.is_relative_to(OWN) and len(data)<=CAP,'own finite write')
+    with path.open('xb',buffering=0) as stream:need(stream.write(data)==len(data),'complete own write');os.fsync(stream.fileno())
+    body,row=observe(path);need(body==data,'own exact readback')
+    return row
+
+REG={};DATA={}
+def select(path,pin=None,size=None):
+    path=Path(path);data,row=observe(path)
+    need(pin is None or row['sha256']==pin,'selected SHA '+str(path))
+    need(size is None or row['bytes']==size,'selected size '+str(path))
+    if str(path) in REG:need(typed(REG[str(path)],row),'duplicate source stable')
+    else:REG[str(path)]=row;DATA[str(path)]=data
+    return data
+
+def literal_values(tree):
+    values={}
+    for node in tree.body:
+        if isinstance(node,ast.Assign):
+            try:value=ast.literal_eval(node.value)
+            except (ValueError,TypeError,SyntaxError):continue
+            for target in node.targets:
+                if isinstance(target,ast.Name):values[target.id]=value
+    return values
+
+def funcs(tree):return {node.name:ast.dump(node,include_attributes=False) for node in tree.body if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))}
+def nonfunc(tree):return [ast.dump(node,include_attributes=False) for node in tree.body if not isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))]
+def methods(tree):
+    result={}
+    for cls in [n for n in tree.body if isinstance(n,ast.ClassDef)]:
+        for fn in cls.body:
+            if isinstance(fn,ast.FunctionDef) and fn.name.startswith('test_'):
+                need(fn.name not in result,'unique direct test method')
+                result[fn.name]=(cls.name,fn)
+    return result
+
+def nodefacts(data,tree):
+    rows=[]
+    for node in ast.walk(tree):
+        if isinstance(node,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)):
+            rows.append(dict(name=node.name,kind=type(node).__name__,line=node.lineno,end_line=node.end_lineno,
+                body_ast_sha256=sha(ast.dump(node,include_attributes=False).encode('utf8'))))
+    return rows
+
+def main():
+    need(Path(os.path.realpath(sys.executable))==PROJECT/'runtimes/week8-python313-frozen-001/python.exe','pinned BASE313 observer')
+    select(OWN/'AUDIT_CHECKER010_SOURCE_001.py')
+    select(OWN/'OWN_METADATA_OBSERVER_REFUSAL_001.json')
+    manifest=decode(select(SOURCE/'AUTHOR_FROZEN_SOURCE_MANIFEST_010.json','624914bedda69ba654cf8ff273774bfb6054f936d61dec936c332b2e46dd0949',28249))
+    author=decode(select(SOURCE/'AUTHOR_FRESH_SOURCE_METADATA_010.json','b82ec49ff6146e33dbad045892a77c66dae6e682cf1b8653e3a6264b5769b31f',378573))
+    need(manifest['payload_count']==141 and len(manifest['payloads'])==141 and manifest['source_author']==AUTHOR and manifest['scope']==SCOPE,'manifest finite scope')
+    payloads={}
+    for row in manifest['payloads']:
+        name=row['path'];path=SOURCE/name
+        need(type(name) is str and not Path(name).is_absolute() and '..' not in Path(name).parts and name not in payloads,'confined unique manifest role')
+        payloads[name]=row;select(path,row['sha256'],row['bytes'])
+    oldmanifest=decode(select(SOURCE/'AUTHOR_FROZEN_SOURCE_MANIFEST_009.json','8b296a86c7912141f3e2b880927e515408b7d73994edde6b2bfd7f1676fa0e31',10908))
+    need(len(oldmanifest['payloads'])==oldmanifest['payload_count']==55,'old55 manifest')
+    for row in oldmanifest['payloads']:
+        need(row['path'] in payloads and payloads[row['path']]['sha256']==row['sha256'] and payloads[row['path']]['bytes']==row['bytes'],'predecessor55 immutable manifest pins')
+        select(SOURCE/row['path'],row['sha256'],row['bytes'])
+    need(author['finite_input_count']==len(author['inputs'])==72,'finite72 author input pairs')
+    for row in author['inputs']:
+        path=Path(row['input_path']);body=select(path)
+        now=REG[str(path)];need(len(row['observations'])==3 and all(typed(now,old) for old in row['observations']) and typed(now,row['post_read']),'full author original raw9 triple/post reproduction')
+        copy=Path(row['owned_copy_path']);copybody=select(copy)
+        need(copybody==body and typed(REG[str(copy)],row['owned_copy']) and typed(REG[str(copy)],row['owned_copy_post_read']),'author copied bytes/raw9/post reproduction')
+    closeout=select(SOURCE/'HANDOFF_SOURCE010_AUTHOR_FREEZE_CLOSEOUT_001.md')
+    priorfull=decode(select(WORK/'metadata3-checker009-independent-review001/INDEPENDENT_METADATA3_CHECKER009_SOURCE_DETAILS_001.json','556bd1a518caf9e284c00adab7fcd937ea71e31ab770bfb4257137e6b6cf0ebe',192565))
+    helper=select(SOURCE/'review-metadata3-actual006-corrected010.TEMPLATE.py','9efa6deb54721a531159545ffa5e4e9bd90606f3dc12d7b0ab6cf5f4af51ee16',146200)
+    old=select(SOURCE/'review-metadata3-actual006-corrected009.TEMPLATE.py','3c02e9898ed5fde8cf74f91ff780093ed66ca2a8807a1be2dfe1c9e8976d14e6',146200)
+    delta=decode(DATA[str(SOURCE/'CHECKER010_LITERAL_DELTA_AND_FRESH_ROLES_001.json')])
+    reversed_bytes=helper;count=0
+    for row in delta['replacements']:
+        a=row['original'].encode('ascii');b=row['selected'].encode('ascii');n=row['occurrences']
+        need(old.count(a)==helper.count(b)==n and a not in helper,'exact unique identity replacement')
+        reversed_bytes=reversed_bytes.replace(b,a);count+=n
+    need(count==10 and reversed_bytes==old,'complete ten literal byte reversal to009')
+    oldtree=ast.parse(old);tree=ast.parse(helper);oldfn=funcs(oldtree);newfn=funcs(tree)
+    changed=[name for name in oldfn if oldfn[name]!=newfn[name]]
+    need(len(oldfn)==len(newfn)==69 and list(oldfn)==list(newfn) and changed==['configure','root_trust_preflight','decision'],'69 functions exact3 changed')
+    need(nonfunc(oldtree)==nonfunc(tree) and oldfn['main']==newfn['main'],'nonfunction/main exact')
+    test=select(SOURCE/'test_metadata3_actual_checker_preparation_004.py','daf2d526c1d751e6b10b78d8b421bdd2329b652e3a8cba23a761fcde35931fd9',52200)
+    oldtest=select(SOURCE/'test_metadata3_actual_checker_preparation_003.py','11babbb00b240059ce441b37e2b4bcbcd3167ff44f674dc3229578a63dd865db',34563)
+    testtree=ast.parse(test);oldtests=methods(ast.parse(oldtest));tests=methods(testtree)
+    need(len(oldtests)==25 and len(tests)==28 and all(ast.dump(tests[name][1],include_attributes=False)==ast.dump(pair[1],include_attributes=False) for name,pair in oldtests.items()),'25 old direct test ASTs exact of28')
+    added=sorted(set(tests)-set(oldtests))
+    need(added==['test_fresh_configure_fixed_self_peer003_and_config002_refuse_old_aliases','test_fresh_decision_reopens_current_peer003_config002_before_provenance_or_output','test_fresh_root_trust002_pipeline007_peer002_init002_and_transitive_guards'],'three exact new controls')
+    protocol=decode(DATA[str(SOURCE/'SOURCE_PROTOCOL_AND_REVIEW_CONTRACT_010.json')]);values=literal_values(tree)
+    for key,value in protocol['closed_source_literal_schemas'].items():need(list(values[key])==value,'exact Source literal protocol '+key)
+    need(values['PHASES']=={key:tuple(row) for key,row in protocol['core_phase_types_verdicts_leaves'].items()},'eight exact core phase types/verdict/leaves')
+    need(list(values['TICKET_KEYS'])==protocol['ticket22_keys'] and len(values['TICKET_KEYS'])==22,'ticket22 Source grammar')
+    need(len(values['CORE_KEYS'])==12 and len(values['PROJECTION_KEYS'])==13 and len(values['PHASE_PEER_KEYS'])==20,'Core12/projection13/phase20')
+    need(protocol['selected_planned_tests']['planned_count']==28 and protocol['selected_planned_tests']['methods']==sorted(tests) and protocol['selected_planned_tests']['actual_results'] is None and protocol['selected_planned_tests']['executed'] is False,'truthful selected28 Source plan')
+    config=decode(DATA[str(SOURCE/'ACTUAL_CHECKER_BINDING_010.TEMPLATE.json')])
+    need(len(config)==18 and list(config)==protocol['config18_keys'] and config['checker_template_sha256']==sha(helper),'unbound compiled config18')
+    need(config['checker_source_peer_sha256'] is None and config['execution_launch_witness']['nonce'] is None and config['owner_lease_sha256'] is None and config['owner_lease_end_utc'] is None and config['maximum_wait_seconds'] is None and config['actual_actions_executed'] is False,'actual authority slots None')
+    need(all(value is None for value in config['metadata_bindings'].values()) and all(row['sha256'] is None for key in ('metadata_sources','phase_sources','whole_sources','guard_sources') for row in config[key].values()),'actual source pins None')
+    need(config['root_pipeline_source']['sha256'] is None and config['root_pipeline_source']['source_peer_sha256'] is None,'Root actual source pins None')
+    need(protocol['limits']==dict(original_context_seconds=600,both_original_context_and_runtime_at_unit_GO_seconds=90,GO_reserve_seconds=510,unit_seconds=450,after_reserve_seconds=60,resource_seconds_through_spawn=60,maximum_wait_seconds=3600,chunks_combined=32,each_chunk_bytes=131072,stream_combined_bytes=4194304,rows_combined=4096,canonical_row_bytes_including_LF=1024,transcript_bytes=262144,unit_receipt_bytes=262144,physical_stdout_or_stderr_bytes=131072),'unchanged exact limits')
+    # Parse all selected Python source copies as inert AST data, never CodeType.
+    astfacts=[]
+    for path,data in DATA.items():
+        if Path(path).suffix=='.py':
+            parsed=ast.parse(data)
+            astfacts.append(dict(path=path,bytes=len(data),sha256=sha(data),whole_AST_sha256=sha(ast.dump(parsed,include_attributes=False).encode('utf8')),definitions=nodefacts(data,parsed)))
+    rootchoices=protocol['fresh_source_successor']
+    need(all(rootchoices[key] is None for key in ('actual_source_peer','actual_binding','actual_execution_nonce','actual_tests'))
+         and rootchoices['parent_reported_reader_successor_planning']['actual_source_choice004'] is None
+         and rootchoices['parent_reported_reader_successor_planning']['actual_bound_pool'] is None,'planning only')
+    # Three distinct complete observations, independent selected byte copies, post.
+    entries=[];copydir=OWN/'finite-source-copies001';copydir.mkdir(exist_ok=False)
+    for index,(path,baseline) in enumerate(REG.items()):
+        observations=[]
+        for phase in range(3):
+            data,row=observe(Path(path));need(data==DATA[path] and typed(row,baseline),'independent triple unchanged');observations.append(row)
+        copy=copydir/(str(index).zfill(3)+'-'+Path(path).name);copyrow=write(copy,DATA[path])
+        entries.append(dict(path=path,observations=observations,owned_copy=copyrow))
+    post=[]
+    for row in entries:
+        data,current=observe(Path(row['path']));copybody,copycurrent=observe(Path(row['owned_copy']['path']))
+        need(data==DATA[row['path']]==copybody and typed(current,REG[row['path']]) and typed(copycurrent,row['owned_copy']),'post full raw9 original/copy unchanged')
+        post.append(dict(original=current,owned_copy=copycurrent))
+    postrow=write(OWN/'POST_METADATA3_CHECKER010_SOURCE_REVIEW_001.json',encode(dict(schema_version=1,record_type='independent_checker010_source_post',reviewer=REVIEWER,created_utc=utc(),finite_input_count=len(entries),rows=post,target_execution=False)))
+    checks=[
+      'Read complete current69-function checker and28-method test source, both handoffs, freezer, authoring scripts and protocol; pin all141 frozen payloads, all55 predecessor payloads and72 original/copy pairs.',
+      'Independently reproduce exactly ten identity-literal replacements and byte-exact reversal to009; only configure/root_trust_preflight/decision ASTs change, other66/main/module nonfunction ASTs exact.',
+      'Reconstruct direct test class/method ownership and all28 complete method ASTs; prior25 bodies exact, three new controls have reachable mocked healthy/old-alias negative/restored routes.',
+      'Test loader bounds262144 and hashes exact current010 bytes before future isolated004 module compile/exec; no selected source compiler/import/definitions/tests called here.',
+      'Closed schema Source literals checked against contract; config18/Core12/trace13/trust8/init8/phase10/ticket22/phasepeer20/driver26/projection13 remain exact within their branches.',
+      'Nominal equality refuses bool/int substitutions; original owner master stays ongoing and finite12-key lease remains separate; Py6/PS7 tick precision remains distinct.',
+      'Four-phase M3 six-source reversal, exact four PS two-literal reversal and current GG6 two sibling19+5 IDs are retained; no Root trust, Source peer or model binding manufactured.',
+      'Lossless5390 origin-object projection reconstructs all four canonical tables and full directory coverage, retains ordinary/runtime duplicates, reobserves full originals before publication, checks2MiB Detail before Core/Whole acceptance.',
+      'Event stream canonical LF1024/4096rows/32chunks/4MiB combined, full diagnostic byte/hash order and strict healthy refusal remain retained; copied current24 identities/parent ownership are checked in actualunit.',
+      'READY requires fixed closure and Root trust before tickets; decision reopens current010/peer003/config002/ticket before genuine provenance/output, create-only publication reads back strict own16MiB cap without widening input8MiB.',
+      'Source only: accepted synthetic25/helper009 history cannot become010/test004 runtime evidence or authorization for current24, metadata captures, native, scientific, whole-host or Job claims.'
+    ]
+    conditions=[
+      'Root must publish genuine compactSourcepeer003 after reading this full different review; this own record is not the Root15 record accepted by configure.',
+      'Fresh current actual config002, sourceRoot007/peer002, trust002/INIT002, nonce/PID/tool attribution and complete Source pool require independently reviewed genuine bindings; all author-selected actual slots are None.',
+      'Pub-authored utility010 and pipeline template009 are parent-reported planning only. Prior U008 placeholder regex refusal stays immutable; no future source hashes/reviews/model20/fit/READY/GO/Auth/capture/current24 accepted here.',
+      'Any28-method runtime requires a fresh separately reviewed runner/retained parent/RootGO and physical interval; never replay prior spent25/19 identities or transfer prior counts.',
+      'JSON provenance proves typed selected consistency under externally Root-correlated tool attribution, not independent OS/tool attestation, hard Job/descendant cleanup or quiet.'
+    ]
+    full=dict(schema_version=1,record_type='independent_metadata3_checker010_full_source_review',created_utc=utc(),reviewer=REVIEWER,source_author=AUTHOR,scope=SCOPE,verdict='PASS_STATIC_METADATA3_CHECKER010_SOURCE_ONLY',
+      source_manifest_sha256='624914bedda69ba654cf8ff273774bfb6054f936d61dec936c332b2e46dd0949',manifest_payload_count=141,predecessor_payload_count=55,author_input_pair_count=72,
+      finite_input_count=len(entries),observations_preserved=entries,post=postrow,checker_function_count=69,changed_function_names=changed,unchanged_function_count=66,main_AST_exact=True,nonfunction_AST_exact=True,literal_reversal_count=count,
+      selected_checker=dict(path=str(SOURCE/'review-metadata3-actual006-corrected010.TEMPLATE.py'),bytes=len(helper),sha256=sha(helper)),selected_test=dict(path=str(SOURCE/'test_metadata3_actual_checker_preparation_004.py'),bytes=len(test),sha256=sha(test)),
+      direct_test_methods=[dict(class_name=pair[0],method=name,line=pair[1].lineno,end_line=pair[1].end_lineno,body_AST_sha256=sha(ast.dump(pair[1],include_attributes=False).encode('utf8'))) for name,pair in sorted(tests.items())],
+      new_test_names=added,prior25_ASTs_exact=True,complete_selected_python_AST_metadata=astfacts,source_checks=checks,findings=[],advisories=['Inherited scope_limitations sentence says planned nine tests; explicit selected_planned_tests correctly names all28. Historical synthetic counts are not current results.'],implementation_conditions=conditions,
+      actual_source_peer003=None,actual_binding=None,actual_nonce=None,actual_model_pool=None,actual_ready=None,actual_test_results=None,tests_executed=False,target_execution=False,selected_source_definitions_imports_compilers_mains_executed=False,runtime_acceptance=False,operational_authority=False)
+    detailrow=write(OWN/'INDEPENDENT_METADATA3_CHECKER010_SOURCE_DETAILS_001.json',encode(full))
+    summary=dict(schema_version=1,record_type='independent_metadata3_checker010_source_review',created_utc=utc(),reviewer=REVIEWER,source_author=AUTHOR,scope=SCOPE,verdict=full['verdict'],checker_template_sha256=sha(helper),test_source_sha256=sha(test),source_manifest_sha256=full['source_manifest_sha256'],full_source_details_sha256=detailrow['sha256'],target_execution=False,actual_binding=None,tests_executed=False,runtime_acceptance=False,operational_authority=False)
+    summaryrow=write(OWN/'INDEPENDENT_METADATA3_CHECKER010_SOURCE_REVIEW_001.json',encode(summary))
+    handoff=('Checker010/test004 independent full Source review\n\n'+utc()+'\n\n'+full['verdict']+'; no selected definitions/compiler/import/main/tests/runtime.\n\n'+
+      'Full current69 functions and28 test methods reviewed; ten identity changes reverse byte-exact009, other66/main/nonfunction ASTs and old25 method ASTs exact. All141 payloads,55 preserved predecessor payloads,72 author pairs independently pinned; '+str(len(entries))+' distinct finite inputs with triple observations/copies/post.\n\n'+
+      '\n'.join(str(row['path'])+' '+row['sha256']+' '+str(row['bytes'])+' bytes' for row in (detailrow,summaryrow,postrow))+'\n\n'+
+      '\n'.join(conditions)+'\n\nPrecision advisory: historical nine-test sentence is superseded by explicit28 Source table. Actual runtime counts remain None. Preserve all prior accepted/refused/spent Source and actual identities.\n').encode('utf8')
+    handoffrow=write(OWN/'HANDOFF_CHECKER010_INDEPENDENT_SOURCE_REVIEW_001.md',handoff)
+    print(json.dumps(dict(verdict=full['verdict'],finite_inputs=len(entries),full=detailrow,summary=summaryrow,post=postrow,handoff=handoffrow),separators=(',',':')))
+
+if __name__=='__main__':main()

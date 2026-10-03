@@ -1,0 +1,43 @@
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+root = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-schema2-admission-closure-prep003')
+sender = root / 'EXPANDED_FRAME_SENDER_003.ps1.txt'
+old_boundary = '$code -lt 32 -or $code -gt 127'
+new_boundary = '$code -lt 32 -or $code -ge 127'
+source_paths = [path for parent in ('front', 'postseal') for path in sorted((root / parent).glob('*.ps1.template')) if old_boundary in path.read_text(encoding='utf-8')]
+assert len(source_paths) == 8
+paths = source_paths + [sender, root / 'FRAME_SENDER_003.FRAGMENT.ps1', root / 'source/test_native_schema2_admission_002.py', root / 'FRAME_TESTS_008.FRAGMENT.py']
+before = []
+for path in paths:
+    data = path.read_bytes()
+    target = root / 'before/canonical-del011' / path.relative_to(root)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open('xb') as stream:
+        stream.write(data)
+    assert target.stat().st_ino != path.stat().st_ino
+    before.append(dict(path=str(path), copy=str(target), sha256=hashlib.sha256(data).hexdigest(), bytes=len(data)))
+for path in paths[:10]:
+    text = path.read_text(encoding='utf-8')
+    assert text.count(old_boundary) == 1
+    path.write_text(text.replace(old_boundary, new_boundary), encoding='utf-8', newline='\n')
+test_anchor = "        binding = copy.deepcopy(self.bindings)\n        field = next(iter(binding['release_provenance']))\n        binding['release_provenance'][field]['unexpected'] = 'extra'"
+replacement = "        binding = copy.deepcopy(self.bindings)\n        binding['native_review_path'] += chr(127)\n        healthy = self.frame['_native_frame_encode'](self.source, binding, self.pin)\n        self.assertEqual(self.frame['_native_frame_decode'](healthy, self.pin)[2], binding)\n        self.assertIn(b'\\\\u007f', base64.b64decode(healthy.split(b'\\n')[1], validate=True))\n        field = next(iter(binding['release_provenance']))\n        binding['release_provenance'][field]['unexpected'] = 'extra'"
+for path in paths[10:]:
+    text = path.read_text(encoding='utf-8')
+    assert text.count(test_anchor) == 1
+    changed = text.replace(test_anchor, replacement)
+    ast.parse(changed)
+    path.write_text(changed, encoding='utf-8', newline='\n')
+assert json.dumps(chr(127), ensure_ascii=True) == '"\\u007f"'
+record = dict(schema_version=1, author='/root/bootstrap_stage', status='SOURCE_ONLY_PRE_FREEZE_CORRECTION',
+              before_copies=before, sender_copy_count=8, metadata_stdlib_canonical_DEL_json=json.dumps(chr(127), ensure_ascii=True),
+              change='Escape U+007F as well as larger UTF16 code units, matching Python ensure_ascii canonical JSON',
+              new_F22_DEL_path_positive=True, old85_methods_unchanged=True,
+              actual_PS_serializer_parity=None, actual_test_result=None, actual_Windows_writer=None,
+              target_definitions_compilation_import_tests_FFI_Git_native_executed=False)
+with (root / 'CANONICAL_DEL_CORRECTION_CHECKPOINT_012.json').open('xb') as stream:
+    stream.write((json.dumps(record, sort_keys=True, indent=2) + '\n').encode('ascii'))
+print(json.dumps(dict(sender_copy_count=8, source_test_sha256=hashlib.sha256(paths[10].read_bytes()).hexdigest()), sort_keys=True))

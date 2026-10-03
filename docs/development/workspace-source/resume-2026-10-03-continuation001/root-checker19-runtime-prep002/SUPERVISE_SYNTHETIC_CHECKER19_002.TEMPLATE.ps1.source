@@ -1,0 +1,104 @@
+# UNRUN source. Root alone selects a genuine once-only synthetic GO and source peers.
+param([Parameter(Mandatory=$true)][string]$ExpectedSelfSha256,
+ [Parameter(Mandatory=$true)][string]$ExpectedRunnerSha256,
+ [Parameter(Mandatory=$true)][string]$ExpectedTestSha256,
+ [Parameter(Mandatory=$true)][string]$ExpectedHelperSha256,
+ [Parameter(Mandatory=$true)][string]$ExpectedHelperSourcePeerSha256,
+ [Parameter(Mandatory=$true)][string]$ExpectedProjectionSha256,
+ [Parameter(Mandatory=$true)][string]$ExpectedRootGoSha256,
+ [Parameter(Mandatory=$true)][string]$ExpectedRunnerSourcePeerSha256)
+Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop'
+$clock=[Diagnostics.Stopwatch]::StartNew();$started=[DateTimeOffset]::UtcNow.ToString('o')
+$Work='D:\Aenv\pro2\resume-2026-10-03-continuation001';$Prep=Join-Path $Work 'root-checker19-runtime-prep002'
+$Scope='SYNTHETIC_METADATA3_CHECKER19_STDLIB_REGRESSIONS_ONLY'
+$Base='D:\Aenv\pro2\runtimes\week8-python313-frozen-001\python.exe'
+$BaseSha='5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed'
+$Runner=Join-Path $Prep 'RUN_SYNTHETIC_CHECKER19_001.TEMPLATE.py'
+$Test=Join-Path $Work 'metadata3-actual-checker-prep001\test_metadata3_actual_checker_preparation_002.py'
+$Helper=Join-Path $Work 'metadata3-actual-checker-prep001\review-metadata3-actual006-corrected008.TEMPLATE.py'
+$HelperPeer=Join-Path $Work 'metadata3-checker-independent-review001\INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_001.json'
+$Projection=Join-Path $Work 'metadata3-checker19-runtime-audit-prep001\CHECKER19_DISCOVERY_PROJECTION_002.json'
+$RunnerPeer=Join-Path $Work 'metadata3-checker19-runtime-audit-prep001\INDEPENDENT_CHECKER19_RUNNER_SOURCE_REVIEW_002.json'
+$GoPath=Join-Path $Prep 'ROOT_SYNTHETIC_CHECKER19_GO_001.json'
+$MasterSha='de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'
+$MasterPeerSha='56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0'
+function Need([bool]$v,[string]$m){if(-not $v){throw $m}}
+function Hash([byte[]]$v){$h=[Security.Cryptography.SHA256]::Create();try{return [BitConverter]::ToString($h.ComputeHash($v)).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()}}
+function Read-Pinned([string]$p,[string]$pin,[long]$cap){
+ Need ($pin -cmatch '\A[0-9a-f]{64}\z') 'Exact external SHA';$a=Get-Item -LiteralPath $p -Force
+ Need (-not $a.PSIsContainer -and -not ($a.Attributes -band [IO.FileAttributes]::ReparsePoint) -and $a.Length -le $cap) 'Plain capped native input'
+ $s=[IO.File]::Open($p,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read);$m=[IO.MemoryStream]::new()
+ try{Need ($s.Length -eq $a.Length -and $s.Length -le $cap) 'Opened cap';$buf=[byte[]]::new(4096);do{$n=$s.Read($buf,0,4096);Need ($m.Length+$n -le $cap) 'Physical input cap';$m.Write($buf,0,$n)}while($n -gt 0);$v=$m.ToArray()}finally{$s.Dispose();$m.Dispose()}
+ $b=Get-Item -LiteralPath $p -Force;Need ($a.Length -eq $b.Length -and $a.Length -eq $v.Length -and $a.LastWriteTimeUtc.Ticks -eq $b.LastWriteTimeUtc.Ticks -and $a.CreationTimeUtc.Ticks -eq $b.CreationTimeUtc.Ticks -and $a.Attributes -eq $b.Attributes -and (Hash $v) -ceq $pin) 'Native input preservation'
+ return ,$v
+}
+function Json([byte[]]$v){
+ $text=[Text.UTF8Encoding]::new($false,$true).GetString($v);Need (-not $text.StartsWith([string][char]0xfeff,[StringComparison]::Ordinal)) 'No BOM'
+ $pattern='"(?:\\["\\/bfnrt]|\\u[0-9A-Fa-f]{4}|[^"\\\x00-\x1f])*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null|[{}\[\],:]'
+ $tokens=[regex]::Matches($text,$pattern);$stack=[Collections.Generic.Stack[Collections.Generic.HashSet[string]]]::new();$pos=0
+ foreach($t in $tokens){Need ($text.Substring($pos,$t.Index-$pos) -cmatch '\A\s*\z') 'JSON lexical gap';$pos=$t.Index+$t.Length
+  if($t.Value -ceq '{'){$stack.Push([Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal));Need ($stack.Count -le 40) 'JSON depth'}
+  elseif($t.Value -ceq '}'){Need ($stack.Count -gt 0) 'JSON stack';[void]$stack.Pop()}
+  elseif($t.Value.StartsWith('"') -and $text.Substring($pos) -cmatch '\A\s*:'){$k=(('{"k":'+$t.Value+'}')|ConvertFrom-Json).k;Need ($stack.Count -gt 0 -and $stack.Peek().Add($k)) 'JSON duplicate key'}
+  elseif($t.Value -cmatch '\A-?[0-9]'){Need ($t.Value -cnotmatch '[.eE]') 'JSON float refused'}
+ };Need ($stack.Count -eq 0 -and $text.Substring($pos) -cmatch '\A\s*\z') 'JSON closed lexical body';return ($text|ConvertFrom-Json)
+}
+function Exact($v,[string[]]$keys){Need ($v -is [Management.Automation.PSCustomObject] -and (($v.PSObject.Properties.Name|Sort-Object)-join ',') -ceq (($keys|Sort-Object)-join ',')) 'Closed record keys'}
+function PS7([string]$v){Need ($v -cmatch '\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{7}\+00:00\z') 'Genuine PS7';$d=[DateTimeOffset]::Parse($v,[Globalization.CultureInfo]::InvariantCulture);Need ($d.ToString('o') -ceq $v) 'Canonical PS7';return $d}
+function Absent([string]$p){Need (-not [IO.File]::Exists($p) -and -not [IO.Directory]::Exists($p)) 'One-use output already exists'}
+function Publish([string]$p,[byte[]]$v){Need ($v.Length -le 65536) 'Own output cap';Absent $p;$tmp=$p+'.staging';Absent $tmp;$s=[IO.File]::Open($tmp,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);try{$s.Write($v,0,$v.Length);$s.Flush($true)}finally{$s.Dispose()};[void](Read-Pinned $tmp (Hash $v) 65536);[IO.File]::Move($tmp,$p);[void](Read-Pinned $p (Hash $v) 65536)}
+function Wire($v){return [Text.UTF8Encoding]::new($false).GetBytes(($v|ConvertTo-Json -Compress -Depth 20)+"`n")}
+$runtime=@(
+ @('D:\Aenv\pro2\pro2\.venv\Scripts\python.exe','935016795f3e6908e75acbc2040a01e2e4cdb494a57c42f63a0d6eedb2372256',254800),
+ @('D:\Aenv\pro2\runtimes\git\mingw64\bin\git.exe','c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9',4344704),
+ @('D:\Aenv\pro2\pro2\.venv\pyvenv.cfg','e4d43703e6bfd6ad7296ee63e3441af275a4b8a89d72796b316f6458f120e418',290),@($Base,$BaseSha,105816))
+$child=$null;$launched=$false;$timeout=$false;$overflow=$false;$drained=$false;$reaped=$false;$preserved=$false;$failure=$null;$exitCode=$null
+$out=[IO.MemoryStream]::new();$err=[IO.MemoryStream]::new();$ob=[byte[]]::new(4096);$eb=[byte[]]::new(4096);$ot=$null;$et=$null
+try{
+ Need ($PSCommandPath -ceq (Join-Path $Prep 'SUPERVISE_SYNTHETIC_CHECKER19_002.TEMPLATE.ps1')) 'Fixed Root parent'
+ foreach($pin in @($ExpectedSelfSha256,$ExpectedRunnerSha256,$ExpectedTestSha256,$ExpectedHelperSha256,$ExpectedHelperSourcePeerSha256,$ExpectedProjectionSha256,$ExpectedRootGoSha256,$ExpectedRunnerSourcePeerSha256)){Need ($pin -cmatch '\A[0-9a-f]{64}\z') 'External Source and GO SHA'}
+ Need ($ExpectedTestSha256 -ceq 'ea0012b190e108edcfc1dece29ed480cd369a34f1ed044edacad415d808934db' -and $ExpectedHelperSha256 -ceq 'c097c756d8cf55b1ac98a68313f5e406455b9306af63bd48a6e1cb3add70d3c1' -and $ExpectedHelperSourcePeerSha256 -ceq '1b4eeb7636d76a30f9ae47108e4128d2a798bc9cfb3da11a980e2be89f10944c' -and $ExpectedProjectionSha256 -ceq 'aca7d58559403d5b4db5fffd791bfd59d12e85b230aefe09f678a18ed9c3bbb8') 'Fixed accepted helper/test/projection pool'
+ $sources=@(@($PSCommandPath,$ExpectedSelfSha256,65536),@($Runner,$ExpectedRunnerSha256,65536),@($Test,$ExpectedTestSha256,26002),@($Helper,$ExpectedHelperSha256,137182),@($HelperPeer,$ExpectedHelperSourcePeerSha256,65536),@($Projection,$ExpectedProjectionSha256,65536))
+ foreach($row in $sources){[void](Read-Pinned $row[0] $row[1] $row[2])};foreach($row in $runtime){$v=Read-Pinned $row[0] $row[1] $row[2];Need ($v.Length -eq $row[2]) 'Runtime exact size'}
+ $master=Json (Read-Pinned (Join-Path $Work 'OWNER_CONTINUATION_20261003_001.json') $MasterSha 65536);Need ($null -eq $master.work_end_utc -and $master.fixed_deadline_invented -is [bool] -and -not $master.fixed_deadline_invented) 'Ongoing owner no fabricated end'
+ $mp=Json (Read-Pinned (Join-Path $Work 'owner-docs-independent-review001\INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json') $MasterPeerSha 65536);Need ($mp.reviewer -ceq 'owner_docs_review' -and $mp.verdict -ceq 'PASS_OWNER_DIRECTIVE_AND_LINEAGE_SOURCE_ONLY') 'Genuine owner lineage peer'
+ $rp=Json (Read-Pinned $RunnerPeer $ExpectedRunnerSourcePeerSha256 65536);Exact $rp @('schema_version','record_type','created_utc','reviewer','source_author','scope','verdict','runner_source_sha256','parent_source_sha256','source_manifest_sha256','target_execution','actual_runtime')
+ Need ($rp.schema_version -is [int] -and $rp.schema_version -eq 1 -and $rp.record_type -ceq 'independent_checker19_runner_source_review' -and $rp.reviewer -ceq '/root/capsule_design_review' -and $rp.source_author -ceq '/root/root_pipeline_binder' -and $rp.scope -ceq $Scope -and $rp.verdict -ceq 'PASS_STATIC_SYNTHETIC_CHECKER19_RUNNER_ONLY' -and $rp.runner_source_sha256 -ceq $ExpectedRunnerSha256 -and $rp.parent_source_sha256 -ceq $ExpectedSelfSha256 -and $rp.target_execution -is [bool] -and -not $rp.target_execution -and $null -eq $rp.actual_runtime) 'Different full runner source receipt'
+ $go=Json (Read-Pinned $GoPath $ExpectedRootGoSha256 65536);Exact $go @('schema_version','record_type','author','scope','created_utc','expires_utc','owner_master_sha256','owner_review_sha256','parent_source_sha256','runner_source_sha256','test_source_sha256','helper_source_sha256','helper_source_peer_sha256','discovery_projection_sha256','decision')
+ Need ($go.schema_version -is [int] -and $go.schema_version -eq 1 -and $go.record_type -ceq 'root_synthetic_checker19_GO' -and $go.author -ceq '/root' -and $go.scope -ceq $Scope -and $go.owner_master_sha256 -ceq $MasterSha -and $go.owner_review_sha256 -ceq $MasterPeerSha -and $go.parent_source_sha256 -ceq $ExpectedSelfSha256 -and $go.runner_source_sha256 -ceq $ExpectedRunnerSha256 -and $go.test_source_sha256 -ceq $ExpectedTestSha256 -and $go.helper_source_sha256 -ceq $ExpectedHelperSha256 -and $go.helper_source_peer_sha256 -ceq $ExpectedHelperSourcePeerSha256 -and $go.discovery_projection_sha256 -ceq $ExpectedProjectionSha256 -and $go.decision -ceq 'execute_fixed_synthetic_checker19_once') 'Genuine scoped Source-selected Root GO'
+ $created=PS7 $go.created_utc;$expires=PS7 $go.expires_utc;$now=[DateTimeOffset]::UtcNow
+ Need ($created -le $now -and ($expires-$created).TotalSeconds -gt 0 -and ($expires-$created).TotalSeconds -le 600 -and ($expires-$now).TotalSeconds -ge 60) 'Original synthetic GO reserve; not an owner deadline'
+ foreach($leaf in @('ROOT_PARENT_STARTED_002.json','ROOT_PARENT_TERMINAL_002.json','ROOT_PARENT_STDOUT_002.bin','ROOT_PARENT_STDERR_002.bin')){Absent (Join-Path $Prep $leaf);Absent ((Join-Path $Prep $leaf)+'.staging')};Absent (Join-Path $Work 'root-checker19-runtime002')
+ $os=Get-CimInstance -ClassName Win32_OperatingSystem;$disk=Get-PSDrive -Name D;$ram=[long]$os.FreePhysicalMemory*1024;$free=[long]$disk.Free;$resourceUtc=[DateTimeOffset]::UtcNow.ToString('o')
+ Need ($ram -ge 1073741824 -and $free -ge 10737418240 -and $clock.Elapsed.TotalSeconds -lt 45) 'Fresh synthetic single-thread resource point and physical reserve'
+ Publish (Join-Path $Prep 'ROOT_PARENT_STARTED_002.json') (Wire ([ordered]@{schema_version=1;record_type='root_synthetic_checker19_parent_start';author='/root';scope=$Scope;started_utc=$started;parent_pid=$PID;parent_source_sha256=$ExpectedSelfSha256;runner_source_sha256=$ExpectedRunnerSha256;root_GO_sha256=$ExpectedRootGoSha256;resource_observed_utc=$resourceUtc;free_physical_memory_bytes=$ram;disk_free_bytes=$free;resource_lease_or_native_quiet=$false}))
+ $si=[Diagnostics.ProcessStartInfo]::new();$si.FileName=$Base;$si.WorkingDirectory=$Prep;$si.UseShellExecute=$false;$si.CreateNoWindow=$true;$si.RedirectStandardOutput=$true;$si.RedirectStandardError=$true
+ $si.Arguments=(@('-I','-S','-B','-X','utf8',$Runner,'--expected-self-sha256',$ExpectedRunnerSha256,'--expected-parent-sha256',$ExpectedSelfSha256,'--expected-test-sha256',$ExpectedTestSha256,'--expected-helper-sha256',$ExpectedHelperSha256,'--expected-helper-source-peer-sha256',$ExpectedHelperSourcePeerSha256,'--expected-projection-sha256',$ExpectedProjectionSha256,'--expected-root-go-sha256',$ExpectedRootGoSha256)-join ' ')
+ Need (([DateTimeOffset]::UtcNow-(PS7 $resourceUtc)).TotalSeconds -le 60 -and $clock.Elapsed.TotalSeconds -lt 45 -and [DateTimeOffset]::UtcNow -lt $expires) 'Fresh through owned spawn'
+ $child=[Diagnostics.Process]::new();$child.StartInfo=$si;Need ($child.Start()) 'Owned runner start';$launched=$true
+ Need (([DateTimeOffset]::UtcNow-(PS7 $resourceUtc)).TotalSeconds -le 60 -and $clock.Elapsed.TotalSeconds -lt 52) 'Fresh at owned spawn'
+ $ot=$child.StandardOutput.BaseStream.ReadAsync($ob,0,4096);$et=$child.StandardError.BaseStream.ReadAsync($eb,0,4096)
+ while($true){
+  foreach($role in @('out','err')){$task=if($role -ceq 'out'){$ot}else{$et};if($null -ne $task -and $task.IsCompleted){$n=$task.GetAwaiter().GetResult();$m=if($role -ceq 'out'){$out}else{$err};$buf=if($role -ceq 'out'){$ob}else{$eb};if($m.Length+$n -gt 65536){$overflow=$true;throw 'Raw pipe cap overflow'};$m.Write($buf,0,$n);if($role -ceq 'out'){$ot=if($n -eq 0){$null}else{$child.StandardOutput.BaseStream.ReadAsync($ob,0,4096)}}else{$et=if($n -eq 0){$null}else{$child.StandardError.BaseStream.ReadAsync($eb,0,4096)}}}}
+  if($child.HasExited -and $null -eq $ot -and $null -eq $et){$drained=$true;$reaped=$true;$exitCode=$child.ExitCode;break}
+  if($clock.Elapsed.TotalSeconds -ge 52 -or [DateTimeOffset]::UtcNow -ge $expires){$timeout=$true;throw 'Physical child budget reached; cleanup reserve remains'}
+  Start-Sleep -Milliseconds 10
+ }
+ foreach($row in $sources){[void](Read-Pinned $row[0] $row[1] $row[2])};foreach($row in $runtime){[void](Read-Pinned $row[0] $row[1] $row[2])};$preserved=$true
+}catch{
+ $failure=$_.Exception.Message
+ if($launched -and -not $child.HasExited){try{$child.Kill()}catch{$failure+='; direct Kill failed: '+$_.Exception.Message}}
+ if($launched){while($clock.Elapsed.TotalSeconds -lt 57 -and -not $child.HasExited){Start-Sleep -Milliseconds 10};$reaped=$child.HasExited;if($reaped){$exitCode=$child.ExitCode}
+  while($clock.Elapsed.TotalSeconds -lt 57 -and ($null -ne $ot -or $null -ne $et)){
+   foreach($role in @('out','err')){$task=if($role -ceq 'out'){$ot}else{$et};if($null -ne $task -and $task.IsCompleted){try{$n=$task.GetAwaiter().GetResult();$m=if($role -ceq 'out'){$out}else{$err};$buf=if($role -ceq 'out'){$ob}else{$eb};$keep=[Math]::Min($n,[Math]::Max(0,65536-$m.Length));$m.Write($buf,0,$keep);if($keep -ne $n){$overflow=$true};if($role -ceq 'out'){$ot=if($n -eq 0){$null}else{$child.StandardOutput.BaseStream.ReadAsync($ob,0,4096)}}else{$et=if($n -eq 0){$null}else{$child.StandardError.BaseStream.ReadAsync($eb,0,4096)}}}catch{if($role -ceq 'out'){$ot=$null}else{$et=$null};$failure+='; drain failed'}}};Start-Sleep -Milliseconds 10
+  };$drained=($null -eq $ot -and $null -eq $et)
+ }
+}finally{
+ try{
+  $stdout=$out.ToArray();$stderr=$err.ToArray();Publish (Join-Path $Prep 'ROOT_PARENT_STDOUT_002.bin') $stdout;Publish (Join-Path $Prep 'ROOT_PARENT_STDERR_002.bin') $stderr
+  $finished=[DateTimeOffset]::UtcNow.ToString('o');$physicalWithin60=($clock.Elapsed.TotalSeconds -lt 60)
+  Publish (Join-Path $Prep 'ROOT_PARENT_TERMINAL_002.json') (Wire ([ordered]@{schema_version=1;record_type='root_synthetic_checker19_parent_terminal';author='/root';scope=$Scope;started_utc=$started;finished_utc=$finished;parent_source_sha256=$ExpectedSelfSha256;runner_source_sha256=$ExpectedRunnerSha256;root_GO_sha256=$ExpectedRootGoSha256;exit_code=$exitCode;timed_out=$timeout;capture_overflow=$overflow;capture_drain_complete=$drained;direct_child_reaped=$reaped;source_runtime_preserved=$preserved;stdout_bytes=$stdout.Length;stdout_sha256=(Hash $stdout);stderr_bytes=$stderr.Length;stderr_sha256=(Hash $stderr);failure=$failure;physical_parent_within60_seconds=$physicalWithin60;hard_OS_Job_or_descendant_cleanup_proof=$false;operational_authority=$false}))
+ }finally{$out.Dispose();$err.Dispose();if($null -ne $child){$child.Dispose()};$clock.Stop()}
+}
+if($null -ne $failure -or -not $drained -or -not $reaped -or -not $preserved -or $exitCode -ne 0 -or -not $physicalWithin60){exit 1};exit 0

@@ -1,0 +1,72 @@
+param([Parameter(Mandatory=$true)][string]$ExpectedSelfSha256)
+$ErrorActionPreference = 'Stop'
+$BoundScriptSha256 = $null
+$BoundReviewSha256 = $null
+$Prep = 'D:\Aenv\pro2\resume-2026-10-01-30h-001\guard005-root-metadata-prep002'
+$Work = 'D:\Aenv\pro2\resume-2026-10-01-30h-001'
+$Guard = Join-Path $Work 'consumer-guard-test-runtime005'
+$Output = Join-Path $Prep 'ROOT_METADATA_AUTHORIZATION_BEFORE_005.json'
+function Read-Pinned([string]$Path,[string]$Expected,[long]$Cap) {
+    if ($Expected -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid exact pin' }
+    $item = Get-Item -LiteralPath $Path -Force
+    if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.Length -gt $Cap) { throw 'Nonplain or oversized input' }
+    $stream = [IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    try {
+        if ($stream.Length -ne $item.Length -or $stream.Length -gt $Cap) { throw 'Opened input size differs' }
+        $memory = [IO.MemoryStream]::new()
+        try {
+            $buffer = [byte[]]::new(4096)
+            do {
+                $count = $stream.Read($buffer,0,$buffer.Length)
+                if ($memory.Length + $count -gt $Cap) { throw 'Opened input cap exceeded' }
+                $memory.Write($buffer,0,$count)
+            } while ($count -gt 0)
+            $bytes = $memory.ToArray()
+        } finally { $memory.Dispose() }
+    } finally { $stream.Dispose() }
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try { $hash = [BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-','').ToLowerInvariant() } finally { $hasher.Dispose() }
+    $last = Get-Item -LiteralPath $Path -Force
+    if ($hash -cne $Expected -or $bytes.Length -ne $item.Length -or $item.Length -ne $last.Length -or $item.LastWriteTimeUtc.Ticks -ne $last.LastWriteTimeUtc.Ticks -or $item.CreationTimeUtc.Ticks -ne $last.CreationTimeUtc.Ticks -or $item.Attributes -ne $last.Attributes) { throw 'Input pin or metadata drift' }
+    return $hash
+}
+if ($BoundScriptSha256 -isnot [string] -or $BoundScriptSha256 -cnotmatch '^[0-9a-f]{64}$' -or $BoundReviewSha256 -isnot [string] -or $BoundReviewSha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'UNBOUND metadata source/review pins' }
+if ([IO.Path]::GetFullPath($PSCommandPath) -cne (Join-Path $Prep 'WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005.BOUND.ps1')) { throw 'Fixed producer path required' }
+[void](Read-Pinned $PSCommandPath $ExpectedSelfSha256 65536)
+foreach ($path in @($Output,(Join-Path $Prep 'phase-before-005'),(Join-Path $Prep 'phase-after-005'),(Join-Path $Prep 'ROOT_METADATA_AUTHORIZATION_AFTER_005.json'))) {
+    try { [void](Get-Item -LiteralPath $path -Force -ErrorAction Stop); throw 'One-use phase or authorization already exists' }
+    catch [System.Management.Automation.ItemNotFoundException] { }
+}
+$owner = Read-Pinned (Join-Path $Work 'OWNER_WORK_WINDOW_30H_20261001_001.json') '3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff' 65536
+$script = Read-Pinned (Join-Path $Prep 'capture-guard005-root-metadata.BOUND.py') $BoundScriptSha256 65536
+$review = Read-Pinned (Join-Path $Prep 'INDEPENDENT_BOUND_METADATA_REVIEW_005.json') $BoundReviewSha256 65536
+$profile = Read-Pinned (Join-Path $Guard 'GUARD_RUNTIME_PROFILE_005.json') '6063125d058ed6ae901b5aca7017785434ba702baad35c97405c6b6286abb5eb' 65536
+$projection = Read-Pinned (Join-Path $Guard 'SOURCE_PROJECTION_005.json') 'cd7f93b89002d534311a4eb4dea0a88810913a21e92a316b983ac85d16f8db76' 65536
+$peer = Read-Pinned (Join-Path $Work 'PRO3_ACK007_METADATA_CAPTURE_001.md') 'c15b52b48fbc8be94e3aa619c25f42ab81f52c24e894b25bdca1be03bbc3ff17' 65536
+$coordination = Read-Pinned (Join-Path $Work 'COORDINATION_GATE009_TIMEOUT_RESOURCE_REQUEST_012.md') 'bb556923a39a35f5884eb7470ecb1af47da437db510fcd4d697adc24fc4c78af' 65536
+$created = [DateTimeOffset]::UtcNow
+if (([DateTimeOffset]::Parse('2026-10-02T22:36:15Z') - $created).TotalSeconds -lt 350) { throw 'Owner reserve too short' }
+$record = [ordered]@{
+    schema_version = 1
+    record_type = 'root_guard005_metadata_phase_authorization'
+    author = '/root'
+    decision = 'capture_current_metadata_once'
+    phase = 'before'
+    created_utc = $created.ToString('o')
+    owner_sha256 = $owner
+    owner_end_utc = '2026-10-02T22:36:15Z'
+    script_sha256 = $script
+    bound_review_sha256 = $review
+    profile_sha256 = $profile
+    source_projection_sha256 = $projection
+    coordination_peer_reply_sha256 = $peer
+    coordination_root_response_sha256 = $coordination
+    before_capture = $null
+    unit_terminal = $null
+    scope = 'COPIED_CONSUMER_GUARD_UNIT005_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+}
+$bytes = [Text.UTF8Encoding]::new($false).GetBytes(($record | ConvertTo-Json -Compress) + "`n")
+if ($bytes.Length -gt 65536) { throw 'Authorization output cap' }
+$stream = [IO.File]::Open($Output,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+try { $stream.Write($bytes,0,$bytes.Length); $stream.Flush($true) } finally { $stream.Dispose() }
+[ordered]@{ path=$Output; sha256=(Get-FileHash -LiteralPath $Output -Algorithm SHA256).Hash.ToLowerInvariant(); bytes=$bytes.Length; created_utc=$record.created_utc; authorization_only=$true; metadata_helper_entered=$false } | ConvertTo-Json -Compress

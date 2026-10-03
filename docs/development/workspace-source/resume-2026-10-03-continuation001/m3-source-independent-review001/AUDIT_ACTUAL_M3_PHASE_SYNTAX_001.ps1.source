@@ -1,0 +1,32 @@
+# Reviewer-owned source syntax metadata only. No reviewed definitions invoked.
+param([Parameter(Mandatory=$true)][string]$ExpectedBindingSha256)
+Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop'
+$base='D:\Aenv\pro2\resume-2026-10-03-continuation001'
+$meta=Join-Path $base 'metadata3-producer-core-prep001'
+$bindingPath=Join-Path $meta 'PHASE_PS_SOURCE_BINDING_003.json'
+if($ExpectedBindingSha256 -cnotmatch '^[0-9a-f]{64}$'){throw 'Exact external phase binding pin required'}
+$bindingHash=(Get-FileHash -LiteralPath $bindingPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if($bindingHash -cne $ExpectedBindingSha256){throw 'External phase binding hash differs'}
+$binding=Get-Content -LiteralPath $bindingPath -Raw | ConvertFrom-Json
+$names=@('WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_003.BOUND.ps1','SUPERVISE_ROOT_METADATA_BEFORE_003.BOUND.ps1','WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_003.BOUND.ps1','SUPERVISE_ROOT_METADATA_AFTER_003.BOUND.ps1')
+if($binding.sources.Count -ne 4){throw 'Four source rows required'}
+$rows=@()
+for($i=0;$i -lt 4;$i++){
+ $path=Join-Path $meta $names[$i]
+ if($binding.sources[$i].path -cne $path){throw 'Exact ordered source path required'}
+ $first=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+ if($first -cne $binding.sources[$i].sha256){throw 'Selected source hash differs'}
+ $tokens=$null;$errors=$null
+ $tree=[System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)
+ $second=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+ if($first -cne $second -or $errors.Count -ne 0){throw 'Source drift or syntax refusal'}
+ $rows+=,[ordered]@{path=$path;sha256=$first;bytes=(Get-Item -LiteralPath $path).Length;parser_errors=@();function_count=@($tree.FindAll({param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst]},$true)).Count;target_execution=$false}
+}
+if((Get-FileHash -LiteralPath $bindingPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $bindingHash){throw 'Phase binding drift'}
+$record=[ordered]@{schema_version=1;record_type='independent_actual_m3_phase_source_syntax_metadata';reviewer='/root/owner_docs_review';created_utc=[DateTimeOffset]::UtcNow.ToString('o');powershell_version=$PSVersionTable.PSVersion.ToString();phase_source_binding_sha256=$bindingHash;rows=$rows;target_execution=$false;runtime_acceptance=$false}
+$out=Join-Path $base 'm3-source-independent-review001\INDEPENDENT_ACTUAL_M3_PHASE_SOURCE_SYNTAX_001.json'
+$bytes=[Text.UTF8Encoding]::new($false).GetBytes(($record|ConvertTo-Json -Depth 12)+"`n")
+$stream=[IO.File]::Open($out,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+try{$stream.Write($bytes,0,$bytes.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+[ordered]@{output=$out;sha256=(Get-FileHash -LiteralPath $out -Algorithm SHA256).Hash.ToLowerInvariant();bytes=$bytes.Length;source_count=$rows.Count;parser_errors=0;target_execution=$false}|ConvertTo-Json -Compress

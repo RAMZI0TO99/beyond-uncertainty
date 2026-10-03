@@ -1,0 +1,78 @@
+import datetime, hashlib, json, math, os, re
+from pathlib import Path
+
+ROOT = Path('D:/Aenv/pro2')
+OUT = ROOT / 'resume-2026-10-03-continuation001/owner-docs-independent-review001'
+INPUTS = [
+ ('resume-2026-10-03-continuation001/OWNER_CONTINUATION_20261003_001.json','de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'),
+ ('resume-2026-10-01-30h-001/OWNER_WORK_WINDOW_30H_20261001_001.json','3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff'),
+ ('resume-2026-10-01-30h-001/30H_RESUME_CHECKPOINT_029.md','4349b18a95ab897e646790175826788b9e670b4aca6691349b8e9aa5a0fc7c30'),
+]
+def sha(b): return hashlib.sha256(b).hexdigest()
+def utc(): return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+def enc(v): return (json.dumps(v, sort_keys=True, indent=2, ensure_ascii=True, allow_nan=False)+'\n').encode('ascii')
+def pairs(rows):
+ d={}
+ for k,v in rows:
+  if k in d: raise ValueError('duplicate key: '+k)
+  d[k]=v
+ return d
+def parse(b):
+ assert not b.startswith(b'\xef\xbb\xbf')
+ s=b.decode('utf-8', errors='strict')
+ return json.loads(s, object_pairs_hook=pairs, parse_constant=lambda x: (_ for _ in ()).throw(ValueError(x)))
+def raw(s): return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,getattr(s,'st_file_attributes',0),getattr(s,'st_birthtime_ns',None)]
+def finite(v):
+ if isinstance(v,float): assert math.isfinite(v)
+ if type(v) is dict:
+  for k,x in v.items(): assert type(k) is str; finite(x)
+ if type(v) is list:
+  for x in v: finite(x)
+data={}; observed=[]
+for name, expected in INPUTS:
+ p=ROOT/name; passes=[]
+ for turn in range(3):
+  before=p.lstat(); b=p.read_bytes(); after=p.lstat()
+  assert raw(before)==raw(after)
+  assert sha(b)==expected
+  passes.append({'utc':utc(),'raw9':raw(before),'size':len(b),'sha256':sha(b)})
+  if turn==0: data[name]=b
+  else: assert b==data[name]
+ observed.append({'path':str(p),'expected_sha256':expected,'passes':passes})
+owner=parse(data[INPUTS[0][0]]); predecessor=parse(data[INPUTS[1][0]])
+finite(owner);finite(predecessor)
+assert len(owner)==27 and len(data[INPUTS[0][0]])==1956
+assert owner['schema_version']==1 and type(owner['schema_version']) is int
+assert owner['owner_directive']=='ok then keep working on the project and do not stop unless if there is something that stops you.'
+assert owner['record_type']=='owner_ongoing_local_private_continuation' and owner['authority']=='owner'
+assert owner['decision']=='resume_project_work_beyond_prior_deadline'
+assert owner['authorization_mode']=='ongoing_until_completion_owner_stop_or_actual_blocker'
+assert owner['work_end_utc'] is None and owner['fixed_deadline_invented'] is False
+assert re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}\+00:00',owner['record_created_utc'])
+assert datetime.datetime.fromisoformat(owner['record_created_utc'])>datetime.datetime.fromisoformat('2026-10-02T22:36:15+00:00')
+assert Path(owner['predecessor_owner_record'])==ROOT/INPUTS[1][0]
+assert owner['predecessor_owner_sha256']==INPUTS[1][1]
+assert owner['predecessor_closeout_checkpoint_sha256']==INPUTS[2][1]
+assert owner['predecessor_work_end_utc']=='2026-10-02T22:36:15Z'
+for key in ['original_guards_changed','public_actions_authorized','one_use_replay_authorized','frozen_scientific_changes_authorized','additional_recovery_epochs_authorized','unrelated_process_stops_authorized','sole_executor_transfer_asserted','resource_lease_asserted','native_quiet_asserted']:
+ assert owner[key] is False, key
+assert owner['historical_records_preserved'] is True
+assert owner['successor_bindings_at_creation'] is None
+assert owner['review_status_at_creation']=='pending_independent_directive_and_lineage_review'
+assert 'execution lease' in owner['phase_lease_policy'] and 'spent artifact' in owner['phase_lease_policy']
+assert '2026-10-02T22:36:15' in data[INPUTS[1][0]].decode('utf-8')
+assert 'The project is **unfinished**' in data[INPUTS[2][0]].decode('utf-8')
+copies=OUT/'owner-selected-before001'; assert not copies.exists(); copies.mkdir()
+for idx,row in enumerate(observed):
+ b=data[INPUTS[idx][0]]; p=copies/f'{idx:02d}.bytes'; p.write_bytes(b)
+ assert p.read_bytes()==b
+ row['copy_path']=str(p);row['copy_sha256']=sha(b)
+post=[]
+for idx,row in enumerate(observed):
+ p=Path(row['path']); before=p.lstat(); b=p.read_bytes(); after=p.lstat()
+ assert b==data[INPUTS[idx][0]] and raw(before)==raw(after)==row['passes'][0]['raw9']
+ post.append({'path':str(p),'utc':utc(),'raw9':raw(after),'sha256':sha(b),'copy_equal':Path(row['copy_path']).read_bytes()==b})
+result={'schema_version':1,'record_type':'independent_owner_continuation_directive_and_lineage_review','reviewer':'owner_docs_review','created_utc':utc(),'verdict':'PASS_OWNER_DIRECTIVE_AND_LINEAGE_SOURCE_ONLY','source_owner_sha256':INPUTS[0][1],'source_owner_bytes':1956,'source_owner_fields':27,'genuine_stamp_format':'native PowerShell seven-fraction UTC format accepted; producer attribution supplied by Root physical invocation, not independently witnessed OS provenance','directive_matches_user_verbatim':True,'owner_end_utc':None,'ongoing_authority_supersedes_old_deadline':True,'old_artifacts_renewed':False,'operational_authorization_or_execution_acceptance':False,'source_choice_implementation_or_runtime_acceptance':False,'finite_selected_inputs':observed,'post_readback':post,'checks':['strict UTF-8, duplicate-free finite JSON','exact directive and pinned predecessor/closeout bytes','ongoing authority, no invented replacement deadline','all nine retained guard/provenance flags false','historical creation metadata immutable, no successor bindings','three independent reads and exact selected copies plus postread'],'limitations':['This review accepts the recorded owner instruction and its lineage, not any future helper, source change, bound artifact, test, lease, quiet host, sole-executor transfer, release or native launch.','The prior expired owner record remains historical and spent/withdrawn artifacts cannot be refreshed or replayed.']}
+for name,value in [('INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json',enc(result)),('INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.md',b'# Independent owner continuation review\n\nPASS_OWNER_DIRECTIVE_AND_LINEAGE_SOURCE_ONLY. Owner001 de8f80d6 is strict duplicate-free finite UTF-8 JSON, 1956 bytes, 27 fields. Its exact directive matches the new user instruction and its predecessor3ea2 and closeout4349 hashes match current selected bytes in three reads and postread.\n\nThe new instruction provides ongoing local/private continuation with no invented fixed owner end. The previous deadline and records remain historical. All replay, public, science, additional epoch, unrelated process-stop, sole-executor, resource-lease and quiet-host flags remain false. Phase leases are future bounded execution choices, not an owner deadline or renewal of a spent artifact.\n\nThe timestamp has genuine native PowerShell seven-fraction UTC format. Physical producer attribution comes from Root; this reviewer does not assert an independent OS witness. This is directive/lineage acceptance only, with no source implementation, binding, runtime, lease, quiet, release or native acceptance.\n')]:
+ p=OUT/name;assert not p.exists();p.write_bytes(value)
+print(json.dumps({'verdict':result['verdict'],'outputs':[{'path':str(OUT/n),'sha256':sha((OUT/n).read_bytes()),'size':(OUT/n).stat().st_size} for n in ['INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json','INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.md']]}))

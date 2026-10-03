@@ -1,0 +1,409 @@
+"""Reviewer-owned metadata checks; unrun preparation creates no approval.
+
+Only explicit future reviewer invocation may read actual records. This source
+imports standard-library metadata modules only and launches nothing. It prints
+observations, never a PASS verdict, writes no artifacts and grants no action.
+"""
+import argparse
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+WORK = Path('D:/Aenv/pro2/resume-2026-10-01-30h-001')
+PREP = WORK / 'guard005-root-metadata-prep001'
+GUARD = WORK / 'consumer-guard-test-runtime005'
+OWNER = '3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff'
+OWNER_END = datetime(2026, 10, 2, 22, 36, 15, tzinfo=timezone.utc)
+BOUND = '0885d76f0d4e6cb3f496dcdbde80bb2e53d45eb3ff04cc7c7952f525980515a0'
+BOUND_REVIEW = 'b56bc1f9fbf376eaba8de4137e8c628e44ffd7eeb37aa830c45b2a2f534e8479'
+PROFILE = '6063125d058ed6ae901b5aca7017785434ba702baad35c97405c6b6286abb5eb'
+SOURCE_REVIEW = 'ecc6ad75a5a1074094fc424e5f68357727a208b5405c76c09bd82dcac62d55a8'
+SCOPE = 'COPIED_CONSUMER_GUARD_UNIT005_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+AUTH_KEYS = ('schema_version', 'record_type', 'author', 'decision', 'phase',
+             'created_utc', 'owner_sha256', 'owner_end_utc', 'script_sha256',
+             'bound_review_sha256', 'profile_sha256', 'source_projection_sha256',
+             'coordination_peer_reply_sha256', 'coordination_root_response_sha256',
+             'before_capture', 'unit_terminal', 'scope')
+EVIDENCE = []
+
+
+def need(value, message):
+    if not value:
+        raise ValueError(message)
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def exact(obj, names):
+    need(type(obj) is dict and set(obj) == set(names), 'closed keyset differs')
+
+
+def raw(info):
+    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns,
+            info.st_ctime_ns, info.st_mode, info.st_nlink,
+            getattr(info, 'st_file_attributes', 0), info.st_birthtime_ns]
+
+
+def ancestors(path):
+    rows = []
+    for item in reversed(path.absolute().parents):
+        info = item.lstat()
+        need(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+             and not info.st_file_attributes & 1024, 'nonplain ancestor')
+        rows.append((str(item), info.st_dev, info.st_ino))
+    return rows
+
+
+def absent(path):
+    path = Path(path)
+    chain = ancestors(path)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        need(ancestors(path) == chain, 'absence ancestry drift')
+        return
+    raise ValueError('one-use path exists: ' + str(path))
+
+
+def read(path, pin=None, cap=2097152, runtime=False):
+    path = Path(path)
+    need(type(cap) is int and 0 <= cap <= 8388608, 'invalid cap')
+    need(pin is None or type(pin) is str and re.fullmatch('[0-9a-f]{64}', pin), 'invalid external SHA')
+    chain = ancestors(path)
+    pre = path.lstat()
+    need(stat.S_ISREG(pre.st_mode) and pre.st_nlink == 1
+         and not pre.st_file_attributes & 1024 and 0 <= pre.st_size <= cap, 'pre-open file/cap')
+    with path.open('rb', buffering=0) as stream:
+        opened = os.fstat(stream.fileno())
+        a, b = raw(pre), raw(opened)
+        need(opened.st_size <= cap and opened.st_nlink == 1 and stat.S_ISREG(opened.st_mode), 'opened cap/plain')
+        need(a[:4] + [a[8], a[6], a[7]] == b[:4] + [b[8], b[6], b[7]] and a[4] == a[8], 'birth/identity cross-API')
+        if runtime and path.suffix == '.exe':
+            need(a[5] & 0o111 == 0o111 and b[5] & 0o111 == 0 and a[5] & ~0o111 == b[5], 'fixed EXE mode projection')
+        else:
+            need(a[5] == b[5], 'ordinary mode mismatch')
+        data = stream.read(pre.st_size + 1)
+        need(raw(os.fstat(stream.fileno())) == b, 'descriptor raw9 drift')
+    need(raw(path.lstat()) == a and ancestors(path) == chain and len(data) == pre.st_size, 'path/raw9/bytes drift')
+    need(pin is None or digest(data) == pin, 'external SHA mismatch')
+    row = dict(path=str(path), sha256=digest(data), bytes=len(data), path_raw9=a, descriptor_raw9=b)
+    EVIDENCE.append(row)
+    return data, row
+
+
+def decode(data):
+    need(not data.startswith(b'\xef\xbb\xbf'), 'UTF8 BOM')
+    def pairs(items):
+        obj = {}
+        for key, value in items:
+            need(key not in obj, 'duplicate key')
+            obj[key] = value
+        return obj
+    def forbidden(token):
+        raise ValueError('float/nonfinite token outside metadata grammar: ' + token)
+    return json.loads(data.decode('utf8', errors='strict'), object_pairs_hook=pairs,
+                      parse_float=forbidden, parse_constant=forbidden)
+
+
+def stamp(value, role, maximum_age=None):
+    digits = 7 if role == 'PS' else 6
+    need(type(value) is str and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{' + str(digits) + r'}\+00:00', value), role + ' canonical timestamp')
+    moment = datetime.fromisoformat(value)
+    if maximum_age is not None:
+        need(0 <= (datetime.now(timezone.utc)-moment).total_seconds() <= maximum_age, 'role freshness expired/future')
+    return moment
+
+
+def pointer(value, cap):
+    exact(value, ('path', 'sha256'))
+    need(type(value['path']) is str and Path(value['path']).is_absolute(), 'absolute pointer')
+    path = Path(value['path'])
+    need(path.is_relative_to(WORK), 'pointer outside fixed work namespace')
+    return path, decode(read(path, value['sha256'], cap)[0])
+
+
+def literals(source):
+    values = {}
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            try:
+                values[node.targets[0].id] = ast.literal_eval(node.value)
+            except ValueError:
+                pass
+    return values
+
+
+def fixed():
+    read(PREP/'INDEPENDENT_ROOT_METADATA_PHASE_PS_REVIEW_005_002.json', SOURCE_REVIEW)
+    read(PREP/'WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005.ps1',
+         'b3eac73307ec2b68f13c42e6e0b77c687089a76cecc1853944a08c62f8886ca7', 65536)
+    read(PREP/'SUPERVISE_ROOT_METADATA_BEFORE_005.ps1',
+         'bb2dcdd616dacf2548689d49e285e2ef467cd384d537ff4868669b002fef11ec', 65536)
+    source = read(PREP/'capture-guard005-root-metadata.BOUND.py', BOUND, 65536)[0]
+    values = literals(source.decode('utf8'))
+    profile = decode(read(GUARD/'GUARD_RUNTIME_PROFILE_005.json', PROFILE, 65536)[0])
+    read(WORK/'OWNER_WORK_WINDOW_30H_20261001_001.json', OWNER, 65536)
+    read(PREP/'INDEPENDENT_BOUND_METADATA_REVIEW_005.json', BOUND_REVIEW, 65536)
+    need(datetime.now(timezone.utc) < OWNER_END, 'owner expired')
+    return values, profile
+
+
+def authorization(path, pin, values):
+    data = read(path, pin, 65536)[0]
+    auth = decode(data)
+    exact(auth, AUTH_KEYS)
+    need(type(auth['schema_version']) is int and auth['schema_version'] == 1, 'schema type')
+    expected = dict(record_type='root_guard005_metadata_phase_authorization', author='/root',
+                    decision='capture_current_metadata_once', phase='before', owner_sha256=OWNER,
+                    owner_end_utc='2026-10-02T22:36:15Z', script_sha256=BOUND,
+                    bound_review_sha256=BOUND_REVIEW, profile_sha256=PROFILE, scope=SCOPE)
+    for key, value in expected.items():
+        need(type(auth[key]) is str and auth[key] == value, 'authorization role: ' + key)
+    for key in ('source_projection_sha256', 'coordination_peer_reply_sha256', 'coordination_root_response_sha256'):
+        need(auth[key] == values['BINDINGS'][key], 'external source/coord pin')
+    stamp(auth['created_utc'], 'PS', 600)
+    need((OWNER_END-datetime.now(timezone.utc)).total_seconds() >= 350, 'owner350 reserve')
+    need(auth['before_capture'] is None and auth['unit_terminal'] is None, 'before prerequisites must remain null')
+    need(list(auth) == list(AUTH_KEYS) and data == (json.dumps(auth, ensure_ascii=True, separators=(',', ':'), allow_nan=False)+'\n').encode('ascii'), 'actual ordered PS compact+LF')
+    for name in ('phase-before-005', 'phase-after-005', 'ROOT_METADATA_AUTHORIZATION_AFTER_005.json',
+                 'ROOT_METADATA_PARENT_START_BEFORE_005.json', 'ROOT_METADATA_PARENT_TERMINAL_BEFORE_005.json',
+                 'ROOT_METADATA_PARENT_STDOUT_BEFORE_005.txt', 'ROOT_METADATA_PARENT_STDERR_BEFORE_005.txt'):
+        absent(PREP/name)
+    return dict(auth_sha256=pin, actual_key_count=17, genuine_PS7_shape=True,
+                creation_age_seconds=(datetime.now(timezone.utc)-stamp(auth['created_utc'],'PS')).total_seconds())
+
+
+def rowcheck(row, expected_path, cap, runtime=False):
+    exact(row, ('path', 'sha256', 'bytes', 'path_raw9', 'descriptor_raw9'))
+    need(type(row['bytes']) is int and all(type(x) is int for x in row['path_raw9']+row['descriptor_raw9'])
+         and len(row['path_raw9']) == len(row['descriptor_raw9']) == 9, 'metadata integer grammar')
+    data, observed = read(expected_path, row['sha256'], cap, runtime)
+    need(observed['bytes'] == row['bytes'] and observed['path_raw9'] == row['path_raw9']
+         and observed['descriptor_raw9'] == row['descriptor_raw9'], 'current row differs from paired capture')
+    return data
+
+
+def context_check(context, profile):
+    exact(context, ('schema_version', 'scope', 'captured_utc', 'runtime_roles_projection_sha256',
+                    'head', 'tracked_rows', 'git_metadata', 'configurations'))
+    need(type(context['schema_version']) is int and context['schema_version'] == 1 and context['scope'] == SCOPE, 'context role')
+    stamp(context['captured_utc'], 'Py', 600)
+    need(context['runtime_roles_projection_sha256'] == profile['runtime_roles_projection_sha256']
+         and re.fullmatch('[0-9a-f]{40}', context['head']), 'context runtime/head')
+    cfg = profile['context_profile']
+    ref = decode(read(PREP/'AUTHENTICATED_742_PATH_SEQUENCE_005.json', 'd4d35ae3ad87f7feca0f4770192ce14877d6077ef9543d89b3878cc094863db1')[0])
+    paths = ref['paths']
+    need(type(context['tracked_rows']) is list and len(paths) == len(context['tracked_rows']) == 742, 'tracked742 count')
+    need([r['path'] for r in context['tracked_rows']] == paths, 'fixed742 ordered sequence')
+    for row in context['tracked_rows']:
+        rowcheck(row, Path(cfg['live_root'])/row['path'], cfg['maximum_file_bytes'])
+    groups = [('git_metadata', cfg['head_paths']+cfg['optional_git_metadata_paths']),
+              ('configurations', [str(Path(parent)/name) for parent in cfg['configuration_parents'] for name in cfg['configuration_names']])]
+    for field, paths in groups:
+        need(type(context[field]) is list and len(context[field]) == len(paths), 'finite optional row count')
+        for row, path in zip(context[field], paths):
+            exact(row, ('path', 'exists', 'identity'))
+            need(row['path'] == str(Path(path)) and type(row['exists']) is bool, 'fixed optional path/type')
+            if row['exists']:
+                need(row['identity']['path'] == row['path'], 'optional identity path')
+                data = rowcheck(row['identity'], Path(path), cfg['maximum_git_metadata_bytes'])
+                if path == cfg['head_paths'][-1]:
+                    need(data.decode('ascii').strip() == context['head'], 'branch HEAD differs')
+            else:
+                need(row['identity'] is None and path not in cfg['head_paths'], 'required HEAD absence')
+                absent(Path(path))
+
+
+def runtime_check(runtime, profile):
+    exact(runtime, ('schema_version', 'scope', 'captured_utc', 'entries', 'context_selection'))
+    need(type(runtime['schema_version']) is int and runtime['schema_version'] == 1 and runtime['scope'] == SCOPE, 'runtime role')
+    stamp(runtime['captured_utc'], 'Py', 600)
+    need(type(runtime['entries']) is list and len(runtime['entries']) == 4, 'FOUR runtime files')
+    for row, role in zip(runtime['entries'], profile['runtime4_roles']):
+        need(row['path'] == role['path'] and row['sha256'] == role['sha256'] and row['bytes'] == role['size'], 'fixed runtime4 role')
+        rowcheck(row, Path(role['path']), role['size'], True)
+    _, context = pointer(runtime['context_selection'], 1048576)
+    context_check(context, profile)
+
+
+def capture(path, pin, profile, terminal_path, terminal_pin):
+    need(terminal_path is not None and terminal_pin is not None, 'physical parent terminal required')
+    terminal = decode(read(terminal_path, terminal_pin, 65536)[0])
+    need(type(terminal['exit_code']) is int and terminal['exit_code'] == 0
+         and terminal['direct_child_reaped'] is True and terminal['capture_drain_complete'] is True
+         and terminal['timed_out'] is False and terminal['capture_overflow'] is False
+         and terminal['failure'] is None and terminal['metadata_only'] is True, 'actual parent physical completion/refusal')
+    stamp(terminal['finished_utc'], 'PS')
+    result = decode(read(path, pin)[0])
+    exact(result, ('schema_version', 'phase', 'started_utc', 'captured_utc', 'context', 'runtime_selection', 'head',
+                   'porcelain_normal', 'paired742_and_git_config_runtime_matched', 'bound_inputs', 'metadata_only',
+                   'whole_inventory_trees_observed', 'guard_or_test_or_native_executed', 'operational_authority_granted'))
+    need(type(result['schema_version']) is int and result['schema_version'] == 1 and result['phase'] == 'before', 'capture role')
+    need(result['paired742_and_git_config_runtime_matched'] is True and result['metadata_only'] is True
+         and type(result['whole_inventory_trees_observed']) is int and result['whole_inventory_trees_observed'] == 0
+         and result['guard_or_test_or_native_executed'] is False and result['operational_authority_granted'] is False, 'capture scope')
+    stamp(result['captured_utc'], 'Py', 600)
+    _, context = pointer(result['context'], 1048576)
+    _, runtime = pointer(result['runtime_selection'], 65536)
+    need(runtime['context_selection'] == result['context'] and context['head'] == result['head'], 'capture pointer/head binding')
+    runtime_check(runtime, profile)
+    for row in result['bound_inputs']:
+        rowcheck(row, Path(row['path']), 2097152)
+    return dict(actual_capture_sha256=pin, parent_terminal_sha256=terminal_pin,
+                current_tracked_file_count=742, individual_runtime_file_count=4,
+                whole_inventory_trees_observed=0, no_Git_command_executed_by_reviewer=True)
+
+
+def guard_records(path, pin, profile):
+    ack = decode(read(path, pin, 65536)[0])
+    driver_source = read(GUARD/'run-consumer-guard-unit005.py', '9f2add33e9dc9c2e3b3931f6565beede64ebe44baff5d07a519104afa6c0ab8d', 65536)[0]
+    keys = literals(driver_source.decode('utf8'))
+    exact(ack, keys['ROOT_ACK_KEYS'])
+    need(type(ack['schema_version']) is int and ack['schema_version'] == 1
+         and ack['scope'] == SCOPE and ack['author'] == ack['executor'] == '/root'
+         and ack['decision'] == 'execute_copied_consumer_guard_unit005_once'
+         and ack['record_type'] == 'consumer_guard_unit005_first_run_ack', 'ACK22 role')
+    created = stamp(ack['created_utc'], 'PS', 60)
+    expires = stamp(ack['expires_utc'], 'PS')
+    now = datetime.now(timezone.utc)
+    need(created <= now < expires <= min(OWNER_END, created+timedelta(hours=5))
+         and (expires-now).total_seconds() >= 450, 'ACK450 reserve and5h')
+    need(type(ack['max_collection_seconds']) is int and ack['max_collection_seconds'] == 60
+         and type(ack['max_test_seconds']) is int and ack['max_test_seconds'] == 300, 'fixed child budgets')
+    common = dict(owner_sha256=OWNER,
+                  driver_sha256=digest(driver_source), child_sha256=profile['child']['sha256'],
+                  source_manifest_sha256='a4b9028716070b893ba77b0c4999078ad5bbc9148558f9b3f04789df2624ef25',
+                  source_peer_sha256='54b19d3611ebb51bd6504a0ef6b23c689c86b5c5c163688be868fa51c0808050',
+                  harness_static_review_sha256='aa73d51d0e0e5ce604dc851d3cefef42dd5f901bd4fc759b581d29a64b9aac6a',
+                  profile_sha256=PROFILE, source_projection_sha256=profile['source_projection_sha256'])
+    need(all(type(ack[key]) is str and ack[key] == value for key, value in common.items()), 'ACK exact fixed closure')
+    _, runtime = pointer(ack['runtime_snapshot'], 65536)
+    runtime_check(runtime, profile)
+    _, resource = pointer(ack['resource_snapshot'], 65536)
+    exact(resource, ('schema_version', 'scope', 'captured_utc', 'free_ram_bytes', 'disk_free_bytes', 'single_thread', 'author'))
+    need(type(resource['schema_version']) is int and resource['schema_version'] == 1 and resource['scope'] == SCOPE
+         and resource['single_thread'] is True and resource['author'] == '/root', 'resource7 role')
+    need(type(resource['free_ram_bytes']) is int and resource['free_ram_bytes'] >= 1073741824
+         and type(resource['disk_free_bytes']) is int and resource['disk_free_bytes'] >= 10737418240, 'resource floors')
+    stamp(resource['captured_utc'], 'PS', 60)
+    _, coord = pointer(ack['coordination_acknowledgement'], 65536)
+    exact(coord, ('schema_version', 'scope', 'created_utc', 'other_session_acknowledgement', 'root_response', 'live_execution_authorized'))
+    need(type(coord['schema_version']) is int and coord['schema_version'] == 1 and coord['scope'] == SCOPE
+         and coord['live_execution_authorized'] is False, 'coord6 remains isolated')
+    stamp(coord['created_utc'], 'PS')
+    for field in ('other_session_acknowledgement', 'root_response'):
+        item = coord[field]
+        exact(item, ('path', 'sha256'))
+        read(Path(item['path']), item['sha256'], 65536)
+    _, whole = pointer(ack['whole_runtime_before'], 2097152)
+    exact(whole, ('schema_version', 'scope', 'captured_utc', 'verifier', 'whole_before_evidence', 'unchanged_against_reviewed_runtime', 'runtime_snapshot_sha256'))
+    need(type(whole['schema_version']) is int and whole['schema_version'] == 1 and whole['scope'] == SCOPE
+         and whole['unchanged_against_reviewed_runtime'] is True and whole['runtime_snapshot_sha256'] == ack['runtime_snapshot']['sha256'], 'whole acceptance7 binding')
+    stamp(whole['captured_utc'], 'Py', 600)
+    _, actual_whole = pointer(whole['whole_before_evidence'], 65536)
+    need(actual_whole['record_type'] == 'consumer_guard_unit005_whole_metadata_result' and actual_whole['phase'] == 'before'
+         and actual_whole['verdict'] == 'MATCHES_PINNED_BYTES_METADATA_TWICE'
+         and actual_whole['runtime_snapshot_sha256'] == ack['runtime_snapshot']['sha256'], 'whole actual binding')
+    need(type(actual_whole['observation_files']) is list and len(actual_whole['observation_files']) == 4, 'four streams for TWO inventory trees')
+    for item in actual_whole['observation_files']:
+        exact(item, ('path', 'sha256', 'bytes'))
+        need(type(item['bytes']) is int and 0 < item['bytes'] <= 4194304, 'whole row stream cap')
+        read(Path(item['path']), item['sha256'], 4194304)
+    return dict(root_ack_sha256=pin, ACK_key_count=22, resource_key_count=7,
+                coordination_key_count=6, whole_acceptance_key_count=7,
+                external_actual_bound22_and_launch14_reviews_still_required=True)
+
+
+def bound22_and_late14(ack, ack_pin, bound_path, bound_pin, late_path, late_pin, launch_pin):
+    """Future actual records only; caller must authenticate actual launch separately."""
+    source = read(GUARD/'run-consumer-guard-unit005.py', ack['driver_sha256'], 65536)[0]
+    keys = literals(source.decode('utf8'))
+    bound = decode(read(bound_path, bound_pin, 65536)[0])
+    exact(bound, keys['BOUND_KEYS'])
+    need(type(bound['schema_version']) is int and bound['schema_version'] == 1
+         and bound['record_type'] == 'consumer_guard_unit005_bound_review'
+         and bound['verdict'] == 'PASS_BOUND_STATIC' and bound['scope'] == SCOPE
+         and bound['author'] == '/root/raw_policy_worker'
+         and bound['reviewer'] in ('/root/candidate_review', '/root/keepawake_stage', '/root/window_docs')
+         and bound['root_ack_sha256'] == ack_pin, 'actual independent bound22 role')
+    for key in ('driver_sha256', 'child_sha256', 'source_manifest_sha256', 'source_peer_sha256',
+                'harness_static_review_sha256', 'profile_sha256', 'source_projection_sha256',
+                'owner_sha256', 'max_collection_seconds', 'max_test_seconds'):
+        need(type(bound[key]) is type(ack[key]) and bound[key] == ack[key], 'bound/ACK same actual value')
+    for key, field in (('runtime_snapshot_sha256', 'runtime_snapshot'),
+                       ('whole_runtime_before_sha256', 'whole_runtime_before'),
+                       ('resource_snapshot_sha256', 'resource_snapshot'),
+                       ('coordination_ack_sha256', 'coordination_acknowledgement')):
+        need(bound[key] == ack[field]['sha256'], 'bound actual pointer hash')
+    static = decode(read(GUARD/'INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_005.json',
+                         ack['harness_static_review_sha256'], 65536)[0])
+    need(bound['driver_template_sha256'] == static['driver_template_sha256'], 'bound original template projection')
+    late = decode(read(late_path, late_pin, 65536)[0])
+    exact(late, ('author', 'bound_review_sha256', 'created_utc', 'driver_sha256', 'expires_utc',
+                 'launch_sha256', 'profile_sha256', 'record_type', 'reviewer', 'root_ack_sha256',
+                 'schema_version', 'scope', 'target_execution', 'verdict'))
+    need(type(late['schema_version']) is int and late['schema_version'] == 1
+         and late['record_type'] == 'consumer_guard_unit005_root_launch_late_review'
+         and late['verdict'] == 'PASS_LATE_BOUND_ONLY'
+         and late['scope'] == SCOPE and late['author'] == '/root/raw_policy_worker'
+         and late['reviewer'] in ('/root/candidate_review', '/root/keepawake_stage', '/root/window_docs')
+         and late['target_execution'] is False and late['root_ack_sha256'] == ack_pin
+         and late['bound_review_sha256'] == bound_pin and late['launch_sha256'] == launch_pin
+         and late['driver_sha256'] == ack['driver_sha256'] and late['profile_sha256'] == PROFILE,
+         'late14 source/type/current actual external pins')
+    stamp(late['created_utc'], 'Py')
+    stamp(late['expires_utc'], 'PS' if late['expires_utc'] == ack['expires_utc'] else 'Py')
+    need(late['created_utc'] == ack['created_utc'] or
+         datetime.fromisoformat(late['created_utc']) >= datetime.fromisoformat(ack['created_utc']),
+         'late review precedes actual ACK')
+    return dict(bound_key_count=22, late_key_count=14,
+                actual_launcher_literal_reversal_and_consumer_verdict_still_require_separate_source_review=True)
+
+
+def display(value):
+    if type(value) is dict:
+        return {key: display(item) for key, item in value.items()}
+    if type(value) in (tuple, list):
+        return [display(item) for item in value]
+    if type(value) is int and abs(value) > 9007199254740991:
+        return str(value)
+    return value
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('role', choices=('auth_before', 'capture_before', 'guard_records'))
+    parser.add_argument('--path', required=True)
+    parser.add_argument('--sha256', required=True)
+    parser.add_argument('--terminal-path')
+    parser.add_argument('--terminal-sha256')
+    args = parser.parse_args()
+    values, profile = fixed()
+    if args.role == 'auth_before':
+        checks = authorization(Path(args.path), args.sha256, values)
+    elif args.role == 'capture_before':
+        checks = capture(Path(args.path), args.sha256, profile, args.terminal_path, args.terminal_sha256)
+    else:
+        checks = guard_records(Path(args.path), args.sha256, profile)
+    initial = list(EVIDENCE)
+    for row in initial:
+        _, current = read(Path(row['path']), row['sha256'], max(row['bytes'], 1),
+                          row['path'] in {item['path'] for item in profile['runtime4_roles']})
+        need(current == row, 'final paired metadata drift')
+    print(json.dumps(display(dict(reviewer='/root/window_docs', role=args.role,
+                     captured_utc=datetime.now(timezone.utc).isoformat(),
+                     checks=checks, selected_observations=initial,
+                     independent_peer_verdict_not_issued_by_utility=True,
+                     target_execution=False, action_authorization=False)),
+                     sort_keys=True, separators=(',', ':'), allow_nan=False))
+
+
+if __name__ == '__main__':
+    main()

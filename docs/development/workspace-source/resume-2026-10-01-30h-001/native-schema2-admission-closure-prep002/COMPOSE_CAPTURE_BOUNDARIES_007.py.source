@@ -1,0 +1,216 @@
+"""Author-only AST/text composition; never executes any captured target source."""
+import ast, hashlib, json, os
+from pathlib import Path
+ROOT = Path(__file__).absolute().parent
+BEFORE = ROOT / 'before' / 'capture-boundaries007'
+BEFORE.mkdir()
+
+CAPTURE = '''def bootstrap_capture(path, expected, *, consume=None):
+    """Authenticate bounded plain source while retaining its original read handle."""
+    def insist(ok, message):
+        if not ok: raise ValueError(message)
+    insist(type(expected) is str and re.fullmatch(r'[0-9a-f]{64}', expected) is not None,
+           'captured source SHA unbound')
+    ancestors = []
+    for ancestor in reversed(path.parents):
+        info = ancestor.lstat()
+        insist(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+               and not int(getattr(info, 'st_file_attributes', 0)) & 0x400,
+               'captured source ancestor nonplain')
+        ancestors.append((ancestor, info.st_dev, info.st_ino))
+    def observed(info):
+        row = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns,
+               info.st_ctime_ns, info.st_mode, info.st_nlink,
+               int(getattr(info, 'st_file_attributes', 0)))
+        insist(all(type(value) is int for value in row), 'captured source stat malformed')
+        if os.name == 'nt':
+            birth = getattr(info, 'st_birthtime_ns', None)
+            insist(type(birth) is int and birth > 0, 'captured source birthtime absent')
+            return row + (birth,)
+        return row
+    def canonical(info, *, pathname):
+        row = observed(info)
+        if os.name == 'nt':
+            insist(not pathname or info.st_ctime_ns == info.st_birthtime_ns,
+                   'captured source pathname creation differs')
+            return row[:4] + (info.st_birthtime_ns,) + row[5:8]
+        return row
+    def leaf(info):
+        insist(stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+               and info.st_nlink == 1 and not int(getattr(info, 'st_file_attributes', 0)) & 0x400
+               and type(info.st_size) is int and 0 < info.st_size <= 196605,
+               'captured source not a bounded plain one-link file')
+    before = path.lstat(); leaf(before)
+    with path.open('rb', buffering=0) as stream:
+        opened = os.fstat(stream.fileno()); leaf(opened)
+        insist(canonical(before, pathname=True) == canonical(opened, pathname=False),
+               'captured source path/descriptor identity differs before read')
+        data = stream.read(opened.st_size + 1)
+        insist(len(data) == opened.st_size and hashlib.sha256(data).hexdigest() == expected,
+               'captured source bytes differ before execution')
+        result = data if consume is None else consume(data)
+        closed = os.fstat(stream.fileno()); after = path.lstat(); leaf(after); leaf(closed)
+        insist(observed(before) == observed(after) and observed(opened) == observed(closed)
+               and canonical(after, pathname=True) == canonical(closed, pathname=False),
+               'captured source changed during retained-handle use')
+        for ancestor, dev, ino in ancestors:
+            info = ancestor.lstat()
+            insist(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+                   and not int(getattr(info, 'st_file_attributes', 0)) & 0x400
+                   and (info.st_dev, info.st_ino) == (dev, ino), 'source ancestor replaced')
+        return result
+'''
+
+def replace_node(text, name, replacement):
+    nodes = [node for node in ast.parse(text).body if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name == name]
+    assert len(nodes) == 1, name
+    node = nodes[0]; lines = text.splitlines(keepends=True)
+    return ''.join(lines[:node.lineno-1]) + replacement.rstrip() + '\n' + ''.join(lines[node.end_lineno:])
+
+rows = []
+def change(path, text):
+    old = path.read_bytes(); relative = path.relative_to(ROOT)
+    saved = BEFORE / relative; saved.parent.mkdir(parents=True, exist_ok=True)
+    with saved.open('xb') as stream: stream.write(old)
+    data = text.encode(); ast.parse(data) if path.name.endswith('.py.template') else None
+    with path.open('wb') as stream: stream.write(data)
+    assert path.read_bytes() == data and saved.read_bytes() == old
+    rows.append({'path': str(relative), 'before_sha256': hashlib.sha256(old).hexdigest(),
+                 'after_sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)})
+
+for path in sorted((ROOT / 'front').glob('verify*.py.template')):
+    text = path.read_text()
+    if 'def load_front():' not in text: continue
+    old = [n for n in ast.parse(text).body if isinstance(n, ast.FunctionDef) and n.name == 'load_front'][0]
+    lines = text.splitlines()
+    prefix = '\n'.join(lines[old.lineno-1:old.lineno+5])
+    # Keep the original isolated flags and actual self-CLI grammar.
+    body = '\n'.join(lines[old.lineno-1:old.end_lineno])
+    position = body.index('    if not isinstance(FRONT_HELPER_SHA256')
+    header = body[:position]
+    tail = '''    def consume(raw):
+        name = '_attempt013_front_boundary'
+        if name in sys.modules: raise ValueError('front module name occupied')
+        module = types.ModuleType(name); module.__file__ = str(FRONT_HELPER)
+        module.__source_sha256__ = FRONT_HELPER_SHA256; module.__source_bytes__ = raw
+        sys.modules[name] = module
+        try:
+            exec(compile(raw, str(FRONT_HELPER), 'exec', dont_inherit=True), module.__dict__)
+            module.authenticate_common_capture(FRONT_HELPER_SHA256, raw)
+            module.require(type(args.expected_script_sha256) is str
+                           and module.HEX64.fullmatch(args.expected_script_sha256) is not None,
+                           'reviewed verifier self SHA unbound')
+            module.read(Path(__file__).absolute(), args.expected_script_sha256)
+            module.checked_bindings(FRONT_BINDINGS, receipt_only=False)
+            return module
+        except BaseException:
+            sys.modules.pop(name, None); raise
+    return bootstrap_capture(FRONT_HELPER, FRONT_HELPER_SHA256, consume=consume)
+'''
+    text = replace_node(text, 'load_front', CAPTURE + '\n' + header + tail)
+    change(path, text)
+
+for path in sorted((ROOT / 'postseal').glob('*.py.template')):
+    text = path.read_text()
+    if 'def bootstrap_capture(' not in text: continue
+    text = replace_node(text, 'bootstrap_capture', CAPTURE)
+    if path.name.startswith('native_successor_postseal_common'):
+        text = replace_node(text, 'load_front', '''def load_front(expected):
+    def consume(captured):
+        name = '_attempt013_postseal_verified_front'
+        require(name not in sys.modules, 'postseal front namespace occupied')
+        loader = importlib.machinery.SourceFileLoader(name, str(FRONT_HELPER))
+        spec = importlib.util.spec_from_loader(name, loader)
+        require(spec is not None, 'front captured specification unavailable')
+        module = importlib.util.module_from_spec(spec)
+        module.__source_sha256__ = expected; module.__source_bytes__ = captured
+        sys.modules[name] = module
+        try:
+            exec(compile(captured, str(FRONT_HELPER), 'exec', dont_inherit=True), module.__dict__)
+            module.authenticate_common_capture(expected, captured)
+            return module
+        except BaseException:
+            sys.modules.pop(name, None); raise
+    return bootstrap_capture(FRONT_HELPER, expected, consume=consume)
+''')
+    elif 'def load_context():' in text:
+        node = next(n for n in ast.parse(text).body if isinstance(n, ast.FunctionDef) and n.name == 'load_context')
+        lines = text.splitlines(); body = '\n'.join(lines[node.lineno-1:node.end_lineno])
+        start = body.index('    source=bootstrap_capture(path,POST_COMMON_SHA256)')
+        before = body[:start]
+        consume = '''    def consume(source):
+        name = '_attempt013_verified_postseal_policy'
+        if name in sys.modules: raise ValueError('downstream helper namespace occupied')
+        loader = importlib.machinery.SourceFileLoader(name, str(path))
+        spec = importlib.util.spec_from_loader(name, loader)
+        if spec is None: raise ValueError('downstream helper specification absent')
+        Q = importlib.util.module_from_spec(spec); Q.__source_sha256__ = POST_COMMON_SHA256
+        Q.__source_bytes__ = source; sys.modules[name] = Q
+        try:
+            exec(compile(source, str(path), 'exec', dont_inherit=True), Q.__dict__)
+            C = Q.load_front(FRONT_HELPER_SHA256)
+            C.require(C.read(path, POST_COMMON_SHA256, maximum=196605) == source
+                      and C.read(Path(__file__).absolute(), args.expected_script_sha256, maximum=196605) == self_capture,
+                      'captured verifier/common source changed')
+            C.checked_bindings(FRONT_BINDINGS, receipt_only=False)
+            return Q, C, FRONT_BINDINGS
+        except BaseException:
+            sys.modules.pop(name, None); raise
+    return bootstrap_capture(path, POST_COMMON_SHA256, consume=consume)
+'''
+        text = replace_node(text, 'load_context', before + consume)
+    change(path, text)
+
+PS_OPEN = '''    $captureInfo = Get-Item -LiteralPath {path} -Force -ErrorAction Stop
+    if ($captureInfo.PSIsContainer -or $captureInfo.LinkType -or
+        ($captureInfo.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        $captureInfo.Length -le 0 -or $captureInfo.Length -gt 196605) {{ throw 'Source capture exceeds bounded plain-file policy before open' }}
+    $captureState = @($captureInfo.Length,$captureInfo.CreationTimeUtc.Ticks,$captureInfo.LastWriteTimeUtc.Ticks,[int]$captureInfo.Attributes)
+    $captureStream = [IO.FileStream]::new({path},[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    try {{
+    if ($captureStream.Length -ne $captureInfo.Length -or $captureStream.Length -le 0 -or $captureStream.Length -gt 196605) {{ throw 'Opened source capture exceeds bound before allocation' }}
+    {dest} = New-Object byte[] ([int]$captureStream.Length)
+    $captureOffset = 0
+    while ($captureOffset -lt {dest}.Length) {{
+        $captureRead = $captureStream.Read({dest},$captureOffset,{dest}.Length-$captureOffset)
+        if ($captureRead -le 0) {{ throw 'Truncated source capture' }}
+        $captureOffset += $captureRead
+    }}
+    if ($captureStream.ReadByte() -ne -1) {{ throw 'Source capture grew beyond pinned length' }}
+'''
+PS_CLOSE = '''    $captureAfter = Get-Item -LiteralPath {path} -Force -ErrorAction Stop
+    if ($captureAfter.PSIsContainer -or $captureAfter.LinkType -or
+        ($captureAfter.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        $captureStream.Length -ne $captureInfo.Length -or
+        (@($captureAfter.Length,$captureAfter.CreationTimeUtc.Ticks,$captureAfter.LastWriteTimeUtc.Ticks,[int]$captureAfter.Attributes) -join '|') -cne ($captureState -join '|')) {{ throw 'Retained source capture changed during checked child use' }}
+    }} finally {{ $captureStream.Dispose() }}
+'''
+for folder in ('front', 'postseal'):
+    for path in sorted((ROOT / folder).glob('*.ps1.template')):
+        text = path.read_text()
+        if '[IO.File]::ReadAllBytes($FrontHelper)' in text:
+            anchor = '    $frontSourceBytes = [IO.File]::ReadAllBytes($FrontHelper)\n'
+            text = text.replace(anchor, PS_OPEN.format(path='$FrontHelper', dest='$frontSourceBytes'), 1)
+            anchor = "    if ($LASTEXITCODE -ne 0 -or $frontReply.Count -ne 1 -or $frontReply[0] -cne 'ATTEMPT013_BOUNDARY_PASS') { throw 'Fresh release/history/admission boundary proof refused' }\n"
+            assert text.count(anchor) == 1
+            text = text.replace(anchor, anchor + PS_CLOSE.format(path='$FrontHelper'), 1)
+        elif '[IO.File]::ReadAllBytes($C.PostCommon)' in text:
+            # The earlier streaming hash also receives its size gate before hashing.
+            anchor = '        if ((Get-PoststatusSha $pair[0]) -cne $pair[1])'
+            assert text.count(anchor) >= 1
+            text = text.replace(anchor, "        if ($pair[0] -ceq $C.PostCommon -or $pair[0] -ceq $C.FrontHelper) {\n            $bounded = Get-Item -LiteralPath $pair[0] -Force -ErrorAction Stop\n            if ($bounded.Length -le 0 -or $bounded.Length -gt 196605) { throw 'Source cap refused before streaming hash' }\n        }\n" + anchor, 1)
+            text = text.replace('    $source = [IO.File]::ReadAllBytes($C.PostCommon)\n', PS_OPEN.format(path='$C.PostCommon',dest='$source'), 1)
+            anchor = "    foreach ($path in @($C.PostCommon,$C.FrontHelper,$C.ScriptPath,$C.CommonPath)) {"
+            assert text.count(anchor) == 1
+            text = text.replace(anchor, PS_CLOSE.format(path='$C.PostCommon') + anchor, 1)
+        else: continue
+        change(path, text)
+
+assert len(rows) == 21, len(rows)  # Four front Python, eight postseal Python, nine PS.
+record = {'schema_version':1,'record_type':'native002_capture_boundary_author_checkpoint',
+          'changed_count':len(rows),'files':rows,'target_source_executed':False,
+          'python_ast_validated':True,'powershell_parser_pending':True,
+          'operational_authority_granted':False,'future_bindings_changed':False}
+with (ROOT / 'CAPTURE_BOUNDARY_CHECKPOINT_007.json').open('xb') as stream:
+    stream.write((json.dumps(record,sort_keys=True,indent=2)+'\n').encode());stream.flush();os.fsync(stream.fileno())
+print(json.dumps({'changed':len(rows),'checkpoint_sha256':hashlib.sha256((ROOT/'CAPTURE_BOUNDARY_CHECKPOINT_007.json').read_bytes()).hexdigest()}))

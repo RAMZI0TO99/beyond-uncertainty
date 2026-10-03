@@ -1,0 +1,185 @@
+"""Freeze owned staged metadata/source/tests, checking bytes and AST only."""
+import difflib
+import runpy
+G = runpy.run_path(__file__.replace('AUTHOR_FREEZE_004.py', 'AUTHOR_METADATA_UTILS_004.py'))
+globals().update({k: v for k, v in G.items() if not k.startswith('__')})
+preservation = json.loads(read(N / 'BEFORE_PRESERVATION_004.json')[0])
+source, source_ob = read(N / 'scripts/week8_recovery_raw_authority.py')
+tests, tests_ob = read(N / 'tests/test_week8_recovery_raw_authority.py')
+old_source = read(N / 'before/successor-candidate-raw-revision003/scripts/week8_recovery_raw_authority.py')[0]
+old_tests = read(N / 'before/raw-test-revision004/source/tests/test_week8_recovery_raw_authority.py')[0]
+old_ast, new_ast = ast.parse(old_source), ast.parse(source)
+old_test_ast, test_ast = ast.parse(old_tests), ast.parse(tests)
+old_definitions = {node.name: node for node in old_ast.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+new_definitions = {node.name: node for node in new_ast.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+changed = [name for name, node in old_definitions.items() if ast.dump(node) != ast.dump(new_definitions[name])]
+assert changed == ['_admit_recorded_predecessor']
+assert tests[:415278] == old_tests
+assert [ast.dump(node) for node in test_ast.body[:len(old_test_ast.body)]] == [ast.dump(node) for node in old_test_ast.body]
+old_other = [ast.dump(node) for node in old_ast.body if not isinstance(node, (ast.FunctionDef, ast.ClassDef))]
+old_other_set = set(old_other)
+new_existing_other = [ast.dump(node) for node in new_ast.body
+                      if not isinstance(node, (ast.FunctionDef, ast.ClassDef)) and ast.dump(node) in old_other_set]
+assert old_other == new_existing_other
+helper_text = read(N / 'AUTHOR_SCHEMA3_HELPERS_004.txt')[0].decode()
+writer_ast = ast.parse(read(N / 'AUTHOR_IMPLEMENT_RAW_004.py')[0])
+writer_literals = {node.targets[0].id: ast.literal_eval(node.value)
+                   for node in writer_ast.body if isinstance(node, ast.Assign)
+                   and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name)
+                   and node.targets[0].id in ('schema3_branch', 'replacements')}
+reverse = source.decode().replace(writer_literals['schema3_branch'], '', 1)
+for before, after in reversed(writer_literals['replacements']):
+    assert reverse.count(after) == 1
+    reverse = reverse.replace(after, before, 1)
+helper_start = reverse.index('def _successor_compact_qa_bytes(')
+helper_end = reverse.index('def _admit_recorded_predecessor(', helper_start)
+assert reverse[helper_start:helper_end].rstrip() == helper_text.rstrip()
+reverse = reverse[:helper_start] + reverse[helper_end:]
+start = reverse.index('\n\n# Exact compact schema3 extension.')
+end_marker = '_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3 = 361287\n'
+end = reverse.index(end_marker, start) + len(end_marker)
+reverse = reverse[:start] + reverse[end:]
+assert reverse.encode() == old_source
+diff = ''.join(difflib.unified_diff(old_source.decode().splitlines(keepends=True), source.decode().splitlines(keepends=True),
+                                   fromfile='raw003-original', tofile='raw004-staged'))
+put(N / 'SOURCE_DELTA_004.patch', diff.encode())
+api_old = next(node for node in old_ast.body if isinstance(node, ast.FunctionDef) and node.name == 'admit_recorded_predecessor')
+api_new = next(node for node in new_ast.body if isinstance(node, ast.FunctionDef) and node.name == 'admit_recorded_predecessor')
+assert ast.dump(api_old) == ast.dump(api_new)
+api_names = [arg.arg for arg in api_new.args.kwonlyargs]
+assert len(api_names) == 12
+test_delta = json.loads(read(N / 'AUTHOR_TEST_AST_DELTA_004.json')[0])
+plan = json.loads(read(N / 'IMPLEMENTATION_PLAN_004.json')[0])
+future = {key: None for key in ('source_peer', 'test_peer', 'actual_collection', 'actual_runtime_result',
+          'current_candidate_or_release', 'final_commit', 'final_source_manifest', 'final_candidate_manifest',
+          'final_admission_sha256', 'current_context', 'native_proof', 'consumer_refresh', 'publisher_refresh')}
+out(N / 'CONSTANT_AND_CALLER_INTERFACE_PREPARATION_004.json', {
+    'schema_version': 1, 'source': source_ob, 'tests': tests_ob,
+    'api_keyword_only_names': api_names, 'api_keyword_count': len(api_names),
+    'seven_file_roles': ['attestation', 'attestation_twin', 'predecessor_release', 'successor_release',
+                        'predecessor_candidate_manifest', 'successor_candidate_manifest', 'current_native_release_receipt'],
+    'historical_incident_terminal_arguments_retained': True,
+    'added_globals': plan['new_globals'], 'added_helpers': plan['new_helpers'],
+    'source_ast_policy_counts': {'named_functions': 85, 'named_classes': 7,
+        'explicit_class_methods': sum(isinstance(v, ast.FunctionDef) for n in new_ast.body if isinstance(n, ast.ClassDef) for v in n.body),
+        'module_initializer_generator_expressions': sum(sum(isinstance(v, ast.GeneratorExp) for v in ast.walk(n))
+            for n in new_ast.body if isinstance(n, (ast.Assign, ast.AnnAssign))),
+        'compiled_generator_flags': None, 'target_compilation_performed': False},
+    'sourceguard_value_types': {'SUCCESSOR_COMPACT_INTERMEDIATE_FACTS': 'tuple2[MappingProxyType;changed_paths tuple9]',
+        '_SUCCESSOR_COMPACT_AFTERIMAGES': 'tuple2[tuple9[MappingProxyType[str,str|int]]]',
+        '_SUCCESSOR_COMPACT_PROOF_LIMITS': 'tuple2[MappingProxyType[str,tuple[int,int,str]]]',
+        '_SUCCESSOR_COMPACT_RELEASE_KEYS': 'tuple2[frozenset[str]]', '_SUCCESSOR_COMPACT_ENTRY_KEYS': 'frozenset[str]',
+        '_SUCCESSOR_COMPACT_PROOF_KEYS': 'frozenset[str]', '_SUCCESSOR_COMPACT_PROOF_MAX_BYTES': 'tuple2[int]',
+        '_SUCCESSOR_COMPACT_QA_PATHS': 'tuple263[str]', '_SUCCESSOR_COMPACT_QA_BYTES': 'int notbool',
+        '_SUCCESSOR_ATTESTATION_SCHEMA3_KEYS': 'frozenset[str]', '_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3': 'int notbool'},
+    'closure_refresh_required': ['controller verified static/live loader and fresh raw authority boundaries',
+        'worker loaded module code/default/kwdefault/import/globals guard, capture caps and final-spawn/claim callbacks',
+        'entrypoint, inspector, fit-child raw binding constants and actual selected source guards',
+        'native common sourceguard facts/source bytes/generated framing/native startup identity and receipt closure',
+        'publisher/verifier schemas and actual repeated four committed742/QA/source/receipt acquisitions',
+        'actual dependency pin graph derived programmatically in acyclic order from integrated source bytes'],
+    'new_generic_guard_behavior_or_typed_profile_integration_accepted': False,
+    'native_envelope_receipt_outer_protocol_changed': False, 'global_ingress_cap': 395799,
+    'schema_caps': {'1': 345810, '2': 395799, '3': 361287},
+    'old_schema1_schema2_canonical_equality_is_preexisting': True,
+    'actual_future_bindings': future, 'live_or_operational_authority': False,
+})
+out(N / 'AUTHOR_FINAL_AST_AND_CAUSAL_MAP_004.json', {
+    'source_sha256': digest(source), 'source_bytes': len(source), 'test_sha256': digest(tests), 'test_bytes': len(tests),
+    'unchanged_original_function_definitions': 80, 'unchanged_original_classes': 7,
+    'sole_changed_original_definition': changed[0], 'all_original_nondefinition_asts_exact': True,
+    'exact_text_reversal_to_raw003': True, 'public_admission_wrapper_ast_and_12_kwargs_exact': True,
+    'new_source_functions': 4, 'new_source_globals': 11, 'old_test_prefix_bytes_exact': 415278,
+    'old_test_top_level_function_asts_exact': 63, 'old_test_test_function_asts_exact': 45,
+    'new_test_families': test_delta['new_test_families'],
+    'causal_controls': ['Each fresh schema3 mutation starts with REAL admission and inverse-inspector acceptance; baseline restored and accepted afterward.',
+        'Both actual middle Git object pins plus reconstructed742 Git trees; synthetic repin reaches unique-parent/merge/tree header predicates.',
+        'Sourcecompiled compact proof6181/6321 negative retained; copied test-only whole cap+1 exposes encoded-width before decoder, earlier fields delegate actual decoder.',
+        'Typed metadata and strict JSON failures coherently repin the copied middle release/object facts; immutable incident/terminal bytes unchanged.',
+        'Current QA reordered sequence reaches original common guard; noncanonical current serializer reaches compact reconstructed-byte identity; fixed grouped-path mutation reaches schema3 sequence guard.',
+        'Foreign outsideQA substitute removes one otherwise-changed nonloaded test row so EA9/597/3f74->final each retain25; policy-only expansion then accepts.',
+        'Math witness361287 reproduced data-only; prepared runtime control uses legal signed64 maximum and limit+1 before table parsing; global395800 refuses before hashing.',
+        'Valid noncanonical Base64 pad-bit test preserves decoded bytes and token width, exposing exact reencoding check.'],
+    'preserved_author_drafts': ['Initial metadata path-key assumption failed before folder/copies; refusal recorded.',
+        'Inert first padding mutation and overbroad expected-message replacement corrected before append; both inert drafts retained.',
+        'Provisional raw89cb source and helper draft preserved before local type-before-casefold hardening of the new QA helper.'],
+    'actual_collection_or_runtime': None, 'target_compile_import_definitions_execution': False,
+    'physical_Git_native_locked_consumer_coverage': False, 'all_future_bindings': future,
+})
+api_md = '''Raw004 is staged source/test preparation only. No target definitions were compiled, imported or executed.
+
+The public `admit_recorded_predecessor` wrapper and its twelve keyword-only parameters are byte/AST unchanged. It consumes the existing seven admission file roles and separate original incident/terminal bytes. The mandatory external lowercase64 SHA and exact twins remain the trust transport; no self-derived first pin or new file role is introduced.
+
+Schema1 and schema2 retain their existing constants, helpers, limits and canonical compact ASCII plus one LF requirement. Schema3 extends the same canonical check. Its exact16 top fields include `intermediate_chain` and `successor_parent_changed_paths`; the chain is a list of exactly two ordered entries, each exactly `{identities,proof}`. Identities are the existing strict11 fields. Each compact proof has exactly `changed_files`, `git_commit_object_base64`, `release_record_base64`; QA Base64 is absent in schema3 only.
+
+The fixed chain is originalEA9 →597eb048 →3f74b1d2 →future final. Complete742 tables reconstruct only the exact9 afterimages on each middle edge. Compiled tree pins, typed Git commit objects and unique parent/tree headers are retained; schema3 also derives the Git tree SHA1 from the reconstructed rows. Three final edges must each contain exactly25 actual finite allowed modifications, with no new/deleted/renamed/mode-changed path.
+
+Middle releases have exact36/37 keys; original/final releases keep exact34. Original grouped263 paths serialize as indent2 ASCII plus one LF, exactly31347 bytes for each QA view. Original/middle SHA pins and actual final bytes remain checked. The global pre-read/pure ingress cap is395799; private schema limits are345810/395799/361287. Middle proofs are6181/6321 bytes and identities959. Base64 widths/decoded sizes are3944/2957 and400/299 for first release/commit,4100/3073 and384/288 for second.
+
+These changes preserve historical raw4/schema3 incident and terminal bytes, operating raw5/gate5 protocol, existing immutable context, inverse relocation, runtime/dependency/module/source rules and receiptV2. They do not prove physical final Git parent count: producer/verifier/native readers must separately authenticate actual unique final parent3f74 and repeatedly acquire each committed742/QA/source/receipt view.
+
+All new raw constants/functions, actual source digest and changed AST policy counts require independently reviewed consumer/native typed-profile and pin-closure refresh. Generic loaded-module guards and cold/reuse behavior are not accepted by this package. Final operational paths, hashes, candidate, gate, release and native context areNone.
+'''
+put(N / 'RAW_POLICY_API_004.md', api_md.encode())
+handoff = f'''Staged raw004 source/test preparation is frozen for a different peer; UNRUN.
+
+Source: scripts/week8_recovery_raw_authority.py `{digest(source)}` ({len(source)} bytes).
+Tests: tests/test_week8_recovery_raw_authority.py `{digest(tests)}` ({len(tests)} bytes).
+Only existing `_admit_recorded_predecessor` changes;80 other original functions,7 classes and all other original module ASTs are exact. Four new helpers and11 sourcecompiled policy globals implement the fixed compact schema3 extension. Existing canonical byte equality for legacy1/2 is preserved and extended, not newly invented.
+
+All415278 accepted test004 bytes remain an exact prefix, including63 top-level functions/45 test functions. Thirteen appended families contain inert planned controls; actual collection/node IDs/results remainNone. No source/test compilation, imports, selected definitions, helper/Git/native execution or live writes occurred. Support copies of the two relocation helpers remain outside a future18-path payload and unchanged.
+
+The reviewed compact design116b and different peer6e802, corrected false canonical attribution7773 and peer5ad70, and ROOT staged choices1c2c authorize this preparation only.42 original/copy pairs include raw0037fe, test004367a and their scoped peers, original runtime evidence and typed historical release/QA/commit facts. Original source/test versions and spent/refused histories remain unchanged.
+
+Data-only derivation reconstructs both historical742 Git trees and9+9 edges; grouped263 manifests31347 bytes match original/middle pins. Identity/proof maxima959 and6181/6321 reproduce full schema3 maximum361287/witness93140584. The math witness has no valid operational seal. Original global395799/schema1 and2 caps, API12/seven inputs, historical records, external64 pin and inverse-authority rules remain.
+
+Prepared tests use synthetic immutable trust roots, raw/native current-record views and source tables. They exercise actual pure admission/QA/tree/decoder/projectors, with healthy controls before fresh mutations and accepted restoration. They cannot authenticate physical Git, native startup, sourceguard callback reuse, current actor releases, a full gate or operational admission. Historical direct raw003/test004 runtime169pass+2 Win1314 skips is preserved evidence for those bytes only.
+
+Next: different-author static source/test review; any refusal requires preserved distinct correction. Only after accepted review may ROOT prepare/bind a fresh isolated runtime under separate reviews and authorization. Then actual consumer/publication/native schema/cap/pin and typed-sourceguard closure must be reviewed, including new85-function/7-class source shape and untouched initializer genexpr. No final assembly, live application, current-candidate readiness, fit, extra epoch, native recovery, public action or execution authority follows here. Owner ends2026-10-02T22:36:15Z.
+'''
+put(N / 'HANDOFF_004.md', handoff.encode())
+# Paired/triple reobservation of every original and preserved input, using independent same-API raw9 stability.
+observations = []
+for iteration in range(3):
+    rows = []
+    for pair in preservation['pairs']:
+        a, ao = read(Path(pair['source']['path'])); b, bo = read(Path(pair['copy']['path']))
+        assert a == b and ao == pair['source'] and bo == pair['copy']
+        rows.append({'source': ao, 'copy': bo})
+    observations.append(rows)
+out(N / 'AUTHOR_REOBSERVATION_004.json', {'observed_utc': datetime.now(timezone.utc).isoformat(),
+    'observations': observations, 'preserved_pairs': len(preservation['pairs']), 'all_three_exact': True,
+    'source': read(N / 'scripts/week8_recovery_raw_authority.py')[1],
+    'tests': read(N / 'tests/test_week8_recovery_raw_authority.py')[1], 'source_peer_pending': True,
+    'actual_source_or_test_execution': False, 'future_bindings': future})
+paths = sorted((p for p in N.rglob('*') if p.is_file()), key=lambda p: p.relative_to(N).as_posix())
+entries = [dict(read(p)[1], relative_path=p.relative_to(N).as_posix()) for p in paths]
+out(N / 'RAW_POLICY_STAGED_MANIFEST_004.json', {
+    'schema_version': 1, 'record_type': 'staged_raw_source_and_test_preparation004',
+    'author': '/root/raw_policy_worker', 'frozen_utc': datetime.now(timezone.utc).isoformat(),
+    'entries': entries, 'declared_payload_files': len(entries),
+    'excluded_self': 'RAW_POLICY_STAGED_MANIFEST_004.json',
+    'allowed_post_manifest_author_receipt': 'AUTHOR_POST_FREEZE_OBSERVATION_004.json',
+    'source': source_ob, 'tests': tests_ob, 'source_sha256': digest(source), 'test_sha256': digest(tests),
+    'historical_source_bytes': 178209, 'historical_tests_exact_prefix': 415278,
+    'preserved_input_pairs': len(preservation['pairs']), 'source_policy_ast_checked_only': True,
+    'actual_source_test_compilation_import_execution': False, 'actual_collection_count': None,
+    'actual_runtime_acceptance': None, 'independent_source_and_test_review': None,
+    'api_keyword_count': 12, 'operational_file_roles': 7, 'global_cap': 395799, 'schema3_cap': 361287,
+    'final_binding_or_authority': future, 'live_or_canonical_candidate_or_native_authority': False,
+})
+manifest_ob = read(N / 'RAW_POLICY_STAGED_MANIFEST_004.json')[1]
+for entry in entries:
+    assert read(N / entry['relative_path'])[1] == {k: v for k, v in entry.items() if k != 'relative_path'}
+for pair in preservation['pairs']:
+    assert read(Path(pair['source']['path']))[1] == pair['source']
+    assert read(Path(pair['copy']['path']))[1] == pair['copy']
+out(N / 'AUTHOR_POST_FREEZE_OBSERVATION_004.json', {
+    'manifest': manifest_ob, 'checked_utc': datetime.now(timezone.utc).isoformat(),
+    'declared_payload_files': len(entries), 'all_payload_and_original_input_postpublication_bytes_raw9_exact': True,
+    'target_execution': False, 'future_runtime_or_peer_result': None})
+print(json.dumps({'manifest_sha256': manifest_ob['sha256'], 'manifest_bytes': manifest_ob['bytes'],
+    'payload_files': len(entries), 'current_total_files': len(entries) + 2,
+    'source_sha256': digest(source), 'source_bytes': len(source), 'test_sha256': digest(tests),
+    'tests_bytes': len(tests), 'handoff_sha256': read(N / 'HANDOFF_004.md')[1]['sha256'],
+    'source_tests_unrun': True, 'different_peer_pending': True}))

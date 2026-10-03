@@ -1,0 +1,197 @@
+"""Own source/AST builder only; no publisher or verifier code runs."""
+import ast
+import json
+from pathlib import Path
+
+PREP = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\raw004-publication-native-bounded-closure-prep001')
+POLICY = json.loads((PREP / 'ALL31_NORMALIZED_POLICY_001.json').read_bytes())
+INPUTS = json.loads((PREP / 'COMPILED_TWO_MIDDLE_INPUTS_001.json').read_bytes())
+native = (PREP / 'front/native_successor_front_common_013_001.py.template').read_text()
+
+def native_function(name):
+    return ast.get_source_segment(native, next(n for n in ast.parse(native).body
+                                              if isinstance(n, ast.FunctionDef) and n.name == name))
+
+for basename in ('publish-successor-admission-schema3-001.py.template', 'verify-successor-admission-schema3-001.py.template'):
+    path = PREP / 'publication' / basename
+    source = path.read_text()
+    before_path = PREP / ('PUBLICATION_BEFORE_SCHEMA3_' + basename + '.bytes')
+    if before_path.exists():
+        assert before_path.read_bytes() == source.encode()
+    else:
+        with before_path.open('xb') as stream:
+            stream.write(source.encode())
+    def replace_function(name, text):
+        global source
+        node = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == name)
+        lines = source.splitlines(keepends=True)
+        source = ''.join(lines[:node.lineno - 1]) + text.strip() + '\n' + ''.join(lines[node.end_lineno:])
+    def function(name):
+        return ast.get_source_segment(source, next(n for n in ast.parse(source).body
+                                                  if isinstance(n, ast.FunctionDef) and n.name == name))
+    def replace_assignment(name, text):
+        global source
+        node = next(n for n in ast.parse(source).body if isinstance(n, ast.Assign)
+                    and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name)
+        lines = source.splitlines(keepends=True)
+        source = ''.join(lines[:node.lineno - 1]) + text + '\n' + ''.join(lines[node.end_lineno:])
+    replace_assignment('COMPILED_POLICY', 'COMPILED_POLICY = json.loads(' + repr(json.dumps(POLICY,sort_keys=True,separators=(',',':'))) + ')')
+    replace_assignment('MIDDLE_INPUTS', 'MIDDLE_INPUTS = json.loads(' + repr(json.dumps(INPUTS,sort_keys=True,separators=(',',':'))) + ')')
+    replace_assignment('STAGE', "STAGE = WORKSPACE / 'resume-2026-10-01-30h-001/raw004-publication-native-bounded-closure-prep001/publication'")
+    text = function('schema2_literal_policy').replace('len(values) == 20', 'len(values) == 31').replace('fixed twenty policy values absent', 'fixed thirty-one policy values absent').replace('reviewed raw003 literal policy changed','reviewed raw004 literal policy changed')
+    replace_function('schema2_literal_policy', text)
+    text = function('inputs')
+    start = text.index('    for name, facts in MIDDLE_INPUTS.items():')
+    end = text.index('    result["current_release"]', start)
+    text = text[:start] + '''    for name, pair in MIDDLE_INPUTS.items():
+        require(type(pair) is list and len(pair) == 2, "exact two compiled middle acquisitions")
+        require(role_caps[name] == sum(row["size"] for row in pair), "compiled pair aggregate acquisition cap")
+        values = []
+        for facts in pair:
+            retained = STAGE / "before" / facts["retained_name"]
+            value, info = read(retained, maximum=facts["size"])
+            require(len(value) == facts["size"] and sha(value) == facts["sha256"], "middle retained byte pin differs")
+            require(info[:2] not in inode_seen, "middle retained input aliases another object")
+            inode_seen.add(info[:2])
+            if facts["path"] is not None:
+                original, original_info = read(WORKSPACE / facts["path"], maximum=facts["size"])
+                require(original == value and original_info[:2] not in inode_seen, "middle original/retained independence differs")
+                inode_seen.add(original_info[:2])
+            values.append(value)
+        result[name] = tuple(values)
+''' + text[end:]
+    replace_function('inputs', text)
+    text = function('input_identity_digest')
+    text = text.replace('    def add(role, path):\n        path = str(path)\n        expected, maximum = material[role], role_caps[role]', '    def add(role, path, index=None):\n        path = str(path)\n        expected, maximum = (material[role], role_caps[role]) if index is None else (material[role][index], MIDDLE_INPUTS[role][index]["size"])')
+    text = text.replace('    for name, facts in MIDDLE_INPUTS.items():\n        add(name, STAGE / "before" / facts["retained_name"])\n        if facts["path"] is not None:\n            add(name, absolute(facts["path"]))', '    for name, pair in MIDDLE_INPUTS.items():\n        for index, facts in enumerate(pair):\n            add(name, STAGE / "before" / facts["retained_name"], index)\n            if facts["path"] is not None:\n                add(name, WORKSPACE / facts["path"], index)')
+    replace_function('input_identity_digest', text)
+    text = native_function('_native_middle')
+    replacements = {'_native_middle':'schema2_middle', '_native_exact':'exact', '_native_relative':'relative', '_native_hex':'hex_value', '_native_file_rows':'schema2_file_rows', '_native_row_identity':'row_identity', '_native_commit_object':'schema2_commit_object', '_native_compact_qa':'schema3_compact_qa', '_NATIVE_HISTORICAL':'HISTORICAL', 'release=parse(':'release=strict_json('}
+    for old,new in replacements.items(): text = text.replace(old,new)
+    replace_function('schema2_middle', text)
+    text = function('schema2_release_checks').replace('policy["SUCCESSOR_INTERMEDIATE_FACTS"]["controller_commit"]','policy["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"][1]["controller_commit"]')
+    replace_function('schema2_release_checks', text)
+    replace_function('observation', '''
+def observation() -> dict:
+    owner()
+    runtime_facts = runtime()
+    material = inputs()
+    policy = schema2_literal_policy(material["raw_source"])
+    facts = policy["SUCCESSOR_PREDECESSOR_FACTS"]
+    allowed = frozenset(policy["SUCCESSOR_ALLOWED_CHANGED_PATHS"])
+    require(len(allowed) == 25, "finite policy scope differs")
+    incident = strict_json(material["incident"])
+    terminal = strict_json(material["terminal"])
+    old_raw = incident["authority"]["preimport_authority_record"]
+    require(old_raw == HISTORICAL["old_raw"] and old_raw["record_digest"] == facts["raw_record_digest"]
+        and incident["inventory_digest"] == facts["inventory_digest"]
+        and terminal["incident"] == {"file_sha256": facts["incident_sha256"],
+            "record_digest": incident["record_digest"], "inventory_digest": facts["inventory_digest"]},
+        "historical raw/inventory/terminal binding differs")
+    commits = [facts["controller_commit"]] + [row["controller_commit"] for row in policy["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"]] + [BINDINGS["current_commit"]]
+    require(len(set(commits)) == 4, "schema3 distinct direct lineage commits")
+    tables = [committed_rows(CONTROLLER, commit) for commit in commits]
+    for rows in tables:
+        schema2_file_rows(rows, policy=policy, what="independent full742")
+    old_rows, new_rows = tables[0], tables[3]
+    require(canonical(old_rows) + b"\\n" == material["predecessor_rows"]
+        and all(row_identity(old_rows)[name] == facts[name] for name in row_identity(old_rows)),
+        "742 predecessor Git objects differ from retained raw inventory")
+    expected_paths = policy["_SUCCESSOR_COMPACT_QA_PATHS"]
+    schema2_qa(material["predecessor_manifest"], old_rows, expected_paths=expected_paths)
+    chain = []
+    for index, middle in enumerate(policy["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"]):
+        commit_size = line(git(CONTROLLER, ["cat-file", "-s", middle["controller_commit"]]))
+        require(commit_size == str(MIDDLE_INPUTS["middle_commit_object"][index]["size"]), "middle typed pre-read size differs")
+        fresh_commit = git(CONTROLLER, ["cat-file", "commit", middle["controller_commit"]])
+        require(fresh_commit == material["middle_commit_object"][index], "middle fresh typed commit differs from retained bytes")
+        proof = {"release_record_base64": base64.b64encode(material["middle_release"][index]).decode("ascii"),
+                 "git_commit_object_base64": base64.b64encode(fresh_commit).decode("ascii"),
+                 "changed_files": [dict(row) for row in policy["_SUCCESSOR_COMPACT_AFTERIMAGES"][index]]}
+        entry = {"identities": dict(middle), "proof": proof}
+        require(schema2_middle(entry, tables[index], tables[index+1], policy=policy, expected_paths=expected_paths, index=index) == tables[index+1], "schema3 independently acquired middle differs")
+        require(material["middle_manifest"][index] == schema3_compact_qa(tables[index+1], policy, middle["candidate_manifest_sha256"]), "middle original canonical grouped QA differs")
+        chain.append(entry)
+    final = {row["path"]: row for row in new_rows}
+    changes = []
+    for table in tables[:3]:
+        left = {row["path"]: row for row in table}
+        require(set(left) == set(final) and all(left[path]["mode"] == final[path]["mode"] for path in left), "schema3 final changes path/mode scope")
+        changed = sorted(path for path in left if left[path] != final[path])
+        require(len(changed) == 25 and set(changed) == allowed, "schema3 all three final finite25 edges differ")
+        changes.append(changed)
+    require(material["predecessor_manifest"] == schema3_compact_qa(old_rows, policy, facts["predecessor_candidate_manifest_sha256"])
+        and material["current_manifest"] == schema3_compact_qa(new_rows, policy, BINDINGS["current_candidate_manifest_sha256"]), "schema3 old/final canonical grouped QA differs")
+    live = worktree(CONTROLLER, BINDINGS["current_commit"], new_rows)
+    final_commit_object = git(CONTROLLER, ["cat-file", "commit", BINDINGS["current_commit"]])
+    schema2_commit_object(final_commit_object, commit=BINDINGS["current_commit"], parent=commits[2])
+    execution = HISTORICAL["execution"]
+    execution_rows = committed_rows(Path(execution["path"]), execution["git_commit"])
+    require(row_identity(execution_rows) == {"controller_inventory_digest": execution["worktree_inventory_digest"],
+        "tracked_tree_digest": execution["tracked_tree_digest"], "tracked_file_count": execution["tracked_file_count"]}, "frozen execution committed identity differs")
+    frozen_live = worktree(Path(execution["path"]), execution["git_commit"], execution_rows, detached=True)
+    schema2_release_checks(strict_json(material["predecessor_release"]), strict_json(material["current_release"]), old_rows, new_rows, changes[0], live["branch"], policy=policy)
+    current_receipt = receipt(material["current_receipt"])
+    expected_receipt = {"controller_commit": BINDINGS["current_commit"],
+        "native_launcher_sha256": final["scripts/week8_recovery_native_launcher.ps1"]["sha256"],
+        "outer_sha256": final["scripts/week8_recovery_outer_bootstrap.txt"]["sha256"],
+        "entry_sha256": final["scripts/week8_exp2a_recovery_entrypoint.py"]["sha256"],
+        "helper_sha256": final["scripts/week8_recovery_raw_authority.py"]["sha256"],
+        **{name: BINDINGS[name] for name in ("stage0_source_sha256", "stage0_encoded_sha256", "stage0_environment_policy_sha256")}}
+    require(current_receipt == expected_receipt and expected_receipt["helper_sha256"] == BINDINGS["raw_helper_sha256"], "current V2 receipt differs from reviewed source/stage0")
+    successor = {"controller_commit": BINDINGS["current_commit"], **row_identity(new_rows), "release_record_sha256": BINDINGS["current_release_sha256"], "candidate_manifest_sha256": BINDINGS["current_candidate_manifest_sha256"]}
+    attestation = {"successor_admission_schema_version": 3, "record_type": "week8_d176_successor_admission", "decision_id": "D-161", "recovery_id": incident["recovery_id"], "predecessor": facts,
+        "successor": successor, "predecessor_files": old_rows, "successor_files": new_rows, "changed_paths": changes[0], "intermediate_chain": chain, "successor_parent_changed_paths": changes[2], **FLAGS}
+    attestation["record_digest"] = sha(canonical(attestation))
+    attestation_bytes = canonical(attestation) + b"\\n"
+    require(len(attestation_bytes) <= policy["_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3"] <= policy["SUCCESSOR_ADMISSION_MAX_BYTES"], "schema3 emitted private/global ingress ceiling")
+    schema2_sealed_attestation(attestation_bytes, expected_sha256=sha(attestation_bytes), policy=policy)
+    payloads = {"attestation.json": attestation_bytes, "attestation.twin.json": attestation_bytes,
+        "predecessor-release.json": material["predecessor_release"], "successor-release.json": material["current_release"], "predecessor-candidate-manifest.json": material["predecessor_manifest"], "successor-candidate-manifest.json": material["current_manifest"], "current-native-release-receipt.txt": material["current_receipt"]}
+    require(set(payloads) == OUTPUT_NAMES, "seven output contract differs")
+    owner()
+    return {"payloads": payloads, "attestation": attestation, "runtime": runtime_facts, "controller_live": live, "execution_live": frozen_live,
+        "input_identity_digest": input_identity_digest(material), "input_hashes": {name: schema3_middle_role_hash(name, value) if name in MIDDLE_INPUTS else sha(value) for name, value in material.items()},
+        "policy": policy, "middle_full742_identity": [row_identity(table) for table in tables[1:3]], "intermediate_proof_sha256": sha(canonical([entry["proof"] for entry in chain])), "final_commit_object_sha256": sha(final_commit_object)}
+''')
+    text = function('schema2_sealed_attestation').replace('_SUCCESSOR_ATTESTATION_SCHEMA2_KEYS','_SUCCESSOR_ATTESTATION_SCHEMA3_KEYS').replace('_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA2','_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3')
+    text = text.replace('document["successor_admission_schema_version"] == 2','document["successor_admission_schema_version"] == 3').replace('attestation["successor_admission_schema_version"] == 2','attestation["successor_admission_schema_version"] == 3')
+    replace_function('schema2_sealed_attestation', text)
+    for name in ('metadata_maximal_document','validate_metadata_document'):
+        text = function(name)
+        text = text.replace('"attestation_schema_version": 2','"attestation_schema_version": 3')
+        text = text.replace('type(document[name]) is int and document[name] == 2', 'type(document[name]) is int and document[name] == (2 if name == "publication_schema_version" else 3)')
+        text = text.replace('COMPILED_POLICY["SUCCESSOR_INTERMEDIATE_FACTS"]','COMPILED_POLICY["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"]')
+        if name == 'metadata_maximal_document':
+            text = text.replace('document["middle_full742_identity"] = {"controller_inventory_digest": h64,\n            "tracked_tree_digest": h64, "tracked_file_count": 742}', 'document["middle_full742_identity"] = [{"controller_inventory_digest": h64,\n            "tracked_tree_digest": h64, "tracked_file_count": 742} for index in range(2)]')
+        else:
+            start = text.index('        require(type(document["intermediate"]) is dict')
+            end = text.index('        exact(document["runtime"]', start)
+            text = text[:start] + '''        require(type(document["intermediate"]) is list and len(document["intermediate"]) == 2 and canonical(document["intermediate"]) == canonical(COMPILED_POLICY["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"]), "metadata exact two fixed intermediates")
+        for actual, expected in zip(document["intermediate"], COMPILED_POLICY["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"]):
+            exact(actual, expected, "metadata intermediate11")
+            for field, value in actual.items():
+                require(type(value) is type(expected[field]), "metadata intermediate nominal field")
+        require(type(document["middle_full742_identity"]) is list and len(document["middle_full742_identity"]) == 2, "metadata two middle identities")
+        for actual, middle in zip(document["middle_full742_identity"], COMPILED_POLICY["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"]):
+            exact(actual, {"controller_inventory_digest", "tracked_tree_digest", "tracked_file_count"}, "metadata middle identity3")
+            for field, value in actual.items():
+                if field == "tracked_file_count":
+                    require(type(value) is int and value == 742, "metadata middle742 count")
+                else:
+                    hex_value(value, 64, "metadata middle digest")
+                require(value == middle[field], "metadata fixed middle identity")
+''' + text[end:]
+        replace_function(name,text)
+    text = function('metadata_context').replace('week8_schema2_metadata_roles_004','week8_schema3_metadata_roles_bounded001')
+    text = text.replace('    for value in (*INPUT_ROLE_MAX_BYTES.values(), *OUTPUT_ROLE_MAX_BYTES.values()):', '    for role, pair in MIDDLE_INPUTS.items():\n        require(INPUT_ROLE_MAX_BYTES[role] == sum(row["size"] for row in pair), "schema3 compiled pair role cap")\n    for value in (*INPUT_ROLE_MAX_BYTES.values(), *OUTPUT_ROLE_MAX_BYTES.values()):')
+    replace_function('metadata_context',text)
+    source = source.replace('observed["attestation"]["intermediate"]','observed["attestation"]["intermediate_chain"]')
+    # Metadata publishes exact identities only, never the proofs in that field.
+    source = source.replace('"intermediate": observed["attestation"]["intermediate_chain"]','"intermediate": [entry["identities"] for entry in observed["attestation"]["intermediate_chain"]]')
+    compact = native_function('_native_compact_qa').replace('_native_compact_qa','schema3_compact_qa')
+    pair = native_function('_native_middle_role_hash').replace('_native_middle_role_hash','schema3_middle_role_hash').replace('NATIVE_MIDDLE_INPUTS','MIDDLE_INPUTS')
+    source += '\n' + compact + '\n' + pair + '\n'
+    ast.parse(source)
+    path.write_text(source,encoding='utf8',newline='\n')
+    print(json.dumps({'source':basename,'bytes':len(source.encode()),'target_code_executed':False,'actual_caps':None}))

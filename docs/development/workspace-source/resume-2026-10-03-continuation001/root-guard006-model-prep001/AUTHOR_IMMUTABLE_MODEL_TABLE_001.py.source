@@ -1,0 +1,147 @@
+"""Own metadata author: reads JSON/AST literals; no target imports/calls."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+OWN=Path(__file__).parent
+WORK=OWN.parent
+P=WORK/'root-guard006-pipeline-prep001'
+G=WORK/'consumer005-guard006-runtime-prep001'
+M=WORK/'metadata3-producer-core-prep001'
+K=WORK/'metadata3-actual-checker-prep001'
+U=WORK/'guard006-bound-late-checker-prep001'
+observed={}
+
+
+def read(path):
+    data=path.read_bytes()
+    previous=observed.get(str(path))
+    assert previous is None or previous==data
+    observed[str(path)]=data
+    return data
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def decoded(path):
+    return json.loads(read(path))
+
+
+def literals(path):
+    result={}
+    for node in ast.parse(read(path)).body:
+        if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name):
+            try:result[node.targets[0].id]=ast.literal_eval(node.value)
+            except (ValueError,TypeError):pass
+    return result
+
+
+def pinned(path,cap):
+    data=read(path)
+    assert len(data)<=cap
+    return dict(path=str(path),sha256=sha(data),bytes=len(data),cap=cap)
+
+
+def wire(value):
+    return (json.dumps(value,sort_keys=True,indent=2,ensure_ascii=True)+'\n').encode('ascii')
+
+
+def once(path,data):
+    with path.open('xb') as stream:stream.write(data)
+
+
+root=literals(P/'BIND_ROOT_PIPELINE_SOURCE_002.TEMPLATE.py')
+immutable=root['PINNED_INPUTS']
+for item in immutable.values():
+    data=read(Path(item['path']))
+    assert len(data)==item['bytes'] and sha(data)==item['sha256']
+immutable['composer']=immutable.pop('composer_template')
+new={
+ 'utility':(U/'review_guard006_actual_records_001-corrected007.TEMPLATE.py',131072),
+ 'utility_manifest':(U/'AUTHOR_FROZEN_SOURCE_MANIFEST_007.json',2097152),
+ 'utility_peer':(WORK/'guard006-utility-source-independent-review001/source-audit004/INDEPENDENT_GENERIC_PUB_SOURCE_REVIEW_003.json',2097152),
+ 'checker':(K/'review-metadata3-actual006-corrected009.TEMPLATE.py',262144),
+ 'checker_manifest':(K/'AUTHOR_FROZEN_SOURCE_MANIFEST_009.json',2097152),
+ 'checker_protocol':(K/'SOURCE_PROTOCOL_AND_REVIEW_CONTRACT_009.json',2097152),
+ 'capsule_schema':(G/'inputs/COMPACT_CAPSULE_CLOSED_SCHEMA_001.json',2097152),
+ 'capsule_derivation':(G/'inputs/CAPSULE_DERIVATION_MAP_001.json',2097152),
+ 'ack_template':(G/'ROOT_EXECUTION_ACK_GUARD_UNIT006.TEMPLATE.json',65536),
+ 'bound_template':(G/'INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_006.TEMPLATE.json',65536),
+ 'late_template':(G/'INDEPENDENT_GUARD_ROOT_LAUNCH_LATE_REVIEW_006.TEMPLATE.json',65536),
+ 'checker_peer':(WORK/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_002.json',65536),
+ 'root_writer_peer':(WORK/'root-pipeline-independent-review001/INDEPENDENT_ROOT_PIPELINE_ARCHITECTURE_SUPPLEMENT_002.json',2097152),
+ 'root_writer_architecture':(WORK/'root-pipeline-independent-review001/INDEPENDENT_ROOT_PIPELINE_ARCHITECTURE_REVIEW_001.json',2097152),
+ 'root_binder':(P/'BIND_ROOT_PIPELINE_SOURCE_002.TEMPLATE.py',131072),
+ 'root_binder_manifest':(P/'SOURCE_BINDER_MANIFEST_002.json',2097152),
+ 'root_binder_peer':(WORK/'root-pipeline-independent-review001/INDEPENDENT_ROOT_PIPELINE_BINDER_SOURCE_REVIEW_002.json',2097152),
+}
+for key,(path,cap) in new.items():immutable[key]=pinned(path,cap)
+assert immutable['utility']['sha256']=='8f620adad426d38315392b94e5a9e46a66f1a1eb63613aa5fb79a9715abbc8fd'
+assert immutable['utility_peer']['sha256']=='d40d58410b9057b3c462d3e18ae85a39e3b7366a2083b9ccf899beb49bfa0e2c'
+assert immutable['root_writer_peer']['sha256']=='c451f5e25d07599e58a7f3dde96ca20e9e86a92f5ee21f04683499604ea7f459'
+protocol=decoded(K/'SOURCE_PROTOCOL_AND_REVIEW_CONTRACT_009.json')
+checker=literals(K/'review-metadata3-actual006-corrected009.TEMPLATE.py')
+capture=literals(M/'capture-root-metadata003-corrected005.TEMPLATE.py')
+m3_peer=decoded(Path(immutable['metadata_peer']['path']))
+capsule_peer=decoded(Path(immutable['capsule_peer']['path']))
+writer_peer=decoded(Path(immutable['root_writer_peer']['path']))
+primitive=lambda value:type(value) in (str,int,bool,type(None))
+actual_paths=dict(
+ pipeline_config=str(P/'ROOT_PIPELINE_BINDING_001.json'),pipeline_peer=str(WORK/'root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_001.json'),
+ pipeline=str(P/'RUN_ROOT_METADATA_PIPELINE_006.BOUND.ps1'),root_trust=str(P/'ROOT_PIPELINE_TRUST_SELECTION_001.json'),root_init=str(P/'ROOT_PIPELINE_INIT_TRACE_001.json'),
+ driver=str(G/'run-consumer-guard-unit006-rev003.bound.py'),observer=str(G/'observe-whole-runtime-006-rev003.BOUND.py'),
+ root_writer=str(P/'PREPARE_ROOT_GUARD006_RECORDS_001.BOUND.ps1'),metadata_plan=str(M/'SOURCE_BINDING_PLAN_003.json'),
+ metadata_source_binding=str(M/'ACTUAL_SOURCE_BINDING_003.json'),metadata_source=str(M/'capture-root-metadata003.BOUND.py'),
+ metadata_bound_review=str(M/'INDEPENDENT_BOUND_METADATA_REVIEW_003.json'),phase_binding=str(M/'PHASE_PS_SOURCE_BINDING_003.json'),
+ phase_peer=str(M/'INDEPENDENT_ROOT_METADATA_PHASE_PS_BINDING_REVIEW_003.json'),checker_binding=str(K/'ACTUAL_CHECKER_BINDING_001.json'),
+ checker_peer=str(WORK/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_002.json'))
+capture_keys=['schema_version','phase','started_utc','captured_utc','context','runtime_selection','head','porcelain_normal','paired742_and_git_config_runtime_matched','bound_inputs','metadata_only','whole_inventory_trees_observed','guard_or_test_or_native_executed','operational_authority_granted']
+phase_input_paths=dict(capture_before=str(M/'phase-before-003/METADATA_CAPTURE_003.json'),whole_before_result=str(G/'whole-runtime-before/result.json'))
+table=dict(schema_version=1,record_type='guard006_immutable_model_input_table',author='/root/pubnative_review',scope=checker['SCOPE'] if 'SCOPE' in checker else 'COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY',
+ immutable=immutable,actual_paths=actual_paths,m3_peer_keys=list(m3_peer),m3_core_keys=[key for key,value in m3_peer.items() if primitive(value)],
+ capsule_core_keys=[key for key,value in capsule_peer.items() if primitive(value)],
+ bound9_keys=['actual_script_sha256','metadata_only','phase_set','record_type','reviewer','schema_version','source_author','source_bindings','verdict'],
+ phase20_keys=protocol['phase_peer20_keys'],phase_core_keys=[key for key in protocol['phase_peer20_keys'] if key!='phase_sources'],
+ phase_templates={role:immutable['metadata_'+role+'_template'] for role in ('before_writer','before_parent','after_writer','after_parent')},
+ core12=protocol['closed_source_literal_schemas']['CORE_KEYS'],
+ whole_acceptance7=['schema_version','scope','captured_utc','verifier','runtime_snapshot_sha256','whole_before_evidence','unchanged_against_reviewed_runtime'],
+ phase_core_nominals=protocol['core_phase_types_verdicts_leaves'],phase_input_paths=phase_input_paths,
+ phase_parent_paths=dict(capture_before=str(M/'ROOT_METADATA_PARENT_TERMINAL_BEFORE_003.json'),whole_before_result=str(G/'ROOT_WHOLE_BEFORE_PARENT_TERMINAL_006.json')),
+ metadata9_keys=list(capture['BINDINGS']),checker_config18_keys=protocol['config18_keys'],
+ root_writer_peer_keys=list(writer_peer),root_writer_core_keys=[key for key,value in writer_peer.items() if primitive(value)],
+ phase_input_keys=dict(capture_before=capture_keys,whole_before_result=protocol['closed_source_literal_schemas']['WHOLE_RESULT_KEYS']),
+ phase_input_nominals=dict(capture_before=dict(schema_version=1,phase='before',paired742_and_git_config_runtime_matched=True,metadata_only=True,whole_inventory_trees_observed=0,guard_or_test_or_native_executed=False,operational_authority_granted=False),
+ whole_before_result=dict(schema_version=1,record_type='consumer_guard_unit006_whole_metadata_result',scope='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY',phase='before',verdict='MATCHES_PINNED_BYTES_METADATA_TWICE',before_record_sha256=None,unit_receipt=None,target_execution=False,whole_site_loaded_closure_retained_lock_OS_Job_guaranteed=False)),
+ phase_stdout_paths=dict(capture_before=str(M/'ROOT_METADATA_PARENT_STDOUT_BEFORE_003.txt'),whole_before_result=str(G/'ROOT_WHOLE_BEFORE_PARENT_STDOUT_006.txt')),
+ phase_stderr_paths=dict(capture_before=str(M/'ROOT_METADATA_PARENT_STDERR_BEFORE_003.txt'),whole_before_result=str(G/'ROOT_WHOLE_BEFORE_PARENT_STDERR_006.txt')),
+ phase_authorization_paths=dict(capture_before=str(M/'ROOT_METADATA_AUTHORIZATION_BEFORE_003.json'),whole_before_result=str(G/'ROOT_WHOLE_BEFORE_AUTHORIZATION_006.json')))
+table_data=wire(table)
+constructor=OWN/'ASSEMBLE_GUARD006_SOURCE_MODELS_001.TEMPLATE.py'
+source=read(constructor)
+assert source.count(b'TABLE_SHA = None')==1
+final=source.replace(b'TABLE_SHA = None',('TABLE_SHA = '+repr(sha(table_data))).encode('ascii'))
+ast.parse(final)
+for unused in range(2):
+ for path,data in list(observed.items()):assert Path(path).read_bytes()==data
+once(OWN/'IMMUTABLE_MODEL_INPUTS_001.json',table_data)
+constructor.write_bytes(final)
+selected_keys=literals(constructor)['SELECTED_KEYS']
+selection={key:None for key in selected_keys}
+selection.update(schema_version=1,record_type='root_guard006_actual_model_input_selection',author='/root',scope=table['scope'],actual_context=None,actual_results=None,capture_started=False)
+once(OWN/'ROOT_ACTUAL_MODEL_SELECTION_001.TEMPLATE.json',wire(selection))
+facts=dict(schema_version=1,record_type='guard006_source_model_table_author_metadata',author='/root/pubnative_review',
+ selected_inputs=[dict(path=path,sha256=sha(data),bytes=len(data)) for path,data in observed.items()],
+ immutable_source_rows=len(immutable),table=dict(path=str(OWN/'IMMUTABLE_MODEL_INPUTS_001.json'),sha256=sha(table_data),bytes=len(table_data)),
+ constructor=dict(path=str(constructor),sha256=sha(final),bytes=len(final)),
+ constructor_AST_parsed=True,constructor_main_executed=False,target_definitions_executed=False,target_functions_called=False,tests_executed=False,
+ actual_source_selection=None,actual_source_models=None,actual_bound_bytes=None,actual_bound_fit=None,
+ source_lower_budget=dict(utility=85149,utility_cap=131072,utility_remaining_before_models=45923,composer=14753,composer_cap=131072),
+ finite_inputs_only=True,post_readback_all_selected_exact=True)
+# The constructor is the only intentionally changed author-owned draft input.
+for path,data in observed.items():
+ if Path(path)!=constructor:assert Path(path).read_bytes()==data
+once(OWN/'IMMUTABLE_MODEL_TABLE_AUTHOR_FACTS_001.json',wire(facts))
+print(json.dumps(dict(table=facts['table'],constructor=facts['constructor'],actuals=None),sort_keys=True))

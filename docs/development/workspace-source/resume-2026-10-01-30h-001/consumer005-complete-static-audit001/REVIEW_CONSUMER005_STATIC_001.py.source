@@ -1,0 +1,187 @@
+"""Owned stdlib finite byte/metadata/AST audit. Reviewed project code never executes."""
+from pathlib import Path
+from datetime import datetime, timezone
+import ast
+import copy
+import hashlib
+import json
+import os
+import stat
+
+BASE=Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001')
+AUTHOR=BASE/'raw-consumer-binding-integration-prep005'
+OUT=BASE/'consumer005-complete-static-audit001'
+CAP=2097152
+PIN='169d559bdb54c32dce439bd815dd1e28e895b65826db3e7d4310315b8a5edabc'
+
+def sha(b):return hashlib.sha256(b).hexdigest()
+def enc(v):return (json.dumps(v,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def once(p,b):
+    with p.open('xb') as f:f.write(b)
+def raw(s):return [s.st_dev,s.st_ino,s.st_mode,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_nlink,getattr(s,'st_file_attributes',0),getattr(s,'st_birthtime_ns',None)]
+def read(p):
+    a=p.lstat()
+    assert stat.S_ISREG(a.st_mode) and a.st_nlink==1 and not getattr(a,'st_file_attributes',0)&1024 and 0<=a.st_size<=CAP,str(p)
+    with p.open('rb') as f:
+        b=os.fstat(f.fileno());data=f.read(CAP+1);c=os.fstat(f.fileno())
+    d=p.lstat()
+    assert raw(a)==raw(d) and raw(b)==raw(c) and len(data)==a.st_size,str(p)
+    assert [a.st_dev,a.st_ino,a.st_size,a.st_mtime_ns,a.st_nlink]==[b.st_dev,b.st_ino,b.st_size,b.st_mtime_ns,b.st_nlink],str(p)
+    return data,dict(path=str(p),size=len(data),sha256=sha(data),path_raw9=raw(a),handle_raw9=raw(b))
+
+started=datetime.now(timezone.utc).isoformat()
+manifest_blob,manifest_row=read(AUTHOR/'STAGED_MANIFEST_005.json')
+assert sha(manifest_blob)==PIN
+manifest=json.loads(manifest_blob)
+pres=json.loads(read(AUTHOR/'BEFORE_PRESERVATION_005.json')[0])
+assert len(manifest['files'])==884 and len(pres['pairs'])==847 and len(pres['extra_input_pairs'])==14
+assert sum(r['size'] for r in manifest['files'].values())==91882663
+paths=[AUTHOR/'STAGED_MANIFEST_005.json',AUTHOR/'AUTHOR_POST_FREEZE_STABILITY_005.json']
+paths += [AUTHOR/name for name in manifest['files']]
+paths += [Path(pair[role]['path']) for pair in pres['pairs']+pres['extra_input_pairs'] for role in ('original','copy')]
+paths=list(dict.fromkeys(paths))
+assert len(paths)<=1800
+rounds=[];data={}
+for iteration in range(3):
+    rows=[]
+    for p in paths:
+        b,r=read(p);rows.append(r)
+        if iteration==0:data[str(p)]=b
+    rounds.append(rows)
+assert rounds[0]==rounds[1]==rounds[2]
+by_path={r['path']:r for r in rounds[0]}
+for name,r in manifest['files'].items():assert by_path[str(AUTHOR/name)]==r,(name,'manifest sameAPI metadata or hash differs')
+for pair in pres['pairs']+pres['extra_input_pairs']:
+    for role in ('original','copy'):assert by_path[pair[role]['path']]==pair[role]
+    assert pair['original']['sha256']==pair['copy']['sha256'] and pair['original']['size']==pair['copy']['size']
+post=json.loads(data[str(AUTHOR/'AUTHOR_POST_FREEZE_STABILITY_005.json')])
+assert post['manifest_sha256']==PIN and post['payload_count']==884 and post['actual_count_including_manifest_and_this_receipt']==886
+binding=json.loads(data[str(AUTHOR/'SOURCE_GUARD_TEST_BINDINGS_005.json')])
+assert sha(data[str(AUTHOR/'SOURCE_GUARD_TEST_BINDINGS_005.json')])=='d47448acb23abc7fb623a3e2b128926809ff6350767ef5d0bec2eb588ebd1233'
+assert manifest['source_bindings']==binding['consumers']
+choice=json.loads(data[str(AUTHOR/'inputs/source-choice007.json')])
+assert sha(data[str(AUTHOR/'inputs/source-choice007.json')])==manifest['root_choice007_sha256']
+substitutions=choice['authorized_source_changes']
+source_proofs=[]
+dump=lambda n:ast.dump(n,include_attributes=False)
+for role,row in binding['consumers'].items():
+    newpath=AUTHOR/row['path'];oldpath=AUTHOR/'before/revision004'/row['path']
+    nb=data[str(newpath)];ob=data[str(oldpath)]
+    assert len(nb)==row['size'] and sha(nb)==row['sha256']
+    reversal=nb.decode('utf-8')
+    for oldtext,newtext in sorted(substitutions.items(),key=lambda x:len(x[1]),reverse=True):
+        assert reversal.count(newtext)==1,(role,newtext)
+        reversal=reversal.replace(newtext,oldtext)
+    assert reversal.encode('utf-8')==ob
+    ot=ast.parse(ob);nt=ast.parse(nb)
+    oldfn=next(n for n in ot.body if isinstance(n,ast.FunctionDef) and n.name=='_raw_helper_value_identity')
+    newfn=next(n for n in nt.body if isinstance(n,ast.FunctionDef) and n.name=='_raw_helper_value_identity')
+    restored=copy.deepcopy(nt)
+    for i,n in enumerate(restored.body):
+        if isinstance(n,ast.FunctionDef) and n.name=='_raw_helper_value_identity':restored.body[i]=copy.deepcopy(oldfn)
+    assert dump(restored)==dump(ot)
+    names={n.name for n in nt.body if isinstance(n,ast.FunctionDef)}
+    assert set(row['selected_functions'])<=names
+    assert any(isinstance(n,ast.ImportFrom) and n.module=='types' and any(a.name=='MappingProxyType' for a in n.names) for n in nt.body)
+    assert not any(isinstance(n,ast.Compare) and isinstance(n.left,ast.Name) and n.left.id=='kind' and any(isinstance(x,(ast.In,ast.NotIn)) for x in n.ops) for n in ast.walk(newfn))
+    branches=[n for n in newfn.body if isinstance(n,ast.If)]
+    source_proofs.append(dict(role=role,path=str(newpath),sha256=sha(nb),before_sha256=sha(ob),size=len(nb),growth=len(nb)-len(ob),
+        helper_line=newfn.lineno,primitive_line=branches[0].lineno,Path_line=branches[2].lineno,
+        mapping_line=branches[4].lineno,sequence_line=branches[5].lineno,refusal_line=newfn.end_lineno,
+        sole_changed_definition='_raw_helper_value_identity',four_substitutions_reverse_exact_bytes=True,
+        all_other_source_AST_imports_defaults_guards_and_admission_calls_exact=True))
+testpath=AUTHOR/'test_raw_consumer_guards_005.TEMPLATE.py'
+oldtestpath=AUTHOR/'before/revision004/test_raw_consumer_guards_004.TEMPLATE.py'
+nt=ast.parse(data[str(testpath)]);ot=ast.parse(data[str(oldtestpath)])
+classes=[n for n in nt.body if isinstance(n,ast.ClassDef)]
+oldclass=next(n for n in ot.body if isinstance(n,ast.ClassDef))
+assert len(classes)==2 and all([ast.unparse(x) for x in n.bases]==['unittest.TestCase'] for n in classes)
+old_methods={n.name:n for n in oldclass.body if isinstance(n,ast.FunctionDef) and n.name.startswith('test_')}
+methods=[(c.name,n) for c in classes for n in c.body if isinstance(n,ast.FunctionDef) and n.name.startswith('test_')]
+assert len(old_methods)==19 and len(methods)==24 and len({n.name for _,n in methods})==24
+for name,node in old_methods.items():assert dump(node)==dump(next(n for _,n in methods if n.name==name))
+restored=copy.deepcopy(nt)
+restored.body=[n for n in restored.body if not (isinstance(n,ast.FunctionDef) and n.name=='metaclass_spoof_row')
+    and not (isinstance(n,ast.ClassDef) and n.name=='RawConsumerMetaclassIdentityRegressions')]
+oldfixture=next(n for n in ot.body if isinstance(n,ast.FunctionDef) and n.name=='guard_fixture')
+for i,n in enumerate(restored.body):
+    if isinstance(n,ast.FunctionDef) and n.name=='guard_fixture':restored.body[i]=copy.deepcopy(oldfixture)
+assert dump(restored)==dump(ot)
+fixture=next(n for n in nt.body if isinstance(n,ast.FunctionDef) and n.name=='guard_fixture')
+namespace_node=next(n.value for n in fixture.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='namespace' for t in n.targets))
+namespace_names={k.value for k in namespace_node.keys if isinstance(k,ast.Constant)}
+assert any(isinstance(k,ast.Subscript) and ast.unparse(k)=="row['exception']" and isinstance(v,ast.Name) and v.id=='Refused' for k,v in zip(namespace_node.keys,namespace_node.values))
+assert {'MappingProxyType','CodeType','FunctionType','ModuleType','Path','Mapping'}<=namespace_names
+for role,row in binding['consumers'].items():
+    assert any(isinstance(n,ast.ClassDef) and n.name==row['exception'] for n in ast.parse(data[str(AUTHOR/row['path'])]).body)
+rawtree=ast.parse(data[str(AUTHOR/'inputs/raw004-source.bytes')])
+rawfuncs=[n for n in rawtree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef))]
+rawclasses=[n for n in rawtree.body if isinstance(n,ast.ClassDef)]
+rawdeclared={t.id for n in rawtree.body if isinstance(n,(ast.Assign,ast.AnnAssign)) for t in (n.targets if isinstance(n,ast.Assign) else [n.target]) if isinstance(t,ast.Name)}
+assert set(binding['new_policy_names']+binding['schema3_policy_names'])<=rawdeclared
+assert set(binding['new_helper_names']+binding['schema3_helper_names'])<={n.name for n in rawfuncs}
+api=next(n for n in rawfuncs if n.name=='admit_recorded_predecessor')
+required=[a.arg for a,d in zip(api.args.kwonlyargs,api.args.kw_defaults) if d is None]
+assert len(required)==12 and len(rawfuncs)==85 and len(rawclasses)==7
+assert sha(data[str(AUTHOR/'inputs/raw004-source.bytes')])==binding['raw_sha256']==manifest['raw_source_sha256']
+cap_facts={}
+for n in rawtree.body:
+    if isinstance(n,ast.Assign):
+        for t in n.targets:
+            if isinstance(t,ast.Name) and t.id in ('SUCCESSOR_ADMISSION_MAX_BYTES','_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA1','_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA2','_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3'):
+                cap_facts[t.id]=ast.literal_eval(n.value)
+assert cap_facts['SUCCESSOR_ADMISSION_MAX_BYTES']==395799 and cap_facts['_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3']==361287
+copies=OUT/'selected-inputs';copies.mkdir(exist_ok=False)
+selected_names=['STAGED_MANIFEST_005.json','AUTHOR_POST_FREEZE_STABILITY_005.json','BEFORE_PRESERVATION_005.json','HANDOFF_005.md','SOURCE_GUARD_TEST_BINDINGS_005.json','test_raw_consumer_guards_005.TEMPLATE.py','SOURCE_AND_TEST_DELTA_005.patch','CAUSAL_CASE_MAP_005.json','DERIVED_SOURCE_AND_FIXTURE_CLOSURE_MAP_005.json','AUTHOR_SOURCE_AND_TEST_AST_DELTA_005.json','RAW4_AND_SIX_PROJECTION_CODE_METADATA_005.json','inputs/source-choice007.json','inputs/raw004-source.bytes','inputs/raw004-peer.json']+[r['path'] for r in binding['consumers'].values()]
+copied=[]
+for i,name in enumerate(selected_names,1):
+    b=data[str(AUTHOR/name)];p=copies/('input-%03d.bin'%i);once(p,b);assert sha(p.read_bytes())==sha(b)
+    copied.append(dict(original=str(AUTHOR/name),copy=str(p),size=len(b),sha256=sha(b)))
+report=dict(schema_version=1,record_type='different_complete_consumer005_source_and_causal_test_review',
+    reviewer='/root/native_frame_explorer',source_author='/root/candidate_review',started_utc=started,completed_utc=datetime.now(timezone.utc).isoformat(),
+    verdict='PASS_STATIC_CONSUMER005_COMPLETE_SOURCE_AND_CAUSAL_TEST_PREPARATION_ONLY_WITH_PATH_AND_RUNTIME_LIMITS',
+    manifest_sha256=PIN,declared_payload_files=884,declared_payload_bytes=91882663,
+    known_creation_files_including_manifest=885,known_postclosure_files=886,
+    namespace_count_scope='884 declared payload + pinned manifest + author post receipt verified; no fresh recursive directory inventory or unknown-file absence claim.',
+    before_pairs=847,before_actual004_pairs=811,before_different_scoped_audit_pairs=36,selected_active_pairs=14,
+    unique_finite_inputs=len(paths),metadata_byte_reads=3,all_declared_hash_size_sameAPI_raw9_and_all_original_copy_pairs_exact=True,
+    source_proofs=source_proofs,test_sha256=sha(data[str(testpath)]),test_size=len(data[str(testpath)]),binding_sha256=sha(data[str(AUTHOR/'SOURCE_GUARD_TEST_BINDINGS_005.json')]),
+    test_discovery=dict(AST_test_methods=24,prior19_method_ASTs_exact=True,original14_retained=True,
+        classes=[dict(name=c.name,line=c.lineno,bases=[ast.unparse(x) for x in c.bases],
+            test_methods=[n.name for n in c.body if isinstance(n,ast.FunctionDef) and n.name.startswith('test_')]) for c in classes],
+        sibling_TestCase_bases=True,inherited_duplicate_test_IDs_in_this_source=False,
+        prepared_discovery_candidates=24,actual_collection=None,
+        future_harness_requirement='Select both direct TestCase classes, then reconcile actual collection/events/subtests; selecting only the historical class omits all five new methods.'),
+    fixture_findings=[
+        dict(lines='51-104',fact='Pinned actual source/Raw4 bytes; trusted fixture types/MappingProxyType supplied; selected real guard definitions, actual Raw4 module, two healthy cold/reuse loads before cache reset, registry restoration in finally. These are future fixture operations and were not executed by this reviewer.'),
+        dict(lines='646-679',fact='SpoofMeta inherits type(Mapping), retains type.__hash__, uses identity-only selective return targets; ForeignMapping implements all Mapping abstract operations and instance equality. M1/M2/M3/M4 target mapping/primitive/primitive-plus-genuine-fingerprint/sequence routes respectively; copied nominal names do not alter actual class identity.'),
+        dict(lines='683-723',fact='Five roles times cold/reuse for each model. Separate probe object/log proves type equality; M3 also compares the actual genuine normalized mapping rows. Untouched mutation object/log enters compact facts; specific unsupported-value refusal and empty callback log required, original restored and accepted twice. No log is cleared or guard function replaced.'),
+        dict(lines='725-770',fact='Four negative wrapper methods derive40 planned role/phase contexts, plus genuine primitive/bytes/dict/proxy/tuple/list/set/frozenset/order controls derive10 positive contexts. All remain UNRUN; genuine container copy controls use the real recursive fingerprint and restored loads.'),
+        dict(lines='168-643',fact='All19 prior method ASTs remain exact; generator fixture checks one non-global generator and nine legacy afterimages rather than a stale81 top-function count. Existing16 policy cases/11 schema3 typed policy families/four schema3 helper code/default/global cases/import/module/class/reader/transport controls are retained, with framing doubles explicitly qualified.')],
+    causal_source_conclusion='All four membership routes in each identity helper now use nominal is checks before foreign equality/items/iteration. Under the selected trusted imports/helpers this closes the reviewed M1-M4 causal routes; Mapping-only would not close earlier primitive/sequence routes.',
+    unchanged_Path_qualification='isinstance(value,Path) remains byte/AST exact in all five. This peer does not claim universal nominal identity, foreign Path-like/subclass rejection or no callbacks for all possible value types.',
+    raw_AST_facts=dict(functions=len(rawfuncs),classes=len(rawclasses),class_methods=sum(isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef)) for c in rawclasses for n in c.body),initializer_genexprs=sum(isinstance(x,ast.GeneratorExp) for n in rawtree.body if not isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)) for x in ast.walk(n)),API_required_keyword_only=required,caps=cap_facts,operational_input_roles=7),
+    source_guard_scope='Cold/reuse source disk, module/loader/spec, named function/code/globals/default/kwdefault/annotation, classes/descriptors/methods, uppercase/__all__ constants, import aliases and registry identity guards are exact004 AST. No source-SHA-only immutability claim; selected guard projections are not complete consumer/lifecycle/site/native execution.',
+    authorization_scope='RootChoice007ff686 and Raw4/e8 source preparation selected. Author inert Raw4+six projection CodeType metadata is attributed only; this reviewer did not compile or execute any target code.',
+    limits=['No target compile/import/definitions/functions/tests/helpers/Git/FFI/PowerShell/native/process/live/science/outcome action.',
+        'No actual healthy-module success, actual test collection/result/pass/subtest, operational binding, release/admission, physical capture/Job or eight argv parity proof.',
+        'Prior scoped004 refusal remains historical and was not whole811 approval; this new peer verifies all declared005 payload and before pairs within source preparation scope.',
+        'Fresh separate reviewed isolated harness, new exact pins/bindings, genuine actual metadata and Root authorization remain necessary before runtime entry.',
+        'Owner/quiet/resource/disk/reserve/epoch/science/twins/spent/no-replay guards unchanged; canonical work stays HELD.'],
+    selected_copies=copied,inputs=rounds[0],post=rounds[2],actual_collection=None,actual_results=None,operational_authority_granted=False)
+once(OUT/'INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.json',enc(report))
+md='''Consumer005 passes the complete finite source and causal-test preparation review, with unchanged Path and runtime limits.
+
+All884 declared payloads (91,882,663 bytes), manifest169d559b and author post receipt are byte/size/same-API raw9 bound. All847 preserved pairs (811 actual004 +36 scoped-audit) and14 active pairs match across three reads. Known885 creation/886 post closure is verified from finite declarations; no fresh recursive inventory or unknown-file absence is claimed.
+
+Each of the five source helpers reverses exactly to004 after the four authorized identity predicates are restored. Growth is72bytes per source; every other full-source AST/import/default/Raw4 pin/caller/guard is exact. Primitive/mapping/sequence/set-sort routes use is before foreign equality or iteration. The unchanged isinstance(value,Path) branch prevents a universal nominal-type guarantee.
+
+The fixture preserves19 old test method ASTs and adds five. RawConsumerGuardRegressions:160 and RawConsumerMetaclassIdentityRegressions:682 each directly inherit unittest.TestCase; there is no inherited duplicate test ID. Future harness must select BOTH classes.24 is prepared discovery candidates, never actual collection. New tests derive40 negative +10 positive planned role/phase contexts. M1–M4 have separate probe/mutation logs, explicit metaclass hash, simultaneous M3 primitive/value mechanisms, unsupported-refusal and zero-callback assertions, genuine cold/reuse controls and restored acceptance.
+
+Raw4 AST has85 functions,7 classes,36 methods, one initializer generator, API12/seven evidence roles and unchanged395799/global361287/schema3 caps. No target compile/import/definition/call/test/PS/Git/FFI/native/live action occurred. Author inert compile metadata is attributed, not reproduced. All actual results/bindings/collection/native/physical Job remain None; a separate reviewed one-use runtime preparation and actual Root checks are still required.
+'''
+once(OUT/'INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.md',md.encode('utf-8'))
+payload=[Path(__file__).resolve(),OUT/'INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.json',OUT/'INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.md']+list(copies.iterdir())
+once(OUT/'COMPLETE_SOURCE_AUDIT_MANIFEST_001.json',enc(dict(schema_version=1,scope='Complete declared finite source/test preparation only; no runtime acceptance.',
+    input_count=len(paths),payload_count=len(payload),payload=[dict(path=str(p.relative_to(OUT)),bytes=len(p.read_bytes()),sha256=sha(p.read_bytes())) for p in sorted(payload)])))
+print(json.dumps(dict(report=sha((OUT/'INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.json').read_bytes()),md=sha((OUT/'INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.md').read_bytes()),manifest=sha((OUT/'COMPLETE_SOURCE_AUDIT_MANIFEST_001.json').read_bytes()),inputs=len(paths),all_exact=True)))

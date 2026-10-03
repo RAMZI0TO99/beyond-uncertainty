@@ -1,0 +1,51 @@
+"""Source-string/path metadata supplement only; no target definitions execute."""
+import hashlib
+import json
+import os
+import re
+import stat
+from pathlib import Path
+root=Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\guard005-root-metadata-prep002')
+def read(path):
+    before=path.lstat()
+    assert stat.S_ISREG(before.st_mode) and before.st_nlink==1 and not before.st_file_attributes&0x400 and before.st_size<=67108864
+    with path.open('rb') as stream:
+        opened=os.fstat(stream.fileno());data=stream.read(before.st_size+1);closed=os.fstat(stream.fileno())
+    after=path.lstat()
+    names=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')
+    raw=lambda value:[getattr(value,key) for key in names]
+    p,f=raw(before),raw(opened)
+    assert p==raw(after) and f==raw(closed) and p[:4]+p[5:]==f[:4]+f[5:] and p[4]==p[8] and len(data)==before.st_size
+    return data
+manifest_data=read(root/'STAGED_MANIFEST_002.json')
+manifest=json.loads(manifest_data)
+contract_data=read(root/'PIPELINE_SOURCE_CONTRACT_002.json')
+contract=json.loads(contract_data)
+assert hashlib.sha256(manifest_data).hexdigest()=='d5eadaa41a6d0a745be6720cbceab37462c5c8154328188fee7129fe3c464ec2'
+source_paths=[]
+corrections=[]
+for phase in ('BEFORE','AFTER'):
+    source='SUPERVISE_ROOT_METADATA_'+phase+'_005.TEMPLATE.ps1'
+    data=read(root/source)
+    text=data.decode('utf-8')
+    for variable in ('Start','Terminal','Stdout','Stderr'):
+        values=re.findall(r'(?m)^\$'+variable+r" = Join-Path \$Prep '([^']+)'\r?$",text)
+        assert len(values)==1
+        path=root/values[0]
+        try:path.lstat()
+        except FileNotFoundError:pass
+        else:raise AssertionError('source-selected actual parent role exists')
+        source_paths.append(dict(source=source,source_sha256=hashlib.sha256(data).hexdigest(),variable=variable,path=str(path),absent=True))
+        if variable in ('Stdout','Stderr'):
+            wrong=str(root/('ROOT_METADATA_'+phase+'_'+variable.upper()+'_005.txt'))
+            assert wrong in contract['future_paths_absent_at_author_metadata_observation']
+            corrections.append(dict(preserved_original_wrong_path=wrong,actual_source_selected_path=str(path),actual_absence_reobserved=True))
+assert len(corrections)==4 and len(source_paths)==8
+for item in manifest['files']:
+    data=read(root/item['relative_path'])
+    assert len(data)==item['bytes'] and hashlib.sha256(data).hexdigest()==item['sha256']
+record=dict(schema_version=1,author='/root/bootstrap_stage',record_type='metadata_prep002_author_path_metadata_correction_supplement',verdict='METADATA_CORRECTION_ONLY_NO_APPROVAL',original_manifest_sha256=hashlib.sha256(manifest_data).hexdigest(),original_contract_sha256=hashlib.sha256(contract_data).hexdigest(),originals_preserved_unchanged=True,source_selected_parent_roles=source_paths,corrections=corrections,correction_scope='Four author future-absence-list stdout/stderr spellings; selected source and intrinsic guards already use correct paths.',source_changed=False,actual_roles_created=False,target_definitions_actions_executed=False)
+data=(json.dumps(record,sort_keys=True,indent=2)+'\n').encode('ascii')
+with (root/'AUTHOR_PATH_METADATA_CORRECTION_SUPPLEMENT_007.json').open('xb') as stream:stream.write(data)
+assert read(root/'AUTHOR_PATH_METADATA_CORRECTION_SUPPLEMENT_007.json')==data
+print(json.dumps(dict(supplement_sha256=hashlib.sha256(data).hexdigest(),corrections=4,source_changed=False,target_actions_executed=False)))

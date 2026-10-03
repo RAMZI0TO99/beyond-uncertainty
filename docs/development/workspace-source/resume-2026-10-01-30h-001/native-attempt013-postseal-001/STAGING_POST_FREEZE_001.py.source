@@ -1,0 +1,349 @@
+"""Own-package, stdlib-only preparation freezer; never imports generated helpers.
+
+The sole subprocess is PowerShell ParseFile of template source. No template,
+test, C# compiler, project module or operational producer is executed.
+"""
+from __future__ import annotations
+import ast
+import difflib
+import hashlib
+import json
+import re
+import stat
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+PROJECT = Path('D:/Aenv/pro2')
+BEFORE = ROOT / 'before'
+NOW = datetime.now(timezone.utc).isoformat()
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+def row(path):
+    data = path.read_bytes()
+    return {'sha256': digest(data), 'size': len(data)}
+
+def create(name, document):
+    target = ROOT / name
+    data = (json.dumps(document, sort_keys=True, separators=(',', ':'),
+                       ensure_ascii=True) + '\n').encode('ascii')
+    with target.open('xb') as handle:
+        handle.write(data)
+    return row(target)
+
+def absent(path):
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return str(path)
+    raise ValueError('preparation target already exists: ' + str(path))
+
+assert ROOT == PROJECT / 'resume-2026-10-01-30h-001/native-attempt013-postseal-001'
+required_documents = ('CAPTURE_SOURCE_COPY_001.json', 'BINDING_LIST_001.json',
+                      'VALIDATOR_COMPATIBILITY_001.json', 'DIFF_STATS_001.json',
+                      'STATIC_VALIDATION_001.json', 'UNBOUND_MANIFEST_001.json')
+for name in required_documents:
+    absent(ROOT / name)
+
+templates = sorted(ROOT.glob('*.template'))
+assert len(templates) == 19
+python_templates = [p for p in templates if p.name.endswith('.py.template')]
+ps_templates = [p for p in templates if p.name.endswith('.ps1.template')]
+assert len(python_templates) == 9 and len(ps_templates) == 10
+source_text = {p.name: p.read_text(encoding='utf-8') for p in templates}
+trees = {p.name: ast.parse(source_text[p.name], filename=str(p))
+         for p in python_templates}
+
+lineage = json.loads((BEFORE / 'LINEAGE_MANIFEST_001.json').read_bytes())
+assert len(lineage['files']) == 25
+verified_before = []
+for name, expected in sorted(lineage['files'].items()):
+    retained = BEFORE / name
+    original = Path(expected['original_path'])
+    actual = row(retained)
+    assert actual == {'sha256': expected['sha256'], 'size': expected['size']}
+    assert row(original) == actual
+    verified_before.append({'retained_path': 'before/' + name, **actual,
+                            'original_path': str(original)})
+refusal = json.loads((ROOT / 'FRONT001_REFUSAL_REFERENCE_001.json').read_bytes())
+assert len(refusal['files']) == 3
+verified_refusal = []
+for expected in refusal['files']:
+    actual = row(ROOT / expected['retained_path'])
+    assert actual == {'sha256': expected['sha256'], 'size': expected['size']}
+    assert row(Path(expected['source_path'])) == actual
+    verified_refusal.append({'retained_path': expected['retained_path'], **actual,
+                             'original_path': expected['source_path']})
+
+# The unchanged C# source is a required external byte input. Its pin is taken
+# from the five inherited wrapper constants and compared to the actual bytes.
+wrappers = [p for p in ps_templates if p.name.startswith('run-native-')]
+assert len(wrappers) == 5
+capture_pins = set()
+for wrapper in wrappers:
+    pins = re.findall(r"CaptureSourceSha='([0-9a-f]{64})'", source_text[wrapper.name])
+    assert len(pins) == 1
+    capture_pins.update(pins)
+assert len(capture_pins) == 1
+capture_source = PROJECT / 'resume-2026-09-28-001/native-createprocess-binary-capture-001.cs'
+capture_bytes = capture_source.read_bytes()
+assert digest(capture_bytes) == next(iter(capture_pins))
+capture_target = ROOT / capture_source.name
+capture_before = BEFORE / capture_source.name
+for target in (capture_target, capture_before):
+    absent(target)
+    with target.open('xb') as handle:
+        handle.write(capture_bytes)
+    assert target.read_bytes() == capture_bytes
+create('CAPTURE_SOURCE_COPY_001.json', {
+    'schema_version': 1, 'record_type': 'exact_capture_source_copy',
+    'created_at_utc': NOW, 'original_path': str(capture_source),
+    'retained_path': 'before/' + capture_source.name,
+    'active_path': capture_source.name, **row(capture_target),
+    'wrapper_sources': {p.name: row(p) for p in wrappers},
+    'source_compiled_or_executed': False, 'source_changed': False,
+    'operational_authority_granted': False,
+})
+
+# Parse source only. The PowerShell body has no dot-sourcing or invocation.
+parser_body = r'''
+$root = 'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-attempt013-postseal-001'
+$rows = @()
+foreach ($file in Get-ChildItem -LiteralPath $root -File -Filter '*.ps1.template' | Sort-Object Name) {
+    $tokens=$null
+    $errors=$null
+    $ast=[Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$errors)
+    $rows += [pscustomobject]@{name=$file.Name; error_count=@($errors).Count; errors=@($errors | ForEach-Object {$_.Message})}
+}
+ConvertTo-Json -InputObject $rows -Depth 6 -Compress
+'''
+parsed = subprocess.run(['powershell.exe', '-NoProfile', '-Command', parser_body],
+                        check=True, capture_output=True, timeout=60)
+assert parsed.stderr == b''
+ps_parse = json.loads(parsed.stdout.decode('utf-8-sig'))
+assert len(ps_parse) == 10 and all(r['error_count'] == 0 for r in ps_parse)
+
+binding_template_rows = {}
+front_bindings = None
+for name, tree in sorted(trees.items()):
+    none_names = []
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and node.value.value is None:
+            none_names.extend(target.id for target in node.targets if isinstance(target, ast.Name))
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'FRONT_BINDINGS' for t in node.targets):
+            assert isinstance(node.value, ast.Call) and len(node.value.args) == 1
+            value = json.loads(ast.literal_eval(node.value.args[0]))
+            assert len(value) == 40 and all(v is None for v in value.values())
+            if front_bindings is None:
+                front_bindings = value
+            assert front_bindings == value
+    binding_template_rows[name] = {
+        'source': row(ROOT / name), 'python_future_globals': sorted(none_names),
+        'has_front_binding_map': 'FRONT_BINDINGS' in source_text[name],
+        'independent_expected_self_sha_argument': '--expected-script-sha256' in source_text[name],
+    }
+assert front_bindings is not None
+for name in sorted(p.name for p in ps_templates):
+    text = source_text[name]
+    null_names = re.findall(r'(?mi)^\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\$null\b', text)
+    if name.startswith('run-native-'):
+        block = text.split('$FrontBindings=[ordered]@{', 1)[1].split('\n}', 1)[0]
+        fields = re.findall(r'(?m)^\s+([a-z_][a-z0-9_]*)=\$null\s*$', block)
+        assert set(fields) == set(front_bindings) and len(fields) == 40
+    binding_template_rows[name] = {
+        'source': row(ROOT / name), 'powershell_future_globals': sorted(null_names),
+        'has_front_binding_map': name.startswith('run-native-'),
+        'independent_expected_self_sha_argument': name.startswith('run-native-'),
+    }
+
+bound_absences = [absent(ROOT / p.name.removesuffix('.template')) for p in templates]
+output_names = (
+    'recovery-evidence-before-seal-013.json',
+    'native-seal-013-normal-verification-001.json',
+    'sealed-recovery-independent-evidence-013.json',
+    'native-monitor-013-terminal-verification-001.json',
+    'native-finalize-013-verification-001.json',
+    'native-report-013-verification-001.json',
+    'native-figures-013-verification-001.json',
+)
+output_absences = [absent(ROOT / name) for name in output_names]
+create('BINDING_LIST_001.json', {
+    'schema_version': 1, 'record_type': 'unbound_postseal_binding_list',
+    'created_at_utc': NOW, 'templates': binding_template_rows,
+    'front_binding_keys': sorted(front_bindings),
+    'front_binding_values': front_bindings,
+    'future_current_release': 'release-009-proposal018',
+    'current_release_commit_sha': None,
+    'actual_final_front_sha256': None, 'actual_final_postseal_sha256': None,
+    'all_actual_release_admission_and_capture_pins_unbound': True,
+    'actual_phase_capture_fields': ['STDOUT_SHA256', 'STDOUT_BYTES', 'STDERR_SHA256', 'AUDIT_SHA256', 'INTENT_SHA256'],
+    'binding_copies_absent': bound_absences, 'operational_outputs_absent': output_absences,
+    'attempt013_collision_independent_review_required': True,
+    'native_attempt_root_unused_claimed': False,
+    'binding_performed': False, 'operational_authority_granted': False,
+})
+
+required_calls = {'C': set(), 'E': set(), 'Q': set()}
+required_attributes = {'C': set(), 'E': set(), 'Q': set()}
+for tree in trees.values():
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in required_attributes:
+            required_attributes[node.value.id].add(node.attr)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name) and node.func.value.id in required_calls:
+            required_calls[node.func.value.id].add(node.func.attr)
+q_tree = trees['native_successor_postseal_common_013_001.py.template']
+q_definitions = {n.name for n in q_tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+assert required_calls['Q'] <= q_definitions
+record_fields = next(ast.literal_eval(n.value) for n in q_tree.body
+                     if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'RECORD_FIELDS' for t in n.targets))
+compatibility_rows = [
+    {'boundary': 'every helper capture', 'requirement': 'fixed reviewed source hash; Windows canonical creation8 plus full raw9 same-API guards; plain .py mode exact', 'status': 'implemented_here_ast_only'},
+    {'boundary': 'every operating proof', 'requirement': 'fresh C.load_phase(F); E.operating_invocation; exact recover operating authority/context and historical admission', 'status': 'future_reviewed_front_required'},
+    {'boundary': 'all current release/admission observations', 'requirement': 'strict schema2 originalEA9->exact pinned intermediate597->canonical34 successor; authenticated grouped QA263 sequence; finite full742 proof', 'status': 'future_reviewed_front_raw_policy_required'},
+    {'boundary': 'quiet record consumption', 'requirement': 'C.validate_quiet_observations(value, observed_at_ms=...); exact five-field snapshots and reviewed owned verifier pair', 'status': 'future_reviewed_front_required'},
+    {'boundary': 'fresh quiet acquisition', 'requirement': 'C.quiet_host_twice observes pinned base child/direct venv parent only and excludes every foreign Python/PyPy/pro3', 'status': 'future_reviewed_front_required'},
+    {'boundary': 'fixed executable reads', 'requirement': 'reviewed finite .exe/.com/.bat/.cmd path/handle mode projection; full creation8/raw9; no blanket mode allowance', 'status': 'delegated_future_front_only'},
+    {'boundary': 'native PS before/after guards', 'requirement': 'zero Python/PyPy/pro3 after readonly guard subprocess returns; signed exact two-hardlink cmd image; 8GiB floor; strict unchanged reserves', 'status': 'retained_here_parse_only'},
+    {'boundary': 'native stage0/audit', 'requirement': 'external admission SHA; envelope2/audit3/stage0binding2/startupbinding3/receipt2; actual eight command lengths <=8191', 'status': 'future_reviewed_native_derivation_required'},
+    {'boundary': 'record readers', 'requirement': 'exact v2 schema/path/fields plus canonical digest/current authority/quiet binding; immutable historical schema3/raw4', 'status': 'implemented_here_ast_only'},
+    {'boundary': 'protocol or public API changes', 'requirement': 'distinct reviewed downstream revision before binding; unchanged 7-file transport alone does not grant compatibility', 'status': 'binding_blocked_until_cross_chain_review'},
+]
+create('VALIDATOR_COMPATIBILITY_001.json', {
+    'schema_version': 1, 'record_type': 'postseal_future_interface_matrix', 'created_at_utc': NOW,
+    'required_called_api': {k: sorted(v) for k, v in required_calls.items()},
+    'required_attributes': {k: sorted(v) for k, v in required_attributes.items()},
+    'front_binding_key_count': len(front_bindings), 'rows': compatibility_rows,
+    'record_schema_fields': record_fields,
+    'stored_raw_admission_api': {'keyword_only_inputs': 12, 'current_authority_inputs': 2, 'evidence_binding_inputs': 10, 'source_closure_count_derived_by_accepted_policy': True},
+    'inventory_chain': [15, 20, 25, 30, 35, 40],
+    'launch_reserves_minutes': {'seal': 45, 'monitor': 30, 'finalize': 90, 'report': 60, 'figures': 60},
+    'front001_accepted': False, 'current_final_front_accepted': False,
+    'operational_compatibility_proven': False, 'operational_authority_granted': False,
+})
+
+diff_rows = []
+for template in templates:
+    name = template.name
+    if name.startswith(('native_successor_', 'test_native_successor_')):
+        continue
+    if name.startswith('native-'):
+        old_name = name.replace('-013-window30h-001.ps1.template', '-011-oct02-002.ps1.template')
+    else:
+        old_name = name.replace('-013-window30h-', '-011-window-oct02-')
+    assert old_name in lineage['files'], old_name
+    old_text = (BEFORE / old_name).read_text(encoding='utf-8')
+    new_text = source_text[name]
+    opcodes = difflib.SequenceMatcher(None, old_text.splitlines(), new_text.splitlines(), autojunk=False).get_opcodes()
+    added = sum(j2-j1 for tag, i1, i2, j1, j2 in opcodes if tag in ('insert', 'replace'))
+    removed = sum(i2-i1 for tag, i1, i2, j1, j2 in opcodes if tag in ('delete', 'replace'))
+    retained_ast_functions = []
+    if name.endswith('.py.template'):
+        old_tree = ast.parse(old_text)
+        def functions(tree):
+            return {n.name: ast.dump(n, include_attributes=False) for n in tree.body if isinstance(n, ast.FunctionDef)}
+        old_funcs, new_funcs = functions(old_tree), functions(trees[name])
+        retained_ast_functions = sorted(k for k in old_funcs.keys() & new_funcs.keys() if old_funcs[k] == new_funcs[k])
+    diff_rows.append({'template': name, 'before': 'before/' + old_name,
+                      'before_source': row(BEFORE / old_name), 'after_source': row(template),
+                      'before_lines': len(old_text.splitlines()), 'after_lines': len(new_text.splitlines()),
+                      'added_lines': added, 'removed_lines': removed,
+                      'retained_ast_identical_top_level_functions': retained_ast_functions})
+assert len(diff_rows) == 17
+create('DIFF_STATS_001.json', {
+    'schema_version': 1, 'record_type': 'postseal_exact_lineage_diff_statistics', 'created_at_utc': NOW,
+    'derived_templates': diff_rows,
+    'new_template_sources': {p.name: row(p) for p in templates if p.name.startswith(('native_successor_', 'test_native_successor_'))},
+    'total_added_lines': sum(r['added_lines'] for r in diff_rows),
+    'total_removed_lines': sum(r['removed_lines'] for r in diff_rows),
+    'historical_function_identity_is_source_evidence_not_runtime_proof': True,
+    'original_lineage_files_verified': verified_before,
+    'front_refusal_files_verified': verified_refusal,
+    'original_source_modified': False,
+})
+
+config_checks = []
+common_names = {
+    'seal': 'native-poststatus-transport-common-013-window30h-001.ps1.template',
+    'monitor': 'native-postseal-monitor-transport-common-013-window30h-001.ps1.template',
+    'finalize': 'native-postmonitor-finalize-transport-common-013-window30h-001.ps1.template',
+    'report': 'native-postfinalize-report-transport-common-013-window30h-001.ps1.template',
+    'figures': 'native-postreport-figures-transport-common-013-window30h-001.ps1.template',
+}
+for wrapper in wrappers:
+    text = source_text[wrapper.name]
+    operation = re.search(r"Operation='([a-z]+)'", text).group(1)
+    config = text.split('$config=@{', 1)[1].split('\n}', 1)[0]
+    keys = set(re.findall(r'(?m)^\s+([A-Za-z_][A-Za-z0-9_]*)=', config))
+    referenced = set(re.findall(r'\$C\.([A-Za-z_][A-Za-z0-9_]*)', source_text[common_names[operation]]))
+    if operation == 'finalize':
+        referenced |= set(re.findall(r'\$C\.([A-Za-z_][A-Za-z0-9_]*)', source_text[common_names['monitor']]))
+    missing = sorted(referenced-keys)
+    assert not missing, (operation, missing)
+    config_checks.append({'operation': operation, 'wrapper': wrapper.name,
+                          'common': common_names[operation], 'missing_config_keys': missing})
+test_tree = trees['test_native_successor_postseal_013_001.py.template']
+test_names = sorted(n.name for n in ast.walk(test_tree) if isinstance(n, ast.FunctionDef) and n.name.startswith('test_'))
+assert len(test_names) == 17
+legacy_patterns = [r'WEEK8_D168_STAGE0_AUDIT_RECORD_V2', r'2026-10-02T08:00:00',
+                   r'controller-release-008-proposal017', r'week8-d168-release-attempt-011',
+                   r'native-[a-z]+-011-[^\s\'\"]*\.json']
+legacy_matches = {pattern: [name for name, text in source_text.items() if re.search(pattern, text)]
+                  for pattern in legacy_patterns}
+assert not any(legacy_matches.values()), legacy_matches
+create('STATIC_VALIDATION_001.json', {
+    'schema_version': 1, 'record_type': 'author_static_validation_only', 'created_at_utc': NOW,
+    'status': 'SYNTAX_AND_AUTHOR_INVARIANTS_PASS',
+    'python_ast': [{'name': p.name, 'error_count': 0, **row(p)} for p in python_templates],
+    'powershell_parsefile': ps_parse, 'powershell_config_checks': config_checks,
+    'test_function_count': len(test_names), 'test_functions': test_names,
+    'tests_executed': False, 'helpers_imported_or_executed': False,
+    'project_code_imported_or_executed': False, 'native_execution_performed': False,
+    'csharp_compiled_or_executed': False, 'binding_performed': False,
+    'before_files_verified_count': len(verified_before), 'refusal_files_verified_count': len(verified_refusal),
+    'fixed_capture_source_verified': row(capture_target),
+    'legacy_active_protocol_path_matches': legacy_matches,
+    'binding_copies_absent': bound_absences, 'operational_outputs_absent': output_absences,
+    'native_attempt_root_unused_claimed': False,
+    'attempt013_collision_independent_review_required': True,
+    'independent_review_completed': False, 'runtime_acceptance_claimed': False,
+    'operational_authority_granted': False,
+})
+
+# Handoff must contain only resolving local links at freeze time; the manifest
+# link is the sole prospective one and is created immediately below.
+handoff = (ROOT / 'HANDOFF.md').read_text(encoding='utf-8')
+links = re.findall(r'\[[^\]]+\]\(([^)]+)\)', handoff)
+for link in links:
+    target = ROOT / link
+    assert target.is_file() or link == 'UNBOUND_MANIFEST_001.json', link
+files = {p.relative_to(ROOT).as_posix(): row(p) for p in sorted(ROOT.rglob('*')) if p.is_file()}
+manifest = {
+    'schema_version': 1, 'record_type': 'frozen_unbound_postseal_preparation', 'created_at_utc': NOW,
+    'owner_end_utc': '2026-10-02T22:36:15Z', 'package_root': str(ROOT),
+    'future_current_release': 'release-009-proposal018', 'current_release_commit_sha': None,
+    'file_count_excluding_manifest': len(files), 'files': files,
+    'active_template_count': len(templates), 'python_template_count': len(python_templates),
+    'powershell_template_count': len(ps_templates), 'unchanged_capture_source_count': 1,
+    'inventory_chain': [15, 20, 25, 30, 35, 40],
+    'owner_source_only_scope': True, 'all_future_operational_pins_unbound': True,
+    'before_inputs_preserved': True, 'front001_modified': False,
+    'templates_imported_or_executed': False, 'project_code_imported_or_executed': False,
+    'tests_executed': False, 'binding_performed': False, 'native_execution_performed': False,
+    'production_or_historical_evidence_modified': False, 'public_action_performed': False,
+    'operational_authority_granted': False, 'independent_review_required': True,
+    'future_front_mid_release_and_grouped_qa_policy_review_required': True,
+    'attempt013_collision_independent_review_required': True,
+}
+manifest_row = create('UNBOUND_MANIFEST_001.json', manifest)
+print(json.dumps({'manifest': manifest_row, 'file_count_including_manifest': len(files)+1,
+                  'templates': len(templates), 'python_ast': len(python_templates),
+                  'ps_parsefile': len(ps_parse), 'test_functions_unrun': len(test_names),
+                  'diff_added_lines': sum(r['added_lines'] for r in diff_rows),
+                  'diff_removed_lines': sum(r['removed_lines'] for r in diff_rows),
+                  'handoff': row(ROOT/'HANDOFF.md'),
+                  'postseal_common': row(ROOT/'native_successor_postseal_common_013_001.py.template'),
+                  'test_template': row(ROOT/'test_native_successor_postseal_013_001.py.template')},
+                 sort_keys=True))

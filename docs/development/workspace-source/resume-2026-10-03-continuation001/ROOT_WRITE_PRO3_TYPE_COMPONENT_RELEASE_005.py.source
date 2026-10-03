@@ -1,0 +1,98 @@
+"""Root final preentry writer: one fresh TYPE005; all owned work held afterward."""
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+WORK = Path(__file__).resolve().parent
+PRO3 = Path(r"D:\Aenv\pro3")
+COORD = PRO3 / "runs/coordination/next_step_20261003_types5"
+OUTPUT = WORK / "ROOT_PRO3_TYPE_COMPONENT_RELEASE_005.json"
+EXPECTED = {
+    "phase_plan.json": "45d59d167d0d12ee041b9353a3fe05adda4aa9803ee9c4c408d75d9e011c0ad0",
+    "release_candidate_001.json": "041042bc2780af513df895c46c1120da4cc4dd3bed49bfc1200f5154d5ec1407",
+    "type_preparation_audit_001.json": "438de947092c84c6ccda2f605fac670b503825260a5d4ecac957de9c5bbb004d",
+    "type_candidate_audit_001.json": "884a014572023cca246b7cfd0f2ff2603d250cddcd2125bc7908d9c375d2e6ca",
+    "type_admission_review_001.json": "e947032d47dea843dcfdaf160f2a52b5fb06cf0b7a53c78975a8764e6d762dc7",
+    "Prepare-RootTypeAdmission001.ps1": "b1c3d1a2829279c6be3f7cf604522a01e4861add5e804d716be138d4dad2951a",
+    "preparation_ready_001.json": "44c25e776f23b5619618f1e8ce5352395ce9a11bc4cba1504362c322daf98266",
+}
+
+def raw9(s):
+    return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns, s.st_mode,
+            s.st_nlink, s.st_file_attributes, s.st_birthtime_ns]
+
+def read(path, pin, size=None):
+    before = raw9(path.stat())
+    assert before[2] <= 16 * 1024 * 1024
+    data = path.read_bytes()
+    assert before == raw9(path.stat()) and before[2] == len(data)
+    assert size is None or len(data) == size
+    assert hashlib.sha256(data).hexdigest() == pin, path
+    return data, dict(path=str(path), sha256=pin, bytes=len(data), raw9=before)
+
+def main():
+    assert not OUTPUT.exists()
+    captured = [read(COORD / leaf, pin) for leaf, pin in EXPECTED.items()]
+    values = {leaf: json.loads(data) for (leaf, _), (data, row) in zip(EXPECTED.items(), captured) if leaf.endswith(".json")}
+    candidate = values["release_candidate_001.json"]
+    ready = values["preparation_ready_001.json"]
+    assert candidate["phase_id"] == ready["phase_id"] == "20261003_guarded_types_005"
+    assert ready["static_preparation_accepted"] is True and ready["execution_authorized"] is False
+    assert candidate["source_sha256"] == "423faa138200b85c56463ad8e0cfad48469fc9a061a7429782ea7b1be170f820"
+    for leaf in ("type_preparation_audit_001.json", "type_candidate_audit_001.json", "type_admission_review_001.json"):
+        peer = values[leaf]
+        assert peer["accepted"] is True and peer["static_review_accepted"] is True and peer["blockers"] == []
+        assert peer["execution_authorized"] is False and peer["runtime_validation_accepted"] is False
+        assert peer["phase_id"] == candidate["phase_id"] and peer["phase_plan_sha256"] == candidate["phase_plan_sha256"]
+        assert peer["source_sha256"] == candidate["source_sha256"]
+    assert len(ready["verified_artifacts"]) == 16
+    for artifact in ready["verified_artifacts"]:
+        path = PRO3 / artifact["path"]
+        assert path.is_relative_to(PRO3)
+        captured.append(read(path, artifact["sha256"], artifact["bytes"]))
+    manifest_path = PRO3 / "runs/coordination/type_component_20261003_v5/preparation_manifest_20261003.json"
+    captured.append(read(manifest_path, candidate["preparation_manifest_sha256"]))
+    assert candidate["preparation_manifest_sha256"] == "bb7dc2d311c47e037a78d67c6c21d4e5af2e4863d277d8ea2b183877ad304a9d"
+    prior_data, prior_row = read(WORK / "ROOT_PRO3_TYPE_COMPONENT_RELEASE_004.json", "f68426d4d2bacf05a74e46e6808f953ccf966b89147ef5d753f1c8df21f9b18d")
+    prior = json.loads(prior_data)
+    for key in ("process_memory_limit_bytes", "aggregate_job_memory_bytes", "startup_ram_bytes", "startup_samples",
+                "startup_sample_separation_seconds", "active_ram_bytes", "disk_floor_bytes", "outer_wall_seconds",
+                "physical_outer_seconds", "maximum_nested_attempt_seconds", "python_cleanup_reserve_seconds", "native_watchdog_reserve_seconds"):
+        assert candidate[key] == prior[key]
+    assert len([key for key in candidate if key.startswith("deadline_fix_")]) == 5
+    assert len([key for key in candidate if key.startswith("source_fix_")]) == 5
+    for data, row in captured + [(prior_data, prior_row)]:
+        again, post = read(Path(row["path"]), row["sha256"], row["bytes"])
+        assert again == data and post == row
+    record = {**prior, **candidate}
+    record.update(schema="pro2_root_peer_type_component_release_v1", record_type="root_peer_sequential_type_component_release",
+                  author="root", decision="release_one_fresh_pro3_type_component_only",
+                  peer_thread="01a0f844-9147-78d1-a491-7247ef1a1655",
+                  recorded_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                  window_start_utc="2026-10-03T17:45:00Z", window_end_utc="2026-10-03T18:00:00Z",
+                  candidate_sha256=EXPECTED["release_candidate_001.json"],
+                  preparation_audit_sha256=EXPECTED["type_preparation_audit_001.json"],
+                  candidate_audit_sha256=EXPECTED["type_candidate_audit_001.json"],
+                  admission_helper_review_sha256=EXPECTED["type_admission_review_001.json"],
+                  admission_helper_sha256=EXPECTED["Prepare-RootTypeAdmission001.ps1"],
+                  Root_current_static_readiness_sha256=EXPECTED["preparation_ready_001.json"],
+                  Root_Source_cross_check="Actual candidate/phase/ready, three accepted Source reviews, helper, all16 sealed selected files and manifest paired hash/raw9/post exact. Full430/3142/765 not re-enumerated. All5 deadline_fix and5 source_fix fields exact from genuine candidate; all caps unchanged.",
+                  confirmation_ref="Genuine Root fresh005 after actual_record_checker, bootstrap_stage, architecture plus its boundpool_static_review subtree current NONE/HOLD acknowledgements. Other children finished/interrupted; no global quiet.",
+                  owned_agent_hold_acks={
+                      "actual_record_checker": "NONE/no handles; last d5d2f1 exit0 .3509092 then Source patch complete,036 compositor UNRUN; remote only after HOLD.",
+                      "bootstrap_stage": "NONE/no handles; last Source apply_patch MAIN_MAJOR036_SOURCE_001.txt complete, auditor36 UNRUN; remote only after HOLD.",
+                      "architecture": "NONE/no handles; last34fd51/7a41d7 exit0 then Source patch complete, poolauditor UNRUN; remote only after HOLD.",
+                      "architecture/boundpool_static_review": "NONE/no handles; two read-only native calls completed outer0.5s; chunk IDs not returned/unknown. Actual subtree HOLD acknowledgement relayed by architecture.",
+                  },
+                  Root_retained_pipeline_INIT_active=False, Root_grant_writer_only_pre_entry_metadata_exception=True,
+                  note="One fresh TYPE005 only, physical120 includes exit/drain/owned cleanup, nested75/cleanup20/native5 unchanged. Require authentic admission helper exit0/drained plus durable admitted null-failure receipt selecting this grant, then fresh strict>125 seconds. Root/all owned subtree held after this final writer until18:00 or explicit Pro3 physical release. No fullQA/Windows/science/hostquiet/old replay/system/cache/source/model authority. Actual different review and separate Pro3 Root acceptance required.")
+    assert datetime.datetime.now(datetime.timezone.utc) < datetime.datetime(2026, 10, 3, 17, 57, 55, tzinfo=datetime.timezone.utc)
+    body = (json.dumps(record, indent=2, sort_keys=True) + "\n").encode()
+    with OUTPUT.open("xb") as handle:
+        assert handle.write(body) == len(body)
+    assert OUTPUT.read_bytes() == body
+    print(json.dumps(dict(path=str(OUTPUT), sha256=hashlib.sha256(body).hexdigest(), bytes=len(body), files_verified=len(captured))))
+
+if __name__ == "__main__":
+    main()

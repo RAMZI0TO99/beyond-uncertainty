@@ -61,7 +61,11 @@ def referenced_paths(record: Path) -> set[str]:
     out: set[str] = set()
 
     def add(p: Path) -> None:
-        out.add(str(p.relative_to(ROOT)))
+        # POSIX separators: `git ls-files` prints forward slashes on every
+        # platform, while relative_to() follows the host convention. Comparing
+        # the host spelling against git's made all four tracking tests fail on
+        # Windows with the evidence fully tracked (same class as D-028).
+        out.add(p.relative_to(ROOT).as_posix())
 
     for cell in row.get("cells", []) + row.get("runs", []):
         if "errors_file" in cell:
@@ -84,7 +88,7 @@ def test_there_is_evidence_to_check():
 @pytest.mark.parametrize("record", evidence_records(), ids=lambda p: str(p.parent.name))
 def test_the_evidence_record_itself_is_tracked(record):
     """The near-miss: a new experiment directory is swallowed by `runs/*`."""
-    rel = str(record.relative_to(ROOT))
+    rel = record.relative_to(ROOT).as_posix()
     assert rel in tracked_files(), (
         f"{rel} exists on disk but is NOT tracked by git. `runs/*` is ignored "
         "with per-experiment exceptions, so a new experiment directory is "

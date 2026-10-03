@@ -21,6 +21,7 @@ error bars that would imply a precision the exact bootstrap does not have.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 from .. import constants as K
@@ -117,6 +118,23 @@ FIGURES = {
     "w3_pilot": w3_pilot_figures,
     "w4_gate": w4_gate_figure,
 }
+
+
+def experiment_1_figures(
+    figures_dir: str | Path, *, fit_directories: Sequence[Path], expected_git_commit: str
+) -> list[Path]:
+    """Explicit opt-in ONLY after authorisation to visualise real Exp1 evidence.
+
+    Deliberately absent from FIGURES and the default main command. Returns two
+    immutable PNGs plus their provenance manifest, reverified from explicit fit
+    directories and one exact commit. Set an absolute project-local MPLCONFIGDIR
+    before importing matplotlib. Full invocation: ``experiment_1_figures.py``.
+    """
+    from .experiment_1_figures import prepare_experiment_1_figures
+
+    return prepare_experiment_1_figures(
+        fit_directories, expected_git_commit=expected_git_commit, figures_dir=figures_dir
+    )
 
 
 def main(figures_dir: str | Path = "figures") -> list[Path]:

@@ -1,0 +1,119 @@
+function Convert-NativeFrameJson($Value, [int] $Depth = 0) {
+    if ($Depth -gt 3) { throw 'Frame JSON exceeds closed nesting' }
+    if ($null -eq $Value) { return 'null' }
+    if ($Value -is [string]) {
+        if ($Value.Length -gt 12288) { throw 'Frame string exceeds decoded binding component' }
+        $output = [Text.StringBuilder]::new(); [void]$output.Append('"')
+        foreach ($char in $Value.ToCharArray()) {
+            $code = [int]$char
+            switch ($code) {
+                34 { [void]$output.Append('\"'); break }
+                92 { [void]$output.Append('\\'); break }
+                8 { [void]$output.Append('\b'); break }
+                9 { [void]$output.Append('\t'); break }
+                10 { [void]$output.Append('\n'); break }
+                12 { [void]$output.Append('\f'); break }
+                13 { [void]$output.Append('\r'); break }
+                default {
+                    if ($code -lt 32 -or $code -ge 127) { [void]$output.Append(('\u' + $code.ToString('x4',[Globalization.CultureInfo]::InvariantCulture))) }
+                    else { [void]$output.Append($char) }
+                }
+            }
+        }
+        [void]$output.Append('"'); return $output.ToString()
+    }
+    if ($Value -is [int] -or $Value -is [long]) { return $Value.ToString([Globalization.CultureInfo]::InvariantCulture) }
+    if ($Value -is [Collections.IDictionary]) {
+        $keys = @($Value.Keys)
+        if ($keys.Count -gt 44 -or @($keys | Where-Object { $_ -isnot [string] -or $_.Length -gt 128 }).Count -ne 0) { throw 'Frame key domain differs' }
+        [Array]::Sort($keys,[StringComparer]::Ordinal)
+        $items = @()
+        foreach ($key in $keys) { $items += ((Convert-NativeFrameJson $key ($Depth + 1)) + ':' + (Convert-NativeFrameJson $Value[$key] ($Depth + 1))) }
+        return '{' + ($items -join ',') + '}'
+    }
+    throw 'Frame JSON primitive is outside closed binding grammar'
+}
+
+function Convert-NativeFrameArgument([string] $Value) {
+    if ($null -eq $Value -or $Value.IndexOf([char]0) -ge 0) { throw 'Frame command argument type/NUL differs' }
+    $quoted = [Text.StringBuilder]::new(); [void]$quoted.Append('"'); $slashes = 0
+    foreach ($char in $Value.ToCharArray()) {
+        if ($char -eq [char]92) { $slashes++; continue }
+        if ($char -eq [char]34) { [void]$quoted.Append(('\' * ($slashes * 2 + 1))); [void]$quoted.Append('"') }
+        else { [void]$quoted.Append(('\' * $slashes)); [void]$quoted.Append($char) }
+        $slashes = 0
+    }
+    [void]$quoted.Append(('\' * ($slashes * 2))); [void]$quoted.Append('"')
+    return $quoted.ToString()
+}
+
+function Invoke-NativeFrameChild([string] $Executable, [string[]] $Arguments, [byte[]] $Frame, [string] $ExpectedReply) {
+    if ($Executable -cne 'D:\Aenv\pro2\pro2\.venv\Scripts\python.exe' -or
+        $null -eq $Frame -or $Frame.Length -le 0 -or $Frame.Length -gt 262144 -or
+        $ExpectedReply -cnotmatch '^ATTEMPT013_(?:POSTSEAL_)?BOUNDARY_PASS$') { throw 'Frame child fixed role/cap differs' }
+    $parts = @()
+    foreach ($item in @($Executable) + @($Arguments)) {
+        if ($null -eq $item -or $item -isnot [string]) { throw 'Frame command argument nominal type differs' }
+        $parts += Convert-NativeFrameArgument $item
+    }
+    if (($parts -join ' ').Length -gt 8191) { throw 'Frame actual quoted Windows command exceeds8191 UTF16' }
+    $pythonPin = '935016795f3e6908e75acbc2040a01e2e4cdb494a57c42f63a0d6eedb2372256'
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $Executable).Hash.ToLowerInvariant() -cne $pythonPin) { throw 'Frame isolated Python bytes differ before launch' }
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = $Executable
+    $start.Arguments = (($parts | Select-Object -Skip 1) -join ' ')
+    $start.UseShellExecute = $false; $start.CreateNoWindow = $true
+    $start.RedirectStandardInput = $true; $start.RedirectStandardOutput = $true; $start.RedirectStandardError = $true
+    $process = [Diagnostics.Process]::new(); $process.StartInfo = $start
+    $launched = $false; $complete = $false
+    $buffers = New-Object object[] 2
+    $buffers[0] = [byte[]]::new(4096); $buffers[1] = [byte[]]::new(4096)
+    $streams = @(); $tasks = @(); $counts = @(0,0)
+    $stdout = [IO.MemoryStream]::new()
+    try {
+        if (-not $process.Start()) { throw 'Frame retained child did not start' }
+        $launched = $true
+        $streams = @($process.StandardOutput.BaseStream,$process.StandardError.BaseStream)
+        $tasks = @($streams[0].ReadAsync($buffers[0],0,4096),$streams[1].ReadAsync($buffers[1],0,4096))
+        $input = $process.StandardInput.BaseStream
+        try {
+            for ($offset = 0; $offset -lt $Frame.Length;) {
+                $take = [Math]::Min(16384,$Frame.Length-$offset)
+                # Stream.Write either commits the requested count or throws; advance only after it returns.
+                $input.Write($Frame,$offset,$take); $offset += $take
+            }
+            $input.Flush()
+        } finally { $input.Close() }
+        while ($null -ne $tasks[0] -or $null -ne $tasks[1]) {
+            $progress = $false
+            for ($index = 0; $index -lt 2; $index++) {
+                if ($null -eq $tasks[$index] -or -not $tasks[$index].IsCompleted) { continue }
+                $progress = $true
+                $got = $tasks[$index].GetAwaiter().GetResult()
+                if ($got -eq 0) { $tasks[$index] = $null; continue }
+                $counts[$index] += $got
+                if ($index -eq 1 -or $counts[0] -gt $ExpectedReply.Length + 2) { throw 'Frame child stderr/extra stdout differs' }
+                $stdout.Write($buffers[$index],0,$got)
+                $tasks[$index] = $streams[$index].ReadAsync($buffers[$index],0,4096)
+            }
+            if (-not $progress) { [Threading.Thread]::Sleep(1) }
+        }
+        $process.WaitForExit()
+        $text = [Text.UTF8Encoding]::new($false,$true).GetString($stdout.ToArray())
+        if ($process.ExitCode -ne 0 -or ($text -cne ($ExpectedReply + "`n") -and $text -cne ($ExpectedReply + "`r`n"))) { throw 'Frame child exact boundary reply differs' }
+        if ((Get-FileHash -Algorithm SHA256 -LiteralPath $Executable).Hash.ToLowerInvariant() -cne $pythonPin) { throw 'Frame isolated Python changed during launch' }
+        $complete = $true
+        return [pscustomobject]@{ ExitCode = $process.ExitCode; Lines = @($ExpectedReply) }
+    } finally {
+        try {
+            $cleanupClock = [Diagnostics.Stopwatch]::StartNew()
+            if ($launched -and -not $complete -and -not $process.HasExited) {
+                $process.Kill()
+                $remaining = [Math]::Max(0,5000-[int]$cleanupClock.ElapsedMilliseconds)
+                if ($remaining -eq 0 -or -not $process.WaitForExit($remaining)) { throw 'Frame direct owned launcher cleanup unconfirmed' }
+            }
+            # This retained handle does not prove disappearance of its base-Python child.
+            # Separately reviewed ROOT whole-Job custody and physical cleanup evidence are mandatory.
+        } finally { $stdout.Dispose(); $process.Dispose() }
+    }
+}

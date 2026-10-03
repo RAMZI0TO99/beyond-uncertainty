@@ -1,0 +1,200 @@
+"""One-use metadata/source composition; never imports or executes target definitions."""
+import ast
+import datetime
+import difflib
+import hashlib
+import json
+import types
+from pathlib import Path
+
+OUT = Path('D:/Aenv/pro2/resume-2026-10-03-continuation001/consumer005-guard006-runtime-prep001')
+AUTHOR = '/root/capsule_design_review'
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+def enc(value):
+    return (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True, allow_nan=False)+'\n').encode('ascii')
+
+def once(name, data):
+    with (OUT/name).open('xb') as stream:
+        stream.write(data)
+
+CONTRACT = {
+    'schema_version': 1,
+    'record_type': 'consumer006_rev002_external_canonical_timestamp_role_contract',
+    'author': AUTHOR,
+    'scope': 'COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY',
+    'source_only': True,
+    'python_role': {'fraction_digits': 6, 'length': 32, 'suffix': '+00:00', 'writer': "datetime UTC isoformat(timespec='microseconds')"},
+    'root_powershell_role': {'fraction_digits': 7, 'length': 33, 'suffix': '+00:00', 'writer': "DateTimeOffset.UtcNow.ToString('o')"},
+    'selected_harness_writers': {
+        'run-consumer-guard-unit006-rev002.TEMPLATE.py': ['scratch/start.json.created_utc'],
+        'observe-whole-runtime-006-rev002.TEMPLATE.py': ['observer-start.created_utc', 'whole-result.captured_utc'],
+        'consumer-guard-child-006-rev002.TEMPLATE.py': [],
+        'ROOT_FIRST_LAUNCH_006-rev002.TEMPLATE.ps1': ['ROOT_LAUNCH_START_006.json.started_utc', 'ROOT_LAUNCH_TERMINAL_006.json.finished_utc']},
+    'external_python6_roles': ['metadata-context.captured_utc', 'runtime-metadata.captured_utc', 'whole-before.captured_utc', 'whole-after.captured_utc', 'independent-actual-record-review.created_utc', 'bound-review.created_utc', 'bound-review.expires_utc', 'late-review.created_utc', 'late-review.expires_utc'],
+    'external_root_powershell7_roles': ['execution-lease.created_utc', 'execution-lease.lease_end_utc', 'root-authorization.created_utc', 'root-authorization.expires_utc', 'root-ack.created_utc', 'root-ack.expires_utc', 'resource.captured_utc', 'coordination.created_utc'],
+    'owner_master': {'sha256': 'de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583', 'created_utc_field': 'record_created_utc', 'fraction_digits': 7, 'owner_end_utc': None},
+    'finite_lease': {'maximum_seconds': 43200, 'is_owner_deadline': False, 'start_not_before_owner_master': True, 'seventh_digit_preserved_for_comparison': True},
+    'actual_external_producer_selection': None,
+    'actual_external_record_acceptance': None,
+    'runtime_acceptance': False,
+    'operational_authority': False,
+    'implementation_condition': 'Different actual-record reviewers must authenticate every external producer and the exact canonical producer-specific timestamp shape before binding or acceptance. Parsing aware UTC alone is insufficient.'}
+
+RECONCILE = '''
+def reconcile_events(events, ids, diagnostics, methods):
+    require(type(ids) is list and len(ids)==24 and len(set(ids))==24
+            and all(type(item) is str for item in ids), "closed current24 IDs")
+    require(type(methods) is list and len(methods)==len(ids), "method count exact current24")
+    for wanted,row in zip(ids,methods):
+        exact(row,("id","status"),"method terminal row")
+        require(type(row["id"]) is str and row["id"]==wanted
+                and type(row["status"]) is str and row["status"]=="passed", "method ordered success")
+    active=None;started=[];finished=[];diagnostic_offset=0
+    for row in events:
+        kind=row["event"]
+        ref=row.get("diagnostic")
+        if ref is not None:
+            require(ref["offset"]==diagnostic_offset,"diagnostic full order and no omitted bytes")
+            part=diagnostics[diagnostic_offset:diagnostic_offset+ref["bytes"]]
+            require(len(part)==ref["bytes"] and digest(part)==ref["sha256"],"complete diagnostic exact bytes/hash")
+            diagnostic_offset+=ref["bytes"]
+        if kind=="start":
+            require(active is None and len(started)<len(ids)
+                    and row["id"]==ids[len(started)],"event exact next current24 start")
+            active=row["id"];started.append(active)
+        elif kind=="subtest":
+            require(active is not None and row["parent_id"]==active
+                    and row["id"].startswith(active+" ") and row["status"]=="passed"
+                    and row["diagnostic"] is None,"subtest belongs to exact active method and passed")
+        else:
+            require(kind=="success" and active is not None and row["id"]==active,
+                    "exact active method success required for accepted unit")
+            finished.append(active);active=None
+    require(active is None and started==finished==ids,"all current24 starts and terminals exactly once")
+    require(diagnostic_offset==len(diagnostics),"no unreferenced diagnostic bytes")
+
+'''
+
+def codefacts(data, name):
+    tree=ast.parse(data, filename=name)
+    code=compile(tree, name, 'exec', dont_inherit=True, optimize=0)
+    rows=[]
+    def visit(value, trail):
+        assert type(value) is types.CodeType
+        rows.append({'path':trail,'name':value.co_name,'flags':value.co_flags,'argcount':value.co_argcount,'firstlineno':value.co_firstlineno})
+        for ordinal,item in enumerate(value.co_consts):
+            if type(item) is types.CodeType:
+                visit(item,trail+'/'+str(ordinal)+':'+item.co_name)
+    visit(code,'module')
+    return {'source_sha256':sha(data),'source_bytes':len(data),'top_functions':sum(isinstance(n,ast.FunctionDef) for n in tree.body),'top_classes':sum(isinstance(n,ast.ClassDef) for n in tree.body),'inert_code_objects':rows,'definitions_or_code_executed':False}
+
+def main():
+    first=json.loads((OUT/'FINAL_AUTHOR_SOURCE_MANIFEST_006.json').read_bytes())
+    preserved=[]
+    for row in first['files']:
+        data=(OUT/row['path']).read_bytes()
+        assert len(data)==row['bytes'] and sha(data)==row['sha256']
+        preserved.append(row)
+    source_map={
+        'child':'consumer-guard-child-006-rev002.TEMPLATE.py',
+        'driver':'run-consumer-guard-unit006-rev002.TEMPLATE.py',
+        'observer':'observe-whole-runtime-006-rev002.TEMPLATE.py',
+        'root_launcher':'ROOT_FIRST_LAUNCH_006-rev002.TEMPLATE.ps1',
+        'profile':'GUARD_RUNTIME_PROFILE_006-rev002.json',
+        'timestamp_contract':'EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_006.json'}
+    contract_bytes=enc(CONTRACT)
+    contract_reader='''    role = profile["external_canonical_timestamp_role_contract"]
+    exact(role,("path","sha256","bytes"),"timestamp contract source role")
+    require(role["path"]=="EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_006.json"
+            and type(role["bytes"]) is int and 0<role["bytes"]<=65536,
+            "fixed bounded timestamp contract source")
+    contract = decode(read(PREP/role["path"],role["sha256"],role["bytes"])[0])
+    typed_equal(contract, TIMESTAMP_ROLE_CONTRACT, "closed canonical timestamp role contract")
+'''
+    old_names={'child':'consumer-guard-child-006.TEMPLATE.py','driver':'run-consumer-guard-unit006.TEMPLATE.py','observer':'observe-whole-runtime-006.TEMPLATE.py','root_launcher':'ROOT_FIRST_LAUNCH_006.TEMPLATE.ps1'}
+    generated={};diffs=[];facts={}
+    for role,old_name in old_names.items():
+        old=(OUT/old_name).read_bytes();text=old.decode('utf-8')
+        for old_leaf,new_leaf in [(old_names[r],source_map[r]) for r in old_names]:
+            text=text.replace(old_leaf,new_leaf)
+        text=text.replace('GUARD_RUNTIME_PROFILE_006.json',source_map['profile'])
+        text=text.replace('run-consumer-guard-unit006.py','run-consumer-guard-unit006-rev002.bound.py')
+        text=text.replace('observe-whole-runtime-006.BOUND.py','observe-whole-runtime-006-rev002.BOUND.py')
+        text=text.replace('ROOT_FIRST_LAUNCH_006.BOUND.ps1','ROOT_FIRST_LAUNCH_006-rev002.BOUND.ps1')
+        if role!='root_launcher':
+            text=text.replace('.isoformat()', '.isoformat(timespec="microseconds")')
+            assert text.count('def capsule_snapshot(profile):\n')==1
+            text=text.replace('def capsule_snapshot(profile):\n','TIMESTAMP_ROLE_CONTRACT = '+repr(CONTRACT)+'\n\ndef capsule_snapshot(profile):\n'+contract_reader)
+        if role=='driver':
+            assert text.count('def driver_main():\n')==1
+            text=text.replace('def driver_main():\n',RECONCILE+'def driver_main():\n')
+            start=text.index('        for event in events:\n')
+            end=text.index('        require(type(result["event_count"])',start)
+            text=text[:start]+'        reconcile_events(events,collection["ordered_ids"],diagnostics,result["methods"])\n'+text[end:]
+            marker='    before_evidence=evidence_snapshot(evidence)'
+            assert text.count(marker)==1
+            text=text.replace(marker,'    contract_role=profile["external_canonical_timestamp_role_contract"]\n    evidence.append((PREP/contract_role["path"],contract_role["sha256"],contract_role["bytes"]))\n    require(len(evidence)==26,"closed selected evidence26 roles")\n'+marker)
+        generated[role]=text
+    profile=json.loads((OUT/'GUARD_RUNTIME_PROFILE_006.json').read_bytes())
+    profile['external_canonical_timestamp_role_contract']={'path':source_map['timestamp_contract'],'sha256':sha(contract_bytes),'bytes':len(contract_bytes)}
+    profile['preparation_limitations'][0]='Current Source005 source/test preparation and compact capsule were independently audited; all24 methods in direct sibling classes19+5 remain unrun.'
+    profile['preparation_limitations'][-1]='Selected new Python writers emit genuine UTC32/six-fraction/+00:00 using fixed microseconds. Root PowerShell writers emit UTC33/seven-fraction/+00:00. The supplied closed006 role contract is pinned and typed before source acceptance; different actual-record reviews must authenticate external producer provenance and canonical role-specific bytes. The ongoing owner master has no end; a distinct bounded execution lease does not fabricate one.'
+    profile['root_powerShell_preparation_metadata']['historical_observation_only']=True
+    profile['current_actor_context_notice']['historical_notice_only']=True
+    profile['selected_source_revision']=2
+    profile['fixed_runtime_leaves']={'driver':'run-consumer-guard-unit006-rev002.bound.py','child':source_map['child'],'observer':'observe-whole-runtime-006-rev002.BOUND.py','root_launcher':'ROOT_FIRST_LAUNCH_006-rev002.BOUND.ps1','profile':source_map['profile']}
+    profile['driver_evidence_rows']=26
+    profile['driver_evidence_row_keys']=['path','sha256','bytes','path_raw9','descriptor_raw9']
+    profile['event_identity_reconciliation']='Exact ordered24 starts and matching single success terminals; every subtest belongs to active full parent ID; exact method rows; every diagnostic byte linked in order without gaps.'
+    for role,key in [('child','child'),('observer','whole_observer'),('root_launcher','root_supervisor')]:
+        data=generated[role].encode('utf-8')
+        profile[key]={'path':source_map[role],'sha256':sha(data),'bytes':len(data)}
+    profile_bytes=enc(profile)
+    driver_tree=ast.parse(generated['driver'])
+    old_pin=None
+    for n in driver_tree.body:
+        if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='PROFILE_SHA256' for t in n.targets):
+            old_pin=ast.literal_eval(n.value)
+    assert type(old_pin) is str and len(old_pin)==64
+    generated['driver']=generated['driver'].replace(old_pin,sha(profile_bytes))
+    for role,text in generated.items():
+        data=text.encode('utf-8');assert len(data)<=65536
+        if role!='root_launcher':
+            facts[source_map[role]]=codefacts(data,source_map[role])
+            assert '.isoformat()' not in text
+        once(source_map[role],data)
+        diffs.extend(difflib.unified_diff((OUT/old_names[role]).read_text().splitlines(keepends=True),text.splitlines(keepends=True),fromfile=old_names[role],tofile=source_map[role]))
+    once(source_map['timestamp_contract'],contract_bytes)
+    once(source_map['profile'],profile_bytes)
+    once('REV002_SOURCE_CORRECTION_DIFF_006.patch',''.join(diffs).encode('utf-8'))
+    once('REV002_INERT_CODE_AND_CLOSURE_FACTS_006.json',enc({'schema_version':1,'record_type':'gg6_revision002_metadata_and_inert_code_facts','author':AUTHOR,'code_facts':facts,'first_manifest_sha256':sha((OUT/'FINAL_AUTHOR_SOURCE_MANIFEST_006.json').read_bytes()),'preserved_first_payloads':preserved,'timestamp_contract_sha256':sha(contract_bytes),'current24_test_sha256':profile['test']['sha256'],'source_projection_sha256':profile['source_projection_sha256'],'actual_lease':None,'actual_bindings':None,'actual_runtime':None,'actual_tests':None,'target_definitions_executed':False}))
+    schema=json.loads((OUT/'SOURCE_RECORD_SCHEMAS_AND_CEILINGS_006.json').read_bytes())
+    schema['selected_revision']=2
+    schema['driver_evidence26']={'count':26,'keys':['path','sha256','bytes','path_raw9','descriptor_raw9'],'order':'16 original fixed roles;2 coordination pointers;4 whole observation files;ongoing master;owner source peer;execution lease;timestamp contract'}
+    schema['event_order']='exact24 ordered starts, active-parent subtests, exact24 matching success terminals; no diagnostic gaps or unreferenced bytes'
+    dictionaries=[]
+    for label,text in generated.items():
+        if label=='root_launcher':continue
+        for n in ast.walk(ast.parse(text)):
+            if isinstance(n,ast.Dict) and all(isinstance(k,ast.Constant) and type(k.value) is str for k in n.keys) and len(n.keys)>=5:
+                dictionaries.append({'source':source_map[label],'line':n.lineno,'keys':[k.value for k in n.keys]})
+    schema['selected_source_literal_records']=dictionaries
+    once('SOURCE_RECORD_SCHEMAS_AND_CEILINGS_006-rev002.json',enc(schema))
+    for row in preserved:
+        data=(OUT/row['path']).read_bytes();assert len(data)==row['bytes'] and sha(data)==row['sha256']
+    source_map.update({'source_projection':'SOURCE_INPUTS_PROJECTION_006.json','current24_projection':'CURRENT24_BODY_AND_FULL_ID_PROJECTION_006.json','capsule':'inputs/ACTUAL_SOURCE_CAPSULE_005.json','source_manifest':'inputs/SOURCE_STAGED_MANIFEST_005.json','schemas':'SOURCE_RECORD_SCHEMAS_AND_CEILINGS_006-rev002.json','static_review':'INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_006.json'})
+    once('HANDOFF_006_REV002.md',('GG6 revision002 is source preparation only.\n\nFirst package and independent refusal remain exact history. The selected profile/templates are versioned in the same prep namespace. The new closed006 timestamp contract is supplied, pinned and strictly typed. Python writers use fixed microseconds; Root PS remains genuine seven-digit UTC. Driver independently reconciles all24 ordered start/success IDs, active subtest parents, exact method terminals and full ordered diagnostic bytes. Current Source005 test bytes/classes19+5 are unchanged. Evidence26 includes the ongoing master, independent owner peer, distinct finite execution lease and new contract.\n\nAll actual leases, bindings, current metadata, timers, tests, results and Root GO remain absent. Different full source and timestamp writer review are required before static20/source binding. Canonical/native/public authority is not granted. Source compositor imports stdlib and emits source/AST/inert CodeType metadata only.\n').encode('utf-8'))
+    selected_names=list(source_map.values())+['AUTHOR_GG6_REVISION_004.py','REV002_SOURCE_CORRECTION_DIFF_006.patch','REV002_INERT_CODE_AND_CLOSURE_FACTS_006.json','HANDOFF_006_REV002.md']
+    selected_names=[n for n in dict.fromkeys(selected_names) if (OUT/n).is_file()]
+    rows=[]
+    for name in selected_names:
+        data=(OUT/name).read_bytes();rows.append({'path':name,'sha256':sha(data),'bytes':len(data)})
+    final={'schema_version':1,'record_type':'gg6_revision002_selected_source_manifest','author':AUTHOR,'scope':profile['scope'],'selected_source_map':source_map,'selected_files':rows,'preserved_first_manifest_sha256':sha((OUT/'FINAL_AUTHOR_SOURCE_MANIFEST_006.json').read_bytes()),'preserved_first_payloads':preserved,'status':'FROZEN_SOURCE_REV002_DIFFERENT_REVIEW_PENDING','actual_lease':None,'actual_source_binding':None,'actual_runtime':None,'actual_collection':None,'actual_tests':None,'operational_authority':False}
+    once('FINAL_AUTHOR_SOURCE_MANIFEST_007.json',enc(final))
+    print(json.dumps({'manifest_sha256':sha(enc(final)),'selected_files':len(rows),'preserved_first_payloads':len(preserved),'profile_sha256':sha(profile_bytes),'contract_sha256':sha(contract_bytes),'driver_sha256':sha(generated['driver'].encode()),'target_definitions_executed':False}))
+
+if __name__=='__main__':
+    main()

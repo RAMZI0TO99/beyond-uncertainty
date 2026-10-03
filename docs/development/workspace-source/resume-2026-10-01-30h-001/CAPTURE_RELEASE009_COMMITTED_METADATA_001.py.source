@@ -1,0 +1,153 @@
+"""One-use opaque committed-object hashes; no checkout, target code or tests."""
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+
+ROOT = Path('D:/Aenv/pro2')
+BASE = ROOT / 'resume-2026-10-01-30h-001'
+LIVE = ROOT / 'week8-recovery-controller-worktree'
+GIT = ROOT / 'runtimes/git/mingw64/bin/git.exe'
+OUT = BASE / 'ROOT017_RELEASE009_COMMITTED_METADATA_OBSERVATION_001.json'
+TREE = BASE / 'ROOT017_RELEASE009_COMMITTED742_MANIFEST_001.json'
+sha = lambda b: hashlib.sha256(b).hexdigest()
+enc = lambda v: (json.dumps(v, indent=2, sort_keys=True, ensure_ascii=True,
+                            allow_nan=False) + '\n').encode('ascii')
+
+def raw9(s):
+    return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns,
+            s.st_mode, s.st_nlink, getattr(s, 'st_file_attributes', 0),
+            getattr(s, 'st_birthtime_ns', None)]
+
+def plain(p):
+    for parent in reversed(p.absolute().parents):
+        s = parent.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode)
+        assert not getattr(s, 'st_file_attributes', 0) & 0x400
+    s = p.lstat()
+    assert stat.S_ISREG(s.st_mode) and s.st_nlink == 1
+    assert not getattr(s, 'st_file_attributes', 0) & 0x400
+    b = p.read_bytes()
+    assert len(b) == s.st_size and raw9(s) == raw9(p.lstat())
+    return b, raw9(s)
+
+assert not OUT.exists() and not TREE.exists()
+context_path = BASE / 'ROOT017_READ_ONLY_CONTEXT_OBSERVATION_001.json'
+context_bytes, context_stat = plain(context_path)
+context = json.loads(context_bytes)
+release_path = ROOT / 'resume-2026-09-28-001/controller-release-009-proposal018.json'
+release_bytes, release_stat = plain(release_path)
+release = json.loads(release_bytes)
+release_row = next(r for r in context['input_records'] if r['path'] == release_path.relative_to(ROOT).as_posix())
+assert sha(release_bytes) == release_row['sha256'] and len(release_bytes) == release_row['bytes']
+commit = release['ControllerCommit']
+parent = release['ParentCommit']
+assert commit == context['head'] and re.fullmatch('[0-9a-f]{40}', commit)
+assert re.fullmatch('[0-9a-f]{40}', parent)
+qa_path = ROOT / 'resume-2026-09-28-001/d175-doc-proposal-018/candidate-after.json'
+qa_bytes, qa_stat = plain(qa_path)
+assert sha(qa_bytes) == release['FinalCandidateManifestSha256']
+qa = json.loads(qa_bytes)
+assert isinstance(qa, list) and len(qa) == 263
+assert all(isinstance(r, list) and len(r) == 2 and all(type(v) is str for v in r) for r in qa)
+assert len({p.casefold() for p, digest in qa}) == 263
+assert all(re.fullmatch('[0-9a-f]{64}', digest) for p, digest in qa)
+git_sha = context['git_sha256']
+env = {k: v for k, v in os.environ.items() if not k.upper().startswith(('GIT_', 'PYTHON'))}
+env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull,
+           GIT_CONFIG_NOSYSTEM='1', GIT_TERMINAL_PROMPT='0', LC_ALL='C')
+controls = context['git_controls']
+
+def git(args, input_bytes=None):
+    assert sha(plain(GIT)[0]) == git_sha
+    r = subprocess.run([str(GIT), *controls, *args], env=env,
+                       input=input_bytes, capture_output=True, check=True, timeout=30)
+    assert not r.stderr and len(r.stdout) <= 40 * 1024 * 1024
+    assert sha(plain(GIT)[0]) == git_sha
+    return r.stdout
+
+started = datetime.datetime.now(datetime.timezone.utc).isoformat()
+object_bytes = git(['cat-file', 'commit', commit])
+headers = object_bytes.split(b'\n\n', 1)[0].splitlines()
+parents = [line.split(b' ', 1)[1].decode('ascii') for line in headers if line.startswith(b'parent ')]
+assert parents == [parent]
+blob_tree = git(['ls-tree', '-r', '-z', '--full-tree', commit])
+entries = []
+for item in blob_tree.split(b'\0'):
+    if not item:
+        continue
+    header, path = item.split(b'\t', 1)
+    mode, kind, oid = header.decode('ascii').split(' ')
+    name = path.decode('utf-8')
+    assert mode in ('100644', '100755') and kind == 'blob' and re.fullmatch('[0-9a-f]{40}', oid)
+    assert name and '\\' not in name and not name.startswith('/')
+    assert all(part not in ('', '.', '..') for part in name.split('/'))
+    entries.append({'path': name, 'git_mode': mode, 'git_blob': oid})
+assert len(entries) == len({r['path'].casefold() for r in entries}) == 742
+
+def observe():
+    result = []
+    for offset in range(0, len(entries), 8):
+        chunk = entries[offset:offset + 8]
+        b = git(['cat-file', '--batch'], ''.join(r['git_blob'] + '\n' for r in chunk).encode('ascii'))
+        cursor = 0
+        for item in chunk:
+            end = b.index(b'\n', cursor)
+            oid, kind, count = b[cursor:end].decode('ascii').split(' ')
+            size = int(count)
+            assert oid == item['git_blob'] and kind == 'blob' and 0 <= size <= 4 * 1024 * 1024
+            cursor = end + 1
+            data = b[cursor:cursor + size]
+            assert len(data) == size and b[cursor + size:cursor + size + 1] == b'\n'
+            assert hashlib.sha1(b'blob ' + str(size).encode('ascii') + b'\0' + data).hexdigest() == oid
+            result.append({**item, 'size': size, 'sha256': sha(data)})
+            cursor += size + 1
+        assert cursor == len(b)
+    return result
+
+rows = observe()
+assert observe() == rows
+assert git(['ls-tree', '-r', '-z', '--full-tree', commit]) == blob_tree
+assert git(['cat-file', 'commit', commit]) == object_bytes
+qa_map = dict(qa)
+row_map = {r['path']: r for r in rows}
+assert all(path in row_map and row_map[path]['sha256'] == digest for path, digest in qa)
+changed_blob = git(['diff-tree', '--no-commit-id', '--name-only', '-r', '-z', parent, commit])
+changed = [v.decode('utf-8') for v in changed_blob.split(b'\0') if v]
+assert len(changed) == release['FileCount'] == 9
+for p, expected, expected_stat in [(context_path, context_bytes, context_stat),
+                                   (release_path, release_bytes, release_stat),
+                                   (qa_path, qa_bytes, qa_stat)]:
+    b, s = plain(p)
+    assert b == expected and s == expected_stat
+stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+manifest = {'schema_version': 1, 'scope': 'OPAQUE_COMMITTED742_METADATA_NOT_ADMISSION_AUTHORITY',
+            'captured_utc': stamp, 'commit': commit, 'parent': parent,
+            'git_tree_sha256': sha(blob_tree), 'rows': rows}
+manifest_bytes = enc(manifest)
+observation = {'schema_version': 1, 'started_utc': started, 'captured_utc': stamp,
+               'scope': 'READ_ONLY_EXPLICIT_RELEASE009_COMMITTED_OBJECTS_NO_CURRENT_RELEASE_ACCEPTANCE',
+               'context': {'path': context_path.relative_to(ROOT).as_posix(), 'sha256': sha(context_bytes)},
+               'release': {'path': release_path.relative_to(ROOT).as_posix(), 'sha256': sha(release_bytes), 'bytes': len(release_bytes)},
+               'qa263': {'path': qa_path.relative_to(ROOT).as_posix(), 'sha256': sha(qa_bytes), 'bytes': len(qa_bytes),
+                         'all263_hashes_match_committed_blobs': True},
+               'commit': commit, 'exact_commit_object_parents': parents,
+               'commit_object_sha256': sha(object_bytes), 'changed_paths': changed,
+               'committed742_observed_twice': True, 'committed_blobs_git_sha1_checked': True,
+               'full742_manifest': {'path': TREE.relative_to(ROOT).as_posix(), 'sha256': sha(manifest_bytes), 'bytes': len(manifest_bytes)},
+               'git_sha256': git_sha, 'git_controls': controls,
+               'science_outcomes_interpreted': False, 'target_definitions_executed': False,
+               'git_or_live_source_mutations': False, 'receipt_or_chain_independently_accepted': False,
+               'future_finite_chain_policy_authority': False}
+for p, b in [(TREE, manifest_bytes), (OUT, enc(observation))]:
+    with p.open('xb') as f:
+        f.write(b)
+        f.flush()
+        os.fsync(f.fileno())
+    print(json.dumps({'path': p.name, 'bytes': len(b), 'sha256': sha(b)}))
+print(json.dumps({'commit': commit, 'tracked': len(rows), 'qa263_matched': True, 'exact_parent': parents,
+                  'changed_paths': changed}))

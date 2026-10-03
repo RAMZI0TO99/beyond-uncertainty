@@ -1,0 +1,49 @@
+"""Source/data composer only; no phase authorization or prepared function runs."""
+import hashlib
+import json
+from pathlib import Path
+
+root = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\guard005-root-metadata-prep002')
+writer = (root / 'WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005.TEMPLATE.ps1').read_text(encoding='utf-8')
+parent = (root / 'SUPERVISE_ROOT_METADATA_BEFORE_005.TEMPLATE.ps1').read_text(encoding='utf-8')
+writer = writer.replace('param([Parameter(Mandatory=$true)][string]$ExpectedSelfSha256)', 'param([Parameter(Mandatory=$true)][string]$ExpectedSelfSha256,[Parameter(Mandatory=$true)][string]$ExpectedBeforeCaptureSha256,[Parameter(Mandatory=$true)][string]$ExpectedUnitTerminalSha256)', 1)
+writer = writer.replace('ROOT_METADATA_AUTHORIZATION_BEFORE_005.json', 'ROOT_METADATA_AUTHORIZATION_AFTER_005.json')
+writer = writer.replace("'WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005.BOUND.ps1'", "'WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_005.BOUND.ps1'")
+old_absence = "foreach ($path in @($Output,(Join-Path $Prep 'phase-before-005'),(Join-Path $Prep 'phase-after-005'),(Join-Path $Prep 'ROOT_METADATA_AUTHORIZATION_AFTER_005.json')))"
+new_absence = "foreach ($path in @($Output,(Join-Path $Prep 'phase-after-005')))"
+assert writer.count(old_absence) == 1
+writer = writer.replace(old_absence, new_absence, 1)
+read_before = "$beforePath = Join-Path $Prep 'phase-before-005\\METADATA_CAPTURE_005.json'\n$unitPath = Join-Path $Guard 'ROOT_LAUNCH_TERMINAL_005.json'\n$beforePin = Read-Pinned $beforePath $ExpectedBeforeCaptureSha256 2097152\n$unitPin = Read-Pinned $unitPath $ExpectedUnitTerminalSha256 2097152\n"
+assert writer.count('$created = [DateTimeOffset]::UtcNow') == 1
+writer = writer.replace('$created = [DateTimeOffset]::UtcNow', read_before + '$created = [DateTimeOffset]::UtcNow', 1)
+writer = writer.replace("phase = 'before'", "phase = 'after'", 1)
+writer = writer.replace('before_capture = $null', 'before_capture = [ordered]@{path=$beforePath;sha256=$beforePin}', 1)
+writer = writer.replace('unit_terminal = $null', 'unit_terminal = [ordered]@{path=$unitPath;sha256=$unitPin}', 1)
+parent = parent.replace('ROOT_METADATA_AUTHORIZATION_BEFORE_005.json', 'ROOT_METADATA_AUTHORIZATION_AFTER_005.json')
+parent = parent.replace('ROOT_METADATA_PARENT_START_BEFORE_005.json', 'ROOT_METADATA_PARENT_START_AFTER_005.json')
+parent = parent.replace('ROOT_METADATA_PARENT_TERMINAL_BEFORE_005.json', 'ROOT_METADATA_PARENT_TERMINAL_AFTER_005.json')
+parent = parent.replace('ROOT_METADATA_PARENT_STDOUT_BEFORE_005.txt', 'ROOT_METADATA_PARENT_STDOUT_AFTER_005.txt')
+parent = parent.replace('ROOT_METADATA_PARENT_STDERR_BEFORE_005.txt', 'ROOT_METADATA_PARENT_STDERR_AFTER_005.txt')
+parent = parent.replace("'SUPERVISE_ROOT_METADATA_BEFORE_005.BOUND.ps1'", "'SUPERVISE_ROOT_METADATA_AFTER_005.BOUND.ps1'")
+old_parent_absence = "foreach ($path in @($Start,$Terminal,$Stdout,$Stderr,(Join-Path $Prep 'phase-before-005'),(Join-Path $Prep 'phase-after-005'),(Join-Path $Prep 'ROOT_METADATA_AUTHORIZATION_AFTER_005.json')))"
+new_parent_absence = "foreach ($path in @($Start,$Terminal,$Stdout,$Stderr,(Join-Path $Prep 'phase-after-005')))"
+assert parent.count(old_parent_absence) == 1
+parent = parent.replace(old_parent_absence, new_parent_absence, 1)
+parent = parent.replace('--phase before ', '--phase after ', 1)
+assert parent.count("phase='before'") == 2
+parent = parent.replace("phase='before'", "phase='after'")
+identities = []
+for name, text in (('WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_005.TEMPLATE.ps1', writer), ('SUPERVISE_ROOT_METADATA_AFTER_005.TEMPLATE.ps1', parent)):
+    data = text.encode('utf-8')
+    with (root / name).open('xb') as stream:
+        stream.write(data)
+    identities.append(dict(path=str(root/name), sha256=hashlib.sha256(data).hexdigest(), bytes=len(data)))
+record = dict(schema_version=1, author='/root/bootstrap_stage', after_source_files=identities,
+              actual_after_authorization=None, actual_before_capture_sha256=None, actual_unit_terminal_sha256=None,
+              required_source_binding_slots_per_PS=2,
+              explicit_after_delta='Fixed after self/output/phase roles; externally trusted own prep002 before capture + Guard005 actual terminal hashes, no precreated future records',
+              actual_role_canonical_record_acceptance_required=True, phase_writer_partial_PS_comparisons_do_not_replace_independent_actual_review=True,
+              target_definitions_compilation_import_tests_Git_FFI_metadata_process_native_executed=False)
+with (root / 'AFTER_PHASE_SOURCE_PREPARATION_003.json').open('xb') as stream:
+    stream.write((json.dumps(record, sort_keys=True, indent=2)+'\n').encode('ascii'))
+print(json.dumps(dict(after_sources=identities, actual_after_authorization=None),sort_keys=True))

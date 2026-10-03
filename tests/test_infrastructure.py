@@ -7,9 +7,13 @@ identity invariants the labelling protocol depends on.
 from __future__ import annotations
 
 import dataclasses
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import bu.runrecord as Runrecord
 from bu import constants as K
 from bu.config import (
     IDENTITY_VERSION,
@@ -24,7 +28,7 @@ from bu.config import (
     seeds_for,
 )
 from bu.metrics import RunLogger, load_runs
-from bu.runrecord import read_run_record
+from bu.runrecord import PROJECT_ROOT, GitState, git_state, read_run_record
 
 # --- identity semantics (Plan §10.7, §7.2) --------------------------------
 
@@ -247,6 +251,273 @@ def test_invalid_specifications_are_rejected():
 
 
 # --- Week 1 Tue: "a dummy run writes a complete, reloadable record" -------
+
+
+def test_a_clean_looking_uncommitted_state_is_not_trustworthy():
+    """P§13.7 requires an exact commit, not merely an empty status output.
+
+    Outside a repository, ``git status --porcelain`` writes its error to
+    stderr and stdout is empty.  Treating that as a clean tree would make a
+    git-less export look more trustworthy than a dirty repository.
+    """
+    state = GitState(commit="UNCOMMITTED", dirty=False, branch="unknown")
+    assert state.trustworthy is False
+
+
+@pytest.mark.parametrize("commit", [None, "a" * 39, "A" * 40, "not-a-sha"])
+def test_malformed_commit_identifiers_are_never_trustworthy(commit):
+    state = GitState(commit=commit, dirty=False, branch="unknown")
+    assert state.identifies_commit is False
+    assert state.trustworthy is False
+
+
+def test_git_state_outside_a_repository_fails_closed(tmp_path, monkeypatch):
+    """Exercise real Git failure even with project-local pytest scratch.
+
+    --basetemp may live inside this checkout. Prevent Git from discovering the
+    enclosing project instead of assuming pytest always uses an outside path.
+    No subprocess result or production provenance function is mocked.
+    """
+    monkeypatch.delenv("GIT_DIR", raising=False)
+    monkeypatch.delenv("GIT_WORK_TREE", raising=False)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent.resolve()))
+    state = git_state(tmp_path)
+    assert state.commit == "UNCOMMITTED"
+    assert state.dirty is True
+    assert state.trustworthy is False
+
+
+@pytest.mark.parametrize("configured", [None, "", "git.exe", "missing/git.exe"])
+def test_d161_gate_requires_one_existing_absolute_git_override(
+    configured: str | None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BU_D161_ENTRYPOINT_GATE", "synthetic-gate")
+    if configured is None:
+        monkeypatch.delenv(Runrecord.RUNRECORD_GIT_EXECUTABLE_ENV, raising=False)
+    else:
+        monkeypatch.setenv(Runrecord.RUNRECORD_GIT_EXECUTABLE_ENV, configured)
+    monkeypatch.setattr(
+        Runrecord.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("Git ran before override validation"),
+    )
+    with pytest.raises(ValueError, match="captured Git"):
+        git_state(tmp_path)
+
+
+def test_git_state_uses_absolute_captured_executable_for_every_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executable = tmp_path / "captured-git.exe"
+    executable.write_bytes(b"synthetic executable")
+    monkeypatch.setenv("BU_D161_ENTRYPOINT_GATE", "synthetic-gate")
+    monkeypatch.setenv(
+        Runrecord.RUNRECORD_GIT_EXECUTABLE_ENV, str(executable.resolve())
+    )
+    commands: list[list[str]] = []
+
+    def fake_run(command, *, cwd, capture_output, check):
+        commands.append(command)
+        outputs = {
+            ("rev-parse", "HEAD"): b"a" * 40,
+            ("rev-parse", "--abbrev-ref", "HEAD"): b"main",
+            ("status", "--porcelain"): b"",
+        }
+        return SimpleNamespace(stdout=outputs[tuple(command[1:])], returncode=0)
+
+    monkeypatch.setattr(Runrecord.subprocess, "run", fake_run)
+    state = git_state(tmp_path)
+
+    assert state.trustworthy is True
+    assert [command[1:] for command in commands] == [
+        ["rev-parse", "HEAD"],
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        ["status", "--porcelain"],
+    ]
+    assert all(command[0] == str(executable.resolve()) for command in commands)
+
+
+@pytest.mark.parametrize(
+    "failed_command",
+    [
+        ("rev-parse", "HEAD"),
+        ("rev-parse", "--abbrev-ref", "HEAD"),
+        ("status", "--porcelain"),
+    ],
+)
+def test_git_state_command_failures_are_dirty_and_untrustworthy(
+    monkeypatch, tmp_path, failed_command
+):
+    """No failed Git probe may be mistaken for evidence of a clean tree."""
+    sha = b"a" * 40
+
+    def fake_run(command, *, cwd, capture_output, check):
+        assert Path(cwd) == tmp_path
+        args = tuple(command[1:])
+        outputs = {
+            ("rev-parse", "HEAD"): sha,
+            ("rev-parse", "--abbrev-ref", "HEAD"): (
+                "feature/na\N{LATIN SMALL LETTER I WITH DIAERESIS}ve".encode()
+            ),
+            ("status", "--porcelain"): b"",
+        }
+        return SimpleNamespace(
+            stdout=outputs[args],
+            returncode=128 if args == failed_command else 0,
+        )
+
+    monkeypatch.setattr("bu.runrecord.subprocess.run", fake_run)
+    state = git_state(tmp_path)
+
+    assert state.dirty is True
+    assert state.trustworthy is False
+    if failed_command == ("rev-parse", "HEAD"):
+        assert state.commit == "UNCOMMITTED"
+    if failed_command == ("rev-parse", "--abbrev-ref", "HEAD"):
+        assert state.branch == "unknown"
+    else:
+        assert state.branch == "feature/na\N{LATIN SMALL LETTER I WITH DIAERESIS}ve"
+
+
+def test_git_state_ignores_stdout_from_a_failed_command(monkeypatch, tmp_path):
+    """Plausible stdout does not rescue a nonzero Git return code."""
+
+    def fake_run(command, *, cwd, capture_output, check):
+        args = tuple(command[1:])
+        if args == ("rev-parse", "HEAD"):
+            return SimpleNamespace(stdout=b"b" * 40, returncode=7)
+        if args == ("rev-parse", "--abbrev-ref", "HEAD"):
+            return SimpleNamespace(stdout=b"main", returncode=0)
+        return SimpleNamespace(stdout=b"", returncode=0)
+
+    monkeypatch.setattr("bu.runrecord.subprocess.run", fake_run)
+    state = git_state(tmp_path)
+    assert state.commit == "UNCOMMITTED"
+    assert state.dirty is True
+    assert state.trustworthy is False
+
+
+def test_git_state_default_is_bound_to_the_installed_project(monkeypatch):
+    """Changing the caller's CWD cannot silently change provenance scope."""
+    working_directories = []
+
+    def fake_run(command, *, cwd, capture_output, check):
+        working_directories.append(Path(cwd))
+        args = tuple(command[1:])
+        if args == ("rev-parse", "HEAD"):
+            return SimpleNamespace(stdout=b"c" * 40, returncode=0)
+        if args == ("rev-parse", "--abbrev-ref", "HEAD"):
+            return SimpleNamespace(stdout=b"main", returncode=0)
+        return SimpleNamespace(stdout=b"", returncode=0)
+
+    monkeypatch.setattr("bu.runrecord.subprocess.run", fake_run)
+    state = git_state()
+
+    assert working_directories == [PROJECT_ROOT, PROJECT_ROOT, PROJECT_ROOT]
+    assert state.commit == "c" * 40
+    assert state.trustworthy is True
+
+
+def test_run_logger_default_uses_installed_project_root(
+    monkeypatch, tmp_path
+):
+    """RunLogger's historical ``repo='.'`` default is project-root bound."""
+    working_directories = []
+
+    def fake_run(command, *, cwd, capture_output, check):
+        working_directories.append(Path(cwd))
+        args = tuple(command[1:])
+        if args == ("rev-parse", "HEAD"):
+            return SimpleNamespace(stdout=b"d" * 40, returncode=0)
+        if args == ("rev-parse", "--abbrev-ref", "HEAD"):
+            return SimpleNamespace(stdout=b"main", returncode=0)
+        return SimpleNamespace(stdout=b"", returncode=0)
+
+    monkeypatch.setattr("bu.runrecord.subprocess.run", fake_run)
+    cfg = Config(unit=UnitSpec(), seed=0)
+    RunLogger.start(cfg, root=tmp_path).close()
+    rec = read_run_record(tmp_path / cfg.run_id)
+
+    assert working_directories == [PROJECT_ROOT, PROJECT_ROOT, PROJECT_ROOT]
+    assert rec["git"]["commit"] == "d" * 40
+    assert rec["git"]["trustworthy"] is True
+
+
+def test_an_explicit_dot_repository_is_not_reinterpreted(monkeypatch, tmp_path):
+    """Only the omitted default binds to PROJECT_ROOT; explicit paths survive."""
+    working_directories = []
+
+    def fake_run(command, *, cwd, capture_output, check):
+        working_directories.append(Path(cwd))
+        args = tuple(command[1:])
+        if args == ("rev-parse", "HEAD"):
+            return SimpleNamespace(stdout=b"e" * 40, returncode=0)
+        if args == ("rev-parse", "--abbrev-ref", "HEAD"):
+            return SimpleNamespace(stdout=b"main", returncode=0)
+        return SimpleNamespace(stdout=b"", returncode=0)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("bu.runrecord.subprocess.run", fake_run)
+    state = git_state(".")
+    assert state.trustworthy is True
+    assert working_directories == [Path("."), Path("."), Path(".")]
+
+
+def test_git_state_preserves_clean_real_repository_behavior(tmp_path):
+    """A successful probe of a clean checkout still identifies its commit."""
+    repo = tmp_path / "clean-repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.invalid"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "config", "user.name", "Test"], cwd=repo, check=True
+    )
+    tracked = repo / "tracked.txt"
+    tracked.write_text("committed\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "base"], cwd=repo, check=True,
+        capture_output=True,
+    )
+
+    state = git_state(repo)
+
+    assert state.identifies_commit is True
+    assert state.dirty is False
+    assert state.branch != "unknown"
+    assert state.trustworthy is True
+
+
+def test_dirty_diff_preserves_utf8_bytes_on_windows(tmp_path):
+    """Provenance capture must not decode a Git patch through cp1252."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True,
+                   capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.invalid"],
+                   cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo,
+                   check=True)
+    tracked = repo / "tracked.txt"
+    tracked.write_text("plain\n", encoding="utf-8")
+    subprocess.run(["git", "add", "tracked.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "base"], cwd=repo, check=True,
+                   capture_output=True)
+    tracked.write_text("unicode en dash – survives\n", encoding="utf-8")
+    expected = subprocess.run(
+        ["git", "diff", "HEAD"], cwd=repo, check=True, capture_output=True
+    ).stdout
+
+    cfg = Config(unit=UnitSpec(), seed=0)
+    RunLogger.start(cfg, root=tmp_path / "runs", repo=repo).close()
+    assert (tmp_path / "runs" / cfg.run_id / "dirty.diff").read_bytes() == expected
 
 
 def test_config_roundtrips_through_yaml(tmp_path):

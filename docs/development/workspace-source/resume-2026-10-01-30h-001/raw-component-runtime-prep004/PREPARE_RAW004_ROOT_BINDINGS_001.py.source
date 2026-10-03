@@ -1,0 +1,75 @@
+"""One-use literal binding only; never import/execute target code."""
+from pathlib import Path
+import ast, datetime, hashlib, json
+
+PREP=Path('D:/Aenv/pro2/resume-2026-10-01-30h-001/raw-component-runtime-prep004')
+sha=lambda b:hashlib.sha256(b).hexdigest()
+encode=lambda x:(json.dumps(x,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('ascii')
+
+def observe(p):
+    b=p.read_bytes()
+    return b,{'path':str(p),'bytes':len(b),'sha256':sha(b)}
+
+def once(p,b):
+    with p.open('xb') as f:f.write(b)
+
+def bind(original,values):
+    text=original.decode('utf-8')
+    spans=[]
+    for node in ast.parse(text).body:
+        if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in values:
+            assert isinstance(node.value,ast.Constant) and node.value.value is None
+            lines=text.splitlines(keepends=True)
+            start=sum(len(x) for x in lines[:node.value.lineno-1])+node.value.col_offset
+            end=sum(len(x) for x in lines[:node.value.end_lineno-1])+node.value.end_col_offset
+            spans.append((start,end,node.targets[0].id))
+    assert len(spans)==len(values) and {n for _,_,n in spans}==set(values)
+    result=text
+    for start,end,name in sorted(spans,reverse=True):
+        result=result[:start]+repr(values[name])+result[end:]
+    tree=ast.parse(result)
+    reverse=result
+    ranges=[]
+    for node in tree.body:
+        if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in values:
+            assert ast.literal_eval(node.value)==values[node.targets[0].id]
+            lines=result.splitlines(keepends=True)
+            start=sum(len(x) for x in lines[:node.value.lineno-1])+node.value.col_offset
+            end=sum(len(x) for x in lines[:node.value.end_lineno-1])+node.value.end_col_offset
+            ranges.append((start,end))
+    for start,end in sorted(ranges,reverse=True):reverse=reverse[:start]+'None'+reverse[end:]
+    assert reverse.encode('utf-8')==original
+    return result.encode('utf-8')
+
+static_bytes,static_pin=observe(PREP/'INDEPENDENT_RAW_HARNESS_STATIC_REVIEW_004.json')
+static=json.loads(static_bytes)
+assert static['verdict']=='PASS_STATIC_PREPARATION_ONLY' and static['reviewer']=='/root/window_docs'
+source_peer_bytes,source_peer_pin=observe(PREP/'inputs/INDEPENDENT_RAW_POLICY_STATIC_REVIEW_003.json')
+test_peer_bytes,test_peer_pin=observe(PREP/'inputs/INDEPENDENT_RAW_TEST_REVISION_STATIC_REVIEW_004.json')
+assert b'PASS_STATIC_TEST_REVISION_ONLY' in test_peer_bytes
+driver_bytes,driver_pin=observe(PREP/'run-isolated-raw-component-004.TEMPLATE.py')
+observer_bytes,observer_pin=observe(PREP/'observe-whole-runtime-004.TEMPLATE.py')
+child_bytes,child_pin=observe(PREP/'raw-test-child-004.TEMPLATE.py')
+assert driver_pin['sha256']==static['driver_template_sha256'] and observer_pin['sha256']==static['whole_observer_template_sha256'] and child_pin['sha256']==static['child_template_sha256']
+context_bytes,context_pin=observe(PREP/'ROOT_RAW004_CONTEXT_SELECTION_001.json')
+context=json.loads(context_bytes)
+assert context['tracked_count']==742 and context['head']=='597eb048a1bc441030bfcd88b70fdf9c56f882d0'
+for key in ('live_guard_snapshot','runtime_snapshot'):
+    observed,pin=observe(Path(context[key]['path']))
+    assert pin['sha256']==context[key]['sha256'] and pin['bytes']==context[key]['bytes']
+bindings={'RAW_SOURCE_PEER_REVIEW_SHA256':source_peer_pin['sha256'],'RAW_TEST_PEER_REVIEW_SHA256':test_peer_pin['sha256'],'HARNESS_STATIC_REVIEW_SHA256':static_pin['sha256']}
+bound_driver=bind(driver_bytes,bindings)
+bound_observer=bind(observer_bytes,{'HARNESS_STATIC_REVIEW_SHA256':static_pin['sha256']})
+driver_path=PREP/'run-isolated-raw-component-004.BOUND.py'
+observer_path=PREP/'observe-whole-runtime-004.BOUND.py'
+receipt_path=PREP/'BOUND_PREPARATION_004_ROOT_001.json'
+assert not any(p.exists() for p in (driver_path,observer_path,receipt_path))
+for p,b in ((PREP/'INDEPENDENT_RAW_HARNESS_STATIC_REVIEW_004.json',static_bytes),(PREP/'run-isolated-raw-component-004.TEMPLATE.py',driver_bytes),(PREP/'observe-whole-runtime-004.TEMPLATE.py',observer_bytes),(PREP/'ROOT_RAW004_CONTEXT_SELECTION_001.json',context_bytes)):
+    assert p.read_bytes()==b
+once(driver_path,bound_driver)
+once(observer_path,bound_observer)
+_,driver_actual=observe(driver_path)
+_,observer_actual=observe(observer_path)
+record={'schema_version':1,'created_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'status':'BOUND_SOURCES_AWAITING_INDEPENDENT_ACTUAL_BOUND_REVIEW','driver_bindings':bindings,'observer_bindings':{'HARNESS_STATIC_REVIEW_SHA256':static_pin['sha256']},'driver':driver_actual,'observer':observer_actual,'templates':{'driver':driver_pin,'observer':observer_pin,'child':child_pin},'static_review':static_pin,'source003_peer':source_peer_pin,'test004_peer':test_peer_pin,'source003_peer_old_test_scope_not_reused':True,'fresh_root_context':context_pin,'selected_live_guard':context['live_guard_snapshot'],'selected_runtime_guard':context['runtime_snapshot'],'exact_driver_three_literal_reversal':True,'exact_observer_one_literal_reversal':True,'actual_rootACK_PS_or_whole_observer_or_test_execution_performed':False,'sole_executor_ack_received':False,'native_or_science_authority':False}
+once(receipt_path,encode(record))
+print(json.dumps({'driver':driver_actual,'observer':observer_actual,'receipt_sha256':sha(encode(record)),'status':record['status']}))

@@ -1,0 +1,126 @@
+"""Own finite AST/metadata audit, no reviewed definitions/main or tests executed."""
+import ast, datetime, hashlib, json, os
+from pathlib import Path
+ROOT=Path('D:/Aenv/pro2');BASE=ROOT/'resume-2026-10-03-continuation001';OLD=ROOT/'resume-2026-10-01-30h-001'
+GG=BASE/'consumer005-guard006-runtime-prep001';M3=BASE/'metadata3-producer-core-prep001'
+def sha(b):return hashlib.sha256(b).hexdigest()
+def utc():return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+def enc(v):return (json.dumps(v,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def pairs(rows):
+ d={}
+ for k,v in rows:assert k not in d;d[k]=v
+ return d
+def parse(b):return json.loads(b.decode('utf-8','strict'),object_pairs_hook=pairs,parse_constant=lambda s:(_ for _ in ()).throw(ValueError(s)))
+def raw(s):return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,getattr(s,'st_file_attributes',0),getattr(s,'st_birthtime_ns',None)]
+def read(p):
+ a=p.lstat();b=p.read_bytes();z=p.lstat();assert raw(a)==raw(z)
+ return b,dict(path=str(p),sha256=sha(b),bytes=len(b),raw9=raw(z),observed_utc=utc())
+def once(p,b):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open('xb') as f:f.write(b);f.flush();os.fsync(f.fileno())
+def literal(tree,name):
+ rows=[n.value for n in tree.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id==name]
+ assert len(rows)==1,name
+ return ast.literal_eval(rows[0])
+def functions(tree):return {n.name:ast.dump(n,include_attributes=False) for n in tree.body if isinstance(n,ast.FunctionDef)}
+def collect(package,manifest_name,manifest_pin,payload_key,extra):
+ manifest_path=package/manifest_name;b=manifest_path.read_bytes();assert sha(b)==manifest_pin
+ manifest=parse(b);paths={manifest_path};pins={manifest_path:manifest_pin}
+ for row in manifest[payload_key]:
+  p=package/row['path'];paths.add(p);pins[p]=row['sha256']
+ for p,pin in extra:paths.add(p);pins[p]=pin
+ data=None;observations=[]
+ for phase in range(3):
+  current={};rows=[]
+  for p in sorted(paths,key=str):
+   b,row=read(p);assert sha(b)==pins[p],str(p);current[p]=b;rows.append(row)
+  if data is None:data=current
+  else:assert data==current
+  observations.append(dict(phase=phase+1,rows=rows))
+ for row in manifest[payload_key]:assert len(data[package/row['path']])==row['bytes']
+ return manifest,data,observations
+shared=[(BASE/'OWNER_CONTINUATION_20261003_001.json','de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'),(BASE/'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json','56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0')]
+ggextras=shared+[(BASE/'capsule-design-independent-review001/INDEPENDENT_COMPACT_CAPSULE_REVIEW_001.json','007a4fa04849b2b497046609fcc7058abc4db19d933aa932fd61420394fce2e1')]
+for row in parse((GG/'AUTHOR_LEAF_STABILITY_AND_LIMITATIONS_006.json').read_bytes())['pairs']:ggextras.append((Path(row['original']),row['sha256']))
+oldleaf=['consumer-guard-child-005.TEMPLATE.py','run-consumer-guard-unit005.TEMPLATE.py','observe-whole-runtime-005.TEMPLATE.py','ROOT_FIRST_LAUNCH_005.TEMPLATE.ps1','GUARD_RUNTIME_PROFILE_005.json']
+for idx,name in enumerate(oldleaf):
+ p=OLD/'consumer-guard-test-runtime005'/name
+ # Preserve exactly the known old leaves only, not their ancestor forests.
+ ggextras.append((p,sha((GG/f'before/{idx:02d}.bytes').read_bytes())))
+ggmanifest,ggdata,ggobs=collect(GG,'FINAL_AUTHOR_SOURCE_MANIFEST_006.json','d744a9bc9c05cd237abf099bafe269eae293284d7dc300bc597117c25b1268c7','files',ggextras)
+m3extras=shared+[(GG/'GUARD_RUNTIME_PROFILE_006.json','f42eba7aad5778d9f39d0db342cec86d54db5d3f6a639e349aae2c0d564285a9')]
+for row in parse((M3/'SELECTED_HISTORICAL_INPUTS_001.json').read_bytes())['source_inputs']:m3extras.append((Path(row['path']),row['sha256']))
+m3pin=sha((M3/'STAGED_MANIFEST_003.json').read_bytes())
+assert m3pin.startswith('ab814266')
+m3manifest,m3data,m3obs=collect(M3,'STAGED_MANIFEST_003.json',m3pin,'payloads',m3extras)
+def syntax(data,selected):
+ answer=[]
+ for p in selected:
+  t=ast.parse(data[p],filename=str(p));code=compile(data[p],str(p),'exec',dont_inherit=True,optimize=0)
+  answer.append(dict(path=str(p),sha256=sha(data[p]),functions=[n.name for n in t.body if isinstance(n,ast.FunctionDef)],classes=[n.name for n in t.body if isinstance(n,ast.ClassDef)],inert_code_flags=code.co_flags,execution=False))
+ return answer
+ggselected=[GG/n for n in ['consumer-guard-child-006.TEMPLATE.py','run-consumer-guard-unit006.TEMPLATE.py','observe-whole-runtime-006.TEMPLATE.py','test_raw_consumer_guards_005.TEMPLATE.py']]
+m3selected=[M3/'capture-root-metadata003.TEMPLATE.py',M3/'BIND_SOURCE_AND_PHASES_003.TEMPLATE.py']
+ggsyntax=syntax(ggdata,ggselected);m3syntax=syntax(m3data,m3selected)
+profile=parse(ggdata[GG/'GUARD_RUNTIME_PROFILE_006.json']);owner=parse(ggdata[shared[0][0]]);peer=parse(ggdata[shared[1][0]])
+trees=[ast.parse(ggdata[p]) for p in ggselected[:3]]
+for t in trees:
+ assert literal(t,'OWNER_MASTER_EXPECTED')==owner and len(owner)==27
+ assert set(literal(t,'OWNER_REVIEW_KEYS'))==set(peer) and len(peer)==19
+ assert literal(t,'MAX_RECEIPT')==262144 and literal(t,'MAX_CAPTURE')==131072
+ fn=functions(t)
+ for name in ['typed_equal','exact_ticks','lease_entry','source_snapshot','capsule_snapshot']:assert name in fn
+assert len(ggmanifest['files'])==34
+for row in parse(ggdata[GG/'AUTHOR_LEAF_STABILITY_AND_LIMITATIONS_006.json'])['pairs']:
+ assert ggdata[Path(row['original'])]==ggdata[Path(row['copy'])]
+test=ast.parse(ggdata[GG/'test_raw_consumer_guards_005.TEMPLATE.py']);classes=[n for n in test.body if isinstance(n,ast.ClassDef)]
+assert [n.name for n in classes]==['RawConsumerGuardRegressions','RawConsumerMetaclassIdentityRegressions']
+methods={n.name:sorted(m.name for m in n.body if isinstance(m,ast.FunctionDef) and m.name.startswith('test_')) for n in classes}
+assert [len(methods[n.name]) for n in classes]==[19,5] and methods==profile['prepared_class_method_names']
+ids=['isolated_consumer_guard_unit006.'+n.name+'.'+m for n in classes for m in methods[n.name]]
+assert ids==profile['prepared_full_ids'] and len(set(ids))==24
+projection=parse(ggdata[GG/'CURRENT24_BODY_AND_FULL_ID_PROJECTION_006.json'])
+for c in classes:
+ for n in c.body:
+  if isinstance(n,ast.FunctionDef) and n.name.startswith('test_'):assert sha(ast.dump(n,include_attributes=False).encode())==projection['body_AST_sha256'][c.name][n.name]
+driver=ggdata[ggselected[1]].decode();child=ggdata[ggselected[0]].decode();observer=ggdata[ggselected[2]].decode()
+assert literal(trees[1],'PROFILE_SHA256')==sha(ggdata[GG/'GUARD_RUNTIME_PROFILE_006.json'])
+for p,row in [('child',profile['child']),('observer',profile['whole_observer']),('RootPS',profile['root_supervisor'])]:assert sha(ggdata[GG/row['path']])==row['sha256']
+assert all(profile[k] is None for k in ['execution_lease','root_ack','bound_driver','current_context_before','fresh_runtime4_metadata_snapshot','fresh_whole_runtime_before','actual_late_launch_review'])
+for body in [child,driver]:
+ for route in ['class EvidenceStream','def validate_event','def stream_read','MAX_EVENT_ROW = 1024','MAX_STREAM_CHUNKS = 32','MAX_STREAM_CHUNK = 131072','MAX_STREAM_BYTES = 4194304']:assert route in body
+assert 'type(lease["maximum_lease_seconds"]) is int' in child and '43200*10000000' in child
+assert '"both original90 throughspawn"' in driver and '"resource60 throughspawn"' in driver
+assert '["offset"]+item["bytes"]<=MAX_STREAM_BYTES' in child
+missing_contract=GG/profile['external_canonical_timestamp_role_contract']['path'];assert not missing_contract.exists()
+ggfind=[dict(id='GG006-01',severity='blocking_source_contract',path='GUARD_RUNTIME_PROFILE_006.json',finding='The external canonical timestamp role points at absent EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_005.json while child, observer and RootPS comments require a006 contract. No selected contract payload exists in the34-file freeze.',required='Distinct versioned sources/profile and a preserved, reviewed genuine006 timestamp-role contract; preserve first freeze.'),dict(id='GG006-02',severity='blocking_source_precision',path='GUARD_RUNTIME_PROFILE_006.json',finding='Preparation limitations still attribute Source003 peer/all14 and Source00314-only scope even though this harness executes current00524.',required='Distinct profile wording qualified to current005/capsule peer and all24; keep old wording historical.'),dict(id='GG006-C01',severity='required_actual_acceptance_condition',path='run-consumer-guard-unit006.TEMPLATE.py:750',finding='Driver reconciles exact24 method rows and subtest count/status, but does not independently reconstruct each start/success event and subtest parent ownership.',required='The different actual result checker must reconstruct ordered start/terminal method IDs and valid subtest parents, or the distinct driver must add that reconstruction before acceptance.'),dict(id='GG006-A01',severity='producer_precision_advisory',finding='Fresh Python-produced timestamps use isoformat() default precision; exact zero microseconds produces a no-fraction form.',required='Prefer explicit timespec=microseconds in new producer source; retain strict actual role review and never normalize an expired/spent record.')]
+capture=m3data[M3/'capture-root-metadata003.TEMPLATE.py'].decode();binder=m3data[M3/'BIND_SOURCE_AND_PHASES_003.TEMPLATE.py'].decode();mt=ast.parse(capture)
+assert literal(mt,'OWNER_MASTER_EXPECTED')==owner and set(literal(mt,'OWNER_REVIEW_KEYS'))==set(peer)
+assert len(literal(mt,'LEASE_KEYS'))==12 and literal(mt,'MAX_SECONDS')==300 and literal(mt,'JSON_CAP')==2097152
+old=parse(m3data[M3/'SELECTED_HISTORICAL_INPUTS_001.json'])['source_inputs'][0]['path'];of=functions(ast.parse(m3data[Path(old)]));nf=functions(mt)
+identical=[name for name,body in of.items() if nf.get(name)==body];assert len(identical)==16
+assert sorted(set(nf)-set(of))==['exact_ticks','lease_guard','typed_equal']
+assert "inputs/SOURCE_STAGED_MANIFEST_003.json" in capture and "inputs/ACTUAL_SOURCE_CAPSULE_003.json" in capture
+for name in ['SUPERVISE_ROOT_METADATA_BEFORE_003.TEMPLATE.ps1','SUPERVISE_ROOT_METADATA_AFTER_003.TEMPLATE.ps1']:
+ ps=m3data[M3/name].decode();assert '$authBytes = Pin $Auth $ExpectedAuthorizationSha256 65536' in ps and 'function Pin(' not in ps and 'function Read-Pinned(' in ps
+assert m3manifest['payload_count']==21 and len(m3manifest['payloads'])==21
+m3find=[dict(id='M3003-01',severity='blocking_source_role',path='capture-root-metadata003.TEMPLATE.py:455',finding='Capture pins fixed SOURCE_STAGED_MANIFEST_003.json and ACTUAL_SOURCE_CAPSULE_003.json, whereas its GG6 current source package provides fixed005 filenames.',required='Distinct capture/binder source selection with authentic fixed005 roles, exact reverse/pin updates and original003 preservation.'),dict(id='M3003-02',severity='blocking_source_call',path='SUPERVISE_ROOT_METADATA_BEFORE_003.TEMPLATE.ps1:130; SUPERVISE_ROOT_METADATA_AFTER_003.TEMPLATE.ps1:130',finding='Both supervisors call undefined Pin to read authBytes; their only pinned-byte function is Read-Pinned. This source route would refuse before process launch.',required='Distinct preserved-source supervisor correction to the real Read-Pinned function; parse/full call closure review before binding.'),dict(id='M3003-A01',severity='producer_precision_advisory',finding='Capture fresh timestamps use isoformat() default precision, so zero-microsecond stamps lack the mandatory six fraction digits.',required='Explicit microseconds producer precision in distinct source, without relaxing or retimestamping old records.')]
+commonlimits=['AST and inert CodeType only; no reviewed definitions/imports/main, tests, Git, FFI, binding, PowerShell target or native action executed.','Exact finite selected dependency pool; no ancestor forest, unknown-file absence or full current742/263 acceptance.','Physical producer and actual source/lease/phase decisions remain externally reviewed; source fields do not prove OS witness/Job/lock/descendant or loaded-site closure.','No compact PASS source record is emitted from a refusal; original sources remain UNRUN and unchanged.']
+def publish(tag,package,manifest,data,observations,syntax_rows,findings,checks):
+ out=BASE/(tag+'-source-independent-review001');before=out/'selected-before001';assert not before.exists();before.mkdir(parents=True)
+ preserved=[]
+ for idx,p in enumerate(sorted(data,key=str)):
+  dest=before/f'{idx:02d}.bytes';once(dest,data[p]);assert dest.read_bytes()==data[p]
+  preserved.append(dict(path=str(p),copy=str(dest),sha256=sha(data[p]),bytes=len(data[p])))
+ post=[]
+ for p in sorted(data,key=str):b,row=read(p);assert b==data[p];post.append(row)
+ manifest_name='FINAL_AUTHOR_SOURCE_MANIFEST_006.json' if tag=='gg6' else 'STAGED_MANIFEST_003.json'
+ result=dict(schema_version=1,record_type='independent_'+tag+'_complete_finite_source_review',reviewer='/root/owner_docs_review',created_utc=utc(),verdict='REFUSED_SOURCE_PREPARATION_REQUIRES_DISTINCT_CORRECTION',source_manifest_sha256=sha(data[package/manifest_name]),manifest_payload_count=len(manifest['files'] if tag=='gg6' else manifest['payloads']),finite_input_count=len(data),observations=observations,preserved_inputs=preserved,prepublication_observations=post,syntax_and_inert_metadata=syntax_rows,source_checks=checks,findings=findings,implementation_conditions=commonlimits,actual_results=None,runtime_acceptance=False,operational_authority=False)
+ review=out/('INDEPENDENT_'+tag.upper()+'_SOURCE_REVIEW_001.json');md=out/('INDEPENDENT_'+tag.upper()+'_SOURCE_REVIEW_001.md');postpath=out/('INDEPENDENT_'+tag.upper()+'_SOURCE_POST_001.json')
+ once(review,enc(result));once(md,('# Independent '+tag.upper()+' source review\n\nREFUSED_SOURCE_PREPARATION_REQUIRES_DISTINCT_CORRECTION.\n\n'+'\n\n'.join(f['id']+': '+f['finding']+' '+f['required'] for f in findings)+'\n\nFinite selected input hashes, exact copies, three source reads and postread are recorded in JSON. All source remains UNRUN. This is not a runtime failure, source production defect claim or execution/binding approval.\n').encode('utf-8'))
+ rows=[]
+ for p in sorted(data,key=str):b,row=read(p);assert b==data[p];rows.append(row)
+ once(postpath,enc(dict(schema_version=1,created_utc=utc(),review_sha256=sha(review.read_bytes()),source_post_observations=rows)))
+ print(json.dumps(dict(tag=tag,verdict=result['verdict'],finite_inputs=len(data),outputs=[dict(path=str(p),sha256=sha(p.read_bytes()),bytes=p.stat().st_size) for p in [review,md,postpath]])))
+publish('gg6',GG,ggmanifest,ggdata,ggobs,ggsyntax,ggfind,['All34 payload pins and12 genuine current source/capsule/test projection pairs','Current test file byte identity and24 method AST hashes/full IDs reconstructed19+5','Strong ongoing master27/owner peer19 separated from exact finite lease12 with seventh-tick interval chronology','Closed capsule/schema/derivation roles and external capsule peer pins','Event1024LF/count4096/chunk131072/combined32+4MiB/source receipt and physical capture caps','Direct I-S-B frozen child, audit-denied process/FFI/network and scratch writes, cold/reuse fixtures preserved','Both context/runtime90/resource60 before spawn, context600, source/runtime repeated before/after','RootPS3 BOUND-to-launcher-to-LATE roles inspected; no OS/descendant hard guarantee'])
+publish('m3',M3,m3manifest,m3data,m3obs,m3syntax,m3find,['All21 payloads and seven finite old source/reference inputs pinned','Six active source routes examined; Python capture16 old nonmain ASTs retained plus three owner/lease functions','Strong typed ongoing master27/owner peer19/lease12 with exact native PS7 stamps and finite43200 interval','Strict duplicate/noninteger JSON lexical pass plus ConvertFrom-Json and ordinary builtin owned map/list types, PS5.1 source compatibility','Bounded pinned reads/source six-assignment reversal/four PS two-literal reversal; future actual binding slots remain None','Retained direct base child300+315 cooperative parent/capture65536/drain/reap, finite three Git reads and742 paired observation source scope only','Both auth17/capture14/parent20 before-after roles and fixed source/interface chains inspected; no target entry'])

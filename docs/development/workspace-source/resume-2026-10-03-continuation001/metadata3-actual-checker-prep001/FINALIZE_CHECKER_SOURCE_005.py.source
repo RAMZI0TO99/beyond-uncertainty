@@ -1,0 +1,45 @@
+"""Own source finalization only. Target/checker definitions and mains stay unrun."""
+import ast,hashlib,json
+from pathlib import Path
+OUT=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001/metadata3-actual-checker-prep001')
+path=OUT/'review-metadata3-actual006.TEMPLATE.py';before=path.read_bytes()
+assert hashlib.sha256(before).hexdigest()=='d81a967136be2c0f57fbc50815ab29ae2c18b537d0ca2516c4f576c390be1bd9'
+with (OUT/'source-before-final-rev003-selection004.bytes').open('xb') as stream:stream.write(before)
+text=before.decode('utf8');text=text[:text.index('\ndef sha(value):')]+'\n'+(OUT/'CHECKER_CONTROL_001.py.source').read_text('utf8')
+for old,new in [('GUARD_RUNTIME_PROFILE_006.json','GUARD_RUNTIME_PROFILE_006-rev003.json'),
+ ('run-consumer-guard-unit006.py','run-consumer-guard-unit006-rev003.bound.py'),
+ ('consumer-guard-child-006.TEMPLATE.py','consumer-guard-child-006-rev003.TEMPLATE.py'),
+ ('observe-whole-runtime-006.py','observe-whole-runtime-006-rev003.BOUND.py'),
+ ('ROOT_FIRST_LAUNCH_006.BOUND.ps1','ROOT_FIRST_LAUNCH_006-rev003.BOUND.ps1')]:text=text.replace(old,new)
+text=text.replace('-rev002','-rev003')
+extra="""    capsule_peer=selected(CAPSULE_PEER_PATH,CAPSULE_PEER_SHA,131072)
+    need(type(capsule_peer.get('reviewer')) is str and capsule_peer['reviewer']=='/root/capsule_design_review','different Source capsule peer selected separately from capsule bytes')
+    need(literals(read(GUARD/'run-consumer-guard-unit006-rev003.bound.py',DRIVER,131072)[0])['SOURCE_CAPSULE_PEER_SHA256']==CAPSULE_PEER_SHA,'actual bound driver capsule-peer literal')
+"""
+anchor="    for key,path in INPUTS.items():read(path,BINDINGS[key])";assert text.count(anchor)==1;text=text.replace(anchor,extra+anchor)
+tree=ast.parse(text);code=compile(text,str(path),'exec',dont_inherit=True)
+test_path=OUT/'test_metadata3_actual_checker_preparation_001.py';test_data=test_path.read_bytes();test_tree=ast.parse(test_data)
+tests=[fn.name for node in test_tree.body if isinstance(node,ast.ClassDef) for fn in node.body if isinstance(fn,ast.FunctionDef) and fn.name.startswith('test_')]
+assert len(tests)==9 and len(tests)==len(set(tests));compile(test_data,str(test_path),'exec',dont_inherit=True)
+constants={}
+for node in tree.body:
+ if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name):
+  try:constants[node.targets[0].id]=ast.literal_eval(node.value)
+  except (ValueError,TypeError):pass
+assert constants['OWNER'] is None and constants['CONFIG'] is None
+for name in ('AUTH_KEYS','WHOLE_AUTH_KEYS','WHOLE_RESULT_KEYS','WHOLE_PARENT_KEYS','METADATA_PARENT_KEYS','CORE_KEYS','TICKET_KEYS'):
+ assert len(constants[name])==len(set(constants[name]))
+assert [len(constants[x]) for x in ('AUTH_KEYS','WHOLE_AUTH_KEYS','WHOLE_RESULT_KEYS','WHOLE_PARENT_KEYS','METADATA_PARENT_KEYS','CORE_KEYS','TICKET_KEYS')]==[17,15,19,30,20,12,22]
+assert len(constants['PHASES'])==8
+assert 'rev002' not in text and "phase.upper()+'_005.json'" not in text
+assert "type(left) in" not in text
+path.write_text(text,encoding='utf8',newline='\n')
+record=dict(schema_version=1,record_type='metadata3_actual_checker_author_source_metadata',source_author='/root/actual_record_checker',scope=constants['SCOPE'],
+ selected_checker=dict(path=path.name,sha256=hashlib.sha256(path.read_bytes()).hexdigest(),bytes=path.stat().st_size),
+ former_source_sha256=hashlib.sha256(before).hexdigest(),top_level_functions=[n.name for n in tree.body if isinstance(n,ast.FunctionDef)],
+ closed_counts=dict(auth=17,whole_authorization=15,whole_result=19,whole_parent=30,metadata_parent=20,core=12,ticket=22,phase=8,driver_evidence=26),
+ planned_tests=dict(path=test_path.name,sha256=hashlib.sha256(test_data).hexdigest(),bytes=len(test_data),methods=tests,actual_results=None),
+ source_AST_and_inert_new_CodeType_only=True,source_author_self_checks_not_independent_approval=True,
+ checker_or_original_utilities_or_target_definitions_imports_mains_tests_Git_FFI_PS_or_native_executed=False,actual_source_binding=None,actual_lease=None,actual_before=None,actual_after=None,actual_review=None)
+with (OUT/'AUTHOR_SOURCE_METADATA_005.json').open('x',encoding='utf8') as stream:json.dump(record,stream,sort_keys=True,indent=2);stream.write('\n')
+print(json.dumps(record))

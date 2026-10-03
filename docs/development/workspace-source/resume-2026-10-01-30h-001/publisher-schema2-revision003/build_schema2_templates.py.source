@@ -1,0 +1,172 @@
+"""Source-only authoring: parse and compose text, never execute helper AST."""
+from pathlib import Path
+import ast
+import hashlib
+import json
+
+STAGE = Path(__file__).resolve().parent
+PARENT = STAGE.parent
+OLD = PARENT / "successor-admission-publish-001"
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def node_source(source, node):
+    return "\n".join(source.splitlines()[node.lineno - 1:node.end_lineno])
+
+
+def function(source, name):
+    nodes = [node for node in ast.parse(source).body
+             if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name == name]
+    assert len(nodes) == 1
+    return node_source(source, nodes[0])
+
+
+def substitute(source, old, new):
+    assert source.count(old) == 1, old
+    return source.replace(old, new)
+
+
+def encoded_assignment(name, value):
+    literal = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False)
+    return name + " = json.loads(" + repr(literal) + ")"
+
+
+def main_source(source, verifier):
+    body = function(source, "main")
+    if not verifier:
+        body = body.replace("publish-successor-admission-001.py", "publish-successor-admission-schema2-003.py")
+        body = body.replace("publish-001-", "publish-schema2-003-")
+        body = substitute(body, 'require(read(intent_path)[0] == intent_bytes,',
+                          'require(read(intent_path, maximum=EXTERNAL_PROOF_MAX_BYTES)[0] == intent_bytes,')
+        body = substitute(body, 'actual, info = read(files[name])',
+                          'actual, info = read(files[name], maximum=(COMPILED_POLICY["SUCCESSOR_ADMISSION_MAX_BYTES"]\n'
+                          '                    if name in {"attestation.json", "attestation.twin.json"} else None))')
+        body = substitute(body, '"changed_paths": observed["attestation"]["changed_paths"],',
+                          '"changed_paths": observed["attestation"]["changed_paths"],\n'
+                          '            "successor_parent_changed_paths": observed["attestation"]["successor_parent_changed_paths"],\n'
+                          '            "intermediate": observed["attestation"]["intermediate"],\n'
+                          '            "intermediate_proof_sha256": observed["intermediate_proof_sha256"],\n'
+                          '            "middle_full742_identity": observed["middle_full742_identity"],\n'
+                          '            "final_commit_object_sha256": observed["final_commit_object_sha256"],')
+    else:
+        body = body.replace("verify-successor-admission-001.py", "verify-successor-admission-schema2-003.py")
+        body = body.replace("publish-successor-admission-001.py", "publish-successor-admission-schema2-003.py")
+        body = body.replace("publish-001-", "publish-schema2-003-")
+        body = body.replace("verify-001-", "verify-schema2-003-")
+        body = substitute(body, '"publication_schema_version", "record_type",',
+                          '"publication_schema_version", "attestation_schema_version", "policy_source_sha256",\n'
+                          '        "external_proof_max_bytes", "record_type",')
+        body = substitute(body, '"runtime", "verification_observations", "independent_verifier_required", "successor", "changed_paths"}',
+                          '"runtime", "verification_observations", "independent_verifier_required", "successor", "changed_paths",\n'
+                          '        "successor_parent_changed_paths", "intermediate", "intermediate_proof_sha256",\n'
+                          '        "middle_full742_identity", "final_commit_object_sha256"}')
+        body = substitute(body, 'document["publication_schema_version"] == 1',
+                          'document["publication_schema_version"] == 2')
+        body = substitute(body, 'and document["record_type"] == kind',
+                          'and type(document["attestation_schema_version"]) is int\n'
+                          '            and document["attestation_schema_version"] == 2\n'
+                          '            and document["policy_source_sha256"] == BINDINGS["raw_helper_sha256"]\n'
+                          '            and type(document["external_proof_max_bytes"]) is int\n'
+                          '            and document["external_proof_max_bytes"] == EXTERNAL_PROOF_MAX_BYTES\n'
+                          '            and document["record_type"] == kind')
+        body = substitute(body, 'and publication_end["changed_paths"] == observed["attestation"]["changed_paths"]',
+                          'and publication_end["changed_paths"] == observed["attestation"]["changed_paths"]\n'
+                          '        and publication_end["successor_parent_changed_paths"] == observed["attestation"]["successor_parent_changed_paths"]\n'
+                          '        and publication_end["intermediate"] == observed["attestation"]["intermediate"]\n'
+                          '        and publication_end["intermediate_proof_sha256"] == observed["intermediate_proof_sha256"]\n'
+                          '        and publication_end["middle_full742_identity"] == observed["middle_full742_identity"]\n'
+                          '        and publication_end["final_commit_object_sha256"] == observed["final_commit_object_sha256"]')
+        body = substitute(body, 'content, info = read(files[name])',
+                          'content, info = read(files[name], maximum=(COMPILED_POLICY["SUCCESSOR_ADMISSION_MAX_BYTES"]\n'
+                          '                if name in {"attestation.json", "attestation.twin.json"} else None))\n'
+                          '            if name in {"attestation.json", "attestation.twin.json"}:\n'
+                          '                schema2_sealed_attestation(content,\n'
+                          '                    expected_sha256=sha(observed["payloads"]["attestation.json"]),\n'
+                          '                    policy=observed["policy"])')
+        body = substitute(body, 'require(read(intent_path)[0] == intent_bytes,',
+                          'require(read(intent_path, maximum=EXTERNAL_PROOF_MAX_BYTES)[0] == intent_bytes,')
+        body = substitute(body, '"changed_paths": observed["attestation"]["changed_paths"],',
+                          '"changed_paths": observed["attestation"]["changed_paths"],\n'
+                          '            "successor_parent_changed_paths": observed["attestation"]["successor_parent_changed_paths"],\n'
+                          '            "intermediate": observed["attestation"]["intermediate"],\n'
+                          '            "intermediate_proof_sha256": observed["intermediate_proof_sha256"],\n'
+                          '            "middle_full742_identity": observed["middle_full742_identity"],\n'
+                          '            "final_commit_object_sha256": observed["final_commit_object_sha256"],')
+    ast.parse(body)
+    return body
+
+
+def build():
+    compiled = json.loads((STAGE / "COMPILED_POLICY_003.json").read_bytes())
+    middle = json.loads((STAGE / "MIDDLE_INPUTS_003.json").read_bytes())
+    middle = {name: {key: value for key, value in facts.items() if key != "bytes_base64"}
+              for name, facts in middle.items()}
+    fragments = [(STAGE / name).read_text(encoding="utf-8") for name in (
+        "schema2_policy.fragment.py", "schema2_io.fragment.py", "schema2_observation.fragment.py")]
+    replacements = {}
+    for source in fragments:
+        for node in ast.parse(source).body:
+            assert isinstance(node, ast.FunctionDef) and node.name not in replacements
+            replacements[node.name] = node_source(source, node)
+    outputs = []
+    for verifier in (False, True):
+        old_name = ("verify" if verifier else "publish") + "-successor-admission-001.py.template"
+        target_name = ("verify" if verifier else "publish") + "-successor-admission-schema2-003.py.template"
+        old_bytes = (OLD / old_name).read_bytes()
+        source = old_bytes.decode("utf-8", errors="strict")
+        assert digest(old_bytes) == ({False: "b6304da4ed4b0d90c1389c1ee022a4ab54b744fa7a686e05020715b19b2efcc4",
+                                   True: "b2eb1cdf94d272866abee30031b427580f79eb6cd5c8b05452968121af6619b3"}[verifier])
+        parsed = ast.parse(source)
+        old_functions = {node.name: node for node in parsed.body
+                         if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+        bindings_node = next(node for node in parsed.body if isinstance(node, ast.Assign)
+                             and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "BINDINGS")
+        bindings = ast.literal_eval(bindings_node.value)
+        rows = []
+        for node in parsed.body:
+            text = node_source(source, node)
+            if isinstance(node, ast.Import) and any(alias.name == "ast" for alias in node.names):
+                text += "\nimport base64\nimport binascii"
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                name = node.targets[0].id
+                if name == "STAGE":
+                    text = "STAGE = Path(" + repr(str(STAGE).replace("\\", "/")) + ")"
+                elif name in {"RELEASE", "MANIFEST", "RAW_REVIEW", "RECEIPT"}:
+                    text = name + " = None  # Future independently reviewed absolute current path."
+                elif name == "HISTORICAL":
+                    text += "\n" + encoded_assignment("COMPILED_POLICY", compiled)
+                    text += "\n" + encoded_assignment("MIDDLE_INPUTS", middle)
+                    text += "\nHISTORICAL_BINDING_KEYS = " + repr(tuple(sorted(bindings)))
+                    text += "\nEXTERNAL_PROOF_MAX_BYTES = None  # Derive from the complete bound proof schema before activation."
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                if node.name == "main":
+                    text = main_source(source, verifier)
+                elif node.name in replacements:
+                    text = replacements[node.name]
+                elif node.name == "committed_rows":
+                    text = substitute(text, 'size = int(size_text)',
+                                      'size = int(size_text)\n'
+                                      '        require(0 <= size <= COMPILED_POLICY["_SUCCESSOR_MAX_FILE_SIZE"],\n'
+                                      '                "Git blob size exceeds signed64 policy")')
+            rows.append(text)
+        new_functions = [name for name in replacements if name not in old_functions]
+        # Insert new pure policy functions before the replaced observation and main.
+        position = next(i for i, text in enumerate(rows) if text.startswith("def observation("))
+        rows[position:position] = [replacements[name] for name in new_functions]
+        data = ("# Schema2 source-only successor003; unbound and unrun.\n" + "\n\n".join(rows) + "\n").encode("utf-8")
+        ast.parse(data.decode("utf-8"))
+        path = STAGE / target_name
+        with path.open("xb") as stream:
+            stream.write(data)
+        outputs.append({"name": target_name, "sha256": digest(data), "bytes": len(data)})
+    with (STAGE / "COMPOSITION_OUTPUTS_003.json").open("xb") as stream:
+        stream.write((json.dumps({"state": "AST_ONLY_UNREVIEWED_UNRUN", "files": outputs},
+            sort_keys=True, indent=2, allow_nan=False) + "\n").encode("utf-8"))
+    print(json.dumps(outputs, sort_keys=True))
+
+
+if __name__ == "__main__":
+    build()

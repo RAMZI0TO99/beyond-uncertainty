@@ -1,0 +1,345 @@
+# Source preparation only. Actual source selection, finite lease and independent
+# reviewers must be ready before Root explicitly authorizes metadata capture.
+# This process never launches the copied unit or emits a reviewer decision.
+param(
+    [Parameter(Mandatory=$true)][string]$ExpectedSelfSha256,
+    [Parameter(Mandatory=$true)][string]$ExpectedBindingSha256,
+    [Parameter(Mandatory=$true)][string]$InitNonce,
+    [Parameter(Mandatory=$true)][string]$RetainedDeadlineUtc
+)
+Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop'
+$Work='D:\Aenv\pro2\resume-2026-10-03-continuation001'
+$Pipeline=Join-Path $Work 'root-guard006-pipeline-prep001'
+$Meta=Join-Path $Work 'metadata3-producer-core-prep001'
+$Guard=Join-Path $Work 'consumer005-guard006-runtime-prep001'
+$Checker=Join-Path $Work 'metadata3-actual-checker-prep001'
+$BoundChecker=Join-Path $Work 'guard006-bound-late-checker-prep001'
+$Scope='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+$Ps='C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+$PsSha='7600ffe12da441fe89d035b13801e8e91d064bc544a27b19a5cf49f6ab8b18f5'
+$MasterSha='de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'
+$MasterPeerSha='56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0'
+$Roles=@('auth_before','capture_before','whole_before_auth','whole_before_result','whole_after_auth','whole_after_result','metadata_after_auth','metadata_after_capture')
+$TicketKeys=@('schema_version','record_type','author','scope','role','path','sha256','authorization_sha256','terminal_path','terminal_sha256','runtime_sha256','context_sha256','before_result_sha256','before_capture_sha256','root_ack_sha256','unit_terminal_sha256','unit_launcher_sha256','driver_finished_sha256','before_authorization_sha256','bridge_provenance_sha256','phase_trace_sha256','root_trust_sha256')
+
+function Need([bool]$Condition,[string]$Message){if(-not $Condition){throw $Message}}
+function Sha([string]$Value){Need ($Value -cmatch '\A[0-9a-f]{64}\z') 'Exact SHA required';return $Value}
+function Hash([byte[]]$Bytes){$h=[Security.Cryptography.SHA256]::Create();try{return [BitConverter]::ToString($h.ComputeHash($Bytes)).Replace('-','').ToLowerInvariant()}finally{$h.Dispose()}}
+function Absent([string]$Path){Need (-not [IO.File]::Exists($Path) -and -not [IO.Directory]::Exists($Path)) ('One-use role already exists: '+$Path)}
+function Read-Bytes([string]$Path,[string]$Pin,[long]$Maximum){
+    if($Pin){[void](Sha $Pin)}
+    $a=Get-Item -LiteralPath $Path -Force
+    Need (-not $a.PSIsContainer -and -not ($a.Attributes -band [IO.FileAttributes]::ReparsePoint) -and $a.Length -le $Maximum) 'Plain bounded input'
+    $s=[IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    try{
+        Need ($s.Length -eq $a.Length -and $s.Length -le $Maximum) 'Opened input size'
+        $m=[IO.MemoryStream]::new()
+        try{$buffer=[byte[]]::new(4096);do{$n=$s.Read($buffer,0,4096);Need ($m.Length+$n -le $Maximum) 'Physical read cap';$m.Write($buffer,0,$n)}while($n -gt 0);$bytes=$m.ToArray()}finally{$m.Dispose()}
+    }finally{$s.Dispose()}
+    $b=Get-Item -LiteralPath $Path -Force
+    Need ($a.Length -eq $b.Length -and $a.Length -eq $bytes.Length -and $a.LastWriteTimeUtc.Ticks -eq $b.LastWriteTimeUtc.Ticks -and $a.CreationTimeUtc.Ticks -eq $b.CreationTimeUtc.Ticks -and $a.Attributes -eq $b.Attributes) 'Paired input metadata'
+    $digest=Hash $bytes
+    if($Pin){Need ($digest -ceq $Pin) 'Selected input hash'}
+    return [pscustomobject]@{path=$Path;sha256=$digest;bytes=$bytes}
+}
+function Exact($Value,[string[]]$Keys,[string]$Label){Need ($Value -is [System.Collections.IDictionary] -and (($Value.Keys|Sort-Object)-join ',') -ceq (($Keys|Sort-Object)-join ',')) ($Label+' exact closed keys')}
+function Owned($Value){
+    if($Value -is [Management.Automation.PSCustomObject]){$m=@{};foreach($p in $Value.PSObject.Properties){$m[$p.Name]=Owned $p.Value};return $m}
+    if($Value -is [array]){$a=[object[]]::new($Value.Length);for($i=0;$i -lt $Value.Length;$i++){$a[$i]=Owned $Value[$i]};return ,$a}
+    return $Value
+}
+function Strict-Json([byte[]]$Bytes){
+    $text=[Text.UTF8Encoding]::new($false,$true).GetString($Bytes)
+    $pattern='"(?:\\["\\/bfnrt]|\\u[0-9A-Fa-f]{4}|[^"\\\x00-\x1f])*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null|[{}\[\],:]'
+    $tokens=[regex]::Matches($text,$pattern);$stack=[Collections.Generic.Stack[Collections.Generic.HashSet[string]]]::new();$pos=0
+    foreach($token in $tokens){
+        Need ($text.Substring($pos,$token.Index-$pos) -cmatch '\A\s*\z') 'JSON lexical gap';$pos=$token.Index+$token.Length;$t=$token.Value
+        if($t -ceq '{'){Need ($stack.Count -lt 40) 'JSON bounded depth';$stack.Push([Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal))}
+        elseif($t -ceq '}'){Need ($stack.Count -gt 0) 'JSON object stack';[void]$stack.Pop()}
+        elseif($t.StartsWith('"') -and $text.Substring($pos) -cmatch '\A\s*:'){$key=(('{"key":'+$t+'}')|ConvertFrom-Json).key;Need ($stack.Count -gt 0 -and $stack.Peek().Add($key)) 'Duplicate decoded JSON key'}
+        elseif($t -cmatch '\A-?[0-9]'){Need ($t -cnotmatch '[.eE]') 'Floating JSON numbers refused'}
+    }
+    Need ($stack.Count -eq 0 -and $text.Substring($pos) -cmatch '\A\s*\z') 'JSON closed lexical body'
+    $value=Owned ($text|ConvertFrom-Json);Need ($value -is [System.Collections.IDictionary]) 'JSON mapping required';return $value
+}
+function Record([string]$Path,[string]$Pin,[long]$Maximum){$r=Read-Bytes $Path $Pin $Maximum;return [pscustomobject]@{row=$r;value=(Strict-Json $r.bytes)}}
+function Pointer($Row){return [ordered]@{path=$Row.path;sha256=$Row.sha256}}
+function Stamp([string]$Text,[string]$Role){
+    $pattern=if($Role -ceq 'PS'){'\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{7}\+00:00\z'}else{'\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}\+00:00\z'}
+    Need ($Text -cmatch $pattern) ('Original exact timestamp role '+$Role);return [DateTimeOffset]::Parse($Text,[Globalization.CultureInfo]::InvariantCulture)
+}
+function Publish([string]$Path,$Value,[long]$Maximum){
+    $bytes=[Text.UTF8Encoding]::new($false).GetBytes(($Value|ConvertTo-Json -Compress -Depth 30)+"`n");Need ($bytes.Length -le $Maximum) 'Own output cap'
+    Absent $Path;$temporary=$Path+'.staging';Absent $temporary
+    $s=[IO.File]::Open($temporary,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+    try{$s.Write($bytes,0,$bytes.Length);$s.Flush($true)}finally{$s.Dispose()}
+    [void](Read-Bytes $temporary (Hash $bytes) $Maximum)
+    # Same-volume rename prevents a retained checker seeing partial tickets.
+    [IO.File]::Move($temporary,$Path)
+    return (Read-Bytes $Path (Hash $bytes) $Maximum)
+}
+function Lease-Check([double]$Reserve){
+    $r=Record (Join-Path $Work 'EXECUTION_LEASE_GG6_M3_001.json') $Config.owner_lease_sha256 65536
+    $v=$r.value;Exact $v @('schema_version','record_type','author','scope','created_utc','lease_end_utc','owner_master_sha256','owner_review_sha256','decision','maximum_lease_seconds','lease_is_owner_deadline','operational_authority') 'Finite lease12'
+    Need ($v.schema_version -is [int] -and $v.schema_version -eq 1 -and $v.record_type -ceq 'root_local_private_execution_lease' -and $v.author -ceq '/root' -and $v.scope -ceq $Scope -and $v.owner_master_sha256 -ceq $MasterSha -and $v.owner_review_sha256 -ceq $MasterPeerSha -and $v.decision -ceq 'authorize_bounded_selected_unit_metadata_and_copied_tests_once' -and $v.maximum_lease_seconds -eq 43200 -and $v.lease_is_owner_deadline -is [bool] -and -not $v.lease_is_owner_deadline -and $v.operational_authority -is [bool] -and -not $v.operational_authority) 'Finite lease policy'
+    $created=Stamp $v.created_utc 'PS';$end=Stamp $v.lease_end_utc 'PS';$now=[DateTimeOffset]::UtcNow
+    Need ($created -le $now -and ($end-$created).TotalSeconds -gt 0 -and ($end-$created).TotalSeconds -le 43200 -and ($end-$now).TotalSeconds -ge $Reserve -and $v.lease_end_utc -ceq $Config.owner_lease_end_utc) 'Finite lease original reserve'
+    Need ($now -lt $RetainedEnd) 'Retained metadata poll deadline'
+    if($null -ne $AfterDeadline){Need ($now -lt $AfterDeadline) 'Original post-unit60 budget remains; no deadline refresh'}
+    if($null -ne $OriginalDeadline){Need ($now -lt $OriginalDeadline) 'Both original600 before any further stage or poll'}
+}
+function Wait-Record([string]$Path,[long]$Maximum,[double]$Reserve){while(-not [IO.File]::Exists($Path)){Lease-Check $Reserve;Start-Sleep -Milliseconds 25};Lease-Check $Reserve;$record=Record $Path '' $Maximum;Lease-Check $Reserve;return $record}
+function Source-Read([string]$Role){$v=$Config.sources[$Role];Exact $v @('path','sha256','bytes') ('Source '+$Role);Need ($v.bytes -is [int] -and $v.bytes -gt 0 -and $v.bytes -le 65536) 'Selected PS source cap';$r=Read-Bytes $v.path $v.sha256 $v.bytes;Need ($r.bytes.Length -eq $v.bytes) 'Selected source exact size';return $r}
+function Source-Argv([string]$Role,$Selections){
+    # Only these eight fixed programs/commands can execute. The different bound
+    # source peer resolves this same map into the exact eight argv templates.
+    $sourceRole=@{auth_before='metadata_before_writer';capture_before='metadata_before_parent';whole_before_auth='root_records';whole_before_result='whole_before_parent';whole_after_auth='whole_after_writer';whole_after_result='whole_after_parent';metadata_after_auth='metadata_after_writer';metadata_after_capture='metadata_after_parent'}[$Role]
+    $s=Source-Read $sourceRole
+    $a=[Collections.Generic.List[string]]::new();foreach($v in @($Ps,'-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$s.path)){$a.Add($v)}
+    $a.Add('-ExpectedSelfSha256');$a.Add($s.sha256)
+    if($Role -in @('auth_before','metadata_after_auth')){
+        if($Role -ceq 'metadata_after_auth'){foreach($v in @('-ExpectedBeforeCaptureSha256',$Selections.before_capture_sha256,'-ExpectedUnitTerminalSha256',$Selections.unit_terminal_sha256)){$a.Add($v)}}
+        foreach($v in @('-ExpectedLeaseSha256',$Config.owner_lease_sha256,'-ExpectedProfileSha256',$Config.profile.sha256,'-ExpectedProjectionSha256',$Config.projection.sha256,'-ExpectedPeerReplySha256',$Config.coordination_peer_reply.sha256,'-ExpectedCoordinationSha256',$Config.coordination_root_response.sha256,'-PeerReplyRelative',$Config.coordination_peer_reply.relative,'-CoordinationRelative',$Config.coordination_root_response.relative)){$a.Add($v)}
+    }elseif($Role -in @('capture_before','metadata_after_capture')){foreach($v in @('-ExpectedAuthorizationSha256',$Selections.authorization_sha256,'-ExpectedLeaseSha256',$Config.owner_lease_sha256)){$a.Add($v)}}
+    elseif($Role -ceq 'whole_before_auth'){foreach($v in @('-ExpectedSourceBindingsSha256',$ExpectedBindingSha256,'-Stage','whole-before-auth')){$a.Add($v)}}
+    elseif($Role -ceq 'whole_before_result'){foreach($v in @('-ExpectedAuthorizationSha256',$Selections.authorization_sha256,'-ExpectedSourceBindingsSha256',$ExpectedBindingSha256)){$a.Add($v)}}
+    elseif($Role -ceq 'whole_after_auth'){foreach($v in @('-ExpectedBeforeAuthorizationSha256',$Selections.before_authorization_sha256,'-ExpectedWholeBeforeResultSha256',$Selections.before_result_sha256,'-ExpectedDriverFinishedSha256',$Selections.driver_finished_sha256,'-ExpectedUnitTerminalSha256',$Selections.unit_terminal_sha256,'-ExpectedSourceBindingsSha256',$ExpectedBindingSha256)){$a.Add($v)}}
+    elseif($Role -ceq 'whole_after_result'){foreach($v in @('-ExpectedAuthorizationSha256',$Selections.authorization_sha256,'-ExpectedUnitTerminalSha256',$Selections.unit_terminal_sha256,'-ExpectedSourceBindingsSha256',$ExpectedBindingSha256)){$a.Add($v)}}
+    return ,$a.ToArray()
+}
+function Quote-Windows([string]$Value){
+    Need ($Value.IndexOf([char]0) -lt 0 -and $Value.IndexOf([char]10) -lt 0 -and $Value.IndexOf([char]13) -lt 0) 'Single Windows argv token'
+    # CommandLineToArgvW-compatible escaping; no shell or expression evaluation.
+    return '"'+[regex]::Replace([regex]::Replace($Value,'(\\*)"','$1$1\"'),'(\\+)$','$1$1')+'"'
+}
+function Run-Command([string]$Name,[string[]]$Argv,[int]$Seconds){
+    Lease-Check (600+$Seconds);Need ($Argv.Count -ge 3 -and $Argv.Count -le 64) 'Finite retained argv'
+    if($null -ne $AfterDeadline){$left=($AfterDeadline-[DateTimeOffset]::UtcNow).TotalSeconds;Need ($left -gt 1) 'Post-unit remaining budget before spawn';$Seconds=[int][Math]::Min($Seconds,[Math]::Floor($left-1))}
+    $python='D:\Aenv\pro2\runtimes\week8-python313-frozen-001\python.exe'
+    if($Name -in @('root_packet_bound','root_packet_late')){Need ($Argv[0] -ceq $python) 'Fixed packet BASE';[void](Read-Bytes $python '5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed' 105816)}else{Need ($Argv[0] -ceq $Ps) 'Fixed phase PS';[void](Read-Bytes $Ps $PsSha 524288)}
+    $out=Join-Path $Pipeline ($Name+'.stdout.txt');$err=Join-Path $Pipeline ($Name+'.stderr.txt');Absent $out;Absent $err
+    $info=[Diagnostics.ProcessStartInfo]::new();$info.FileName=$Argv[0];$info.UseShellExecute=$false;$info.CreateNoWindow=$true;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true;$info.WorkingDirectory=$Work
+    $info.Arguments=(@($Argv|Select-Object -Skip 1|ForEach-Object{Quote-Windows $_}) -join ' ')
+    $p=[Diagnostics.Process]::new();$p.StartInfo=$info;$clock=[Diagnostics.Stopwatch]::StartNew();$timedOut=$false;$overflow=$false;$drained=$false
+    $stdout=[IO.MemoryStream]::new();$stderr=[IO.MemoryStream]::new()
+    $started=$false;$pidOwned=$null;$failure=$null
+    try{
+        Need ($p.Start()) 'Retained owned phase start';$pidOwned=$p.Id
+        $started=$true
+        $outBuffer=[byte[]]::new(4096);$errBuffer=[byte[]]::new(4096)
+        $pendingOut=$p.StandardOutput.BaseStream.ReadAsync($outBuffer,0,4096);$pendingErr=$p.StandardError.BaseStream.ReadAsync($errBuffer,0,4096)
+        $outDone=$false;$errDone=$false;$outBytes=0L;$errBytes=0L
+        while(-not ($p.HasExited -and $outDone -and $errDone)){
+            if($clock.Elapsed.TotalSeconds -gt $Seconds){$timedOut=$true;throw 'Owned metadata phase elapsed cap'}
+            Lease-Check 600
+            if(-not $outDone -and $pendingOut.IsCompleted){
+                $n=$pendingOut.GetAwaiter().GetResult()
+                if($n -eq 0){$outDone=$true}else{$outBytes+=$n;if($outBytes -gt 65536){$overflow=$true;throw 'Owned stdout physical cap'};$stdout.Write($outBuffer,0,$n);$pendingOut=$p.StandardOutput.BaseStream.ReadAsync($outBuffer,0,4096)}
+            }
+            if(-not $errDone -and $pendingErr.IsCompleted){
+                $n=$pendingErr.GetAwaiter().GetResult()
+                if($n -eq 0){$errDone=$true}else{$errBytes+=$n;if($errBytes -gt 65536){$overflow=$true;throw 'Owned stderr physical cap'};$stderr.Write($errBuffer,0,$n);$pendingErr=$p.StandardError.BaseStream.ReadAsync($errBuffer,0,4096)}
+            }
+            Start-Sleep -Milliseconds 10
+        }
+        $drained=$true;Need ($p.WaitForExit(0) -and $p.ExitCode -eq 0) 'Owned metadata phase normal exit and reaped'
+        $exit=$p.ExitCode
+        foreach($pair in @(@($out,$stdout.ToArray()),@($err,$stderr.ToArray()))){
+            $bytes=[byte[]]$pair[1];Need ($bytes.Length -le 65536) 'Final physical stream cap'
+            $s=[IO.File]::Open($pair[0],[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);try{$s.Write($bytes,0,$bytes.Length);$s.Flush($true)}finally{$s.Dispose()}
+            [void](Read-Bytes $pair[0] (Hash $bytes) 65536)
+        }
+        $receipt=[ordered]@{schema_version=1;record_type='root_pipeline_owned_phase_exit';author='/root';scope=$Scope;phase=$Name;finished_utc=[DateTimeOffset]::UtcNow.ToString('o');pid=$pidOwned;exit_code=$exit;elapsed_milliseconds=[long]$clock.Elapsed.TotalMilliseconds;timed_out=$timedOut;capture_overflow=$overflow;drain_complete=$drained;direct_child_reaped=$true;job_or_descendant_or_provider_deadline_proof=$false}
+        [void](Publish (Join-Path $Pipeline ($Name+'.physical-exit.json')) $receipt 65536)
+    }catch{
+        $failure=$_.Exception
+        # Stop only the direct process returned by our own Start(). This is
+        # not a Job/descendant cleanup proof and cannot authorize a unit.
+        $reaped=$false;$failureExit=$null
+        if($started){
+            try{if(-not $p.HasExited){$p.Kill()};$reaped=$p.WaitForExit(5000);if($reaped){$failureExit=$p.ExitCode}}catch{$reaped=$false}
+        }
+        foreach($pair in @(@($out,$stdout.ToArray()),@($err,$stderr.ToArray()))){
+            if(-not [IO.File]::Exists($pair[0])){
+                $bytes=[byte[]]$pair[1];Need ($bytes.Length -le 65536) 'Bounded retained failure prefix'
+                $s=[IO.File]::Open($pair[0],[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None);try{$s.Write($bytes,0,$bytes.Length);$s.Flush($true)}finally{$s.Dispose()}
+            }
+        }
+        [void](Publish (Join-Path $Pipeline ($Name+'.physical-refusal.json')) ([ordered]@{schema_version=1;record_type='root_pipeline_owned_phase_refusal';author='/root';scope=$Scope;phase=$Name;finished_utc=[DateTimeOffset]::UtcNow.ToString('o');pid=$pidOwned;exit_code=$failureExit;elapsed_milliseconds=[long]$clock.Elapsed.TotalMilliseconds;timed_out=$timedOut;capture_overflow=$overflow;drain_complete=$drained;direct_child_reaped=$reaped;stdout_retained_prefix_bytes=$stdout.Length;stderr_retained_prefix_bytes=$stderr.Length;failure_type=$failure.GetType().FullName;failure_message=$failure.Message;job_or_descendant_or_provider_deadline_proof=$false;unit_GO=$false;requires_external_owned_observer_cleanup_audit=$true}) 65536)
+        throw $failure
+    }finally{
+        if($started -and -not $p.HasExited){$p.Kill();[void]$p.WaitForExit(5000)}
+        $p.Dispose();$clock.Stop();$stdout.Dispose();$stderr.Dispose()
+    }
+}
+
+function Role-Path([string]$Role){return @{
+    auth_before=(Join-Path $Meta 'ROOT_METADATA_AUTHORIZATION_BEFORE_003.json');capture_before=(Join-Path $Meta 'phase-before-003\METADATA_CAPTURE_003.json');whole_before_auth=(Join-Path $Guard 'ROOT_WHOLE_BEFORE_AUTHORIZATION_006.json');whole_before_result=(Join-Path $Guard 'whole-runtime-before\result.json');whole_after_auth=(Join-Path $Guard 'ROOT_WHOLE_AFTER_AUTHORIZATION_006.json');whole_after_result=(Join-Path $Guard 'whole-runtime-after\result.json');metadata_after_auth=(Join-Path $Meta 'ROOT_METADATA_AUTHORIZATION_AFTER_003.json');metadata_after_capture=(Join-Path $Meta 'phase-after-003\METADATA_CAPTURE_003.json')
+}[$Role]}
+function Parent-Path([string]$Role){return @{capture_before=(Join-Path $Meta 'ROOT_METADATA_PARENT_TERMINAL_BEFORE_003.json');whole_before_result=(Join-Path $Guard 'ROOT_WHOLE_BEFORE_PARENT_TERMINAL_006.json');whole_after_result=(Join-Path $Guard 'ROOT_WHOLE_AFTER_PARENT_TERMINAL_006.json');metadata_after_capture=(Join-Path $Meta 'ROOT_METADATA_PARENT_TERMINAL_AFTER_003.json')}[$Role]}
+function Fresh-Original([double]$Limit){
+    foreach($role in @('context','runtime')){$row=if($role -ceq 'context'){$OriginalContext}else{$OriginalRuntime};$v=(Record $row.path $row.sha256 2097152).value;$age=([DateTimeOffset]::UtcNow-(Stamp $v.captured_utc 'Py')).TotalSeconds;Need ($age -ge 0 -and $age -le $Limit) ('Both ORIGINAL context/runtime freshness '+$role)}
+}
+function Core-Path([string]$Role){return Join-Path $Meta (@{auth_before='INDEPENDENT_ACTUAL_ROOT_AUTH_BEFORE_REVIEW_006.json';capture_before='INDEPENDENT_ACTUAL_ROOT_METADATA_BEFORE_CAPTURE_REVIEW_006.json';whole_before_auth='INDEPENDENT_ACTUAL_ROOT_WHOLE_BEFORE_AUTH_REVIEW_006.json';whole_before_result='INDEPENDENT_ACTUAL_ROOT_WHOLE_BEFORE_REVIEW_006.json';whole_after_auth='INDEPENDENT_ACTUAL_ROOT_WHOLE_AFTER_AUTH_REVIEW_006.json';whole_after_result='INDEPENDENT_ACTUAL_ROOT_WHOLE_AFTER_RESULT_REVIEW_006.json';metadata_after_auth='INDEPENDENT_ACTUAL_ROOT_METADATA_AFTER_AUTH_REVIEW_006.json';metadata_after_capture='INDEPENDENT_ACTUAL_ROOT_METADATA_AFTER_CAPTURE_REVIEW_006.json'}[$Role])}
+function Checked-Phase([string]$Role,$Selected,[int]$Seconds){
+    $argv=Source-Argv $Role $Selected;Run-Command $Role $argv $Seconds
+    $main=Read-Bytes (Role-Path $Role) '' 2097152
+    $outputs=[Collections.Generic.List[object]]::new();$outputs.Add((Pointer $main));$parentPath=Parent-Path $Role
+    $ticket=[ordered]@{};foreach($k in $TicketKeys){$ticket[$k]=$null}
+    $ticket.schema_version=1;$ticket.record_type='root_metadata_checker_input_ticket';$ticket.author='/root';$ticket.scope=$Scope;$ticket.role=$Role;$ticket.path=$main.path;$ticket.sha256=$main.sha256;$ticket.root_trust_sha256=$TrustRow.sha256
+    foreach($k in $Selected.Keys){Need ($TicketKeys -ccontains $k) 'Closed selected ticket field';$ticket[$k]=$Selected[$k]}
+    if($Role -ceq 'whole_after_auth'){$ticket.bridge_provenance_sha256=(Read-Bytes (Join-Path $Guard 'ROOT_DRIVER_SCOPED_FINISHED_RECEIPT_PROVENANCE_006.json') '' 65536).sha256}
+    if($parentPath){$parent=Read-Bytes $parentPath '' 65536;$ticket.terminal_path=$parent.path;$ticket.terminal_sha256=$parent.sha256;$outputs.Add((Pointer $parent))}
+    if($Role -in @('capture_before','metadata_after_capture')){
+        $capt=(Record $main.path $main.sha256 2097152).value
+        $context=Read-Bytes $capt.context.path $capt.context.sha256 1048576;$runtime=Read-Bytes $capt.runtime_selection.path $capt.runtime_selection.sha256 65536
+        $outputs.Add((Pointer $context));$outputs.Add((Pointer $runtime))
+        if($Role -ceq 'capture_before'){$script:OriginalContext=$context;$script:OriginalRuntime=$runtime;$ticket.context_sha256=$context.sha256;$ticket.runtime_sha256=$runtime.sha256}
+        if($Role -ceq 'capture_before'){
+            $c=(Record $context.path $context.sha256 1048576).value;$r=(Record $runtime.path $runtime.sha256 65536).value
+            $a=(Stamp $c.captured_utc 'Py').AddSeconds(600);$b=(Stamp $r.captured_utc 'Py').AddSeconds(600)
+            $script:OriginalDeadline=if($a -lt $b){$a}else{$b}
+        }
+    }
+    $trace=[ordered]@{schema_version=1;record_type='root_pipeline_phase_trace';author='/root';scope=$Scope;phase=$Role;created_utc=[DateTimeOffset]::UtcNow.ToString('o');pipeline_source_sha256=$self.sha256;init_trace_sha256=$InitRow.sha256;argv=$argv;outputs=$outputs.ToArray()}
+    $traceRow=Publish (Join-Path $Pipeline ('ROOT_PIPELINE_PHASE_TRACE_'+$Role.ToUpperInvariant()+'_006.json')) $trace 65536;$ticket.phase_trace_sha256=$traceRow.sha256
+    [void](Publish (Join-Path $Checker ('ACTUAL_TICKET_'+$Role.ToUpperInvariant()+'_006.json')) $ticket 65536)
+    $core=Wait-Record (Core-Path $Role) 65536 600
+    Exact $core.value @('schema_version','record_type','reviewer','created_utc','verdict','input_sha256','context_sha256','runtime_snapshot_sha256','parent_terminal_sha256','metadata_only','operational_authority_granted','evidence_sha256') 'Independent Core12'
+    $coreType=@{auth_before='guard006_actual_root_metadata_before_authorization_review';capture_before='guard006_actual_root_metadata_before_capture_review';whole_before_auth='guard006_actual_root_whole_before_authorization_review';whole_before_result='guard006_actual_root_whole_before_review';whole_after_auth='guard006_actual_root_whole_after_authorization_review';whole_after_result='guard006_actual_root_whole_after_review';metadata_after_auth='guard006_actual_root_metadata_after_authorization_review';metadata_after_capture='guard006_actual_root_metadata_after_capture_review'}[$Role]
+    Need ($core.value.record_type -ceq $coreType) 'Source-derived Core12 role type';[void](Stamp $core.value.created_utc 'Py')
+    Need ($core.value.schema_version -is [int] -and $core.value.schema_version -eq 1 -and $core.value.reviewer -ceq '/root/actual_record_checker' -and $core.value.input_sha256 -ceq $main.sha256 -and $core.value.metadata_only -is [bool] -and $core.value.metadata_only -and $core.value.operational_authority_granted -is [bool] -and -not $core.value.operational_authority_granted) 'Different genuine metadata-only input approval'
+    $verdict=@{auth_before='PASS_ACTUAL_BEFORE_AUTHORIZATION_METADATA_ONLY';capture_before='PASS_ACTUAL_BEFORE_METADATA_CAPTURE_ONLY';whole_before_auth='PASS_ACTUAL_WHOLE_BEFORE_AUTHORIZATION_METADATA_ONLY';whole_before_result='PASS_ACTUAL_WHOLE_BEFORE_METADATA_ONLY';whole_after_auth='PASS_ACTUAL_WHOLE_AFTER_AUTHORIZATION_METADATA_ONLY';whole_after_result='PASS_ACTUAL_WHOLE_AFTER_METADATA_ONLY';metadata_after_auth='PASS_ACTUAL_AFTER_AUTHORIZATION_METADATA_ONLY';metadata_after_capture='PASS_ACTUAL_AFTER_METADATA_CAPTURE_ONLY'}[$Role]
+    Need ($core.value.verdict -ceq $verdict) 'Phase-specific actual peer verdict'
+    [void](Read-Bytes (Join-Path $Meta ('INDEPENDENT_ACTUAL_DETAIL_'+$Role.ToUpperInvariant()+'_006.json')) $core.value.evidence_sha256 16777216)
+    Lease-Check 0
+    if($Role -ne 'auth_before'){Fresh-Original 600}
+    [Console]::WriteLine(([ordered]@{phase=$Role;status='DIFFERENT_METADATA_DECISION_RECEIVED';input_sha256=$main.sha256;decision_sha256=$core.row.sha256;unit_GO=$false}|ConvertTo-Json -Compress))
+    return $main
+}
+function Root-Stage([string]$Stage){
+    $s=Source-Read 'root_records';$argv=@($Ps,'-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',$s.path,'-ExpectedSelfSha256',$s.sha256,'-ExpectedSourceBindingsSha256',$ExpectedBindingSha256,'-Stage',$Stage)
+    Run-Command ('root_records_'+$Stage) $argv 15
+}
+function Source-Pool {
+    $s=$Config.packet_composer;Exact $s @('path','sha256') 'Reviewed Root packet composer'
+    Need ($s.path -ceq (Join-Path $BoundChecker 'compose-root-review-packet-006.TEMPLATE.py')) 'Pre-INIT config selects TEMPLATE only; no trust/model cycle'
+    [void](Read-Bytes $s.path $s.sha256 131072)
+    $boundPath=Join-Path $BoundChecker 'compose-root-review-packet-006.BOUND.py'
+    $boundSource=Read-Bytes $boundPath $go.value.composer_sha256 131072
+    $pool=Record (Join-Path $Work 'guard006-utility-source-independent-review001\INDEPENDENT_GUARD006_BOUND_SOURCE_POOL_REVIEW_001.json') $go.value.composer_source_binding_peer_sha256 2097152
+    Exact $pool.value @('schema_version','record_type','created_utc','reviewer','source_author','binder','scope','verdict','source_templates','bound_sources','binding_data','source_pool_projection','owner_master_sha256','execution_lease_sha256','root_trust_selection_sha256','exact_source_assignment_reversal','exact_function_class_ASTs','before_capture_timer','mains_or_target_execution','operational_authority_granted') 'Genuine different post-trust pool peer20'
+    Need ($pool.value.schema_version -is [int] -and $pool.value.schema_version -eq 1 -and $pool.value.record_type -ceq 'guard006_bound_actual_source_pool_review' -and $pool.value.reviewer -ceq '/root' -and $pool.value.source_author -ceq '/root/pubnative_review' -and $pool.value.binder -ceq '/root' -and $pool.value.scope -ceq $Scope -and $pool.value.verdict -ceq 'PASS_BOUND_SOURCE_POOL_ONLY_BEFORE_CAPTURE' -and $pool.value.owner_master_sha256 -ceq $MasterSha -and $pool.value.execution_lease_sha256 -ceq $Config.owner_lease_sha256 -and $pool.value.root_trust_selection_sha256 -ceq $TrustRow.sha256) 'Different post-trust peer source/lease/trust exact nominals'
+    foreach($key in @('exact_source_assignment_reversal','exact_function_class_ASTs','before_capture_timer')){Need ($pool.value[$key] -is [bool] -and $pool.value[$key]) 'Source-only exact reversal/AST before-timer proof'}
+    foreach($key in @('mains_or_target_execution','operational_authority_granted')){Need ($pool.value[$key] -is [bool] -and -not $pool.value[$key]) 'Source peer grants no target or operational authority'}
+    Exact $pool.value.source_templates @('utility','composer') 'Two original templates';Exact $pool.value.bound_sources @('utility','composer') 'Two bound sources'
+    Need ($pool.value.source_templates.composer.path -ceq $s.path -and $pool.value.source_templates.composer.sha256 -ceq $s.sha256 -and $pool.value.bound_sources.composer.path -ceq $boundPath -and $pool.value.bound_sources.composer.sha256 -ceq $boundSource.sha256) 'Composer T-to-B externally selected peer'
+    Need ($pool.value.source_templates.utility.path -ceq (Join-Path $BoundChecker 'review_guard006_actual_records_001-corrected006.TEMPLATE.py') -and $pool.value.bound_sources.utility.path -ceq (Join-Path $BoundChecker 'review_guard006_actual_records_001.BOUND.py') -and $pool.value.bound_sources.utility.sha256 -ceq $boundReady.value.utility_sha256) 'Fixed reviewed utility source and actual independent READY linkage'
+    foreach($set in @($pool.value.source_templates,$pool.value.bound_sources)){
+        foreach($key in @('utility','composer')){Exact $set[$key] @('path','sha256','bytes') 'Bound-model source row3';$row=$set[$key];Need ($row.bytes -is [int] -and $row.bytes -gt 0 -and $row.bytes -le 131072) 'Existing literal bound-source cap';$observed=Read-Bytes $row.path $row.sha256 $row.bytes;Need ($observed.bytes.Length -eq $row.bytes) 'Exact bound-source size'}
+    }
+    Exact $pool.value.binding_data @('utility_source_bindings','utility_source_protocol','composer_fresh_source_model') 'Three retained binding inputs'
+    foreach($row in $pool.value.binding_data.Values){Exact $row @('path','sha256','bytes') 'Strict source-binding row3';Need ($row.bytes -is [int] -and $row.bytes -gt 0 -and $row.bytes -le 2097152) 'Selected bounded binding-data cap';[void](Record $row.path $row.sha256 $row.bytes)}
+    Exact $pool.value.source_pool_projection @('path','sha256') 'Finite Source-pool projection';[void](Record $pool.value.source_pool_projection.path $pool.value.source_pool_projection.sha256 2097152)
+    [void](Stamp $pool.value.created_utc 'Py')
+    return $boundSource
+}
+function Packet([string]$Phase){
+    $boundSource=Source-Pool
+    # Packet creation is an explicit Root-owned metadata helper, separate from
+    # the different reviewer that consumes and decides it. Direct fixed BASE.
+    $python='D:\Aenv\pro2\runtimes\week8-python313-frozen-001\python.exe'
+    [void](Read-Bytes $python '5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed' 105816)
+    $ack=Read-Bytes (Join-Path $Guard 'ROOT_EXECUTION_ACK_GUARD_UNIT006.json') '' 65536
+    $acceptance=Read-Bytes (Join-Path $Guard 'INDEPENDENT_WHOLE_BEFORE_ACCEPTANCE_006.json') '' 65536
+    $auth=Read-Bytes (Join-Path $Guard 'ROOT_WHOLE_BEFORE_AUTHORIZATION_006.json') '' 65536
+    $metadataCore=Read-Bytes (Core-Path 'capture_before') '' 65536;$wholeCore=Read-Bytes (Core-Path 'whole_before_result') '' 65536
+    $argv=@($python,'-I','-S','-B','-X','utf8',$boundSource.path,'--expected-self-sha256',$boundSource.sha256,'--phase',$Phase,'--ack-sha256',$ack.sha256,'--whole-acceptance-sha256',$acceptance.sha256,'--whole-auth-sha256',$auth.sha256,'--metadata-core-sha256',$metadataCore.sha256,'--whole-core-sha256',$wholeCore.sha256)
+    if($Phase -ceq 'late'){$bound=Read-Bytes (Join-Path $Guard 'INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_006.json') '' 65536;$launcher=Read-Bytes (Join-Path $Guard 'ROOT_FIRST_LAUNCH_006-rev003.BOUND.ps1') '' 65536;$argv+=@('--bound-review-sha256',$bound.sha256,'--root-launcher-sha256',$launcher.sha256)}
+    Run-Command ('root_packet_'+$Phase) $argv 15
+    $r=Wait-Record (Join-Path $BoundChecker ($Phase.ToUpperInvariant()+'_DECISION_READY_006.json')) 65536 510
+    Exact $r.value @('schema_version','record_type','reviewer','phase','created_utc','target_execution') 'Different decision READY6'
+    Need ($r.value.schema_version -is [int] -and $r.value.schema_version -eq 1 -and $r.value.record_type -ceq 'guard006_actual_decision_ready') 'Genuine different READY6 nominals';[void](Stamp $r.value.created_utc 'Py')
+    Need ($r.value.reviewer -ceq '/root/pubnative_review' -and $r.value.phase -ceq $Phase -and $r.value.target_execution -is [bool] -and -not $r.value.target_execution) 'Different bound/late completed'
+    Fresh-Original 90
+}
+
+Need ($InitNonce -cmatch '\A[0-9a-f]{32}\z') 'Root-selected init nonce'
+$OriginalContext=$null;$OriginalRuntime=$null;$OriginalDeadline=$null;$AfterDeadline=$null
+$RetainedEnd=Stamp $RetainedDeadlineUtc 'PS'
+$self=Read-Bytes $PSCommandPath (Sha $ExpectedSelfSha256) 131072
+Need ($PSCommandPath -ceq (Join-Path $Pipeline 'RUN_ROOT_METADATA_PIPELINE_006.BOUND.ps1')) 'Fixed bound pipeline path'
+$Config=(Record (Join-Path $Pipeline 'ROOT_PIPELINE_BINDING_001.json') (Sha $ExpectedBindingSha256) 131072).value
+Exact $Config @('schema_version','record_type','author','scope','sources','profile','projection','owner_lease_sha256','owner_lease_end_utc','coordination_peer_reply','coordination_root_response','metadata_checker_ready','bound_checker_ready','packet_composer','maximum_retained_seconds','guard_sources','harness_static_review','source_manifest','source_capsule','source_capsule_review') 'Root selected binding20'
+Need ($Config.schema_version -is [int] -and $Config.schema_version -eq 1 -and $Config.record_type -ceq 'root_metadata_pipeline_source_binding' -and $Config.author -ceq '/root' -and $Config.scope -ceq $Scope -and $Config.maximum_retained_seconds -is [int] -and $Config.maximum_retained_seconds -ge 1 -and $Config.maximum_retained_seconds -le 3600) 'Selected pipeline binding nominal'
+Exact $Config.sources @('metadata_before_writer','metadata_before_parent','metadata_after_writer','metadata_after_parent','root_records','whole_before_parent','whole_after_writer','whole_after_parent') 'Eight fixed sources'
+Need (($RetainedEnd-[DateTimeOffset]::UtcNow).TotalSeconds -gt 0 -and ($RetainedEnd-[DateTimeOffset]::UtcNow).TotalSeconds -le $Config.maximum_retained_seconds) 'Retained absolute wait cap'
+$fixedSources=@{
+    metadata_before_writer=(Join-Path $Meta 'WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_003.BOUND.ps1');metadata_before_parent=(Join-Path $Meta 'SUPERVISE_ROOT_METADATA_BEFORE_003.BOUND.ps1');metadata_after_writer=(Join-Path $Meta 'WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_003.BOUND.ps1');metadata_after_parent=(Join-Path $Meta 'SUPERVISE_ROOT_METADATA_AFTER_003.BOUND.ps1');root_records=(Join-Path $Pipeline 'PREPARE_ROOT_GUARD006_RECORDS_001.BOUND.ps1');whole_before_parent=(Join-Path $Pipeline 'SUPERVISE_ROOT_WHOLE_BEFORE_006.BOUND.ps1');whole_after_writer=(Join-Path $Pipeline 'WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.BOUND.ps1');whole_after_parent=(Join-Path $Pipeline 'SUPERVISE_ROOT_WHOLE_AFTER_006.BOUND.ps1')
+}
+foreach($role in $fixedSources.Keys){Need ($Config.sources[$role].path -ceq $fixedSources[$role]) 'Fixed selected source path';[void](Source-Read $role)}
+Lease-Check 1200
+$master=(Record (Join-Path $Work 'OWNER_CONTINUATION_20261003_001.json') $MasterSha 65536).value
+Need ($null -eq $master.work_end_utc -and $master.fixed_deadline_invented -is [bool] -and -not $master.fixed_deadline_invented) 'Ongoing owner no invented end'
+$masterPeer=(Record (Join-Path $Work 'owner-docs-independent-review001\INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json') $MasterPeerSha 262144).value
+Need ($masterPeer.reviewer -ceq 'owner_docs_review') 'Exact historical owner peer nominal on pinned56a7'
+$InitRow=Publish (Join-Path $Pipeline 'ROOT_PIPELINE_INIT_TRACE_001.json') ([ordered]@{schema_version=1;record_type='root_pipeline_init_trace';author='/root';scope=$Scope;created_utc=[DateTimeOffset]::UtcNow.ToString('o');pid=$PID;nonce=$InitNonce;pipeline_source_sha256=$self.sha256}) 65536
+Write-Output ([ordered]@{status='ROOT_PIPELINE_INIT_PARKED_NO_CAPTURE';pid=$PID;nonce=$InitNonce;source_sha256=$self.sha256;init_trace=(Pointer $InitRow);unit_GO=$false}|ConvertTo-Json -Compress)
+$Trust=Wait-Record (Join-Path $Pipeline 'ROOT_PIPELINE_TRUST_SELECTION_001.json') 65536 1200;$TrustRow=$Trust.row
+Exact $Trust.value @('schema_version','record_type','author','scope','pipeline_source_sha256','pipeline_source_peer_sha256','init_trace','physical_root_tool_chunk') 'Root trust8'
+Need ($Trust.value.schema_version -is [int] -and $Trust.value.schema_version -eq 1 -and $Trust.value.record_type -ceq 'root_pipeline_trust_selection' -and $Trust.value.physical_root_tool_chunk -is [string] -and $Trust.value.physical_root_tool_chunk.Length -ge 1 -and $Trust.value.physical_root_tool_chunk.Length -le 256) 'Externally observed Root trust8 nominals'
+Exact $Trust.value.init_trace @('path','sha256') 'Actual INIT trace pointer2'
+Need ($Trust.value.author -ceq '/root' -and $Trust.value.scope -ceq $Scope -and $Trust.value.pipeline_source_sha256 -ceq $self.sha256 -and $Trust.value.init_trace.path -ceq $InitRow.path -and $Trust.value.init_trace.sha256 -ceq $InitRow.sha256) 'Externally Root-selected INIT/source'
+$pipelinePeer=Record (Join-Path $Work 'root-pipeline-independent-review001\SOURCE_REVIEW_ROOT_PIPELINE_001.json') (Sha $Trust.value.pipeline_source_peer_sha256) 131072
+Exact $pipelinePeer.value @('schema_version','record_type','created_utc','reviewer','source_author','scope','verdict','pipeline_source_sha256','pipeline_binding_sha256','architecture_review_sha256','binder_source_review_sha256','source_binding_provenance','phase_argv_templates','before_capture_timer','target_execution','operational_authority_granted') 'Different bound pipeline Source peer16'
+Need ($pipelinePeer.value.schema_version -is [int] -and $pipelinePeer.value.schema_version -eq 1 -and $pipelinePeer.value.record_type -ceq 'independent_root_metadata_pipeline_bound_source_review' -and $pipelinePeer.value.reviewer -ceq '/root/owner_docs_review' -and $pipelinePeer.value.source_author -ceq '/root' -and $pipelinePeer.value.scope -ceq $Scope -and $pipelinePeer.value.verdict -ceq 'PASS_STATIC_ROOT_PIPELINE_SOURCE_ONLY' -and $pipelinePeer.value.pipeline_source_sha256 -ceq $self.sha256 -and $pipelinePeer.value.pipeline_binding_sha256 -ceq $ExpectedBindingSha256) 'Different actual Source/config peer selects this INIT source'
+foreach($v in @('before_capture_timer','target_execution','operational_authority_granted')){Need ($pipelinePeer.value[$v] -is [bool]) 'Exact Source peer flag type'}
+Need ($pipelinePeer.value.before_capture_timer -and -not $pipelinePeer.value.target_execution -and -not $pipelinePeer.value.operational_authority_granted) 'Source-bound peer before capture grants no runtime/operational acceptance'
+[void](Stamp $pipelinePeer.value.created_utc 'Py');[void](Sha $pipelinePeer.value.architecture_review_sha256);[void](Sha $pipelinePeer.value.binder_source_review_sha256)
+Exact $pipelinePeer.value.source_binding_provenance @('path','sha256') 'Source binding provenance pointer2';[void](Record $pipelinePeer.value.source_binding_provenance.path $pipelinePeer.value.source_binding_provenance.sha256 131072)
+Exact $pipelinePeer.value.phase_argv_templates $Roles 'Closed eight Source-reviewed argv roles'
+$metaReady=Wait-Record $Config.metadata_checker_ready.path 65536 1200;$boundReady=Wait-Record $Config.bound_checker_ready.path 65536 1200
+Exact $metaReady.value @('schema_version','record_type','reviewer','created_utc','pid','execution_nonce','checker_source_sha256','checker_source_peer_sha256','checker_binding_sha256','root_trust_selection_sha256','roles','metadata_only','unit_GO') 'Different retained metadata READY13'
+Exact $boundReady.value @('schema_version','record_type','reviewer','pid','created_utc','utility_sha256','lease_sha256','root_trust_selection_sha256','target_execution') 'Different retained bound/late READY9'
+Need ($metaReady.value.schema_version -is [int] -and $metaReady.value.schema_version -eq 1 -and $metaReady.value.record_type -ceq 'guard006_independent_actual_checker_ready' -and $boundReady.value.schema_version -is [int] -and $boundReady.value.schema_version -eq 1 -and $boundReady.value.record_type -ceq 'guard006_bound_late_checker_ready') 'Genuine closed READY record types'
+foreach($v in @($metaReady.value,$boundReady.value)){Need ($v.pid -is [int] -and $v.pid -gt 0) 'Retained reviewer actual positive PID';[void](Stamp $v.created_utc 'Py')}
+Need ($metaReady.value.metadata_only -is [bool] -and $metaReady.value.metadata_only -and $metaReady.value.roles -is [array] -and ($metaReady.value.roles -join ',') -ceq ($Roles -join ',') -and $metaReady.value.execution_nonce -cmatch '\A[0-9a-f]{32}\z') 'All eight phases selected by metadata-only checker before capture'
+foreach($pin in @($metaReady.value.checker_source_sha256,$metaReady.value.checker_source_peer_sha256,$metaReady.value.checker_binding_sha256,$boundReady.value.utility_sha256)){[void](Sha $pin)}
+Need ($metaReady.value.reviewer -ceq '/root/actual_record_checker' -and $metaReady.value.root_trust_selection_sha256 -ceq $TrustRow.sha256 -and $metaReady.value.unit_GO -is [bool] -and -not $metaReady.value.unit_GO -and $boundReady.value.reviewer -ceq '/root/pubnative_review' -and $boundReady.value.root_trust_selection_sha256 -ceq $TrustRow.sha256 -and $boundReady.value.lease_sha256 -ceq $Config.owner_lease_sha256 -and $boundReady.value.target_execution -is [bool] -and -not $boundReady.value.target_execution) 'Both independent reviewers ready for same INIT trust BEFORE original timer'
+$go=Wait-Record (Join-Path $Pipeline 'ROOT_METADATA_PIPELINE_GO_001.json') 65536 1200
+Exact $go.value @('schema_version','record_type','author','scope','created_utc','pipeline_source_sha256','binding_sha256','root_trust_sha256','metadata_checker_ready_sha256','bound_checker_ready_sha256','decision','composer_sha256','composer_source_binding_peer_sha256') 'Root metadata GO13 post-trust Source binding'
+Need ($go.value.schema_version -is [int] -and $go.value.schema_version -eq 1 -and $go.value.record_type -ceq 'root_metadata_pipeline_GO') 'Root metadata GO13 nominals';[void](Stamp $go.value.created_utc 'PS')
+Need ($go.value.author -ceq '/root' -and $go.value.scope -ceq $Scope -and $go.value.pipeline_source_sha256 -ceq $self.sha256 -and $go.value.binding_sha256 -ceq $ExpectedBindingSha256 -and $go.value.root_trust_sha256 -ceq $TrustRow.sha256 -and $go.value.metadata_checker_ready_sha256 -ceq $metaReady.row.sha256 -and $go.value.bound_checker_ready_sha256 -ceq $boundReady.row.sha256 -and $go.value.decision -ceq 'execute_metadata_stages_once_park_before_separate_root_unit_GO') 'Root separate metadata-only GO'
+[void](Sha $go.value.composer_sha256);[void](Sha $go.value.composer_source_binding_peer_sha256)
+# Authenticate the complete post-trust Source binding peer and every selected
+# source/model byte before the metadata producer starts its original timer.
+# Packet repeats this immutable closure check before each later helper spawn.
+[void](Source-Pool)
+$authBefore=Checked-Phase 'auth_before' @{} 15
+$captureBefore=Checked-Phase 'capture_before' @{authorization_sha256=$authBefore.sha256} 60
+$base=@{runtime_sha256=$OriginalRuntime.sha256;context_sha256=$OriginalContext.sha256}
+$wholeBeforeAuth=Checked-Phase 'whole_before_auth' $base 15
+$selection=@{};foreach($k in $base.Keys){$selection[$k]=$base[$k]};$selection.authorization_sha256=$wholeBeforeAuth.sha256
+$wholeBefore=Checked-Phase 'whole_before_result' $selection 45
+Fresh-Original 90;Root-Stage 'ack';Packet 'bound';Root-Stage 'bind-launch';Packet 'late';Fresh-Original 90
+[void](Publish (Join-Path $Pipeline 'ROOT_PIPELINE_READY_FOR_SEPARATE_UNIT_GO_006.json') ([ordered]@{schema_version=1;record_type='root_metadata_pipeline_parked_for_separate_unit_GO';author='/root';scope=$Scope;created_utc=[DateTimeOffset]::UtcNow.ToString('o');context_sha256=$OriginalContext.sha256;runtime_sha256=$OriginalRuntime.sha256;unit_launched_by_pipeline=$false;original_freshness_seconds=90}) 65536)
+Write-Output '{"status":"PARKED_FOR_SEPARATE_ROOT_UNIT_GO","unit_launched_by_pipeline":false}'
+# Root physically launches its independently late-reviewed three-slot launcher
+# in a separate tool cell. Waiting for the terminal cannot refresh any timer.
+$unit=Wait-Record (Join-Path $Guard 'ROOT_LAUNCH_TERMINAL_006.json') 65536 600
+$AfterDeadline=(Stamp $unit.value.finished_utc 'PS').AddSeconds(60)
+Fresh-Original 600
+Need ($unit.value.exit_code -eq 0 -and $unit.value.timed_out -is [bool] -and -not $unit.value.timed_out) 'Actual Root physical unit terminal before after stages'
+$ack=Read-Bytes (Join-Path $Guard 'ROOT_EXECUTION_ACK_GUARD_UNIT006.json') '' 65536
+$launcher=Read-Bytes (Join-Path $Guard 'ROOT_FIRST_LAUNCH_006-rev003.BOUND.ps1') '' 65536
+$finished=Read-Bytes 'D:\Aenv\pro2\.tmp\cg24-006\finished.json' '' 65536
+$after=@{};foreach($k in $base.Keys){$after[$k]=$base[$k]};$after.before_result_sha256=$wholeBefore.sha256;$after.before_capture_sha256=$captureBefore.sha256;$after.root_ack_sha256=$ack.sha256;$after.unit_terminal_sha256=$unit.row.sha256;$after.unit_launcher_sha256=$launcher.sha256;$after.driver_finished_sha256=$finished.sha256;$after.before_authorization_sha256=$wholeBeforeAuth.sha256
+$wholeAfterAuth=Checked-Phase 'whole_after_auth' $after 15
+$bridge=Read-Bytes (Join-Path $Guard 'ROOT_DRIVER_SCOPED_FINISHED_RECEIPT_PROVENANCE_006.json') '' 65536;$after.bridge_provenance_sha256=$bridge.sha256;$after.authorization_sha256=$wholeAfterAuth.sha256
+$wholeAfter=Checked-Phase 'whole_after_result' $after 45
+$metaAfterAuth=Checked-Phase 'metadata_after_auth' $after 15;$after.authorization_sha256=$metaAfterAuth.sha256
+$metaAfter=Checked-Phase 'metadata_after_capture' $after 60
+Lease-Check 0
+[void](Publish (Join-Path $Pipeline 'ROOT_PIPELINE_FINISHED_006.json') ([ordered]@{schema_version=1;record_type='root_metadata_pipeline_finished';author='/root';scope=$Scope;finished_utc=[DateTimeOffset]::UtcNow.ToString('o');actual_metadata_after_sha256=$metaAfter.sha256;original_context_sha256=$OriginalContext.sha256;original_runtime_sha256=$OriginalRuntime.sha256;unit_launched_by_pipeline=$false;operational_authority_granted=$false}) 65536)
+Write-Output '{"status":"FINISHED_ROOT_METADATA_ONLY_PIPELINE","unit_launched_by_pipeline":false}'

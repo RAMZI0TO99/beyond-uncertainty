@@ -4,7 +4,7 @@ Every experimental parameter lives in a Config and is written to the run record.
 Nothing that affects a result may be passed on the command line without landing
 in a Config first (Plan §13.7).
 
-Three identities are derived from a Config, and the distinction between them is
+Four identities are derived from a Config, and the distinction between them is
 load-bearing:
 
     unit_id    The configuration-condition. This is the statistical unit for
@@ -13,7 +13,13 @@ load-bearing:
                condition and its repairs share a unit_id -- that shared identity
                is what makes a ground-truth label assignable at all (Plan §7.2).
     config_id  unit_id plus the arm (baseline, or which repair).
-    run_id     config_id plus the seed. One run, one record, one metrics file.
+    run_id     config_id plus the stage and the seed, so a record states which
+               experimental obligation it discharges. One run, one record, one
+               metrics file.
+    fit_id     config_id plus the seed, with no stage: the identity of the
+               *computation*. One unit can owe the same seeds to more than one
+               obligation; those roles resolve to one fit -- stage labels must
+               not create compute (D-033).
 
 Encoding the unit in the data model rather than in a later analysis script is
 deliberate. "Which runs form one labelled unit" is then a property of the
@@ -79,7 +85,10 @@ SCHEMA_VERSION = 2
 #: not comparable with v2.
 IDENTITY_VERSION = 2
 
-ARMS = ("baseline", "data_repair", "feature_repair", "capacity_repair")
+ARMS = (
+    "baseline", "data_repair", "feature_repair", "capacity_repair",
+    "capacity_extension_repair",
+)
 
 #: Execution stages, and the seed count each requires (Plan §14.2).
 #:
@@ -278,6 +287,18 @@ class Arm:
                     f"{unit.hidden_size}; there is no capacity to add"
                 )
             return dataclasses.replace(unit, hidden_size=largest)
+        if self.kind == "capacity_extension_repair":
+            # D-154 is additive: the source unit and all old arm meanings stay
+            # unchanged. Only the effective model widens; RNG keys must still
+            # use the unresolved source unit (D-055/D-056).
+            if unit.withheld_features or unit.hidden_size != 256:
+                raise ValueError(
+                    "capacity_extension_repair requires full observation and "
+                    "source hidden_size=256"
+                )
+            return dataclasses.replace(
+                unit, hidden_size=K.CAPACITY_EXTENSION_HIDDEN_SIZE
+            )
         raise AssertionError("unreachable")
 
 

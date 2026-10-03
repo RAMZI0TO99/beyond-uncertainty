@@ -1,0 +1,152 @@
+"""Reviewer-owned source binding audit only; no reviewed definition executes."""
+import ast,datetime,hashlib,json,os,re,stat
+from pathlib import Path
+BASE=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001');ROOT=BASE/'root-guard006-pipeline-prep001';OUT=BASE/'root-pipeline-independent-review001';META=BASE/'metadata3-producer-core-prep001'
+SCOPE='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+CSHA='ef3a6f208158ca2809aecf6d92b62b63777d4b795574c8cdccec1f882c669488';RSHA='dcad2e121c19ab888136462811b314088ff7db9d23175a1b8e617bc3d1d93669'
+PSHA='9b7dbc059cc51601e08bbf4ff748123b53034533173dca5a6254352e47f997e8';ASHA='32bdaae92a400d1d117ca7eaa6274d7cb069a79c8abfd62cd7745c7d0a087a57';PEER_SHA='24746248d46b887527ecfb97ef531f3c1626eca395674c7435d2e4f63dbbae58'
+def sha(b):return hashlib.sha256(b).hexdigest()
+def utc():return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+def enc(v):return (json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('ascii')
+def pairs(rows):
+ d={}
+ for k,v in rows:assert k not in d;d[k]=v
+ return d
+def bad(x):raise ValueError(x)
+def parse(b):
+ assert not b.startswith(b'\xef\xbb\xbf')
+ return json.loads(b.decode('utf8','strict'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def raw(s):return [getattr(s,k) for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+def read(p):
+ s=p.lstat();assert stat.S_ISREG(s.st_mode) and s.st_nlink==1 and not s.st_file_attributes&1024
+ with p.open('rb',buffering=0) as f:a=os.fstat(f.fileno());b=f.read(s.st_size+1);z=os.fstat(f.fileno())
+ assert raw(s)==raw(p.lstat()) and raw(a)==raw(z) and len(b)==s.st_size
+ assert [raw(s)[i] for i in (0,1,2,3,5,6,7,8)]==[raw(a)[i] for i in (0,1,2,3,5,6,7,8)]
+ return b,dict(path=str(p),sha256=sha(b),bytes=len(b),path_raw9=raw(s),descriptor_raw9=raw(a),observed_utc=utc())
+def once(p,b):
+ with p.open('xb') as f:assert f.write(b)==len(b);f.flush();os.fsync(f.fileno())
+def exact(v,keys):assert type(v) is dict and set(v)==set(keys)
+def nominal(v,wanted):
+ for k,x in wanted.items():assert type(v[k]) is type(x) and v[k]==x,k
+def literal(t,name):
+ nodes=[n.value for n in t.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id==name];assert len(nodes)==1
+ return ast.literal_eval(nodes[0])
+def funcs(b):return [ast.dump(n,include_attributes=False) for n in ast.parse(b).body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))]
+def reverse_slots(original,bound,values):
+ def nodes(b):
+  found={}
+  for n in ast.parse(b).body:
+   if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in values:assert n.targets[0].id not in found;found[n.targets[0].id]=n.value
+  assert set(found)==set(values);return found
+ on,bn=nodes(original),nodes(bound);lines=bound.splitlines(keepends=True);ol=original.splitlines(keepends=True);edits=[]
+ for name,value in values.items():
+  assert ast.literal_eval(on[name]) is None and type(ast.literal_eval(bn[name])) is type(value) and ast.literal_eval(bn[name])==value
+  n,o=bn[name],on[name];s=sum(map(len,lines[:n.lineno-1]))+n.col_offset;e=sum(map(len,lines[:n.end_lineno-1]))+n.end_col_offset;os_=sum(map(len,ol[:o.lineno-1]))+o.col_offset;oe=sum(map(len,ol[:o.end_lineno-1]))+o.end_col_offset;edits.append((s,e,original[os_:oe]))
+ rebuilt=bound
+ for s,e,v in sorted(edits,reverse=True):rebuilt=rebuilt[:s]+v+rebuilt[e:]
+ assert rebuilt==original and funcs(bound)==funcs(original)
+ return dict(slot_names=list(values),slot_count=len(values),complete_template_sha256=sha(rebuilt),function_class_ASTs_unchanged=True)
+def ticks(s,fraction):
+ assert type(s) is str and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{'+str(fraction)+r'}\+00:00',s)
+ short=s if fraction==6 else s[:26]+s[27:];d=datetime.datetime.fromisoformat(short);assert d.isoformat(timespec='microseconds')==short
+ delta=d-datetime.datetime(1970,1,1,tzinfo=datetime.timezone.utc);return (delta.days*86400+delta.seconds)*10000000+delta.microseconds*10+(int(s[26]) if fraction==7 else 0)
+dp=OUT/'INDEPENDENT_ROOT_PIPELINE_BINDER_SOURCE_DETAILS_002.json';db=dp.read_bytes();assert sha(db)=='aaaceb98f9c5dd4879e68c990038af47de47287133073b2999251d59c4db739b';prior=parse(db)
+mdp=BASE/'m3-source-independent-review001/INDEPENDENT_ACTUAL_M3_PHASE_SOURCE_DETAILS_001.json';mdb=mdp.read_bytes();assert sha(mdb)=='e2028a8cfd26be322ca07f16c42fe2bee42e8da1634c0a5ce56814efeb02f032';mprior=parse(mdb)
+pins={Path(r['path']):r['sha256'] for r in prior['preserved_inputs']}
+for r in mprior['preserved_inputs']:
+ p=Path(r['path']);assert p not in pins or pins[p]==r['sha256'];pins[p]=r['sha256']
+cp=ROOT/'ROOT_PIPELINE_BINDING_001.json';provp=ROOT/'ROOT_PIPELINE_SOURCE_BINDING_PROVENANCE_001.json';producerp=ROOT/'ROOT_SOURCE_BINDING_PRODUCER_OBSERVATION_001.json';selp=ROOT/'ROOT_PIPELINE_SELECTION_001.json';synp=OUT/'INDEPENDENT_ACTUAL_ROOT_BOUND_PS_SYNTAX_001.json';suppp=OUT/'INDEPENDENT_ROOT_PIPELINE_ARCHITECTURE_SUPPLEMENT_002.json';peerp=OUT/'INDEPENDENT_ROOT_PIPELINE_BINDER_SOURCE_REVIEW_002.json';phasepeerp=META/'INDEPENDENT_ROOT_METADATA_PHASE_PS_BINDING_REVIEW_003.json'
+pins.update({dp:sha(db),mdp:sha(mdb),cp:CSHA,provp:RSHA,producerp:'ee80967c09481b78cb02e0caf5596fa68d4dca024fc258abd6c15a88b6221661',selp:'8224b09c4ea7e29a7be40ecdda17a1693fb7b5bc4754fdbe0c18b3cf715e83f6',synp:'7fa2affbf194c95c95dc01dad831f58a6a340b1fd7a3627c8916c8c35672f4d4',suppp:'c451f5e25d07599e58a7f3dde96ca20e9e86a92f5ee21f04683499604ea7f459',peerp:PEER_SHA,phasepeerp:'73c2cdb26b770b6b67f748fb44e326bc01cb4af5c085a0f500c219050c6f0678'})
+checker009p=BASE/'metadata3-actual-checker-prep001/review-metadata3-actual006-corrected009.TEMPLATE.py'
+pins[checker009p]='3c02e9898ed5fde8cf74f91ff780093ed66ca2a8807a1be2dfe1c9e8976d14e6'
+config=parse(cp.read_bytes());assert sha(cp.read_bytes())==CSHA;prov=parse(provp.read_bytes());assert sha(provp.read_bytes())==RSHA
+for row in prov['bound_sources']+prov['metadata_source_bindings']:
+ exact(row,('path','sha256','bytes'));p=Path(row['path']);assert p not in pins or pins[p]==row['sha256'];pins[p]=row['sha256']
+observations=[];data=None
+for phase in range(3):
+ current={};observed=[]
+ for p in sorted(pins,key=str):
+  b,r=read(p);assert sha(b)==pins[p],str(p);current[p]=b;observed.append(r)
+ if data is None:data=current
+ else:assert current==data
+ observations.append(dict(phase=phase+1,rows=observed))
+bt=ast.parse(data[ROOT/'BIND_ROOT_PIPELINE_SOURCE_002.TEMPLATE.py']);table=literal(bt,'PINNED_INPUTS');source_rows=literal(bt,'SOURCE_ROWS')
+exact(config,literal(bt,'CONFIG_KEYS'));assert len(config)==20
+nominal(config,dict(schema_version=1,record_type='root_metadata_pipeline_source_binding',author='/root',scope=SCOPE,maximum_retained_seconds=3600))
+exact(prov,('schema_version','record_type','binder','source_author','scope','created_utc','binder_sha256','source_peer_sha256','source_manifest_sha256','selection_sha256','owner_lease_sha256','bound_sources','metadata_source_bindings','configuration','exact_assignment_reversal','exact_function_class_ASTs','target_execution'))
+nominal(prov,dict(schema_version=1,record_type='root_pipeline_source_binding_provenance',binder='/root',source_author='/root/root_pipeline_binder',scope=SCOPE,binder_sha256=sha(data[ROOT/'BIND_ROOT_PIPELINE_SOURCE_002.TEMPLATE.py']),source_peer_sha256=PEER_SHA,source_manifest_sha256='a6250a11017c599f0ea5e29d7e600c339d547db16f8152a8e26b8ddaa4d68c68',selection_sha256=pins[selp],owner_lease_sha256=config['owner_lease_sha256'],exact_assignment_reversal=True,exact_function_class_ASTs=True,target_execution=False));ticks(prov['created_utc'],6)
+nominal(prov['configuration'],dict(path=str(cp),sha256=CSHA,bytes=len(data[cp])))
+selection=parse(data[selp]);exact(selection,('lease_selection','coordination_peer_reply','coordination_root_response'))
+leasep=BASE/'EXECUTION_LEASE_GG6_M3_001.json';lease=parse(data[leasep]);nominal(config,dict(owner_lease_sha256=pins[leasep],owner_lease_end_utc=lease['lease_end_utc'],coordination_peer_reply=selection['coordination_peer_reply'],coordination_root_response=selection['coordination_root_response']))
+nominal(selection['lease_selection'],dict(path=str(leasep),sha256=pins[leasep],lease_end_utc=lease['lease_end_utc']));start,end=ticks(lease['created_utc'],7),ticks(lease['lease_end_utc'],7);assert 0<end-start<=43200*10000000
+now=datetime.datetime.now(datetime.timezone.utc);delta=now-datetime.datetime(1970,1,1,tzinfo=datetime.timezone.utc);assert start<=(delta.days*86400+delta.seconds)*10000000+delta.microseconds*10<end
+for role,field in (('profile','profile'),('projection','projection'),('static_review','harness_static_review'),('source_manifest','source_manifest'),('capsule','source_capsule'),('capsule_peer','source_capsule_review')):
+ r=table[role];nominal(config[field],dict(path=r['path'],sha256=r['sha256'],bytes=r['bytes']))
+nominal(config['packet_composer'],dict(path=table['composer_template']['path'],sha256=table['composer_template']['sha256']));assert set(config['packet_composer'])=={'path','sha256'}
+assert config['metadata_checker_ready']==dict(path=str(BASE/'metadata3-actual-checker-prep001/CHECKER_READY_ALL_006.json')) and config['bound_checker_ready']==dict(path=str(BASE/'guard006-bound-late-checker-prep001/BOUND_LATE_CHECKER_READY_006.json'))
+assert len(prov['bound_sources'])==7 and len(prov['metadata_source_bindings'])==8
+for r in prov['bound_sources']+prov['metadata_source_bindings']:assert len(data[Path(r['path'])])==r['bytes']<=65536
+guard=config['guard_sources'];exact(guard,('driver','observer','child','launcher_template'))
+for role in ('driver','observer','child','launcher_template'):
+ r=guard[role];exact(r,('path','sha256','bytes'));assert sha(data[Path(r['path'])])==r['sha256'] and len(data[Path(r['path'])])==r['bytes']<=65536
+models={}
+models['driver']=reverse_slots(data[Path(table['driver_template']['path'])],data[Path(guard['driver']['path'])],dict(OWNER_SHA256=config['owner_lease_sha256'],SOURCE_CAPSULE_PEER_SHA256=table['capsule_peer']['sha256'],HARNESS_STATIC_PEER_SHA256=table['static_review']['sha256']))
+models['observer']=reverse_slots(data[Path(table['observer_template']['path'])],data[Path(guard['observer']['path'])],dict(HARNESS_STATIC_PEER_SHA256=table['static_review']['sha256']))
+assert literal(ast.parse(data[Path(guard['driver']['path'])]),'OWNER_END') is None and literal(ast.parse(data[Path(guard['observer']['path'])]),'OWNER_END') is None and literal(ast.parse(data[Path(guard['observer']['path'])]),'OWNER_SHA256') is None
+for role in ('child','launcher_template'):assert data[Path(guard[role]['path'])]==data[Path(table[role]['path'])]
+expected_sources={k:dict(path=str((META if k.startswith('metadata_') else ROOT)/v),sha256=sha(data[(META if k.startswith('metadata_') else ROOT)/v]),bytes=len(data[(META if k.startswith('metadata_') else ROOT)/v])) for k,v in source_rows.items() if k!='pipeline'}
+nominal(config,dict(sources=expected_sources));pipelinep=ROOT/source_rows['pipeline'];assert sha(data[pipelinep])==PSHA
+for role in ('root_records','whole_before_parent','whole_after_writer','whole_after_parent','pipeline'):assert data[ROOT/source_rows[role]]==data[Path(table[role+'_template']['path'])]
+phasepeer=parse(data[phasepeerp]);assert phasepeer['verdict']=='PASS_STATIC_ACTUAL_PHASE_PS_SOURCE_BINDINGS_ONLY' and phasepeer['reviewer']=='/root/owner_docs_review'
+for role,row in zip(('metadata_before_writer','metadata_before_parent','metadata_after_writer','metadata_after_parent'),phasepeer['phase_sources']):nominal(config['sources'][role],{k:row[k] for k in ('path','sha256','bytes')})
+syntax=parse(data[synp]);assert len(syntax['rows'])==5 and syntax['target_execution'] is False
+for r in syntax['rows']:assert sha(data[Path(r['path'])])==r['sha256'] and r['parser_errors']==[]
+producer=parse(data[producerp]);nominal(producer,dict(schema_version=1,record_type='root_pipeline_bound_source_producer_observation',author='/root',scope=SCOPE,source_binder_sha256=prov['binder_sha256'],genuine_source_peer_sha256=PEER_SHA,root_selection=dict(path=str(selp),sha256=pins[selp]),configuration=prov['configuration'],provenance=dict(path=str(provp),sha256=RSHA,bytes=len(data[provp])),bound_source_outputs=prov['bound_sources'],Root_INIT_created=False,actual_models_created=False,capture_timer_started=False,authorizations_or_current_tests_run=False,operational_authority=False));nominal(producer['root_tool'],dict(chunk_id='1cc97a',exit_code=0,session_id=None,complete_tool_return=True));ticks(producer['created_utc'],7)
+assert ticks(producer['created_utc'],7)>=ticks(prov['created_utc'],6)
+pipeline_text=data[pipelinep].decode('utf8');assert 'function Source-Argv' in pipeline_text and 'Closed eight Source-reviewed argv roles' in pipeline_text
+ps=r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe';roles=['auth_before','capture_before','whole_before_auth','whole_before_result','whole_after_auth','whole_after_result','metadata_after_auth','metadata_after_capture']
+source_role=dict(zip(roles,('metadata_before_writer','metadata_before_parent','root_records','whole_before_parent','whole_after_writer','whole_after_parent','metadata_after_writer','metadata_after_parent')))
+argv={};placeholders=[]
+def dynamic(name):
+ token='{'+name+'}';assert re.fullmatch(r'\{[a-z][a-z0-9_]*\}',token);placeholders.append(token);return token
+for role in roles:
+ s=config['sources'][source_role[role]];a=[ps,'-NoLogo','-NoProfile','-ExecutionPolicy','Bypass','-File',s['path'],'-ExpectedSelfSha256',s['sha256']]
+ if role in ('auth_before','metadata_after_auth'):
+  if role=='metadata_after_auth':a+=['-ExpectedBeforeCaptureSha256',dynamic('before_capture_sha256'),'-ExpectedUnitTerminalSha256',dynamic('unit_terminal_sha256')]
+  a+=['-ExpectedLeaseSha256',config['owner_lease_sha256'],'-ExpectedProfileSha256',config['profile']['sha256'],'-ExpectedProjectionSha256',config['projection']['sha256'],'-ExpectedPeerReplySha256',config['coordination_peer_reply']['sha256'],'-ExpectedCoordinationSha256',config['coordination_root_response']['sha256'],'-PeerReplyRelative',config['coordination_peer_reply']['relative'],'-CoordinationRelative',config['coordination_root_response']['relative']]
+ elif role in ('capture_before','metadata_after_capture'):a+=['-ExpectedAuthorizationSha256',dynamic('authorization_sha256'),'-ExpectedLeaseSha256',config['owner_lease_sha256']]
+ elif role=='whole_before_auth':a+=['-ExpectedSourceBindingsSha256',CSHA,'-Stage','whole-before-auth']
+ elif role=='whole_before_result':a+=['-ExpectedAuthorizationSha256',dynamic('authorization_sha256'),'-ExpectedSourceBindingsSha256',CSHA]
+ elif role=='whole_after_auth':
+  for flag,key in (('-ExpectedBeforeAuthorizationSha256','before_authorization_sha256'),('-ExpectedWholeBeforeResultSha256','before_result_sha256'),('-ExpectedDriverFinishedSha256','driver_finished_sha256'),('-ExpectedUnitTerminalSha256','unit_terminal_sha256')):a+=[flag,dynamic(key)]
+  a+=['-ExpectedSourceBindingsSha256',CSHA]
+ elif role=='whole_after_result':a+=['-ExpectedAuthorizationSha256',dynamic('authorization_sha256'),'-ExpectedUnitTerminalSha256',dynamic('unit_terminal_sha256'),'-ExpectedSourceBindingsSha256',CSHA]
+ assert all(type(v) is str and '\n' not in v and '\r' not in v and '\0' not in v for v in a) and len(a)<=64
+ argv[role]=a
+checker_tree=ast.parse(data[checker009p]);allowed_substitutions=set(literal(checker_tree,'TICKET_KEYS'))|{'metadata_script_sha256','metadata_bound_review_sha256','observer_sha256','profile_sha256','harness_static_review_sha256','owner_lease_sha256'}
+for row in argv.values():
+ for token in row:
+  assert type(token) is str and len(token)<=4096
+  if re.fullmatch(r'\{[a-z][a-z0-9_]*\}',token):assert token[1:-1] in allowed_substitutions
+  else:assert '{' not in token and '}' not in token
+absence_paths=[ROOT/'ROOT_PIPELINE_INIT_TRACE_001.json',ROOT/'ROOT_PIPELINE_TRUST_SELECTION_001.json',ROOT/'ROOT_METADATA_PIPELINE_GO_001.json',Path(config['metadata_checker_ready']['path']),Path(config['bound_checker_ready']['path'])]
+def absences():
+ result=[]
+ for p in absence_paths:assert not p.exists(),str(p);result.append(dict(path=str(p),absent=True,observed_utc=utc()))
+ return result
+absence_rows=absences();copydir=OUT/'actual-root-source-before001';assert not copydir.exists();copydir.mkdir();preserved=[]
+for i,p in enumerate(sorted(data,key=str)):
+ cp_=copydir/f'{i:03d}.bytes';once(cp_,data[p]);assert read(cp_)[0]==data[p];preserved.append(dict(path=str(p),copy=str(cp_),sha256=sha(data[p]),bytes=len(data[p])))
+pre=[]
+for p in sorted(data,key=str):b,r=read(p);assert b==data[p];pre.append(r)
+checks=['All nine observed Root binder outputs independently authenticated: driver3/observer1 literal reversal restores complete selected template bytes; all function/class ASTs unchanged; five Root BOUND PS are byte-exact templates and actual native ParseFile errors zero.','Closed config20 resolves exact eight current source rows and role-specific fixed guard/profile/projection/capsule/manifest/static/coordination pointers; composer remains TEMPLATE only before INIT/trust.','Closed provenance17 authenticates actual binder002/sourcepeer247/final002 manifest/selection8224/lease43cb, seven bound source rows, eight genuine M3 source observations and C20 pointer; Py6 stamp original.','M3 genuine Bound9 and Phase20 and complete previous source-binding input closures reobserved. All four M3 Source PS rows match actual reviewed ordered rows.','Root producer ee809 native PS7 and Roottool1cc97a attribution independently hashed and correlated against observed outputs/config/provenance/selection; no independent OS/tool attestation invented.','Eight Source-Argv templates independently transcribed from full accepted fixed Source-Argv body, resolving only observed C20/source/lease/coordination data. Explicit future ticket placeholders are source declarations, not actual runtime selections or approved records.','Unchanged root main/fourstage acceptance32bd remains qualified by correction supplementc451 and new genuine binder peer247; old389b binder assumption stays preserved and inapplicable. Ongoing master27/endNone separate from original native finite phase lease12/endPS7.','Acyclic preparation: genuine actual Source P16 precedes physical INIT, externally selected RootTrust, utility/composer models and different actual pool20, same-trust READY13/9, GO13, then original capture timer. SourceConstructor correction002 remains separately pending; no future acceptance asserted.']
+limits=['Source-only acceptance grants no metadata capture, test, operational/native/public/science/epoch/release, sole executor, memory or host quiet authority.','Actual INIT/trust/READY/GO named paths observed absent; no global process absence or independent physical tool attestation claimed. Future launch, loaded source, retained locks, OS Job and observer/descendant cleanup require their separate checks.','Original600, both90, resource60,510 reserve, Root450 plus physical-finished original60, finite evidence and source caps retained. No timer refresh, replay or deadline/cap growth.','Future dynamic ticket values must be genuine observed phase outputs; placeholders cannot be used as actual hashes. No reviewed definition, main, import, source binder, PS phase action, target test, lease action, Git or FFI executed by reviewer.']
+details=dict(schema_version=1,record_type='independent_actual_root_pipeline_source_binding_complete_details',reviewer='/root/owner_docs_review',source_author='/root',created_utc=utc(),scope=SCOPE,verdict='PASS_COMPLETE_ACTUAL_ROOT_SOURCE_BINDINGS_ONLY',finite_input_count=len(data),observations=observations,preserved_inputs=preserved,prepublication_observations=pre,named_preINIT_absences=absence_rows,pipeline_source_sha256=PSHA,pipeline_binding_sha256=CSHA,source_provenance_sha256=RSHA,architecture_review_sha256=ASHA,architecture_supplement_sha256=pins[suppp],binder_source_review_sha256=PEER_SHA,projection_reversals=models,phase_argv_templates=argv,dynamic_ticket_placeholder_tokens=sorted(set(placeholders)),source_checks=checks,findings=[],implementation_conditions=limits,source_syntax_sha256=pins[synp],root_producer_observation_sha256=pins[producerp],independent_OS_tool_attestation=False,target_execution=False,runtime_acceptance=False,operational_authority=False,actual_capture=None,actual_results=None)
+rp=OUT/'INDEPENDENT_ACTUAL_ROOT_PIPELINE_SOURCE_DETAILS_001.json';assert len(enc(details))<=2097152;once(rp,enc(details))
+peer16=dict(schema_version=1,record_type='independent_root_metadata_pipeline_bound_source_review',created_utc=utc(),reviewer='/root/owner_docs_review',source_author='/root',scope=SCOPE,verdict='PASS_STATIC_ROOT_PIPELINE_SOURCE_ONLY',pipeline_source_sha256=PSHA,pipeline_binding_sha256=CSHA,architecture_review_sha256=ASHA,binder_source_review_sha256=PEER_SHA,source_binding_provenance=dict(path=str(provp),sha256=RSHA),phase_argv_templates=argv,before_capture_timer=True,target_execution=False,operational_authority_granted=False);assert len(peer16)==16
+pp=OUT/'SOURCE_REVIEW_ROOT_PIPELINE_001.json';once(pp,enc(peer16))
+post=[]
+for p in sorted(data,key=str):b,r=read(p);assert b==data[p];post.append(r)
+postp=OUT/'INDEPENDENT_ACTUAL_ROOT_PIPELINE_SOURCE_POST_001.json';once(postp,enc(dict(schema_version=1,created_utc=utc(),full_details_sha256=sha(rp.read_bytes()),pipeline_source_peer_sha256=sha(pp.read_bytes()),source_post_observations=post,named_preINIT_absences=absences())))
+handoff=OUT/'HANDOFF_ACTUAL_ROOT_SOURCE_BINDINGS_001.md';once(handoff,('Observed Root nine-output source binding accepted only as source preparation. Genuine P16 SHA '+sha(pp.read_bytes())+' resolves actual C20 and provenance17 with exact eight Source-Argv templates; only future ticket hashes remain declared placeholders. Driver3/observer1 complete byte reversal and every function/class AST unchanged; five copied Root PS parse without errors. Prior binder001 acceptance remains historical and inapplicable; architecture32bd is qualified by supplementc451 and binder002 peer247. Root producer attribution is correlated but no independent OS/tool attestation claimed. Named INIT/trust/READY/GO paths remain absent. Constructor correction, actual model pool20, retained reviewers, capture and current tests remain separate and unapproved by this source review.\n').encode('ascii'))
+print(json.dumps(dict(verdict=details['verdict'],finite_input_count=len(data),outputs=[dict(path=str(p),sha256=sha(p.read_bytes()),bytes=len(p.read_bytes())) for p in (rp,pp,postp,handoff)])))

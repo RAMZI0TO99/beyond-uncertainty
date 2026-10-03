@@ -1,0 +1,175 @@
+def read(path: Path, *, maximum=None) -> tuple[bytes, tuple[int, ...]]:
+    chain(path)
+    before = plain_info(path)
+    if maximum is not None:
+        require(type(maximum) is int and maximum > 0
+                and type(before.st_size) is int and 0 <= before.st_size <= maximum,
+                "file exceeds its finite pre-read cap")
+    before_raw = observation_identity(before)
+    before_capture = cross_api_identity(before, path, descriptor=False)
+    require(os.name != "nt" or before.st_ctime_ns == before_capture[4],
+            "Windows path creation identity differs")
+    with path.open("rb") as handle:
+        opened = os.fstat(handle.fileno())
+        opened_raw = observation_identity(opened)
+        require(cross_api_identity(opened, path, descriptor=True) == before_capture,
+                "file changed at open")
+        data = handle.read() if maximum is None else handle.read(maximum + 1)
+        require(maximum is None or len(data) <= maximum, "file exceeds its finite read cap")
+        after_open = os.fstat(handle.fileno())
+        require(observation_identity(after_open) == opened_raw
+                and cross_api_identity(after_open, path, descriptor=True) == before_capture,
+                "file changed while reading")
+    after = plain_info(path)
+    require(observation_identity(after) == before_raw
+            and cross_api_identity(after, path, descriptor=False) == before_capture
+            and len(data) == before.st_size,
+            "file changed after reading")
+    return data, identity(after)
+
+
+def pinned(path: Path, expected: str, *, maximum=None) -> bytes:
+    hex_value(expected, 64, "file pin")
+    data, _ = read(path, maximum=maximum)
+    require(sha(data) == expected, "file byte pin differs: " + str(path))
+    return data
+
+
+def validate_bindings() -> None:
+    require(set(BINDINGS) == set(HISTORICAL_BINDING_KEYS), "fixed thirteen binding keys differ")
+    for name, value in BINDINGS.items():
+        if name.endswith("_path"):
+            absolute(value)
+        else:
+            hex_value(value, 40 if name == "current_commit" else 64, name)
+    for value in (RELEASE, MANIFEST, RAW_REVIEW, RECEIPT):
+        absolute(value)
+    require(type(EXTERNAL_PROOF_MAX_BYTES) is int and 0 < EXTERNAL_PROOF_MAX_BYTES
+            <= COMPILED_POLICY["_SUCCESSOR_MAX_FILE_SIZE"], "external proof cap is unbound")
+    require(BINDINGS["current_commit"] not in {
+        HISTORICAL["facts"]["controller_commit"],
+        COMPILED_POLICY["SUCCESSOR_INTERMEDIATE_FACTS"]["controller_commit"]},
+        "final commit equals a historical release")
+    require(BINDINGS["stage0_environment_policy_sha256"] == HISTORICAL["receipt"]["stage0_environment_policy_sha256"],
+            "stage0 environment policy changed")
+    require(type(EXPECTED_RELEASE_PROVENANCE) is dict and EXPECTED_RELEASE_PROVENANCE,
+            "release provenance binding is unbound")
+    for field, value in EXPECTED_RELEASE_PROVENANCE.items():
+        require(type(field) is str and field.endswith("Sha256"), "provenance field is malformed")
+        exact(value, {"path", "sha256"}, "release provenance binding")
+        absolute(value["path"])
+        hex_value(value["sha256"], 64, "release provenance pin")
+
+
+def inputs() -> dict[str, bytes]:
+    result = {}
+    inode_seen = set()
+    for name, facts in HISTORICAL["inputs"].items():
+        original = Path(facts["path"])
+        retained = STAGE / "before" / facts["retained_name"]
+        first, first_info = read(original)
+        second, second_info = read(retained)
+        require(sha(first) == facts["sha256"] and first == second
+                and first_info[:2] != second_info[:2], "historical provenance or retained independence differs")
+        for info in (first_info, second_info):
+            require(info[:2] not in inode_seen, "historical inputs alias one object")
+            inode_seen.add(info[:2])
+        result[name] = first
+    require(result["incident"] == result["incident_twin"]
+            and result["terminal"] == result["terminal_twin"], "historical twins differ")
+    for name, facts in MIDDLE_INPUTS.items():
+        retained = STAGE / "before" / facts["retained_name"]
+        value, info = read(retained, maximum=facts["size"])
+        require(len(value) == facts["size"] and sha(value) == facts["sha256"],
+                "middle retained byte pin differs")
+        require(info[:2] not in inode_seen, "middle retained input aliases another object")
+        inode_seen.add(info[:2])
+        if facts["path"] is not None:
+            original, original_info = read(absolute(facts["path"]), maximum=facts["size"])
+            require(original == value and original_info[:2] not in inode_seen,
+                    "middle original byte pin/independent retained copy differs")
+            inode_seen.add(original_info[:2])
+        result[name] = value
+    result["current_release"] = pinned(absolute(RELEASE), BINDINGS["current_release_sha256"])
+    result["current_manifest"] = pinned(absolute(MANIFEST), BINDINGS["current_candidate_manifest_sha256"])
+    result["current_receipt"] = pinned(absolute(RECEIPT), BINDINGS["native_receipt_sha256"])
+    result["raw_source"] = pinned(CONTROLLER / "scripts/week8_recovery_raw_authority.py", BINDINGS["raw_helper_sha256"])
+    result["raw_review"] = pinned(absolute(RAW_REVIEW), BINDINGS["raw_policy_review_sha256"])
+    result["native_review"] = pinned(absolute(BINDINGS["native_review_path"]), BINDINGS["native_review_sha256"])
+    result["renderer_receipt"] = pinned(absolute(BINDINGS["renderer_receipt_path"]), BINDINGS["renderer_receipt_sha256"])
+    for field, facts in EXPECTED_RELEASE_PROVENANCE.items():
+        result["release_provenance:" + field] = pinned(absolute(facts["path"]), facts["sha256"])
+    return result
+
+
+def input_identity_digest(material: dict[str, bytes]) -> str:
+    paths = {}
+    for name, facts in HISTORICAL["inputs"].items():
+        paths[str(Path(facts["path"]))] = material[name]
+        paths[str(STAGE / "before" / facts["retained_name"])] = material[name]
+    for name, facts in MIDDLE_INPUTS.items():
+        paths[str(STAGE / "before" / facts["retained_name"])] = material[name]
+        if facts["path"] is not None:
+            paths[str(absolute(facts["path"]))] = material[name]
+    paths.update({str(absolute(RELEASE)): material["current_release"],
+        str(absolute(MANIFEST)): material["current_manifest"],
+        str(absolute(RECEIPT)): material["current_receipt"], str(absolute(RAW_REVIEW)): material["raw_review"],
+        str(CONTROLLER / "scripts/week8_recovery_raw_authority.py"): material["raw_source"],
+        str(absolute(BINDINGS["native_review_path"])): material["native_review"],
+        str(absolute(BINDINGS["renderer_receipt_path"])): material["renderer_receipt"]})
+    for name, facts in EXPECTED_RELEASE_PROVENANCE.items():
+        paths[str(absolute(facts["path"]))] = material["release_provenance:" + name]
+    middle_sizes = {str(STAGE / "before" / facts["retained_name"]): facts["size"]
+                    for facts in MIDDLE_INPUTS.values()}
+    middle_sizes.update({str(absolute(facts["path"])): facts["size"]
+                        for facts in MIDDLE_INPUTS.values() if facts["path"] is not None})
+    identities = {}
+    for path, expected_bytes in sorted(paths.items()):
+        data, info = read(Path(path), maximum=middle_sizes.get(path))
+        require(data == expected_bytes, "input changed after its byte pin")
+        identities[path] = list(info)
+    return sha(canonical(identities))
+
+
+def create_file(path: Path, data: bytes) -> tuple[int, ...]:
+    maximum = (COMPILED_POLICY["SUCCESSOR_ADMISSION_MAX_BYTES"]
+               if path.name in {"attestation.json", "attestation.twin.json"} else None)
+    require(maximum is None or len(data) <= maximum, "attestation exceeds cap before write")
+    absent(path)
+    with path.open("xb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    observed, info = read(path, maximum=maximum)
+    require(observed == data, "create-once write/readback differs")
+    return info
+
+
+def sealed_receipt_bytes(document: dict) -> bytes:
+    document = {**document, "record_digest": sha(canonical(document))}
+    data = canonical(document) + b"\n"
+    require(type(EXTERNAL_PROOF_MAX_BYTES) is int and 0 < len(data) <= EXTERNAL_PROOF_MAX_BYTES,
+            "external publication proof exceeds its reviewed bound")
+    return data
+
+
+def receipt_document(path: Path) -> tuple[dict, str]:
+    data, _ = read(path, maximum=EXTERNAL_PROOF_MAX_BYTES)
+    document = strict_json(data)
+    require(type(document) is dict and "record_digest" in document, "receipt shape differs")
+    body = {key: value for key, value in document.items() if key != "record_digest"}
+    require(document["record_digest"] == sha(canonical(body)) and data == canonical(document) + b"\n",
+            "receipt canonical seal differs")
+    return document, sha(data)
+
+
+def report_base(kind: str, self_sha: str) -> dict:
+    return {"publication_schema_version": 2, "attestation_schema_version": 2,
+        "policy_source_sha256": BINDINGS["raw_helper_sha256"],
+        "record_type": kind, "created_at_utc": stamp(), "helper_sha256": self_sha,
+        "output_root": str(OUTPUT), "bindings": BINDINGS,
+        "release_provenance_bindings": EXPECTED_RELEASE_PROVENANCE,
+        "external_proof_max_bytes": EXTERNAL_PROOF_MAX_BYTES,
+        "owner_sha256": HISTORICAL["inputs"]["owner"]["sha256"],
+        "operational_authority_granted": False, "public_action_performed": False,
+        "historical_evidence_modified": False, "project_code_imported_or_executed": False}

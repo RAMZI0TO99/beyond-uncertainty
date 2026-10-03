@@ -1,0 +1,725 @@
+"""UNRUN Root-owned full Major036 documentation Source auditor.
+
+Prepared by /root/bootstrap_stage for genuine execution by /root. Reads source as
+bytes/JSON/AST only; never imports, compiles or invokes any selected publisher,
+helper, test or target. All outputs are exclusive one-use metadata in this
+namespace. PASS, if Root actually runs and all checks pass, is Source-only.
+"""
+import argparse
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
+
+ROOT = Path('D:/Aenv/pro2')
+WORK = ROOT / 'resume-2026-10-03-continuation001'
+STAGE = WORK / 'root-docs-major036'
+OUT = WORK / 'root-docs-independent-major036'
+MANIFEST_SHA = None
+PUBLISHER_SHA = None
+CONTEXT_SHA = None
+CONTRACT_SHA = None
+AUTHOR_SHA = None
+CHECKPOINT_SHA = None
+PRIMARY = ('AGENTS.md', 'HANDOFF.md', 'START_HERE.md',
+           'resume-2026-09-28-001/SESSION.md',
+           'resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md')
+CHECKPOINT = WORK / 'CONTINUATION_CHECKPOINT_007.md'
+SCOPE = 'LOCAL_PRIVATE_MAJOR035_DOCUMENTATION_ONLY'
+REVIEW_KEYS = ('schema_version', 'record_type', 'created_utc', 'reviewer',
+              'source_author', 'scope', 'verdict', 'publisher_sha256',
+              'manifest_sha256', 'publication_performed', 'target_execution',
+              'operational_authority')
+MAX_FILE = 8388608
+MAX_INPUTS = 600
+PHYSICAL_DECIMALS = {'root-docs-major034/ROOT_CREATION_SELECTION_034_001.json': {'/Root_owning_wall_seconds': '0.4715017'}, 'root-guard006-pipeline-prep001/ROOT_BINDER003_PHYSICAL_SOURCE_PRODUCER_001.json': {'/owning_tool/wall_time_seconds': '0.6091388'}, 'root-pro3-type003-observation001/before/type_execution_audit_001.json': {'/admission/physical_seconds': '23.708007799999997', '/admission/sample_separation_seconds': '1.131', '/admission/fresh_remaining_seconds_after_admission': '478.0018806', '/admission/fresh_reserve_before_launch': '380.77442179999997', '/physical_execution/physical_cli_seconds': '56.482255099999996', '/failure/child_elapsed_seconds': '26.109000000025844', '/evidence_binding_checks/sample_separation_seconds': '1.131'}, 'root-pro3-type003-observation001/before/root_type_physical_witness_001.json': {'/physical_cli_seconds': '56.482255099999996', '/fresh_reserve_seconds_before_launch': '380.77442179999997'}, 'root-pro3-type004-observation001/before/native_deadline_failure_analysis_001.json': {'/bounded_saved_result_context/physical_seconds': '86.412268099999991', '/bounded_saved_result_context/native_observed_parent_exit_seconds': '74.6508862', '/bounded_saved_result_context/native_prewrite_seconds': '86.07894069999999'}, 'root-pro3-type004-observation001/before/result.json': {'/elapsed_seconds': '30.796999999991385'}, 'root-pro3-type004-observation001/before/root_failed_type_cleanup_closeout_001.json': {'/physical_seconds': '86.412268099999991'}, 'root-pro3-type004-observation001/before/root_type_peer_release_closeout_001.json': {'/physical_seconds': '86.4122681'}, 'root-pro3-type004-observation001/before/root_type_physical_witness_001.json': {'/physical_cli_seconds': '86.412268099999991', '/fresh_reserve_seconds_before_launch': '484.7223345'}, 'root-pro3-type004-observation001/before/type_execution_audit_001.json': {'/actual_outcome/child_entire_elapsed_seconds': '30.796999999991385', '/admission/physical_helper_seconds': '22.3178284', '/admission/fresh_post_admission_reserve_seconds': '543.8934674', '/admission/fresh_launch_reserve_seconds': '484.7223345', '/physical_execution/physical_seconds': '86.41226809999999'}}
+
+def need(v, message):
+    if not v:
+        raise ValueError(message)
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+def enc(value):
+    return (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True,
+                       allow_nan=False) + '\n').encode('ascii')
+
+def now():
+    return datetime.now(timezone.utc).isoformat(timespec='microseconds')
+
+def exact(value, keys):
+    need(type(value) is dict and set(value) == set(keys), 'closed keyset differs')
+
+def decode(data, physical_name=None):
+    def pairs(rows):
+        result = {}
+        for key, value in rows:
+            need(key not in result, 'duplicate JSON key')
+            result[key] = value
+        return result
+    def bad(value):
+        raise ValueError('Source float/nonfinite JSON refused')
+    need(not data.startswith(b'\xef\xbb\xbf'), 'JSON BOM refused')
+    need(physical_name is None or physical_name in PHYSICAL_DECIMALS,
+         'only an externally pinned native physical record admits Decimal')
+    value = json.loads(data.decode('utf8', 'strict'), object_pairs_hook=pairs,
+                       parse_float=Decimal if physical_name else bad,
+                       parse_constant=bad)
+    if physical_name:
+        actual = {}
+        def walk(item, path):
+            if type(item) is Decimal:
+                need(item.is_finite(), 'nonfinite physical measurement')
+                actual[path] = str(item)
+            elif type(item) is dict:
+                for key, child in item.items():
+                    walk(child, path + '/' + key)
+            elif type(item) is list:
+                for index, child in enumerate(item):
+                    walk(child, path + '/' + str(index))
+        walk(value, '')
+        need(actual == PHYSICAL_DECIMALS[physical_name],
+             'native record Decimal field/value domain differs')
+    return value
+
+def raw(s):
+    return [getattr(s, key) for key in (
+        'st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns',
+        'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')]
+
+def ancestors(p):
+    result = []
+    for q in reversed(p.parents):
+        s = q.lstat()
+        need(stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode)
+             and not s.st_file_attributes & 1024, 'plain ancestor required')
+        result.append([str(q), s.st_dev, s.st_ino])
+    return result
+
+def read(p, pin=None, size=None):
+    need(p.is_absolute(), 'absolute pinned path required')
+    ancestry = ancestors(p)
+    a = p.lstat()
+    need(stat.S_ISREG(a.st_mode) and not stat.S_ISLNK(a.st_mode)
+         and a.st_nlink == 1 and not a.st_file_attributes & 1024
+         and 0 <= a.st_size <= MAX_FILE, 'plain one-link bounded file')
+    with p.open('rb', buffering=0) as handle:
+        b = os.fstat(handle.fileno())
+        x, y = raw(a), raw(b)
+        need(x[:4] + x[5:] == y[:4] + y[5:] and x[4] == x[8],
+             'cross-API8 identity excluding ctime; path ctime/birth')
+        data = handle.read(a.st_size + 1)
+        need(raw(b) == raw(os.fstat(handle.fileno())), 'same-handle raw9 drift')
+    need(raw(a) == raw(p.lstat()) and ancestors(p) == ancestry,
+         'same-path raw9/ancestor drift')
+    need(len(data) == a.st_size, 'bounded exact read')
+    need(pin is None or (type(pin) is str and
+         re.fullmatch('[0-9a-f]{64}', pin) and sha(data) == pin),
+         'external SHA differs')
+    need(size is None or (type(size) is int and size == len(data)),
+         'external byte count differs')
+    return data, dict(path=str(p), sha256=sha(data), bytes=len(data),
+                     path_raw9=x, descriptor_raw9=y, ancestors=ancestry)
+
+def local(relative):
+    need(type(relative) is str and 0 < len(relative) <= 399
+         and '\\' not in relative and not relative.startswith('/')
+         and all(part not in ('', '.', '..') and ':' not in part
+                 for part in relative.split('/')), 'canonical local path')
+    return ROOT.joinpath(*relative.split('/'))
+
+def once(relative, data):
+    need(type(data) is bytes and len(data) <= MAX_FILE, 'owned output cap')
+    path = OUT.joinpath(*relative.split('/'))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ancestry = ancestors(path)
+    need(not path.exists() and not path.is_symlink(), 'owned role already exists')
+    with path.open('xb') as handle:
+        need(handle.write(data) == len(data), 'complete exclusive owned write')
+        handle.flush()
+        os.fsync(handle.fileno())
+    need(ancestors(path) == ancestry and read(path, sha(data), len(data))[0] == data,
+         'owned write/readback drift')
+
+def ticks(text):
+    need(type(text) is str and re.fullmatch(
+        r'\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6,7}\+00:00', text),
+         'canonical Py6/PS7 UTC tick string')
+    base, fraction = text[:-6].split('.')
+    dt = datetime.fromisoformat(base + '+00:00')
+    need(dt.strftime('%Y-%m-%dT%H:%M:%S') == base, 'canonical UTC date')
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    delta = dt - epoch
+    return (delta.days * 86400 + delta.seconds) * 10000000 + int(fraction.ljust(7, '0'))
+
+
+PACKET = {'manifest': {'path': 'resume-2026-10-03-continuation001/root-docs-major036/STAGED_DOCUMENTATION_MANIFEST_036_002.json', 'sha256': '7667c4fdecc2422295ba00fdba51f7a0e2382e9de18d433b4809de99b15847e3', 'bytes': 64813}, 'publisher': {'path': 'resume-2026-10-03-continuation001/root-docs-major036/PUBLISH_MAJOR036_DOCS_002.py', 'sha256': '0a8b501773c4d3b21e933d27acba7dd04f85e6d52f878db15b1c00b6fa982aab', 'bytes': 9951}, 'context': {'path': 'resume-2026-10-03-continuation001/root-docs-major036/SELECTED_SOURCE_CONTEXT_036_002.json', 'sha256': '5bb236b033f2a25ebf8ae83c7dc8b2cb111fedf5e39e4f1359b9f2c8b19f2b9a', 'bytes': 1172}, 'contract': {'path': 'resume-2026-10-03-continuation001/root-docs-major036/DOCUMENTATION_SOURCE_CONTRACT_036_002.json', 'sha256': '3eab6469ea2456fe7cfc4e053aa1adc2436c3a28dae7fa54a7991c4dece41e8e', 'bytes': 2783}, 'author_audit': {'path': 'resume-2026-10-03-continuation001/root-docs-major036/AUTHOR_MAJOR036_STAGE_AUDIT_002.json', 'sha256': 'a375aec36dae9c762ab50bdb18bc7a8536742b1365ba69ae8927842ceb38b1b3', 'bytes': 411807}, 'facts': {'path': 'resume-2026-10-03-continuation001/root-docs-major036/FINAL_FACT_SELECTION_036_002.json', 'sha256': '3d389a50e398e3336e38503453151fe7f82c9f426cdff22d4e4bb697716b53c2', 'bytes': 7306}, 'prepared_utc': '2026-10-03T18:03:42.884502+00:00', 'pair_count': 77, 'link_count': 54, 'context_keys': ['TYPE004_root_selection', 'checker_acceptance', 'factual_selection_sha256', 'full_ctor004_source_sha256', 'operational_authority', 'prepared_utc', 'prior035_creation_sha256', 'publication_performed', 'record_type', 'schema_version', 'scope', 'source_author', 'target_execution'], 'contract_keys': ['actual_Root_publication', 'actual_review', 'all_other_function_ASTs_exact', 'changed_function_ASTs', 'checkpoint', 'declared_literal_substitutions', 'different_creation_review', 'exact_publisher_byte_reversal', 'fixed_review_path', 'genuine_future_review_keys', 'genuine_future_review_nominals', 'inherited_publisher035_sha256', 'operational_authority', 'prepared_utc', 'primary_paths', 'publisher_function_count', 'publisher_main_or_definitions_executed', 'publisher_sha256', 'record_type', 'schema_version', 'scope', 'source_author', 'target_execution', 'validation_and_publication_logic_preserved'], 'author_audit_keys': ['actual_models_or_fit_or_capture', 'changed_function_ASTs', 'currentConsumer24_UNRUN', 'current_synthetic28_actual_acceptance_only', 'distinct_source_completion_only', 'exact_publisher_byte_reversal', 'finite_input_count', 'goal_pause_after_documentation_closeout_not_project_completion', 'helper_test_target_execution', 'latest_user_stop_directive_sha256', 'named_role_absences', 'no_new_INIT_models_pool_capture_or_tests_authorized', 'observations', 'old_pending_snapshot_bytes_preserved', 'operational_authority', 'prepared_utc', 'publication_performed', 'publisher_definitions_import_main_executed', 'publisher_function_count', 'record_type', 'schema_version', 'scope', 'selected_link_count', 'selected_pro3_evidence_attributed_only', 'selected_pro3_full_component_PASS', 'source001_unpublished_superseded_history_preserved', 'source002_partial_refusal_preserved', 'source_author', 'utility6_plus_F1_deferred_UNRUN', 'whole_five_primary035_bytes_preserved'], 'fact_keys': ['TYPE004_external_observation_complete', 'checker_acceptance_complete', 'operational_authority', 'publication_performed', 'record_predicates', 'record_type', 'root_compact_or_Root_execution_selection_created_by_author', 'schema_version', 'selected_records', 'source036_001_unpublished_superseded_history', 'source_author', 'target_execution'], 'fact_roles': {'checker_acceptance': {'bytes': 3109, 'path': 'root-checker28-actual-independent002/INDEPENDENT_ACTUAL_CHECKER28_REVIEW_002.json', 'role': 'checker_acceptance', 'sha256': '0ab74ef0c01f50b9b4ee2629cda76c609d94b35ed16cfcbf167a5a59c5c637ad'}, 'Root_checker_selection': {'bytes': 3664, 'path': 'root-checker28-runtime-prep002/ROOT_ACTUAL_CHECKER28_ACCEPTANCE_SELECTION_002.json', 'role': 'Root_checker_selection', 'sha256': '2e1b4b51d384374d7a7eb41c88585e49f435b15f802922d2b62758ccae296c49'}, 'checker_details': {'bytes': 655256, 'path': 'root-checker28-actual-independent002/INDEPENDENT_ACTUAL_CHECKER28_DETAILS_002.json', 'role': 'checker_details', 'sha256': '198c2180ccae6dcc32d41ff0dafb589fff52272588cbf598630a829cb39e6d72'}, 'checker_post': {'bytes': 110700, 'path': 'root-checker28-actual-independent002/POST_ACTUAL_CHECKER28_REVIEW_002.json', 'role': 'checker_post', 'sha256': '3197dfee7f980a703df0ced0b63453bbdd35dbc929910b8a9187969de1dabce5'}, 'checker_handoff': {'bytes': 1268, 'path': 'root-checker28-actual-independent002/HANDOFF.md', 'role': 'checker_handoff', 'sha256': '21bbda83ece872ba3af7cbf1102808c3f92cf5e45294ce9f9e4239f2be9e1590'}, 'TYPE004_root_selection': {'bytes': 12709, 'path': 'root-pro3-type004-observation001/ROOT_EXTERNAL_TYPE004_FAILURE_SOURCE_SELECTION_001.json', 'role': 'TYPE004_root_selection', 'sha256': '50db55938242cec370c326a0917e75272e7e2bead6fc90a7b7f7c5395720c8d6'}, 'TYPE004_fixed_00': {'bytes': 41864, 'path': 'root-pro3-type004-observation001/before/type_execution_audit_001.json', 'role': 'TYPE004_fixed_00', 'sha256': 'abf3d73e48860b461d186fad0ad63865c9d94680087e369404d4bd71539a3f55'}, 'TYPE004_fixed_01': {'bytes': 5321, 'path': 'root-pro3-type004-observation001/before/root_manual_failure_review_001.json', 'role': 'TYPE004_fixed_01', 'sha256': '5679f2d9d93118f61fa768d40a3f3f38dabfc9d1833139f86282493bbe86e8e9'}, 'TYPE004_fixed_02': {'bytes': 1622, 'path': 'root-pro3-type004-observation001/before/root_type_physical_witness_001.json', 'role': 'TYPE004_fixed_02', 'sha256': '065032e86c825ee706796ada2f6f614f6d6f071b9a948be9d395b2869e56597e'}, 'TYPE004_fixed_03': {'bytes': 1720, 'path': 'root-pro3-type004-observation001/before/root_failed_type_cleanup_closeout_001.json', 'role': 'TYPE004_fixed_03', 'sha256': '4b7a3694a306b4b6fdca1c0b8b055a4044e68e7966798110786de908d2d4f87a'}, 'TYPE004_fixed_04': {'bytes': 1167, 'path': 'root-pro3-type004-observation001/before/root_type_peer_release_closeout_001.json', 'role': 'TYPE004_fixed_04', 'sha256': 'efc71561dcb3aa2cb638d3fb9c8ce84fa31eb722387cf72166faea4912a1ba0f'}, 'TYPE004_fixed_05': {'bytes': 17786, 'path': 'root-pro3-type004-observation001/before/native_deadline_failure_analysis_001.json', 'role': 'TYPE004_fixed_05', 'sha256': '8bf31d04354804b7439d412da88a613df5f74ccbc7c6d9faf13f663d4e2cfb5b'}, 'TYPE004_fixed_06': {'bytes': 24910, 'path': 'root-pro3-type004-observation001/before/native_precision_contract_check_001.json', 'role': 'TYPE004_fixed_06', 'sha256': 'dffda4ebd005686230cc83b9119e04cf0809ecfdf4c94749c523e49d30f6e4e4'}, 'TYPE004_fixed_07': {'bytes': 4195, 'path': 'root-pro3-type004-observation001/before/result.json', 'role': 'TYPE004_fixed_07', 'sha256': '607c1c191df66231121086a4e47fb42854fd07291acdb16aeadd39db22ed68eb'}, 'TYPE004_fixed_08': {'bytes': 45, 'path': 'root-pro3-type004-observation001/before/mypy.stdout.log', 'role': 'TYPE004_fixed_08', 'sha256': '818ae3656b46f85d83b5659f47a0ceca113dd2a7f21fc13b83a23748e55da3c3'}, 'TYPE004_fixed_09': {'bytes': 0, 'path': 'root-pro3-type004-observation001/before/mypy.stderr.log', 'role': 'TYPE004_fixed_09', 'sha256': 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'}, 'TYPE004_fixed_10': {'bytes': 7916, 'path': 'root-pro3-type004-observation001/before/ROOT_PRO3_TYPE_COMPONENT_RELEASE_004.json', 'role': 'TYPE004_fixed_10', 'sha256': 'f68426d4d2bacf05a74e46e6808f953ccf966b89147ef5d753f1c8df21f9b18d'}, 'checker_physical': {'bytes': 7630, 'path': 'root-checker28-runtime-prep002/ROOT_ACTUAL_CHECKER28_PHYSICAL_WITNESS_002.json', 'role': 'checker_physical', 'sha256': '35571fbe0d9d1931b813c40cab7cfef2a37063100ffdf118515c0883fa40c82d'}, 'Root_config18': {'bytes': 7609, 'path': 'metadata3-actual-checker-prep001/ACTUAL_CHECKER_BINDING_002.json', 'role': 'Root_config18', 'sha256': 'c731bbe787ff03812aaf5757fe9edf4f5169daf889dcfa4bb57ca53ff595b3e4'}, 'Root_ctor_compact': {'bytes': 622, 'path': 'root-guard006-model-prep001/INDEPENDENT_MODEL_CONSTRUCTOR_SOURCE_REVIEW_004.json', 'role': 'Root_ctor_compact', 'sha256': '43bc4b3345818a47a6ce2d4bcc4567ff3f524e02209a14a1df3dbbee28e9ca2f'}, 'Root_user_stop': {'bytes': 993, 'path': 'ROOT_USER_FINISH_INFLIGHT_AND_STOP_001.json', 'role': 'Root_user_stop', 'sha256': '490a1da1af21c3ed2a867246f8fee5affc1c4eee8a199a50daf608eec172bc5f'}}, 'checkpoint': {'bytes': 6457, 'path': 'resume-2026-10-03-continuation001/root-docs-major036/candidates002/resume-2026-10-03-continuation001/CONTINUATION_CHECKPOINT_007.md', 'sha256': 'cff4f7af5e84b4c9961abaf2b3d37237779e684c427c0ce44adfd06adca20763'}, 'sections': [{'path': 'resume-2026-10-03-continuation001/root-docs-major036/selected-sections002/section-0.md', 'sha256': 'c346a466aa07e470c27e6f494ff9ba54541d2b223d13788be41067fab718f87b', 'bytes': 1808}, {'path': 'resume-2026-10-03-continuation001/root-docs-major036/selected-sections002/section-1.md', 'sha256': '6bb662d436661fbb3c0a8a73df209f0482ff46a4ac4e028b7cd6a74fd274ff76', 'bytes': 6528}, {'path': 'resume-2026-10-03-continuation001/root-docs-major036/selected-sections002/section-2.md', 'sha256': 'a71cb733870b83bd58c7d5b1e7a2aa11a22565a4a51e451c5a24377a54a418fb', 'bytes': 2261}, {'path': 'resume-2026-10-03-continuation001/root-docs-major036/selected-sections002/section-3.md', 'sha256': 'b41e7969d4080914694ebb7fd4e623f02929a52d9373f8d866d4b615e8a20dda', 'bytes': 6598}, {'path': 'resume-2026-10-03-continuation001/root-docs-major036/selected-sections002/section-4.md', 'sha256': '0e84e72fedd8df93f0764870c5dc5abe93efbe1f68c184748d5ec288b44fdf9c', 'bytes': 4557}], 'creation_selection': {'path': 'resume-2026-10-03-continuation001/root-docs-major035/ROOT_CREATION_SELECTION_035_001.json', 'sha256': '3977d6367b4062238ccd01cf7bc0720e25650a29278726b5d0f64e8673438e6a', 'bytes': 892}, 'ctor_full': {'path': 'resume-2026-10-03-continuation001/root-model-constructor-independent004/INDEPENDENT_MODEL_CONSTRUCTOR004_SOURCE_DETAILS_001.json', 'sha256': '66f54a51ab4f9c4055a49e460ba61408122eea3de7650a82689f67eb7a54bc21', 'bytes': 1289742}, 'ctor_full_predicates': {'reviewer': '/root/actual_record_checker', 'source_author': '/root/pubnative_review', 'verdict': 'PASS_STATIC_CONSTRUCTOR004_SOURCE_ONLY_ACTUAL_MODELS_AND_FIT_UNREADY', 'runtime_acceptance': False, 'operational_authority': False}, 'checker_acceptance_keys': ['actual_project_metadata_or_current24', 'conservative_physical_upper_seconds', 'consumed_no_replay', 'created_utc', 'diagnostic_bytes', 'discovery_sha256', 'errors', 'event_stream_sha256', 'events', 'failures', 'finite_inputs', 'full_details', 'hard_OS_Job_or_descendant_or_global_quiet', 'limitations', 'methods', 'models_or_bound_pool', 'operational_authority', 'physical_limit_seconds', 'post_readback', 'producer', 'record_type', 'result_sha256', 'reviewer', 'reviewer_target_execution', 'reviewer_test_execution', 'root_physical_witness_sha256', 'root_selection_sha256', 'schema_version', 'scope', 'skips', 'source_byte_proof_sha256', 'source_copies', 'source_peer_sha256', 'source_proof_rows', 'subtests', 'successful_parent_terminals', 'three_observations', 'verdict'], 'checker_acceptance_predicates': {'schema_version': 1, 'record_type': 'independent_actual_synthetic_checker28_review', 'reviewer': '/root/owner_docs_review', 'producer': '/root', 'scope': 'SYNTHETIC_METADATA3_CHECKER28_STDLIB_REGRESSIONS_ONLY', 'verdict': 'PASS_ACTUAL_SYNTHETIC_CHECKER28_ONLY', 'methods': 28, 'subtests': 24, 'events': 80, 'errors': 0, 'failures': 0, 'skips': 0, 'diagnostic_bytes': 0, 'conservative_physical_upper_seconds': 38, 'physical_limit_seconds': 60, 'actual_project_metadata_or_current24': False, 'models_or_bound_pool': False, 'hard_OS_Job_or_descendant_or_global_quiet': False, 'operational_authority': False, 'consumed_no_replay': True, 'finite_inputs': 188, 'source_copies': 188, 'source_proof_rows': 156, 'successful_parent_terminals': 28, 'reviewer_test_execution': False, 'reviewer_target_execution': False}, 'checker_post_predicates': {'reviewer': '/root/owner_docs_review', 'schema_version': 1, 'all_exact': True, 'finite_inputs': 188, 'target_execution': False, 'operational_authority': False}, 'TYPE004_selection_keys': ['Root_pro2_independent_process_scan_or_Job_or_global_quiet_claim', 'TYPE001_original_unretained_failure_cause_explained', 'actual_TYPE005_patch_preparation_or_execution_attested_by_this_observer', 'actual_mypy_zero_exit_205_files_observed', 'actual_runtime_validation_scientific_or_operational_authority_granted', 'all11_fixed_inputs_triple_read_copy_post_exact', 'all58_manual_saved_pin_entries_reaudited_by_this_observer', 'attempt_and_grant004_consumed_no_replay', 'author', 'decision', 'explicit_peer_release_completion_timestamp_unmeasured_preserved', 'external_source_observations', 'full430_source_or3142_runtime_or765_absences_reaudited_by_this_observer', 'full_guarded_component_accepted', 'native_deadline_difference_nanoseconds', 'native_decimal_fields_parsed_documentarily_original_bytes_preserved', 'native_failure', 'native_false_cleanup_claim_preserved', 'native_final_postdeadline_checks_unreached', 'record_type', 'recorded_utc', 'saved_parent_private_job_cleanup_and_three_named_pid_absences_attributed_to_Pro3_Root', 'schema_version', 'separate_actual_audit_abf3_and_manual5679_scopes_selected_only', 'successor_native_floor_only_new_operations_authority_selected_not_execution_grant'], 'TYPE004_external_paths': ['D:\\Aenv\\pro3\\runs\\coordination\\next_step_20261003_types4\\type_execution_audit_001.json', 'D:\\Aenv\\pro3\\runs\\coordination\\next_step_20261003_types4\\root_manual_failure_review_001.json', 'D:\\Aenv\\pro3\\runs\\coordination\\next_step_20261003_types4\\root_type_physical_witness_001.json', 'D:\\Aenv\\pro3\\runs\\coordination\\next_step_20261003_types4\\root_failed_type_cleanup_closeout_001.json', 'D:\\Aenv\\pro3\\runs\\coordination\\next_step_20261003_types4\\root_type_peer_release_closeout_001.json', 'D:\\Aenv\\pro3\\runs\\coordination\\next_step_20261003_types4\\native_deadline_failure_analysis_001.json', 'D:\\Aenv\\pro3\\runs\\coordination\\next_step_20261003_types4\\native_precision_contract_check_001.json', 'D:\\Aenv\\pro3\\runs\\phase2\\type_validation\\pro3_types_20261003_004\\result.json', 'D:\\Aenv\\pro3\\runs\\phase2\\type_validation\\pro3_types_20261003_004\\mypy.stdout.log', 'D:\\Aenv\\pro3\\runs\\phase2\\type_validation\\pro3_types_20261003_004\\mypy.stderr.log', 'D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\ROOT_PRO3_TYPE_COMPONENT_RELEASE_004.json'], 'named_absences': ['root-guard006-pipeline-prep001/ROOT_PIPELINE_INIT_TRACE_002.json', 'root-guard006-pipeline-prep001/ROOT_PIPELINE_TRUST_SELECTION_002.json', 'root-guard006-pipeline-prep001/ROOT_METADATA_PIPELINE_GO_002.json', 'metadata3-actual-checker-prep001/CHECKER_READY_BEFORE_006.json', 'metadata3-actual-checker-prep001/CHECKER_READY_AFTER_006.json', 'guard006-bound-late-checker-prep001/BOUND_LATE_CHECKER_READY_006.json', 'root-guard006-model-prep001/ACTUAL_SOURCE_POOL_PROJECTION_002.json', 'root-guard006-model-prep001/UTILITY_SOURCE_BINDINGS_002.json', 'root-guard006-model-prep001/UTILITY_SOURCE_PROTOCOL_002.json', 'root-guard006-model-prep001/COMPOSER_FRESH_SOURCE_MODEL_002.json', 'guard006-bound-late-checker-prep001/review_guard006_actual_records_001.BOUND.py', 'guard006-bound-late-checker-prep001/compose-root-review-packet-006.BOUND.py'], 'required_document_phrases': {'0': ['passed28 methods+24 subtests/80 events', 'no full component PASS', 'Actual model fit/pool/READY/capture/current24 remain absent', 'finish anything that is running now. and then update the docs and then stop.', 'no new INIT2, model constructor, pool20, capture, unit or test entry'], '1': ['accept28 successful methods plus24 subtests/80 ordered events', 'Mypy returned zero errors across205 files', 'No final native postdeadline checks or full component/runtime/scientific PASS', 'INIT2/trust2, actual assembled models and fit', 'finish anything that is running now. and then update the docs and then stop.', 'no new INIT2, model constructor, pool20, capture, unit or test entry'], '2': ['passed28 methods+24 subtests/80 events', 'no full component PASS', 'INIT2/trust2, actual assembled models and fit', 'finish anything that is running now. and then update the docs and then stop.', 'no new INIT2, model constructor, pool20, capture, unit or test entry'], '3': ['accept28 successful methods plus24 subtests/80 ordered events', 'No final native postdeadline checks or full component/runtime/scientific PASS', 'INIT2/trust2, actual assembled models and fit', 'finish anything that is running now. and then update the docs and then stop.', 'no new INIT2, model constructor, pool20, capture, unit or test entry'], '4': ['accept28 successful methods plus24 subtests/80 ordered events', 'No final native postdeadline checks or full component/runtime/scientific PASS', 'INIT2/trust2, actual assembled models and fit', 'finish anything that is running now. and then update the docs and then stop.', 'no new INIT2, model constructor, pool20, capture, unit or test entry']}, 'required_checkpoint_phrases': ['accept28 successful methods plus24 subtests/80 ordered events', 'Mypy returned zero errors across205 files', 'No final native postdeadline checks or full component/runtime/scientific PASS', 'All remain UNRUN', 'INIT2/trust2, actual assembled models and fit', 'no new INIT2, model constructor, pool20, capture, unit or test entry']}
+
+def nominal(value, expected, message):
+    need(type(value) is type(expected) and value == expected, message)
+
+def main():
+    need(Path(__file__).absolute() == OUT / 'ROOT_REVIEW_MAJOR036_SOURCE_002.py',
+         'fixed genuine Root auditor path')
+    need(type(PACKET) is dict, 'author Source packet has not been frozen')
+    options = argparse.ArgumentParser(allow_abbrev=False)
+    options.add_argument('--expected-self-sha256', required=True)
+    args = options.parse_args()
+    registry = {}
+    def add(path, pin=None, size=None):
+        data, _ = read(path, pin, size)
+        entry = (sha(data), len(data))
+        need(path not in registry or registry[path] == entry, 'conflicting finite pin')
+        registry[path] = entry
+        need(len(registry) <= MAX_INPUTS, 'finite Source registry cap')
+        return data
+    def addrow(row):
+        exact(row, ('path', 'sha256', 'bytes'))
+        need(type(row['bytes']) is int and 0 <= row['bytes'] <= MAX_FILE,
+             'typed bounded Source row')
+        return add(local(row['path']), row['sha256'], row['bytes'])
+    def selected(name):
+        key = WORK.relative_to(ROOT).as_posix() + '/' + name
+        need(key in final, 'fact absent from final036 finite inputs')
+        pin, size = final[key]
+        return decode(add(local(key), pin, size),
+                      name if name in PHYSICAL_DECIMALS else None)
+    def selected_role(role):
+        row = roles[role]
+        return selected(row['path'])
+    def absent(path):
+        ancestry = ancestors(path)
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            need(ancestors(path) == ancestry, 'absence ancestor drift')
+            return str(path)
+        raise ValueError('named one-use Source role exists: ' + str(path))
+    add(Path(__file__), args.expected_self_sha256)
+    manifest = decode(addrow(PACKET['manifest']))
+    exact(manifest, ('schema_version', 'record_type', 'author', 'prepared_utc',
+        'checkpoint', 'primaries', 'inputs', 'links', 'source_only',
+        'publication_performed', 'target_execution', 'operational_authority'))
+    nominal(manifest['schema_version'], 1, 'schema1')
+    nominal(manifest['record_type'], 'major036_documentation_stage', 'major036 stage')
+    nominal(manifest['author'], '/root/actual_record_checker', 'genuine Source author')
+    nominal(manifest['prepared_utc'], PACKET['prepared_utc'], 'frozen snapshot')
+    nominal(manifest['source_only'], True, 'Source-only stage')
+    need(all(manifest[key] is False for key in ('publication_performed',
+         'target_execution', 'operational_authority')), 'Source-only manifest flags')
+    need(type(manifest['inputs']) is list and len(manifest['inputs']) == PACKET['pair_count']
+         and type(manifest['links']) is list and len(manifest['links']) == PACKET['link_count'],
+         'actual036 finite pair/link counts')
+    prepared = ticks(manifest['prepared_utc'])
+    publisher = addrow(PACKET['publisher'])
+    context = decode(addrow(PACKET['context']))
+    contract = decode(addrow(PACKET['contract']))
+    author = decode(addrow(PACKET['author_audit']))
+    facts = decode(addrow(PACKET['facts']))
+    exact(context, PACKET['context_keys'])
+    exact(contract, PACKET['contract_keys'])
+    exact(author, PACKET['author_audit_keys'])
+    exact(facts, PACKET['fact_keys'])
+    for item in (context, contract, author):
+        nominal(item['source_author'], '/root/actual_record_checker', 'Source author only')
+        nominal(item['scope'], SCOPE, 'exact documentation scope')
+        nominal(item['prepared_utc'], manifest['prepared_utc'], 'same frozen stage clock')
+        need(item['operational_authority'] is False, 'no operational authority')
+    need(context['publication_performed'] is False and context['target_execution'] is False
+         and contract['target_execution'] is False
+         and contract['publisher_main_or_definitions_executed'] is False
+         and author['publication_performed'] is False
+         and author['publisher_definitions_import_main_executed'] is False
+         and author['helper_test_target_execution'] is False,
+         'author did not publish/import/execute selected Source')
+    nominal(author['finite_input_count'], PACKET['pair_count'], 'author finite pair count')
+    nominal(author['selected_link_count'], PACKET['link_count'], 'author finite links')
+    need(author['whole_five_primary035_bytes_preserved'] is True
+         and author['current_synthetic28_actual_acceptance_only'] is True
+         and author['currentConsumer24_UNRUN'] is True
+         and author['utility6_plus_F1_deferred_UNRUN'] is True
+         and author['actual_models_or_fit_or_capture'] is None
+         and author['selected_pro3_evidence_attributed_only'] is True
+         and author['selected_pro3_full_component_PASS'] is False
+         and author['old_pending_snapshot_bytes_preserved'] is True,
+         'author current scoped/remaining work flags')
+    nominal(facts['source_author'], '/root/actual_record_checker', 'own fact author, not Root')
+    need(facts['publication_performed'] is False and facts['target_execution'] is False
+         and facts['checker_acceptance_complete'] is True
+         and facts['TYPE004_external_observation_complete'] is True,
+         'genuine completed facts required before staged036')
+    roles = {}
+    need(type(facts['selected_records']) is list
+         and len(facts['selected_records']) == len(PACKET['fact_roles']), 'finite fact roles')
+    for row in facts['selected_records']:
+        exact(row, ('path', 'sha256', 'bytes', 'role'))
+        need(type(row['role']) is str and row['role'] not in roles
+             and row['role'] in PACKET['fact_roles'], 'unique allowed selected fact role')
+        nominal(row, PACKET['fact_roles'][row['role']], 'externally selected exact fact pointer')
+        roles[row['role']] = row
+    need(set(roles) == set(PACKET['fact_roles']), 'all required facts present')
+
+    prior = decode(add(WORK / 'root-docs-major035/STAGED_DOCUMENTATION_MANIFEST_035_001.json',
+        'a6c2679b368b632f7db6ba04befa0474fa2f499a5e03ecf7ea66c279d10bbb51', 53520))
+    exact(prior, ('schema_version','record_type','author','prepared_utc','checkpoint',
+        'primaries','inputs','links','source_only','publication_performed',
+        'target_execution','operational_authority'))
+    need(len(prior['inputs']) == 54 and len(prior['links']) == 59
+         and prior['record_type'] == 'major035_documentation_stage', 'whole authentic035 stage')
+    prior_rows = {row['destination']: row for row in prior['primaries']}
+    unpublished1 = decode(add(STAGE / 'STAGED_DOCUMENTATION_MANIFEST_036_001.json',
+        '22e915c37ee438610909ee589cf40070a435204a34326b964da6a0669461cba7', 55592))
+    exact(unpublished1, ('schema_version','record_type','author','prepared_utc','checkpoint',
+        'primaries','inputs','links','source_only','publication_performed',
+        'target_execution','operational_authority'))
+    need(len(unpublished1['inputs']) == 64 and len(unpublished1['links']) == 48
+         and unpublished1['publication_performed'] is False
+         and unpublished1['target_execution'] is False,
+         'superseded unpublished036-001 remains immutable Source history')
+    superseded = []
+    for packet in (manifest, prior, unpublished1):
+        addrow(packet['checkpoint'])
+        need(tuple(row['destination'] for row in packet['primaries']) == PRIMARY,
+             'five canonical primaries/order')
+        for row in packet['primaries']:
+            exact(row, ('destination', 'before', 'candidate', 'preservation'))
+            addrow(row['before'])
+            addrow(row['candidate'])
+        need(len({row['original']['path'].casefold() for row in packet['inputs']})
+             == len(packet['inputs']), 'unique original paths')
+        need(len({row['copy']['path'].casefold() for row in packet['inputs']})
+             == len(packet['inputs']), 'unique copied paths')
+        for row in packet['inputs']:
+            exact(row, ('original', 'copy'))
+            exact(row['original'], ('path', 'sha256', 'bytes'))
+            if packet is prior and row['original']['path'] in PRIMARY:
+                old = prior_rows[row['original']['path']]
+                need(row['original']['sha256'] == old['before']['sha256']
+                     and row['original']['bytes'] == old['before']['bytes']
+                     and addrow(old['before']) == addrow(row['copy']),
+                     'historical034 whole primary matches archived035 before/copy')
+                superseded.append(dict(original=row['original'], archived_before=old['before'],
+                    exact_copy=row['copy'], selected_current035=old['candidate'],
+                    obsolete034_live_pin_replayed=False))
+            else:
+                need(addrow(row['original']) == addrow(row['copy']), 'complete exact packet pair')
+    need(len(superseded) == 5, 'exact five prior035 superseded live034 primary roles')
+    final = {row['original']['path']: (row['original']['sha256'], row['original']['bytes'])
+             for row in manifest['inputs']}
+    need(len(final) == PACKET['pair_count'], 'exact current pair membership')
+    boundary = b'\n\n---\n\nEarlier primary bytes below remain exact history; their pending statements describe the earlier selected snapshot.\n\n'
+    texts, history = [], []
+    for index, (row, old) in enumerate(zip(manifest['primaries'], prior['primaries'], strict=True)):
+        before, candidate = addrow(row['before']), addrow(row['candidate'])
+        need(before == add(local(row['destination']), sha(before), len(before))
+             == addrow(old['candidate']), 'live035/current036-before/prior035 candidate exact')
+        section = addrow(PACKET['sections'][index])
+        if index < 3:
+            need(row['preservation'] == 'suffix' and candidate == section + boundary + before,
+                 'complete035 suffix3 and final new prefix')
+            addition = candidate[:-len(before)]
+        else:
+            need(row['preservation'] == 'prefix' and candidate == before + b'\n\n' + section,
+                 'complete035 prefix2 and final new suffix')
+            addition = candidate[len(before):]
+        need(manifest['prepared_utc'].encode('ascii') in addition
+             and b'_WORK_' not in addition and b'_PREPARED_UTC_' not in addition,
+             'complete final additions, no draft placeholders')
+        text = addition.decode('utf8', 'strict')
+        for phrase in PACKET['required_document_phrases'][str(index)]:
+            need(phrase in text, 'qualified actual036 wording: ' + phrase)
+        need('20:39:32.1487556' in text and 'reserve510=Root450+after60' in text
+             and 'whole-host quiet' in text, 'lease/caps/quiet limits')
+        texts.append(dict(document=row['destination'], bytes=len(addition), sha256=sha(addition), text=text))
+        history.append(dict(destination=row['destination'], preservation=row['preservation'],
+            before=row['before'], candidate=row['candidate'], entire_prior035_bytes_exact=True,
+            live035_equals_before=True))
+    checkpoint = addrow(manifest['checkpoint'])
+    need(manifest['checkpoint'] == PACKET['checkpoint'], 'exact checkpoint007 identity')
+    texts.append(dict(document=CHECKPOINT.relative_to(ROOT).as_posix(), bytes=len(checkpoint),
+                      sha256=sha(checkpoint), text=checkpoint.decode('utf8', 'strict')))
+    for phrase in PACKET['required_checkpoint_phrases']:
+        need(phrase in texts[-1]['text'], 'checkpoint036 qualification: ' + phrase)
+    extracted = []
+    for item in texts:
+        for target in re.findall(r'\]\(([^)]+)\)', item['text']):
+            need(not target.startswith(('https:', 'http:', 'file:')), 'local final-location links')
+            resolved = (local(item['document']).parent / target).resolve()
+            relative = resolved.relative_to(ROOT).as_posix()
+            extracted.append(dict(origin=item['document'], target=target, resolved_path=relative))
+            if resolved != CHECKPOINT:
+                need(relative in final, 'selected link has an independently pinned036 input')
+                add(resolved, *final[relative])
+    def linkkey(row):
+        exact(row, ('origin', 'target', 'resolved_path'))
+        return row['origin'], row['target'], row['resolved_path']
+    need(len(extracted) == PACKET['link_count'] and sorted(map(linkkey, extracted))
+         == sorted(map(linkkey, manifest['links'])), 'all final036 links reconstructed')
+    for row in prior['links']:
+        exact(row, ('origin', 'target', 'resolved_path'))
+        add(local(row['resolved_path']))
+    for row in unpublished1['links']:
+        exact(row, ('origin', 'target', 'resolved_path'))
+        if local(row['resolved_path']) != CHECKPOINT:
+            add(local(row['resolved_path']))
+
+    stop = selected_role('Root_user_stop')
+    exact(stop, ('schema_version','record_type','author','recorded_utc','user_quote',
+        'supersedes_prior_optional_bound_model_stopping_assumption',
+        'finish_current_documentation_and_audit_closeout_only',
+        'new_INIT2_model_constructor_pool20_capture_unit_or_test_entry_authorized',
+        'actual_INIT2_models_pool20_READY_metadata_GO_capture_current24_remain_absent_or_UNRUN',
+        'immutable_owner_master_de8f_endNone_is_not_rewritten',
+        'owner_expiry_or_new_finite_lease_or_new_30h_inferred',
+        'goal_action_after_documentation_closeout','Goal_currently_already_paused_or_complete',
+        'no_replay_public_push_or_operational_authority'))
+    need(stop['author'] == '/root'
+         and stop['record_type'] == 'root_selected_user_finish_inflight_then_stop_directive'
+         and stop['user_quote'] == 'finish anything that is running now. and then update the docs and then stop.'
+         and stop['supersedes_prior_optional_bound_model_stopping_assumption'] is True
+         and stop['finish_current_documentation_and_audit_closeout_only'] is True
+         and stop['new_INIT2_model_constructor_pool20_capture_unit_or_test_entry_authorized'] is False
+         and stop['immutable_owner_master_de8f_endNone_is_not_rewritten'] is True
+         and stop['owner_expiry_or_new_finite_lease_or_new_30h_inferred'] is False
+         and stop['goal_action_after_documentation_closeout'] == 'pause_at_explicit_user_request_not_claim_project_complete',
+         'exact latest user boundary: documents/audit only, no new target entry')
+
+    creation = selected('root-docs-major035/ROOT_CREATION_SELECTION_035_001.json')
+    for key, value in {
+        'author': '/root', 'decision': 'SELECT_DIFFERENT_COMPLETE_MAJOR035_DOCUMENTATION_CREATION_ONLY',
+        'creation_review_sha256': '189d74aa156c8935e36163181c99b9eca12d320f3491317dfe280b73f80c0a7d',
+        'creation_post_sha256': '03afcf778c3a18ba3ff7de5e56e6a984d477cfe4c5644ce014246e63cef1fd6f',
+        'all5_current_candidates_and_whole34_history_preserved': True,
+        'checkpoint006_exact': True, 'genuine_root_publication_tool': '37b462',
+        'root_current_original_copy_raw9_hash_rechecks': 532,
+        'source_review_scope_only_new59_links_not_global_oldlink_revalidation': True,
+        'target_or_helper_test_model_capture_execution': False,
+        'operational_authority': False}.items():
+        nominal(creation[key], value, 'genuine different035 creation selection/' + key)
+    full35 = selected('root-docs-independent-major035/INDEPENDENT_MAJOR035_CREATION_REVIEW_001.json')
+    need(full35['reviewer'] == '/root/bootstrap_stage'
+         and full35['verdict'] == 'PASS_MAJOR035_DOCUMENTATION_CREATION_ONLY'
+         and full35['target_execution'] is False and full35['operational_authority'] is False,
+         'different035 actual creation scope only')
+    selected('root-docs-independent-major035/POST_MAJOR035_CREATION_REVIEW_001.json')
+    compact_ctor = selected('root-guard006-model-prep001/INDEPENDENT_MODEL_CONSTRUCTOR_SOURCE_REVIEW_004.json')
+    peer_ctor = selected('root-model-constructor-independent004/INDEPENDENT_MODEL_CONSTRUCTOR004_SOURCE_REVIEW_001.json')
+    full_ctor = selected('root-model-constructor-independent004/INDEPENDENT_MODEL_CONSTRUCTOR004_SOURCE_DETAILS_001.json')
+    need(compact_ctor['reviewer'] == '/root' and compact_ctor['source_author'] == '/root/pubnative_review'
+         and compact_ctor['verdict'] == 'PASS_SOURCE_DATA_ASSEMBLY_ONLY'
+         and compact_ctor['actual_selection'] is None and compact_ctor['target_execution'] is False
+         and peer_ctor['reviewer'] == '/root/actual_record_checker'
+         and peer_ctor['source_author'] == '/root/pubnative_review'
+         and peer_ctor['verdict'] == 'PASS_STATIC_CONSTRUCTOR004_SOURCE_ONLY_ACTUAL_MODELS_AND_FIT_UNREADY'
+         and peer_ctor['full_review_sha256'] == sha(addrow(PACKET['ctor_full']))
+         and peer_ctor['actual_models'] is None and peer_ctor['actual_fit'] is None
+         and peer_ctor['runtime_acceptance'] is False and peer_ctor['operational_authority'] is False,
+         'different complete constructor004 and genuine Root compact are Source only')
+    for key, expected in PACKET['ctor_full_predicates'].items():
+        nominal(full_ctor[key], expected, 'full constructor004 selected factual field/' + key)
+    selected('root-model-constructor-independent004/POST_MODEL_CONSTRUCTOR004_SOURCE_REVIEW_001.json')
+    config = selected('metadata3-actual-checker-prep001/ACTUAL_CHECKER_BINDING_002.json')
+    need(len(config) == 18 and config['binder'] == '/root'
+         and config['actual_actions_executed'] is False
+         and config['execution_launch_witness'] == dict(reviewer='/root/actual_record_checker',
+             nonce='d7b24061509e48d0b9ea526c3b5c0708',
+             tool_trace_kind='EXTERNALLY_CORROBORATED_REVIEWER_TOOL_CELL_NOT_OS_ATTESTATION'),
+         'genuine preINIT closed18, planned reviewer witness is not a launch')
+    selected('metadata3-actual-checker-prep001/ROOT_CHECKER010_PREINIT_BINDING002_PROVENANCE_001.json')
+    p16 = selected('root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_002.json')
+    need(len(p16) == 16 and p16['reviewer'] == '/root/owner_docs_review'
+         and p16['source_author'] == '/root' and p16['verdict'] == 'PASS_STATIC_ROOT_PIPELINE_SOURCE_ONLY'
+         and p16['target_execution'] is False and p16['operational_authority_granted'] is False,
+         'P16 full Source scope, not model/capture authority')
+    regression = selected('utility010-regression-independent001/INDEPENDENT_UTILITY010_REGRESSION_SOURCE_REVIEW_001.json')
+    regression_full = selected('utility010-regression-independent001/INDEPENDENT_UTILITY010_REGRESSION_SOURCE_DETAILS_001.json')
+    need(regression['reviewer'] == '/root/actual_record_checker'
+         and regression['verdict'] == 'PASS_STATIC_ISOLATED_REGRESSION_SOURCE_WITH_F1_DEFERRED'
+         and regression['tests_executed'] is False and regression['runtime_acceptance'] is False
+         and regression['actual_results'] is None
+         and regression_full['counts']['runnable_methods'] == 6
+         and regression_full['counts']['explicit_deferred_skips'] == 1
+         and regression_full['actual_models'] is None, 'utility6+F1 deferred UNRUN source only')
+    selected('utility010-regression-independent001/INDEPENDENT_UTILITY010_REGRESSION_SOURCE_POST_READBACK_001.json')
+
+    actual28 = selected_role('checker_acceptance')
+    checker_post = selected_role('checker_post')
+    exact(actual28, PACKET['checker_acceptance_keys'])
+    for key, expected in PACKET['checker_acceptance_predicates'].items():
+        nominal(actual28[key], expected, 'different actual Checker28 acceptance/' + key)
+    for key, expected in PACKET['checker_post_predicates'].items():
+        nominal(checker_post[key], expected, 'different Checker28 post/' + key)
+    Root28 = selected_role('Root_checker_selection')
+    need(Root28['author'] == '/root'
+         and Root28['record_type'] == 'root_actual_checker28_acceptance_selection'
+         and Root28['verdict'] == 'ACCEPT_DIFFERENT_ACTUAL_SYNTHETIC_CHECKER28_ONLY'
+         and Root28['methods'] == 28 and Root28['subtests'] == 24 and Root28['events'] == 80
+         and Root28['GO002_ACK003_parent002_runner002_spent_no_replay'] is True
+         and Root28['actual_project_metadata_current24_models_bound_pool_native_scientific_or_operational_acceptance'] is False,
+         'genuine Root selects different actual synthetic28 only, spent/no operational authority')
+    for row in Root28['selected_fixed_evidence']:
+        add(Path(row['path']), row['sha256'], row['bytes'])
+    witness = selected('root-checker28-runtime-prep002/ROOT_ACTUAL_CHECKER28_PHYSICAL_WITNESS_002.json')
+    need(witness['author'] == '/root' and witness['actual_launch_tool']['chunk_id'] == 'fa363a'
+         and witness['actual_terminal_tool']['chunk_id'] == 'ae57c1'
+         and witness['actual_terminal_tool']['exit_code'] == 0
+         and witness['conservative_physical_clock_bracket_upper_seconds'] == 38
+         and witness['physical_envelope_seconds'] == 60
+         and witness['direct_child_reaped_and_both_streams_drained'] is True
+         and witness['hard_OS_Job_or_descendant_or_whole_host_quiet_proof'] is False
+         and witness['actual_metadata_current24_or_models_or_pool_or_capture_proof'] is False
+         and witness['all_Go002_ACK003_parent002_runner002_consumed_no_replay'] is True
+         and witness['result_observation_only'] == dict(errors=0, event_rows=80,
+             failures=0, skipped=0, subtests=24, testsRun=28),
+         'qualified Root actual synthetic28 physical witness, not global/operational proof')
+    for row in witness['observed_fixed_source_runtime_artifacts']:
+        need(Path(row['path']).is_relative_to(WORK), 'fixed selected physical artifact inside WORK')
+        add(Path(row['path']), row['sha256'], row['bytes'])
+    result = selected('root-checker28-runtime002/result.json')
+    for key, expected in {'testsRun':28, 'subtests':24, 'errors':0, 'failures':0,
+        'skipped':0, 'subtest_failures':0, 'unexpected_successes':0, 'expected_failures':0,
+        'successful':True, 'real_metadata_or_current24_execution':False,
+        'operational_authority':False}.items():
+        nominal(result[key], expected, 'actual synthetic28 result/' + key)
+    need(result['event_manifest']['rows'] == 80 and result['diagnostic_manifest']['rows'] == 0
+         and len(result['started_ids']) == len(result['terminals']) == 28
+         and all(row['status'] == 'success' for row in result['terminals']),
+         '28 actual terminals,24 subtests,80 event rows and zero diagnostics')
+    terminal = selected('root-checker28-runtime-prep002/ROOT_PARENT_TERMINAL_002.json')
+    need(terminal['author'] == '/root' and terminal['exit_code'] == 0
+         and terminal['direct_child_reaped'] is True and terminal['capture_drain_complete'] is True
+         and terminal['timed_out'] is False and terminal['capture_overflow'] is False
+         and terminal['physical_parent_within60_seconds'] is True
+         and terminal['hard_OS_Job_or_descendant_cleanup_proof'] is False
+         and terminal['operational_authority'] is False, 'retained direct parent terminal qualified')
+
+    type_selection = selected_role('TYPE004_root_selection')
+    exact(type_selection, PACKET['TYPE004_selection_keys'])
+    need(type_selection['author'] == '/root'
+         and type_selection['decision'] == 'SELECT_DIFFERENT_FAILED_TYPE004_REVIEW_AND_SUCCESSOR_ONLY_MANUAL_REPAIR_AUTHORITY_NO_COMPONENT_PASS'
+         and type_selection['actual_mypy_zero_exit_205_files_observed'] is True
+         and type_selection['full_guarded_component_accepted'] is False
+         and type_selection['native_failure'] == 'Passed native deadline witness differs'
+         and type_selection['native_deadline_difference_nanoseconds'] == 800
+         and type_selection['native_final_postdeadline_checks_unreached'] is True
+         and type_selection['Root_pro2_independent_process_scan_or_Job_or_global_quiet_claim'] is False
+         and type_selection['full430_source_or3142_runtime_or765_absences_reaudited_by_this_observer'] is False
+         and type_selection['all58_manual_saved_pin_entries_reaudited_by_this_observer'] is False
+         and type_selection['TYPE001_original_unretained_failure_cause_explained'] is False
+         and type_selection['attempt_and_grant004_consumed_no_replay'] is True
+         and type_selection['actual_runtime_validation_scientific_or_operational_authority_granted'] is False
+         and type_selection['explicit_peer_release_completion_timestamp_unmeasured_preserved'] is True,
+         'Root eleven-record attributed failed TYPE004 scope')
+    external = type_selection['external_source_observations']
+    need(type(external) is list and len(external) == 11, 'exact11 selected external TYPE004 roles')
+    need([row['path'] for row in external] == PACKET['TYPE004_external_paths'], 'fixed external role order')
+    native = {}
+    for row in external:
+        original, copy = Path(row['path']), Path(row['before_copy']['path'])
+        need(copy.is_relative_to(WORK / 'root-pro3-type004-observation001/before'), 'fixed local TYPE004 copies')
+        need(row['before_copy']['sha256'] == row['sha256']
+             and row['before_copy']['bytes'] == row['bytes']
+             and add(original, row['sha256'], row['bytes'])
+                 == add(copy, row['sha256'], row['bytes']), 'all11 exact external/source copy bytes')
+        key = copy.relative_to(WORK).as_posix()
+        if copy.suffix == '.json':
+            native[copy.name] = decode(add(copy, row['sha256'], row['bytes']),
+                key if key in PHYSICAL_DECIMALS else None)
+    type_audit = native['type_execution_audit_001.json']
+    manual = native['root_manual_failure_review_001.json']
+    cleanup = native['root_failed_type_cleanup_closeout_001.json']
+    physical = native['root_type_physical_witness_001.json']
+    child_result = native['result.json']
+    need(type_audit['reviewer'] == '/root/evidence_audit'
+         and type_audit['review_accepted'] is True and type_audit['blockers'] == []
+         and type_audit['decision'] == 'FAILED_NATIVE_DEADLINE_WITNESS_WITH_MYPY_ZERO_EXIT_REVIEWED_NO_COMPONENT_ACCEPTANCE'
+         and all(type_audit[key] is False for key in ('accepted', 'full_guarded_component_accepted',
+            'type_validation_accepted', 'runtime_validation_accepted', 'execution_authorized',
+            'automatic_retry_authorized')), 'different failed review is not component validation PASS')
+    need(manual['manual_review_accepted'] is True
+         and manual['actual_mypy_api_returned_zero_observed'] is True
+         and manual['checked_source_files'] == 205
+         and manual['native_deadline_difference_nanoseconds'] == 800
+         and manual['native_final_postdeadline_checks_not_reached'] is True
+         and manual['automatic_retry_authorized'] is False
+         and manual['attempt_and_grant004_consumed'] is True
+         and manual['full_guarded_component_accepted'] is False,
+         'manual failure closeout and successor-only future authority')
+    need(physical['cli_exit_code'] == 1 and physical['within120_seconds'] is True
+         and physical['within_peer_and_phase_ends'] is True
+         and cleanup['native_error'] == 'Passed native deadline witness differs'
+         and cleanup['private_job_empty_before_close'] is True and cleanup['private_job_closed'] is True
+         and cleanup['child_handles_closed'] is True
+         and cleanup['native_failed_candidate_whole_cleanup_claim'] is False
+         and cleanup['actual_mypy_exit_code'] == 0
+         and cleanup['full_guarded_component_accepted'] is False,
+         'physical/cleanup saved scope remains attributed only')
+    need(child_result['mypy_api_returned'] is True and child_result['type_exit_code'] == 0
+         and child_result['validation_passed'] is True and child_result['accepted'] is False
+         and child_result['source_before'] == child_result['source_after']
+         and child_result['fit_count'] == child_result['tests_run'] == 0,
+         'partial mypy0 result, no guarded acceptance or fit')
+    stdout = add(WORK / 'root-pro3-type004-observation001/before/mypy.stdout.log',
+        '818ae3656b46f85d83b5659f47a0ceca113dd2a7f21fc13b83a23748e55da3c3', 45)
+    need(stdout.decode('utf8', 'strict').strip() == 'Success: no issues found in 205 source files'
+         and add(WORK / 'root-pro3-type004-observation001/before/mypy.stderr.log',
+             'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',0) == b'',
+         'exact qualified205 Source mypy log, not a full TYPE pass')
+    owner = selected('OWNER_CONTINUATION_20261003_001.json')
+    lease = selected('EXECUTION_LEASE_GG6_M3_001.json')
+    need(owner['work_end_utc'] is None and owner['fixed_deadline_invented'] is False
+         and lease['lease_end_utc'] == '2026-10-03T20:39:32.1487556+00:00'
+         and lease['maximum_lease_seconds'] == 43200 and lease['lease_is_owner_deadline'] is False,
+         'ongoing master distinct finite phase lease')
+
+    previous = add(WORK / 'root-docs-major035/PUBLISH_MAJOR035_DOCS_001.py',
+        '4da4b3266c6bcb3a972bd695cd772b1e6b2b9f44051735d5be188e931430377a', 9951)
+    substitutions = [dict(original='035',selected='036',occurrences=13),
+        dict(original='CONTINUATION_CHECKPOINT_006.md',selected='CONTINUATION_CHECKPOINT_007.md',occurrences=1),
+        dict(original='PUBLISH_MAJOR036_DOCS_001.py',selected='PUBLISH_MAJOR036_DOCS_002.py',occurrences=1),
+        dict(original='STAGED_DOCUMENTATION_MANIFEST_036_001.json',selected='STAGED_DOCUMENTATION_MANIFEST_036_002.json',occurrences=1),
+        dict(original='INDEPENDENT_MAJOR036_PREPUBLICATION_SOURCE_REVIEW_001.json',selected='INDEPENDENT_MAJOR036_PREPUBLICATION_SOURCE_REVIEW_002.json',occurrences=1)]
+    need(contract['declared_literal_substitutions'] == substitutions
+         and contract['inherited_publisher035_sha256'] == sha(previous)
+         and contract['publisher_sha256'] == sha(publisher)
+         and contract['publisher_function_count'] == 13
+         and contract['changed_function_ASTs'] == ['main']
+         and contract['all_other_function_ASTs_exact'] is True
+         and contract['actual_review'] is None and contract['actual_Root_publication'] is None
+         and contract['different_creation_review'] is None
+         and contract['primary_paths'] == list(PRIMARY)
+         and contract['checkpoint'] == CHECKPOINT.relative_to(ROOT).as_posix()
+         and contract['genuine_future_review_keys'] == list(REVIEW_KEYS)
+         and contract['fixed_review_path'] ==
+             (OUT / 'INDEPENDENT_MAJOR036_PREPUBLICATION_SOURCE_REVIEW_002.json').relative_to(ROOT).as_posix(),
+         'unchanged genuine Root12 publication contract')
+    transformed = previous
+    for row in substitutions:
+        a,b = row['original'].encode('ascii'),row['selected'].encode('ascii')
+        need(transformed.count(a) == row['occurrences'], 'declared exact publisher occurrences')
+        transformed = transformed.replace(a,b)
+    need(transformed == publisher, 'publisher exact identity-only reconstruction')
+    oldtree, tree = ast.parse(previous), ast.parse(publisher)
+    oldfuncs = {n.name:n for n in oldtree.body if type(n) is ast.FunctionDef}
+    funcs = {n.name:n for n in tree.body if type(n) is ast.FunctionDef}
+    need(len(funcs) == len(oldfuncs) == 13 and set(funcs) == set(oldfuncs), 'publisher13 function ASTs')
+    changed, ast_rows = [], []
+    for name, node in funcs.items():
+        before = ast.dump(oldfuncs[name], include_attributes=False)
+        after = ast.dump(node, include_attributes=False)
+        if before != after: changed.append(name)
+        ast_rows.append(dict(name=name,lineno=node.lineno,AST_sha256=sha(after.encode('utf8')),
+            identical_to035=before == after))
+    need(changed == ['main'], 'all12 publisher guard functions exact, only main identity literals')
+    imports = [a.name for node in tree.body if type(node) is ast.Import for a in node.names]
+    imports += [node.module for node in tree.body if type(node) is ast.ImportFrom]
+    need(set(imports) == {'argparse','hashlib','json','os','re','stat','datetime','pathlib'}
+         and b'automatic_rollback=False' in publisher and b'batch_atomicity_guaranteed=False' in publisher
+         and b'os.replace(temp,destination)' in publisher,
+         'publisher per-file/concurrent-change/partial-publication limits retained')
+    named = [Path(row['path']) for row in author['named_role_absences']]
+    need(named == [WORK / path for path in PACKET['named_absences']]
+         and all(row['observed_absent'] is True for row in author['named_role_absences']),
+         'exact snapshot named absence list, no process/quiet inference')
+    absent_paths = [CHECKPOINT,Path(str(CHECKPOINT)+'.staging'),
+        STAGE/'ROOT_PUBLISH_RECEIPT_036.json',STAGE/'ROOT_RESTORE_RECEIPT_036.json',
+        STAGE/'PARTIAL_PUBLISH_036.json',STAGE/'PARTIAL_RESTORE_036.json',*named]
+    absences = [absent(path) for path in absent_paths]
+    for name in ('INDEPENDENT_MAJOR036_SOURCE_DETAILS_002.json',
+        'POST_MAJOR036_SOURCE_REVIEW_002.json','INDEPENDENT_MAJOR036_PREPUBLICATION_SOURCE_REVIEW_002.json',
+        'HANDOFF_MAJOR036_SOURCE_REVIEW_002.md','OWN_MAJOR036_SOURCE_AUDITOR_REFUSAL_002.json'):
+        absent(OUT / name)
+    for item,key in ((creation,'created_utc'),(compact_ctor,'created_utc'),
+                     (witness,'recorded_utc'),(type_selection,'recorded_utc'),(stop,'recorded_utc')):
+        need(ticks(item[key]) < prepared, 'completed genuine record predates036 snapshot')
+    need(context['factual_selection_sha256'] == sha(addrow(PACKET['facts']))
+         and context['prior035_creation_sha256'] == sha(addrow(PACKET['creation_selection']))
+         and context['checker_acceptance'] == roles['checker_acceptance']
+         and context['TYPE004_root_selection'] == roles['TYPE004_root_selection'],
+         'all context pointers match exact externally selected current records')
+
+    observations = []
+    for index,(path,(pin,size)) in enumerate(sorted(registry.items(),key=lambda item:str(item[0]))):
+        passes = [read(path,pin,size) for _ in range(3)]
+        need(passes[0] == passes[1] == passes[2], 'triple finite Source observations')
+        copy_path = 'source002-inputs/' + str(index).zfill(3) + '.bytes'
+        once(copy_path, passes[0][0])
+        copied, copy_meta = read(OUT / copy_path,pin,size)
+        need(copied == passes[0][0]
+             and copy_meta['path_raw9'][:2] != passes[0][1]['path_raw9'][:2], 'independent exact own copy')
+        observations.append(dict(path=str(path),sha256=pin,bytes=size,
+            passes=[entry[1] for entry in passes],copy_path=copy_path,copy_observation=copy_meta))
+    checks = [
+        'All frozen036-002 original/copy pairs, complete64-pair unpublished036-001 and54-pair035 history authenticated. Five superseded live034 primary inputs matched archived035 before/copies, while all current five live035 bytes matched035 candidates/036 before.',
+        'All five complete actual036 new additions and checkpoint007 read; every declared new final-location link reconstructed and authenticated. Entire035 suffix3/prefix2 bytes preserved. Older035 links retained as finite history, not a global historical link revalidation.',
+        'Genuine Root035 creation selection authenticates different189d74/post03af and532-row reconciliation. Current reader does not rerun publisher or retrospectively attest its owning physical tool.',
+        'Constructor004/table002 full different66f54 plus Rootcompact004 and genuineconfig18 exist as Source/data only. Models/complete fit/projection/INIT/trust/READY/metadataGO/capture stay absent in this fixed stage.',
+        'Different completed actual synthetic Checker28 acceptance and post authenticated.28 methods+24subtests/80events and0 failures/errors/skips/diagnostics are confined to Checker010 synthetic fixtures. Root38<60 is an externally attributed conservative physical bracket, not yield/poll addition, wholeJob or global quiet proof.',
+        'TYPE004 exact11 external records and retained copies authenticated. Different audit and manual review accept failed-component closeout: mypy0/205 but native deadline witness differs800ns, native final postdeadline checks unreached. Scoped saved cleanup is attributed, not pro2 independent process/Job/wholehost proof. No fullTYPE/runtime/science PASS or retry/lease inferred.',
+        'Utility6+F1 explicitly deferred controls remain UNRUN. CurrentConsumer24/Raw58/Metadata30+2/Native128 and actual model/capture chain remain unready; original600/both90/resource60/510=450+60 and transport/evidence/source caps unchanged.',
+        'Publisher036-002 exact five declared identity substitutions reconstruct035;13 complete function ASTs,12 unchanged guards. Source auditor imports no selected helper/publisher/test/model and invokes no selected definitions/main/compiler/FFI/Git/native.',
+        'Exact latest user directive490a authenticates documentation/audit closeout only; prior optional bound-model stopping assumption is superseded. No new INIT2, model constructor, pool20, capture, unit or test entry; pause after documents without claiming project complete or rewriting owner.',
+        'Owner ongoing/endNone is separate from finite43cb lease20:39:32.1487556. All spent/refused/history/science/twins/epoch and no-public/push/replay boundaries retained; finite named absences are time-local filesystem observations only.']
+    conditions = [
+        'Prepared reviewer source is UNRUN, not a genuine Root peer. Only Root may independently select/self-pin and run this auditor once, then separately decide documentation publication.',
+        'Publisher remains atomic per file only; no batch atomicity, OS compare-and-swap or automatic rollback. Concurrent changes refuse and partial history stays immutable.',
+        'Different postpublication creation audit must reconcile all five physical primaries/checkpoint/receipt and complete prior history.',
+        'No Source/data/synthetic/documentation record grants model fit, pool20, READY, GO/Auth/capture/current24/native/operational/scientific authority. Future changes need separately selected source/evidence.']
+    details = dict(schema_version=1,record_type='independent_major036_full_documentation_source_details',
+        created_utc=now(),reviewer='/root',source_author='/root/actual_record_checker',scope=SCOPE,
+        verdict='PASS_MAJOR036_DOCUMENTATION_SOURCE_ONLY',manifest_sha256=PACKET['manifest']['sha256'],
+        publisher_sha256=sha(publisher),finite_input_count=len(observations),finite_inputs=observations,
+        current_original_copy_pairs=PACKET['pair_count'],complete_prior035_pairs=54,
+        complete_superseded_unpublished036_001_pairs=64,
+        superseded_prior035_live_primary_roles=superseded,history=history,
+        full_final_new_text_read=texts,selected_links=extracted,publisher_AST_rows=ast_rows,
+        publisher_declared_substitutions=substitutions,selected_context=context,exact_contract=contract,
+        native_Decimal_exception_field_domains=PHYSICAL_DECIMALS,
+        raw_native_physical_bytes_preserved_without_reencoding=True,
+        prepublication_named_absences=absences,source_checks=checks,findings=[],
+        implementation_conditions=conditions,publication_performed=False,
+        publisher_helper_test_import_compile_definitions_main_executed=False,
+        target_execution=False,operational_authority=False,actual_creation=None)
+    once('INDEPENDENT_MAJOR036_SOURCE_DETAILS_002.json',enc(details))
+    post = []
+    for entry in observations:
+        data, meta = read(Path(entry['path']),entry['sha256'],entry['bytes'])
+        copied, copy_meta = read(OUT / entry['copy_path'],entry['sha256'],entry['bytes'])
+        need(data == copied and meta == entry['passes'][0] and copy_meta == entry['copy_observation'],
+             'complete original/copy post-read raw9 drift')
+        post.append(dict(path=entry['path'],observation=meta,copy_observation=copy_meta))
+    need([absent(path) for path in absent_paths] == absences, 'named pre/post absence drift')
+    once('POST_MAJOR036_SOURCE_REVIEW_002.json',enc(dict(schema_version=1,created_utc=now(),
+        reviewer='/root',observations=post,all_original_and_copy_bytes_and_raw9_exact=True,
+        prepublication_absences=absences,publication_performed=False,target_execution=False,operational_authority=False)))
+    peer = dict(schema_version=1,record_type='independent_major036_documentation_prepublication_source_review',
+        created_utc=now(),reviewer='/root',source_author='/root/actual_record_checker',scope=SCOPE,
+        verdict='PASS_MAJOR036_DOCUMENTATION_SOURCE_ONLY',publisher_sha256=sha(publisher),
+        manifest_sha256=PACKET['manifest']['sha256'],publication_performed=False,
+        target_execution=False,operational_authority=False)
+    exact(peer,REVIEW_KEYS)
+    need({key:peer[key] for key in contract['genuine_future_review_nominals']}
+         == contract['genuine_future_review_nominals'], 'exact unchanged futureRoot12 nominals')
+    once('INDEPENDENT_MAJOR036_PREPUBLICATION_SOURCE_REVIEW_002.json',enc(peer))
+    once('HANDOFF_MAJOR036_SOURCE_REVIEW_002.md',
+        ('\n\n'.join(['Genuine Root full Major036 documentation Source only; publication/different creation separate.',
+                       *checks,*conditions])+'\n').encode('utf8'))
+    print(json.dumps(dict(peer_sha256=sha(enc(peer)),peer_bytes=len(enc(peer)),
+        details_sha256=sha(enc(details)),finite_inputs=len(observations),selected_links=len(extracted),
+        verdict=peer['verdict'],publication_performed=False,target_execution=False),sort_keys=True))
+
+if __name__ == '__main__':
+    try:
+        main()
+    except BaseException as error:
+        once('OWN_MAJOR036_SOURCE_AUDITOR_REFUSAL_002.json',enc(dict(schema_version=1,
+            record_type='owned_major036_source_auditor_refusal',created_utc=now(),reviewer='/root',
+            failure_type=type(error).__name__,failure=str(error),source_acceptance=None,
+            publication_performed=False,target_execution=False,operational_authority=False)))
+        raise

@@ -1,0 +1,265 @@
+"""Own finite read-only audit compositor. Never imports or executes audited source."""
+import ast
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import types
+
+ROOT = Path('D:/Aenv/pro2')
+WORK = ROOT / 'resume-2026-10-03-continuation001'
+PREP = WORK / 'metadata3-actual-checker-prep001'
+OUT = WORK / 'metadata3-checker-independent-review001'
+MANIFEST = PREP / 'AUTHOR_FROZEN_SOURCE_MANIFEST_007.json'
+MANIFEST_SHA = 'a27031ac594c0705ed3a595766acf6c7fdf4d22692339e7634ca848f13f15e23'
+SELECTED = PREP / 'review-metadata3-actual006.TEMPLATE.py'
+SELECTED_SHA = '02996f245e9ab6e0839e23ce9e9296c40c66bbfecc813a360bb37ce5c874ff8e'
+DEPENDENCIES = [
+    ('metadata3-producer-core-prep001/STAGED_MANIFEST_005.json', 'df54adc4ef8303124590fc5c8f1191815ceff6c61f7db56a511390f9de9f7e5a'),
+    ('consumer005-guard006-runtime-prep001/FINAL_AUTHOR_SOURCE_MANIFEST_009.json', '78320743b0076e5a8cc5056a6f003202a4dcdb19f3bc59a3cbf5da8924bbdba9'),
+    ('consumer005-guard006-runtime-prep001/GUARD_RUNTIME_PROFILE_006-rev003.json', '70d4d658ff993181eb4056bdd276763cc8ff6a12b7281637e9332a00fb2fa030'),
+    ('consumer005-guard006-runtime-prep001/EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_006-rev003.json', '7c7d226f0a63bc9954459759fa883e96902d1ab5c5f9873452db27755864cb53'),
+    ('root-guard006-pipeline-prep001/FOUR_ROOT_STAGE_SOURCE_MANIFEST_002.json', '936db4c16c9091d13361023cdc325c2f1671345641dc1685ed176680d3d3d28c'),
+    ('OWNER_CONTINUATION_20261003_001.json', 'de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'),
+    ('owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json', '56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0'),
+    ('m3-source-independent-review001/INDEPENDENT_M3_SOURCE_REVIEW_002.json', '78bc1b1a7a3e06e6752283e632651faac1b07f8f307f1612ceac4b1bd015bf30'),
+]
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+def now():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+
+def raw9(st):
+    return [st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns,
+            st.st_mode, st.st_nlink, getattr(st, 'st_file_attributes', 0), st.st_birthtime_ns]
+
+def observe(path, pin, length=None):
+    before = path.stat()
+    if not path.is_file() or path.is_symlink() or before.st_size > 2 * 1024 * 1024:
+        raise ValueError('invalid finite source input: ' + str(path))
+    with path.open('rb') as handle:
+        fd_before = os.fstat(handle.fileno())
+        data = handle.read(2 * 1024 * 1024 + 1)
+        fd_after = os.fstat(handle.fileno())
+    after = path.stat()
+    if raw9(before) != raw9(after) or raw9(fd_before) != raw9(fd_after):
+        raise ValueError('source moved during read: ' + str(path))
+    if digest(data) != pin or (length is not None and len(data) != length):
+        raise ValueError('source pin mismatch: ' + str(path))
+    return data, {'path': path.as_posix(), 'sha256': pin, 'bytes': len(data),
+                  'path_raw9': raw9(after), 'descriptor_raw9': raw9(fd_after), 'observed_utc': now()}
+
+def publish(name, value):
+    path = OUT / name
+    data = (json.dumps(value, ensure_ascii=True, indent=2, allow_nan=False) + '\n').encode('utf8')
+    with path.open('xb') as handle:
+        handle.write(data)
+    return {'path': path.as_posix(), 'sha256': digest(data), 'bytes': len(data)}
+
+FINDINGS = [
+    {
+        'id': 'MC007-01', 'title': 'READY precedes complete immutable source and Root trust preflight',
+        'functions': ['main', 'configure', 'fixed', 'provenance', 'decision'], 'lines': [1341, 1345, 1348, 988, 1172, 1285],
+        'evidence': 'main calls configure and hex-validates root_trust_sha256, then emits READY. Full fixed() and Root trust/init/source-peer validation run only after a phase ticket in decision/provenance.',
+        'consequence': 'Invalid immutable source closure or Root trust can announce readiness and fail only after the metadata timer has begun.',
+        'required_correction': 'Perform complete immutable source closure plus authentic Root trust8/INIT8/source-peer preflight before READY without needing a phase ticket. Recheck relevant pins at each decision.'
+    },
+    {
+        'id': 'MC007-02', 'title': 'Whole AFTER bridge reads the wrong writer namespace and leaf',
+        'functions': ['whole_bridge', 'configure'], 'lines': [802, 956],
+        'evidence': "whole_bridge reads PREP/'WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.ps1'; configure selects PIPELINE/'WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.BOUND.ps1'.",
+        'consequence': 'The AFTER bridge cannot consume the agreed selected Root writer through its source-coded path.',
+        'required_correction': 'Use the exact compiled PIPELINE bound writer path and SHA; do not manufacture an alias.'
+    },
+    {
+        'id': 'MC007-03', 'title': 'Final evidence reread changes the approved native runtime and WHOLE reader policies',
+        'functions': ['read', 'runtime_check', 'current_stream_file', 'decision'], 'lines': [119, 474, 1303],
+        'evidence': 'The final EVIDENCE loop sends rows up to 8MiB to ordinary read(runtime=False), including genuine registered runtime EXEs and WHOLE file rows. The narrow three-EXE mode exception requires runtime=True. current_stream_file preserves the observer cross-API identity policy, which intentionally excludes mode/ctime/birth equality.',
+        'consequence': 'Accepted native runtime or WHOLE rows can be rejected by new cross-API assumptions during final reread.',
+        'required_correction': 'Route only authenticated runtime4 rows through the existing exact known path/SHA runtime exception, and authenticated WHOLE-stream members through current_stream_file. Retain strict ordinary input rules; do not relax by caller supplied size or generic evidence membership.'
+    },
+    {
+        'id': 'MC007-04', 'title': 'Declared 16MiB detail output cannot pass the 8MiB paired reader cap',
+        'functions': ['read', 'once', 'decision'], 'lines': [121, 1265, 1330],
+        'evidence': 'decision publishes each detail with cap=16777216; once passes that cap to read for staging/final readback; read requires cap<=8388608 even when the actual detail is small.',
+        'consequence': 'Every first detail publication reaches a source-coded invalid-cap refusal before the Core record can complete.',
+        'required_correction': 'Add a narrow owned-output paired reader bounded by the declared detail cap and compiled output/staging paths, while preserving the general input cap of 8MiB.'
+    },
+    {
+        'id': 'MC007-05', 'title': 'Bound9 record_type is not validated',
+        'functions': ['fixed'], 'lines': [996, 1001],
+        'evidence': 'The nine keys are closed and most nominals are validated, but bound.record_type is never compared to guard006_root_metadata_bound_source_review.',
+        'consequence': 'The bound source proof accepts an incorrect record nominal despite the required closed protocol.',
+        'required_correction': 'Require the authentic exact bound9 record_type as well as the existing canonical roles, typed fields and links.'
+    },
+    {
+        'id': 'MC007-06', 'title': 'Phase source peer does not enforce its authentic closed20 grammar and row6 nominals',
+        'functions': ['fixed'], 'lines': [1020, 1034],
+        'evidence': 'The phase peer is checked only for reviewer/verdict/three links/list length. Its top-level key set, schema, record_type, author roles, metadata flags, aggregate reversal/parser checks and four writer/parent aggregate pins are not enforced. Peer source rows are not closed or typed for bytes/parser errors.',
+        'consequence': 'Malformed or incorrectly nominal phase source evidence can be consumed as the four-source source proof.',
+        'required_correction': 'Enforce the authentic closed20 contract and exact four ordered closed6 peer rows. Keep phase-binding rows closed4; there is no scope field in this twenty-key receipt.'
+    },
+    {
+        'id': 'MC007-07', 'title': 'Selected manifest, six templates and source peer proof links are not consumed completely',
+        'functions': ['fixed'], 'lines': [1002, 1011, 1028],
+        'evidence': 'The genuine closed22 source peer is not checked against final manifest005, its ordered six active source rows or nominal list/count relationships. SourceBinding11.template_sha256 is unused. Boolean reversal/AST declarations and PS literal presence are consumed without the selected-template byte/AST closure or unique exact reversals.',
+        'consequence': 'The runtime readiness proof does not establish the full selected immutable source-to-bound relationship required by the protocol.',
+        'required_correction': 'Authenticate final M3 manifest005 and genuine peer002; bind all six selected template path/byte/SHA rows; enforce closed22 list/count relationships; verify six-assignment Python reversal and unchanged function ASTs, and exact two-assignment byte reversal for each of four PS sources with actual size checks.'
+    },
+    {
+        'id': 'MC007-08', 'title': 'WHOLE raw9 and directory/identity comparisons permit bool versus int equality',
+        'functions': ['whole_before_result', 'whole_after_result', 'current_stream_file'], 'lines': [388, 565, 474],
+        'evidence': 'Root raw9 has exact integer checks, but file/directory path_raw9 and descriptor_raw9 arrays are not uniformly nominally validated. Several identity and directory map comparisons use ordinary Python equality, allowing True==1 and False==0.',
+        'consequence': 'The declared exact native integer metadata grammar is not enforced consistently across the WHOLE rows and counts.',
+        'required_correction': 'Require each raw9 to be an exact builtin list of nine exact builtin integers, and validate count/map nominals or use typed equality. Preserve independent path/descriptor tuples and the existing cross-API mode/birth policy.'
+    },
+    {
+        'id': 'MC007-09', 'title': 'Python timestamp parser and writer disagree with the final explicit Py6 contract',
+        'functions': ['stamp', 'now_exact'], 'lines': [233, 252],
+        'evidence': "stamp accepts optional six digits, including no fraction; now_exact uses default isoformat(). The pinned GG6 rev003 contract specifies Python fraction_digits=6, length=32, suffix='+00:00' and isoformat(timespec='microseconds').",
+        'consequence': 'The checker can accept or emit timestamps outside the selected genuine explicit-six-fraction grammar.',
+        'required_correction': 'Require six fraction digits for these new Python record roles and use explicit microseconds in the writer. Retain the independent PS7 grammar, native chronology and immutable old records without normalization.'
+    },
+]
+
+PHASE_KEYS = ['PowerShell_parser_errors', 'actual_authorization_or_entry_approved', 'after_supervisor_sha256',
+              'after_writer_sha256', 'binding_author', 'bound_metadata_source_sha256', 'bound_source_review_sha256',
+              'created_utc', 'exact_two_literal_reversal_all_four', 'metadata_only', 'phase_source_binding_sha256',
+              'phase_sources', 'record_type', 'reviewer', 'reviewer_agent', 'schema_version', 'source_author',
+              'supervisor_sha256', 'verdict', 'writer_sha256']
+
+def main():
+    OUT.mkdir(parents=True, exist_ok=True)
+    manifest_data, _ = observe(MANIFEST, MANIFEST_SHA)
+    manifest = json.loads(manifest_data)
+    if type(manifest['payload_count']) is not int or manifest['payload_count'] != 28 or len(manifest['payloads']) != 28:
+        raise ValueError('unexpected selected author manifest payload count')
+    finite = [(MANIFEST, MANIFEST_SHA, len(manifest_data))]
+    for row in manifest['payloads']:
+        if set(row) != {'path', 'bytes', 'sha256'} or type(row['bytes']) is not int:
+            raise ValueError('unexpected payload row')
+        relative = Path(row['path'])
+        if relative.is_absolute() or len(relative.parts) != 1 or row['path'] in {'.', '..'}:
+            raise ValueError('payload must be a finite flat leaf')
+        finite.append((PREP / relative, row['sha256'], row['bytes']))
+    finite.extend((WORK / relative, pin, None) for relative, pin in DEPENDENCIES)
+    if len({path.as_posix().casefold() for path, _, _ in finite}) != len(finite):
+        raise ValueError('duplicate finite input')
+    observations = []
+    contents = {}
+    for phase in (1, 2, 3):
+        rows = []
+        for path, pin, length in finite:
+            data, row = observe(path, pin, length)
+            rows.append(row)
+            contents[path] = data
+        observations.append({'phase': phase, 'rows': rows})
+    source = contents[SELECTED]
+    if digest(source) != SELECTED_SHA or len(source) != 123091:
+        raise ValueError('selected source changed')
+    tree = ast.parse(source, filename=SELECTED.as_posix())
+    functions = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    ast_rows = [{'name': node.name, 'line': node.lineno, 'end_line': node.end_lineno,
+                 'ast_sha256': digest(ast.dump(node, include_attributes=False).encode('utf8'))} for node in functions]
+    # Compile new checker source only to inert metadata. The resulting CodeType is never executed.
+    code = compile(tree, SELECTED.as_posix(), 'exec', dont_inherit=True, optimize=0)
+    code_rows = []
+    def walk_code(value):
+        code_rows.append({'name': value.co_name, 'qualname': value.co_qualname, 'first_line': value.co_firstlineno,
+                          'flags': value.co_flags, 'argcount': value.co_argcount, 'bytecode_bytes': len(value.co_code)})
+        for item in value.co_consts:
+            if isinstance(item, types.CodeType):
+                walk_code(item)
+    walk_code(code)
+    imports = [ast.unparse(node) for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))]
+    test_tree = ast.parse(contents[PREP / 'test_metadata3_actual_checker_preparation_001.py'])
+    planned_tests = [{'class': node.name, 'methods': [item.name for item in node.body
+                     if isinstance(item, ast.FunctionDef) and item.name.startswith('test_')]}
+                     for node in test_tree.body if isinstance(node, ast.ClassDef)]
+    lines = source.decode('utf8').splitlines()
+    for finding in FINDINGS:
+        finding['severity'] = 'BLOCKING_SOURCE'
+        finding['evidence_type'] = 'source_control_flow_and_protocol_comparison_not_runtime_result'
+        finding['source_sha256'] = SELECTED_SHA
+        finding['source_excerpts'] = [{'line': line, 'text': lines[line-1]} for line in finding['lines']]
+    retained = [
+        'All 28 author manifest payload bytes and eight explicitly pinned static dependencies were observed in three finite read phases; no recursive project or runtime inventory was taken.',
+        'Closed Core12/Auth17/capture14/WholeAuth15/WholeResult19/WholeParent30/MetaParent20/RootACK22 and physical18 versus driver20 boundaries were examined in the full selected source.',
+        'Context742/config55/current Git7 path semantics and runtime4 nominal source checks were examined. Reading source is not a current runtime capture or a Git invocation.',
+        'Whole two-tree streamed comparisons, bounded complete chunks and diagnostic events, bridge15, exact24 methods and evidence26 were reviewed; planned tests remain UNRUN.',
+        'Root trust8, INIT8, phase10 and the nineteen named source pool closure were read as source. Their genuine future actual pins and Root source peer were not fabricated or consumed as live authority.',
+        'Ongoing master de8f and its pinned immutable owner peer56a7 were observed unchanged; the genuine short reviewer owner_docs_review is distinct from canonical new actual/source reviewers.',
+        'No blanket mode/ctime/birth relaxation is approved by this report. Native EXE exceptions remain tied to authenticated fixed path/SHA roles; WHOLE cross-API comparisons retain the observer policy.',
+        'A potential duplicate driver evidence concern was checked and withdrawn: the acceptance and observer result are distinct roles. It is not a finding.',
+        'These are source blockers. No runtime failure, exploit, test outcome, physical OS attestation or operational acceptance is claimed.'
+    ]
+    metadata = publish('SOURCE_AST_AND_INERT_CODE_METADATA_001.json', {
+        'schema_version': 1, 'record_type': 'independent_checker_source_ast_and_inert_code_metadata',
+        'reviewer': '/root/renewal_runtime_inventory', 'selected_source_sha256': SELECTED_SHA,
+        'top_level_functions': ast_rows, 'top_level_function_count': len(ast_rows), 'imports': imports,
+        'inert_CodeType_metadata': code_rows, 'inert_CodeType_count': len(code_rows),
+        'planned_test_AST_classes': planned_tests, 'tests_executed': False,
+        'audited_definitions_imports_mains_executed': False, 'pyc_written': False
+    })
+    report = {
+        'schema_version': 1, 'record_type': 'independent_metadata3_actual_checker_source_audit_details',
+        'source_author': '/root/actual_record_checker', 'reviewer': '/root/renewal_runtime_inventory',
+        'created_utc': now(), 'verdict': 'REFUSED_SOURCE007_REQUIRES_DISTINCT_CORRECTED_SOURCE',
+        'scope': 'COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY',
+        'source_manifest': {'path': MANIFEST.as_posix(), 'sha256': MANIFEST_SHA, 'bytes': len(manifest_data)},
+        'selected_source': {'path': SELECTED.as_posix(), 'sha256': SELECTED_SHA, 'bytes': len(source)},
+        'manifest_payload_count': 28, 'finite_input_count': len(finite), 'observations': observations,
+        'syntax_and_inert_metadata': metadata, 'findings': FINDINGS, 'blocking_finding_count': len(FINDINGS),
+        'authentic_phase_peer_contract': {
+            'closed_top_level_keys': PHASE_KEYS, 'schema_version': 1,
+            'record_type': 'guard006_root_metadata_phase_ps_source_binding_review',
+            'source_author': '/root/renewal_runtime_inventory', 'binding_author': '/root',
+            'reviewer': '/root/owner_docs_review', 'reviewer_agent': '/root/owner_docs_review',
+            'verdict': 'PASS_STATIC_ACTUAL_PHASE_PS_SOURCE_BINDINGS_ONLY', 'metadata_only': True,
+            'actual_authorization_or_entry_approved': False, 'exact_two_literal_reversal_all_four': True,
+            'PowerShell_parser_errors': 0, 'phase_sources_exact_row_count': 4,
+            'peer_source_row_keys': ['PowerShell_parser_errors', 'bytes', 'exact_two_literal_reversal', 'path', 'sha256', 'template_sha256'],
+            'binding_source_row_keys': ['path', 'sha256', 'template_sha256', 'exact_two_literal_reversal'],
+            'scope_field_present': False,
+            'nominal_policy': 'All booleans and integers are exact builtin types, not interchangeable equality. Four aggregates and ordered rows bind genuine selected sources.'
+        },
+        'reviewed_preservation_and_limits': retained,
+        'implementation_conditions': [
+            'Preserve author Source007 bytes, its manifest and history. Correct only through a distinct source selection and require independent complete source audit.',
+            'Root may publish its separate canonical source peer only after its own genuine full audit, explicitly crediting this independent worker audit; this report does not impersonate Root.',
+            'No actual readiness, binding, lease, source peer, timer, authorization, capture or target GO is supplied by this report.'
+        ],
+        'actual_results': None, 'runtime_acceptance': False, 'operational_authority': False,
+        'audited_definitions_imports_mains_tests_Git_FFI_PS_native_executed': False,
+        'post_capture_reference': None
+    }
+    report_row = publish('INDEPENDENT_METADATA3_CHECKER_SOURCE_DETAILS_001.json', report)
+    md = '# Independent Metadata3 checker Source007 audit\n\nSource007 is refused pending a distinct corrected source. This is source reasoning, not runtime execution.\n\n'
+    md += 'Reviewer: `/root/renewal_runtime_inventory`. Source author: `/root/actual_record_checker`.\n\n'
+    md += 'Frozen manifest: `' + MANIFEST_SHA + '`. Selected checker: `' + SELECTED_SHA + '` / 123091 bytes. All 28 payloads and eight pinned static dependencies were observed three times (37 finite files including the manifest).\n\n'
+    for finding in FINDINGS:
+        md += '## ' + finding['id'] + ' — ' + finding['title'] + '\n\n' + finding['evidence'] + '\n\n' + finding['required_correction'] + '\n\n'
+    md += 'The complete selected checker source was reviewed. AST and inert CodeType metadata were collected without executing definitions, imports, mains or tests. No runtime, binding, lease, authorization or operational acceptance is granted. Keep Source007 exact and independently audit the distinct successor.\n'
+    md_path = OUT / 'INDEPENDENT_METADATA3_CHECKER_SOURCE_DETAILS_001.md'
+    with md_path.open('xb') as handle:
+        handle.write(md.encode('utf8'))
+    post_rows = []
+    for path, pin, length in finite:
+        _, row = observe(path, pin, length)
+        post_rows.append(row)
+    report_data, report_obs = observe(Path(report_row['path']), report_row['sha256'], report_row['bytes'])
+    post = publish('POST_CAPTURE_PRESERVATION_001.json', {
+        'schema_version': 1, 'record_type': 'independent_checker_source_post_capture_preservation',
+        'reviewer': '/root/renewal_runtime_inventory', 'created_utc': now(),
+        'report': report_row, 'report_observation': report_obs, 'finite_input_count': len(finite),
+        'post_rows': post_rows, 'all_source_pins_preserved': True, 'runtime_acceptance': False,
+        'operational_authority': False
+    })
+    print(json.dumps({'report': report_row, 'post': post, 'metadata': metadata,
+                      'findings': len(FINDINGS), 'finite_inputs': len(finite), 'functions': len(ast_rows)}, indent=2))
+
+if __name__ == '__main__':
+    main()

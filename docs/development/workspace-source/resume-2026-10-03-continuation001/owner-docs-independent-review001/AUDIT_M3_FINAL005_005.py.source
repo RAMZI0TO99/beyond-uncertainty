@@ -1,0 +1,92 @@
+"""Own finite source metadata only; never execute reviewed code."""
+import ast, datetime, hashlib, json, os
+from pathlib import Path
+BASE=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001')
+GG=BASE/'consumer005-guard006-runtime-prep001';OUT=BASE/'gg6-source-independent-review001'
+def sha(b):return hashlib.sha256(b).hexdigest()
+def utc():return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+def enc(x):return (json.dumps(x,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('ascii')
+def pairs(rows):
+ d={}
+ for k,v in rows:assert k not in d;d[k]=v
+ return d
+def parse(b):return json.loads(b.decode('utf-8','strict'),object_pairs_hook=pairs,parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def raw(s):return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,getattr(s,'st_file_attributes',0),getattr(s,'st_birthtime_ns',None)]
+def read(p):
+ a=p.lstat();b=p.read_bytes();z=p.lstat();assert raw(a)==raw(z)
+ return b,dict(path=str(p),sha256=sha(b),bytes=len(b),raw9=raw(z),observed_utc=utc())
+def once(p,b):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open('xb') as f:f.write(b);f.flush();os.fsync(f.fileno())
+def literal(t,n):
+ v=[x.value for x in t.body if isinstance(x,ast.Assign) and len(x.targets)==1 and isinstance(x.targets[0],ast.Name) and x.targets[0].id==n];assert len(v)==1,n
+ return ast.literal_eval(v[0])
+def fn(t):return {x.name:ast.dump(x,include_attributes=False) for x in t.body if isinstance(x,ast.FunctionDef)}
+M3=BASE/'metadata3-producer-core-prep001';GG=BASE/'consumer005-guard006-runtime-prep001';OUT=BASE/'m3-source-independent-review001'
+oldpath=OUT/'INDEPENDENT_M3_SOURCE_REVIEW_001.json';assert sha(oldpath.read_bytes())=='859e153454828727db7eaece9ff8d1cce5ce17f642170a70f4cdd947b3c314bf';old=parse(oldpath.read_bytes())
+manifest_path=M3/'STAGED_MANIFEST_005.json';pin='df54adc4ef8303124590fc5c8f1191815ceff6c61f7db56a511390f9de9f7e5a';assert sha(manifest_path.read_bytes())==pin;manifest=parse(manifest_path.read_bytes())
+pins={Path(r['path']):r['sha256'] for r in old['preserved_inputs']};pins[oldpath]=sha(oldpath.read_bytes());pins[manifest_path]=pin
+pins[M3/'STAGED_MANIFEST_004.json']='0caa93941b51d88d9a7b183c69f6f565681dd41f95516543a1b224d6e1340832'
+for r in manifest['payloads']+manifest['preserved_previous_payloads']:pins[M3/r['path']]=r['sha256']
+extra=[(GG/'FINAL_AUTHOR_SOURCE_MANIFEST_009.json','78320743b0076e5a8cc5056a6f003202a4dcdb19f3bc59a3cbf5da8924bbdba9'),(GG/'GUARD_RUNTIME_PROFILE_006-rev003.json','70d4d658ff993181eb4056bdd276763cc8ff6a12b7281637e9332a00fb2fa030'),(BASE/'gg6-source-independent-review001/INDEPENDENT_GG6_SOURCE_REVIEW_003.json','82b9643b78e4d4c388781e53b79c8a0546f9b07afca641ccfa71ff677483dae1'),(BASE/'owner-docs-independent-review001/INDEPENDENT_GG6REV002_M3CORRECTED004_PS_SYNTAX_002.json','6e2ceeacb9c29c27760e0674be76f518faa682645bba794aacdba1df0cb02e68')]
+for p,h in extra:pins[p]=h
+data=None;observations=[]
+for phase in range(1,4):
+ current={};rows=[]
+ for p in sorted(pins,key=str):
+  b,r=read(p);assert sha(b)==pins[p],str(p);current[p]=b;rows.append(r)
+ if data is None:data=current
+ else:assert current==data
+ observations.append(dict(phase=phase,rows=rows))
+for r in manifest['payloads']+manifest['preserved_previous_payloads']:assert len(data[M3/r['path']])==r['bytes']
+assert manifest['payload_count']==len(manifest['payloads'])==12 and manifest['active_source_count']==6
+assert all(manifest[k] is None for k in ['actual_authorization','actual_bindings','actual_capture','actual_lease'])
+names=manifest['selected_source_paths'];assert len(names)==6 and len(set(names))==6
+active=[dict(path=str(M3/n),bytes=len(data[M3/n]),sha256=sha(data[M3/n])) for n in names]
+syntax=[];trees=[]
+for name in names[:2]:
+ p=M3/name;t=ast.parse(data[p],filename=str(p));code=compile(data[p],str(p),'exec',dont_inherit=True,optimize=0);trees.append(t)
+ syntax.append(dict(path=str(p),sha256=sha(data[p]),inert_code_flags=code.co_flags,functions=list(fn(t)),execution=False))
+capture=data[M3/names[0]].decode();binder=data[M3/names[1]].decode();ct,bt=trees
+owner=parse(data[BASE/'OWNER_CONTINUATION_20261003_001.json']);peer=parse(data[BASE/'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json'])
+assert literal(ct,'OWNER_MASTER_EXPECTED')==owner and len(owner)==27
+assert set(literal(ct,'OWNER_REVIEW_KEYS'))==set(peer) and literal(ct,'OWNER_REVIEW_CORE')['reviewer']=='owner_docs_review' and len(peer)==19
+assert len(literal(ct,'LEASE_KEYS'))==12 and literal(ct,'MAX_SECONDS')==300 and literal(ct,'JSON_CAP')==2097152
+previous_capture=fn(ast.parse(data[M3/'capture-root-metadata003-corrected004.TEMPLATE.py']));final_capture=fn(ct)
+assert set(previous_capture)==set(final_capture)
+assert [n for n in previous_capture if previous_capture[n]!=final_capture[n]]==['main']
+initial_capture=fn(ast.parse(data[M3/'capture-root-metadata003.TEMPLATE.py']))
+assert set(initial_capture)==set(final_capture) and sorted(n for n in initial_capture if initial_capture[n]!=final_capture[n])==['main']
+assert 'GUARD_RUNTIME_PROFILE_006-rev003.json' in capture and 'inputs/SOURCE_STAGED_MANIFEST_005.json' in capture and 'inputs/ACTUAL_SOURCE_CAPSULE_005.json' in capture
+assert 'm3-source-independent-review001/INDEPENDENT_M3_SOURCE_REVIEW_002.json' in capture
+for call in ast.walk(ct):
+ if isinstance(call,ast.Call) and isinstance(call.func,ast.Attribute) and call.func.attr=='isoformat' and not any(isinstance(k.value,ast.IfExp) for k in call.keywords):assert any(k.arg=='timespec' and isinstance(k.value,ast.Constant) and k.value.value=='microseconds' for k in call.keywords)
+assert tuple(names)==literal(bt,'ACTIVE_SOURCE_NAMES') and "ROOT/'STAGED_MANIFEST_005.json'" in binder and "ROOT/'STAGED_MANIFEST_004.json'" not in binder
+expected_keys=('schema_version','record_type','source_author','reviewer','created_utc','verdict','scope','source_manifest_sha256','manifest_payload_count','finite_input_count','observations','preserved_inputs','prepublication_observations','syntax_and_inert_metadata','active_source_rows','source_checks','findings','implementation_conditions','actual_results','runtime_acceptance','operational_authority','post_capture_reference')
+assert literal(bt,'SOURCE_PEER_KEYS')==expected_keys
+previous_binder=fn(ast.parse(data[M3/'BIND_SOURCE_AND_PHASES_003-corrected004.TEMPLATE.py']));final_binder=fn(bt)
+assert set(previous_binder)==set(final_binder) and sorted(n for n in previous_binder if previous_binder[n]!=final_binder[n])==['main','reviewed_source_peer']
+assert 'PASS_STATIC_METADATA_PREPARATION_ONLY' in binder and 'post_capture_reference=None' in binder and 'len(replacements) != 6' in binder and 'reverse.encode' in binder
+psreceipt=parse(data[extra[-1][0]])
+for name in names[2:]:
+ p=M3/name;entry=[r for r in psreceipt['rows'] if r['path']==str(p)];assert len(entry)==1 and entry[0]['sha256']==sha(data[p]) and entry[0]['parser_errors']==[]
+ syntax.append(dict(path=str(p),sha256=sha(data[p]),parser='Windows PowerShell5.1 ParseFile',parser_errors=[],source_receipt_sha256=extra[-1][1],execution=False))
+for suffix in ['BEFORE','AFTER']:
+ a=data[M3/f'SUPERVISE_ROOT_METADATA_{suffix}_003.TEMPLATE.ps1'];b=data[M3/f'SUPERVISE_ROOT_METADATA_{suffix}_003-corrected004.TEMPLATE.ps1']
+ assert a.replace(b'$authBytes = Pin $Auth $ExpectedAuthorizationSha256 65536',b'$authBytes = Read-Pinned $Auth $ExpectedAuthorizationSha256 65536')==b
+assert all(type(x) is int for observation in observations for r in observation['rows'] for x in r['raw9'])
+before=OUT/'selected-before002';assert not before.exists();before.mkdir();preserved=[]
+for idx,p in enumerate(sorted(data,key=str)):
+ d=before/f'{idx:02d}.bytes';once(d,data[p]);assert d.read_bytes()==data[p];preserved.append(dict(path=str(p),copy=str(d),sha256=sha(data[p]),bytes=len(data[p])))
+pre=[]
+for p in sorted(data,key=str):b,r=read(p);assert b==data[p];pre.append(r)
+checks=['Complete first finite source closure re-read with exact21 original003 payloads and genuine historical source references; corrected004 and final005 selected payloads preserved.','Final005 twelve payloads pinned, six ordered active source paths and authentic closed22 peer reader fully audited.','Capture preserves all19 original nonmain helper ASTs including the already genuine Python6 lease clock; main alone adds explicit producer precision, fixed005 inputs and truthful finalGG6rev003 selection.','New peer reader verifies closed22 exact nominal values, all JSON lists, genuine Py6 stamps, positive counts, three finite observation rows, selected final manifest payloads and ordered six source rows; no legacy shim.','Master27/owner peer19 authentic short historical reviewer retained; finite lease12 genuine nativePS7 seventh-tick chronology/start/max43200 and independent owner deadline separation preserved.','Correct fixed005 source/capsule/preparer002 roles and runtime003 capture path; six-assignment Python and four PS two-literal exact reversal source routes preserved.','All four selected phase PS sources independently parse with zero errors under WindowsPS5.1; supervisor change is exact Pin-to-Read-Pinned only.','Bounded metadata-only current742+sevenGitroles+55configs+fourruntime, finite3Git reads, paired source snapshots and direct retained300+315 parent/capture65536/drain/reap routes fully audited as source.','Actual before/after phase tickets,9 bound-source peer,17 authorization,14 capture,20 parent and600 original authorization guards remain scoped metadata only; actual slots remain None.']
+conditions=['Source only: no reviewed definitions/imports/main/tests/Git/FFI/PS target/binder/lease/phase entry executed.','Full source acceptance is limited to final005 with GG6manifest009/profile003; corrected004 remains frozen unselected history.','Root must externally select the authentic peer SHA and actual finite lease,9 source pins and three role assignments; preserve exact reversal and obtain different actual bound source review before phase authorization.','Actual canonical producer selection and roles must be independently reviewed; source timestamps do not prove physical Root producer attribution, quiet, sole executor, loaded-site, hard OS Job/descendant/memory or atomic lock closure.','No actual full742/263, runtime/result, policy/release/native/science/public acceptance follows from these source checks.']
+result=dict(schema_version=1,record_type='guard006_metadata_successor_source_preparation_review',source_author='/root/renewal_runtime_inventory',reviewer='/root/owner_docs_review',created_utc=utc(),verdict='PASS_STATIC_METADATA_PREPARATION_ONLY',scope='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY',source_manifest_sha256=pin,manifest_payload_count=12,finite_input_count=len(data),observations=observations,preserved_inputs=preserved,prepublication_observations=pre,syntax_and_inert_metadata=syntax,active_source_rows=active,source_checks=checks,findings=[],implementation_conditions=conditions,actual_results=None,runtime_acceptance=False,operational_authority=False,post_capture_reference=None)
+assert tuple(result)==expected_keys and len(result)==22 and len(enc(result))<=2097152
+review=OUT/'INDEPENDENT_M3_SOURCE_REVIEW_002.json';once(review,enc(result))
+md=OUT/'INDEPENDENT_M3_SOURCE_REVIEW_002.md';once(md,b'M3 final005: PASS_STATIC_METADATA_PREPARATION_ONLY. Full finite source closure, authentic new closed22 reader and exact six active source paths accepted. No actual source binding, lease, capture, phase or target executed.\n')
+post=[]
+for p in sorted(data,key=str):b,r=read(p);assert b==data[p];post.append(r)
+postpath=OUT/'INDEPENDENT_M3_SOURCE_POST_002.json';once(postpath,enc(dict(schema_version=1,created_utc=utc(),review_sha256=sha(review.read_bytes()),source_post_observations=post)))
+print(json.dumps(dict(verdict=result['verdict'],finite_input_count=len(data),outputs=[dict(path=str(p),sha256=sha(p.read_bytes()),bytes=len(p.read_bytes())) for p in [review,md,postpath]])))

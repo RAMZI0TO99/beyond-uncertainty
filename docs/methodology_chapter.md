@@ -3,8 +3,9 @@
 > **Provenance (recorded 2026-08-23, D-132; this block is removed from the
 > final thesis version):** drafted by the student from the rewrite cards, then
 > polished by an AI assistant at the student's request — disclosed by the
-> student unprompted. Audited by Claude against the certified record: **32/32
-> checkable claims verified, zero factual errors found.** **Status: assisted
+> student unprompted. Its 2026-08-23 version was audited by Claude against the
+> certified record: **32/32 checkable claims verified, zero factual errors
+> found; later implementation-alignment edits are outside that count.** **Status: assisted
 > draft.** It does **not** yet discharge the independent-rewrite obligation
 > (D-125/D-131): the student's explain-and-defend walkthrough is pending, and
 > until it is done and Sol has ruled, this document must not enter the thesis
@@ -218,6 +219,13 @@ Every observed failure label is determined by the same repair-acceptance test. T
 1. the repaired model has a positive mean reduction in error;
 2. the 95% confidence interval for that reduction excludes zero in the improvement direction; and
 3. the mean reduction is greater than 20% of the original mean error.
+
+For the data repair, the training set is expanded from \(n\) to exactly
+\(10n\) transitions from the same fixed generating process, with the original
+observations retained as a nested prefix. The model-class repair instead
+changes only the predeclared representational restriction. The interventions
+are applied separately, and both are evaluated against the baseline model's
+recorded failure set.
 
 The third condition separates statistical detectability from practical importance. With a sufficiently large number of transitions, a negligible reduction could be estimated precisely and still have little diagnostic meaning. The relative 20% floor defines the least improvement the study is willing to call a successful repair and remains comparable across configurations with different baseline error scales.
 

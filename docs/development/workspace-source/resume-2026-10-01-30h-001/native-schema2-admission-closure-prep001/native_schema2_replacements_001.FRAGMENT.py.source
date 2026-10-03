@@ -1,0 +1,158 @@
+"""Source fragments only. No import, execution or authority in this preparation."""
+
+def read(path: Path, expected: str | None = None,
+         witness: dict[str, tuple[bytes, tuple[Any, ...]]] | None = None,
+         *, maximum: int | None = None) -> bytes:
+    require(isinstance(path, Path), 'native capture path unbound')
+    maximum = _native_capture_limit(path, maximum)
+    before = plain(path)
+    require(maximum is None or 0 <= before.st_size <= maximum,
+            'input exceeds reviewed finite byte bound before open')
+    with path.open('rb', buffering=0) as stream:
+        opened = os.fstat(stream.fileno())
+        require(maximum is None or 0 <= opened.st_size <= maximum,
+                'descriptor exceeds reviewed finite bound before read')
+        require(cross_api_identity(before, path, path_observation=True)
+                == cross_api_identity(opened, path, path_observation=False),
+                'input replaced before captured read')
+        data = stream.read() if maximum is None else stream.read(maximum + 1)
+        after_open = os.fstat(stream.fileno())
+    require(maximum is None or len(data) <= maximum,
+            'input exceeds reviewed finite bound before hash')
+    after = plain(path)
+    require(identity(before) == identity(after) and identity(opened) == identity(after_open)
+            and cross_api_identity(before, path, path_observation=True)
+            == cross_api_identity(opened, path, path_observation=False)
+            == cross_api_identity(after_open, path, path_observation=False)
+            == cross_api_identity(after, path, path_observation=True)
+            and len(data) == before.st_size,
+            'input changed during captured read')
+    require(expected is None or sha(data) == expected, 'pinned input SHA differs')
+    if witness is not None:
+        witness[str(path)] = (data, identity(after))
+    return data
+
+
+def repeat(witness: dict[str, tuple[bytes, tuple[Any, ...]]]) -> None:
+    for name, (data, recorded) in witness.items():
+        path = Path(name)
+        maximum = _native_capture_limit(path, None)
+        require(maximum is None or type(data) is bytes and len(data) <= maximum,
+                'cached witness exceeds fresh finite cap before hash')
+        expected = sha(data)
+        require(read(path, expected, maximum=maximum) == data and identity(plain(path)) == recorded,
+                'boundary witness changed/replaced after proof')
+
+
+def admission_files(bindings: dict[str, Any], rows: list[dict[str, Any]],
+                    witness: dict[str, tuple[bytes, tuple[Any, ...]]]) -> dict[str, bytes]:
+    module, maximum = _native_attestation_limit(bindings, witness)
+    plain(ADMISSION, directory=True)
+    require({path.name for path in ADMISSION.iterdir()} == set(EVIDENCE_NAMES),
+            'successor evidence missing/extra files')
+    inputs, inodes = {}, set()
+    for name in EVIDENCE_NAMES:
+        path = ADMISSION / name
+        token = identity(plain(path))[:2]
+        require(token not in inodes, 'successor evidence aliases another object')
+        inodes.add(token)
+        inputs[name] = read(path, bindings['admission_sha256']
+            if name in ('attestation.json', 'attestation.twin.json') else None, witness,
+            maximum=maximum if name in ('attestation.json', 'attestation.twin.json') else None)
+    require(inputs['attestation.json'] == inputs['attestation.twin.json'], 'admission twin differs')
+    doc = parse(inputs['attestation.json'])
+    sealed(doc)
+    require(inputs['attestation.json'] == canonical(doc) + b'\n', 'admission framing differs')
+    shape = _native_schema2_shape(doc, inputs, rows, bindings, witness)
+    require(inputs['successor-release.json'] == read(RELEASE, bindings['release_record_sha256'], witness)
+            and inputs['successor-candidate-manifest.json'] == read(MANIFEST, bindings['candidate_manifest_sha256'], witness)
+            and inputs['current-native-release-receipt.txt'] == read(ATTEMPT / 'release-receipt-v2.txt', bindings['receipt_sha256'], witness),
+            'copied successor input bytes differ')
+    receipt = inputs['current-native-release-receipt.txt']
+    require(b'\r' not in receipt and receipt.endswith(b'\n'), 'receipt LF framing differs')
+    lines = receipt.decode('ascii').split('\n')
+    names = ('controller_commit','native_launcher_sha256','outer_sha256','entry_sha256',
+             'helper_sha256','stage0_source_sha256','stage0_encoded_sha256',
+             'stage0_environment_policy_sha256')
+    require(len(lines) == 10 and lines[0] == 'WEEK8_D168_RELEASE_RECEIPT_V2'
+            and lines[-1] == '', 'unchanged V2 receipt shape differs')
+    receipt_values = {}
+    for name, row in zip(names, lines[1:-1], strict=True):
+        require(row.startswith(name + '='), 'receipt field order differs')
+        receipt_values[name] = row[len(name) + 1:]
+    for field, binding in RECEIPT_BINDINGS.items():
+        require(receipt_values[field] == bindings[binding], 'receipt current proof differs: ' + field)
+    require(sha(inputs['predecessor-release.json']) == PROGRAMMATIC_FACTS['predecessor']['predecessor_release_sha256']
+            and sha(inputs['predecessor-candidate-manifest.json']) == PROGRAMMATIC_FACTS['predecessor']['predecessor_candidate_manifest_sha256'],
+            'predecessor input copy differs')
+    proof_bytes = read(EXTERNAL_PROOF, bindings['external_proof_sha256'], witness)
+    proof = parse(proof_bytes)
+    require(proof_bytes == canonical(proof) + b'\n', 'external verifier framing differs')
+    _native_external_record(proof, doc, inputs, shape, bindings, witness)
+    _native_external_receipts(proof, witness)
+    rechecked, captured = _native_attestation_limit(bindings, witness)
+    require(rechecked is module and captured == maximum,
+            'raw executable identity or ceiling changed during native proof')
+    repeat(witness)
+    rechecked, captured = _native_attestation_limit(bindings, witness)
+    require(rechecked is module and captured == maximum,
+            'raw executable identity or ceiling changed after bounded rereads')
+    return inputs
+
+
+def admission_for_authority(authority: Any, admission_binding: Any, bindings: Any,
+                            *, config: Any = None) -> Any:
+    """Reobserve the real current raw5 proof; retain no admitted authority cache."""
+    bindings = checked_bindings(bindings, receipt_only=False)
+    require(type(authority) is dict, 'stored operating authority malformed')
+    raw = authority['preimport_authority_record']
+    sealed(raw)
+    require(type(raw['raw_authority_schema_version']) is int and raw['raw_authority_schema_version'] == 5
+            and raw['controller']['git_commit'] == bindings['controller_commit']
+            and raw['native_startup']['successor_admission_sha256'] == bindings['admission_sha256']
+            == authority['preimport_authority']['successor_admission_sha256'],
+            'stored actual raw5/current release/admission pin differs')
+    expected_config = dict(PROGRAMMATIC_FACTS['frozen_config'])
+    expected_config.update(controller_commit=bindings['controller_commit'],
+        release_receipt_sha256=bindings['receipt_sha256'], native_launcher_sha256=bindings['launcher_sha256'],
+        stage0_binding_sha256=raw['native_startup']['stage0_binding_sha256'],
+        startup_binding_sha256=raw['native_startup']['startup_binding_sha256'],
+        successor_admission_sha256=bindings['admission_sha256'], outer_bootstrap_literal_sha256=bindings['outer_sha256'])
+    if config is None:
+        config = expected_config
+    require(config == expected_config, 'stored operating config differs from fixed independent bindings')
+    witness: dict[str, tuple[bytes, tuple[Any, ...]]] = {}
+    owner(witness, 0)
+    history(witness)
+    module, maximum = _native_attestation_limit(bindings, witness)
+    _, rows = release_and_sources(bindings, witness)
+    inputs = admission_files(bindings, rows, witness)
+    guarded, captured = _native_attestation_limit(bindings, witness)
+    require(guarded is module and captured == maximum, 'native pre-revalidation raw helper changed')
+    observed = module.revalidate_recorded_static_authority(raw, config,
+        helper_path=RAW_HELPER, helper_sha256=bindings['helper_sha256'])
+    require(observed == raw, 'actual native authority changed during independent observation')
+    guarded, captured = _native_attestation_limit(bindings, witness)
+    require(guarded is module and captured == maximum,
+            'native raw helper changed after physical static observation')
+    historical = PROGRAMMATIC_FACTS['historical_records']
+    context = module.admit_recorded_predecessor(
+        current_raw=observed, current_authority=authority,
+        incident_bytes=read(PROJECT / historical['incident.json']['path'], historical['incident.json']['sha256'], witness),
+        terminal_bytes=read(PROJECT / historical['epoch-001-terminal.json']['path'], historical['epoch-001-terminal.json']['sha256'], witness),
+        attestation_bytes=inputs['attestation.json'], attestation_twin_bytes=inputs['attestation.twin.json'],
+        predecessor_release_bytes=inputs['predecessor-release.json'], successor_release_bytes=inputs['successor-release.json'],
+        predecessor_candidate_manifest_bytes=inputs['predecessor-candidate-manifest.json'],
+        successor_candidate_manifest_bytes=inputs['successor-candidate-manifest.json'],
+        current_release_receipt_bytes=inputs['current-native-release-receipt.txt'],
+        expected_attestation_sha256=bindings['admission_sha256'])
+    require(context.admission_binding == admission_binding,
+            'actual native response admission binding differs')
+    guarded, captured = _native_attestation_limit(bindings, witness)
+    require(guarded is module and captured == maximum,
+            'native raw helper changed after authenticated historical admission')
+    repeat(witness)
+    guarded, captured = _native_attestation_limit(bindings, witness)
+    require(guarded is module and captured == maximum,
+            'native raw helper changed after bounded final reobservation')
+    return context

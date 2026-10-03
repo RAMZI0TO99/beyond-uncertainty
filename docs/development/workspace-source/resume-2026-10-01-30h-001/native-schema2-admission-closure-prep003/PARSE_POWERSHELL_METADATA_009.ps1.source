@@ -1,0 +1,18 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$root = 'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-schema2-admission-closure-prep003'
+$paths = @(Get-ChildItem -LiteralPath (Join-Path $root 'front'),(Join-Path $root 'postseal') -File -Filter '*.ps1.template' | Sort-Object FullName)
+if ($paths.Count -ne 15) { throw 'Expected15 active PowerShell sources' }
+$rows = @()
+foreach ($path in $paths) {
+    $tokens = $null; $errors = $null
+    $tree = [Management.Automation.Language.Parser]::ParseFile($path.FullName,[ref]$tokens,[ref]$errors)
+    $rows += [ordered]@{ path = $path.FullName; sha256 = (Get-FileHash -LiteralPath $path.FullName -Algorithm SHA256).Hash.ToLowerInvariant(); bytes = $path.Length; error_count = @($errors).Count; errors = @($errors | ForEach-Object { $_.Message }); function_count = @($tree.FindAll({param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst]},$true)).Count }
+}
+$record = [ordered]@{ schema_version = 1; author = '/root/bootstrap_stage'; scope = 'PARSER_ONLY_NO_PREPARED_FUNCTION_OR_BRIDGE_EXECUTION'; source_count = 15; files = $rows; all_parsed_without_errors = @($rows | Where-Object { $_.error_count -ne 0 }).Count -eq 0; target_definitions_imports_tests_FFI_Git_native_executed = $false }
+$bytes = [Text.UTF8Encoding]::new($false,$true).GetBytes(($record | ConvertTo-Json -Depth 12) + "`n")
+$output = Join-Path $root 'POWERSHELL_PARSE_METADATA_009.json'
+$stream = [IO.FileStream]::new($output,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+try { $stream.Write($bytes,0,$bytes.Length) } finally { $stream.Dispose() }
+$record.all_parsed_without_errors
+if (-not $record.all_parsed_without_errors) { exit 1 }

@@ -1,0 +1,239 @@
+"""Freeze an author draft using AST/data/filesystem observations only."""
+import ast
+import base64
+import copy
+import datetime
+import hashlib
+import json
+import math
+import re
+import stat
+from pathlib import Path
+
+S = Path(__file__).resolve().parent
+sha = lambda data: hashlib.sha256(data).hexdigest()
+stamp = lambda: datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+def strict_json(data):
+    def unique(rows):
+        result = {}
+        for key, value in rows:
+            assert key not in result, key
+            result[key] = value
+        return result
+    def finite_float(value):
+        number = float(value)
+        assert math.isfinite(number), value
+        return number
+    return json.loads(data.decode('utf-8', errors='strict'), object_pairs_hook=unique,
+                      parse_float=finite_float,
+                      parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
+
+def capture(path):
+    info = path.lstat()
+    assert stat.S_ISREG(info.st_mode) and not stat.S_ISLNK(info.st_mode) and info.st_nlink == 1
+    assert not int(getattr(info, 'st_file_attributes', 0)) & 0x400
+    data = path.read_bytes()
+    after = path.lstat()
+    fields = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode',
+              'st_nlink', 'st_file_attributes', 'st_birthtime_ns')
+    before_row = [getattr(info, key, None) for key in fields]
+    assert before_row == [getattr(after, key, None) for key in fields] and len(data) == info.st_size
+    return {'path':str(path), 'sha256':sha(data), 'bytes':len(data), 'identity':before_row}, data
+
+def declared(value):
+    return value['sha256'] if isinstance(value, dict) else value
+
+paths = {S/'BASELINE_PRESERVATION_001.json', S/'BASELINE_PRESERVATION_SUPPLEMENT_002.json'}
+before = strict_json((S/'BASELINE_PRESERVATION_001.json').read_bytes())
+supplement = strict_json((S/'BASELINE_PRESERVATION_SUPPLEMENT_002.json').read_bytes())
+for row in before['source_snapshot_rows'] + supplement['rows']:
+    original = Path(row.get('source',row.get('path')))
+    retained = Path(row.get('copy', row.get('retained_path', '')))
+    assert retained.is_file(), row
+    assert sha(original.read_bytes()) == row['sha256'] and original.read_bytes() == retained.read_bytes(), row
+    paths.update((original, retained))
+for path in S.rglob('*'):
+    if path.is_file(): paths.add(path)
+first_time = stamp()
+first = {str(path):capture(path)[0] for path in sorted(paths, key=str)}
+common_path = S/'native_successor_front_common_013_001.py.template'
+old_path = S/'before/front/native_successor_front_common_013_001.py.template'
+common, old = common_path.read_text(encoding='utf-8'), old_path.read_text(encoding='utf-8')
+tree, previous = ast.parse(common), ast.parse(old)
+defs = lambda value: {node.name:node for node in value.body if isinstance(node, ast.FunctionDef)}
+new_defs, old_defs = defs(tree), defs(previous)
+composition = strict_json((S/'AUTHOR_AST_COMPOSITION_001.json').read_bytes())
+assert composition['source_sha256'] == sha(common_path.read_bytes())
+unchanged = composition['unchanged_existing_functions']
+assert len(unchanged) == 39
+assert all(ast.dump(new_defs[name], include_attributes=False) == ast.dump(old_defs[name], include_attributes=False)
+           for name in unchanged)
+assert all(name in unchanged for name in ('identity','cross_api_identity','deterministic_receipt','readiness_byte_limit',
+                                         'quiet_host_twice','validate_quiet_observations','checked_owned_verifier_pair',
+                                         'owner','host_tasks_disabled','validate_renderer_action','actual_native_admission'))
+
+class Rename(ast.NodeTransformer):
+    def __init__(self, mapping): self.mapping = mapping
+    def visit_Name(self, node): node.id = self.mapping.get(node.id, node.id); return node
+    def visit_FunctionDef(self, node):
+        node.name = self.mapping.get(node.name, node.name)
+        return self.generic_visit(node)
+
+worker = ast.parse((S/'inputs/raw-consumer-binding-integration-prep001/scripts/week8_exp2a_recovery_worker.py').read_bytes())
+worker_defs = defs(worker)
+guard_names = ('_raw_helper_value_identity','_raw_helper_function_state','_validate_raw_helper_executable_identity')
+for name in guard_names:
+    expected = Rename({'BootstrapRefused':'ValueError'}).visit(copy.deepcopy(worker_defs[name]))
+    assert ast.dump(expected, include_attributes=False) == ast.dump(new_defs[name], include_attributes=False)
+pub_defs = defs(ast.parse((S/'inputs/publisher-schema2-revision003/verify-successor-admission-schema2-003.py.template').read_bytes()))
+mapping = {'schema2_file_rows':'_native_file_rows','schema2_commit_object':'_native_commit_object',
+           'schema2_diffs':'_native_diffs','schema2_middle':'_native_middle','schema2_qa':'_native_grouped_qa',
+           'exact':'_native_exact','relative':'_native_relative','hex_value':'_native_hex',
+           'strict_json':'parse','row_identity':'_native_row_identity','Refused':'ValueError','HISTORICAL':'_NATIVE_HISTORICAL'}
+for original in ('schema2_file_rows','schema2_commit_object','schema2_diffs','schema2_middle'):
+    expected = Rename(mapping).visit(copy.deepcopy(pub_defs[original]))
+    assert ast.dump(expected, include_attributes=False) == ast.dump(new_defs[mapping[original]], include_attributes=False)
+for path in sorted(S.rglob('*')):
+    if path.is_file() and path.name.endswith(('.py', '.py.template')):
+        ast.parse(path.read_bytes(), filename=str(path))
+    if path.is_file() and path.suffix in ('.md','.json'):
+        text = path.read_bytes().decode('utf-8', errors='strict')
+        assert '\ufffd' not in text
+for fixture, key, limits in [('middle_release.bytes','release_record_base64',None),
+                             ('middle_manifest.bytes','candidate_manifest_base64',None),
+                             ('middle_commit_object.bytes','git_commit_object_base64',None)]:
+    pub_interface = strict_json((S/'inputs/publisher-schema2-revision003/PUBLICATION_SCHEMA2_INTERFACE_003.json').read_bytes())
+    expected = pub_interface['middle_base64_limits'][key]
+    data = (S/'fixtures'/fixture).read_bytes()
+    assert [len(base64.b64encode(data)),len(data),sha(data)] == expected
+assert sha((S/'fixtures/predecessor_rows.bytes').read_bytes()) == '690c6c53979cc2b91d48529b3f79dbba470e909f8c49d0bcf8bc04c288db3d3a'
+assert sha((S/'fixtures/predecessor_manifest.bytes').read_bytes()) == 'e0364b12684c4a03df4993d716d7003fb56ec356f263de3aa8c4e4c42112fe6a'
+test_tree = ast.parse((S/'test_native_schema2_closure_001.py.template').read_bytes())
+tests = [node.name for node in ast.walk(test_tree) if isinstance(node, ast.FunctionDef) and node.name.startswith('test_')]
+assert len(tests) == 16
+api_call = [node for node in ast.walk(new_defs['admission_for_authority']) if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute) and node.func.attr == 'admit_recorded_predecessor']
+assert len(api_call) == 1
+api_names = [node.arg for node in api_call[0].keywords]
+assert api_names == pub_interface['raw_pure_api']['keyword_only_arguments']
+assert ast.unparse(api_call[0].keywords[-1].value) == "bindings['admission_sha256']"
+repeat_text = ast.get_source_segment(common, new_defs['repeat'])
+assert repeat_text.index('_native_capture_limit') < repeat_text.index('expected = sha(data)') < repeat_text.index('read(path, expected')
+read_text = ast.get_source_segment(common, new_defs['read'])
+assert read_text.index('_native_capture_limit') < read_text.index('plain(path)') < read_text.index("path.open('rb'")
+assert read_text.index('opened.st_size') < read_text.index('stream.read')
+assert read_text.index('len(data) <= maximum') < read_text.index('sha(data)')
+behavior_text = ast.get_source_segment(common, new_defs['_native_behavior_runtime_evidence'])
+assert 'interpreter pending' in behavior_text and 'NATIVE_BEHAVIOR_DOCUMENT_SHA256' not in common
+assert 'NATIVE_BEHAVIOR_EXPECTED_DOCUMENT' not in common
+for name in composition['future_none_constants']:
+    matches = [node.value for node in tree.body if isinstance(node, ast.Assign)
+               and any(isinstance(target, ast.Name) and target.id == name for target in node.targets)]
+    assert len(matches) == 1 and isinstance(matches[0],ast.Constant) and matches[0].value is None, name
+links = []
+for label, target in re.findall(r'\[([^\]]+)\]\(([^)]+)\)', (S/'HANDOFF_001.md').read_text(encoding='utf-8')):
+    actual = (S/target).resolve(strict=True)
+    assert S in actual.parents
+    links.append({'label':label,'target':target,'resolved':str(actual)})
+second_time = stamp()
+second = {str(path):capture(path)[0] for path in sorted(paths, key=str)}
+assert first == second, 'paired input/source observations changed'
+
+def emit(name, doc):
+    path = S/name
+    assert not path.exists(), name
+    path.write_bytes((json.dumps(doc, sort_keys=True, ensure_ascii=True, allow_nan=False, indent=2)+'\n').encode('utf-8'))
+    return {'path':name,'sha256':sha(path.read_bytes()),'bytes':len(path.read_bytes())}
+
+capture_map = {
+    'both_attestation_initial_reads':{'entry':'admission_files','fresh_source_guard':'_native_attestation_limit',
+        'ceiling':395799,'selected_before_plain_open_read_hash':True,'source_module_preserved_after_proof':True},
+    'boundary_final_attestation_read':{'entry':'boundary','read_dispatch':'_native_capture_limit','ceiling':395799,
+        'existing_boundary_body_unchanged':True},
+    'witness_rereads':{'entry':'repeat','before_cached_hash':'_native_capture_limit',
+        'cached_length_strict_before_hash':True,'read_recaptures_cap':True},
+    'external_verifier_metadata':{'entry':'admission_files','dispatch':'_native_capture_limit',
+        'maximum':None,'independent_derivation_sha256':None,'before_open_required':True,
+        'uses_attestation_or_readiness_cap':False},
+    'publication_end_and_verifier_intent':{'entry':'_native_external_receipts','maximum':None,
+        'required_exact_keysets':{key:pub_interface['publication_receipt_keysets'][key]
+            for key in ('successor_publication_complete','successor_verification_intent')}},
+    'readiness':{'entry':'readiness_byte_limit','ceiling':383105,'function_AST_unchanged':True},
+    'real_native_admission_callback':{'entry':'admission_for_authority','keyword_names':api_names,
+        'expected_pin_expression':"bindings['admission_sha256']",'real_static_revalidation_required':True,
+        'post_static_and_post_admission_and_post_reread_full_module_checks':True},
+    'typed_native_runtime_behavior':{'entry':'_native_behavior_runtime_evidence',
+        'state':'UNBINDABLE_PENDING_TYPED_BEHAVIOR_CONTRACT','contract':None,
+        'filling_placeholder_enables_acceptance':False,'whole_future_result_or_its_digest_embedded':False,
+        'future_reference_source':'already externally authenticated native-review focused_native_behavior SHA',
+        'current_actual_runtime_profile_and_adapter':'REQUIRED_NEW_REVIEWED_SOURCE'},
+}
+interface = {'schema':1,'created_utc':stamp(),'state':'UNBINDABLE_PENDING_TYPED_BEHAVIOR_CONTRACT',
+    'author':'/root/window_docs','owner_sha256':'3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff',
+    'owner_end_utc':'2026-10-02T22:36:15Z','changed_operational_paths':['native_successor_front_common_013_001.py.template'],
+    'unchanged_operational_counts':{'front':11,'postseal':19},'all_operational_counts':{'front':12,'postseal':19},
+    'attestation_schema':2,'publication_schema':2,'attestation_keys':pub_interface['attestation_keys'],
+    'external_verifier_record_keys':pub_interface['publication_receipt_keysets']['successor_verification_pass'],
+    'external_verifier_key_count':33,'final_release_keys':pub_interface['final_release_keys'],
+    'middle_release_keys':pub_interface['middle_release_keys'],'fixed_intermediate':pub_interface['fixed_intermediate'],
+    'raw_API':pub_interface['raw_pure_api'],'io_names':pub_interface['protocol_output_names'],
+    'full_Git_proof':'two fresh observations each old742/middle742/final742; fixed immediate parent597',
+    'QA_policy':'263 paths in actual pinned predecessor grouped sequence; never global sort',
+    'scope_policy':'both old-to-final and middle-to-final same exact finite25, no add/delete/modes',
+    'capture_guard_map':capture_map,'future_none_constants':composition['future_none_constants'],
+    'source_bytes':len(common_path.read_bytes()),'source_base64_bytes':len(base64.b64encode(common_path.read_bytes())),
+    'unchanged_source_transport_ceiling':262144,'actual_bound_final_transport_derivation':None,
+    'current_release_or_raw_review_location_selected':False,'independent_static_review':None,
+    'actual_fresh_collection_count':None,'actual_test_result':None,'actual_native_or_physical_proof':None,
+    'operational_authority':False}
+interface_row = emit('NATIVE_SCHEMA2_INTERFACE_001.json',interface)
+audit = {'schema':1,'created_utc':stamp(),'author':'/root/window_docs',
+    'type':'AUTHOR_LOCAL_AST_AND_PRESERVATION_CHECK_NOT_INDEPENDENT_REVIEW',
+    'state':'UNBINDABLE_PENDING_TYPED_BEHAVIOR_CONTRACT','local_ast_parse_and_preservation':'MATCH',
+    'first_observed_utc':first_time,'second_observed_utc':second_time,
+    'paired_input_count':len(first),'paired_observations':[{'first':first[key],'second':second[key]} for key in first],
+    'source_sha256':sha(common_path.read_bytes()),'test_source_sha256':sha((S/'test_native_schema2_closure_001.py.template').read_bytes()),
+    'changed_existing_functions':composition['changed_existing_functions'],
+    'unchanged_existing_function_count':len(unchanged),'unchanged_existing_functions':unchanged,
+    'worker_guard_AST_renamed_only':list(guard_names),'publisher_pure_AST_renamed_only':list(mapping)[:4],
+    'raw_policy_literal_constants_verified_by_composition':composition['policy_constants'],
+    'prepared_test_method_count':len(tests),'prepared_test_method_names':tests,
+    'prepared_cases_actually_collected':None,'definitions_imported_or_executed':False,'tests_run':False,
+    'project_helper_imports':False,'Git_or_native_or_FFI_or_fit_executed':False,'live_or_primary_mutation':False,
+    'maintained_links':links,'interface':interface_row,'independent_review':None,
+    'known_author_probes':[
+       'Initial baseline manifest shape probe refused before creating directory; corrected data-only copy succeeded.',
+       'First composition runtime-fact-key probe refused before target write; corrected directory_count literal source key.',
+       'First composed source/result placeholders preserved in author-revision001, then removed to avoid a future self-hash cycle.',
+       'Author-revision002 preserved before repeat fresh-cap/cached-length-before-hash ordering correction.'],
+    'required_before_operational_binding':[
+       'Different-peer review; no author self-approval.',
+       'New reviewed source adapter for actual typed runtime behavior, using the externally authenticated native-review reference; do not bind whole future result/digest into source.',
+       'Independent finite external metadata cap derivation from complete actual bound schema/provenance/path/identity widths.',
+       'Fresh guarded physical raw3/schema2/current admission/runtime tests and integrated transitive controls; old unit doubles do not discharge them.',
+       'Old37 guard-regression fixture adapter for new cap-dispatch dependencies while preserving old test bodies.',
+       'Fresh reviewed distinct driver/bindings/execution; no driver/receipt exists in this stage.',
+       'Independent final bound transport-size derivation under unchanged262144 encoded bytes.',
+       'Final postcommit source/proof/current receipt binding and fresh owner/resource/quiet/reserve/one-use validation.'],
+    'limits':['No actual current native/operational authority or canonical QA/release acceptance.',
+              'No whole dependency closure, OS write sandbox, guaranteed descendant cleanup or host quiet lease.',
+              'Raw guard retains inherited mutable registry-content/deep imported-stdlib-state limits.',
+              'External runtime physical identity digests are authenticated external observations, not fabricated empirical results.']}
+audit_row = emit('AUTHOR_LOCAL_STATIC_VALIDATION_001.json',audit)
+files = []
+for path in sorted(S.rglob('*'),key=str):
+    if path.is_file():
+        data=path.read_bytes();files.append({'path':path.relative_to(S).as_posix(),'sha256':sha(data),'bytes':len(data)})
+manifest = {'schema':1,'frozen_utc':stamp(),'author':'/root/window_docs',
+    'state':'UNBINDABLE_PENDING_TYPED_BEHAVIOR_CONTRACT','source_sha256':sha(common_path.read_bytes()),
+    'source_bytes':len(common_path.read_bytes()),'test_source_sha256':sha((S/'test_native_schema2_closure_001.py.template').read_bytes()),
+    'changed_operational_paths':['native_successor_front_common_013_001.py.template'],
+    'prepared_test_method_count':len(tests),'file_count':len(files),'files':files,
+    'manifest_self_listed':False,'independent_static_review':None,'runtime_result':None,
+    'operational_bindable':False,'operational_authority':False,'audit':audit_row,'interface':interface_row}
+manifest_row=emit('STAGED_MANIFEST_001.json',manifest)
+print(json.dumps({'manifest':manifest_row,'source_sha256':manifest['source_sha256'],'source_bytes':manifest['source_bytes'],
+                  'test_source_sha256':manifest['test_source_sha256'],'listed_files':len(files),
+                  'paired_inputs':len(first),'prepared_methods':len(tests),'audit':audit_row,'interface':interface_row,
+                  'state':manifest['state']}))

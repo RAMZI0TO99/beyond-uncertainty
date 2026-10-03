@@ -1,0 +1,127 @@
+
+import ast,datetime as dt,hashlib,json,math,os,pathlib,stat,re
+P=pathlib.Path(r"D:\Aenv\pro2");B=P/"resume-2026-10-01-30h-001";R=B/"raw-component-runtime-prep004"
+INPUTS={};BYTES={}
+FIXED_EXE_ROLES={str(P/"pro2/.venv/Scripts/python.exe"),str(P/"runtimes/git/mingw64/bin/git.exe"),str(P/"runtimes/week8-python313-frozen-001/python.exe")}
+RAW_FIELDS=("st_dev","st_ino","st_mode","st_size","st_mtime_ns","st_ctime_ns","st_nlink","st_file_attributes","st_birthtime_ns")
+def raw9(s):return [getattr(s,k) for k in RAW_FIELDS]
+def ancestors(p):
+    rows=[]
+    for d in [*reversed(p.parent.parents),p.parent]:
+        s=d.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not s.st_file_attributes&1024,d
+        rows.append([str(d),s.st_dev,s.st_ino,s.st_mode,s.st_file_attributes])
+    return rows
+def read(p,pin=None,size=None,maximum=8388608):
+    p=pathlib.Path(p);chain=ancestors(p);pre=p.lstat()
+    assert stat.S_ISREG(pre.st_mode) and pre.st_nlink==1 and not pre.st_file_attributes&1024,p
+    assert type(maximum) is int and 0<maximum<=134217728 and 0<=pre.st_size<=maximum,p
+    with p.open("rb") as f:
+        first=os.fstat(f.fileno());assert 0<=first.st_size<=maximum
+        x=f.read(maximum+1);last=os.fstat(f.fileno())
+    post=p.lstat()
+    assert len(x)<=maximum and len(x)==pre.st_size and raw9(pre)==raw9(post) and raw9(first)==raw9(last),p
+    for key in ("st_dev","st_ino","st_size","st_mtime_ns","st_nlink","st_file_attributes","st_birthtime_ns"):
+        assert getattr(pre,key)==getattr(first,key),str(p)+key
+    if pre.st_mode!=first.st_mode:
+        assert os.name=="nt" and str(p) in FIXED_EXE_ROLES,p
+        assert stat.S_IFMT(pre.st_mode)==stat.S_IFMT(first.st_mode) and stat.S_IMODE(pre.st_mode)&~0o111==stat.S_IMODE(first.st_mode)&~0o111,p
+        assert stat.S_IMODE(pre.st_mode)&0o111==0o111 and stat.S_IMODE(first.st_mode)&0o111==0,p
+    assert ancestors(p)==chain,p
+    r={"path":str(p),"sha256":hashlib.sha256(x).hexdigest(),"size":len(x),"path_raw9":raw9(pre),"handle_raw9":raw9(first)}
+    if pin is not None:assert r["sha256"]==pin,p
+    if size is not None:assert len(x)==size,p
+    INPUTS[str(p)]=r;BYTES[str(p)]=x
+    return x
+def pairs(v):
+    d={}
+    for k,x in v:
+        assert k not in d,"duplicate JSON key"
+        d[k]=x
+    return d
+def finite(token):
+    value=float(token);assert math.isfinite(value),"nonfinite JSON number";return value
+def J(x):return json.loads(x,object_pairs_hook=pairs,parse_float=finite,parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def hex64(x):return type(x) is str and re.fullmatch("[0-9a-f]{64}",x) is not None
+def bindings_reverse(source,names,expected):
+    rows=source.splitlines(keepends=True);t=ast.parse(source.decode("utf-8"));edits=[];found={}
+    for n in t.body:
+        if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in names:
+            key=n.targets[0].id;assert key not in found and isinstance(n.value,ast.Constant) and hex64(n.value.value)
+            found[key]=n.value.value
+            assert expected[key]==n.value.value,key
+            start=sum(map(len,rows[:n.value.lineno-1]))+n.value.col_offset
+            end=sum(map(len,rows[:n.value.end_lineno-1]))+n.value.end_col_offset
+            edits.append((start,end))
+    assert set(found)==set(names) and len(edits)==len(names)
+    back=source
+    for start,end in sorted(edits,reverse=True):back=back[:start]+b"None"+back[end:]
+    return back,found,edits
+
+import types,marshal
+R=B/"raw-consumer-binding-integration-prep004"
+def create(p,x):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open("xb") as f:f.write(x)
+ assert read(p)==x
+bindings=J(read(R/"SOURCE_GUARD_TEST_BINDINGS_004.json"))
+raw=read(R/"inputs/raw004-source.bytes",bindings["raw_sha256"],210452)
+tree=ast.parse(raw)
+declarations=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef))]
+assert len([n for n in declarations if isinstance(n,ast.FunctionDef)])==85
+assert len([n for n in declarations if isinstance(n,ast.ClassDef)])==7
+assert len({n.name for n in declarations})==len(declarations)==92
+# Explicit ROOT choices005/006 permit inert CodeType metadata only. Never exec this code.
+code=compile(raw,str(R/"inputs/raw004-source.bytes"),"exec",dont_inherit=True,optimize=0)
+bodies=[x for x in code.co_consts if type(x) is types.CodeType]
+records=[];used=[]
+for n in declarations:
+ first=min([n.lineno,*[x.lineno for x in n.decorator_list]])
+ matches=[x for x in bodies if x.co_name==n.name and x.co_qualname==n.name and x.co_firstlineno==first]
+ assert len(matches)==1
+ x=matches[0];assert bool(x.co_flags&2)!=isinstance(n,ast.ClassDef)
+ used.append(x);records.append({"name":n.name,"kind":type(n).__name__,"first_line":first,"flags":x.co_flags,"inert_code_sha256":hashlib.sha256(marshal.dumps(x)).hexdigest()})
+initializers=[x for x in bodies if not any(x is y for y in used)]
+generators=[z for n in tree.body if not isinstance(n,(ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)) for z in ast.walk(n) if isinstance(z,ast.GeneratorExp)]
+assert len(initializers)==len(generators)==1
+assert initializers[0].co_name==initializers[0].co_qualname=="<genexpr>"
+assert initializers[0].co_flags&32 and initializers[0].co_flags&2 and initializers[0].co_firstlineno==generators[0].lineno
+selected=[]
+for role,row in bindings["consumers"].items():
+ source=read(R/row["path"],row["sha256"],row["size"]);source_tree=ast.parse(source)
+ names=set(row["selected_functions"])
+ nodes=[n for n in source_tree.body if isinstance(n,ast.FunctionDef) and n.name in names]
+ assert len(nodes)==len(names)
+ projected=ast.fix_missing_locations(ast.Module(body=[ast.ImportFrom(module="__future__",names=[ast.alias(name="annotations")],level=0),*nodes],type_ignores=[]))
+ # Construction only, no exec or FunctionType creation.
+ compiled=compile(projected,str(R/row["path"]),"exec",dont_inherit=True,optimize=0)
+ compiled_names=[x.co_name for x in compiled.co_consts if type(x) is types.CodeType]
+ assert set(compiled_names)==names and len(compiled_names)==len(names)
+ fingerprint=next(x for x in compiled.co_consts if type(x) is types.CodeType and x.co_name=="_raw_helper_value_identity")
+ assert "MappingProxyType" in fingerprint.co_names
+ imports=[n for n in source_tree.body if isinstance(n,ast.ImportFrom) and n.module=="types" and any(x.name=="MappingProxyType" and x.asname is None for x in n.names)]
+ assert len(imports)==1
+ selected.append({"role":role,"source_sha256":row["sha256"],"selected_names":compiled_names,"inert_code_sha256":hashlib.sha256(marshal.dumps(compiled)).hexdigest(),"source_direct_MappingProxyType_import_count":1,"selected_fixture_alias":"types.MappingProxyType","projection_only_no_execution":True})
+row=bindings["consumers"]["worker"]
+source=read(R/row["path"]);worker_tree=ast.parse(source);nodes=[n for n in worker_tree.body if isinstance(n,ast.FunctionDef) and n.name=="_validate_historical_admission"];assert len(nodes)==1
+projection=ast.fix_missing_locations(ast.Module(body=[ast.ImportFrom(module="__future__",names=[ast.alias(name="annotations")],level=0),*nodes],type_ignores=[]))
+compiled=compile(projection,"selected_worker_transport","exec",dont_inherit=True,optimize=0)
+assert [x.co_name for x in compiled.co_consts if type(x) is types.CodeType]==["_validate_historical_admission"]
+selected.append({"role":"worker_historical_transport","source_sha256":row["sha256"],"selected_names":["_validate_historical_admission"],"inert_code_sha256":hashlib.sha256(marshal.dumps(compiled)).hexdigest(),"projection_only_no_execution":True})
+assert len(selected)==6
+api=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="admit_recorded_predecessor")
+api_names=[a.arg for a in api.args.kwonlyargs]
+assert not api.args.args and len(api_names)==12 and all(x is None for x in api.args.kw_defaults)
+test=read(R/"test_raw_consumer_guards_004.TEMPLATE.py");testtree=ast.parse(test)
+cls=next(n for n in testtree.body if isinstance(n,ast.ClassDef) and n.name=="RawConsumerGuardRegressions")
+testnames=[n.name for n in cls.body if isinstance(n,ast.FunctionDef) and n.name.startswith("test_")]
+assert len(testnames)==19
+fixture=next(n for n in testtree.body if isinstance(n,ast.FunctionDef) and n.name=="guard_fixture")
+namespace_dicts=[n for n in ast.walk(fixture) if isinstance(n,ast.Dict) and any(isinstance(k,ast.Constant) and k.value=="MappingProxyType" for k in n.keys)]
+assert len(namespace_dicts)==1
+pair=next(v for k,v in zip(namespace_dicts[0].keys,namespace_dicts[0].values) if isinstance(k,ast.Constant) and k.value=="MappingProxyType")
+assert ast.dump(pair,include_attributes=False)==ast.dump(ast.parse("types.MappingProxyType",mode="eval").body,include_attributes=False)
+record={"schema_version":1,"author":"/root/candidate_review","created_at_utc":dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"),"root_explicit_nonexecuting_compilation_choices":["inputs/source-choice005.json","inputs/source-choice006.json"],"scope":"Raw4module+sixselectedhelperASTprojections inert CodeType metadata only","raw_sha256":bindings["raw_sha256"],"named_top_functions":85,"named_top_classes":7,"named_class_methods":sum(isinstance(n,ast.FunctionDef) for c in tree.body if isinstance(c,ast.ClassDef) for n in c.body),"named_definitions":records,"initializer_genexpr":{"count":1,"flags":initializers[0].co_flags,"first_line":initializers[0].co_firstlineno,"no_global_slot":True},"six_selected_projection_metadata":selected,"admission_keyword_only_required_names":api_names,"admission_keyword_only_count":12,"unchanged_operational_input_file_roles":7,"global_cap":395799,"schema3_private_cap":361287,"legacy_schema1_cap":345810,"legacy_schema2_cap":395799,"test_method_count_AST_only":19,"test_methods":testnames,"fixture_direct_type_alias_AST_exact":True,"target_code_executed":False,"FunctionType_constructed":False,"selected_functions_or_imports_called":False,"test_module_compiled":False,"tests_collected_or_executed":False,"actual_healthy_module_acceptance":None}
+create(R/"RAW4_AND_SIX_PROJECTION_CODE_METADATA_004.json",json.dumps(record,sort_keys=True,indent=2).encode()+b"\n")
+print(json.dumps({"metadata_sha256":INPUTS[str(R/"RAW4_AND_SIX_PROJECTION_CODE_METADATA_004.json")]["sha256"],"raw_functions":85,"classes":7,"methods":record["named_class_methods"],"genexpr_flags":initializers[0].co_flags,"projections":len(selected),"test_method_count":19,"execution":False}))
+

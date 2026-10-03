@@ -1,0 +1,274 @@
+"""One-use author metadata composition; reads data/AST and writes design records only."""
+import ast
+import base64
+import hashlib
+import json
+import os
+import stat
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).absolute().parent
+WORK = ROOT.parent
+NATIVE = ROOT / 'before/native002'
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def ident(value):
+    return [value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns,
+            value.st_ctime_ns, value.st_mode, value.st_nlink,
+            value.st_file_attributes, value.st_birthtime_ns]
+
+
+def capture(path):
+    before = path.lstat()
+    assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+    assert not before.st_file_attributes & 0x400 and before.st_size <= 16000000
+    with path.open('rb', buffering=0) as stream:
+        opened = os.fstat(stream.fileno())
+        assert opened.st_size == before.st_size
+        data = stream.read(before.st_size + 1)
+        closed = os.fstat(stream.fileno())
+    after = path.lstat()
+    assert ident(before) == ident(after) and ident(opened) == ident(closed)
+    assert len(data) == before.st_size
+    assert ident(before)[:4] + [before.st_birthtime_ns] + ident(before)[5:8] == (
+        ident(opened)[:4] + [opened.st_birthtime_ns] + ident(opened)[5:8])
+    return {'path': str(path), 'sha256': sha(data), 'bytes': len(data),
+            'identity': ident(before)}, data
+
+
+def write_once(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('xb') as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    row, observed = capture(path)
+    assert observed == data
+    return row
+
+
+metadata_observation, metadata_bytes = capture(ROOT / 'SOURCE_AND_CALLER_METADATA_003.json')
+assert metadata_observation['sha256'] == '83331ba9e9d3e50e53d4c1217d9e8308353de0dbb9cc38f74bab0dc881a5c64c'
+metadata = json.loads(metadata_bytes)
+before_observation, before_bytes = capture(ROOT / 'NATIVE002_BEFORE_MANIFEST_003.json')
+assert before_observation['sha256'] == '4d4a3667287b3896b5a4b72799728a54205548d041fa691d9e9264ae3107d875'
+md_observation, md_bytes = capture(ROOT / 'STDIN_FRAME_NATIVE_TRANSPORT_DESIGN_003.md')
+extra_inputs = []
+for relative, expected in (
+    ('FINITE_RELEASE_CHAIN_COMPACT_DESIGN_002.json', '116b2257fb327242877bbec868d632a8207157e3849e912d566a942896b03c9d'),
+    ('FINITE_RELEASE_CHAIN_COMPACT_DESIGN_002.md', '9150e6dd0e8fa5d4829af00551c305fec516235dffd0a931ed7155d752f361ad'),
+    ('publisher-schema2-grammar-revision004/METADATA_GRAMMAR_INTERFACE_004.json', 'f8fda24b4d1d1d8e29de6a91c489f8aa7df0336f35d742c386e1d4830e3b1685'),
+):
+    original, data = capture(WORK / relative)
+    assert original['sha256'] == expected
+    copied = write_once(ROOT / 'inputs' / relative, data)
+    assert original['identity'][:2] != copied['identity'][:2]
+    extra_inputs.append({'original': original, 'copy': copied,
+                         'scope': 'Authenticated author design/interface data; no policy/runtime acceptance inferred.'})
+
+tree = ast.parse((NATIVE / 'front/native_successor_front_common_013_001.py.template').read_bytes(), type_comments=True)
+assert not any(getattr(node, 'type_comment', None) for node in ast.walk(tree))
+null_globals = []
+for node in tree.body:
+    if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and node.value.value is None:
+        null_globals.extend(name.id for name in node.targets if isinstance(name, ast.Name))
+test_tree = ast.parse((NATIVE / 'source/test_native_schema2_admission_002.py').read_bytes())
+test_asts = {cls.name + '.' + function.name: sha(ast.dump(function, include_attributes=False).encode())
+             for cls in test_tree.body if isinstance(cls, ast.ClassDef)
+             for function in cls.body if isinstance(function, ast.FunctionDef) and function.name.startswith('test_')}
+assert len(test_asts) == 85
+preview_size = metadata['formatting_only_preview']['utf8_bytes']
+budget_examples = []
+for delta in (0, 1024, 2048, 4096):
+    source_size = preview_size + delta
+    encoded_source = 4 * ((source_size + 2) // 3)
+    encoded_binding_maximum = min(16384, 4 * ((262142 - encoded_source) // 4))
+    json_maximum = 3 * (encoded_binding_maximum // 4)
+    budget_examples.append({'illustrative_new_source_growth_bytes': delta,
+                           'source_utf8_bytes': source_size,
+                           'source_base64_bytes': encoded_source,
+                           'bindings_base64_maximum': encoded_binding_maximum,
+                           'bindings_json_maximum': json_maximum,
+                           'available_sum_of_16_escaped_path_literal_widths': json_maximum - 5331,
+                           'is_final_budget_or_bound_choice': False})
+
+matrix = [
+    ('F01', 'Healthy exact two-line frame in renderer and after-proof phases', 'Real parser control accepts the same canonical source and bus before negatives.', 'Closed frame/parser; semantic common boundary still required.'),
+    ('F02', 'CRLF, CR, BOM, non-ASCII transport byte', 'One byte changed from F01 for each spelling; refuse before Base64 or target compilation.', 'ASCII framing'),
+    ('F03', 'Missing first/second LF, partial source/binding, missing EOF', 'Healthy EOF control then truncate each component; explicitly distinguish byte refusal from supervised wait.', 'Frame length/EOF'),
+    ('F04', 'Third LF, appended byte/line, empty first/second component', 'Add one terminal/empty component to F01; no source execution.', 'Exact two lines'),
+    ('F05', '262144 receiver cap and cap+1; component sum262142 and +1', 'Independent length witnesses at exact bounds; oversize read never exceeds cap+1 and refuses before decode/hash.', 'Bounded input allocation'),
+    ('F06', 'Source alternate alphabet, noncanonical padding or invalid Base64', 'Healthy source encoding then change only alphabet/padding; source hash is never trusted before canonical decode.', 'Source Base64'),
+    ('F07', 'Bindings invalid Base64 or B2>16384', 'Healthy bus then one encoded-byte mutation or exact parser-cap+1 case.', 'Bindings Base64/parser'),
+    ('F08', 'Invalid UTF8, JSON BOM, whitespace/noncanonical JSON spelling', 'Healthy canonical writer output then mutate decoded bytes; strict decode/reserialization refuses.', 'Bindings JSON'),
+    ('F09', 'Duplicate key at top/provenance/row, missing or extra field', 'Healthy 44/14/2 shapes then duplicate or remove one key under real duplicate hook.', 'Closed schema'),
+    ('F10', 'Bool count, wrong integer25, float/exponent/nonfinite data', 'Healthy exact integer25 and SHA/commit strings then replace one scalar; reject before common use.', 'Scalar domains'),
+    ('F11', 'Wrong review role, relative/escaped/traversal/noncanonical provenance path', 'Healthy externally selected sixteen exact paths then mutate one role/path; proof data cannot redefine expected values.', 'Path-role closure'),
+    ('F12', 'Renderer optional fields vs after-proof four late nulls', 'Fixed canonical renderer control allows existing null phase only; after-proof control requires all late SHA strings.', 'Fixed phase semantics'),
+    ('F13', 'Self-declared source digest or changed source bytes', 'External CLI/caller pin control then change frame source and its internal claims; reject before compile.', 'Source authentication'),
+    ('F14', 'Physical --bindings-base64 duplication or preinserted synthetic argv', 'Healthy physical argv without bus then inject old flag; bootstrap refuses duplicate/internal-context spoofing.', 'Parser insertion'),
+    ('F15', 'Physical GetCommandLineW8191 vs8192, large internal argv after insertion', 'Own-process fake API tests plus later actual inert OS witness; never count internal argv as physical proof.', 'Observed OS command line'),
+    ('F16', 'CRT quoting spaces/quotes/trailing backslash/astral Unicode/long exact paths', 'Round-trip exact writer argument vector; actual GetCommandLineW witness and selected maximum grammar required.', 'Quoted UTF16 derivation'),
+    ('F17', 'Partial writes, appended CRLF, double-close or no-close', 'Fake retained BaseStream tests verify exact bytes/EOF; later actual inert Windows sender proves provider behavior.', 'Byte writer and EOF'),
+    ('F18', 'Source path/opened length cap+1 or file grows before allocation', 'Healthy retained file control then mutate one stat/length observation; no oversized allocation/hash.', 'Capture bounds'),
+    ('F19', 'Source/ancestor metadata changes during serialization/child use', 'Healthy held capture then one inode/birth/mode/size/mtime/attribute/link substitution before/after launch.', 'Fresh source closure'),
+    ('F20', 'Cold/reused imports/defaults/json/base64/ctypes/code/global substitution', 'Clean actual selected executable guard succeeds before each mutation; no cached authority result or blanket code skip.', 'Executable identity'),
+    ('F21', '21 tables/one schema/nine dependencies diverge or introduce45th field', 'AST source closure and causal caller serializer controls; C# dependency is not falsely labeled JSON validator.', 'Caller propagation'),
+    ('F22', 'Formatting changes function/test/policy string/default AST', 'Compare full type-comment AST, all85 method ASTs and53 old names; guard code identity rebuilt from final captured bytes.', 'Compaction preservation'),
+    ('F23', 'Selected bus/source budget exact fit and one byte over after literal growth', 'Derive from maximum legal scalar/path skeletons, Base64 rounding and all future source substitutions; no arbitrary chosen cap.', 'Final budget'),
+    ('F24', 'Controller envelope/V2 tokens/raw12/seven-file APIs/quiet/reserves drift', 'Exact retained source/protocol assertions plus admitted-boundary negative tests; framing cannot consume or replace native GO stdin.', 'Original policy invariants'),
+    ('F25', 'Wrong output count/line/exit or stale success reply', 'Healthy exact phase reply then wrong response under fresh source/admission observation; no publication/mutation authorization.', 'Return boundary'),
+    ('F26', 'Blocked IO or child failure and owned-handle cleanup', 'Reviewed retained-process deadline tests and actual inert OS witness; no PID-search kill or unrelated branch action.', 'Owned IO lifecycle'),
+]
+
+record = {
+    'schema_version': 1,
+    'record_type': 'native_stdin_frame_source_design003',
+    'author': '/root/bootstrap_stage',
+    'created_utc': datetime.now(timezone.utc).isoformat(),
+    'status': 'SOURCE_ONLY_PENDING_DIFFERENT_PEER_UNBINDABLE',
+    'scope': 'Concrete transport design; no transport implementation or execution.',
+    'markdown': md_observation,
+    'native002_before_manifest': before_observation,
+    'static_source_metadata': metadata_observation,
+    'additional_input_copies': extra_inputs,
+    'frozen_native002_manifest_sha256': 'ce1eceb7cdc34df4ec2b73708d2e4f5bf82500ad91131751b51c358156ae4ab4',
+    'current_source': metadata['common'],
+    'current_full_bus_lower_witness': metadata['minimum_width_repeated_short_path_witness'],
+    'formatting_only_preview': metadata['formatting_only_preview'],
+    'compaction_contract': {
+        'preview_written_as_operational_source': False,
+        'current_whole_module_ast_equal': True,
+        'type_comments_in_original': 0,
+        'string_and_docstring_values_unchanged': True,
+        'current_85_method_ast_sha256': test_asts,
+        'retained_old_method_names': 53,
+        'retained_old_front_method_asts': 37,
+        'explicit_changes_require_new_review': ['frame receiver', 'canonical sender serializer', 'owned byte writer', 'internal parser insertion', 'all affected bootstrap/loader call sites'],
+        'byte_and_code_identity_note': 'AST equivalence does not preserve byte SHA, line numbers or compiled code objects. Final captured bytes independently define new executable identities.',
+        'all_future_literal_growth': ['all selected source/record paths', 'all legal cap integer/map substitutions', 'cap derivation digests', 'source/profile/runtime role-map data', 'new framing logic and fixed bootstrap schema data', 'binding serializer/source literals', 'Base64 padding and exactly2LF'],
+        'unbound_global_slots_in_frozen_common': null_globals,
+        'mutable_code_state_slots_excluded_from_binding_growth': ['_RAW_HELPER_EXECUTABLE_STATE', '_NATIVE_RAW_MODULE', '_NATIVE_COMMON_CAPTURE'],
+        'future_total_literal_growth_bytes': None,
+    },
+    'frame_contract': {
+        'lines': 2,
+        'wire_encoding': 'ASCII bytes',
+        'exact_bytes': 'canonical_standard_Base64(source_bytes) + byte0A + canonical_standard_Base64(canonical_bindings_JSON_UTF8) + byte0A',
+        'terminator_bytes': 2,
+        'sender_encoded_components_cap': 262142,
+        'receiver_total_cap': 262144,
+        'receiver_read_maximum': 262145,
+        'source_decoded_cap': 196605,
+        'retained_bindings_base64_parser_cap': 16384,
+        'bindings_decoded_maximum_from_parser_cap': 12288,
+        'reject': ['CR or CRLF', 'BOM', 'non-ASCII transport byte', 'empty component', 'missing LF', 'third LF', 'trailing byte', 'incomplete component', 'alternative Base64 alphabet', 'extra/noncanonical padding', 'missing supervised EOF'],
+        'formula': '4*ceil(S/3)+4*ceil(J/3)<=262142 and F=4*ceil(S/3)+4*ceil(J/3)+2<=262144; S<=196605; 4*ceil(J/3)<=16384',
+        'source_role_budget_formula': 'S_role<=min(196605,3*floor((262142-B2)/4)); parent computes B2 from trusted selected bus before source allocation.',
+        'json_width_formula': 'After-proof J=5331+sum(E_i for16 exact JSON-encoded path literals) for the frozen key/value widths; any schema/serialization/value-domain change requires a new measured derivation.',
+        'sixteen_paths': ['native_review_path', 'pre_render_review_path'] + metadata['release_provenance_fields'],
+        'exact_selected_path_spellings': None,
+        'exact_final_bus_utf8_bytes': None,
+        'exact_final_common_utf8_bytes': None,
+        'exact_final_frame_bytes': None,
+        'conditional_budget_examples': budget_examples,
+        'no_extra_pipeline_terminator': True,
+        'byte_cap_is_not_wall_clock_guarantee': True,
+    },
+    'receiver_before_target_execution': [
+        'Require the reviewed physical argv shape without --bindings-base64. Obtain own GetCommandLineW and check<=8191UTF16 before any artificial argv insertion.',
+        'Read no more than262145 bytes; require<=262144 and exact nonempty2LF grammar, with component encoded sum<=262142 and bindings component<=16384.',
+        'Apply encoded component and decoded source/JSON bounds before decode/hash/parse/compile; strict Base64 validate and reencode equality for both lines.',
+        'Decode JSON strict UTF8 with duplicate-key refusal and nonfinite-constant refusal. Compare compact sorted ensure_ascii spelling, reject any unsupported primitive and exact closed44/14/2 shapes.',
+        'Validate exact SHA/commit/count kinds, source-pinned path-role expectations and fixed phase-only optionality; no expected pin or expected role comes from a newly read proof.',
+        'Verify source bytes SHA against external authenticated caller/CLI expectation; establish __file__, __source_sha256__, __source_bytes__ from that exact capture.',
+        'Insert the already validated line2 Base64 only into existing internal --bindings-base64 parser context, after the physical OS observation. Never report inserted argv as OS command-line evidence.',
+        'Compile exact authenticated captured bytes with dont_inherit=True, then execute only in the existing owned isolated child namespace; full common checked_bindings and late authority checks remain mandatory.',
+    ],
+    'sender_contract': {
+        'operation_scope': 'Modify only eight existing direct bridge source functions in a new Native003 package after peer design review.',
+        'serializer': 'Inline closed-value canonical serializer: sorted exact keys/maps, compact separators, CPython ensure_ascii-compatible string escaping, null and exact integer25 only; no generic ConvertTo-Json assumption.',
+        'serializer_input_expectations': 'Externally reviewed44-field caller data is selected before proof reads. Proof records may be compared to these values but never supply them.',
+        'source_capture': 'Preserve plain singlelink/reparse/ancestor policy, pre-open and opened-length caps, raw sameAPI9, Windows required birth crossAPI8, and FileShare.Read/retained stream closure through child use.',
+        'writer': 'One owned ProcessStartInfo/retained process handle at the existing fixed Python boundary; no shell; hidden; exact quoted Arguments; redirected stdin BaseStream writes authenticated single byte array and closes exactly once.',
+        'partial_IO': 'Loop only within exact frame length; account writes, explicit EOF, bound/drain outputs under existing independently reviewed phase deadline. No generic wall-clock/API responsiveness claim.',
+        'after_IO': 'Retain source/child handles to exact completion/checked reply; reobserve current source/ancestor metadata and freshly revalidate executable/current authority at existing late boundaries.',
+        'native_GO': 'Frame stdin belongs to read-only helper child only. Original separate native ceremony pipedGO stdin is unchanged.',
+        'actual_byte_writer_source': None,
+        'actual_OS_witness': None,
+    },
+    'bindings': {
+        'schema': metadata['bindings_schema'],
+        'kind_counts': metadata['binding_kind_counts'],
+        'provenance_rows': metadata['release_provenance_fields'],
+        'renderer_only_optional_existing_fields': metadata['renderer_only_optional_existing_fields'],
+        'late_four_required_after_proof': ['publisher_sha256', 'external_verifier_sha256', 'publication_end_sha256', 'verification_intent_sha256'],
+        'schema_added_fields': 0,
+        'trusted_caller_fields': 44,
+        'bootstrap_shape_policy_origin': 'Reviewed fixed bootstrap/caller source, not frame-supplied schema or proof-selected values.',
+        'path_grammar': 'Exact externally selected canonical absolute project paths; no dot/traversal/reparse/trailing-space/trailing-dot/NUL/control or surrogate-invalid path. JSON encoded width includes every escape. Distinct record/source roles cannot alias.',
+        'phase_exception_origin': 'Only fixed canonical renderer call site before actual publication; no arbitrary phase flag can grant downstream nullable semantics.',
+    },
+    'caller_map': metadata['callers'],
+    'counts': {'operational_sources': 31, 'literal_tables': 21, 'schema_owner': 1, 'nonliteral_dependencies': 9, 'python_direct_capture_sites': 12, 'powershell_direct_capture_sites': 8, 'new_helper_roles': 0, 'new_bus_keys': 0},
+    'physical_source_payload_roles': {
+        'front_four': 'front Python common;196095B before future compaction',
+        'postseal_four': 'postseal Python common; then fresh retained disk capture/authentication of front Python common',
+        'inherited_fifth_downstream_forwarder': 'Keeps existing monitor common boundary; no independent new transport sender claimed.',
+    },
+    'forwarded_arguments_preserved': ['phase', 'prior-status-sha256', 'prior-adjudicate-sha256', 'pre-recover-sha256', 'prior-verdict-sha256', 'phase-evidence-sha256', 'audit-sha256', 'after', 'expected-script-sha256', 'front-helper-sha256'],
+    'command_line_contract': {
+        'original_UTF16_ceiling': 8191,
+        'prelaunch': 'Derive exact quoted Windows command including executable, fixed bootstrap, actual selected path, externalSHA and all applicable phase pins. Shared CRT serializer must cover spaces/quotes/trailing backslashes/astral Unicode.',
+        'actual_child': 'Pinned ctypes own-process kernel32.GetCommandLineW, explicit argtypes[] and c_wchar_p restype; check raw string UTF16 units before internal argv alteration or captured target execution.',
+        'physical_bindings_payload_present': False,
+        'internal_parser_insertions_are_OS_evidence': False,
+        'actual_final_eight_native_command_lengths': None,
+        'actual_each_helper_bootstrap_quoted_command': None,
+        'retained_native_commands_note': 'The eight original generated native commands remain independently derived with original controller/stage0 V2 envelope. This helper frame does not prove them.',
+    },
+    'trust_DAG': {
+        'ordered_stages': ['fixed source grammar/finite role policy and independent scalar/path cap derivation', 'final compact common+test bytes and case manifest/runtime expectations', 'bound driver with early source/manifest/runtime pins and source validation retaining actualdriver reference', 'external ROOT ACK passed by actual CLI after sourcevalidation exists', 'actual supervised result+typed profile', 'native review', 'producer/verifier finalbindings containing nativeReview SHA', 'externally pinned producer/verifier source and completed-record hashes in44-field caller bus'],
+        'forbidden_back_edges': ['common->future producer/verifier/nativeReview fullbyteSHA that refers back to common', 'common->future sourcevalidation/profile/result/driver fullSHA that refers back to common', 'driver literal->later ROOTACK SHA while ACK references driver', 'cap derivation containing common fullSHA while common embeds derivation SHA', 'expected hash inferred from freshly read proof or receipt'],
+        'code_identity_cache_only': True,
+        'authority_observation_cache_allowed': False,
+    },
+    'source_runtime_assumptions': {
+        'runtime': 'Existing pinned isolated CPython3.13.5 -I-S-B-Xutf8 executable/base/cfg/site/stdlib closure freshly authenticated; import aliases/code/defaults/global identities guarded on cold and reuse paths.',
+        'OS_provider': 'Standard Windows kernel32.GetCommandLineW own-process API. No arbitrary DLL provider acceptance, process scan, PID-search kill or new productionFFI call.',
+        'metadata': 'Required birth/ns/inode/mode/links/attributes retained. Byte/AST preservation is not proof of current authority or current release ancestry.',
+        'deadline': 'Retained owner process handles and separately reviewed existing phase supervision. Windows scheduler/GIL/kernel/IO responsiveness limits remain explicit.',
+        'proof_kind': 'Pure/mock test acceptance does not establish actual Windows serialization/IO/provider proof; a separately authorized inert witness is required.',
+    },
+    'critical_test_matrix': [{'family': family, 'condition': condition, 'healthy_control_and_mutation': causal, 'refusal_or_observation_boundary': boundary, 'planned_only': True} for family, condition, causal, boundary in matrix],
+    'future_test_manifest_contract': {'derive_actual_unique_test_and_subtest_ids_from_new_source': True, 'existing_named_methods': 85, 'existing_planned_subtest_events': 272, 'new_named_method_count': None, 'new_planned_subtest_count': None, 'actual_passed': None, 'actual_skipped': None, 'negative_tests_require_prior_healthy_control': True, 'actual_OS_witness_requires_separate_ROOT_authorization': True},
+    'integration_holds': ['Different peer must review this source-only design before Native003 authoring.', 'Final typed source/writer/reader/cap closure and actual selected role paths are not chosen.', 'Grammar004 is frozen and reportedREFUSED_STATIC_TEST_PREPARATION; its keysets/domains here are author interface data only.', 'Consumer guard14 actual healthy runtime remains pending; raw direct169pass+2Win1314 reports do not substitute.', 'Raw7fe fixedEA9->597->final is a unit context only after additional actor intermediates; current finite policy must be separately reviewed.', 'Compact finite schema3 design is independently authored proposal data, not current admission acceptance.', 'Future transport implementation/source peer/actual bounded inert Windows evidence and final 8191/262144 derivation remain ahead.'],
+    'unchanged_limits_and_protocol': {'attestation': 395799, 'readiness_stdout': 383105, 'encoded_receiver': 262144, 'encoded_sender_components': 262142, 'bindings_parser': 16384, 'Windows_command_UTF16': 8191, 'raw_API_keyword_arguments': 12, 'operational_files': 7, 'V2_receipt_fields': 8, 'V2_receipt_bytes': 683, 'V2_receipt_LF_bytes': 9, 'V2_split_segments_including_terminal_empty': 10, 'controller_envelope_V2_changed': False, 'quiet_rules_changed': False, 'reserves_changed': False, 'piped_GO_changed': False},
+    'actual_frame_implemented': False,
+    'target_definitions_imported_or_executed': False,
+    'selected_definitions_executed': False,
+    'tests_executed': False,
+    'FFI_or_native_or_Git_executed': False,
+    'operational_authority_granted': False,
+    'scientific_outcomes_consulted': False,
+    'scientific_values_emitted': False,
+    'public_action_performed': False,
+    'production_invoked': False,
+}
+design = write_once(ROOT / 'STDIN_FRAME_NATIVE_TRANSPORT_DESIGN_003.json',
+                    (json.dumps(record, ensure_ascii=True, sort_keys=True, indent=2) + '\n').encode())
+for pair in extra_inputs:
+    assert capture(Path(pair['original']['path']))[0] == pair['original']
+    assert capture(Path(pair['copy']['path']))[0] == pair['copy']
+assert capture(ROOT / 'SOURCE_AND_CALLER_METADATA_003.json')[0] == metadata_observation
+assert capture(ROOT / 'NATIVE002_BEFORE_MANIFEST_003.json')[0] == before_observation
+assert capture(ROOT / 'STDIN_FRAME_NATIVE_TRANSPORT_DESIGN_003.md')[0] == md_observation
+print(json.dumps({'design': design, 'markdown': md_observation,
+                  'extra_input_copies': len(extra_inputs),
+                  'critical_families_planned': len(matrix),
+                  'scope': 'SOURCE_ONLY_NO_IMPLEMENTATION_OR_EXECUTION'}))

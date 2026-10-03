@@ -1,0 +1,124 @@
+"""Own Source metadata freeze; no target compilation, import, definition or call."""
+import ast
+import difflib
+import hashlib
+import json
+from pathlib import Path
+
+HERE = Path(__file__).parent
+WORK = HERE.parent
+CHECKER = WORK/'metadata3-actual-checker-prep001'
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def output(name, data):
+    with (HERE/name).open('xb') as stream:
+        stream.write(data)
+
+
+def encoded(value):
+    return (json.dumps(value,sort_keys=True,indent=2,ensure_ascii=True)+'\n').encode('ascii')
+
+
+selected = [HERE/'review_guard006_actual_records_001-corrected006.TEMPLATE.py',
+    HERE/'review_guard006_actual_records_001-corrected007.TEMPLATE.py',HERE/'compose-root-review-packet-006.TEMPLATE.py',
+    HERE/'AUTHOR_FROZEN_SOURCE_MANIFEST_006.json',HERE/'ACYCLIC_BOUND_MODEL_PEER_PROTOCOL_006.json',
+    HERE/'SOURCE_BINDING_ALIGNMENT_006.json',HERE/'CAUSAL_FIXTURE_PLAN_005.json',
+    WORK/'guard006-utility-source-independent-review001/INDEPENDENT_GENERIC_PUB_SOURCE_REVIEW_002.json',
+    CHECKER/'review-metadata3-actual006-corrected009.TEMPLATE.py',CHECKER/'AUTHOR_FROZEN_SOURCE_MANIFEST_009.json',
+    CHECKER/'SOURCE_PROTOCOL_AND_REVIEW_CONTRACT_009.json',CHECKER/'SOURCE009_LOSSLESS_WHOLE_PROJECTION_PROPOSAL_001.md',
+    HERE/'LOSSLESS_WHOLE_READER_007.py.source',HERE/'AUTHOR_LOSSLESS_WHOLE_SOURCE_007.py',
+    HERE/'LOSSLESS_WHOLE_SOURCE_INERT_FACTS_007.json',Path(__file__).absolute()]
+contents = [path.read_bytes() for path in selected]
+assert sha(contents[0]) == '1ab45b85e38447c40a99abdc5849eed5547700fbc9f84aefc842055b7a5b0ea1'
+assert sha(contents[1]) == '8f620adad426d38315392b94e5a9e46a66f1a1eb63613aa5fb79a9715abbc8fd'
+assert sha(contents[2]) == '1b909f93c795c1d162b025ccf4917513ee20eb2edfd5d1db80ff78afebd1d911'
+assert sha(contents[8]) == '3c02e9898ed5fde8cf74f91ff780093ed66ca2a8807a1be2dfe1c9e8976d14e6'
+ancestor = json.loads(contents[3]);ancestor_payloads = []
+for row in ancestor['payloads']:
+    path = HERE/row['path'];data = path.read_bytes()
+    assert len(data)==row['bytes'] and sha(data)==row['sha256']
+    ancestor_payloads.append((path,data))
+    if path not in selected:
+        selected.append(path);contents.append(data)
+for unused in range(2):
+    for path,data in zip(selected,contents):
+        assert path.read_bytes()==data
+copies = HERE/'selected-lossless-whole-007';copies.mkdir()
+observed=[]
+for index,(path,data) in enumerate(zip(selected,contents)):
+    copy = copies/(str(index).zfill(2)+'.bytes')
+    with copy.open('xb') as stream:stream.write(data)
+    assert copy.read_bytes()==data and path.read_bytes()==data
+    observed.append(dict(path=str(path),sha256=sha(data),bytes=len(data),copy_path=str(copy),reads_before_copy=3,copy_readback_exact=True))
+diff=''.join(difflib.unified_diff(contents[0].decode().splitlines(keepends=True),contents[1].decode().splitlines(keepends=True),
+    fromfile=selected[0].name,tofile=selected[1].name))
+output('LOSSLESS_WHOLE_IMPLEMENTATION_DIFF_007.patch',diff.encode('utf8'))
+oldtree=ast.parse(contents[0]);newtree=ast.parse(contents[1])
+oldfunc={n.name:ast.dump(n,include_attributes=False) for n in oldtree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+newfunc={n.name:ast.dump(n,include_attributes=False) for n in newtree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+changed=[name for name in oldfunc if oldfunc[name]!=newfunc[name]]
+assert sorted(changed)==['machine_core','main','retained_waiter']
+cases=[
+ ('WP01','whole closed projection13','Replace one exactint nominal/count with bool, then restore.','whole projection exact nominal / whole exact typed projection counts'),
+ ('WP02','whole complete table pointers','Remove, duplicate or reorder one of the four pointers, then restore.','whole four exact table pointers / whole ordered table role'),
+ ('WP03','table pre-read cap','Increase only one otherwise valid table bytes field to4194305; open/read/hash spies remain zero for that selected table; restore.','whole table pre-read4MiB cap'),
+ ('WP04','table authentic role','Substitute one otherwise cryptographically pinned table path; selectedtable open/read/hash spies zero; restore.','whole fixed table path'),
+ ('WP05','table current bytes','Corrupt one table byte under unchanged SHA; keep paths/closed records valid; restore.','byte pin/size'),
+ ('WP06','both complete tables','Alter one valid second table and its coherent pointer/hash while keeping first stable; restore.','whole both full canonical byte streams equal'),
+ ('WP07','complete pinned tree identity','Remove one file from both tables, coherently update table pointers and projected digest, retain pinned real identity; restore.','whole reconstructed full tree identity'),
+ ('WP08','typed file size','Change only one file bytes to bool, keeping closed maps and coherent table pins; restore.','whole row bounded exact size'),
+ ('WP09','raw9 nominal schema','Replace only one raw9 integer with bool in both tables under coherent table pins; restore.','whole raw9 exact integer fields'),
+ ('WP10','relative path confinement','Replace one file path with parent escape or absolute path while preserving upstream pointer gates; restore.','whole canonical path confinement'),
+ ('WP11','full ordinal order','Swap adjacent valid rows in both tables under coherent table hashes without changing their identities; restore.','whole full UTF16 ordinal order'),
+ ('WP12','casefold alias refusal','Create a same-casefold duplicate in both tables at correct ordinal positions, with upstream type/path gates healthy; restore.','whole no repeated or casefold aliases'),
+ ('WP13','directory coverage','Remove one directory map entry in both canonical tables while retaining valid rows and all upstream pins; restore.','whole exact directory coverage'),
+ ('WP14','projected complete row5 digest','Change only projection ordered_projected_observations_sha256 to a different validSHA; table and result pins healthy; restore.','whole complete projected row5 digest'),
+ ('WP15','current path before open','Use authentic table membership with one current lstatraw9 mismatch; file open/read/hash spies stay zero; restore.','whole path same-API raw9 before open'),
+ ('WP16','current descriptor before read','Healthy path/ancestor facts and open, then one fstatraw9 mismatch; read/hash spies stay zero; restore.','whole descriptor same-API raw9 before read'),
+ ('WP17','same API executable policy','Healthy path and descriptor raw9 each have their real API modes/creation values; restricted shared identity succeeds; perturb one shared field only, then restore.','whole restricted cross-API identity'),
+ ('WP18','full byte hash','Healthy table/path/handle gates but streamed file bytes differ; restore.','whole full current byte hash'),
+ ('WP19','final full file reread','Initial5390 current reads healthy; mutate one authenticated file only before final reread; no decision publication; restore.','whole path same-API raw9 before open / whole full current byte hash'),
+ ('WP20','final directory reread','Initial506 directory facts healthy; mutate one directory only before final reread; no decision publication; restore.','whole directory same-API current raw9'),
+ ('WP21','retained ordinary rows sharing wholepath','Retain runtime4 and ordinary rows whose paths equal projected whole rows; complete5390 digest/counts unchanged; delete only such a retained row without updatingcounts then restore.','whole exact typed projection counts'),
+ ('WP22','none projection','Healthy capture_before projection: no tables/null result/zero omitted and real retainedrows; introduce one table only then restore.','nonwhole no table pointers'),
+ ('WP23','retained4096 cap','Healthy4096 exact row5 retainedfacts; append4097th before any table IO, then restore.','whole retained observation cap'),
+ ('WP24','restricted reader membership','Healthy authenticated fixed-root file; remove only membership row before calling restricted reader, restore; open/read/hash zero.','whole reader authenticated membership'),
+]
+plan=dict(schema_version=1,record_type='guard006_lossless_whole_causal_source_fixture_plan',author='/root/pubnative_review',
+    predecessor_plan_sha256=sha(contents[6]),inherited_cases_unchanged=json.loads(contents[6])['cases'],
+    common_healthy_control='Each case starts with an exact builtin JSON-owned5390file/506directory fixture, all four canonical pinnedtables, complete tree hashes, valid role/source/lease/trust/parent/input/ticket gates. Keep every earlier guard healthy; isolate one named defect; assert exact failure marker and independent IO/publication spy counts; restore and require success. Synthetic fixture identities are explicitly test-owned constants, never actual Root input records.',
+    source_controls=[dict(id=cid,boundary=boundary,negative=negative,required_cause=cause,restored='The original complete healthy fixture succeeds after reversal of the single mutation.',
+        result=None) for cid,boundary,negative,cause in cases],
+    source_control_count=len(cases),executable_tests_authored=False,tests_executed=False,actual_collection=None,actual_results=None)
+output('CAUSAL_FIXTURE_PLAN_007.json',encoded(plan))
+facts=dict(schema_version=1,record_type='guard006_lossless_whole_source_finite_input_audit',author='/root/pubnative_review',
+    finite_inputs=observed,ancestor_manifest_sha256=sha(contents[3]),ancestor_payloads=len(ancestor['payloads']),
+    preserved_old_functions=[name for name in oldfunc if name not in changed],changed_functions=changed,new_functions=[name for name in newfunc if name not in oldfunc],
+    selected_sources_AST_parsed=True,target_source_compiled=False,target_definitions_executed=False,target_functions_called=False,
+    source_control_count=len(cases),tests_executed=False,SourceActualInputs=None,actual_binding=None,actual_source_pool=None,actual_detail_fit=None,
+    budget=dict(unbound_utility_bytes=len(contents[1]),existing_utility_cap=131072,remaining_unbound_bytes=131072-len(contents[1]),
+                composer_bytes=len(contents[2]),existing_composer_cap=131072,actual_bound_bytes=None,actual_bound_fit=None),
+    no_unknown_input_absence_claim=True,post_readback_all_exact=True)
+for path,data in zip(selected,contents):assert path.read_bytes()==data
+output('LOSSLESS_WHOLE_FINITE_SOURCE_AUDIT_007.json',encoded(facts))
+handoff='''# Source007 handoff\n\nRoot authorized the distinct checker009 lossless observation protocol. Source007 adds an independent consumer of the closed projection13 without changing Core12, Detail15, BOUND22, LATE14, Source19,4096 observations,2MiB detail or131072 utility cap. It authenticates four canonical pinned4MiB tables, reconstructs every5390 file fact and506 directory facts, validates complete identities/order/aliases/maps and row5 digest, checks current full bytes/raw9, and repeats all reconstructed checks before publication. Ordinary retained runtime/source/ticket rows remain separate even when paths coincide. No filesystem enumeration is performed.\n\nSource006, both predecessor architecture receipts and original composer remain exact historical Source inputs. Source007 is author preparation only: architecture peer and actual pool/modelpeer20/READY/GO remain absent; the Source009 independent peer002 is still pending. Actual helper mains, definitions, bindings, tests and target/runtime execution were not performed. Twenty-four new causal Source control plans inherit the predecessor plans; they are not executable tests or results.\n\nThe unbound85149-byte utility leaves45923 bytes under its existing131072 cap. This is only a lower Source bound. Root must independently assemble and verify the actual two literals plus composer model, full actual pool and byte reversals, and reject actual oversize before writes. Constructor is a separate unfinished draft awaiting corrected binder002 and genuine RootWriter Source supplement. Root must select current Source inputs and externally authenticate Root trust after INIT; no actual record or approval is manufactured here.\n'''
+output('HANDOFF_LOSSLESS_WHOLE_007.md',handoff.encode('ascii'))
+payload_names=['AUTHOR_LOSSLESS_WHOLE_SOURCE_007.py','LOSSLESS_WHOLE_READER_007.py.source','review_guard006_actual_records_001-corrected007.TEMPLATE.py',
+    'LOSSLESS_WHOLE_SOURCE_INERT_FACTS_007.json','LOSSLESS_WHOLE_SOURCE_DIFF_007.patch','FREEZE_LOSSLESS_WHOLE_SOURCE_007.py',
+    'LOSSLESS_WHOLE_IMPLEMENTATION_DIFF_007.patch','CAUSAL_FIXTURE_PLAN_007.json','LOSSLESS_WHOLE_FINITE_SOURCE_AUDIT_007.json','HANDOFF_LOSSLESS_WHOLE_007.md']
+payload_names.extend(str(path.relative_to(HERE)) for path in copies.iterdir())
+payloads=[]
+for name in sorted(payload_names):
+    data=(HERE/name).read_bytes();payloads.append(dict(path=name,bytes=len(data),sha256=sha(data)))
+manifest=dict(schema_version=1,record_type='guard006_lossless_whole_source_author_manifest',author='/root/pubnative_review',scope='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY',
+    active_source_rows=[dict(path=selected[1].name,sha256=sha(contents[1]),bytes=len(contents[1])),dict(path=selected[2].name,sha256=sha(contents[2]),bytes=len(contents[2]))],
+    predecessor_manifest=dict(path=str(selected[3]),sha256=sha(contents[3])),source_checker009_manifest=dict(path=str(selected[9]),sha256=sha(contents[9])),
+    payloads=payloads,finite_inputs=len(selected),new_source_controls=len(cases),SourceActualInputs=None,actual_source_pool=None,actual_binding=None,actual_results=None,
+    target_execution=False,tests_executed=False,operational_authority=False,source_peer=None)
+output('AUTHOR_FROZEN_SOURCE_MANIFEST_007.json',encoded(manifest))
+data=(HERE/'AUTHOR_FROZEN_SOURCE_MANIFEST_007.json').read_bytes()
+print(json.dumps(dict(manifest_sha256=sha(data),payloads=len(payloads),finite_inputs=len(selected),source_sha256=sha(contents[1]),source_bytes=len(contents[1]),actuals=None),sort_keys=True))

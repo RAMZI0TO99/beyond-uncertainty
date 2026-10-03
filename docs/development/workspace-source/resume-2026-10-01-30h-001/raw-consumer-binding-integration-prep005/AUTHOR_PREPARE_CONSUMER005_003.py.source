@@ -1,0 +1,133 @@
+
+import ast,datetime as dt,hashlib,json,math,os,pathlib,stat,re
+P=pathlib.Path(r"D:\Aenv\pro2");B=P/"resume-2026-10-01-30h-001";R=B/"raw-component-runtime-prep004"
+INPUTS={};BYTES={}
+FIXED_EXE_ROLES={str(P/"pro2/.venv/Scripts/python.exe"),str(P/"runtimes/git/mingw64/bin/git.exe"),str(P/"runtimes/week8-python313-frozen-001/python.exe")}
+RAW_FIELDS=("st_dev","st_ino","st_mode","st_size","st_mtime_ns","st_ctime_ns","st_nlink","st_file_attributes","st_birthtime_ns")
+def raw9(s):return [getattr(s,k) for k in RAW_FIELDS]
+def ancestors(p):
+    rows=[]
+    for d in [*reversed(p.parent.parents),p.parent]:
+        s=d.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not s.st_file_attributes&1024,d
+        rows.append([str(d),s.st_dev,s.st_ino,s.st_mode,s.st_file_attributes])
+    return rows
+def read(p,pin=None,size=None,maximum=8388608):
+    p=pathlib.Path(p);chain=ancestors(p);pre=p.lstat()
+    assert stat.S_ISREG(pre.st_mode) and pre.st_nlink==1 and not pre.st_file_attributes&1024,p
+    assert type(maximum) is int and 0<maximum<=134217728 and 0<=pre.st_size<=maximum,p
+    with p.open("rb") as f:
+        first=os.fstat(f.fileno());assert 0<=first.st_size<=maximum
+        x=f.read(maximum+1);last=os.fstat(f.fileno())
+    post=p.lstat()
+    assert len(x)<=maximum and len(x)==pre.st_size and raw9(pre)==raw9(post) and raw9(first)==raw9(last),p
+    for key in ("st_dev","st_ino","st_size","st_mtime_ns","st_nlink","st_file_attributes","st_birthtime_ns"):
+        assert getattr(pre,key)==getattr(first,key),str(p)+key
+    if pre.st_mode!=first.st_mode:
+        assert os.name=="nt" and str(p) in FIXED_EXE_ROLES,p
+        assert stat.S_IFMT(pre.st_mode)==stat.S_IFMT(first.st_mode) and stat.S_IMODE(pre.st_mode)&~0o111==stat.S_IMODE(first.st_mode)&~0o111,p
+        assert stat.S_IMODE(pre.st_mode)&0o111==0o111 and stat.S_IMODE(first.st_mode)&0o111==0,p
+    assert ancestors(p)==chain,p
+    r={"path":str(p),"sha256":hashlib.sha256(x).hexdigest(),"size":len(x),"path_raw9":raw9(pre),"handle_raw9":raw9(first)}
+    if pin is not None:assert r["sha256"]==pin,p
+    if size is not None:assert len(x)==size,p
+    INPUTS[str(p)]=r;BYTES[str(p)]=x
+    return x
+def pairs(v):
+    d={}
+    for k,x in v:
+        assert k not in d,"duplicate JSON key"
+        d[k]=x
+    return d
+def finite(token):
+    value=float(token);assert math.isfinite(value),"nonfinite JSON number";return value
+def J(x):return json.loads(x,object_pairs_hook=pairs,parse_float=finite,parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def hex64(x):return type(x) is str and re.fullmatch("[0-9a-f]{64}",x) is not None
+def bindings_reverse(source,names,expected):
+    rows=source.splitlines(keepends=True);t=ast.parse(source.decode("utf-8"));edits=[];found={}
+    for n in t.body:
+        if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in names:
+            key=n.targets[0].id;assert key not in found and isinstance(n.value,ast.Constant) and hex64(n.value.value)
+            found[key]=n.value.value
+            assert expected[key]==n.value.value,key
+            start=sum(map(len,rows[:n.value.lineno-1]))+n.value.col_offset
+            end=sum(map(len,rows[:n.value.end_lineno-1]))+n.value.end_col_offset
+            edits.append((start,end))
+    assert set(found)==set(names) and len(edits)==len(names)
+    back=source
+    for start,end in sorted(edits,reverse=True):back=back[:start]+b"None"+back[end:]
+    return back,found,edits
+
+APPENDED="\n\ndef metaclass_spoof_row(case, row, frozen_rows, seen):\n    \"\"\"Separate instances and logs distinguish callback setup from guarded use.\"\"\"\n    if case not in (\"M1\", \"M2\", \"M3\", \"M4\"):\n        raise AssertionError(\"unknown finite metaclass case\")\n    class SpoofMeta(type(Mapping)):\n        __hash__ = type.__hash__\n        def __eq__(cls, other):\n            seen.append((\"type_equality\", getattr(other, \"__name__\", None)))\n            if case == \"M1\":\n                return other is dict or other is types.MappingProxyType\n            if case in (\"M2\", \"M3\"):\n                return other is int\n            return other is tuple\n    class ForeignMapping(Mapping, metaclass=SpoofMeta):\n        def __getitem__(self, key):\n            seen.append((\"getitem\", key))\n            return row[key]\n        def __iter__(self):\n            seen.append((\"iter\", None))\n            return iter(row)\n        def __len__(self):\n            seen.append((\"len\", None))\n            return len(row)\n        def items(self):\n            seen.append((\"items\", None))\n            return row.items()\n        def __eq__(self, other):\n            seen.append((\"value_equality\", type(other).__name__))\n            if case == \"M3\":\n                return type(other) is tuple and other == frozen_rows\n            return Mapping.__eq__(self, other)\n    ForeignMapping.__name__ = type(row).__name__\n    ForeignMapping.__module__ = type(row).__module__\n    return ForeignMapping()\n\n\nclass RawConsumerMetaclassIdentityRegressions(unittest.TestCase):\n    def assert_metaclass_case_refused(self, case):\n        for role in (\"controller\", \"worker\", \"entrypoint\", \"fit_child\", \"inspector\"):\n            for reuse in (False, True):\n                with self.subTest(case=case, role=role, reuse=reuse), guard_fixture(role) as (module, load, namespace, Refused, _):\n                    self.assertEqual(namespace[\"_GUARD_HEALTHY_CONTROL_CALLS\"], 2)\n                    if reuse:\n                        self.assertIs(load(), module)\n                    original = module.SUCCESSOR_COMPACT_INTERMEDIATE_FACTS\n                    row = original[0]\n                    identity = namespace[\"_raw_helper_value_identity\"]\n                    frozen_rows = identity(row)[1]\n                    self.assertEqual(identity(row), identity(types.MappingProxyType(dict(row))))\n                    # Prove the same finite equality mechanism with a SEPARATE\n                    # object/log. It never enters the raw module or guard cache.\n                    probe_seen = []\n                    probe = metaclass_spoof_row(case, row, frozen_rows, probe_seen)\n                    self.assertEqual(probe_seen, [], \"fixture construction invoked a user callback\")\n                    target = dict if case == \"M1\" else tuple if case == \"M4\" else int\n                    self.assertTrue(type(probe) == target)\n                    self.assertEqual(probe_seen, [(\"type_equality\", target.__name__)])\n                    if case == \"M3\":\n                        # This is the exact genuine normalized mapping-row value\n                        # to which the old primitive branch's foreign value could\n                        # compare equal. No raw/guard callback is substituted.\n                        self.assertTrue(probe == frozen_rows)\n                        self.assertEqual(probe_seen[-1], (\"value_equality\", \"tuple\"))\n                    seen = []\n                    replacement = metaclass_spoof_row(case, row, frozen_rows, seen)\n                    self.assertEqual(seen, [], \"mutation fixture setup invoked a user callback\")\n                    self.assertEqual(type(replacement).__name__, type(row).__name__)\n                    self.assertEqual(type(replacement).__module__, type(row).__module__)\n                    self.assertIsNot(type(replacement), types.MappingProxyType)\n                    try:\n                        module.SUCCESSOR_COMPACT_INTERMEDIATE_FACTS = (replacement, original[1])\n                        with self.assertRaisesRegex(Refused, \"unsupported policy/default value\"):\n                            load()\n                        self.assertEqual(seen, [], \"foreign type/value/mapping callback preceded identity refusal\")\n                    finally:\n                        module.SUCCESSOR_COMPACT_INTERMEDIATE_FACTS = original\n                    self.assertIs(load(), module)\n                    self.assertIs(load(), module)\n\n    def test_m1_mapping_selective_metaclass_refuses_cold_and_reuse_without_callbacks(self):\n        self.assert_metaclass_case_refused(\"M1\")\n\n    def test_m2_primitive_selective_metaclass_refuses_cold_and_reuse_without_callbacks(self):\n        self.assert_metaclass_case_refused(\"M2\")\n\n    def test_m3_primitive_and_value_equality_metaclass_refuses_cold_and_reuse_without_callbacks(self):\n        self.assert_metaclass_case_refused(\"M3\")\n\n    def test_m4_sequence_selective_metaclass_refuses_cold_and_reuse_without_callbacks(self):\n        self.assert_metaclass_case_refused(\"M4\")\n\n    def test_genuine_builtin_fingerprints_keep_types_order_and_cold_reuse_acceptance(self):\n        for role in (\"controller\", \"worker\", \"entrypoint\", \"fit_child\", \"inspector\"):\n            for reuse in (False, True):\n                with self.subTest(role=role, reuse=reuse), guard_fixture(role) as (module, load, namespace, _, _):\n                    self.assertEqual(namespace[\"_GUARD_HEALTHY_CONTROL_CALLS\"], 2)\n                    if reuse:\n                        self.assertIs(load(), module)\n                    identity = namespace[\"_raw_helper_value_identity\"]\n                    genuine = (None, False, 7, 1.25, \"reviewed\", b\"reviewed\",\n                               {\"b\": 2, \"a\": 1}, types.MappingProxyType({\"b\": 2, \"a\": 1}),\n                               (2, 1), [2, 1], {2, 1}, frozenset((2, 1)))\n                    for value in genuine:\n                        fingerprint = identity(value)\n                        self.assertIs(type(fingerprint), tuple)\n                        expected_kind = \"NoneType\" if value is None else type(value).__name__\n                        self.assertEqual(fingerprint[0], expected_kind)\n                    self.assertEqual(identity({\"b\": 2, \"a\": 1}), identity({\"a\": 1, \"b\": 2}))\n                    self.assertEqual(identity(types.MappingProxyType({\"b\": 2, \"a\": 1})),\n                                     identity(types.MappingProxyType({\"a\": 1, \"b\": 2})))\n                    self.assertNotEqual(identity({\"a\": 1}), identity(types.MappingProxyType({\"a\": 1})))\n                    self.assertNotEqual(identity((2, 1)), identity((1, 2)))\n                    self.assertNotEqual(identity((2, 1)), identity([2, 1]))\n                    self.assertEqual(identity({2, 1}), identity({1, 2}))\n                    self.assertEqual(identity(frozenset((2, 1))), identity(frozenset((1, 2))))\n                    self.assertNotEqual(identity({1, 2}), identity(frozenset((1, 2))))\n                    original = module.SUCCESSOR_COMPACT_INTERMEDIATE_FACTS\n                    try:\n                        module.SUCCESSOR_COMPACT_INTERMEDIATE_FACTS = repack_exact_policy(original)\n                        self.assertIs(load(), module)\n                        self.assertIs(load(), module)\n                    finally:\n                        module.SUCCESSOR_COMPACT_INTERMEDIATE_FACTS = original\n                    self.assertIs(load(), module)\n                    self.assertIs(load(), module)\n"
+
+S=B/"raw-consumer-binding-integration-prep004"; R=B/"raw-consumer-binding-integration-prep005"
+def sha(x):return hashlib.sha256(x).hexdigest()
+def publish(p,x):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open("xb") as f:f.write(x)
+ assert read(p,sha(x),len(x))==x
+def publish_json(name,v):publish(R/name,(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+"\n").encode("ascii"))
+old_table_bytes=read(S/"SOURCE_GUARD_TEST_BINDINGS_004.json"); old_table=J(old_table_bytes)
+choice_bytes=read(R/"inputs/source-choice007.json","ff686795870f4617584639806e1265231de93cbdbad2b467e4d41fbb08812150",5808)
+choice=J(choice_bytes)
+raw=read(R/"inputs/raw004-source.bytes","da64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211",210452)
+replacements=[
+ ("kind in (bool, int, float, str)","kind is bool or kind is int or kind is float or kind is str"),
+ ("kind in (dict, MappingProxyType)","kind is dict or kind is MappingProxyType"),
+ ("kind in (tuple, list, set, frozenset)","kind is tuple or kind is list or kind is set or kind is frozenset"),
+ ("kind in (set, frozenset)","kind is set or kind is frozenset")]
+table=J(old_table_bytes); table["schema_version"]=5;table["prepared_test_method_count"]=24
+table["root_type_identity_source_choice_sha256"]=sha(choice_bytes)
+table["root_mapping_source_choice_sha256_historical"]=table.pop("root_mapping_source_choice_sha256")
+table["type_membership_predicates_replaced_by_identity_only"]=4
+table["path_isinstance_semantics_unchanged_and_not_a_nominal_identity_guarantee"]=True
+table["metaclass_models_prepared"]=["M1","M2","M3","M4"]
+table["future_complete_source_peer"]=None
+deltas=[]
+for role,row in table["consumers"].items():
+ old=read(S/row["path"],row["sha256"],row["size"]); oldtext=old.decode("utf-8")
+ oldtree=ast.parse(oldtext); helpers=[n for n in oldtree.body if isinstance(n,ast.FunctionDef) and n.name=="_raw_helper_value_identity"];assert len(helpers)==1
+ helper=helpers[0]; lines=oldtext.splitlines(keepends=True); segment="".join(lines[helper.lineno-1:helper.end_lineno])
+ newsegment=segment
+ for before,after in replacements:assert newsegment.count(before)==1;(None);newsegment=newsegment.replace(before,after)
+ newtext="".join(lines[:helper.lineno-1])+newsegment+"".join(lines[helper.end_lineno:]);new=newtext.encode("utf-8")
+ inverse=newtext
+ for before,after in replacements:assert inverse.count(after)==1;inverse=inverse.replace(after,before)
+ assert inverse.encode("utf-8")==old
+ newtree=ast.parse(newtext)
+ assert len(oldtree.body)==len(newtree.body)
+ unchanged=0
+ for a,b in zip(oldtree.body,newtree.body):
+  if isinstance(a,ast.FunctionDef) and a.name=="_raw_helper_value_identity":
+   assert ast.dump(a,include_attributes=False)!=ast.dump(b,include_attributes=False)
+  else:assert ast.dump(a,include_attributes=False)==ast.dump(b,include_attributes=False);unchanged+=1
+ assert new.count(table["raw_sha256"].encode("ascii"))==old.count(table["raw_sha256"].encode("ascii"))
+ assert "if isinstance(value, Path):" in newsegment
+ publish(R/row["path"],new);row["sha256"]=sha(new);row["size"]=len(new)
+ deltas.append({"role":role,"path":row["path"],"before_sha256":sha(old),"after_sha256":sha(new),"before_size":len(old),"after_size":len(new),"sole_changed_definition":"_raw_helper_value_identity","substitution_count":4,"all_other_top_level_AST_nodes_exact":unchanged,"byte_reverse_matches_revision004":True,"path_branch_exact":True})
+oldtest=read(S/"test_raw_consumer_guards_004.TEMPLATE.py","8202b64dd9aac21c9901a2b2e91e469c778315ba5898e99a0794f5a8fa28cf6c",41141)
+oldtesttext=oldtest.decode("utf-8"); oldfixture='SOURCE_GUARD_TEST_BINDINGS_004.json';newfixture='SOURCE_GUARD_TEST_BINDINGS_005.json'
+assert oldtesttext.count(oldfixture)==1
+main_marker='if __name__ == "__main__":'
+assert oldtesttext.count(main_marker)==1
+head,tail=oldtesttext.split(main_marker)
+newtesttext=head.replace(oldfixture,newfixture)+APPENDED+"\n"+main_marker+tail
+newtest=newtesttext.encode("utf-8")
+oldast=ast.parse(oldtesttext);newast=ast.parse(newtesttext)
+def methods(t):return {n.name:ast.dump(n,include_attributes=False) for c in t.body if isinstance(c,ast.ClassDef) for n in c.body if isinstance(n,ast.FunctionDef) and n.name.startswith("test_")}
+om=methods(oldast);nm=methods(newast);assert len(om)==19 and len(nm)==24 and all(nm[k]==v for k,v in om.items())
+assert newtesttext.replace(APPENDED+"\n","",1).replace(newfixture,oldfixture).encode("utf-8")==oldtest
+olddefs={n.name:ast.dump(n,include_attributes=False)for n in oldast.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+newdefs={n.name:ast.dump(n,include_attributes=False)for n in newast.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+for name,value in olddefs.items():
+ if name=="guard_fixture":continue
+ assert newdefs[name]==value,name
+publish(R/"test_raw_consumer_guards_005.TEMPLATE.py",newtest)
+publish_json("SOURCE_GUARD_TEST_BINDINGS_005.json",table)
+publish_json("AUTHOR_SOURCE_AND_TEST_AST_DELTA_005.json",{"schema_version":1,"record_type":"source_preparation_ast_delta","author":"/root/candidate_review","created_at_utc":dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"),"source_choice_sha256":sha(choice_bytes),"source_deltas":deltas,"old_test_sha256":sha(oldtest),"new_test_sha256":sha(newtest),"old_test_size":len(oldtest),"new_test_size":len(newtest),"old_test_method_count":19,"new_test_method_count":24,"retained_test_method_ASTs_exact":sorted(om),"added_test_method_names":sorted(set(nm)-set(om)),"sole_old_test_definition_changed":"guard_fixture (table filename 004 -> 005 only)","all_other_old_top_level_definition_ASTs_exact":True,"test_bytes_reverse_exact":True,"target_definitions_executed":False,"test_execution":None})
+print(json.dumps({"sources":deltas,"test_sha256":sha(newtest),"test_size":len(newtest),"test_methods":len(nm),"old_method_ASTs_exact":len(om),"binding_sha256":sha(read(R/"SOURCE_GUARD_TEST_BINDINGS_005.json"))}))
+
+
+
+
+

@@ -1,0 +1,464 @@
+import argparse
+import ast
+import hashlib
+import json
+import math
+import os
+import stat
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+PROJECT = Path("D:/Aenv/pro2")
+WORK = PROJECT / "resume-2026-10-01-30h-001"
+PREP = WORK / "consumer-guard-test-runtime005"
+RUNS = PROJECT / ".tmp/cg14-005"
+BASE_PYTHON = PROJECT / "runtimes/week8-python313-frozen-001/python.exe"
+BASE_PYTHON_SHA256 = "5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed"
+OWNER_PATH = WORK / "OWNER_WORK_WINDOW_30H_20261001_001.json"
+OWNER_SHA256 = "3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff"
+OWNER_END = datetime(2026, 10, 2, 22, 36, 15, tzinfo=timezone.utc)
+SCOPE = "COPIED_CONSUMER_GUARD_UNIT005_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY"
+AUTHOR = "/root/raw_policy_worker"
+REVIEWERS = frozenset(("/root/candidate_review", "/root/keepawake_stage", "/root/window_docs"))
+SOURCE_AUTHORS = ("/root/raw_policy_worker", "/root/bootstrap_stage")
+MAX_JSON = 2 * 1024 * 1024
+MAX_RECEIPT = 262144
+MAX_CAPTURE = 131072
+MAX_TRANSCRIPT = 262144
+MAX_EVENTS = 4096
+MAX_COLLECTION = 60
+MAX_TESTS = 300
+MAX_TOTAL = 420
+
+
+def require(ok, message):
+    if not ok:
+        raise RuntimeError(message)
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def hex64(value):
+    return type(value) is str and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def ancestors(path):
+    result = []
+    for parent in [*reversed(path.absolute().parents), path.absolute()]:
+        info = parent.lstat()
+        require(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+                and not getattr(info, "st_file_attributes", 0) & 0x400, "linked/reparse ancestor")
+        result.append((str(parent), info.st_dev, info.st_ino))
+    return tuple(result)
+
+
+def raw(info):
+    return tuple(getattr(info, name, None) for name in
+                 ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_mode",
+                  "st_nlink", "st_file_attributes", "st_birthtime_ns"))
+
+
+def cross(info):
+    return tuple(getattr(info, name, None) for name in
+                 ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink"))
+
+
+def read(path, pin=None, maximum=MAX_JSON):
+    require(type(maximum) is int and maximum > 0, "read cap type")
+    chain = ancestors(path.parent)
+    before = path.lstat()
+    require(stat.S_ISREG(before.st_mode) and not stat.S_ISLNK(before.st_mode)
+            and before.st_nlink == 1 and not getattr(before, "st_file_attributes", 0) & 0x400,
+            "not a plain one-link file")
+    require(0 <= before.st_size <= maximum, "path exceeds pre-read cap")
+    with path.open("rb") as stream:
+        first = os.fstat(stream.fileno())
+        require(cross(before) == cross(first) and 0 <= first.st_size <= maximum,
+                "opened identity or cap differs")
+        value = stream.read(maximum + 1)
+        last = os.fstat(stream.fileno())
+    after = path.lstat()
+    require(len(value) <= maximum and len(value) == before.st_size
+            and raw(before) == raw(after) and raw(first) == raw(last)
+            and cross(before) == cross(first) == cross(last) == cross(after)
+            and ancestors(path.parent) == chain, "changed capture")
+    if pin is not None:
+        require(hex64(pin) and digest(value) == pin, "source byte pin differs")
+    return value, {"sha256": digest(value), "bytes": len(value),
+                   "path_raw9": raw(before), "descriptor_raw9": raw(first)}
+
+
+def duplicates(rows):
+    result = {}
+    for key, value in rows:
+        require(key not in result, "duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def finite(token):
+    value = float(token)
+    require(math.isfinite(value), "nonfinite JSON")
+    return value
+
+
+def decode(data):
+    return json.loads(data.decode("utf-8"), object_pairs_hook=duplicates, parse_float=finite,
+                      parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+                       allow_nan=False) + "\n").encode("ascii")
+
+
+def exact(value, names, what):
+    require(type(value) is dict and set(value) == set(names), what + " keys")
+
+
+# The inherited timestamp parser checks aware UTC, not canonical producer syntax.
+# Independent actual-record review must enforce each genuine producer role before
+# binding, per EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_005.json.
+def timestamp(value):
+    require(type(value) is str, "timestamp type")
+    result = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    require(result.tzinfo is not None and result.utcoffset() == timedelta(0), "aware UTC required")
+    return result
+
+
+def work_path(value):
+    require(type(value) is str, "evidence path type")
+    path = Path(value)
+    require(path.is_absolute() and path == path.absolute() and ".." not in path.parts
+            and path.is_relative_to(WORK), "outside work path")
+    ancestors(path.parent)
+    return path
+
+
+def pointer(value):
+    exact(value, ("path", "sha256"), "external pointer")
+    require(hex64(value["sha256"]), "external pin type")
+    return work_path(value["path"]), value["sha256"]
+
+
+def absent(path):
+    ancestors(path.parent)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return True
+    return False
+
+
+def once(path, data, maximum=MAX_RECEIPT):
+    require(len(data) <= maximum and absent(path), "one-use output exists or cap")
+    chain = ancestors(path.parent)
+    with path.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    require(ancestors(path.parent) == chain and read(path, digest(data), maximum)[0] == data,
+            "output changed")
+
+
+def runtime_entry():
+    require(Path(sys.executable).resolve(strict=True) == BASE_PYTHON.resolve(strict=True)
+            and sys.version_info[:3] == (3, 13, 5), "direct frozen base/version required")
+    require(sys.flags.isolated == 1 and sys.flags.no_site == 1
+            and sys.flags.dont_write_bytecode == 1 and sys.flags.safe_path
+            and sys.flags.utf8_mode == 1 and sys.flags.optimize == 0,
+            "I-S-B safe flags required")
+    read(BASE_PYTHON, BASE_PYTHON_SHA256, 105816)
+    read(OWNER_PATH, OWNER_SHA256, 2227)
+    require(datetime.now(timezone.utc) < OWNER_END, "owner expired")
+
+
+def source_snapshot(profile):
+    require(profile["source_projection_sha256"] == profile["source_projection"]["sha256"], "projection identity")
+    projection = decode(read(PREP / profile["source_projection"]["path"],
+                             profile["source_projection_sha256"], MAX_JSON)[0])
+    answer = []
+    for row in projection["entries"]:
+        if not row["runtime_source_reobserve_required"]:
+            continue
+        original = work_path(row["original_path"])
+        relative = Path(row["copy_path"])
+        require(not relative.is_absolute() and ".." not in relative.parts, "copy projection escape")
+        original_bytes, original_meta = read(original, row["sha256"], row["bytes"])
+        copied_bytes, copied_meta = read(PREP / relative, row["sha256"], row["bytes"])
+        require(original_bytes == copied_bytes, "copy original differs")
+        require(encoded(original_meta) == encoded(row["original_metadata"])
+                and encoded(copied_meta) == encoded(row["copy_metadata"]), "frozen source/copy metadata differs")
+        answer.append({"path": row["copy_path"], "original": original_meta, "copy": copied_meta})
+    return answer
+
+def metadata_row(path, expected, maximum):
+    exact(expected, ("path", "sha256", "bytes", "path_raw9", "descriptor_raw9"), "opaque metadata row")
+    require(expected["path"] == str(path) and type(expected["bytes"]) is int
+            and 0 <= expected["bytes"] <= maximum, "opaque row path/size")
+    require(all(type(expected[name]) is list and len(expected[name]) == 9
+                and all(type(value) is int for value in expected[name])
+                for name in ("path_raw9", "descriptor_raw9")), "opaque raw9 metadata type")
+    data, observed = read(path, expected["sha256"], maximum)
+    require(len(data) == expected["bytes"] and list(observed["path_raw9"]) == expected["path_raw9"]
+            and list(observed["descriptor_raw9"]) == expected["descriptor_raw9"], "opaque byte/metadata drift")
+    return {"path": str(path), **observed}
+
+
+def context_snapshot(profile, value):
+    exact(value, ("schema_version", "scope", "captured_utc", "head", "tracked_rows",
+                  "git_metadata", "configurations", "runtime_roles_projection_sha256"), "opaque context")
+    require(type(value["schema_version"]) is int and value["schema_version"] == 1
+            and value["scope"] == SCOPE
+            and value["runtime_roles_projection_sha256"] == profile["runtime_roles_projection_sha256"], "opaque context role")
+    require(0 <= (datetime.now(timezone.utc)-timestamp(value["captured_utc"])).total_seconds() <= 600,
+            "fresh opaque context required")
+    cfg = profile["context_profile"]
+    live = Path(cfg["live_root"])
+    require(live == PROJECT / "week8-recovery-controller-worktree", "fixed opaque live root")
+    require(type(value["head"]) is str and len(value["head"]) == 40
+            and all(c in "0123456789abcdef" for c in value["head"]), "opaque HEAD syntax")
+    require(type(value["tracked_rows"]) is list and len(value["tracked_rows"]) == cfg["tracked_count"] == 742,
+            "opaque tracked row count")
+    paths = [row.get("path") for row in value["tracked_rows"] if type(row) is dict]
+    require(len(paths) == 742 and all(type(path) is str for path in paths)
+            and paths == sorted(paths) and len(set(path.casefold() for path in paths)) == 742
+            and digest(encoded(paths)) == cfg["historical_authenticated_pathset_sha256"], "fixed opaque742 path sequence")
+    result = {"head": value["head"], "tracked_rows": [], "git_metadata": [], "configurations": []}
+    for row in value["tracked_rows"]:
+        relative = Path(row["path"])
+        require(not relative.is_absolute() and ".." not in relative.parts and relative.as_posix() == row["path"]
+                and len(row["path"]) <= 399, "opaque relative path")
+        actual = dict(row)
+        actual["path"] = str(live / relative)
+        observed = metadata_row(live / relative, actual, cfg["maximum_file_bytes"])
+        observed["path"] = row["path"]
+        result["tracked_rows"].append(observed)
+    git_paths = cfg["head_paths"] + cfg["optional_git_metadata_paths"]
+    config_paths = [str(Path(parent) / name) for parent in cfg["configuration_parents"]
+                    for name in cfg["configuration_names"]]
+    for field, allowed in (("git_metadata", git_paths), ("configurations", config_paths)):
+        require(type(value[field]) is list and [row.get("path") for row in value[field] if type(row) is dict] == allowed,
+                "opaque fixed path coverage")
+        for row in value[field]:
+            exact(row, ("path", "exists", "identity"), "opaque optional row")
+            require(type(row["exists"]) is bool, "opaque existence type")
+            path = Path(row["path"])
+            if row["exists"]:
+                observed = metadata_row(path, row["identity"], cfg["maximum_git_metadata_bytes"])
+                result[field].append({"path": str(path), "exists": True, "identity": observed})
+            else:
+                require(row["identity"] is None and absent(path), "opaque absence drift")
+                require(field != "git_metadata" or row["path"] not in cfg["head_paths"], "required HEAD metadata absent")
+                result[field].append({"path": str(path), "exists": False, "identity": None})
+    # These explicit bytes anchor the observed branch HEAD without invoking Git.
+    head_path = Path(cfg["head_paths"][-1])
+    expected_head = next(row["identity"]["sha256"] for row in value["git_metadata"] if row["path"] == str(head_path))
+    require(read(head_path, expected_head, 128)[0].decode("ascii").strip() == value["head"], "opaque actual branch HEAD differs")
+    return result
+
+
+import importlib.machinery
+import importlib.util
+import re
+import subprocess
+import types
+import typing
+import tempfile
+import base64
+import binascii
+from collections.abc import Mapping
+from contextlib import contextmanager
+import unittest
+from unittest import mock
+
+
+def child_main():
+    parser = argparse.ArgumentParser()
+    for name in ("expected-self-sha256", "expected-profile-sha256", "root-ack-path", "root-ack-sha256"):
+        parser.add_argument("--" + name, required=True)
+    args = parser.parse_args()
+    require(hex64(args.expected_self_sha256) and hex64(args.expected_profile_sha256)
+            and hex64(args.root_ack_sha256), "child external pins")
+    runtime_entry()
+    require(Path(__file__).resolve(strict=True) == (PREP / "consumer-guard-child-005.TEMPLATE.py").resolve(strict=True), "fixed child source path")
+    own_before=read(Path(__file__), args.expected_self_sha256, 65536)[1]
+    profile_bytes,profile_before=read(PREP / "GUARD_RUNTIME_PROFILE_005.json", args.expected_profile_sha256, 65536)
+    profile = decode(profile_bytes)
+    ack_bytes,ack_before=read(work_path(args.root_ack_path), args.root_ack_sha256, 65536)
+    ack = decode(ack_bytes)
+    require(ack["scope"] == SCOPE and ack["child_sha256"] == args.expected_self_sha256
+            and ack["profile_sha256"] == args.expected_profile_sha256
+            and ack["author"] == ack["executor"] == "/root"
+            and timestamp(ack["created_utc"]) <= datetime.now(timezone.utc) < timestamp(ack["expires_utc"])
+            and timestamp(ack["expires_utc"]) <= OWNER_END, "child root ACK binding")
+    start = decode(read(RUNS / "start.json", maximum=65536)[0])
+    require(start["root_ack_sha256"] == args.root_ack_sha256
+            and start["child_sha256"] == args.expected_self_sha256, "owned first-entry start binding")
+    for name in ("collection.json", "result.json", "transcript.txt"):
+        require(absent(RUNS / name), "child evidence already exists")
+    before = source_snapshot(profile)
+    test_bytes = read(PREP / profile["test"]["path"], profile["test"]["sha256"], profile["test"]["bytes"])[0]
+    test_tree = ast.parse(test_bytes)
+    classes = [node for node in test_tree.body if isinstance(node, ast.ClassDef)]
+    require(len(classes) == 1 and classes[0].name == profile["test_class"], "test class AST differs")
+    names = sorted(node.name for node in classes[0].body if isinstance(node, ast.FunctionDef)
+                   and node.name.startswith("test_"))
+    require(names == profile["prepared_method_names"], "method source projection differs")
+    collection_start = time.monotonic()
+    namespace_name = "isolated_consumer_guard_unit005"
+    require(namespace_name not in sys.modules, "test namespace already occupied")
+    private_names = ("_bu_week8_d161_raw_authority", "_bu_week8_d161_static_raw_authority")
+    original_private = {name: sys.modules.get(name) for name in private_names}
+    require(all(value is None for value in original_private.values()), "inherited raw namespace")
+    path_state = (tuple(sys.path), tuple(sys.meta_path), tuple(sys.path_hooks), dict(sys.path_importer_cache))
+    def import_snapshot():
+        return {"sys_path": list(sys.path), "meta_path_ids": [id(value) for value in sys.meta_path],
+                "path_hook_ids": [id(value) for value in sys.path_hooks],
+                "importer_cache": [[key,id(value)] for key,value in sorted(sys.path_importer_cache.items())],
+                "private_namespace_ids": {name:None if sys.modules.get(name) is None else id(sys.modules[name]) for name in private_names}}
+    import_before = import_snapshot()
+    def deny_spawn_or_ffi(event, values):
+        if event.startswith(("subprocess.", "ctypes.", "socket.")) or event in ("os.system", "os.posix_spawn", "os.spawn", "os.exec"):
+            raise RuntimeError("isolated unit prohibits process/native/network API: " + event)
+        if event == "open" and values and isinstance(values[0], (str,bytes)):
+            filename, mode, flags = values
+            writing = (type(mode) is str and any(c in mode for c in "wax+")) or bool(flags & (os.O_WRONLY|os.O_RDWR|os.O_CREAT|os.O_TRUNC|os.O_APPEND))
+            if writing:
+                require(Path(os.fsdecode(filename)).absolute().is_relative_to(RUNS), "Python audit write outside owned scratch")
+        if event in ("os.remove", "os.rmdir", "os.mkdir", "os.rename"):
+            for filename in values[:2] if event == "os.rename" else values[:1]:
+                if isinstance(filename, (str,bytes)):
+                    require(Path(os.fsdecode(filename)).absolute().is_relative_to(RUNS), "Python audit mutation outside scratch")
+    sys.addaudithook(deny_spawn_or_ffi)
+    module = types.ModuleType(namespace_name)
+    module.__file__ = str(PREP / profile["test"]["path"])
+    sys.modules[namespace_name] = module
+    try:
+        exec(compile(test_bytes, module.__file__, "exec", dont_inherit=True, optimize=0), module.__dict__)
+        case = module.__dict__[profile["test_class"]]
+        require(type(case) is type and issubclass(case, unittest.TestCase), "exact unit class")
+        loaded_names = unittest.defaultTestLoader.getTestCaseNames(case)
+        require(loaded_names == names, "fresh unittest names differ")
+        ids = [case(name).id() for name in loaded_names]
+        require(len(ids) == len(set(ids)), "duplicate fresh IDs")
+        require(time.monotonic() - collection_start <= MAX_COLLECTION, "collection deadline")
+        collection_bytes = encoded({"scope": SCOPE, "ordered_ids": ids,
+             "ordered_ids_sha256": digest(encoded(ids)), "collected_methods": len(ids),
+             "collection_elapsed_seconds": time.monotonic() - collection_start,
+             "profile_sha256": args.expected_profile_sha256, "child_sha256": args.expected_self_sha256,
+             "root_ack_sha256": args.root_ack_sha256})
+        once(RUNS / "collection.json", collection_bytes, MAX_RECEIPT)
+        events = []
+        methods = []
+        active = {}
+        transcript_parts = []
+        transcript_size = 0
+        test_start = time.monotonic()
+        def event(value):
+            require(len(events) < MAX_EVENTS and time.monotonic() - test_start <= MAX_TESTS,
+                    "event or test deadline exceeded")
+            events.append(value)
+        class CappedText:
+            def write(self, value):
+                nonlocal transcript_size
+                data = value.encode("utf-8")
+                require(transcript_size + len(data) <= MAX_TRANSCRIPT, "transcript cap")
+                transcript_size += len(data)
+                transcript_parts.append(value)
+                return len(value)
+            def flush(self):
+                pass
+        class Result(unittest.TextTestResult):
+            def startTest(self, test):
+                active[test.id()] = {"id": test.id(), "status": "started"}
+                event({"event": "start", "id": test.id()})
+                super().startTest(test)
+            def addSuccess(self, test):
+                active[test.id()]["status"] = "passed"
+                event({"event": "success", "id": test.id()})
+                super().addSuccess(test)
+            def addFailure(self, test, error):
+                active[test.id()]["status"] = "failure"
+                event({"event": "failure", "id": test.id()})
+                super().addFailure(test, error)
+            def addError(self, test, error):
+                active[test.id()]["status"] = "error"
+                event({"event": "error", "id": test.id()})
+                super().addError(test, error)
+            def addSkip(self, test, reason):
+                active[test.id()]["status"] = "skip"
+                event({"event": "skip", "id": test.id(), "reason": reason})
+                super().addSkip(test, reason)
+            def addSubTest(self, test, subtest, error):
+                status = "passed" if error is None else "failed"
+                if error is not None:
+                    active[test.id()]["status"] = "subtest-failure"
+                event({"event": "subtest", "parent_id": test.id(), "id": subtest.id(), "status": status})
+                super().addSubTest(test, subtest, error)
+            def stopTest(self, test):
+                methods.append(dict(active.pop(test.id())))
+                super().stopTest(test)
+        suite = unittest.TestSuite(case(name) for name in loaded_names)
+        result = unittest.TextTestRunner(stream=CappedText(), resultclass=Result,
+                                        verbosity=2, failfast=True).run(suite)
+        sys.modules.pop(namespace_name, None)
+        owned_namespace_clean = namespace_name not in sys.modules
+        private_clean = all(sys.modules.get(name) is original_private[name] for name in private_names)
+        import_after = import_snapshot()
+        path_clean = (tuple(sys.path), tuple(sys.meta_path), tuple(sys.path_hooks), dict(sys.path_importer_cache)) == path_state
+        forbidden_modules = sorted(name for name in sys.modules if name == "bu" or name.startswith("bu.")
+                                   or name.split(".")[0] in ("torch", "numpy", "scipy", "pytest"))
+        after = source_snapshot(profile)
+        require(read(Path(__file__),args.expected_self_sha256,65536)[1] == own_before
+                and read(PREP/"GUARD_RUNTIME_PROFILE_005.json",args.expected_profile_sha256,65536)[1] == profile_before
+                and read(work_path(args.root_ack_path),args.root_ack_sha256,65536)[1] == ack_before,
+                "child own/profile/ACK byte metadata changed")
+        transcript = "".join(transcript_parts).encode("utf-8")
+        once(RUNS / "transcript.txt", transcript, MAX_TRANSCRIPT)
+        require(not active, "unterminated test method")
+        passed = sum(row["status"] == "passed" for row in methods)
+        skipped = len(result.skipped)
+        require(skipped == 0, "no prepared guard skip whitelist")
+        accepted = (result.wasSuccessful() and passed == len(ids) and len(methods) == len(ids)
+                    and owned_namespace_clean and private_clean and path_clean and not forbidden_modules and before == after
+                    and time.monotonic() - test_start <= MAX_TESTS)
+        report = {"scope": SCOPE, "accepted": accepted, "collected_methods": len(ids),
+                  "tests_run": result.testsRun, "passed": passed, "skipped": skipped,
+                  "failures": len(result.failures), "errors": len(result.errors),
+                  "methods": methods, "events": events, "reported_subtests": sum(e["event"] == "subtest" for e in events),
+                  "passing_subtests": sum(e["event"] == "subtest" and e["status"] == "passed" for e in events),
+                  "ordered_ids_sha256": digest(encoded(ids)), "transcript_sha256": digest(transcript),
+                  "private_raw_namespaces_restored": private_clean, "import_path_state_restored": path_clean,
+                  "owned_test_namespace_removed": owned_namespace_clean, "import_state_before": import_before,
+                  "import_state_after": import_after,
+                  "forbidden_project_or_thirdparty_modules": forbidden_modules, "sources_initial": before,
+                  "sources_final": after, "elapsed_test_seconds": time.monotonic() - test_start,
+                  "source_peer_sha256": ack["source_peer_sha256"], "root_ack_sha256": args.root_ack_sha256,
+                  "profile_sha256": args.expected_profile_sha256, "native_fit_Git_fullQA": False,
+                  "OS_sandbox_hard_Job_memory_descendant_cleanup_proved": False}
+        result_bytes = encoded(report)
+        once(RUNS / "result.json", result_bytes, MAX_RECEIPT)
+        # Direct child pipe pins the immutable data receipts; the supervisor never
+        # treats a mutable file's own observed hash as its initial trust anchor.
+        sys.stdout.write(encoded({"result_sha256": digest(result_bytes),
+             "collection_sha256": digest(collection_bytes), "transcript_sha256": digest(transcript),
+             "profile_sha256": args.expected_profile_sha256, "child_sha256": args.expected_self_sha256,
+             "root_ack_sha256": args.root_ack_sha256}).decode("ascii"))
+        sys.stdout.flush()
+        return 0 if accepted else 1
+    finally:
+        sys.modules.pop(namespace_name, None)
+        for name, value in original_private.items():
+            if value is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = value
+
+
+if __name__ == "__main__":
+    raise SystemExit(child_main())

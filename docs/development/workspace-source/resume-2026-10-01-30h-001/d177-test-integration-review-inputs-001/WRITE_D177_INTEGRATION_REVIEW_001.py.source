@@ -1,0 +1,178 @@
+"""Executed once: readonly source/AST integration audit report, not project code."""
+from pathlib import Path
+import ast,base64,hashlib,json,os,stat,subprocess
+from datetime import datetime,timezone
+W=Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001')
+LIVE=Path(r'D:\Aenv\pro2\week8-recovery-controller-worktree')
+ROOT=W/'d177-test-integration-review-inputs-001'
+GIT=Path(r'D:\Aenv\pro2\runtimes\git\mingw64\bin\git.exe')
+GIT_SHA='c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9'
+matrix=json.loads(base64.b64decode('W3sidGVzdF9uYW1lIjoidGVzdF9saW5lYWdlX21hdGNoZXNfc2FtZV9jb250cm9sbGVyIiwiaW50ZW5kZWRfY29udHJvbCI6IkFuIHVuY2hhbmdlZCBjb250cm9sbGVyIGF1dGhvcml0eSBtYXRjaGVzIGl0cyBpbmRlcGVuZGVudCBjb3B5IHdpdGhvdXQgYSBzdWNjZXNzaW9uIHF1ZXJ5LiIsImN1cnJlbnRfYXNzZXJ0aW9uIjoiRGVlcC1jb3BpZWQgc3ludGhldGljIHJlY292ZXIvcmF3NCBhdXRob3JpdHkgaXMgVHJ1ZTsgYWxsIHN1YnByb2Nlc3MucnVuIGNhbGxzIGFyZSBmb3JiaWRkZW4uIiwidmFsdWFibGUiOnRydWUsImZpbml0ZV9wb2xpY3lfY29uZmxpY3RzIjpbIlRoZSBjdXJyZW50IG9wZXJhdGluZyByZWNvcmQgbXVzdCBiZSByYXc1L2dhdGU1OyBhIHNhbWUtZXJhIGNvbXBhcmlzb24gZG9lcyBub3QgYXV0aGVudGljYXRlIHRoZSBpbW11dGFibGUgaGlzdG9yaWNhbCBpbmNpZGVudCBvciByZXBsYWNlIGV4dGVybmFsIGFkbWlzc2lvbi4iLCJGb3JiaWRkaW5nIGFsbCBHaXQgc3VicHJvY2Vzc2VzIGlzIGFuIGltcGxlbWVudGF0aW9uIGNvbnN0cmFpbnQ6IHZhbGlkIGN1cnJlbnQgYXV0aG9yaXR5IHJldmFsaWRhdGlvbiBtYXkgbmVlZCBwaW5uZWQgcmVhZG9ubHkgR2l0LiJdLCJzYWZlX2FkYXB0YXRpb24iOlsiUmV0YWluIHRoaXMgZXhhY3QgdGVzdCBuYW1lIGFuZCB1c2UgdGhlIG9wZXJhdGluZyByYXc1IGF1dGhvcml0eSBmcm9tIGEgdmFsaWQgZmluaXRlLXBvbGljeSBmaXh0dXJlLiIsIktlZXAgYSBwdXJlIF9jcm9zc19sYXVuY2hfYXV0aG9yaXR5X3Byb2plY3Rpb24gZXF1YWxpdHkgY29udHJvbCBhbmQgZm9yYmlkIG9ubHkgYW4gb2Jzb2xldGUgYnJvYWQtYW5jZXN0cnkgZmFsbGJhY2ssIG5vdCBhbGwgdmFsaWRhdGVkIHNvdXJjZS9HaXQgY2FwdHVyZS4iLCJTZXBhcmF0ZWx5IGFzc2VydCB0aGF0IGVxdWFsIGN1cnJlbnQgYXV0aG9yaXRpZXMgY2Fubm90IGJ5cGFzcyBhIHdyb25nIG9yIG1pc3NpbmcgZXh0ZXJuYWwgYWRtaXNzaW9uIHBpbiBiZWZvcmUgbXV0YXRpb24uIl19LHsidGVzdF9uYW1lIjoidGVzdF9saW5lYWdlX21hdGNoZXNfcmV2aWV3ZWRfc3VjY2Vzc2lvbiIsImludGVuZGVkX2NvbnRyb2wiOiJBIHJldmlld2VkIGNvbnRyb2xsZXIgc3VjY2Vzc2lvbiBhY2NlcHRzLCB1c2luZyB0aGUgaW50ZW5kZWQgY29udHJvbGxlciB3b3JrdHJlZSBhbmQgcGlubmVkIEdpdC4iLCJjdXJyZW50X2Fzc2VydGlvbiI6IlN5bnRoZXRpYyBFQTkgdG8gYWN0dWFsNTk3IGF1dGhvcml0eSBpcyBUcnVlIGFmdGVyIG9uZSBtZXJnZS1iYXNlIC0taXMtYW5jZXN0b3IgcmVzdWx0MDsgZXhhY3Qgb25lLXF1ZXJ5L3NhZmUuZGlyZWN0b3J5L2V4ZWN1dGFibGUgYXNzZXJ0aW9ucy4iLCJ2YWx1YWJsZSI6dHJ1ZSwiZmluaXRlX3BvbGljeV9jb25mbGljdHMiOlsiQWN0dWFsNTk3IGlzIHRoZSBpbW11dGFibGUgaW50ZXJtZWRpYXRlLCBub3QgdGhlIGRpc3RpbmN0IGZ1dHVyZSBmaW5hbCByZWxlYXNlLiIsIlN5bnRoZXRpYyByYXc0L2VudHJ5NCwgZml2ZS1maWVsZCByZWxlYXNlIGFuZCBmaXZlLWZpbGUgbWFuaWZlc3QgZG8gbm90IGltcGxlbWVudCBjYW5vbmljYWwgb2xkMzQvbWlkMzYvZmluYWwzNCwgZnVsbDc0MiBvciBmaW5pdGUyNS4iLCJBIHNpbmdsZSBhbmNlc3RvciByZXN1bHQgY2Fubm90IHByb3ZlIHRoZSB1bmlxdWUgdHlwZWQgaW50ZXJtZWRpYXRlIGNvbW1pdCwgZXhhY3QgaW1tZWRpYXRlIGZpbmFsIHBhcmVudDU5NywgZnVsbCBvbGQvbWlkL2ZpbmFsIHRhYmxlcyBvciBpbmRlcGVuZGVudGx5IHRydXN0ZWQgYXR0ZXN0YXRpb24vdHdpbnMuIl0sInNhZmVfYWRhcHRhdGlvbiI6WyJSZXRhaW4gdGhlIG5hbWU7IGJ1aWxkIGEgY29tcGxldGUgc2NoZW1hMiBmaXh0dXJlIEVBOSAtPiBleGFjdCBwaW5uZWQ1OTcgLT4gYSBzeW50aGV0aWMgZmluYWwgY29tbWl0IHdpdGggb25lIHBhcmVudDU5Ny4iLCJVc2UgYWN0dWFsIGF1dGhlbnRpY2F0ZWQgaGlzdG9yaWNhbC9taWQgcmVsZWFzZSBhbmQgZ3JvdXBlZCBRQTI2MyBieXRlcyBwbHVzIGFsbCBmdWxsNzQyIHJvd3MsIG5pbmUgYWZ0ZXJpbWFnZXMsIGJvdGggZmluaXRlMjUgZGVsdGFzLCBhY3R1YWwgb3BlcmF0aW5nIHJhdzUgc291cmNlL25hdGl2ZSBwaW5zIGFuZCBjb2hlcmVudCBleHRlcm5hbCBhdHRlc3RhdGlvbiBTSEEvdHdpbnMuIiwiUmV0YXJnZXQgdG8gcmF3IGFkbWl0X3JlY29yZGVkX3ByZWRlY2Vzc29yIGFuZCB0aGUgY29udHJvbGxlciBfc3VjY2Vzc29yX2FkbWlzc2lvbl9jb250ZXh0IHRyYW5zcG9ydDsgYXNzZXJ0IGV4YWN0IGltbXV0YWJsZSBoaXN0b3JpY2FsIGhhc2hlcywgY3VycmVudCBvcGVyYXRpbmcgYXV0aG9yaXR5IGFuZCBjb250ZXh0LmFkbWlzc2lvbl9iaW5kaW5nLiIsIlJlbW92ZSB0aGUgZXhhY3Qtb25lLW1lcmdlLWJhc2UgY291bnQgYXNzZXJ0aW9uOyBhc3NlcnQgdGhlIHJldmlld2VkIHJhdy9HaXQgY2FwdHVyZSBkaXNjaXBsaW5lIGF0IGl0cyByZWFsIGJvdW5kYXJ5IGFuZCBwcmVzZXJ2ZSBhbGwgb3JpZ2luYWwgaGlzdG9yaWNhbCBpbnB1dCBieXRlcy4iXX0seyJ0ZXN0X25hbWUiOiJ0ZXN0X2xpbmVhZ2VfcmVmdXNlc191bnJlbGF0ZWRfY29tbWl0IiwiaW50ZW5kZWRfY29udHJvbCI6IlVucmVsYXRlZCBsaW5lYWdlIGFuZCBhIG5vaXN5IEdpdCByZXNwb25zZSByZWZ1c2UuIiwiY3VycmVudF9hc3NlcnRpb24iOiJNb2NrIGFuY2VzdHJ5IHJldHVybjEgYW5kIHJldHVybjArc3RkZXJyIGVhY2ggbWFrZSB0aGUgbGVnYWN5IG1hdGNoZXIgRmFsc2UgYWZ0ZXIgb25lIHF1ZXJ5LiIsInZhbHVhYmxlIjp0cnVlLCJmaW5pdGVfcG9saWN5X2NvbmZsaWN0cyI6WyJUaGUgbmV3IHRydXN0IGRlY2lzaW9uIGlzIGV4YWN0IGNvbXBpbGVkIGludGVybWVkaWF0ZSBwcm92ZW5hbmNlIGFuZCBhbiBleGFjdCBvbmUtcGFyZW50IGZpbmFsIGVkZ2UsIG5vdCBhcmJpdHJhcnkgYW5jZXN0b3IgbWVtYmVyc2hpcC4iLCJBIG1vY2tlZCBhbmNlc3RvciBleGl0IHN0YXR1cyBkb2VzIG5vdCBleGVyY2lzZSB0aGUgcmVxdWlyZWQgbWlkZGxlL2ZpbmFsIGNvbW1pdCBvYmplY3Qgb3IgZXh0cmEtaG9wL21lcmdlIHJlZnVzYWxzLiJdLCJzYWZlX2FkYXB0YXRpb24iOlsiUmV0YWluIHRoZSBuYW1lOyBhbHRlciBvbmx5IHRoZSBmaW5hbCBpbW1lZGlhdGUgcGFyZW50L2NvbW1pdCBwcm9vZiB0byB1bnJlbGF0ZWQsIGV4dHJhLWhvcCBvciBtZXJnZSB3aGlsZSBrZWVwaW5nIG90aGVyIHZpZXdzIGNvaGVyZW50bHkgYm91bmQsIGFuZCByZXF1aXJlIHRoZSBpbnRlbmRlZCBmaW5pdGUtcGFyZW50IHJlZnVzYWwuIiwiS2VlcCB0aGUgc3RkZXJyIGNvbnRyb2wgYXQgdGhlIGFjdHVhbCBwaW5uZWQgcmVhZG9ubHkgcmF3LWF1dGhvcml0eSBHaXQgY2FwdHVyZS9yZXZhbGlkYXRpb24gYm91bmRhcnkgd2l0aCBhIHZhbGlkIGJhc2VsaW5lIHNvdXJjZSBmaXh0dXJlOyBkbyBub3Qgc3ludGhlc2l6ZSBhbiBhZG1pdHRlZCBmbGFnIHRvIGJ5cGFzcyBjYXB0dXJlLiIsIlJlcXVpcmUgcmVmdXNhbCBiZWZvcmUgY29udHJvbGxlciBwdWJsaWNhdGlvbiwgbG9jayBtdXRhdGlvbiBvciBjaGlsZCBzcGF3bjsgcmV0YWluIGEgdmFsaWQgcmVzdG9yYXRpb24gY29udHJvbC4iXX0seyJ0ZXN0X25hbWUiOiJ0ZXN0X2xpbmVhZ2VfcmVmdXNlc190YW1wZXJlZF9yZWNvcmQiLCJpbnRlbmRlZF9jb250cm9sIjoiV3JvbmcgcGFyZW50IGFuZCBhIHRhbXBlcmVkIG5vLXB1c2ggcmVsZWFzZSByZWNvcmQgcmVmdXNlLiIsImN1cnJlbnRfYXNzZXJ0aW9uIjoiQSByZWhhc2hlZCBmaXZlLWtleSByZWNvcmQgd2l0aCBQYXJlbnRDb21taXQ9MCByZWZ1c2VzOyBjaGFuZ2luZyBSZW1vdGVQdXNoUGVyZm9ybWVkPVRydWUgd2l0aG91dCByZXBpbm5pbmcgcmVmdXNlcyBhdCB0aGUgYnl0ZSBTSEEgZ3VhcmQuIiwidmFsdWFibGUiOnRydWUsImZpbml0ZV9wb2xpY3lfY29uZmxpY3RzIjpbIkEgZmluYWwgcmVsZWFzZSBtdXN0IGJlIGV4YWN0IGNhbm9uaWNhbDM0IHdpdGggUGFyZW50Q29tbWl0PTU5Nzsgb25seSB0aGUgcGlubmVkIGludGVybWVkaWF0ZSBoYXMzNiBrZXlzIGFuZCBwYXJlbnRFQTkuIiwiVGhlIFJlbW90ZVB1c2ggYnJhbmNoIGN1cnJlbnRseSBwcm92ZXMgYnl0ZS1pbnRlZ3JpdHkgcmVmdXNhbCBmaXJzdDsgaXQgZG9lcyBub3QgaXNvbGF0ZSB0aGUgZmFsc2UgUmVtb3RlUHVzaCBmaWVsZCBjaGVjay4iLCJSZXBpbm5pbmcgYSBmdXR1cmUgcmVsZWFzZSBoYXNoIGludG8gdGhlIHNhbWUgcmVsZWFzZWQgc291cmNlIGludHJvZHVjZXMgdGhlIGNvZGUvcmVsZWFzZSBoYXNoIGN5Y2xlIGRvY3VtZW50ZWQgaW4gY29vcmRpbmF0aW9uMDA3LiJdLCJzYWZlX2FkYXB0YXRpb24iOlsiUmV0YWluIHRoZSBuYW1lIGFuZCBkaXN0aW5ndWlzaCBieXRlLXRhbXBlciByZWplY3Rpb24gZnJvbSBjb2hlcmVudCBzZW1hbnRpYyByZWplY3Rpb24uIiwiRm9yIGZpbmFsLXJlY29yZCBzZW1hbnRpYyBjYXNlcywgdXNlIGV4YWN0MzQgc2hhcGUgYW5kIGNvaGVyZW50bHkgYmluZCBhbHRlcmVkIGZpbmFsIHJlbGVhc2UgYnl0ZXMgaW4gdGhlIGF0dGVzdGF0aW9uL25hdGl2ZS9jdXJyZW50IGF1dGhvcml0eSBmaXh0dXJlIHNvIHRoZSBpbnRlbmRlZCBwYXJlbnQvbm8tcHVzaC9jb21taXR0ZWQtYmxvYnMgZ3VhcmQgaXMgcmVhY2hlZC4iLCJGb3IgaW50ZXJtZWRpYXRlIHRhbXBlcmluZywgcmVxdWlyZSByZWZ1c2FsIGFnYWluc3QgY29tcGlsZWQgaW1tdXRhYmxlMzYta2V5IHJlbGVhc2UgYnl0ZXMvU0hBIGFuZCBwcmVzZXJ2ZSB0aGUgYWN0dWFsIG9sZCByZWxlYXNlLiIsIktlZXAgdGhlIGZ1dHVyZSBmaW5hbCByZWxlYXNlL2F0dGVzdGF0aW9uIHBpbiBleHRlcm5hbDsgbmV2ZXIgcmV3cml0ZSBoaXN0b3JpY2FsIGV2aWRlbmNlIG9yIGVtYmVkIHRoZSBmdXR1cmUgZmluYWwgcmVjb3JkIGhhc2ggaW4gaXRzIG93biByZWxlYXNlZCBzb3VyY2UuIl19LHsidGVzdF9uYW1lIjoidGVzdF9saW5lYWdlX3JlZnVzZXNfbWFuaWZlc3RfZHJpZnQiLCJpbnRlbmRlZF9jb250cm9sIjoiQ2hhbmdlZCB3b3JrdHJlZSBieXRlcyBhbmQgYW4gZXh0cmEgdW5yZXZpZXdlZCBmaWxlIHJlZnVzZSwgd2l0aCBhIHN1Y2Nlc3NmdWwgcmVzdG9yYXRpb24gY29udHJvbC4iLCJjdXJyZW50X2Fzc2VydGlvbiI6IkZpdmUtZmlsZSBtYW5pZmVzdCBhY2NlcHRzOyBjaGFuZ2VkIFJFQURNRSByZWZ1c2VzL3Jlc3RvcmVkIFJFQURNRSBhY2NlcHRzOyBFWFRSQS5tZCByZWZ1c2VzLiIsInZhbHVhYmxlIjp0cnVlLCJmaW5pdGVfcG9saWN5X2NvbmZsaWN0cyI6WyJGaXZlIFFBIGZpbGVzIGRvIG5vdCBlc3RhYmxpc2ggZnVsbDc0MiBjb3ZlcmFnZSBvciBleGFjdDI2MyBncm91cGVkIHRyYXZlcnNhbCBvcmRlci4iLCJSRUFETUUubWQgaXMgb3V0c2lkZSB0aGUgYXBwcm92ZWQgZmluaXRlMjU7IGEgZ2VuZXJpYyBmaXZlLWZpbGUgd2FsayBkb2VzIG5vdCBwcm92ZSBjb2hlcmVudCBvdXRzaWRlLVFBIGRyaWZ0IHJlamVjdGlvbi4iLCJBIHByb29mIHNob3VsZCBkaXN0aW5ndWlzaCBzdGFsZSBvYnNlcnZlZCBieXRlcy9waW5zIGZyb20gYSBjb2hlcmVudGx5IHJlc2VhbGVkIHVuYXV0aG9yaXplZCBmdWxsLXRyZWUgZGVsdGEuIl0sInNhZmVfYWRhcHRhdGlvbiI6WyJSZXRhaW4gdGhlIG5hbWUgYW5kIGZ1bGwgYmFzZWxpbmUvcmVzdG9yYXRpb24gY29udHJvbHM7IHRlc3QgYm90aCBhIGZyZXNoIGJ5dGUgZHJpZnQgYWdhaW5zdCBzdG9yZWQgcGlucyBhbmQgYW4gZXh0cmEvbWlzc2luZy9hbGlhc2VkIGludmVudG9yeSByb3cuIiwiVXNlIHRoZSBhdXRoZW50aWNhdGVkIGhpc3RvcmljYWwyNjMgcGF0aCBzZXF1ZW5jZSBmb3Igb2xkL21pZC9maW5hbCBtYW5pZmVzdHM7IHJlamVjdCBjb2hlcmVudCByZW9yZGVyLCBkdXBsaWNhdGUgb3Igb21pdHRlZCByb3dzIHdpdGhvdXQgc29ydGluZyBoaXN0b3JpY2FsIGJ5dGVzLiIsIkFkZCBvciByZXRhaW4gYSBjb2hlcmVudCBvdXRzaWRlLVFBIG5vbmxvYWRlZC1wYXRoIGRlbHRhLCBwcmVzZXJ2aW5nNzQyIGNvdW50IGFuZCBib3RoMjUgY2hhbmdlIGNvdW50cyBzbyB3aGl0ZWxpc3QgcmVqZWN0aW9uIGlzIG5vdCBtYXNrZWQgYnkgY2FyZGluYWxpdHkvaGFzaCBmYWlsdXJlOyBhbiBleHBhbmRlZC1zY29wZSBwb3NpdGl2ZSBjb250cm9sIGJlbG9uZ3Mgb25seSBpbiBhbiBleHBsaWNpdGx5IGlzb2xhdGVkIHRlc3QuIiwiUmVvYnNlcnZlIGN1cnJlbnQgc291cmNlL2Z1bGwtdGFibGUgYm91bmRhcmllcyBhbmQgcmVxdWlyZSBubyBoaXN0b3JpY2FsIHJlY29yZCBtdXRhdGlvbi4iXX0seyJ0ZXN0X25hbWUiOiJ0ZXN0X2xpbmVhZ2VfcmVmdXNlc19leHRyYV9maWVsZF9kcmlmdCIsImludGVuZGVkX2NvbnRyb2wiOiJQeXRob24gaWRlbnRpdHksIHByZWltcG9ydCBzeXMucGF0aCBpZGVudGl0eSBhbmQgYWRtaXNzaW9uIG1ldGFkYXRhIHJlbWFpbiBleGFjdCBhY3Jvc3MgcmVsZWFzZSBjaGFuZ2VzLiIsImN1cnJlbnRfYXNzZXJ0aW9uIjoiVmFsaWQgYmFzZWxpbmUgYWNjZXB0czsgbXV0YXRpb25zIHRvIHBpbm5lZF9weXRob24uc2hhMjU2LCBydW50aW1lLnByZWltcG9ydF9zeXNfcGF0aF9kaWdlc3QgYW5kIGFkbWlzc2lvbi52ZXJpZmllZCBlYWNoIHJlZnVzZTsgcmVzdG9yYXRpb24gYWNjZXB0cy4iLCJ2YWx1YWJsZSI6dHJ1ZSwiZmluaXRlX3BvbGljeV9jb25mbGljdHMiOlsiVGhlIG5ldyBwb2xpY3kgZGVyaXZlcyB0aGUgb2xkIGF1dGhvcml0eSB2aWV3IHVzaW5nIGV4YWN0IGFwcHJvdmVkIHNvdXJjZS9uYXRpdmUvaW5zcGVjdG9yL3JlbG9jYXRpb24gc3Vic3RpdHV0aW9uczsgaXQgY2Fubm90IGRpc2NhcmQgZW50aXJlIGV4ZWN1dGlvbi9HaXQvaGVscGVyL3NvdXJjZSBzZWN0aW9ucy4iLCJTeW50aGV0aWMgdmVyaWZpZWQ9VHJ1ZSBhbmQgYXJiaXRyYXJ5IGNvbXBhY3QvcmF3IGRpZ2VzdHMgZG8gbm90IGVzdGFibGlzaCB2YWxpZGF0ZWQgY3VycmVudCBhdXRob3JpdHkuIiwiTXV0YXRpb25zIG11c3QgaWRlbnRpZnkgd2hldGhlciBjb21wYWN0L3JhdyBjb25zaXN0ZW5jeSwgY3VycmVudCBvYnNlcnZhdGlvbiBvciB0aGUgZXhhY3Qgb2xkLXZpZXcgY29tcGFyaXNvbiBpcyB0aGUgaW50ZW5kZWQgZ3VhcmQuIl0sInNhZmVfYWRhcHRhdGlvbiI6WyJSZXRhaW4gdGhlIG5hbWUgYW5kIG11dGF0ZSBlYWNoIHVubGlzdGVkIGZpZWxkIGluIGEgdmFsaWQgZnVsbC1zY2hlbWEgb3BlcmF0aW5nIGZpeHR1cmUgd2l0aCBjbGVhciBndWFyZC1zdGFnZSBleHBlY3RhdGlvbnMuIiwiV2hlcmUgYSBkZWVwIHBvbGljeSBjb21wYXJpc29uIGlzIHRhcmdldGVkLCBjb2hlcmVudGx5IHJlc2VhbCBwZXJtaXR0ZWQgcmVjb3JkIGRpZ2VzdHMgYW5kIHByZXNlcnZlIGFsbCB1bnJlbGF0ZWQgY3VycmVudC9uYXRpdmUvc291cmNlIG9ic2VydmF0aW9uczsgcmVxdWlyZSB0aGUgZXhhY3QgaW50ZW5kZWQgcmVmdXNhbCBvciBib3VuZGFyeSBzZW50aW5lbC4iLCJJbmNsdWRlIGEgdmFsaWQgYXBwcm92ZWQtcmVsZWFzZS1kZWx0YSBwb3NpdGl2ZSBjb250cm9sIHBsdXMgcmVzdG9yZWQgYmFzZWxpbmUsIHdoaWxlIG5vIGJsYW5rZXQgc291cmNlL3JlY2VpcHQvcnVudGltZS9yZWxvY2F0aW9uL2luc3BlY3RvciBpZ25vcmluZyBpcyBwZXJtaXR0ZWQuIl19LHsidGVzdF9uYW1lIjoidGVzdF9saW5lYWdlX3JlZnVzZXNfbG9hZGVkX21vZHVsZV9pbnZlbnRvcnlfZHJpZnQiLCJpbnRlbmRlZF9jb250cm9sIjoiTW9kdWxlIHNvdXJjZSBpZGVudGl0eSwgdW5jaGFuZ2VkIHBhY2thZ2UgR2l0IGJsb2IgYW5kIGV4dHJhIGxvYWRlZCBtb2R1bGUgcm93cyByZWZ1c2UsIHdpdGggcmVzdG9yYXRpb24gYWNjZXB0YW5jZS4iLCJjdXJyZW50X2Fzc2VydGlvbiI6IlJlY292ZXJ5IHNvdXJjZSBoYXNoIG1pc21hdGNoLCBjaGFuZ2VkIGJ1IHBhY2thZ2UgYmxvYiBhbmQgYW4gZXh0cmEgc3ludGhldGljIG1vZHVsZSBlYWNoIHJlZnVzZTsgcmVzdG9yZWQgaW52ZW50b3J5IGFjY2VwdHMuIiwidmFsdWFibGUiOnRydWUsImZpbml0ZV9wb2xpY3lfY29uZmxpY3RzIjpbIkN1cnJlbnQgYW5kIGhpc3RvcmljYWwgcmVjb3ZlcnkgbW9kdWxlIGhhc2hlcyBhcmUgbm90IGludGVyY2hhbmdlYWJsZTsgY3VycmVudCByb3dzIG11c3QgYmluZCB0aGUgZmluYWwgZnVsbDc0MiBhZG1pdHRlZCBzb3VyY2UvYmxvYi9wYXRoIGFuZCBoaXN0b3JpY2FsIHJvd3MgdGhlIGltbXV0YWJsZSBvbGQgdmlldy4iLCJTeW50aGV0aWMgbW9kdWxlIHBhdGhzIGFuZCByZXBlYXRlZCBtYWRlLXVwIEdpdCBibG9icyBwcm92aWRlIG5vIGNhcHR1cmVkLWZpbGUgb3IgdHlwZWQtR2l0IHByb29mLiIsIlJlcG9ydGVkIG1vZHVsZSBtZXRhZGF0YSBjYW5ub3QgcmVwbGFjZSB0aGUgY29udHJvbGxlci93b3JrZXIgdmVyaWZpZWQgbW9kdWxlIGNvZGUvZGVmYXVsdC9wb2xpY3kvaW1wb3J0L3JlZ2lzdHJ5IGd1YXJkcy4iXSwic2FmZV9hZGFwdGF0aW9uIjpbIlJldGFpbiB0aGUgbmFtZSBhbmQgdXNlIGFjdHVhbCBmdWxsLXRhYmxlIG1vZHVsZS9zb3VyY2UvYmxvYiByb3dzIGZyb20gYSB2YWxpZGF0ZWQgZml4dHVyZS4iLCJUZXN0IGEgd3JvbmcgY3VycmVudCByZWNvdmVyeSBTSEEsIHdyb25nIGltbXV0YWJsZSBwYWNrYWdlIGJsb2IsIHBhdGgvZXh0cmEvdW5rbm93biBtb2R1bGUgcm93IGFuZCBhIHZhbGlkIGFwcHJvdmVkIHJlY292ZXJ5LXNvdXJjZSBzdWJzdGl0dXRpb24gd2l0aCByZXN0b3JhdGlvbiBjb250cm9scy4iLCJLZWVwIGxvYWRlZCBydW50aW1lIG9iamVjdC9zb3VyY2UvY29kZS9kZWZhdWx0L3BvbGljeSBjaGVja3MgYWN0aXZlIHJhdGhlciB0aGFuIGJ5cGFzc2luZyB0aGVtIHdpdGggYSBwZXJtaXNzaXZlIG1vZHVsZSBzdHViLiIsIlJldGFyZ2V0IHRocm91Z2ggY3VycmVudCByYXcgYXV0aG9yaXR5IGFkbWlzc2lvbiBhbmQgY29udHJvbGxlciBfcmV2YWxpZGF0ZV9zdG9yZWRfb3BlcmF0aW5nX2F1dGhvcml0eS9fc3VjY2Vzc29yX2FkbWlzc2lvbl9jb250ZXh0IGFzIGFwcHJvcHJpYXRlOyBoaXN0b3JpY2FsIGJ5dGVzIGFuZCBtb2R1bGUgcm93IHZpZXdzIHN0YXkgaW1tdXRhYmxlLiJdfV0='))
+def require(value,message):
+    if not value:raise ValueError(message)
+def sha(data):return hashlib.sha256(data).hexdigest()
+def canonical(value):return json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False).encode('ascii')
+def ident(s):
+    row=(s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,int(getattr(s,'st_file_attributes',0)))
+    if os.name=='nt':
+        b=getattr(s,'st_birthtime_ns',None);require(type(b) is int and b>0,'birthtime absent');return row+(b,)
+    return row
+def cross(s,pathname,path):
+    row=ident(s)
+    if os.name=='nt':
+        require(not pathname or s.st_ctime_ns==s.st_birthtime_ns,'creation projection differs')
+        row=row[:4]+(s.st_birthtime_ns,)+row[5:8]
+        if path==GIT:
+            require(s.st_mode&0o111==(0o111 if pathname else 0),'fixed Git mode projection differs')
+            row=row[:5]+(row[5]&~0o111,)+row[6:]
+    return row
+def read(path,expected=None):
+    for p in reversed(path.parents):
+        s=p.lstat();require(stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not int(getattr(s,'st_file_attributes',0))&0x400,'nonplain ancestor')
+    a=path.lstat();require(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and not stat.S_ISLNK(a.st_mode) and not int(getattr(a,'st_file_attributes',0))&0x400,'nonplain input')
+    with path.open('rb',buffering=0) as stream:b=os.fstat(stream.fileno());data=stream.read();c=os.fstat(stream.fileno())
+    d=path.lstat();require(ident(a)==ident(d) and ident(b)==ident(c) and cross(a,True,path)==cross(b,False,path) and len(data)==a.st_size,'capture changed')
+    if expected is not None:require(sha(data)==expected,'input SHA differs')
+    return data,ident(a)
+read(GIT,GIT_SHA)
+env=dict(os.environ);env.update(GIT_OPTIONAL_LOCKS='0',GIT_CONFIG_GLOBAL=os.devnull,GIT_CONFIG_SYSTEM=os.devnull,GIT_CONFIG_NOSYSTEM='1',GIT_NO_REPLACE_OBJECTS='1')
+def git(*args):
+    r=subprocess.run([str(GIT),'--no-optional-locks','-c','core.fsmonitor=false','-c','core.untrackedCache=false','-c','safe.directory='+str(LIVE),'-C',str(LIVE),*args],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=env,shell=False,check=True,timeout=60)
+    require(r.stderr==b'','readonly Git emitted stderr')
+    return r.stdout
+capture_bytes=read(ROOT/'SOURCE_CAPTURE_MANIFEST_001.json')[0];capture=json.loads(capture_bytes)
+for name,row in capture['inputs'].items():
+    require(len(read(ROOT/name,row['sha256'])[0])==row['size'],'preserved source copy differs')
+actor_tree=ast.parse(read(ROOT/'actor-tests.source')[0])
+actor_defs={n.name:n for n in actor_tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+ours_tree=ast.parse(read(ROOT/'frozen18-controller.source')[0])
+ours_defs={n.name:n for n in ours_tree.body if isinstance(n,ast.FunctionDef)}
+test_tree=ast.parse(read(ROOT/'frozen18-tests.source')[0])
+ours_tests={n.name:n for n in test_tree.body if isinstance(n,ast.FunctionDef)}
+for item in matrix:
+    row=capture['added_tests'][item['test_name']]
+    item.update(row)
+    item['preserved_source_path']=str(ROOT/'actor-tests.source')
+    require(item['test_name'] not in ours_tests,'actor test unexpectedly already in frozen18')
+actual_release=json.loads(read(ROOT/'actual-intermediate-release008.json')[0])
+require(len(actual_release)==36 and actual_release['ParentCommit']=='ea9c28aa82a1e8559e9c67e62b06dac7f5cea9b7' and actual_release['ControllerCommit']==capture['head_before'],'actual release008 lineage differs')
+source_sites={name:{'source_path':str(ROOT/'frozen18-controller.source'),'line':ours_defs[name].lineno}
+    for name in ('_cross_launch_authority_projection','_successor_admission_context','_recheck_successor_admission',
+                 '_revalidate_stored_operating_authority','_assert_current_controller_authority',
+                 '_assert_current_static_controller_authority','_successor_readiness_response','_assert_historical_inventory')}
+test_sites={name:{'source_path':str(ROOT/'frozen18-tests.source'),'line':ours_tests[name].lineno}
+    for name in ('test_successor_loader_reads_pinned_twins_and_preserves_historical_bytes',
+                 'test_existing_predecessor_readiness_requires_fresh_successor_proofs',
+                 'test_wrong_successor_policy_refuses_recover_before_lock_or_mutation',
+                 'test_static_consumer_uses_operating_invocation_and_exact_admission_pin',
+                 'test_real_successor_worker_seal_and_static_consumer_bind_operating_release',
+                 'test_static_helper_reuses_verified_module_and_rejects_substitution',
+                 'test_live_admission_rechecks_source_derived_helper_policy_before_use')}
+head_start=git('rev-parse','HEAD').decode('ascii').strip()
+fresh={};drift=[]
+for name,row in capture['inputs'].items():
+    if 'source_path' not in row:continue
+    data,identity=read(Path(row['source_path']))
+    fresh[name]={'source_path':row['source_path'],'sha256':sha(data),'size':len(data),'identity':identity,
+                 'matches_capture_bytes':sha(data)==row['sha256'],'matches_capture_identity':list(identity)==row['identity']}
+    if not fresh[name]['matches_capture_bytes'] or not fresh[name]['matches_capture_identity']:drift.append(name)
+head_end=git('rev-parse','HEAD').decode('ascii').strip()
+for name,row in fresh.items():
+    data,identity=read(Path(row['source_path']));require(sha(data)==row['sha256'] and len(data)==row['size'] and identity==tuple(row['identity']),'source moved during final observation')
+read(GIT,GIT_SHA)
+record={'schema_version':1,'record_type':'D177_seven_test_readonly_integration_review','reviewer':'/root/candidate_review',
+'created_at_utc':datetime.now(timezone.utc).isoformat(),'status':'READ_ONLY_INTEGRATION_AUDIT_COMPLETE',
+'literal_D177_fixture_and_matcher_compatible_with_finite_policy':False,'meaningful_control_intents_to_preserve':7,
+'all_seven_original_names_must_be_preserved':True,'automatic_old18_test_overlay_permitted':False,
+'source_edit_authorized_by_this_review':False,'test_execution_authorized_by_this_review':False,
+'capture_manifest_path':str(ROOT/'SOURCE_CAPTURE_MANIFEST_001.json'),'capture_manifest_sha256':sha(capture_bytes),
+'captured_head':capture['head_before'],'final_head_before':head_start,'final_head_after':head_end,
+'head_matches_capture':head_start==head_end==capture['head_before'],'final_fresh_inputs':fresh,
+'final_source_identity_or_byte_drift':drift,'inputs':capture['inputs'],
+'committed_gate007_tests_sha256':capture['inputs']['head597-gate007-tests.source']['sha256'],
+'committed_gate007_controller_sha256':capture['inputs']['head597-gate007-controller.source']['sha256'],
+'actor_added_test_count_AST':7,'actor_added_test_nodes':matrix,'actor_added_fixture_helpers':capture['actor_added_helper_names'],
+'actor_modified_old_test_or_helper_ASTs':capture['actor_modified_existing_definition_ASTs'],
+'actor_removed_old_test_or_helper_names':capture['actor_removed_existing_definition_names'],
+'baseline_actor_ours_test_function_counts_AST':{key:capture[key] for key in ('base_test_count_AST','actor_test_count_AST','ours_test_count_AST')},
+'actor_source_added_functions':capture['actor_added_source_function_names'],
+'actor_source_changed_existing_functions':capture['actor_changed_existing_source_function_ASTs'],
+'actor_acceptance_symbols_absent_from_frozen18':capture['actor_policy_symbols_absent_from_frozen18'],
+'frozen18_controller_adaptation_sites':source_sites,'existing_frozen18_test_supporting_sites':test_sites,
+'fixture_shape_contradictions':[
+'EA9 historical authority versus597 intermediate is mislabeled as final current; final successor must be a distinct commit with exactly one parent597.',
+'Current synthetic raw4/entry4 and verified=True do not establish operating raw5/gate5/bootstrap5 or native external admission SHA.',
+'Five release keys are insufficient: historical/final exact34, pinned intermediate exact36 only.',
+'Five candidate files are insufficient: actual old/mid/final authenticated grouped QA263 sequence and complete sorted742 tables remain required.',
+'Made-up inventory/tree/raw digests and repeated Git blobs cannot prove current loaded-source attribution or old/current inverse view.',
+'One merge-base result proves only generic ancestry, not exact unique-parent typed commit objects/full tables; the source also requires direct release ParentCommitEA9, which actually blocks a proper future final parent597.',
+'Global subprocess.run mocking or same-authority short-circuit acceptance must not bypass fresh current static/live capture and historical admission.'],
+'proven_actual_release_blockers':[
+{'id':'D177-C1','evidence':'counterexamples001.json','detail':'Actual release008 fixes ControllerCommit=597, while currently changed actor source differs from the08a committed597 source. A release containing those source bytes requires a distinct current commit and fails this fixed record predicate.'},
+{'id':'D177-C2','evidence':'counterexamples001.json','detail':'Repinning only a normal final009 record still yields ParentCommit597, while the legacy matcher requires immutable historicalEA9.'},
+{'id':'D177-C3','evidence':'coordination007.md','detail':'Embedding the future final release-record hash into the same released source creates a source/record hash cycle; compile immutable intermediate facts and carry final attestation trust externally instead.'}],
+'test_masking_limitations':[
+'In test_lineage_refuses_tampered_record the wrong-parent branch coherently rehashes the five-key fixture and reaches the legacy parent check.',
+'The RemotePushPerformed=True branch rewrites record bytes without updating RELEASE008_SHA256; the byte hash guard rejects before the no-push semantic check.',
+'No AST case, one-query assertion or captured actor report verifies actual116 focused passes or5569 collection; runtime claims were not audited here.',
+'No result of the separate component003 worker wrong-relocation failure is analyzed or claimed by this report.'],
+'finite_policy_contract':{'accepted_design_sha256':capture['inputs']['design002.json']['sha256'],
+'accepted_design_review_sha256':capture['inputs']['accepted-design-review002.json']['sha256'],
+'schema1_retained_exact_top_keys':14,'schema1_direct_parent':'originalEA9','schema2_exact_top_keys':17,
+'exact_intermediate_commit':capture['head_before'],'exact_intermediate_release_keys':36,'final_release_keys':34,
+'intermediate_existing_path_afterimages':9,'full_tracked_rows_each_era':742,'authenticated_QA_rows_each_era':263,
+'pairwise_mid_final_and_old_final_changes':25,'public_admit_keyword_only_argument_count':12,'runtime_input_file_count':7,
+'old_and_middle_QA_order':'exact authenticated historical grouped traversal sequence; never generic sorting',
+'future_final_release':'release-009-proposal018','external_attestation_SHA_required':True,
+'current_schema_family':'raw5/gate5/bootstrap5','original_historical_incident_terminal_schema':3,
+'no_arbitrary_ancestry_or_extra_hop':True,'no_blanket_identity_exclusions':True},
+'safe_integration_sequence':[
+'Preserve exact actor source/test snapshots, seven names/node AST hashes, original gate007 baseline and root structural witness/history; obtain executor coordination separately.',
+'After independent raw003 review and concrete fixture correction acceptance, construct a complete schema2 fixture using immutable actual intermediate proof and full742/QA263 data with externally pinned synthetic final attestation.',
+'Retarget all seven names to the common public raw admission/controller context boundaries; retain their intentions, restoration positives and explicit intended-guard sentinels. Do not import the actor boolean/ancestry/broad-projection acceptance shortcut.',
+'Retain existing frozen18 controller tests as well; merge the seven adapted nodes rather than overlaying old18 tests onto live actor tests or discarding the seven original controls.',
+'Refresh raw/controller/worker/native/import/default/source/fixture hash bindings programmatically after final source changes, derive the actual named dependency closure and independently audit exact integrated sources.',
+'Complete focused behavior/fresh collection/full exact gate on the final integrated source before docs/governance/new clean release009. Derive actual counts; do not reuse actor5569 or oldgate007 results as final-source acceptance.',
+'Only then consider independently reviewed postcommit publication/native pin binding under original operational guards and explicit authorization. This audit authorizes none of those actions.'],
+'project_code_imported_or_executed':False,'tests_or_collection_executed':False,'helper_or_native_executed':False,
+'Git_commands_readonly':True,'Git_stderr_empty':True,'Git_optional_locks':'0','Git_runtime_sha256':GIT_SHA,
+'Git_or_source_modified':False,'primary_docs_modified':False,'historical_evidence_modified':False,
+'operational_authority_granted':False,'exclusive_executor_ACK_proven':False,'scientific_outcomes_consulted':False,
+'public_action_performed':False,'review_writer_source_sha256':sha(_REVIEW_REPORT_BYTES)}
+record['record_digest']=sha(canonical(record));json_bytes=canonical(record)+b'\n'
+jpath=W/'D177_TEST_INTEGRATION_REVIEW_001.json';mpath=W/'D177_TEST_INTEGRATION_REVIEW_001.md'
+for p in (jpath,mpath):
+    try:p.lstat()
+    except FileNotFoundError:pass
+    else:raise ValueError('create-once review output already exists')
+with (ROOT/'WRITE_D177_INTEGRATION_REVIEW_001.py').open('xb') as stream:stream.write(_REVIEW_REPORT_BYTES)
+with jpath.open('xb') as stream:stream.write(json_bytes)
+table='\n'.join('| ['+item['test_name']+'](d177-test-integration-review-inputs-001/actor-tests.source:'+str(item['line'])+') | '+item['intended_control']+' | '+item['safe_adaptation'][0]+' |' for item in matrix)
+md=f"""# D177 seven-test integration audit
+
+The seven actor test names are worth preserving. Their literal fixtures and legacy matcher are incompatible with the reviewed finite policy; applying our old18 test overlay would silently lose every one of them. This read-only audit authorizes no implementation or execution.
+
+Fresh pinned Git proved HEAD {capture['head_before']} before/after capture and again before/after final observation. Actor source/test remain {capture['inputs']['actor-controller.source']['sha256']}/{capture['inputs']['actor-tests.source']['sha256']}; frozen18 source/test remain {capture['inputs']['frozen18-controller.source']['sha256']}/{capture['inputs']['frozen18-tests.source']['sha256']}. Final source byte/identity drift list: {drift}. No clean/ignored-state or executor ACK is claimed.
+
+The committed gate007 test SHA is {capture['inputs']['head597-gate007-tests.source']['sha256']}. AST comparison identifies exactly seven added undecorated test functions and three fixture helpers, with no changed or removed old test/helper ASTs. All seven names are absent from frozen18. Their exact old source, node hashes, function ranges and full adaptation requirements are preserved in the JSON.
+
+| Preserved test name | Meaningful intent | First required adaptation |
+| --- | --- | --- |
+{table}
+
+The shared fixture labels actual597 as the final controller and uses raw4/entry4, synthetic verified=True, a five-field release, a five-file QA manifest and made-up module/blob/tree digests. The final policy instead requires unchanged schema3/raw4 historical bytes, current raw5/gate5/bootstrap5, exact pinnedEA9 -> unique typed597 intermediate -> one-parent final597 succession, complete742 tables, nine afterimages, both finite25 deltas, exact grouped QA263 order and independent external attestation/twins. Generic ancestry success and an exact-one-query assertion are insufficient. The source's additional direct release-parent check is a concrete blocker for the correct final parent597; no claim of unrestricted actual arbitrary-ancestor acceptance is made.
+
+The no-push tamper case currently changes bytes without repinning, so it demonstrates the earlier SHA rejection rather than the no-push field guard. Adapted deep-policy negatives must coherently bind all unrelated views and assert the intended guard or sentinel; keep separate byte-tamper cases and successful restoration controls. Loaded-row checks must use admitted final file/blob identities and retain source/code/default/policy/import registry validation.
+
+The actor adds eight private acceptance functions and changes _assert_current_controller_authority, _invoke_bootstrap and recover. Those eight actor helpers are absent from frozen18. Preserve their source/history; retarget tests through [controller admission context](d177-test-integration-review-inputs-001/frozen18-controller.source:{source_sites['_successor_admission_context']['line']}) and the stable12-keyword raw admit_recorded_predecessor API. Keep the [current static authority/source boundary](d177-test-integration-review-inputs-001/frozen18-controller.source:{source_sites['_revalidate_stored_operating_authority']['line']}) and historical/context bindings rather than adding a boolean compatibility shortcut.
+
+Source/policy/caller correction and reviewed fixture integration must precede fresh focused QA, collection and the exact full gate. Preserve the seven names and the existing frozen18 controls together; refresh final pins programmatically and derive actual dependency/node counts. Final34 release009/proposal018 and postcommit admission remain external reviewed stages. Fixed008 cannot bind a distinct final commit; repinning009 alone does not close the direct-parent mismatch; a future final record hash embedded in its own released source creates a hash cycle. Root counterexamples944c and coordination0074b903 remain corroborated.
+
+No project/helper import, test/collection execution, Git mutation, source/root-doc edit, native action or scientific outcome consultation occurred. The separate component003 worker relocation diagnosis is excluded. Actor116/5569 claims and current operational readiness are unverified here.
+
+[Full JSON](D177_TEST_INTEGRATION_REVIEW_001.json) SHA256 {sha(json_bytes)}. [Preserved capture manifest](d177-test-integration-review-inputs-001/SOURCE_CAPTURE_MANIFEST_001.json) SHA256 {sha(capture_bytes)}.
+"""
+with mpath.open('xb') as stream:stream.write(md.encode('utf-8'))
+require(read(jpath)[0]==json_bytes,'JSON readback differs')
+print(json.dumps({'JSON_sha256':sha(json_bytes),'MD_sha256':sha(read(mpath)[0]),'seven_added_tests':7,'all_names_preservation_required':True,'final_live_source_drift':drift,'final_HEAD':head_end,'no_imports_or_execution':True},sort_keys=True))
+

@@ -1,0 +1,174 @@
+
+import ast, datetime, hashlib, json, math, os, re, stat
+from pathlib import Path, PurePosixPath
+P=Path(r'D:\Aenv\pro2');R=P/'resume-2026-10-01-30h-001'
+def raw9(x):return [x.st_dev,x.st_ino,x.st_size,x.st_mtime_ns,x.st_ctime_ns,x.st_mode,x.st_nlink,getattr(x,'st_file_attributes',None),getattr(x,'st_birthtime_ns',None)]
+def pairs_unique(rows):
+ value={}
+ for k,v in rows:
+  if k in value:raise ValueError('duplicate '+k)
+  value[k]=v
+ return value
+def decode(data):
+ value=json.loads(data,object_pairs_hook=pairs_unique,parse_constant=lambda x:(_ for _ in()).throw(ValueError(x)))
+ def check(x):
+  if isinstance(x,float)and not math.isfinite(x):raise ValueError('nonfinite')
+  if isinstance(x,dict):
+   for v in x.values():check(v)
+  elif isinstance(x,list):
+   for v in x:check(v)
+ check(value);return value
+def digest(x):return hashlib.sha256(json.dumps(x,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False).encode('ascii')).hexdigest()
+def read(p,cap=8388608):
+ p=Path(p);assert p.is_absolute()
+ before=[]
+ for parent in reversed(p.parents):
+  s=parent.lstat();assert stat.S_ISDIR(s.st_mode)and not stat.S_ISLNK(s.st_mode)and not getattr(s,'st_file_attributes',0)&0x400
+  before.append((str(parent),s.st_dev,s.st_ino))
+ a=p.lstat();ar=raw9(a);assert stat.S_ISREG(a.st_mode)and a.st_nlink==1 and not getattr(a,'st_file_attributes',0)&0x400
+ assert type(a.st_size)is int and 0<=a.st_size<=cap
+ fd=os.open(p,os.O_RDONLY|getattr(os,'O_BINARY',0));parts=[];total=0
+ try:
+  h=os.fstat(fd);hr=raw9(h);assert stat.S_ISREG(h.st_mode)and h.st_nlink==1 and not getattr(h,'st_file_attributes',0)&0x400
+  assert ar[4]==ar[8]and all(ar[i]==hr[i]for i in(0,1,2,3,5,6,7,8))
+  while True:
+   b=os.read(fd,min(1048576,cap+1-total))
+   if not b:break
+   total+=len(b);assert total<=cap;parts.append(b)
+  assert raw9(os.fstat(fd))==hr
+ finally:os.close(fd)
+ assert raw9(p.lstat())==ar
+ after=[]
+ for parent in reversed(p.parents):
+  s=parent.lstat();assert stat.S_ISDIR(s.st_mode)and not stat.S_ISLNK(s.st_mode)and not getattr(s,'st_file_attributes',0)&0x400
+  after.append((str(parent),s.st_dev,s.st_ino))
+ assert after==before
+ data=b''.join(parts);assert len(data)==a.st_size
+ return data,{'path':str(p),'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'path_raw9':ar,'handle_raw9':hr}
+
+Q=R/'guard005-actual-record-review-prep002';G=R/'consumer-guard-test-runtime005';M=R/'guard005-root-metadata-prep002'
+b,so=read(Q/'review_gg5_actual_records_001.py');assert so['sha256']=='d8fccb0e796a5bd8b86a6e771ac0a8d93e7dcccfb0cb52e6e9e26a6888b952e2'
+tree=ast.parse(b);env={}
+def val(n):
+ if isinstance(n,ast.Constant):return n.value
+ if isinstance(n,ast.Name):return env[n.id]
+ if isinstance(n,(ast.Tuple,ast.List)):return tuple(val(x)for x in n.elts)if isinstance(n,ast.Tuple)else[val(x)for x in n.elts]
+ if isinstance(n,ast.Dict):return {val(k):val(v)for k,v in zip(n.keys,n.values)}
+ if isinstance(n,ast.BinOp)and isinstance(n.op,ast.Div):return val(n.left)/val(n.right)
+ if isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id=='Path'and len(n.args)==1 and not n.keywords:return Path(val(n.args[0]))
+ raise ValueError('not static data')
+for n in tree.body:
+ if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+  try:env[n.targets[0].id]=val(n.value)
+  except(KeyError,ValueError):pass
+selected={}
+def add(p,pin=None,cap=8388608):
+ p=Path(p);key=str(p).casefold()
+ if key in selected:
+  assert pin is None or selected[key]['sha256']==pin
+  return
+ data,o=read(p,cap);assert pin is None or o['sha256']==pin
+ selected[key]={'path':str(p),'sha256':o['sha256'],'bytes':o['bytes'],'observations':[o],'data':data}
+add(Q/'review_gg5_actual_records_001.py',so['sha256'])
+add(Q/'INDEPENDENT_ACTUAL_RECORD_REVIEW_UTILITY_SOURCE_REVIEW_002.json','76b1acd931235c1f985782f48fcd8dec208cf7e88f2369a45f27b6ddd217a45d')
+add(Q/'INDEPENDENT_ACTUAL_RECORD_REVIEW_UTILITY_SOURCE_REVIEW_002.md','79e06e3d0d81cf5b593b37df8f7f9cb321e0acab2b4d053e230a15d1e655e392')
+add(Q/'REVIEW_INPUT_SELECTION_001.TEMPLATE.json','5761ecd09fc5aac8d525b5d98149dc3f8c58a781a32ab558accb01d48e7ef8cf')
+for role,(p,pin,cap)in env['FIXED'].items():add(p,pin,cap)
+relay={
+ M/'INDEPENDENT_METADATA_STATIC_REVIEW_005.json':'af6580f58fbab70548355973d72ce2281a17384d2af2719bb5665ff77b88e06d',
+ M/'ACTUAL_SOURCE_BINDING_002.json':'d8f77b7d7c36be8fb6bf0ee9249c06d06896e9ddc6e6085c109d62f62fced986',
+ M/'capture-guard005-root-metadata.BOUND.py':'4bae729f61bb58070b4b72a322849db4a8cd9708adf81378edf32d49000710bb',
+ M/'INDEPENDENT_BOUND_METADATA_REVIEW_005.json':'212f343d424511a8420bdfe71fd3501cda41b01b5ac87e4c233f87499d98bf71',
+ M/'PHASE_PS_SOURCE_BINDING_002.json':'11384a98712677732cc1b0398c109f7c0206a1ff0a2dbf676e1efcbaa71d8a7b',
+ M/'INDEPENDENT_ROOT_METADATA_PHASE_PS_BINDING_REVIEW_005.json':'dd229049b433bdaf7f5db6ac6d738a22c0636675839282c1a2c88fee5096c387',
+}
+for p,pin in relay.items():add(p,pin)
+source=decode(selected[str(M/'INDEPENDENT_METADATA_STATIC_REVIEW_005.json').casefold()]['data'])
+boundtemplate=decode(selected[str(G/'INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_005.TEMPLATE.json').casefold()]['data'])
+latetemplate=decode(selected[str(G/'INDEPENDENT_GUARD_ROOT_LAUNCH_LATE_REVIEW_005.TEMPLATE.json').casefold()]['data'])
+selection=decode(selected[str(Q/'REVIEW_INPUT_SELECTION_001.TEMPLATE.json').casefold()]['data'])
+assert tuple(selection)==env['SELECTION_KEYS']and tuple(selection['roles'])==env['SELECTION_ROLES']
+assert set(selection['producer_roles'])==set(env['UTC_ROLES'])and set(selection['approval_cores'])==set(env['APPROVAL_ROLES'])
+assert len(env['FIXED'])==19 and len(source)==36 and len(boundtemplate)==22 and len(latetemplate)==14
+for _ in [2,3]:
+ for x in selected.values():
+  data,o=read(x['path']);assert data==x['data']and o==x['observations'][0];x['observations'].append(o)
+print(json.dumps({'fixed':len(env['FIXED']),'selected_unique':len(selected),'selection_keys':env['SELECTION_KEYS'],'roles':env['SELECTION_ROLES'],'producer_roles':env['UTC_ROLES'],'approval_roles':env['APPROVAL_ROLES'],'source_review_keys':list(source),'bound_keys':list(boundtemplate),'late_keys':list(latetemplate)},ensure_ascii=True))
+
+before_bytes,before_obs=read(M/'independent-fast-metadata-review-prep002/independent-fast-metadata-review002.py');assert before_obs['sha256']=='db8f141cebc1a9d25db617607f63880248d3149f148b93cfbb0e9a2689d3a5cb'
+before=ast.parse(before_bytes)
+assigns={}
+for n in before.body:
+ if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+  try:assigns[n.targets[0].id]=ast.literal_eval(n.value)
+  except(ValueError,TypeError):pass
+phase_binding=decode(selected[str(M/'PHASE_PS_SOURCE_BINDING_002.json').casefold()]['data'])
+phase_rows=phase_binding['sources']
+source_core_fields=['schema_version','record_type','reviewer','reviewer_agent','source_author','verdict','review_scope','source_template_sha256','source_template_bytes','manifest_sha256','contract_sha256','actual_phase_authorized','actual_source_binding_authorized','operational_authority_granted','target_imports_or_definitions_executed','target_compile_or_FFI_executed','Git_or_capture_or_observer_or_tests_executed','native_invoked','production_invoked','public_action_performed','scientific_outcomes_consulted','scientific_values_emitted']
+sc={k:source[k]for k in source_core_fields}
+closure={
+ 'metadata_script':{'path':str(M/'capture-guard005-root-metadata.BOUND.py'),'sha256':relay[M/'capture-guard005-root-metadata.BOUND.py']},
+ 'metadata_source_binding':{'path':str(M/'ACTUAL_SOURCE_BINDING_002.json'),'sha256':relay[M/'ACTUAL_SOURCE_BINDING_002.json']},
+ 'metadata_bound_review':{'path':str(M/'INDEPENDENT_BOUND_METADATA_REVIEW_005.json'),'sha256':relay[M/'INDEPENDENT_BOUND_METADATA_REVIEW_005.json']},
+ 'phase_source_binding':{'path':str(M/'PHASE_PS_SOURCE_BINDING_002.json'),'sha256':relay[M/'PHASE_PS_SOURCE_BINDING_002.json']},
+ 'phase_source_review':{'path':str(M/'INDEPENDENT_ROOT_METADATA_PHASE_PS_BINDING_REVIEW_005.json'),'sha256':relay[M/'INDEPENDENT_ROOT_METADATA_PHASE_PS_BINDING_REVIEW_005.json']},
+}
+root_writer=selected[str(M/'PREPARE_ROOT_GUARD005_ACTUAL_RECORDS_002.ps1').casefold()]['data'].decode()
+ackline=[l for l in root_writer.splitlines()if "$record=[ordered]@{schema_version=1;record_type='consumer_guard_unit005_first_run_ack'"in l][0]
+ackkeys=re.findall(r'(?:@\{|;)([a-z_][a-z_0-9]*)=',ackline)
+ackb,_=read(G/'ROOT_EXECUTION_ACK_GUARD_UNIT005.TEMPLATE.json');at=decode(ackb)
+profile=decode(selected[str(G/'GUARD_RUNTIME_PROFILE_005.json').casefold()]['data'])
+ack_nominal={k:v for k,v in at.items()if v is not None}
+ack_nominal.update(driver_sha256=env['DRIVER_PIN'],harness_static_review_sha256=env['STATIC_PIN'],owner_sha256=env['OWNER_PIN'],child_sha256=profile['child']['sha256'],profile_sha256=env['PROFILE_PIN'],source_peer_sha256=env['SOURCE_PIN'],source_manifest_sha256=env['SOURCE_MANIFEST_PIN'],source_projection_sha256=profile['source_projection_sha256'])
+known={
+ 'metadata_source_review':{'path':str(M/'INDEPENDENT_METADATA_STATIC_REVIEW_005.json'),'sha256':relay[M/'INDEPENDENT_METADATA_STATIC_REVIEW_005.json']},
+ 'metadata_source_binding':closure['metadata_source_binding'],'metadata_bound_source':closure['metadata_script'],'metadata_bound_review':closure['metadata_bound_review'],
+ 'root_writer':{'path':str(M/'PREPARE_ROOT_GUARD005_ACTUAL_RECORDS_002.ps1'),'sha256':'41fa5afb7659ccb93f3b80bdf5622cbe58f56ca9ffa196884cf0f65a71f0ce6a'},
+ 'root_writer_review':{'path':str(M/'INDEPENDENT_METADATA_STATIC_REVIEW_005.json'),'sha256':relay[M/'INDEPENDENT_METADATA_STATIC_REVIEW_005.json']},
+}
+constants={
+ 'SCOPE':env['SCOPE'],'SOURCE_REVIEW_SHA':relay[M/'INDEPENDENT_METADATA_STATIC_REVIEW_005.json'],'SOURCE_REVIEW_KEYS':list(source),'SOURCE_CORE_VALUES':sc,'SOURCE_CHECKS':source['source_checks'],
+ 'SOURCE_CLOSURE':closure,'PHASE_ROWS':phase_rows,'PHASE_BINDING_KEYS':list(phase_binding),
+ 'FIXED_INPUTS':[(str(p),s,cap)for p,s,cap in env['FIXED'].values()],
+ 'CORE12':['schema_version','record_type','reviewer','created_utc','verdict','input_sha256','context_sha256','runtime_snapshot_sha256','parent_terminal_sha256','metadata_only','operational_authority_granted','evidence_sha256'],
+ 'CORE_PATHS':{'metadata':str(M/'INDEPENDENT_ACTUAL_ROOT_METADATA_BEFORE_CAPTURE_REVIEW_005.json'),'whole':str(M/'INDEPENDENT_ACTUAL_ROOT_WHOLE_BEFORE_REVIEW_005.json')},
+ 'CORE_NOMINALS':{
+  'metadata':{'schema_version':1,'record_type':'guard005_actual_root_metadata_before_capture_review','reviewer':'/root/window_docs','verdict':'PASS_ACTUAL_BEFORE_METADATA_CAPTURE_ONLY','metadata_only':True,'operational_authority_granted':False},
+  'whole':{'schema_version':1,'record_type':'guard005_actual_root_whole_before_review','reviewer':'/root/window_docs','verdict':'PASS_ACTUAL_WHOLE_BEFORE_METADATA_ONLY','metadata_only':True,'operational_authority_granted':False}},
+ 'DETAIL_ROLES':{'metadata':'capture_before','whole':'whole_before_result'},
+ 'CONTEXT_KEYS':['schema_version','scope','captured_utc','head','tracked_rows','git_metadata','configurations','runtime_roles_projection_sha256'],
+ 'RUNTIME_KEYS':['schema_version','scope','captured_utc','entries','context_selection'],
+ 'METADATA_CAPTURE_KEYS':['schema_version','phase','started_utc','captured_utc','context','runtime_selection','head','porcelain_normal','paired742_and_git_config_runtime_matched','bound_inputs','metadata_only','whole_inventory_trees_observed','guard_or_test_or_native_executed','operational_authority_granted'],
+ 'METADATA_PARENT_KEYS':list(assigns['METADATA_PARENT_KEYS']),'WHOLE_PARENT_KEYS':list(assigns['WHOLE_PARENT_KEYS']),'WHOLE_RESULT_KEYS':list(assigns['WHOLE_RESULT_KEYS']),'WHOLE_AUTH_KEYS':list(assigns['WHOLE_AUTH_KEYS']),
+ 'WHOLE_RESULT_NOMINALS':{'schema_version':1,'record_type':'consumer_guard_unit005_whole_metadata_result','scope':env['SCOPE'],'phase':'before','verdict':'MATCHES_PINNED_BYTES_METADATA_TWICE','observer_sha256':env['OBSERVER_PIN'],'static_review_sha256':env['STATIC_PIN'],'profile_sha256':env['PROFILE_PIN'],'owner_sha256':env['OWNER_PIN'],'before_record_sha256':None,'unit_receipt':None,'target_execution':False,'whole_site_loaded_closure_retained_lock_OS_Job_guaranteed':False},
+ 'WHOLE_ACCEPTANCE_KEYS':['schema_version','scope','captured_utc','verifier','whole_before_evidence','unchanged_against_reviewed_runtime','runtime_snapshot_sha256'],
+ 'ACK_KEYS':ackkeys,'ACK_NOMINALS':ack_nominal,'RESOURCE_KEYS':['schema_version','scope','captured_utc','free_ram_bytes','disk_free_bytes','single_thread','author'],
+ 'OWNER_END_TICKS':int(datetime.datetime(2026,10,2,22,36,15,tzinfo=datetime.timezone.utc).timestamp())*10000000,
+ 'KNOWN_ROLES':known,'ROLE_KEYS':list(env['SELECTION_ROLES']),'PACKET_KEYS':list(env['SELECTION_KEYS']),'PRODUCER_KEYS':list(env['UTC_ROLES']),
+ 'DRIVER_SHA':env['DRIVER_PIN'],'BOUND_KEYS':list(boundtemplate),'ROOT_TEMPLATE_SHA':'7c00ac42a6c67417f0bf4c7ea38d992e4001f8959cc7332ec87b21da0d879dbf',
+ 'FUTURE_ABSENT':[str(G/n)for n in ['ROOT_LAUNCH_START_005.json','ROOT_LAUNCH_TERMINAL_005.json','ROOT_LAUNCH_STDOUT_005.txt','ROOT_LAUNCH_STDERR_005.txt']]+[str(P/'.tmp/cg14-005')],
+}
+constant_source=''.join(k+'='+repr(v)+'\n'for k,v in constants.items())
+assert len(ackkeys)==22 and len(constants['CORE12'])==12 and len(constants['SOURCE_REVIEW_KEYS'])==36
+
+constants['WHOLE_AUTH_NOMINALS']={'schema_version':1,'record_type':'consumer_guard_unit005_metadata_observation_authorization','author':'/root','scope':env['SCOPE'],'phase':'before','observer_sha256':env['OBSERVER_PIN'],'profile_sha256':env['PROFILE_PIN'],'static_review_sha256':env['STATIC_PIN'],'owner_sha256':env['OWNER_PIN'],'before_record_sha256':None,'unit_receipt':None}
+constants['WHOLE_TREES']=assigns['WHOLE_EXPECTED']
+constant_source=''.join(k+'='+repr(v)+'\n'for k,v in constants.items())
+
+_pieces = json.loads("{\"prefix\":\"\\nimport ast, datetime, hashlib, json, math, os, re, stat\\nfrom pathlib import Path, PurePosixPath\\nP=Path(r'D:\\\\Aenv\\\\pro2');R=P/'resume-2026-10-01-30h-001'\\ndef raw9(x):return [x.st_dev,x.st_ino,x.st_size,x.st_mtime_ns,x.st_ctime_ns,x.st_mode,x.st_nlink,getattr(x,'st_file_attributes',None),getattr(x,'st_birthtime_ns',None)]\\ndef pairs_unique(rows):\\n value={}\\n for k,v in rows:\\n  if k in value:raise ValueError('duplicate '+k)\\n  value[k]=v\\n return value\\ndef decode(data):\\n value=json.loads(data,object_pairs_hook=pairs_unique,parse_constant=lambda x:(_ for _ in()).throw(ValueError(x)))\\n def check(x):\\n  if isinstance(x,float)and not math.isfinite(x):raise ValueError('nonfinite')\\n  if isinstance(x,dict):\\n   for v in x.values():check(v)\\n  elif isinstance(x,list):\\n   for v in x:check(v)\\n check(value);return value\\ndef digest(x):return hashlib.sha256(json.dumps(x,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False).encode('ascii')).hexdigest()\\ndef read(p,cap=8388608):\\n p=Path(p);assert p.is_absolute()\\n before=[]\\n for parent in reversed(p.parents):\\n  s=parent.lstat();assert stat.S_ISDIR(s.st_mode)and not stat.S_ISLNK(s.st_mode)and not getattr(s,'st_file_attributes',0)&0x400\\n  before.append((str(parent),s.st_dev,s.st_ino))\\n a=p.lstat();ar=raw9(a);assert stat.S_ISREG(a.st_mode)and a.st_nlink==1 and not getattr(a,'st_file_attributes',0)&0x400\\n assert type(a.st_size)is int and 0<=a.st_size<=cap\\n fd=os.open(p,os.O_RDONLY|getattr(os,'O_BINARY',0));parts=[];total=0\\n try:\\n  h=os.fstat(fd);hr=raw9(h);assert stat.S_ISREG(h.st_mode)and h.st_nlink==1 and not getattr(h,'st_file_attributes',0)&0x400\\n  assert type(ar[8])is int and type(hr[8])is int and ar[4]==ar[8]and all(ar[i]==hr[i]for i in(0,1,2,3,6,7,8))\\n  if p==P/'runtimes/week8-python313-frozen-001/python.exe':assert ar[5]&0o111==0o111 and hr[5]&0o111==0 and ar[5]&~0o111==hr[5]\\n  else:assert ar[5]==hr[5]\\n  while True:\\n   b=os.read(fd,min(1048576,cap+1-total))\\n   if not b:break\\n   total+=len(b);assert total<=cap;parts.append(b)\\n  assert raw9(os.fstat(fd))==hr\\n finally:os.close(fd)\\n assert raw9(p.lstat())==ar\\n after=[]\\n for parent in reversed(p.parents):\\n  s=parent.lstat();assert stat.S_ISDIR(s.st_mode)and not stat.S_ISLNK(s.st_mode)and not getattr(s,'st_file_attributes',0)&0x400\\n  after.append((str(parent),s.st_dev,s.st_ino))\\n assert after==before\\n data=b''.join(parts);assert len(data)==a.st_size\\n return data,{'path':str(p),'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest(),'path_raw9':ar,'handle_raw9':hr}\\n\",\"tail\":\"\\n# SOURCE PREPARATION ONLY: this Root packet producer main has not run.\\nimport argparse, sys\\nQ=R/'guard005-actual-record-review-prep002'\\nM=R/'guard005-root-metadata-prep002'\\nG=R/'consumer-guard-test-runtime005'\\nBASE=P/'runtimes/week8-python313-frozen-001/python.exe'\\nBASE_SHA='5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed'\\nSELF=Q/'compose-root-review-packet-001.py'\\nSEEN={}\\ndef exact(v,ks):\\n assert type(v)is dict and set(v)==set(ks)\\ndef nominal(v,e):\\n assert type(v)is type(e)and v==e\\n if type(e)is dict:\\n  for k in e:nominal(v[k],e[k])\\n elif type(e)in(list,tuple):\\n  for a,b in zip(v,e):nominal(a,b)\\ndef pin(v):\\n assert type(v)is str and re.fullmatch('[0-9a-f]{64}',v);return v\\ndef confined(v):\\n assert type(v)is str\\n p=Path(v);assert p.is_absolute()and '..'not in p.parts and p.is_relative_to(P)and all(':'not in x for x in p.parts[1:])\\n return p\\ndef capture(p,s=None,cap=8388608):\\n p=Path(p);b,o=read(p,cap);assert s is None or o['sha256']==pin(s)\\n key=str(p)\\n if key in SEEN:assert SEEN[key]==o\\n else:SEEN[key]=o\\n return b,o\\ndef reject_float(v):raise ValueError('all metadata floats refused')\\ndef strict(data):\\n assert not data.startswith(b'\\\\xef\\\\xbb\\\\xbf')\\n return json.loads(data.decode('utf8','strict'),object_pairs_hook=pairs_unique,parse_float=reject_float,parse_constant=reject_float)\\ndef obj(p,s=None,cap=8388608):\\n b,o=capture(p,s,cap);return strict(b),o\\ndef wire(v):return (json.dumps(v,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)+'\\\\n').encode('ascii')\\ndef pointer(p,s):return {'path':str(p),'sha256':pin(s)}\\ndef ticks(v,kind):\\n assert type(v)is str\\n n=6 if kind=='Py'else 7\\n assert re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\\\.[0-9]{'+str(n)+r'}\\\\+00:00',v)\\n d=datetime.datetime.strptime(v[:19],'%Y-%m-%dT%H:%M:%S').replace(tzinfo=datetime.timezone.utc)-datetime.datetime(1970,1,1,tzinfo=datetime.timezone.utc)\\n return (d.days*86400+d.seconds)*10000000+int(v[20:20+n])*(10 if n==6 else 1)\\ndef now():return ticks(datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),'Py')\\ndef age(v,kind,limit):\\n assert 0<=now()-ticks(v,kind)<=limit*10000000\\ndef nofile(p):\\n try:p.lstat()\\n except FileNotFoundError:return\\n raise FileExistsError(str(p))\\ndef canonical_py(v,b):assert wire(v)==b\\ndef ordinary_pair_row(row,p,s):\\n exact(row,('path','sha256','bytes','path_raw9','descriptor_raw9'))\\n assert type(row['path'])is str and Path(row['path'])==p and row['sha256']==s\\n assert type(row['bytes'])is int and 0<=row['bytes']<=8388608\\n for k in ('path_raw9','descriptor_raw9'):\\n  assert type(row[k])is list and len(row[k])==9 and all(type(v)is int for v in row[k])\\n _,o=capture(p,s,row['bytes'])\\n assert o['bytes']==row['bytes']and o['path_raw9']==row['path_raw9']and o['handle_raw9']==row['descriptor_raw9']\\ndef check_core(p,s,dpath,ds,kind):\\n assert p==Path(CORE_PATHS[kind])\\n b,o=capture(p,s,65536);v=strict(b);exact(v,CORE12);canonical_py(v,b)\\n for k,e in CORE_NOMINALS[kind].items():nominal(v[k],e)\\n for k in ('input_sha256','context_sha256','runtime_snapshot_sha256','parent_terminal_sha256','evidence_sha256'):pin(v[k])\\n assert ticks(v['created_utc'],'Py')<=now()\\n assert v['evidence_sha256']==pin(ds)\\n assert dpath.parent==M and dpath.suffix=='.json'\\n db,_=capture(dpath,ds,16777216);detail=strict(db)\\n exact(detail,('reviewer','role','created_utc','checks','observations','target_execution','action_authorization','independent_verdict_not_issued_by_utility'))\\n canonical_py(detail,db)\\n nominal(detail['reviewer'],'/root/window_docs');nominal(detail['role'],DETAIL_ROLES[kind])\\n nominal(detail['target_execution'],False);nominal(detail['action_authorization'],False);nominal(detail['independent_verdict_not_issued_by_utility'],True)\\n assert ticks(detail['created_utc'],'Py')<=ticks(v['created_utc'],'Py')\\n assert type(detail['checks'])is dict and type(detail['observations'])is list\\n nominal(detail['checks']['source_closure'],SOURCE_CLOSURE)\\n for label,e in SOURCE_CLOSURE.items():\\n  p2=Path(e['path']);s2=e['sha256']\\n  matches=[row for row in detail['observations']if type(row)is dict and row.get('path')==str(p2)and row.get('sha256')==s2]\\n  assert matches\\n  for row in matches:ordinary_pair_row(row,p2,s2)\\n for row in PHASE_ROWS:\\n  p2=Path(row['path']);s2=row['sha256']\\n  matches=[x for x in detail['observations']if type(x)is dict and x.get('path')==str(p2)and x.get('sha256')==s2]\\n  assert matches\\n  for x in matches:ordinary_pair_row(x,p2,s2)\\n c=detail['checks']\\n for key in ('context_sha256','runtime_snapshot_sha256'):nominal(c[key],v[key])\\n nominal(c['capture_sha256'if kind=='metadata'else 'whole_before_sha256'],v['input_sha256'])\\n parent_path=M/'ROOT_METADATA_PARENT_TERMINAL_BEFORE_005.json'if kind=='metadata'else G/'ROOT_WHOLE_BEFORE_PARENT_TERMINAL_005.json'\\n parent_matches=[r for r in detail['observations']if type(r)is dict and r.get('path')==str(parent_path)and r.get('sha256')==v['parent_terminal_sha256']]\\n assert parent_matches\\n for row in parent_matches:ordinary_pair_row(row,parent_path,v['parent_terminal_sha256'])\\n if kind=='metadata':\\n  nominal(c['parent_terminal_sha256'],v['parent_terminal_sha256']);nominal(c['producer_provenance_still_requires_Root_actual_tool_record_review'],True)\\n else:nominal(c['physical_parent_and_producer_provenance_requires_independent_actual_review'],True)\\n return v\\ndef main():\\n a=argparse.ArgumentParser(allow_abbrev=False)\\n for k in ('phase','expected-self-sha256','ack-sha256','whole-acceptance-sha256','whole-auth-sha256','metadata-core-path','metadata-core-sha256','metadata-detail-path','metadata-detail-sha256','whole-core-path','whole-core-sha256','whole-detail-path','whole-detail-sha256'):\\n  a.add_argument('--'+k,required=True)\\n for k in ('bound-review-sha256','root-launcher-sha256'):a.add_argument('--'+k)\\n x=a.parse_args()\\n assert x.phase in ('bound','late')\\n assert os.name=='nt'and sys.version_info[:3]==(3,13,5)and sys.flags.isolated==1 and sys.flags.no_site==1 and sys.flags.dont_write_bytecode==1 and sys.flags.utf8_mode==1 and sys.flags.optimize==0\\n assert Path(sys.executable).absolute()==BASE and Path(__file__).absolute()==SELF\\n output=Q/('ROOT_SELECTED_'+x.phase.upper()+'_PACKET_001.json')\\n nofile(output);capture(BASE,BASE_SHA,105816);capture(SELF,pin(x.expected_self_sha256),131072)\\n for p,s,cap in FIXED_INPUTS:capture(Path(p),s,cap)\\n sr,_=obj(M/'INDEPENDENT_METADATA_STATIC_REVIEW_005.json',SOURCE_REVIEW_SHA,2097152)\\n exact(sr,SOURCE_REVIEW_KEYS)\\n for k,e in SOURCE_CORE_VALUES.items():nominal(sr[k],e)\\n nominal(sr['source_checks'],SOURCE_CHECKS)\\n phase,_=obj(M/'PHASE_PS_SOURCE_BINDING_002.json',SOURCE_CLOSURE['phase_source_binding']['sha256'],65536)\\n exact(phase,PHASE_BINDING_KEYS);nominal(phase['sources'],PHASE_ROWS)\\n phase_peer,_=obj(M/'INDEPENDENT_ROOT_METADATA_PHASE_PS_BINDING_REVIEW_005.json',SOURCE_CLOSURE['phase_source_review']['sha256'],65536)\\n assert type(phase_peer['phase_sources'])is list and len(phase_peer['phase_sources'])==len(PHASE_ROWS)==4\\n for a,b in zip(phase_peer['phase_sources'],PHASE_ROWS):\\n  exact(a,('PowerShell_parser_errors','bytes','exact_two_literal_reversal','path','sha256','template_sha256'))\\n  for k in b:nominal(a[k],b[k])\\n  nominal(a['PowerShell_parser_errors'],0)\\n  assert type(a['bytes'])is int and a['bytes']>=0\\n nominal(phase_peer['phase_source_binding_sha256'],SOURCE_CLOSURE['phase_source_binding']['sha256'])\\n for e in SOURCE_CLOSURE.values():capture(Path(e['path']),e['sha256'],65536)\\n for row in PHASE_ROWS:capture(Path(row['path']),row['sha256'],65536)\\n mc=check_core(confined(x.metadata_core_path),pin(x.metadata_core_sha256),confined(x.metadata_detail_path),pin(x.metadata_detail_sha256),'metadata')\\n wc=check_core(confined(x.whole_core_path),pin(x.whole_core_sha256),confined(x.whole_detail_path),pin(x.whole_detail_sha256),'whole')\\n assert mc['context_sha256']==wc['context_sha256']and mc['runtime_snapshot_sha256']==wc['runtime_snapshot_sha256']\\n ctx,ctxrow=obj(M/'phase-before-005/OPAQUE_CURRENT_CONTEXT_005.json',mc['context_sha256'],1048576);exact(ctx,CONTEXT_KEYS);age(ctx['captured_utc'],'Py',90)\\n rt,rtrow=obj(M/'phase-before-005/RUNTIME4_METADATA_SELECTION_005.json',mc['runtime_snapshot_sha256'],65536);exact(rt,RUNTIME_KEYS);age(rt['captured_utc'],'Py',90)\\n nominal(rt['context_selection'],pointer(Path(ctxrow['path']),ctxrow['sha256']));nominal(rt['scope'],SCOPE);nominal(ctx['scope'],SCOPE)\\n meta,metarow=obj(M/'phase-before-005/METADATA_CAPTURE_005.json',mc['input_sha256'],1048576);exact(meta,METADATA_CAPTURE_KEYS)\\n nominal(meta['context'],pointer(Path(ctxrow['path']),ctxrow['sha256']));nominal(meta['runtime_selection'],pointer(Path(rtrow['path']),rtrow['sha256']))\\n nominal(meta['schema_version'],1);nominal(meta['phase'],'before');nominal(meta['metadata_only'],True);nominal(meta['paired742_and_git_config_runtime_matched'],True)\\n for k in ('guard_or_test_or_native_executed','operational_authority_granted'):nominal(meta[k],False)\\n nominal(meta['whole_inventory_trees_observed'],0)\\n whole,wr=obj(G/'whole-runtime-before/result.json',wc['input_sha256'],262144);exact(whole,WHOLE_RESULT_KEYS)\\n for k,e in WHOLE_RESULT_NOMINALS.items():nominal(whole[k],e)\\n nominal(whole['trees'],WHOLE_TREES)\\n nominal(whole['context_selection_sha256'],ctxrow['sha256']);nominal(whole['runtime_snapshot_sha256'],rtrow['sha256'])\\n for kind,core,pp,ks in [('metadata',mc,M/'ROOT_METADATA_PARENT_TERMINAL_BEFORE_005.json',METADATA_PARENT_KEYS),('whole',wc,G/'ROOT_WHOLE_BEFORE_PARENT_TERMINAL_005.json',WHOLE_PARENT_KEYS)]:\\n  parent,_=obj(pp,core['parent_terminal_sha256'],65536);exact(parent,ks);assert list(parent)==ks\\n  nominal(parent['schema_version'],1);nominal(parent['phase'],'before');nominal(parent['exit_code'],0);nominal(parent['failure'],None)\\n  for k in ('capture_drain_complete','direct_child_reaped','metadata_only','spent'):nominal(parent[k],True)\\n  for k in ('timed_out','capture_overflow','target_tests_executed','operational_authority_granted','descendant_cleanup_guaranteed','OS_Job_hard_memory_bound'):nominal(parent[k],False)\\n  assert ticks(parent['finished_utc'],'PS')<=ticks(core['created_utc'],'Py')\\n ack,ar=obj(G/'ROOT_EXECUTION_ACK_GUARD_UNIT005.json',pin(x.ack_sha256),65536);exact(ack,ACK_KEYS);assert list(ack)==ACK_KEYS\\n for k,e in ACK_NOMINALS.items():nominal(ack[k],e)\\n nominal(ack['runtime_snapshot'],pointer(Path(rtrow['path']),rtrow['sha256']))\\n assert ticks(ack['created_utc'],'PS')<=now()and now()+4500000000<=ticks(ack['expires_utc'],'PS')<=OWNER_END_TICKS\\n respr=ack['resource_snapshot'];exact(respr,('path','sha256'));res,rrow=obj(confined(respr['path']),pin(respr['sha256']),65536);exact(res,RESOURCE_KEYS)\\n for k,e in [('schema_version',1),('scope',SCOPE),('single_thread',True),('author','/root')]:nominal(res[k],e)\\n assert type(res['free_ram_bytes'])is int and res['free_ram_bytes']>=1073741824 and type(res['disk_free_bytes'])is int and res['disk_free_bytes']>=10737418240\\n age(res['captured_utc'],'PS',60)\\n wa,_=obj(G/'INDEPENDENT_WHOLE_BEFORE_ACCEPTANCE_005.json',pin(x.whole_acceptance_sha256),65536);exact(wa,WHOLE_ACCEPTANCE_KEYS)\\n for k,e in [('schema_version',1),('scope',SCOPE),('verifier','/root/window_docs'),('unchanged_against_reviewed_runtime',True),('runtime_snapshot_sha256',rtrow['sha256'])]:nominal(wa[k],e)\\n nominal(wa['whole_before_evidence'],pointer(Path(wr['path']),wr['sha256']));age(wa['captured_utc'],'Py',90)\\n nominal(ack['whole_runtime_before'],pointer(G/'INDEPENDENT_WHOLE_BEFORE_ACCEPTANCE_005.json',pin(x.whole_acceptance_sha256)))\\n auth,_=obj(G/'ROOT_WHOLE_BEFORE_AUTHORIZATION_005.json',pin(x.whole_auth_sha256),65536);exact(auth,WHOLE_AUTH_KEYS);assert list(auth)==WHOLE_AUTH_KEYS\\n nominal(auth['runtime_snapshot'],pointer(Path(rtrow['path']),rtrow['sha256']));nominal(auth['context_selection'],rt['context_selection'])\\n for k,e in WHOLE_AUTH_NOMINALS.items():nominal(auth[k],e)\\n assert ticks(auth['created_utc'],'PS')<=ticks(whole['captured_utc'],'Py')<=ticks(auth['expires_utc'],'PS')<=OWNER_END_TICKS\\n roles=dict(KNOWN_ROLES)\\n roles.update(ack=pointer(G/'ROOT_EXECUTION_ACK_GUARD_UNIT005.json',x.ack_sha256),whole_acceptance=pointer(G/'INDEPENDENT_WHOLE_BEFORE_ACCEPTANCE_005.json',x.whole_acceptance_sha256),whole_auth=pointer(G/'ROOT_WHOLE_BEFORE_AUTHORIZATION_005.json',x.whole_auth_sha256),metadata_before_review=pointer(Path(x.metadata_core_path),x.metadata_core_sha256),whole_phase_review=pointer(Path(x.whole_core_path),x.whole_core_sha256))\\n if x.phase=='bound':\\n  assert x.bound_review_sha256 is None and x.root_launcher_sha256 is None\\n  roles['bound_review']=None;roles['root_launcher']=None\\n else:\\n  bp=G/'INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_005.json';lp=G/'ROOT_FIRST_LAUNCH_005.BOUND.ps1'\\n  br,_=obj(bp,pin(x.bound_review_sha256),65536);exact(br,BOUND_KEYS)\\n  nominal(br['verdict'],'PASS_BOUND_STATIC');nominal(br['reviewer'],'/root/keepawake_stage');nominal(br['root_ack_sha256'],x.ack_sha256);nominal(br['driver_sha256'],DRIVER_SHA)\\n  lb,_=capture(lp,pin(x.root_launcher_sha256),65536);text=lb.decode('utf8','strict')\\n  for key,s in [('BoundDriverSha256',DRIVER_SHA),('RootAckSha256',x.ack_sha256),('BoundReviewSha256',x.bound_review_sha256)]:\\n   pattern=r'(?m)^\\\\$'+key+r\\\" = '[0-9a-f]{64}'\\\\r?$\\\"\\n   matches=re.findall(pattern,text);assert len(matches)==1 and matches[0].rstrip('\\\\r')=='$'+key+\\\" = '\\\"+s+\\\"'\\\"\\n   text=re.sub(pattern,lambda unused,n=key:'$'+n+' = $null',text)\\n  original,_=capture(G/'ROOT_FIRST_LAUNCH_005.TEMPLATE.ps1',ROOT_TEMPLATE_SHA,65536);assert text.encode('utf8')==original\\n  roles['bound_review']=pointer(bp,x.bound_review_sha256);roles['root_launcher']=pointer(lp,x.root_launcher_sha256)\\n exact(roles,ROLE_KEYS)\\n cores={'metadata_source_review':{'keys':SOURCE_REVIEW_KEYS,'values':SOURCE_CORE_VALUES},'root_writer_review':{'keys':SOURCE_REVIEW_KEYS,'values':dict(SOURCE_CORE_VALUES,source_checks=SOURCE_CHECKS)},'metadata_before_review':{'keys':CORE12,'values':mc},'whole_phase_review':{'keys':CORE12,'values':wc}}\\n packet={'schema_version':1,'record_type':'root_selected_gg5_actual_record_review_001','phase':x.phase,'roles':roles,'producer_roles':{k:'python6'for k in PRODUCER_KEYS},'approval_cores':cores}\\n exact(packet,PACKET_KEYS)\\n for p,o in list(SEEN.items()):\\n  _,f=read(Path(p),max(o['bytes'],1));assert f==o\\n age(res['captured_utc'],'PS',60);age(ctx['captured_utc'],'Py',90);age(rt['captured_utc'],'Py',90);age(wa['captured_utc'],'Py',90)\\n assert now()+4500000000<=ticks(ack['expires_utc'],'PS')\\n for p in FUTURE_ABSENT:nofile(Path(p))\\n data=wire(packet);assert len(data)<=65536;nofile(output)\\n fd=os.open(output,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_BINARY',0),0o600)\\n with os.fdopen(fd,'wb')as f:f.write(data);f.flush();os.fsync(f.fileno())\\n got,o=read(output,65536);assert got==data\\n print(json.dumps({'packet':{'path':str(output),'sha256':o['sha256'],'bytes':len(data)},'phase':x.phase,'metadata_only':True,'utility_invoked':False,'target_execution':False,'action_authorization':False},sort_keys=True))\\nif __name__=='__main__':main()\\n\"}")
+
+composer_text='"""UNRUN Root metadata packet-producer preparation only; no approval or target action."""\n'+_pieces['prefix']+'\n'+constant_source+'\n'+_pieces['tail']
+composer_tree=ast.parse(composer_text)
+assert len([n for n in composer_tree.body if isinstance(n,ast.FunctionDef)and n.name=='main'])==1
+composer_bytes=composer_text.encode('utf8');assert len(composer_bytes)<=131072
+composer_sha=hashlib.sha256(composer_bytes).hexdigest()
+def publish(p,data):
+ try:p.lstat()
+ except FileNotFoundError:pass
+ else:raise FileExistsError(str(p))
+ fd=os.open(p,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_BINARY',0),0o600)
+ with os.fdopen(fd,'wb')as f:f.write(data);f.flush();os.fsync(f.fileno())
+ got,o=read(p);assert got==data;return o
+co=publish(Q/'compose-root-review-packet-001.py',composer_bytes)
+print('COMPOSER_SOURCE_FROZEN',json.dumps({'source':co,'source_functions':len([n for n in composer_tree.body if isinstance(n,ast.FunctionDef)]),'future_actual_packet_fields_not_created':True,'main_unrun':True,'different_source_review_required':True},ensure_ascii=True))
+

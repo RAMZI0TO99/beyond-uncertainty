@@ -1,0 +1,67 @@
+"""Compose source-only command guards; no .NET/ctypes/target execution."""
+import hashlib,json,os
+from pathlib import Path
+ROOT=Path(__file__).absolute().parent
+saved=ROOT/'before/command-limits013';saved.mkdir()
+helper='''function Assert-CapturedSourceCommandLine([string] $Executable,[string[]] $Arguments) {
+    # Conservative fully quoted Windows CRT spelling. The child independently
+    # measures its actual GetCommandLineW UTF16 units before executing source.
+    $parts = @()
+    foreach ($item in @($Executable) + @($Arguments)) {
+        if ($null -eq $item -or $item -isnot [string] -or $item.IndexOf([char]0) -ge 0) { throw 'Captured-source command argument type/NUL differs' }
+        $quoted = [Text.StringBuilder]::new();[void]$quoted.Append('"');$slashes=0
+        foreach ($char in $item.ToCharArray()) {
+            if ($char -eq [char]92) { $slashes++;continue }
+            if ($char -eq [char]34) { [void]$quoted.Append(('\\' * ($slashes*2+1)));[void]$quoted.Append('"') }
+            else { [void]$quoted.Append(('\\' * $slashes));[void]$quoted.Append($char) }
+            $slashes=0
+        }
+        [void]$quoted.Append(('\\' * ($slashes*2)));[void]$quoted.Append('"')
+        $parts += $quoted.ToString()
+    }
+    if (($parts -join ' ').Length -gt 8191) { throw 'Fully quoted Windows source command exceeds unchanged8191 UTF16 ceiling' }
+}
+
+'''
+prefix="import base64,ctypes,hashlib,sys; k=ctypes.WinDLL(''kernel32.dll'',use_last_error=True); q=k.GetCommandLineW; q.argtypes=[]; q.restype=ctypes.c_wchar_p; w=q(); assert type(w)is str and len(w.encode(''utf-16-le''))//2<=8191; "
+rows=[]
+for folder in ('front','postseal'):
+ for path in sorted((ROOT/folder).glob('*.ps1.template')):
+  data=path.read_bytes();text=data.decode()
+  if "'import base64,hashlib,sys; p=sys.argv.pop(1);" not in text:continue
+  text=text.replace("'import base64,hashlib,sys; p=sys.argv.pop(1);","'"+prefix+"p=sys.argv.pop(1);",1)
+  text=text.replace('d=base64.b64decode(b,validate=True); assert base64.b64encode(d)==b;',
+                    'd=base64.b64decode(b,validate=True); assert 0<len(d)<=196605; assert base64.b64encode(d)==b;',1)
+  if 'function Assert-FrontBoundary(' in text:
+   text=text.replace('function Assert-FrontBoundary(',helper+'function Assert-FrontBoundary(',1)
+   anchor='    $frontReply = @($frontPayload | & $Python @frontArgs)'
+   assert text.count(anchor)==1
+   text=text.replace(anchor,'    Assert-CapturedSourceCommandLine $Python $frontArgs\n'+anchor,1)
+  else:
+   assert 'function Assert-DownstreamBoundary(' in text
+   text=text.replace('function Assert-DownstreamBoundary(',helper+'function Assert-DownstreamBoundary(',1)
+   anchor='    $reply = @($payload | & $C.Python @arguments)'
+   assert text.count(anchor)==1
+   text=text.replace(anchor,'    Assert-CapturedSourceCommandLine $C.Python $arguments\n'+anchor,1)
+  dest=saved/path.relative_to(ROOT);dest.parent.mkdir(parents=True,exist_ok=True)
+  with dest.open('xb') as f:f.write(data)
+  with path.open('wb') as f:f.write(text.encode());f.flush();os.fsync(f.fileno())
+  rows.append({'path':str(path.relative_to(ROOT)),'before_sha256':hashlib.sha256(data).hexdigest(),
+               'after_sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
+assert len(rows)==8,len(rows)
+record={'schema_version':1,'record_type':'native002_source_command_guard_checkpoint',
+ 'direct_bridges':8,'files':rows,'windows_utf16_limit':8191,'source_raw_limit':196605,
+ 'encoded_sender_limit':262142,'encoded_receiver_limit':262144,
+ 'prelaunch_measurement':'conservative fully quoted CRT argument spelling',
+ 'child_measurement':'actual GetCommandLineW UTF16 length before captured common exec',
+ 'actual_bound_argv_derivations':None,'actual_OS_command_observed':False,
+ 'new_FFI_executed':False,'new_helper_roles':False,'new_binding_keys':False,
+ 'assumptions':['ctypes comes from independently authenticated pinned CPython runtime',
+ 'standard Windows kernel32 GetCommandLineW is an OS-provider boundary, not a byte-pinned application DLL',
+ 'exact argtypes/restype and own-process-only API; no process enumeration/termination',
+ 'no claim of PowerShell argv serialization equality from conservative prelaunch spelling; actual child checks length'],
+ 'transport_hold':'44-field full-path bindings may exceed original8191; future combined framing design not yet authorized/implemented',
+ 'operational_authority_granted':False}
+q=ROOT/'COMMAND_GUARD_CHECKPOINT_013.json'
+with q.open('xb') as f:f.write((json.dumps(record,sort_keys=True,indent=2)+'\n').encode());f.flush();os.fsync(f.fileno())
+print(json.dumps({'bridge_count':8,'checkpoint_sha256':hashlib.sha256(q.read_bytes()).hexdigest()}))

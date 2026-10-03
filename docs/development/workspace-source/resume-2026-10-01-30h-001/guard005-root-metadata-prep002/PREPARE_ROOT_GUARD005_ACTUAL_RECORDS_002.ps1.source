@@ -1,0 +1,91 @@
+param([Parameter(Mandatory=$true)][ValidateSet('whole-before-auth','ack','bind-launch')][string]$Stage)
+$ErrorActionPreference='Stop'
+$Work='D:\Aenv\pro2\resume-2026-10-01-30h-001'
+$Prep=Join-Path $Work 'consumer-guard-test-runtime005'
+$Meta=Join-Path $Work 'guard005-root-metadata-prep002'
+$Scope='COPIED_CONSUMER_GUARD_UNIT005_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+function Read-Bytes([string]$Path,[long]$Maximum,[string]$Pin) {
+    $first=Get-Item -LiteralPath $Path -Force
+    if($first.PSIsContainer -or ($first.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $first.Length -gt $Maximum){throw 'Nonplain/oversize metadata input'}
+    $stream=[IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    try{
+        if($stream.Length -ne $first.Length -or $stream.Length -gt $Maximum){throw 'Opened size drift'}
+        $memory=[IO.MemoryStream]::new()
+        try{
+            $buffer=[byte[]]::new(4096)
+            do{$count=$stream.Read($buffer,0,$buffer.Length);if($memory.Length+$count -gt $Maximum){throw 'Opened cap exceeded'};$memory.Write($buffer,0,$count)}while($count -gt 0)
+            $data=$memory.ToArray()
+        }finally{$memory.Dispose()}
+    }finally{$stream.Dispose()}
+    $last=Get-Item -LiteralPath $Path -Force
+    if($data.Length -ne $first.Length -or $first.Length -ne $last.Length -or $first.LastWriteTimeUtc.Ticks -ne $last.LastWriteTimeUtc.Ticks -or $first.CreationTimeUtc.Ticks -ne $last.CreationTimeUtc.Ticks -or $first.Attributes -ne $last.Attributes){throw 'Metadata input drift'}
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try{$hash=[BitConverter]::ToString($sha.ComputeHash($data)).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+    if($Pin -and $hash -cne $Pin){throw 'Exact metadata input pin differs'}
+    return @{data=$data;sha256=$hash;bytes=$data.Length;path=$Path}
+}
+function Load-Record([string]$Path,[long]$Maximum,[string]$Pin){$row=Read-Bytes $Path $Maximum $Pin;return @{row=$row;value=([Text.Encoding]::UTF8.GetString($row.data)|ConvertFrom-Json)}}
+function Write-Bytes-Once([string]$Path,[byte[]]$Data,[long]$Maximum){
+    if($Data.Length -gt $Maximum){throw 'Metadata output cap'}
+    $stream=[IO.File]::Open($Path,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+    try{$stream.Write($Data,0,$Data.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+    return (Read-Bytes $Path $Maximum '')
+}
+function Write-Record-Once([string]$Path,$Record){return (Write-Bytes-Once $Path ([Text.UTF8Encoding]::new($false).GetBytes(($Record|ConvertTo-Json -Compress -Depth 12)+"`n")) 65536)}
+function Pointer($Row){return [ordered]@{path=$Row.path;sha256=$Row.sha256}}
+function Assert-Absent([string]$Path){try{[void](Get-Item -LiteralPath $Path -Force -ErrorAction Stop);throw 'One-use role exists'}catch [System.Management.Automation.ItemNotFoundException]{}}
+foreach($path in @((Join-Path $Prep 'ROOT_LAUNCH_START_005.json'),(Join-Path $Prep 'ROOT_LAUNCH_TERMINAL_005.json'),'D:\Aenv\pro2\.tmp\cg14-005')){Assert-Absent $path}
+$owner=Read-Bytes (Join-Path $Work 'OWNER_WORK_WINDOW_30H_20261001_001.json') 65536 '3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff'
+$profile=Load-Record (Join-Path $Prep 'GUARD_RUNTIME_PROFILE_005.json') 65536 '6063125d058ed6ae901b5aca7017785434ba702baad35c97405c6b6286abb5eb'
+$static=Read-Bytes (Join-Path $Prep 'INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_005.json') 65536 'aa73d51d0e0e5ce604dc851d3cefef42dd5f901bd4fc759b581d29a64b9aac6a'
+$sourcePeer=Read-Bytes (Join-Path $Prep 'inputs\ACTUAL_SOURCE_PEER_003.json') 2097152 '54b19d3611ebb51bd6504a0ef6b23c689c86b5c5c163688be868fa51c0808050'
+$driver=Read-Bytes (Join-Path $Prep 'run-consumer-guard-unit005.py') 65536 '9f2add33e9dc9c2e3b3931f6565beede64ebe44baff5d07a519104afa6c0ab8d'
+$observer=Read-Bytes (Join-Path $Prep 'observe-whole-runtime-005.BOUND.py') 65536 '1bdaa7667fbb4b56d2b46b506e8ea6ed50b7c83c33cfe2c405cdd7b944405831'
+$capture=Load-Record (Join-Path $Meta 'phase-before-005\METADATA_CAPTURE_005.json') 2097152 ''
+if($capture.value.phase -cne 'before' -or $capture.value.metadata_only -ne $true -or $capture.value.operational_authority_granted -ne $false){throw 'Metadata capture role differs'}
+$runtime=Read-Bytes $capture.value.runtime_selection.path 65536 $capture.value.runtime_selection.sha256
+$context=Read-Bytes $capture.value.context.path 1048576 $capture.value.context.sha256
+$now=[DateTimeOffset]::UtcNow
+if(($now-[DateTimeOffset]::Parse($capture.value.captured_utc)).TotalSeconds -lt 0 -or ($now-[DateTimeOffset]::Parse($capture.value.captured_utc)).TotalSeconds -gt 600 -or ([DateTimeOffset]::Parse('2026-10-02T22:36:15Z')-$now).TotalSeconds -lt 600){throw 'Fresh context/owner reserve required'}
+if($Stage -ceq 'whole-before-auth'){
+    Assert-Absent (Join-Path $Prep 'whole-runtime-before')
+    Assert-Absent (Join-Path $Prep 'whole-runtime-after')
+    $record=[ordered]@{schema_version=1;record_type='consumer_guard_unit005_metadata_observation_authorization';author='/root';scope=$Scope;phase='before';created_utc=$now.ToString('o');expires_utc=$now.AddMinutes(15).ToString('o');observer_sha256=$observer.sha256;profile_sha256=$profile.row.sha256;static_review_sha256=$static.sha256;owner_sha256=$owner.sha256;runtime_snapshot=(Pointer $runtime);context_selection=(Pointer $context);before_record_sha256=$null;unit_receipt=$null}
+    $written=Write-Record-Once (Join-Path $Prep 'ROOT_WHOLE_BEFORE_AUTHORIZATION_005.json') $record
+    [ordered]@{path=$written.path;sha256=$written.sha256;bytes=$written.bytes;stage=$Stage;metadata_helper_entered=$false}|ConvertTo-Json -Compress
+}elseif($Stage -ceq 'ack'){
+    $whole=Load-Record (Join-Path $Prep 'INDEPENDENT_WHOLE_BEFORE_ACCEPTANCE_005.json') 65536 ''
+    if($whole.value.schema_version -ne 1 -or $whole.value.scope -cne $Scope -or $whole.value.unchanged_against_reviewed_runtime -ne $true -or $whole.value.runtime_snapshot_sha256 -cne $runtime.sha256 -or @('/root/candidate_review','/root/keepawake_stage','/root/window_docs') -cnotcontains $whole.value.verifier){throw 'Whole acceptance role differs'}
+    $peer=Read-Bytes (Join-Path $Work 'PRO3_ACK007_METADATA_CAPTURE_001.md') 65536 'c15b52b48fbc8be94e3aa619c25f42ab81f52c24e894b25bdca1be03bbc3ff17'
+    $rootResponse=Read-Bytes (Join-Path $Work 'COORDINATION_GATE009_TIMEOUT_RESOURCE_REQUEST_012.md') 65536 'bb556923a39a35f5884eb7470ecb1af47da437db510fcd4d697adc24fc4c78af'
+    $coordination=Write-Record-Once (Join-Path $Prep 'ROOT_COORDINATION_ACK_GUARD_UNIT005.json') ([ordered]@{schema_version=1;scope=$Scope;created_utc=[DateTimeOffset]::UtcNow.ToString('o');other_session_acknowledgement=(Pointer $peer);root_response=(Pointer $rootResponse);live_execution_authorized=$false})
+    $os=Get-CimInstance -ClassName Win32_OperatingSystem
+    $disk=Get-PSDrive -Name D
+    $stamp=[DateTimeOffset]::UtcNow
+    $ram=[long]$os.FreePhysicalMemory*1024
+    $diskFree=[long]$disk.Free
+    if($ram -lt 1073741824 -or $diskFree -lt 10737418240){throw 'Fresh unit resource floor fails'}
+    $resource=Write-Record-Once (Join-Path $Prep 'ROOT_RESOURCE_SNAPSHOT_005.json') ([ordered]@{schema_version=1;scope=$Scope;captured_utc=$stamp.ToString('o');free_ram_bytes=$ram;disk_free_bytes=$diskFree;single_thread=$true;author='/root'})
+    $record=[ordered]@{schema_version=1;record_type='consumer_guard_unit005_first_run_ack';decision='execute_copied_consumer_guard_unit005_once';scope=$Scope;author='/root';executor='/root';created_utc=$stamp.ToString('o');expires_utc=$stamp.AddMinutes(30).ToString('o');owner_sha256=$owner.sha256;driver_sha256=$driver.sha256;child_sha256=$profile.value.child.sha256;source_manifest_sha256=$profile.value.source_manifest_sha256;source_peer_sha256=$sourcePeer.sha256;harness_static_review_sha256=$static.sha256;profile_sha256=$profile.row.sha256;source_projection_sha256=$profile.value.source_projection_sha256;runtime_snapshot=(Pointer $runtime);whole_runtime_before=(Pointer $whole.row);resource_snapshot=(Pointer $resource);coordination_acknowledgement=(Pointer $coordination);max_collection_seconds=60;max_test_seconds=300}
+    $written=Write-Record-Once (Join-Path $Prep 'ROOT_EXECUTION_ACK_GUARD_UNIT005.json') $record
+    [ordered]@{path=$written.path;sha256=$written.sha256;bytes=$written.bytes;stage=$Stage;resource_captured_utc=$stamp.ToString('o');free_ram_bytes=$ram;disk_free_bytes=$diskFree;target_test_entered=$false}|ConvertTo-Json -Compress
+}else{
+    $ack=Read-Bytes (Join-Path $Prep 'ROOT_EXECUTION_ACK_GUARD_UNIT005.json') 65536 ''
+    $bound=Load-Record (Join-Path $Prep 'INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_005.json') 65536 ''
+    if($bound.value.verdict -cne 'PASS_BOUND_STATIC' -or $bound.value.root_ack_sha256 -cne $ack.sha256 -or $bound.value.driver_sha256 -cne $driver.sha256){throw 'Actual bound review differs'}
+    $template=Read-Bytes (Join-Path $Prep 'ROOT_FIRST_LAUNCH_005.TEMPLATE.ps1') 65536 '7c00ac42a6c67417f0bf4c7ea38d992e4001f8959cc7332ec87b21da0d879dbf'
+    $text=[Text.Encoding]::UTF8.GetString($template.data)
+    $bindings=@{BoundDriverSha256=$driver.sha256;RootAckSha256=$ack.sha256;BoundReviewSha256=$bound.row.sha256}
+    foreach($name in @('BoundDriverSha256','RootAckSha256','BoundReviewSha256')){
+        $pattern='(?m)^\$'+$name+' = \$null\r?$'
+        if([regex]::Matches($text,$pattern).Count -ne 1){throw 'Exactly three original slots required'}
+        $replacement='$'+$name+" = '"+$bindings[$name]+"'"
+        $text=[regex]::Replace($text,$pattern,{param($match)$replacement})
+    }
+    $written=Write-Bytes-Once (Join-Path $Prep 'ROOT_FIRST_LAUNCH_005.BOUND.ps1') ([Text.UTF8Encoding]::new($false).GetBytes($text)) 65536
+    $reverse=[Text.Encoding]::UTF8.GetString($written.data)
+    foreach($name in @('BoundDriverSha256','RootAckSha256','BoundReviewSha256')){$pattern='(?m)^\$'+$name+" = '[0-9a-f]{64}'\r?$";$replacement='$'+$name+' = $null';$reverse=[regex]::Replace($reverse,$pattern,{param($match)$replacement})}
+    if($reverse -cne [Text.Encoding]::UTF8.GetString($template.data)){throw 'RootPS binding reversal differs'}
+    [void](Write-Record-Once (Join-Path $Prep 'ROOT_PS_BINDING_PROVENANCE_005.json') ([ordered]@{schema_version=1;author='/root';created_utc=[DateTimeOffset]::UtcNow.ToString('o');template_sha256=$template.sha256;bound_sha256=$written.sha256;bindings=$bindings;exact_three_value_substitutions=$true;byte_exact_reversal=$true;target_test_entered=$false}))
+    [ordered]@{path=$written.path;sha256=$written.sha256;bytes=$written.bytes;stage=$Stage;target_test_entered=$false}|ConvertTo-Json -Compress
+}

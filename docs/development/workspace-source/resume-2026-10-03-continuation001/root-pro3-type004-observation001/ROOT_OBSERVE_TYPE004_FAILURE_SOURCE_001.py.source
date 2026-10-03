@@ -1,0 +1,122 @@
+"""Root read-only selection of fixed external TYPE004 failure evidence; no rerun."""
+import datetime
+import decimal
+import hashlib
+import json
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+PRO3 = Path(r"D:\Aenv\pro3")
+COORD = PRO3 / "runs/coordination/next_step_20261003_types4"
+RUN = PRO3 / "runs/phase2/type_validation/pro3_types_20261003_004"
+ROOT = HERE.parent
+OUTPUT = HERE / "ROOT_EXTERNAL_TYPE004_FAILURE_SOURCE_SELECTION_001.json"
+SPECS = [
+    (COORD / "type_execution_audit_001.json", "abf3d73e48860b461d186fad0ad63865c9d94680087e369404d4bd71539a3f55"),
+    (COORD / "root_manual_failure_review_001.json", "5679f2d9d93118f61fa768d40a3f3f38dabfc9d1833139f86282493bbe86e8e9"),
+    (COORD / "root_type_physical_witness_001.json", "065032e86c825ee706796ada2f6f614f6d6f071b9a948be9d395b2869e56597e"),
+    (COORD / "root_failed_type_cleanup_closeout_001.json", "4b7a3694a306b4b6fdca1c0b8b055a4044e68e7966798110786de908d2d4f87a"),
+    (COORD / "root_type_peer_release_closeout_001.json", None),
+    (COORD / "native_deadline_failure_analysis_001.json", "8bf31d04354804b7439d412da88a613df5f74ccbc7c6d9faf13f663d4e2cfb5b"),
+    (COORD / "native_precision_contract_check_001.json", "dffda4ebd005686230cc83b9119e04cf0809ecfdf4c94749c523e49d30f6e4e4"),
+    (RUN / "result.json", "607c1c191df66231121086a4e47fb42854fd07291acdb16aeadd39db22ed68eb"),
+    (RUN / "mypy.stdout.log", "818ae3656b46f85d83b5659f47a0ceca113dd2a7f21fc13b83a23748e55da3c3"),
+    (RUN / "mypy.stderr.log", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+    (ROOT / "ROOT_PRO3_TYPE_COMPONENT_RELEASE_004.json", "f68426d4d2bacf05a74e46e6808f953ccf966b89147ef5d753f1c8df21f9b18d"),
+]
+
+def raw9(stat):
+    return [stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns,
+            stat.st_ctime_ns, stat.st_mode, stat.st_nlink,
+            stat.st_file_attributes, stat.st_birthtime_ns]
+
+def observe(path):
+    before = raw9(path.stat())
+    data = path.read_bytes()
+    after = raw9(path.stat())
+    assert before == after and len(data) == before[2], path
+    return data, {"path": str(path), "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(), "raw9": after}
+
+def decode(data):
+    return json.loads(data.decode("utf-8-sig"), parse_float=decimal.Decimal)
+
+def main():
+    assert not OUTPUT.exists() and not (HERE / "before").exists()
+    captured = []
+    for path, expected in SPECS:
+        first, row = observe(path)
+        for _ in range(2):
+            later, later_row = observe(path)
+            assert later == first and later_row == row
+        assert expected is None or row["sha256"] == expected, path
+        captured.append((first, row))
+    by_leaf = {Path(row["path"]).name: data for data, row in captured}
+    audit = decode(by_leaf["type_execution_audit_001.json"])
+    manual = decode(by_leaf["root_manual_failure_review_001.json"])
+    physical = decode(by_leaf["root_type_physical_witness_001.json"])
+    cleanup = decode(by_leaf["root_failed_type_cleanup_closeout_001.json"])
+    release = decode(by_leaf["root_type_peer_release_closeout_001.json"])
+    result = decode(by_leaf["result.json"])
+    assert audit["review_accepted"] is True and audit["blockers"] == []
+    assert audit["accepted"] is False and audit["full_guarded_component_accepted"] is False
+    assert manual["manual_review_accepted"] is True and manual["native_deadline_difference_nanoseconds"] == 800
+    assert manual["native_final_postdeadline_checks_not_reached"] is True
+    assert manual["automatic_retry_authorized"] is False and manual["attempt_and_grant004_consumed"] is True
+    assert physical["cli_exit_code"] == 1 and physical["within120_seconds"] is True
+    assert cleanup["native_error"] == "Passed native deadline witness differs"
+    assert cleanup["native_failed_candidate_whole_cleanup_claim"] is False
+    assert [p["pid"] for p in cleanup["owned_pid_observations"]] == [62196, 76240, 55972]
+    assert all(p["absent"] is True for p in cleanup["owned_pid_observations"])
+    assert release["exact_message_completion_timestamp_not_recorded"] is True
+    assert release["attempt_and_grant_consumed"] is True and release["full_guarded_component_accepted"] is False
+    assert result["mypy_api_returned"] is True and result["type_exit_code"] == 0
+    assert result["validation_passed"] is True and result["accepted"] is False
+    assert result["source_before"] == result["source_after"] == {"source_files": 430, "source_sha256": "423faa138200b85c56463ad8e0cfad48469fc9a061a7429782ea7b1be170f820"}
+    assert by_leaf["mypy.stdout.log"].decode().strip() == "Success: no issues found in 205 source files"
+    assert by_leaf["mypy.stderr.log"] == b""
+    (HERE / "before").mkdir()
+    rows = []
+    for data, row in captured:
+        copy = HERE / "before" / Path(row["path"]).name
+        with copy.open("xb") as handle:
+            handle.write(data)
+        copy_data, copy_row = observe(copy)
+        assert copy_data == data
+        rows.append(dict(row, before_copy=copy_row, triple_read_identical=True))
+    for data, row in captured:
+        later, later_row = observe(Path(row["path"]))
+        assert later == data and later_row == row
+    report = {
+        "schema_version": 1, "record_type": "root_external_type004_failure_source_selection",
+        "author": "/root", "recorded_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "decision": "SELECT_DIFFERENT_FAILED_TYPE004_REVIEW_AND_SUCCESSOR_ONLY_MANUAL_REPAIR_AUTHORITY_NO_COMPONENT_PASS",
+        "external_source_observations": rows,
+        "all11_fixed_inputs_triple_read_copy_post_exact": True,
+        "actual_mypy_zero_exit_205_files_observed": True,
+        "full_guarded_component_accepted": False,
+        "native_failure": "Passed native deadline witness differs",
+        "native_deadline_difference_nanoseconds": 800,
+        "native_final_postdeadline_checks_unreached": True,
+        "native_false_cleanup_claim_preserved": True,
+        "saved_parent_private_job_cleanup_and_three_named_pid_absences_attributed_to_Pro3_Root": True,
+        "Root_pro2_independent_process_scan_or_Job_or_global_quiet_claim": False,
+        "full430_source_or3142_runtime_or765_absences_reaudited_by_this_observer": False,
+        "all58_manual_saved_pin_entries_reaudited_by_this_observer": False,
+        "separate_actual_audit_abf3_and_manual5679_scopes_selected_only": True,
+        "native_decimal_fields_parsed_documentarily_original_bytes_preserved": True,
+        "TYPE001_original_unretained_failure_cause_explained": False,
+        "attempt_and_grant004_consumed_no_replay": True,
+        "successor_native_floor_only_new_operations_authority_selected_not_execution_grant": True,
+        "actual_TYPE005_patch_preparation_or_execution_attested_by_this_observer": False,
+        "actual_runtime_validation_scientific_or_operational_authority_granted": False,
+        "explicit_peer_release_completion_timestamp_unmeasured_preserved": True,
+    }
+    data = (json.dumps(report, indent=2, sort_keys=True) + "\n").encode()
+    with OUTPUT.open("xb") as handle:
+        handle.write(data)
+    readback, row = observe(OUTPUT)
+    assert readback == data
+    print(json.dumps(row))
+
+if __name__ == "__main__":
+    main()

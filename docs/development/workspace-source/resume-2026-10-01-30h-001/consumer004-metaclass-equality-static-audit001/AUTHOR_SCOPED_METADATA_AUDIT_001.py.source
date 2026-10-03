@@ -1,0 +1,355 @@
+"""Independent own source/AST metadata audit. No target compile/import/call/test.
+
+No synthetic class/metaclass/value or target function is constructed or called.
+The causal cases below are prose/data models of source branches only.
+"""
+from pathlib import Path
+import ast
+import datetime
+import hashlib
+import json
+import os
+import stat
+
+BASE = Path(r"D:\Aenv\pro2\resume-2026-10-01-30h-001")
+S3 = BASE / "raw-consumer-binding-integration-prep003"
+S4 = BASE / "raw-consumer-binding-integration-prep004"
+OUT = BASE / "consumer004-metaclass-equality-static-audit001"
+MAX_BYTES = 2 * 1024 * 1024
+MANIFEST_SHA = "8a5b03ba0efd04a35d5a61f54233d4d05b663f5821baeb50b827698e27822ccb"
+ROOT6_SHA = "fdae5a1eec6672ad1dc478da46446c0678ed1aa59276e1b893232e334bf72415"
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def raw9(s):
+    return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns,
+            s.st_mode, s.st_nlink, getattr(s, "st_file_attributes", None),
+            getattr(s, "st_birthtime_ns", None)]
+
+
+def finite(path):
+    first = path.lstat()
+    if not stat.S_ISREG(first.st_mode) or first.st_nlink != 1 or first.st_size > MAX_BYTES:
+        raise ValueError("finite selected input shape/cap differs: " + str(path))
+    if getattr(first, "st_file_attributes", 0) & 0x400:
+        raise ValueError("reparse selected input")
+    with path.open("rb") as stream:
+        fd_first = os.fstat(stream.fileno())
+        data = stream.read(MAX_BYTES + 1)
+        fd_last = os.fstat(stream.fileno())
+    last = path.lstat()
+    if len(data) != first.st_size or len(data) > MAX_BYTES or raw9(first) != raw9(last) or raw9(fd_first) != raw9(fd_last):
+        raise ValueError("selected input changed during capped read")
+    for field in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_mode", "st_nlink"):
+        if getattr(first, field) != getattr(fd_first, field):
+            raise ValueError("selected input path/descriptor shared identity differs")
+    return data, {"path_before_raw9": raw9(first), "path_after_raw9": raw9(last),
+                  "descriptor_before_raw9": raw9(fd_first), "descriptor_after_raw9": raw9(fd_last),
+                  "same_API_repeat_exact": True, "cross_API_ctime_equated": False}
+
+
+def new(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    if path.read_bytes() != data:
+        raise ValueError("own artifact readback differs")
+
+
+def new_json(name, value):
+    new(OUT / name, json.dumps(value, ensure_ascii=True, sort_keys=True, indent=2).encode("ascii") + b"\n")
+
+
+def ast_dump(node):
+    return ast.dump(node, include_attributes=False)
+
+
+def helper(tree):
+    values = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "_raw_helper_value_identity"]
+    if len(values) != 1:
+        raise ValueError("selected helper not unique")
+    return values[0]
+
+
+def authored_audit():
+    manifest_bytes, _ = finite(S4 / "STAGED_MANIFEST_004.json")
+    root6_bytes, _ = finite(BASE / "ROOT_CONSUMER_MAPPING_TYPE_CORRECTION_006.json")
+    if (len(manifest_bytes), sha(manifest_bytes)) != (514295, MANIFEST_SHA) or sha(root6_bytes) != ROOT6_SHA:
+        raise ValueError("frozen current source/Root006 selection differs")
+    manifest = json.loads(manifest_bytes)
+    root6 = json.loads(root6_bytes)
+    paths = [
+        BASE / "ROOT_CONSUMER_MAPPING_TYPE_CORRECTION_006.json",
+        BASE / "ROOT_CONSUMER_MAPPING_TYPE_CORRECTION_006.md",
+        S4 / "STAGED_MANIFEST_004.json", S4 / "AUTHOR_POST_FREEZE_STABILITY_004.json",
+        S4 / "EXACT_SOURCE_AND_TEST_CHANGE_AUDIT_004.json", S4 / "SOURCE_AND_TEST_DELTA_004.patch",
+        S4 / "SOURCE_GUARD_TEST_BINDINGS_004.json", S4 / "DERIVED_SOURCE_AND_FIXTURE_CLOSURE_MAP_004.json",
+        S4 / "MAPPING_KIND_STATIC_COUNTEREXAMPLE_004.json", S4 / "HANDOFF_004.md",
+        S4 / "test_raw_consumer_guards_004.TEMPLATE.py",
+        S3 / "STAGED_MANIFEST_003.json", S3 / "test_raw_consumer_guards_003.TEMPLATE.py",
+        S4 / "baseline-pins-only/test_raw_consumer_guards_004.FIXTURE_ONLY.py",
+        S4 / "inputs/source-choice006.json",
+    ]
+    for row in manifest["source_bindings"].values():
+        paths.extend([S4 / row["path"], S3 / row["path"], S4 / "baseline-pins-only" / row["path"]])
+    if len(set(paths)) != len(paths):
+        raise ValueError("duplicate selected input")
+    selected, before = {}, []
+    for path in paths:
+        data, observation = finite(path)
+        rel = path.relative_to(BASE).as_posix()
+        copy = OUT / "before" / rel
+        new(copy, data)
+        copied, copy_observation = finite(copy)
+        if copied != data:
+            raise ValueError("selected original/copy bytes differ")
+        selected[path] = data
+        before.append({"original": str(path), "copy": str(copy), "bytes": len(data), "sha256": sha(data),
+                       "original_observation": observation, "copy_observation": copy_observation,
+                       "all_observations_byte_exact": True, "copies_preserve_original_identity": False})
+    if selected[S4 / "inputs/source-choice006.json"] != root6_bytes:
+        raise ValueError("selected fixture Root006 capture differs from original")
+    stage_rows = {row["path"]: row for row in manifest["files"]}
+    for path, data in selected.items():
+        if path.is_relative_to(S4):
+            rel = path.relative_to(S4).as_posix()
+            if rel in stage_rows:
+                row = stage_rows[rel]
+                size = row.get("size", row.get("bytes"))
+                if (len(data), sha(data)) != (size, row["sha256"]):
+                    raise ValueError("selected listed004 payload pin differs: " + rel)
+    post = json.loads(selected[S4 / "AUTHOR_POST_FREEZE_STABILITY_004.json"])
+    if (post["manifest_bytes"], post["manifest_sha256"], post["declared_payload_count"]) != (514295, MANIFEST_SHA, 809):
+        raise ValueError("selected author post manifest reference differs")
+    post_rows = {row["path"]: row for row in post["entries"]}
+    source_evidence = []
+    for role, row in sorted(manifest["source_bindings"].items()):
+        active_path, old_path = S4 / row["path"], S3 / row["path"]
+        baseline_path = S4 / "baseline-pins-only" / row["path"]
+        source = selected[active_path].decode("utf-8")
+        old = selected[old_path].decode("utf-8")
+        baseline = selected[baseline_path].decode("utf-8")
+        tree, old_tree, baseline_tree = ast.parse(source), ast.parse(old), ast.parse(baseline)
+        value_helper, old_helper, baseline_helper = helper(tree), helper(old_tree), helper(baseline_tree)
+        if sha(selected[active_path]) != row["sha256"] or len(selected[active_path]) != row["size"]:
+            raise ValueError("selected source role pin differs")
+        if ast_dump(old_helper) != ast_dump(baseline_helper):
+            raise ValueError("source3 versus pin-only helper AST differs")
+        branch_nodes = [node for node in value_helper.body if isinstance(node, ast.If)]
+        if len(branch_nodes) != 6:
+            raise ValueError("selected branch order differs")
+        expected_tests = [
+            "value is None or kind in (bool, int, float, str)", "kind is bytes", "isinstance(value, Path)",
+            "kind is re.Pattern", "kind in (dict, MappingProxyType)", "kind in (tuple, list, set, frozenset)",
+        ]
+        if [ast.unparse(node.test) for node in branch_nodes] != expected_tests:
+            raise ValueError("active branch syntax differs from scoped question")
+        old_branch_nodes = [node for node in old_helper.body if isinstance(node, ast.If)]
+        changed_tests = [i for i, (a, b) in enumerate(zip(branch_nodes, old_branch_nodes)) if ast_dump(a.test) != ast_dump(b.test)]
+        if changed_tests != [4] or any(ast_dump(a) != ast_dump(b) for a, b in zip(branch_nodes[4].body, old_branch_nodes[4].body)):
+            raise ValueError("recursive mapping body/source3 delta exceeds scoped expectation")
+        functions = {n.name: ast_dump(n) for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        old_functions = {n.name: ast_dump(n) for n in old_tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        changed_definitions = [name for name in functions if functions[name] != old_functions.get(name)]
+        if changed_definitions != ["_raw_helper_value_identity"] or set(functions) != set(old_functions):
+            raise ValueError("selected source other definitions changed")
+        comparison_refs = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Compare) and any(isinstance(child, ast.Call) and isinstance(child.func, ast.Name) and child.func.id == "_raw_helper_value_identity" for child in ast.walk(node)):
+                comparison_refs.append({"line": node.lineno, "source": ast.get_source_segment(source, node)})
+        sort_if = next(node for node in ast.walk(branch_nodes[5]) if isinstance(node, ast.If) and node is not branch_nodes[5])
+        imports = [{"line": node.lineno, "source": ast.get_source_segment(source, node)} for node in tree.body
+                   if isinstance(node, ast.ImportFrom) and node.module == "types" and any(alias.name == "MappingProxyType" for alias in node.names)]
+        post_row = post_rows[row["path"]]
+        if (post_row["size"], post_row["sha256"]) != (len(selected[active_path]), sha(selected[active_path])):
+            raise ValueError("selected author post source hash differs")
+        source_evidence.append({
+            "role": role, "active_path": str(active_path), "active_bytes": len(selected[active_path]),
+            "active_sha256": sha(selected[active_path]), "source3_path": str(old_path),
+            "source3_sha256": sha(selected[old_path]), "pin_only_path": str(baseline_path),
+            "pin_only_sha256": sha(selected[baseline_path]), "source3_pin_only_helper_AST_exact": True,
+            "active_helper_line": value_helper.lineno, "active_helper_end_line": value_helper.end_lineno,
+            "active_helper_AST_sha256": sha(ast_dump(value_helper).encode("utf-8")),
+            "active_helper_source": ast.get_source_segment(source, value_helper),
+            "changed_definition_names_only": changed_definitions, "mapping_body_AST_exact": True,
+            "only_changed_if_index_zero_based": 4, "source3_mapping_branch_line": old_branch_nodes[4].lineno,
+            "source3_mapping_test": ast.unparse(old_branch_nodes[4].test),
+            "branch_order": [{"line": node.lineno, "predicate": ast.unparse(node.test)} for node in branch_nodes],
+            "sort_membership": {"line": sort_if.lineno, "predicate": ast.unparse(sort_if.test)},
+            "trusted_MappingProxyType_imports": imports, "fingerprint_comparison_sites": sorted(comparison_refs, key=lambda item: item["line"]),
+            "selected_manifest_and_author_post_hashes_match": True,
+        })
+    test_path = S4 / "test_raw_consumer_guards_004.TEMPLATE.py"
+    test_source = selected[test_path].decode("utf-8")
+    test_tree = ast.parse(test_source)
+    mapping_method = next(node for node in ast.walk(test_tree) if isinstance(node, ast.FunctionDef) and node.name == "test_mapping_proxy_class_name_spoof_refuses_before_user_mapping_methods")
+    tuple_method = next(node for node in ast.walk(test_tree) if isinstance(node, ast.FunctionDef) and node.name == "test_tuple_class_name_spoof_refuses_cold_and_reuse")
+    mapping_class = next(node for node in ast.walk(mapping_method) if isinstance(node, ast.ClassDef) and node.name == "ForeignMapping")
+    fixture = next(node for node in test_tree.body if isinstance(node, ast.FunctionDef) and node.name == "guard_fixture")
+    old_test = ast.parse(selected[S3 / "test_raw_consumer_guards_003.TEMPLATE.py"].decode("utf-8"))
+    def tests_by_name(tree):
+        return {node.name: ast_dump(node) for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name.startswith("test_")}
+    old_methods, new_methods = tests_by_name(old_test), tests_by_name(test_tree)
+    if len(old_methods) != 14 or len(new_methods) != 19 or any(new_methods.get(name) != value for name, value in old_methods.items()):
+        raise ValueError("selected prior14 method ASTs changed")
+    meta_keywords = [{"line": node.lineno, "class": node.name} for node in ast.walk(test_tree) if isinstance(node, ast.ClassDef) and any(keyword.arg == "metaclass" for keyword in node.keywords)]
+    eq_definitions = [{"line": node.lineno, "name": node.name} for node in ast.walk(test_tree) if isinstance(node, ast.FunctionDef) and node.name in {"__eq__", "__ne__"}]
+    if meta_keywords or eq_definitions or mapping_class.keywords:
+        raise ValueError("selected fixture has unanticipated metaclass/equality controls")
+    cases = [
+        {"case": "M1 selective_mapping_type_equality", "conditions": "Foreign Mapping class/metaclass equality returns False for bool/int/float/str and sequence types, True only for dict or MappingProxyType; copy genuine mappingproxy class name and exact rows; bytes/Pattern identity false and Path branch false.",
+         "active004_trace": "Primitive membership false; bytes/Path/Pattern false; mapping membership invokes type equality and becomes True. items() is called, recursive genuine rows reproduce ('mappingproxy',tupleRows) exactly. The cold/reference and reuse fingerprint comparison have no nominal type identity in that result.",
+         "mapping_is_only_trace": "Mapping identity false; sequence membership false by these exact modeled conditions; unsupported-value Refused is reached without items/iteration. This closes M1 only.",
+         "static_status": "CONCRETE_SOURCE_BRANCH_COLLISION_MODEL_UNEXECUTED"},
+        {"case": "M2 earlier_primitive_type_equality_only", "conditions": "Foreign Mapping type has name mappingproxy; type equality returns True for an earlier primitive. Instance has ordinary Mapping equality and does not forge equality with tupleRows.",
+         "active004_or_mapping_is_trace": "Primitive membership true before Mapping predicate. Function returns ('mappingproxy',foreignValue), not recursive mapping rows. Ordinary Mapping-vs-tuple equality does not match tupleRows; later policy fingerprint equality refuses. The unsupported-value branch is not reached and metaclass code has already been invoked. This is retagging, not by itself an accepted policy collision.",
+         "static_status": "EARLIER_BRANCH_RETAG_AND_LATER_COMPARISON_REFUSAL_MODEL_UNEXECUTED"},
+        {"case": "M3 earlier_primitive_and_instance_equality", "conditions": "Same earlier primitive type-equality success plus foreign Mapping instance __eq__ deliberately returns True when compared with the genuine expected frozen tupleRows; genuine mappingproxy class name retained. No foreign class/value is constructed here.",
+         "active004_or_mapping_is_trace": "Primitive branch returns ('mappingproxy',foreignValue). Fingerprint tuple comparisons compare that foreignValue with expected tupleRows, allowing the instance equality callback to report equality. Both cold and reuse policy comparisons can be satisfied, bypassing Mapping branch entirely; copying only kind-name and carrying the raw foreign value is not nominal freezing.",
+         "needed_correction": "Exact identity primitive check before any scalar return, together with exact Mapping identity; Mapping-only is cannot close M3.",
+         "static_status": "CONCRETE_CAUSAL_FINGERPRINT_EQUALITY_MODEL_UNEXECUTED_NO_RUNTIME_ACCEPTANCE"},
+        {"case": "M4 later_sequence_type_equality", "conditions": "Primitive equality false, Mapping identity predicate corrected, foreign Mapping type equality True for a sequence member; identity bytes/Pattern false and Path branch false.",
+         "trace": "After Mapping identity rejects the type, sequence membership can become True and iterate the foreign Mapping, invoking user iteration before unsupported-value rejection. Its sequence fingerprint is generally differently structured from a genuine mapping fingerprint; this report does not assert ordinary rows cause a mapping-policy acceptance. It suffices to disprove before-user-method/nominal rejection while this later membership remains.",
+         "needed_correction": "Exact identity sequence predicate for fail-fast foreign Mapping refusal; preserve existing genuine tuple/list/set/frozenset recursive body and sort behavior.",
+         "static_status": "LATER_BRANCH_METHOD_INVOCATION_MODEL_UNEXECUTED_NO_ACCEPTANCE_CLAIM"},
+    ]
+    finding = {
+        "record_type": "independent_consumer004_mapping_metaclass_scoped_static_refusal001", "schema_version": 1,
+        "author": "/root/native_frame_explorer", "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "verdict": "REFUSED_SCOPED_NOMINAL_MAPPING_CLOSURE_SOURCE_ONLY",
+        "scope": "Selected five active source identity helpers, actual selected fixture and pins, source3/pin-only AST/diff and post-manifest references only. Not a complete810/811-file audit, whole source/test PASS, runtime failure or production-code outcome.",
+        "source_manifest": {"path": str(S4 / "STAGED_MANIFEST_004.json"), "bytes": len(manifest_bytes), "sha256": MANIFEST_SHA,
+                            "declared_creation_total": 810, "declared_payload_count": 809,
+                            "author_post_path": str(S4 / "AUTHOR_POST_FREEZE_STABILITY_004.json"),
+                            "author_post_bytes": len(selected[S4 / "AUTHOR_POST_FREEZE_STABILITY_004.json"]),
+                            "author_post_sha256": sha(selected[S4 / "AUTHOR_POST_FREEZE_STABILITY_004.json"]),
+                            "reported_creation_plus_post": 811, "entire811_independently_audited": False,
+                            "author_full_stability_claim_independently_adopted": False},
+        "root006": {"path": str(BASE / "ROOT_CONSUMER_MAPPING_TYPE_CORRECTION_006.json"), "bytes": len(root6_bytes), "sha256": ROOT6_SHA,
+                    "authorized_predicate_text": root6["authorization"]["source_edits"],
+                    "assessment": "Source004 followed the literal authorized kind in predicate; the literal Root006 instruction itself is insufficient for nominal identity because tuple membership can invoke equality. The staged author did not substitute an unauthorized broader predicate. This scoped refusal motivates a distinct corrected Root choice/source005, never rewriting006 or004."},
+        "selected_sources": source_evidence,
+        "selected_fixture": {"path": str(test_path), "bytes": len(selected[test_path]), "sha256": sha(selected[test_path]),
+                             "binding_path": str(S4 / "SOURCE_GUARD_TEST_BINDINGS_004.json"),
+                             "binding_sha256": sha(selected[S4 / "SOURCE_GUARD_TEST_BINDINGS_004.json"]),
+                             "fixture_lines": [fixture.lineno, fixture.end_lineno], "fixture_source": ast.get_source_segment(test_source, fixture),
+                             "binding_selection": "Actual fixture52 reads SOURCE_GUARD_TEST_BINDINGS_004.json; source hashes checked57; trusted alias MappingProxyType=types.MappingProxyType at68; selected functions compilation/execution appears at79 and raw definition construction47 only in UNRUN test source. This audit parses bytes only and executes none of it.",
+                             "healthy_control_lines": [86, 95], "mapping_method_lines": [mapping_method.lineno, mapping_method.end_lineno],
+                             "mapping_class_lines": [mapping_class.lineno, mapping_class.end_lineno],
+                             "mapping_method_source": ast.get_source_segment(test_source, mapping_method),
+                             "tuple_method_lines": [tuple_method.lineno, tuple_method.end_lineno],
+                             "tuple_method_source": ast.get_source_segment(test_source, tuple_method),
+                             "explicit_metaclass_keywords": meta_keywords, "__eq___or___ne___definitions": eq_definitions,
+                             "prior14_method_ASTs_exact": True, "active_method_AST_count": len(new_methods),
+                             "missing_controls": "The ForeignMapping555 uses inherited Mapping metaclass without an explicit equality override; it copies name/module568-569 and observes getitem/iter/len/items only. ForeignTuple592 is a type-created tuple subclass without equality metaclass. Neither tests M1/M2/M3/M4 type-equality control. No runtime result is inferred."},
+        "causal_static_cases": cases,
+        "minimal_future_source_correction": {
+            "status": "RECOMMENDATION_REQUIRING_DISTINCT_ROOT007_SOURCE_AUTHORIZATION_NO_IMPLEMENTATION",
+            "primitive_predicate": "value is None or kind is bool or kind is int or kind is float or kind is str",
+            "mapping_predicate": "kind is dict or kind is MappingProxyType",
+            "sequence_predicate": "kind is tuple or kind is list or kind is set or kind is frozenset",
+            "set_sort_predicate": "kind is set or kind is frozenset",
+            "all_four_branches": "Root requires the four kind-in predicates to use explicit is disjunctions together. The set-sort branch is included in that authorized minimum even though, once the outer sequence predicate uses exact identity, a foreign kind has no independent path to sorting. No remaining type membership equality is relied on before rejection/iteration.",
+            "preserve": "Genuine builtin values, genuine dict/proxy recursive rows and sort/key/body, existing imported MappingProxyType alias, source/code/default/kwdefault/annotation/import/registry/method guards, raw pin da64,85/7/36/onegenexpr,API12/seven roles/global395799/private361287/canonical1-2/history. None of these have runtime acceptance from this audit.",
+            "remaining_guard_scope": "Existing isinstance(value,Path) is a historically permitted semantic branch and exact bytes/Pattern branches already use is. This report neither widens nor proves unconditional nominal closure of every accepted scalar/container/path, builtin binding or object protocol. Identity type checks rely on trusted type/builtin/type aliases and guard code. Do not claim all exotic objects have no callbacks merely from the Mapping fix.",
+            "causal_test_requirements": "Future distinct fixture must retain healthy before/restored cold+reuse calls for each role; add selective metaclass equality M1, earlier primitive-only M2 and combined instance equality M3, later sequence M4, plus genuine builtin/dict/proxy/tuple/list/set/frozenset controls. Counter vectors remain source-only until independently reviewed fresh one-use runtime scope. Assert no foreign metaclass equality/mapping/iteration/value-equality callbacks occur after exact identities, without claiming inherited Path semantics have been redesigned.",
+        },
+        "source_and_diff_citations": {"exact_change_audit": str(S4 / "EXACT_SOURCE_AND_TEST_CHANGE_AUDIT_004.json"),
+                                     "exact_change_audit_sha256": sha(selected[S4 / "EXACT_SOURCE_AND_TEST_CHANGE_AUDIT_004.json"]),
+                                     "patch": str(S4 / "SOURCE_AND_TEST_DELTA_004.patch"), "patch_sha256": sha(selected[S4 / "SOURCE_AND_TEST_DELTA_004.patch"]),
+                                     "prior_static_collision": str(S4 / "MAPPING_KIND_STATIC_COUNTEREXAMPLE_004.json"),
+                                     "prior_static_collision_sha256": sha(selected[S4 / "MAPPING_KIND_STATIC_COUNTEREXAMPLE_004.json"]),
+                                     "claim_limit": "The author audit/diff accurately records kind in and other-definition/body AST preservation. Its Exact dict/MappingProxyType wording is not a nominal closure proof. This audit independently confirms selected AST relations, selected source hashes and author post hash references, not all811 artifacts."},
+        "execution": {"own_stdlib_capped_metadata_and_AST_only": True, "target_compile_or_import_or_definition_call": False,
+                      "synthetic_class_metaclass_or_value_constructed": False, "target_tests_or_collection": False,
+                      "Git_or_FFI_or_native_or_live_action": False, "all19_consumer_methods_runtime": "UNRUN",
+                      "all680_appended_contexts_runtime": "UNRUN", "actual_guard_acceptance_or_failure": None,
+                      "whole811_source_peer_verdict": None},
+    }
+    # Selected independent observation2 before writing peer payload.
+    for row in before:
+        original, obs = finite(Path(row["original"])); copied, copy_obs = finite(Path(row["copy"]))
+        if original != selected[Path(row["original"])] or copied != original:
+            raise ValueError("selected pair bytes changed at observation2")
+        if obs["path_before_raw9"] != row["original_observation"]["path_before_raw9"] or copy_obs["path_before_raw9"] != row["copy_observation"]["path_before_raw9"]:
+            raise ValueError("selected pair same-API raw9 changed at observation2")
+        row["independent_observation2_bytes_and_same_API_raw9_exact"] = True
+    new_json("INDEPENDENT_CONSUMER004_METACLASS_REFUSAL_001.json", finding)
+    md = """# Consumer004 mapping metaclass scoped static refusal001
+
+Verdict: REFUSED_SCOPED_NOMINAL_MAPPING_CLOSURE_SOURCE_ONLY. Consumer004 followed Root006's literal authorized predicate, but `kind in (dict, MappingProxyType)` uses equality membership and does not establish type identity. This is a source/AST finding; no foreign class/metaclass/value, target definition, compiler/import, test, Git, FFI, native or live action ran.
+
+The selected manifest is514295B SHA8a5b03ba0efd04a35d5a61f54233d4d05b663f5821baeb50b827698e27822ccb, declaring809 payloads/810 creation files plus the author post receipt. This audit checks only the selected five sources, fixture, source3/pin-only beforeimages and hash/diff/post references. It is not a full811-file PASS, actual refusal/acceptance or production outcome. All19 methods/680 appended contexts remain UNRUN.
+
+## Five identical causal branch orders
+
+| Role and active source | Helper | Primitive membership | Mapping membership | Sequence membership | Cold policy/reuse comparison |
+|---|---:|---:|---:|---:|---:|
+| controller `src/bu/experiments/week8_exp2a_recovery.py` |916|920|928|932|1114/1147|
+| entrypoint `scripts/week8_exp2a_recovery_entrypoint.py` |254|258|266|270|428/460|
+| fit child `scripts/week8_exp2a_recovery_fit_child.py` |734|738|746|750|908/940|
+| inspector `scripts/week8_exp2a_recovery_inspector.py` |382|386|394|398|556/588|
+| worker `scripts/week8_exp2a_recovery_worker.py` |1142|1146|1154|1158|1318/1350|
+
+All paths are below `raw-consumer-binding-integration-prep004`. Each starts with kind=type(value), then primitive `kind in (bool,int,float,str)`, exact bytes, historical Path isinstance, exact Pattern, Mapping membership, sequence membership and set-sort membership. Only the Mapping predicate and trusted import differ from its Source003/pin-only helper AST; mapping recursion and other definitions remain AST-exact. Full source hashes and exact segments are in the JSON report.
+
+Tuple membership can use equality, including a foreign class's metaclass equality. Copying the class name mappingproxy preserves the current fingerprint tag. Four distinct static cases matter:
+
+1. If metaclass equality is false for earlier primitives but true for dict/proxy, active004 reaches items(), and genuine rows reproduce the reference mappingproxy fingerprint. Mapping `is` closes this specific route.
+2. If equality instead succeeds for an earlier primitive, the primitive branch returns `(mappingproxy, foreignValue)`. With ordinary Mapping equality this is retagged and later differs from the reference tupleRows, so it would be refused by policy comparison, not the unsupported-value branch. This alone is not an acceptance collision.
+3. If that foreign instance also overrides equality to accept the expected frozen tupleRows, the returned fingerprint can compare equal cold and reuse. This bypasses Mapping entirely and survives a Mapping-only `is` change. No items() call is needed. No such object was constructed or evaluated here.
+4. After Mapping `is`, a foreign type can still select the later sequence membership and trigger user iteration. Its ordinary sequence encoding generally differs from a mapping row encoding; this report does not claim mapping acceptance through ordinary sequence rows. The route still defeats a before-user-method/nominal rejection claim.
+
+## Selected fixture and required correction
+
+The actual test selector reads SOURCE_GUARD_TEST_BINDINGS_004.json at52, authenticates source/raw hashes57 and injects the real MappingProxyType alias68. Its source compiles selected functions79 and raw definitions47 only when tests are eventually entered; this auditor executed neither. Healthy controls86–95 and restoration are present in source. The test545–582 defines ForeignMapping555–567 with no explicit metaclass, copies name/module568–569 and only records getitem/iter/len/items. The tuple subclass584–603 likewise has no equality metaclass. The whole selected test AST contains no metaclass keyword or __eq__/__ne__ definition. These cases do not cover any of the equality vectors above. The original14 methods remain AST-exact among19 planned methods.
+
+Root's required causal minimum for a future separately authorized source005 is explicit identity disjunctions in all FOUR kind-in predicates: primitive bool/int/float/str, Mapping dict/MappingProxyType, sequence tuple/list/set/frozenset, and set-sort set/frozenset. Preserve genuine supported values and recursive bodies. The inner sort predicate is included in this explicit minimum even though a corrected outer sequence identity already blocks a foreign kind's independent route to sorting. Keep bytes/Pattern identity and the unchanged historical Path isinstance branch qualified separately; its nominal closure is not reviewed or proved here. This is not an unconditional nominal closure proof of all values, paths, object protocols, builtins/imports or guard machinery. Trusted type aliases/guard code remain assumptions.
+
+Future controls need selective Mapping equality, primitive-only retagging, primitive+instance fingerprint equality, later sequence equality and genuine supported-type acceptance, each with real healthy/restored cold+reuse controls for all five roles. No test/result count is accepted here. Root006, all frozen004 bytes, source3 history, raw da64/API12/seven roles/caps/85functions7classes36methods/onegenexpr remain untouched. A distinct Root007 and source005 peer/runtime preparation are required.
+"""
+    new(OUT / "INDEPENDENT_CONSUMER004_METACLASS_REFUSAL_001.md", md.encode("utf-8"))
+    # Selected observation3 after peer payload publication, before independent manifest.
+    for row in before:
+        original, obs = finite(Path(row["original"])); copied, copy_obs = finite(Path(row["copy"]))
+        if original != selected[Path(row["original"])] or copied != original:
+            raise ValueError("selected pair bytes changed at observation3")
+        if obs["path_before_raw9"] != row["original_observation"]["path_before_raw9"] or copy_obs["path_before_raw9"] != row["copy_observation"]["path_before_raw9"]:
+            raise ValueError("selected pair raw9 changed at observation3")
+        row["independent_observation3_bytes_and_same_API_raw9_exact"] = True
+    new_json("SELECTED_FINITE_PRESERVATION_001.json", {"record_type": "scoped_selected_finite_original_copy_preservation001", "count": len(before), "capped_input_bytes": MAX_BYTES,
+              "all_selected_original_copy_pairs_three_observations_exact": True, "complete811_audit": False, "pairs": before})
+    new(OUT / "HANDOFF.md", b"Scoped SOURCE/AST refusal only. Read INDEPENDENT_CONSUMER004_METACLASS_REFUSAL_001.json/.md. All five branch orders and selected fixture independently checked; no full811 PASS or target execution. Distinct Root007/source005 and fresh different source/runtime peer required. Original Consumer003/004/Root006 untouched.\n")
+    payload = []
+    for path in sorted(OUT.rglob("*")):
+        if path.is_file():
+            data, _ = finite(path)
+            payload.append({"path": path.relative_to(OUT).as_posix(), "bytes": len(data), "sha256": sha(data)})
+    new_json("SCOPED_AUDIT_MANIFEST_001.json", {"record_type": "frozen_consumer004_metaclass_scoped_audit_manifest001", "schema_version": 1,
+              "author": "/root/native_frame_explorer", "verdict": finding["verdict"], "selected_input_pairs": len(before),
+              "payload_file_count": len(payload), "files": payload, "full811_audit": False,
+              "target_or_synthetic_execution": False, "self_hash": None, "scope": "Manifest excludes self; externally hash-pin. Existing004 remains810 creation+author post reported811 and is not expanded."})
+    for row in before:
+        original, obs = finite(Path(row["original"])); copied, copy_obs = finite(Path(row["copy"]))
+        if original != selected[Path(row["original"])] or copied != original:
+            raise ValueError("selected post-manifest pair byte difference")
+        if obs["path_before_raw9"] != row["original_observation"]["path_before_raw9"] or copy_obs["path_before_raw9"] != row["copy_observation"]["path_before_raw9"]:
+            raise ValueError("selected post-manifest pair raw9 difference")
+    for row in payload:
+        data, _ = finite(OUT / row["path"])
+        if (len(data), sha(data)) != (row["bytes"], row["sha256"]):
+            raise ValueError("scoped payload changed")
+    print(json.dumps({"verdict": finding["verdict"], "folder": str(OUT), "selected_pairs": len(before),
+                      "payload_files": len(payload), "post_manifest_all_selected_pairs_and_payload_exact": True,
+                      "report_sha256": sha((OUT / "INDEPENDENT_CONSUMER004_METACLASS_REFUSAL_001.json").read_bytes()),
+                      "manifest_sha256": sha((OUT / "SCOPED_AUDIT_MANIFEST_001.json").read_bytes()),
+                      "all_target_or_synthetic_execution": False, "full811_PASS": False}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    authored_audit()

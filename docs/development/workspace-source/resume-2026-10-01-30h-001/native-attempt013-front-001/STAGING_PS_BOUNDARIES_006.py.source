@@ -1,0 +1,123 @@
+"""Stdlib edits of owned staging templates; no PowerShell/project execution."""
+import re
+from pathlib import Path
+FRONT=Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-attempt013-front-001')
+
+def replace_function(text,name,new):
+    start=re.search(r'^function '+re.escape(name)+r'\b',text,re.M).start()
+    after=re.search(r'^function \S+',text[start+1:],re.M)
+    assert after is not None,name
+    end=start+1+after.start()
+    return text[:start]+new.rstrip()+'\n\n'+text[end:]
+
+for path in FRONT.glob('*.ps1.template'):
+    text=path.read_text(encoding='utf-8')
+    if 'function Assert-FrontBoundary' in text:
+        old='    $frontReply = @(& $Python -I -S -B -X utf8 $FrontHelper --expected-script-sha256 $FrontHelperSha --bindings-base64 $frontBase64 --phase $Phase)'
+        new='''    $frontArgs = @('-I','-S','-B','-X','utf8',$FrontHelper,'--expected-script-sha256',$FrontHelperSha,'--bindings-base64',$frontBase64,'--phase',$Phase)
+    if ($Phase -ceq 'adjudicate') {
+        $frontArgs += @('--prior-status-sha256',$FrontStagePins.status_verdict_sha256)
+    }
+    if ($Phase -ceq 'recover') {
+        $frontArgs += @('--prior-adjudicate-sha256',$FrontStagePins.adjudicate_verdict_sha256,'--pre-recover-sha256',$FrontStagePins.pre_recover_verdict_sha256)
+    }
+    $frontReply = @(& $Python @frontArgs)'''
+        if old in text:
+            text=text.replace(old,new,1)
+        else:
+            assert '$frontArgs = @(' in text,path
+    if path.name.startswith('run-native-adjudicate-'):
+        text=replace_function(text,'Assert-StatusVerdict','''function Assert-StatusVerdict {
+    Assert-FrontBoundary 'adjudicate'
+    Assert-PlainFile $StatusVerdict
+    if ((Sha $StatusVerdict) -cne $StatusVerdictSha) { throw 'Status013 verdict hash differs' }
+    $verdict = Get-Content -LiteralPath $StatusVerdict -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($verdict.front_verification_schema_version -cne 2 -or $verdict.command -cne 'status' -or
+        $verdict.mechanical_verdict -cne 'pass' -or $verdict.owner_record_sha256 -cne $FrontOwnerSha -or
+        $verdict.controller_commit -cne $ControllerCommit -or $verdict.receipt_sha256 -cne $ReceiptSha -or
+        $verdict.successor_admission_sha256 -cne $FrontBindings.admission_sha256 -or
+        $verdict.external_proof_sha256 -cne $FrontBindings.external_proof_sha256 -or
+        $verdict.result.state -cne 'adjudicated_ready_for_one_recovery_epoch' -or
+        $verdict.result.automatic_retry_allowed -cne $false -or $verdict.result.scientific_values_emitted -cne $false) {
+        throw 'Status013 current/historical admission differs'
+    }
+    $hashes = @{ 'release-receipt-v2.txt'=$verdict.receipt_sha256; 'stage0-status-audit.txt'=$verdict.audit_sha256;
+        'status-stdout.txt'=$verdict.stdout_sha256; 'status-stderr.txt'=$verdict.stderr_sha256; 'status-exitcode.txt'=$verdict.exitcode_sha256 }
+    foreach ($name in $StatusNames) {
+        if ($hashes[$name] -cnotmatch '^[0-9a-f]{64}$' -or (Sha (Join-Path $Attempt $name)) -cne $hashes[$name]) {
+            throw "Status013 native file differs: $name"
+        }
+    }
+    return $hashes
+}''')
+        text=text.replace("schema = 'pro2_native_launch_intent_v1'","schema = 'pro2_native_launch_intent_v2'",1)
+        if '    owner_work_end_utc = $FrontOwnerEndUtc\n    successor_admission_sha256' not in text:
+            text=text.replace('    owner_work_end_utc = $FrontOwnerEndUtc','    owner_work_end_utc = $FrontOwnerEndUtc\n    successor_admission_sha256 = $FrontBindings.admission_sha256\n    external_proof_sha256 = $FrontBindings.external_proof_sha256',1)
+    if path.name.startswith('run-native-recover-'):
+        needle='$config.SuccessorAdmissionSha = $FrontBindings.admission_sha256'
+        assert needle in text
+        text=text.replace(needle,needle+'\n$config.FrontBindings = $FrontBindings\n$config.FrontStagePins = $FrontStagePins',1)
+    text=text.replace('prerecover_verdict_sha256','pre_recover_verdict_sha256')
+    path.write_text(text,encoding='utf-8',newline='\n')
+
+path=FRONT/'native-poststatus-transport-common-013-window30h-001.ps1.template'
+text=path.read_text(encoding='utf-8')
+start=text.index('    $original = Get-Content',text.index('function Assert-PoststatusReady'))
+end=text.index('    $router = Get-Content',start)
+historical=text[start:end]
+cut=historical.index('    Assert-PoststatusAbsentPath $C.OldReleaseRecord')
+historical=historical[:cut]
+historical=historical.replace('$owner = Get-Content -LiteralPath $C.OwnerRecord', "$owner = Get-Content -LiteralPath (Join-Path $C.Project 'resume-2026-09-28-001\\OWNER_D175_WINDOW_OCT02_EXTENSION_001.json')")
+historical=historical.replace('$owner.work_end_utc -cne $C.OwnerEndUtc',"$owner.work_end_utc -cne '2026-10-02T08:00:00Z'")
+text=text[:start]+historical+"    Assert-FrontBoundary 'recover'\n    Assert-PoststatusAbsentPath $C.OldReleaseRecord $C.Project\n"+text[end:]
+start=text.index('    $prior = Get-Content',text.index('function Assert-PoststatusReady'))
+end=text.index('    $proofFiles = $proof.attempt_file_sha256',start)
+new='''    $prior = Get-Content -LiteralPath $C.PriorVerdict -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($prior.front_verification_schema_version -cne 2 -or $prior.command -cne 'adjudicate' -or
+        $prior.mechanical_verdict -cne 'pass' -or $prior.controller_commit -cne $C.Commit -or
+        $prior.receipt_sha256 -cne $C.ReceiptSha -or $prior.owner_record_sha256 -cne $C.OwnerRecordSha -or
+        $prior.successor_admission_sha256 -cne $C.SuccessorAdmissionSha -or
+        $prior.external_proof_sha256 -cne $C.FrontBindings.external_proof_sha256 -or
+        $prior.result.command -cne 'adjudicate' -or $prior.result.status -cne 'adjudicated') {
+        throw 'Current admitted existing-incident adjudication differs'
+    }
+    $proof = Get-Content -LiteralPath $C.PhaseEvidence -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($proof.schema -cne 'pro2_native_phase_evidence_v2' -or $proof.operation -cne 'recover' -or
+        $proof.verdict -cne 'pass' -or $proof.phase -cne 'pre_recover' -or
+        $proof.controller_commit -cne $C.Commit -or $proof.receipt_sha256 -cne $C.ReceiptSha -or
+        $proof.prior_verdict_sha256 -cne $C.PriorVerdictSha -or $proof.owner_record_sha256 -cne $C.OwnerRecordSha -or
+        $proof.successor_admission_sha256 -cne $C.SuccessorAdmissionSha -or
+        $proof.external_proof_sha256 -cne $C.FrontBindings.external_proof_sha256) {
+        throw 'Independent current pre-recover evidence differs'
+    }
+    $files = $proof.attempt_file_sha256
+    if ($null -eq $files -or @($files.PSObject.Properties.Name).Count -ne $C.PreFiles.Count -or
+        @(Compare-Object -ReferenceObject @($files.PSObject.Properties.Name) -DifferenceObject @($C.PreFiles)).Count -ne 0) {
+        throw 'Pre-recover verdict lacks exact ten-file predecessor inventory'
+    }
+    if ($AuditSha) {
+        $withAudit = [ordered]@{}
+        foreach ($entry in $files.PSObject.Properties) { $withAudit[$entry.Name] = [string]$entry.Value }
+        $withAudit[[IO.Path]::GetFileName($C.Audit)] = $AuditSha
+        Assert-PoststatusInventory $C.Attempt ([pscustomobject]$withAudit)
+    } else { Assert-PoststatusInventory $C.Attempt $files }
+'''
+text=text[:start]+new+text[end:]
+text=text.replace("$raw -match 'WEEK8_D168_STAGE0_AUDIT_RECORD_V2'", "$raw -match 'WEEK8_D176_STAGE0_AUDIT_V3'")
+text=text.replace("WEEK8_D168_STAGE0_AUDIT_RECORD_V2", "WEEK8_D176_STAGE0_AUDIT_V3")
+text=text.replace('$lines.Count -ne 12', '$lines.Count -ne 13')
+text=text.replace("stage0_environment_policy_sha256 = $C.EnvironmentSha", "stage0_environment_policy_sha256 = $C.EnvironmentSha\n        successor_admission_sha256 = $C.SuccessorAdmissionSha")
+text=text.replace("'--receipt-sha256',$C.ReceiptSha,'--command',$C.Operation)", "'--receipt-sha256',$C.ReceiptSha,'--command',$C.Operation,'--successor-admission-sha256',$C.SuccessorAdmissionSha)")
+text=text.replace("schema='pro2_native_stage_launch_intent_v1'", "schema='pro2_native_stage_launch_intent_v2'")
+text=text.replace('        prelaunch_file_sha256=$prior.attempt_file_sha256', '        prelaunch_file_sha256=$proof.attempt_file_sha256')
+# The invoke function has its own prior load: keep the independently pinned
+# phase proof in scope where the exclusive intent is assembled.
+invoke=text.index('function Invoke-PoststatusStage')
+text=text[:invoke]+text[invoke:].replace("$prior = Get-Content -LiteralPath $C.PriorVerdict -Raw -Encoding UTF8 | ConvertFrom-Json", "$prior = Get-Content -LiteralPath $C.PriorVerdict -Raw -Encoding UTF8 | ConvertFrom-Json\n    $proof = Get-Content -LiteralPath $C.PhaseEvidence -Raw -Encoding UTF8 | ConvertFrom-Json",1)
+text=text.replace('        owner_record_sha256=$C.OwnerRecordSha', '        owner_record_sha256=$C.OwnerRecordSha\n        owner_work_end_utc=$C.OwnerEndUtc\n        successor_admission_sha256=$C.SuccessorAdmissionSha\n        external_proof_sha256=$C.FrontBindings.external_proof_sha256',1)
+text=text.replace('function Invoke-PoststatusStage([hashtable] $C) {', "function Invoke-PoststatusStage([hashtable] $C) {\n    if ($C.Operation -cne 'recover') { throw 'Attempt013 front common admits only recovery; cutoff is before pre-seal' }",1)
+text=text.replace('    Assert-PoststatusReady $C \'\'', "    Assert-FrontBoundary 'recover'\n    Assert-PoststatusReady $C ''",1)
+text=text.replace('    $exit = [NativeStage0BinaryCapture001]::Run(', "    Assert-FrontBoundary 'recover'\n    $exit = [NativeStage0BinaryCapture001]::Run(",1)
+text=text.replace('    [pscustomobject]@{\n        ExitCode=$exit', "    Assert-FrontBoundary 'recover-result'\n    $endPython = @(Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { $_.Name -match '^(python|pypy).*\\.exe$' })\n    if ($endPython.Count -ne 0) { throw 'Foreign Python/PyPy at native recovery end' }\n    [pscustomobject]@{\n        ExitCode=$exit",1)
+path.write_text(text,encoding='utf-8',newline='\n')
+print('PS current readiness/intent/recovery pin boundaries staged')

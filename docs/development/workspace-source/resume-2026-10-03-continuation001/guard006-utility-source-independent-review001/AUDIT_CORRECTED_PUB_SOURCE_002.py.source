@@ -1,0 +1,138 @@
+"""Distinct successor source audit. AST/inert metadata only; never target entry."""
+import ast
+import datetime
+import hashlib
+import json
+import os
+import stat
+import types
+from pathlib import Path
+
+WORK=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001')
+SOURCE=WORK/'guard006-bound-late-checker-prep001'
+OUT=WORK/'guard006-utility-source-independent-review001'
+OLD_MANIFEST='8bf74ab72b00707291a1d2c51f91d7eaa713480e44fef338fdca38f5bcb5e6a1'
+NEW_MANIFEST='5e9a8f4734c9b497291831bad633855f05b5ba47e4a6db13c53645719de56c9f'
+OLD_PEER='0dd993d032fd663e687a59ce32a3ac92b15a9ca6af521d22ab8dc7ec480a4489'
+NEW_CHECKER='1ab45b85e38447c40a99abdc5849eed5547700fbc9f84aefc842055b7a5b0ea1'
+COMPOSER='1b909f93c795c1d162b025ccf4917513ee20eb2edfd5d1db80ff78afebd1d911'
+
+def sha(data):return hashlib.sha256(data).hexdigest()
+def enc(value):return (json.dumps(value,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def once(name,data):
+    p=OUT/name;p.parent.mkdir(parents=True,exist_ok=True)
+    with p.open('xb')as stream:stream.write(data)
+def raw(s):return [getattr(s,k)for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+def ancestors(p):
+    rows=[]
+    for parent in reversed(p.parents):
+        s=parent.lstat();assert stat.S_ISDIR(s.st_mode)and not stat.S_ISLNK(s.st_mode)and not s.st_file_attributes&1024
+        rows.append([str(parent),s.st_dev,s.st_ino])
+    return rows
+def read(p,maximum,pin):
+    assert type(maximum)is int and 0<=maximum<=8388608
+    ancestry=ancestors(p);a=p.lstat();ar=raw(a)
+    assert stat.S_ISREG(a.st_mode)and a.st_nlink==1 and not a.st_file_attributes&1024 and 0<=a.st_size<=maximum
+    with p.open('rb')as f:
+        h=os.fstat(f.fileno());hr=raw(h);assert all(ar[i]==hr[i]for i in (0,1,2,3,6,7,8))
+        data=f.read(maximum+1);assert raw(os.fstat(f.fileno()))==hr
+    assert raw(p.lstat())==ar and ancestors(p)==ancestry and len(data)==a.st_size<=maximum and sha(data)==pin
+    return data,{'path':str(p),'bytes':len(data),'sha256':pin,'path_raw9':ar,'descriptor_raw9':hr,'ancestors':ancestry}
+def literal(tree,name):
+    nodes=[n for n in tree.body if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)and n.targets[0].id==name]
+    assert len(nodes)==1
+    return ast.literal_eval(nodes[0].value)
+def output_row(name):
+    data=(OUT/name).read_bytes();return {'path':str(OUT/name),'bytes':len(data),'sha256':sha(data)}
+
+def main():
+    oldmb=(SOURCE/'AUTHOR_FROZEN_SOURCE_MANIFEST_005.json').read_bytes();assert sha(oldmb)==OLD_MANIFEST
+    newmb=(SOURCE/'AUTHOR_FROZEN_SOURCE_MANIFEST_006.json').read_bytes();assert sha(newmb)==NEW_MANIFEST
+    oldm=json.loads(oldmb);newm=json.loads(newmb);assert len(oldm['payloads'])==54 and len(newm['payloads'])==17
+    peer_bytes=(OUT/'INDEPENDENT_GENERIC_PUB_SOURCE_REVIEW_001.json').read_bytes();assert sha(peer_bytes)==OLD_PEER
+    predecessor=json.loads(peer_bytes);assert predecessor['source_pool_ready']is False and predecessor['runtime_acceptance']is False
+    selected={}
+    def select(p,size,pin):
+        value=(p,size,pin)
+        if str(p)in selected:assert selected[str(p)]==value
+        selected[str(p)]=value
+    for name,data,pin in [('AUTHOR_FROZEN_SOURCE_MANIFEST_005.json',oldmb,OLD_MANIFEST),('AUTHOR_FROZEN_SOURCE_MANIFEST_006.json',newmb,NEW_MANIFEST)]:select(SOURCE/name,len(data),pin)
+    select(OUT/'INDEPENDENT_GENERIC_PUB_SOURCE_REVIEW_001.json',len(peer_bytes),OLD_PEER)
+    for manifest in (oldm,newm):
+        for row in manifest['payloads']:
+            rel=Path(row['path']);assert not rel.is_absolute()and '..'not in rel.parts
+            select(SOURCE/rel,row['bytes'],row['sha256'])
+    facts=json.loads((SOURCE/'CANONICAL_M3_PATH_AND_INERT_FACTS_006.json').read_bytes())
+    pairs=[]
+    for row in facts['finite_inputs']:
+        select(Path(row['path']),row['bytes'],row['sha256']);select(Path(row['copy_path']),row['bytes'],row['sha256'])
+        pairs.append({'original':row['path'],'copy':row['copy_path'],'sha256':row['sha256'],'bytes':row['bytes']})
+    entries=[];data_by_path={}
+    for ordinal,(key,(p,size,pin))in enumerate(sorted(selected.items())):
+        passes=[];first=None
+        for unused in range(3):
+            body,meta=read(p,size,pin)
+            if first is None:first=body
+            assert body==first
+            passes.append(meta)
+        assert passes[0]==passes[1]==passes[2]
+        copy='corrected002-inputs/'+str(ordinal).zfill(3)+'.bytes';once(copy,first)
+        cb,cm=read(OUT/copy,size,pin);assert cb==first and cm['path_raw9'][:2]!=passes[0]['path_raw9'][:2]
+        entries.append({'path':key,'bytes':size,'sha256':pin,'passes':passes,'copy_path':copy,'copy_metadata':cm});data_by_path[key]=first
+    for pair in pairs:assert data_by_path[pair['original']]==data_by_path[pair['copy']]
+    oldpath=SOURCE/'review_guard006_actual_records_001.TEMPLATE.py';newpath=SOURCE/'review_guard006_actual_records_001-corrected006.TEMPLATE.py'
+    old=data_by_path[str(oldpath)];new=data_by_path[str(newpath)];composer=data_by_path[str(SOURCE/'compose-root-review-packet-006.TEMPLATE.py')]
+    before=b'root / "INDEPENDENT_METADATA_STATIC_REVIEW_003.json"'
+    after=b'WORK / "m3-source-independent-review001/INDEPENDENT_M3_SOURCE_REVIEW_002.json"'
+    assert old.count(before)==1 and old.replace(before,after)==new and sha(new)==NEW_CHECKER and sha(composer)==COMPOSER
+    oldtree=ast.parse(old);newtree=ast.parse(new);pt=ast.parse(composer)
+    oldf={n.name:ast.dump(n,include_attributes=False)for n in oldtree.body if isinstance(n,ast.FunctionDef)}
+    newf={n.name:ast.dump(n,include_attributes=False)for n in newtree.body if isinstance(n,ast.FunctionDef)}
+    assert len(oldf)==len(newf)==34 and set(oldf)==set(newf)
+    changed=[name for name in oldf if oldf[name]!=newf[name]];assert changed==['metadata_source_closure']
+    assert literal(newtree,'SOURCE_BINDINGS')is None and literal(newtree,'SOURCE_PROTOCOL')is None and literal(pt,'FRESH_SOURCE_MODEL')is None
+    code=compile(newtree,str(newpath),'exec',dont_inherit=True,optimize=0)
+    assert type(code)is types.CodeType and code.co_flags==0
+    code_rows=[]
+    def visit(c,trail):
+        code_rows.append({'path':trail,'name':c.co_name,'flags':c.co_flags,'argcount':c.co_argcount,'byte_count':len(c.co_code)})
+        for ordinal,item in enumerate(c.co_consts):
+            if type(item)is types.CodeType:visit(item,trail+'/'+str(ordinal)+':'+item.co_name)
+    visit(code,'module')
+    alignment=json.loads(data_by_path[str(SOURCE/'SOURCE_BINDING_ALIGNMENT_006.json')])
+    protocol=json.loads(data_by_path[str(SOURCE/'ACYCLIC_BOUND_MODEL_PEER_PROTOCOL_006.json')])
+    assert alignment['Root_GO13_added_keys']==protocol['RootMetadataGO13_extension']['added2']==['composer_sha256','composer_source_binding_peer_sha256']
+    assert alignment['peer20_binding_data_keys']==['utility_source_bindings','utility_source_protocol','composer_fresh_source_model']
+    assert len(protocol['bound_model_peer20_keys'])==20 and len(set(protocol['bound_model_peer20_keys']))==20
+    assert alignment['bound_model_peer20_path']==str(OUT/'INDEPENDENT_GUARD006_BOUND_SOURCE_POOL_REVIEW_001.json')
+    assert alignment['selected_utility_template']=={'path':newpath.name,'bytes':len(new),'sha256':NEW_CHECKER}
+    assert alignment['selected_composer_template']=={'path':'compose-root-review-packet-006.TEMPLATE.py','bytes':len(composer),'sha256':COMPOSER}
+    assert protocol['actual_bound_model_peer']is None and protocol['actual_binding_data']is None and protocol['actual_RootMetadataGO13']is None
+    for key in ('SourceActualInputs','actual_binding','actual_peer20','actual_results'):assert newm[key]is None
+    checks=list(predecessor['source_checks'])
+    checks.extend([
+        {'id':'corrected006_full_byte_delta','source_architecture_verified':True,'scope':'Exactly one canonical peer path expression changes; all33 remaining utility functions and all composer bytes unchanged. No source/phase/clock/readiness algorithm changed.','actual_executed':False},
+        {'id':'canonical_M3_closed22_peer','source_architecture_verified':True,'scope':'Single canonical M3 source peer selected by frozen producer/binder and actual checker. No copied alias or historical static20 admitted. Source model remains None.','actual_executed':False},
+        {'id':'corrected006_binding_alignment','source_architecture_verified':True,'scope':'Source alignment explicitly selects corrected006 utility template over preserved protocol frozen005 prose; peer20/fixedpath/three binding-data keys and real GO13 composer_* keys agree.','actual_executed':False},
+        {'id':'acyclic_source_only_order','source_architecture_verified':True,'scope':'Lease → C(T) → pipeline peer P/INIT/trustR → B/U/model peer20 → READY13/9 → separateGO13 → capture; no actual sources/readiness reviewed. Root final pre-capture model gate remains separate.','actual_executed':False}])
+    conditions=[c for c in predecessor['implementation_conditions']if 'Pub fixed packet M3 peer path'not in c]
+    conditions.extend([
+        'Use only canonical WORK/m3-source-independent-review001/INDEPENDENT_M3_SOURCE_REVIEW_002.json in the packet/source pool. Preserve prior005 architecture receipt and all Source bytes as history.',
+        'The retained acyclic protocol006 mentions frozen005 templates; SOURCE_BINDING_ALIGNMENT_006.json explicitly selects corrected006 utility and exact unchanged composer. Final bound-model peer20 must select these exact active templates and full current Source models, not the preserved old utility.',
+        'Root must fully authenticate B/U and their bound-model peer20 after genuine GO13/readiness and BEFORE auth_before/capture timer, and reobserve for each Packet. The current generic templates do not certify the pending Root integration gate or source pool.',
+        'Actual generic slots remain None. This successor architecture19 receipt is ineligible as bound-model peer20/SourceReady/actual acceptance; any later source changes or literal binding require distinct full review.'])
+    once('FINITE_CORRECTED_SOURCE_INPUTS_002.json',enc({'schema_version':1,'reviewer':'/root/capsule_design_review','new_manifest_sha256':NEW_MANIFEST,'inherited_manifest_sha256':OLD_MANIFEST,'inherited_peer_sha256':OLD_PEER,'inputs':entries,'author_original_copy_pairs':pairs,'changed_function_AST':changed,'unchanged_function_AST_count':33,'full_byte_delta_exact':True,'inert_code_metadata':code_rows,'definitions_functions_or_mains_executed':False}))
+    post=[]
+    for item in entries:
+        body,meta=read(Path(item['path']),item['bytes'],item['sha256']);assert meta==item['passes'][0]
+        cb,cm=read(OUT/item['copy_path'],item['bytes'],item['sha256']);assert cb==body and cm==item['copy_metadata']
+        post.append({'path':item['path'],'observation':meta,'copy_observation':cm})
+    once('POST_CORRECTED_SOURCE_INPUTS_002.json',enc({'schema_version':1,'reviewer':'/root/capsule_design_review','all_exact':True,'observations':post,'actual_pool_or_runtime_acceptance':False}))
+    finite={'count':len(entries),'new_author_payloads':17,'inherited_author_payloads':54,'new_author_original_copy_pairs':len(pairs),'metadata_inputs':output_row('FINITE_CORRECTED_SOURCE_INPUTS_002.json'),'post':output_row('POST_CORRECTED_SOURCE_INPUTS_002.json'),'inherited_review':{'path':str(OUT/'INDEPENDENT_GENERIC_PUB_SOURCE_REVIEW_001.json'),'sha256':OLD_PEER,'bytes':len(peer_bytes)}}
+    report={'schema_version':1,'record_type':'guard006_utility_and_packet_generic_source_architecture_review','reviewer':'/root/capsule_design_review','source_author':'/root/pubnative_review','created_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),'verdict':'PASS_SOURCE_ARCHITECTURE_ONLY_WITH_BOUND_POOL_UNREADY','scope':literal(newtree,'SCOPE'),'source_manifest_sha256':NEW_MANIFEST,'active_source_rows':[{'path':str(newpath),'sha256':NEW_CHECKER,'bytes':len(new),'functions':34},{'path':str(SOURCE/'compose-root-review-packet-006.TEMPLATE.py'),'sha256':COMPOSER,'bytes':len(composer),'functions':21}],'finite_inputs':finite,'source_checks':checks,'findings':[],'implementation_conditions':conditions,'actual_bound_pool':None,'actual_actions':None,'SourceActualInputs':None,'source_pool_ready':False,'runtime_acceptance':False,'operational_authority':False}
+    assert len(report)==19
+    once('INDEPENDENT_GENERIC_PUB_SOURCE_REVIEW_002.json',enc(report))
+    once('HANDOFF_GENERIC_PUB_SOURCE_REVIEW_002.md',b'Corrected006 generic Source architecture accepted with bound pool UNREADY.\n\nDistinct successor receipt002 preserves receipt001 and inherits its complete frozen005 closure. All17 correction payloads and all54 inherited payloads were independently pinned/read three times/copied/postread. Exactly one metadata_source_closure path expression changes; all33 other utility function ASTs and composer bytes are exact. New utility source was compiled only to inert CodeType metadata, with no definitions/functions/mains executed.\n\nCanonical M3 peer path is now single and authentic. Alignment006 supersedes old protocol template prose for the selected corrected utility. GO13/peer20/nested binding-data names agree. Root final pre-capture full model peer gate remains separately required and is not approved by this generic receipt. The selected generic Source actual slots remain None. This review creates no actual lease, model, binding or result and grants no readiness, operational authority or Native128 review.\n')
+    print(json.dumps({'review_sha256':sha(enc(report)),'finite_inputs':len(entries),'new_payloads':17,'inherited_payloads':54,'original_copy_pairs':len(pairs),'verdict':report['verdict'],'source_pool_ready':False,'target_functions_executed':False}))
+
+if __name__=='__main__':main()

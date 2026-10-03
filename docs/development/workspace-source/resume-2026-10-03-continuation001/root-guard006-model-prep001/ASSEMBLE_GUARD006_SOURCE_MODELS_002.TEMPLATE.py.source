@@ -1,0 +1,700 @@
+"""UNRUN data-only assembly source. Author pubnative_review; future executor Root.
+
+Reads selected source metadata and ASTs only. Never imports target modules,
+compiles definitions, starts processes, emits approvals/GO/INIT or runs tests.
+The capture timer must not have started. Actual selection remains external.
+"""
+import argparse
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+from datetime import datetime, timezone
+from pathlib import Path
+
+PROJECT = Path('D:/Aenv/pro2')
+WORK = PROJECT / 'resume-2026-10-03-continuation001'
+OWN = WORK / 'root-guard006-model-prep001'
+G = WORK / 'consumer005-guard006-runtime-prep001'
+M = WORK / 'metadata3-producer-core-prep001'
+P = WORK / 'root-guard006-pipeline-prep001'
+K = WORK / 'metadata3-actual-checker-prep001'
+U = WORK / 'guard006-bound-late-checker-prep001'
+SCOPE = 'COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+MASTER_SHA = 'de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'
+MASTER_PEER_SHA = '56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0'
+LEASE_SHA = '43cb0552e3117842868eb78ff4e6b52913a16e78f3c26b8caa754cfb6b29fc48'
+TABLE_SHA = 'b01516f22dd1db00323bfaff1a37494e24fec3e6ba8ef6374ebb3c5f8d478890'
+OBSERVATIONS = {}
+SOURCE_ACTUAL_SELECTION = None
+FIXED19 = ('profile','driver','driver_template','observer','observer_template','static','source_peer','source_manifest','owner','root_template','bound_template','late_template','root_writer_before','root_writer','metadata_template','metadata_manifest','metadata_binding_plan','pro3_coord','root_coord')
+SELECTED_KEYS = ('schema_version','record_type','author','scope','builder_source_peer_sha256','execution_lease_sha256','pipeline_config_sha256','pipeline_source_peer_sha256','root_trust_selection_sha256','metadata_plan_sha256','metadata_source_binding_sha256','metadata_bound_review_sha256','phase_source_binding_sha256','phase_source_review_sha256','checker_binding_sha256','checker_source_peer_sha256','actual_context','actual_results','capture_started')
+ROOT_PEER16 = ('schema_version','record_type','created_utc','reviewer','source_author','scope','verdict','pipeline_source_sha256','pipeline_binding_sha256','architecture_review_sha256','binder_source_review_sha256','source_binding_provenance','phase_argv_templates','before_capture_timer','target_execution','operational_authority_granted')
+SOURCE_PEER12 = ('schema_version','record_type','reviewer','source_author','scope','created_utc','verdict','constructor_sha256','source_manifest_sha256','actual_selection','source_bindings_created','target_execution')
+PHASE8 = ('auth_before','capture_before','whole_before_auth','whole_before_result','whole_after_auth','whole_after_result','metadata_after_auth','metadata_after_capture')
+PHASE4 = ('before_writer','before_parent','after_writer','after_parent')
+META5 = ('metadata_script','metadata_source_binding','metadata_bound_review','phase_source_binding','phase_source_review')
+SOURCE6 = ('metadata_source_review','metadata_source_binding','metadata_bound_source','metadata_bound_review','root_writer','root_writer_review')
+CONFIG20 = ('schema_version','record_type','author','scope','sources','profile','projection','owner_lease_sha256','owner_lease_end_utc','coordination_peer_reply','coordination_root_response','metadata_checker_ready','bound_checker_ready','packet_composer','maximum_retained_seconds','guard_sources','harness_static_review','source_manifest','source_capsule','source_capsule_review')
+LEASE12 = ('schema_version','record_type','author','scope','created_utc','lease_end_utc','owner_master_sha256','owner_review_sha256','decision','maximum_lease_seconds','lease_is_owner_deadline','operational_authority')
+
+
+def need(value, message):
+    if not value:
+        raise ValueError(message)
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def pin(value):
+    need(type(value) is str and re.fullmatch('[0-9a-f]{64}', value) is not None, 'exact external SHA')
+    return value
+
+
+def exact(value, keys, message):
+    need(type(value) is dict and set(value) == set(keys), message)
+
+
+def typed(value, expected, message):
+    need(type(value) is type(expected), message + ' nominal type')
+    if type(expected) is dict:
+        exact(value, expected, message)
+        for key in expected:
+            typed(value[key], expected[key], message + '.' + key)
+    elif type(expected) is list:
+        need(len(value) == len(expected), message + ' list length')
+        for left, right in zip(value, expected):
+            typed(left, right, message)
+    else:
+        need(value == expected, message + ' literal')
+
+
+def clone(value):
+    if type(value) is dict:
+        need(all(type(key) is str for key in value), 'builtin string keys')
+        return {key: clone(item) for key, item in value.items()}
+    if type(value) is list:
+        return [clone(item) for item in value]
+    need(type(value) in (str, int, bool, type(None)), 'closed JSON builtin value')
+    return value
+
+
+def unique(rows):
+    result = {}
+    for key, value in rows:
+        need(key not in result, 'duplicate JSON key')
+        result[key] = value
+    return result
+
+
+def no_number(value):
+    raise ValueError('float or nonfinite JSON forbidden')
+
+
+def decode(data):
+    return clone(json.loads(data.decode('utf-8', errors='strict'), object_pairs_hook=unique,
+                            parse_float=no_number, parse_constant=no_number))
+
+
+def wire(value):
+    return (json.dumps(clone(value), sort_keys=True, separators=(',', ':'), ensure_ascii=True, allow_nan=False) + '\n').encode('ascii')
+
+
+def confined(value):
+    need(type(value) is str, 'source path nominal string')
+    path = Path(value)
+    need(path.is_absolute() and path.is_relative_to(PROJECT) and '..' not in path.parts
+         and all(':' not in part for part in path.parts[1:]), 'confined fixed source path')
+    return path
+
+
+def raw(info):
+    result = [getattr(info, key, None) for key in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+    need(all(type(value) is int for value in result), 'Windows exact raw9')
+    return result
+
+
+def parents(path):
+    result = []
+    for parent in reversed(path.parents):
+        info = parent.lstat()
+        need(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode) and not info.st_file_attributes & 0x400, 'plain source ancestors')
+        result.append((str(parent), info.st_dev, info.st_ino))
+    return result
+
+
+def read(path, expected, cap):
+    path = confined(str(path))
+    pin(expected)
+    need(type(cap) is int and 0 < cap <= 8388608, 'selected finite input cap')
+    ancestors = parents(path)
+    first = path.lstat()
+    a = raw(first)
+    need(stat.S_ISREG(first.st_mode) and first.st_nlink == 1 and not first.st_file_attributes & 0x400
+         and 0 <= first.st_size <= cap and first.st_ctime_ns == first.st_birthtime_ns, 'plain source size before open')
+    with path.open('rb') as stream:
+        opened = os.fstat(stream.fileno())
+        b = raw(opened)
+        need(stat.S_ISREG(opened.st_mode) and opened.st_nlink == 1 and not opened.st_file_attributes & 0x400
+             and all(a[index] == b[index] for index in (0,1,2,3,5,6,7,8)), 'owned source descriptor identity')
+        data = stream.read(cap + 1)
+        need(len(data) <= cap and raw(os.fstat(stream.fileno())) == b, 'source descriptor bounded stable read')
+    need(raw(path.lstat()) == a and parents(path) == ancestors and len(data) == first.st_size
+         and digest(data) == expected, 'source path/full-byte/SHA unchanged')
+    observation = dict(path=str(path),sha256=expected,bytes=len(data),maximum=cap,path_raw9=a,descriptor_raw9=b)
+    previous = OBSERVATIONS.get(str(path))
+    if previous is not None:
+        identity_fields = ('path','sha256','bytes','path_raw9','descriptor_raw9')
+        typed({key:observation[key] for key in identity_fields},
+              {key:previous[key] for key in identity_fields}, 'selected source reobservation')
+        observation['maximum'] = min(previous['maximum'], cap)
+        need(len(data) <= observation['maximum'], 'strictest observed source cap')
+    OBSERVATIONS[str(path)] = observation
+    return data
+
+
+def record(path, expected, cap=65536):
+    return decode(read(path, pin(expected), cap))
+
+
+def row(path, expected, maximum):
+    read(path, expected, maximum)
+    return dict(path=str(path),sha256=pin(expected),maximum=maximum)
+
+
+def pointer(source):
+    exact(source, ('path','sha256'), 'source pointer2')
+    return dict(path=str(confined(source['path'])),sha256=pin(source['sha256']))
+
+
+def moment(value, width):
+    need(type(value) is str and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{' + str(width) + r'}\+00:00', value), 'genuine precision-specific UTC')
+    base = datetime.strptime(value[:19], '%Y-%m-%dT%H:%M:%S').replace(tzinfo=timezone.utc)
+    delta = base - datetime(1970,1,1,tzinfo=timezone.utc)
+    return (delta.days*86400 + delta.seconds)*10000000 + int(value[20:20+width])*(10 if width == 6 else 1)
+
+
+def now_ticks():
+    return moment(datetime.now(timezone.utc).isoformat(timespec='microseconds'), 6)
+
+
+def literal(value):
+    value = clone(value)
+    if type(value) is dict:
+        return '{' + ','.join(ascii(key) + ':' + literal(value[key]) for key in sorted(value)) + '}'
+    if type(value) is list:
+        return '[' + ','.join(literal(item) for item in value) + ']'
+    return ascii(value)
+
+
+def assignments(data, names):
+    text = data.decode('utf-8', errors='strict')
+    tree = ast.parse(text)
+    found = {}
+    lines = text.splitlines(keepends=True)
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) and node.targets[0].id in names:
+            name = node.targets[0].id
+            need(name not in found, 'unique selected source assignment')
+            start = sum(map(len, lines[:node.value.lineno-1])) + node.value.col_offset
+            end = sum(map(len, lines[:node.value.end_lineno-1])) + node.value.end_col_offset
+            found[name] = (start, end, node.value)
+    need(set(found) == set(names), 'complete selected source assignments')
+    return text, tree, found
+
+
+def bind(data, values, originals):
+    text, old_tree, found = assignments(data, values)
+    edits = []
+    for name, (start,end,node) in found.items():
+        typed(ast.literal_eval(node), originals[name], 'source original literal')
+        edits.append((start,end,literal(values[name])))
+    for start,end,replacement in sorted(edits, reverse=True):
+        text = text[:start] + replacement + text[end:]
+    bound = text.encode('utf-8')
+    back, new_tree, changed = assignments(bound, values)
+    undo = []
+    for name,(start,end,node) in changed.items():
+        typed(ast.literal_eval(node), values[name], 'bound builtin literal')
+        old_start,old_end,_ = found[name]
+        undo.append((start,end,data.decode('utf-8')[old_start:old_end]))
+    for start,end,replacement in sorted(undo, reverse=True):
+        back = back[:start] + replacement + back[end:]
+    need(back.encode('utf-8') == data, 'exact source assignment byte reversal')
+    kinds = (ast.FunctionDef,ast.AsyncFunctionDef,ast.ClassDef)
+    need([ast.dump(node, include_attributes=False) for node in old_tree.body if isinstance(node,kinds)]
+         == [ast.dump(node, include_attributes=False) for node in new_tree.body if isinstance(node,kinds)], 'exact function/class ASTs')
+    return bound
+
+
+def model(source, keys, selected):
+    exact(source, keys, 'authentic selected source record closed keys')
+    return dict(keys=list(keys),values={key:clone(source[key]) for key in selected})
+
+
+def authenticate_bound_literals(data, template, values, originals):
+    # Authenticate an existing source without imposing this constructor's
+    # compact renderer on the accepted metadata binder's repr rendering.
+    old_text, old_tree, old_slots = assignments(template, values)
+    actual_text, actual_tree, actual_slots = assignments(data, values)
+    edits = []
+    for name, (start, end, node) in actual_slots.items():
+        typed(ast.literal_eval(node), values[name], 'existing bound literal exact value')
+        original_start, original_end, original_node = old_slots[name]
+        typed(ast.literal_eval(original_node), originals[name], 'existing template original literal')
+        edits.append((start, end, old_text[original_start:original_end]))
+    for start, end, replacement in sorted(edits, reverse=True):
+        actual_text = actual_text[:start] + replacement + actual_text[end:]
+    need(actual_text.encode('utf-8') == template, 'existing bound source exact literal byte reversal')
+    kinds = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+    need([ast.dump(node, include_attributes=False) for node in old_tree.body if isinstance(node, kinds)]
+         == [ast.dump(node, include_attributes=False) for node in actual_tree.body if isinstance(node, kinds)],
+         'existing bound source exact function/class ASTs')
+
+
+def absent(path):
+    parents(path)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return
+    raise ValueError('one-use source output or capture role already exists: ' + str(path))
+
+
+def once(path, data, cap):
+    need(os.name == 'nt' and type(data) is bytes and len(data) <= cap, 'Windows finite source-only publication')
+    absent(path)
+    temporary = path.with_name(path.name + '.staging')
+    absent(temporary)
+    with temporary.open('xb') as stream:
+        need(stream.write(data) == len(data), 'complete source-only write')
+        stream.flush()
+        os.fsync(stream.fileno())
+    read(temporary, digest(data), cap)
+    absent(path)
+    os.rename(temporary,path)
+    read(path,digest(data),cap)
+    return dict(path=str(path),sha256=digest(data),bytes=len(data))
+
+
+def lease(selection):
+    typed(selection['execution_lease_sha256'], LEASE_SHA, 'explicit genuine finite lease selection')
+    value = record(WORK/'EXECUTION_LEASE_GG6_M3_001.json',LEASE_SHA)
+    exact(value,LEASE12,'authentic lease12')
+    need(list(value) == list(LEASE12), 'genuine ordered PS lease12')
+    nominals = dict(schema_version=1,record_type='root_local_private_execution_lease',author='/root',scope=SCOPE,
+                    owner_master_sha256=MASTER_SHA,owner_review_sha256=MASTER_PEER_SHA,
+                    decision='authorize_bounded_selected_unit_metadata_and_copied_tests_once',maximum_lease_seconds=43200,
+                    lease_is_owner_deadline=False,operational_authority=False)
+    for key,expected in nominals.items():
+        typed(value[key],expected,'finite lease nominal')
+    created,end = moment(value['created_utc'],7),moment(value['lease_end_utc'],7)
+    need(0 < end-created <= 432000000000 and created <= now_ticks() and now_ticks()+12000000000 < end, 'finite lease and preparation reserve')
+    return value
+
+
+def selected_source(table, key):
+    item = table['immutable'][key]
+    exact(item,('path','sha256','bytes','cap'),'pinned immutable source row4')
+    data = read(confined(item['path']),item['sha256'],item['cap'])
+    need(type(item['bytes']) is int and len(data) == item['bytes'],'immutable source size')
+    return data
+
+
+def capture_absent():
+    paths = [M/'ROOT_METADATA_AUTHORIZATION_BEFORE_003.json',M/'phase-before-003',M/'phase-after-003',
+             G/'ROOT_WHOLE_BEFORE_AUTHORIZATION_006.json',G/'whole-runtime-before',G/'whole-runtime-after',
+             G/'ROOT_EXECUTION_ACK_GUARD_UNIT006.json',G/'INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_006.json',
+             G/'INDEPENDENT_GUARD_ROOT_LAUNCH_LATE_REVIEW_006.json',G/'ROOT_LAUNCH_TERMINAL_006.json']
+    paths += [K/('ACTUAL_TICKET_'+name.upper()+'_006.json') for name in PHASE8]
+    paths += [M/name for name in ('INDEPENDENT_ACTUAL_ROOT_AUTH_BEFORE_REVIEW_006.json','INDEPENDENT_ACTUAL_ROOT_METADATA_BEFORE_CAPTURE_REVIEW_006.json','INDEPENDENT_ACTUAL_ROOT_WHOLE_BEFORE_REVIEW_006.json')]
+    for path in paths:
+        absent(path)
+    return [str(path) for path in paths]
+
+
+def construct(table,selection,sources,lease_value,config,root_peer,trust,checker_config,phase_binding,phase_peer,m3_binding,m3_bound_peer,plan):
+    # Only source records enter this function. Context/Core/whole/results never do.
+    profile = decode(sources['profile'])
+    static = decode(sources['static_review'])
+    capsule_peer = decode(sources['capsule_peer'])
+    m3_peer = decode(sources['metadata_peer'])
+    selected_actual = table['actual_paths']
+    phase_sources = clone(checker_config['phase_sources'])
+    exact(phase_sources,PHASE4,'four checker source phase roles')
+    closure = clone(checker_config['metadata_sources'])
+    exact(closure,META5,'five checker source closure roles')
+    metadata_pin = m3_binding['actual_script_sha256']
+    actual_rows = {}
+    for key,p in selected_actual.items():
+        actual_rows[key] = str(confined(p))
+    def from_hash(key,hash_value,cap):
+        return row(Path(actual_rows[key]),hash_value,cap)
+    driver_pin = config['guard_sources']['driver']['sha256']
+    observer_pin = config['guard_sources']['observer']['sha256']
+    fixed = {
+        'profile':row(G/'GUARD_RUNTIME_PROFILE_006-rev003.json',table['immutable']['profile']['sha256'],65536),
+        'driver':from_hash('driver',driver_pin,131072),
+        'driver_template':row(G/'run-consumer-guard-unit006-rev003.TEMPLATE.py',table['immutable']['driver_template']['sha256'],131072),
+        'observer':from_hash('observer',observer_pin,131072),
+        'observer_template':row(G/'observe-whole-runtime-006-rev003.TEMPLATE.py',table['immutable']['observer_template']['sha256'],131072),
+        'static':row(G/'INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_006.json',table['immutable']['static_review']['sha256'],65536),
+        'source_peer':row(WORK/'capsule-design-independent-review001/INDEPENDENT_COMPACT_CAPSULE_REVIEW_001.json',table['immutable']['capsule_peer']['sha256'],65536),
+        'source_manifest':row(G/'inputs/SOURCE_STAGED_MANIFEST_005.json',table['immutable']['source_manifest']['sha256'],2097152),
+        'owner':row(WORK/'EXECUTION_LEASE_GG6_M3_001.json',LEASE_SHA,65536),
+        'root_template':row(G/'ROOT_FIRST_LAUNCH_006-rev003.TEMPLATE.ps1',table['immutable']['launcher_template']['sha256'],65536),
+        'bound_template':row(G/'INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_006.TEMPLATE.json',table['immutable']['bound_template']['sha256'],65536),
+        'late_template':row(G/'INDEPENDENT_GUARD_ROOT_LAUNCH_LATE_REVIEW_006.TEMPLATE.json',table['immutable']['late_template']['sha256'],65536),
+        'root_writer_before':row(P/'PREPARE_ROOT_GUARD006_RECORDS_001.TEMPLATE.ps1',table['immutable']['root_records_template']['sha256'],65536),
+        'root_writer':from_hash('root_writer',config['sources']['root_records']['sha256'],65536),
+        'metadata_template':row(M/'capture-root-metadata003-corrected005.TEMPLATE.py',table['immutable']['metadata_capture_template']['sha256'],65536),
+        'metadata_manifest':row(M/'STAGED_MANIFEST_005.json',table['immutable']['metadata_manifest']['sha256'],65536),
+        'metadata_binding_plan':from_hash('metadata_plan',selection['metadata_plan_sha256'],65536),
+        'pro3_coord':row(confined(config['coordination_peer_reply']['path']),config['coordination_peer_reply']['sha256'],65536),
+        'root_coord':row(confined(config['coordination_root_response']['path']),config['coordination_root_response']['sha256'],65536),
+    }
+    exact(fixed,FIXED19,'complete exact fixed19')
+    capsule_roles = {key:row(confined(table['immutable'][table_key]['path']),table['immutable'][table_key]['sha256'],2097152)
+                     for key,table_key in (('capsule','capsule'),('schema','capsule_schema'),('derivation','capsule_derivation'))}
+    metadata_model = model(m3_peer,table['m3_peer_keys'],table['m3_core_keys'])
+    writer_peer = decode(sources['root_writer_peer'])
+    root_model = model(writer_peer,table['root_writer_peer_keys'],table['root_writer_core_keys'])
+    pipeline_model = model(root_peer,ROOT_PEER16,('schema_version','record_type','reviewer','source_author','scope','verdict','pipeline_source_sha256','pipeline_binding_sha256','before_capture_timer','target_execution','operational_authority_granted'))
+    source_roles = {
+        'metadata_source_review':dict(path=table['immutable']['metadata_peer']['path'],sha256=table['immutable']['metadata_peer']['sha256']),
+        'metadata_source_binding':dict(path=actual_rows['metadata_source_binding'],sha256=selection['metadata_source_binding_sha256']),
+        'metadata_bound_source':dict(path=actual_rows['metadata_source'],sha256=metadata_pin),
+        'metadata_bound_review':dict(path=actual_rows['metadata_bound_review'],sha256=selection['metadata_bound_review_sha256']),
+        'root_writer':dict(path=fixed['root_writer']['path'],sha256=fixed['root_writer']['sha256']),
+        'root_writer_review':dict(path=table['immutable']['root_writer_peer']['path'],sha256=table['immutable']['root_writer_peer']['sha256']),
+    }
+    exact(source_roles,SOURCE6,'six exact Source packet roles')
+    # The Root stage sources are byte-identical reviewed copies; no guessed slots.
+    writer = read(Path(fixed['root_writer']['path']),fixed['root_writer']['sha256'],65536)
+    typed(writer,sources['root_records_template'],'actual Root writer exact zero-slot source reversal')
+    phase_rows = []
+    for actual,role in zip(phase_binding['sources'],PHASE4):
+        chosen = table['phase_templates'][role]
+        phase_rows.append(dict(path=phase_sources[role]['path'],sha256=phase_sources[role]['sha256'],
+                               template_path=chosen['path'],template_sha256=chosen['sha256']))
+        typed(actual,dict(path=phase_sources[role]['path'],sha256=phase_sources[role]['sha256'],
+                          template_sha256=chosen['sha256'],exact_two_literal_reversal=True),'actual complete phase row')
+    argv = dict(metadata_script_sha256=metadata_pin,metadata_bound_review_sha256=selection['metadata_bound_review_sha256'],
+                observer_sha256=observer_pin,profile_sha256=fixed['profile']['sha256'],
+                harness_static_review_sha256=fixed['static']['sha256'],owner_lease_sha256=LEASE_SHA)
+    details = {}
+    for role,phase in (('metadata_before_review','capture_before'),('whole_phase_review','whole_before_result')):
+        names = table['phase_core_nominals'][phase]
+        details[role] = dict(path=str(M/('INDEPENDENT_ACTUAL_DETAIL_'+phase.upper()+'_006.json')),
+            core_type=names[0],core_verdict=names[1],input_path=table['phase_input_paths'][phase],
+            input_maximum=2097152 if phase=='capture_before' else 262144,parent_path=table['phase_parent_paths'][phase],
+            input_keys=table['phase_input_keys'][phase],input_nominals=clone(table['phase_input_nominals'][phase]),
+            parent_source_sha256=phase_sources['before_parent']['sha256'] if phase=='capture_before' else config['sources']['whole_before_parent']['sha256'],
+            stdout_bytes_path=table['phase_stdout_paths'][phase],stderr_bytes_path=table['phase_stderr_paths'][phase],
+            authorization_path=table['phase_authorization_paths'][phase],
+            parent_sha_field='parent_terminal_sha256',ticket_path=str(K/('ACTUAL_TICKET_'+phase.upper()+'_006.json')),
+            source_closure=clone(closure),phase_sources=clone(phase_sources),argv_bindings=clone(argv),
+            nominals={},trace_nominals=dict(reviewer='/root/actual_record_checker',
+                physical_tool_identity_externally_correlated_by_Root=True,independent_OS_or_tool_attestation=False,
+                hard_Job_or_descendant_or_provider_deadline_proved=False))
+    protocol = dict(source_peer_keys=list(capsule_peer),source_peer_core={key:clone(capsule_peer[key]) for key in table['capsule_core_keys']},
+        static_model=dict(core={key:clone(value) for key,value in static.items() if key!='limitation'},
+            observer_bindings=dict(HARNESS_STATIC_PEER_SHA256=fixed['static']['sha256'])),
+        capsule_roles=capsule_roles,metadata_source_core=metadata_model,metadata_bound_core=dict(keys=table['bound9_keys'],values=clone(m3_bound_peer)),
+        phase_core=dict(binding=from_hash('phase_binding',selection['phase_source_binding_sha256'],65536),
+            review=dict(**from_hash('phase_peer',selection['phase_source_review_sha256'],65536),
+                        keys=table['phase20_keys'],values={key:clone(phase_peer[key]) for key in table['phase_core_keys']})),
+        phase_rows=phase_rows,root_writer_core=root_model,
+        root_writer_reversal=dict(actual_sha256=fixed['root_writer']['sha256'],template_sha256=fixed['root_writer_before']['sha256'],literal_slots={}),
+        core12=table['core12'],detail15=details,
+        checker_source=row(confined(table['immutable']['checker']['path']),table['immutable']['checker']['sha256'],262144),
+        checker_peer=from_hash('checker_peer',selection['checker_source_peer_sha256'],65536),
+        checker_binding=from_hash('checker_binding',selection['checker_binding_sha256'],131072),
+        packet_source_roles=source_roles,ack_template=row(G/'ROOT_EXECUTION_ACK_GUARD_UNIT006.TEMPLATE.json',table['immutable']['ack_template']['sha256'],65536),
+        root_pipeline_source=from_hash('pipeline',root_peer['pipeline_source_sha256'],131072),
+        root_pipeline_peer=dict(**from_hash('pipeline_peer',selection['pipeline_source_peer_sha256'],131072),keys=list(ROOT_PEER16),values=clone(pipeline_model['values'])))
+    extras = {}
+    for key,item in table['immutable'].items():
+        extras['immutable_'+key] = row(confined(item['path']),item['sha256'],item['cap'])
+    for key,selected_row in protocol.items():
+        if key in ('checker_source','checker_peer','checker_binding','root_pipeline_source','root_pipeline_peer','ack_template'):
+            extras[key] = {name:selected_row[name] for name in ('path','sha256','maximum')}
+    extras['metadata_source_binding'] = from_hash('metadata_source_binding',selection['metadata_source_binding_sha256'],65536)
+    extras['metadata_bound_source'] = from_hash('metadata_source',metadata_pin,65536)
+    extras['metadata_bound_review'] = from_hash('metadata_bound_review',selection['metadata_bound_review_sha256'],65536)
+    extras['phase_binding'] = protocol['phase_core']['binding']
+    extras['phase_peer'] = {name:protocol['phase_core']['review'][name] for name in ('path','sha256','maximum')}
+    extras['root_config'] = from_hash('pipeline_config',selection['pipeline_config_sha256'],65536)
+    extras['root_trust'] = from_hash('root_trust',selection['root_trust_selection_sha256'],65536)
+    extras['root_init'] = row(confined(trust['init_trace']['path']),trust['init_trace']['sha256'],65536)
+    for role,selected_row in phase_sources.items():
+        extras['phase_'+role] = row(confined(selected_row['path']),selected_row['sha256'],65536)
+    for role in ('whole_before_parent','whole_after_writer','whole_after_parent'):
+        selected_row = config['sources'][role]
+        extras['root_'+role] = row(confined(selected_row['path']),selected_row['sha256'],65536)
+    bindings = dict(fixed19=fixed,extra_inputs=extras,
+        source_pin_values={key:fixed[key]['sha256'] for key in ('profile','driver','observer','static','source_peer','driver_template','source_manifest')},
+        lease_sha256=LEASE_SHA,lease_end_utc=lease_value['lease_end_utc'],root_trust_selection_sha256=selection['root_trust_selection_sha256'])
+    ack = decode(sources['ack_template'])
+    ack_nominals = {key:value for key,value in ack.items() if value is not None}
+    ack_nominals.update(driver_sha256=driver_pin,harness_static_review_sha256=fixed['static']['sha256'],owner_sha256=LEASE_SHA,
+        child_sha256=profile['child']['sha256'],profile_sha256=fixed['profile']['sha256'],source_peer_sha256=fixed['source_peer']['sha256'],
+        source_manifest_sha256=fixed['source_manifest']['sha256'],source_projection_sha256=profile['source_projection_sha256'],
+        decision='execute_copied_consumer_guard_unit006_once')
+    composer = dict(fixed19=clone(fixed),source_roles=clone(source_roles),
+        source_approval_models=dict(metadata_source_review=clone(metadata_model),root_writer_review=clone(root_model)),
+        core_roles={role:str(M/table['phase_core_nominals'][phase][2]) for role,phase in (('metadata_before_review','capture_before'),('whole_phase_review','whole_before_result'))},
+        whole_auth_path=str(G/'ROOT_WHOLE_BEFORE_AUTHORIZATION_006.json'),ack_keys=list(ack),ack_nominals=ack_nominals,
+        whole_acceptance_keys=table['whole_acceptance7'],whole_nominals=dict(schema_version=1,scope=SCOPE,verifier='/root/actual_record_checker',unchanged_against_reviewed_runtime=True),
+        core12=table['core12'],core_nominals={role:dict(schema_version=1,record_type=details[role]['core_type'],reviewer='/root/actual_record_checker',
+            verdict=details[role]['core_verdict'],metadata_only=True,operational_authority_granted=False) for role in details},
+        root_template=dict(path=fixed['root_template']['path'],sha256=fixed['root_template']['sha256']),driver_sha256=driver_pin,
+        bound_keys=list(decode(sources['bound_template'])),root_trust_selection=dict(path=actual_rows['root_trust'],sha256=selection['root_trust_selection_sha256']))
+    return clone(bindings),clone(protocol),clone(composer)
+
+
+def main():
+    parser = argparse.ArgumentParser(allow_abbrev=False)
+    for name in ('expected-self-sha256','expected-source-review-sha256','expected-selection-sha256'):
+        parser.add_argument('--'+name,required=True)
+    args = parser.parse_args()
+    own = Path(__file__).absolute()
+    need(own == OWN/'ASSEMBLE_GUARD006_SOURCE_MODELS_002.TEMPLATE.py','fixed Root model constructor source')
+    self_data = read(own,pin(args.expected_self_sha256),131072)
+    source_review = record(OWN/'INDEPENDENT_MODEL_CONSTRUCTOR_SOURCE_REVIEW_001.json',pin(args.expected_source_review_sha256))
+    exact(source_review,SOURCE_PEER12,'different constructor source peer12')
+    for key,expected in dict(schema_version=1,record_type='guard006_data_model_constructor_source_review',source_author='/root/pubnative_review',
+        scope=SCOPE,verdict='PASS_SOURCE_DATA_ASSEMBLY_ONLY',constructor_sha256=digest(self_data),actual_selection=None,
+        source_bindings_created=False,target_execution=False).items():
+        typed(source_review[key],expected,'constructor source peer nominal')
+    need(source_review['reviewer'] in ('/root','/root/owner_docs_review','/root/renewal_runtime_inventory'),'different genuine Source reviewer')
+    moment(source_review['created_utc'],6)
+    source_manifest = record(OWN/'AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_002.json',pin(source_review['source_manifest_sha256']),2097152)
+    need(type(source_manifest.get('active_source_rows')) is list and len(source_manifest['active_source_rows'])==1,'constructor Source manifest exact active role')
+    typed(source_manifest['active_source_rows'][0],dict(path=own.name,sha256=digest(self_data),bytes=len(self_data)),'complete constructor Source manifest pin')
+    table = record(OWN/'IMMUTABLE_MODEL_INPUTS_001.json',pin(TABLE_SHA),2097152)
+    exact(table,('schema_version','record_type','author','scope','immutable','actual_paths','m3_peer_keys','m3_core_keys','capsule_core_keys','bound9_keys','phase20_keys','phase_core_keys','phase_templates','core12','whole_acceptance7','phase_core_nominals','phase_input_paths','phase_parent_paths','metadata9_keys','checker_config18_keys','root_writer_peer_keys','root_writer_core_keys','phase_input_keys','phase_input_nominals','phase_stdout_paths','phase_stderr_paths','phase_authorization_paths'),'closed model Source table27')
+    typed(table['schema_version'],1,'source table schema')
+    typed(table['record_type'],'guard006_immutable_model_input_table','source table type')
+    typed(table['author'],'/root/pubnative_review','source table author')
+    typed(table['scope'],SCOPE,'source table scope')
+    selection = record(OWN/'ROOT_ACTUAL_MODEL_SELECTION_001.json',pin(args.expected_selection_sha256))
+    exact(selection,SELECTED_KEYS,'Root selected actual Source input ABI19')
+    for key,expected in dict(schema_version=1,record_type='root_guard006_actual_model_input_selection',author='/root',scope=SCOPE,
+                            builder_source_peer_sha256=args.expected_source_review_sha256,actual_context=None,actual_results=None,capture_started=False).items():
+        typed(selection[key],expected,'external Root model selection')
+    for key in SELECTED_KEYS:
+        if key.endswith('_sha256'):
+            pin(selection[key])
+    lease_value = lease(selection)
+    sources = {key:selected_source(table,key) for key in table['immutable']}
+    typed(selection['checker_source_peer_sha256'],table['immutable']['checker_peer']['sha256'],'Root selects only genuine checker009 Source peer002')
+    checker_peer = record(WORK/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_002.json',selection['checker_source_peer_sha256'])
+    exact(checker_peer,('schema_version','record_type','reviewer','source_author','scope','created_utc','verdict','checker_template_sha256','source_manifest_sha256','full_source_details_sha256','actual_binding','tests_executed','target_execution','runtime_acceptance','operational_authority'),'genuine checker009 different Source peer15')
+    for key,expected in dict(schema_version=1,record_type='independent_metadata3_checker_source_review',reviewer='/root',
+        source_author='/root/actual_record_checker',scope=SCOPE,verdict='PASS_STATIC_METADATA3_CHECKER_SOURCE_ONLY',
+        checker_template_sha256=table['immutable']['checker']['sha256'],source_manifest_sha256=table['immutable']['checker_manifest']['sha256'],
+        actual_binding=None,tests_executed=False,target_execution=False,runtime_acceptance=False,operational_authority=False).items():
+        typed(checker_peer[key],expected,'genuine checker009 Source peer nominal')
+    moment(checker_peer['created_utc'],6)
+    master = decode(sources['master'])
+    owner_peer = decode(sources['master_peer'])
+    need(master['work_end_utc'] is None and master['fixed_deadline_invented'] is False
+         and owner_peer['reviewer']=='owner_docs_review' and owner_peer['source_owner_sha256']==MASTER_SHA,'authentic ongoing master and recorded historical nominal')
+    paths = {key:confined(value) for key,value in table['actual_paths'].items()}
+    config = record(paths['pipeline_config'],selection['pipeline_config_sha256'])
+    exact(config,CONFIG20,'actual Root config20')
+    for key,expected in dict(schema_version=1,record_type='root_metadata_pipeline_source_binding',author='/root',scope=SCOPE,
+                            owner_lease_sha256=LEASE_SHA,owner_lease_end_utc=lease_value['lease_end_utc'],maximum_retained_seconds=3600).items():
+        typed(config[key],expected,'Root config nominal')
+    typed(pointer(config['packet_composer']),dict(path=table['immutable']['composer']['path'],sha256=table['immutable']['composer']['sha256']),'C selects only unbound T; never B')
+    root_peer = record(paths['pipeline_peer'],selection['pipeline_source_peer_sha256'],131072)
+    exact(root_peer,ROOT_PEER16,'different actual pipeline Source peer16')
+    for key,expected in dict(schema_version=1,record_type='independent_root_metadata_pipeline_bound_source_review',reviewer='/root/owner_docs_review',
+        source_author='/root',scope=SCOPE,verdict='PASS_STATIC_ROOT_PIPELINE_SOURCE_ONLY',pipeline_binding_sha256=selection['pipeline_config_sha256'],
+        before_capture_timer=True,target_execution=False,operational_authority_granted=False).items():
+        typed(root_peer[key],expected,'actual pipeline source peer')
+    moment(root_peer['created_utc'],6)
+    pipeline = read(paths['pipeline'],pin(root_peer['pipeline_source_sha256']),131072)
+    typed(pipeline,sources['pipeline_template'],'actual pipeline byte-identical selected reviewed template')
+    exact(root_peer['phase_argv_templates'],PHASE8,'eight source-reviewed phase argv domains')
+    for tokens in root_peer['phase_argv_templates'].values():
+        need(type(tokens) is list and 1 <= len(tokens) <= 64 and all(type(token) is str and 0 < len(token) <= 4096 for token in tokens),'finite exact reviewed argv')
+    trust = record(paths['root_trust'],selection['root_trust_selection_sha256'])
+    exact(trust,('schema_version','record_type','author','scope','pipeline_source_sha256','pipeline_source_peer_sha256','init_trace','physical_root_tool_chunk'),'externally selected authentic Root trust8')
+    for key,expected in dict(schema_version=1,record_type='root_pipeline_trust_selection',author='/root',scope=SCOPE,
+                            pipeline_source_sha256=root_peer['pipeline_source_sha256'],pipeline_source_peer_sha256=selection['pipeline_source_peer_sha256']).items():
+        typed(trust[key],expected,'Root externally selected trust')
+    need(type(trust['physical_root_tool_chunk']) is str and re.fullmatch('[0-9A-Za-z_-]{1,128}',trust['physical_root_tool_chunk']),'finite genuine Root reported tool chunk')
+    init_pointer = pointer(trust['init_trace'])
+    typed(init_pointer['path'],str(paths['root_init']),'Root fixed INIT Source path')
+    init = record(paths['root_init'],init_pointer['sha256'])
+    exact(init,('schema_version','record_type','author','scope','created_utc','pid','nonce','pipeline_source_sha256'),'genuine Root INIT8')
+    for key,expected in dict(schema_version=1,record_type='root_pipeline_init_trace',author='/root',scope=SCOPE,pipeline_source_sha256=root_peer['pipeline_source_sha256']).items():
+        typed(init[key],expected,'Root INIT nominal')
+    need(type(init['pid']) is int and init['pid'] > 0 and type(init['nonce']) is str and re.fullmatch('[0-9a-f]{32}',init['nonce']),'actual Root PID/nonce domains')
+    need(moment(lease_value['created_utc'],7) <= moment(init['created_utc'],7) <= now_ticks(),'Root INIT chronology inside lease')
+    plan = record(paths['metadata_plan'],selection['metadata_plan_sha256'])
+    m3_binding = record(paths['metadata_source_binding'],selection['metadata_source_binding_sha256'])
+    m3_bound_peer = record(paths['metadata_bound_review'],selection['metadata_bound_review_sha256'])
+    phase_binding = record(paths['phase_binding'],selection['phase_source_binding_sha256'])
+    phase_peer = record(paths['phase_peer'],selection['phase_source_review_sha256'])
+    checker_config = record(paths['checker_binding'],selection['checker_binding_sha256'],131072)
+    validate_metadata(table,selection,sources,lease_value,config,root_peer,plan,m3_binding,m3_bound_peer,phase_binding,phase_peer,checker_config)
+    missing = capture_absent()
+    bindings,protocol,composer = construct(table,selection,sources,lease_value,config,root_peer,trust,checker_config,phase_binding,phase_peer,m3_binding,m3_bound_peer,plan)
+    utility_bytes = bind(sources['utility'],dict(SOURCE_BINDINGS=bindings,SOURCE_PROTOCOL=protocol),dict(SOURCE_BINDINGS=None,SOURCE_PROTOCOL=None))
+    composer_bytes = bind(sources['composer'],dict(FRESH_SOURCE_MODEL=composer),dict(FRESH_SOURCE_MODEL=None))
+    # Actual complete bound byte count, not an estimated model lower bound.
+    need(len(utility_bytes)<=131072 and len(composer_bytes)<=131072,'unchanged U/composer131072 caps before any write')
+    outputs = [(OWN/'UTILITY_SOURCE_BINDINGS_001.json',wire(bindings),131072),
+               (OWN/'UTILITY_SOURCE_PROTOCOL_001.json',wire(protocol),131072),
+               (OWN/'COMPOSER_FRESH_SOURCE_MODEL_001.json',wire(composer),131072),
+               (U/'review_guard006_actual_records_001.BOUND.py',utility_bytes,131072),
+               (U/'compose-root-review-packet-006.BOUND.py',composer_bytes,131072)]
+    for path,data,cap in outputs:
+        need(len(data)<=cap,'all source model outputs fit before first write')
+        absent(path)
+        absent(path.with_name(path.name+'.staging'))
+    absent(OWN/'ACTUAL_SOURCE_POOL_PROJECTION_001.json')
+    for name,facts in list(OBSERVATIONS.items()):
+        read(Path(name),facts['sha256'],facts['maximum'])
+    lease(selection)
+    capture_absent()
+    # Predict byte pins before the first write. This projection is source data,
+    # not an acceptance receipt or OS/tool attestation. Own outputs do not feed
+    # their metadata back into this projection and create a hash cycle.
+    predicted = [dict(path=str(path),sha256=digest(data),bytes=len(data)) for path,data,cap in outputs]
+    projection = dict(schema_version=1,record_type='root_guard006_selected_source_pool_projection',author='/root',scope=SCOPE,
+        created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),owner_master_sha256=MASTER_SHA,
+        execution_lease_sha256=LEASE_SHA,root_trust_selection_sha256=selection['root_trust_selection_sha256'],
+        source_selection_sha256=args.expected_selection_sha256,constructor_source_sha256=args.expected_self_sha256,
+        constructor_source_peer_sha256=args.expected_source_review_sha256,selected_inputs=list(OBSERVATIONS.values()),
+        published_source_models=predicted,finite_before_capture_absences=missing,
+        actual_context=None,actual_results=None,independent_bound_model_peer=None,Root_GO=None,
+        helper_mains_executed=False,target_execution=False,operational_authority_granted=False)
+    data = wire(projection)
+    need(len(data)<=131072,'finite compact Source pool projection')
+    absent(OWN/'ACTUAL_SOURCE_POOL_PROJECTION_001.json.staging')
+    published = [once(path,content,cap) for path,content,cap in outputs]
+    typed(published,predicted,'every emitted Source model exact predicted byte pin')
+    result = once(OWN/'ACTUAL_SOURCE_POOL_PROJECTION_001.json',data,131072)
+    print(json.dumps(dict(source_outputs=published,source_pool_projection=result,
+                          bound_source_bytes=dict(utility=len(utility_bytes),composer=len(composer_bytes)),
+                          actual_peer20=None,Root_GO=None,target_execution=False,operational_authority_granted=False),sort_keys=True))
+
+
+def validate_metadata(table,selection,sources,lease_value,config,root_peer,plan,binding,bound_peer,phase_binding,phase_peer,checker):
+    """Complete source composition guards only; no source-approved code is called."""
+    exact(plan,('schema_version','source_author','scope','bindings','role_selections','lease_selection','actual_binding'),'actual metadata plan7')
+    typed(plan['schema_version'],1,'plan schema')
+    typed(plan['source_author'],'/root/renewal_runtime_inventory','plan author')
+    typed(plan['scope'],SCOPE,'plan scope')
+    typed(plan['actual_binding'],None,'plan has no execution acceptance')
+    exact(binding,('schema_version','binder','template_sha256','actual_script_sha256','bindings','role_selections','exact_six_assignment_reversal','exact_function_ASTs','actual_before_authorization','actual_after_authorization','target_capture_executed'),'actual metadata source11')
+    for key,expected in dict(schema_version=1,binder='/root',template_sha256=digest(sources['metadata_capture_template']),
+        exact_six_assignment_reversal=True,exact_function_ASTs=True,actual_before_authorization=None,actual_after_authorization=None,target_capture_executed=False).items():
+        typed(binding[key],expected,'actual metadata Source binding nominal')
+    nine = clone(plan['bindings'])
+    exact(nine,table['metadata9_keys'],'exact metadata9 domains')
+    nine['preparer_static_review_sha256'] = table['immutable']['metadata_peer']['sha256']
+    expected_nine = {key:table['immutable'][source_key]['sha256'] for key,source_key in (
+        ('guard_profile_sha256','profile'),('source_projection_sha256','projection'),('raw_source_sha256','raw_source'),
+        ('source_manifest_sha256','source_manifest'),('source_peer_sha256','capsule'),
+        ('guard_harness_static_review_sha256','static_review'),('preparer_static_review_sha256','metadata_peer'))}
+    expected_nine.update(coordination_peer_reply_sha256=config['coordination_peer_reply']['sha256'],
+                         coordination_root_response_sha256=config['coordination_root_response']['sha256'])
+    typed(nine,expected_nine,'metadata9 exact selected current Source roles')
+    typed(plan['lease_selection'],dict(path=str(WORK/'EXECUTION_LEASE_GG6_M3_001.json'),sha256=LEASE_SHA,
+        lease_end_utc=lease_value['lease_end_utc']),'plan genuine finite lease selection3')
+    exact(plan['role_selections'],('UNIT_TERMINAL_RELATIVE','COORDINATION_PEER_REPLY_RELATIVE','COORDINATION_ROOT_RESPONSE_RELATIVE'),'three exact metadata role selections')
+    for key,wanted in (
+        ('UNIT_TERMINAL_RELATIVE',G/'ROOT_LAUNCH_TERMINAL_006.json'),
+        ('COORDINATION_PEER_REPLY_RELATIVE',confined(config['coordination_peer_reply']['path'])),
+        ('COORDINATION_ROOT_RESPONSE_RELATIVE',confined(config['coordination_root_response']['path']))):
+        relative=plan['role_selections'][key]
+        need(type(relative) is str and 0<len(relative)<=399 and '\\' not in relative
+             and not Path(relative).is_absolute() and all(part not in ('','.','..') and ':' not in part for part in relative.split('/')),'plain confined metadata relative role')
+        base = G if key == 'UNIT_TERMINAL_RELATIVE' else WORK
+        typed(str(base/Path(relative)),str(wanted),'actual metadata role path agrees with Root config')
+    for value in nine.values():
+        pin(value)
+    typed(binding['bindings'],nine,'all actual metadata source pins')
+    typed(binding['role_selections'],plan['role_selections'],'actual selected three role names')
+    replacements = dict(plan['role_selections'],BINDINGS=nine,OWNER_SHA=LEASE_SHA,OWNER_END=lease_value['lease_end_utc'])
+    actual_source = read(M/'capture-root-metadata003.BOUND.py',binding['actual_script_sha256'],65536)
+    authenticate_bound_literals(actual_source,sources['metadata_capture_template'],replacements,
+        dict({key:None for key in plan['role_selections']},BINDINGS={key:None for key in nine},OWNER_SHA=None,OWNER_END=None))
+    exact(bound_peer,table['bound9_keys'],'actual different metadata bound peer9')
+    expected_peer = dict(actual_script_sha256=binding['actual_script_sha256'],metadata_only=True,phase_set=['before','after'],
+        record_type='guard006_root_metadata_bound_source_review',reviewer='/root/owner_docs_review',schema_version=1,
+        source_author='/root/renewal_runtime_inventory',source_bindings=nine,verdict='PASS_STATIC_BOUND_METADATA_ONLY')
+    typed(bound_peer,expected_peer,'authentic metadata bound Source peer')
+    exact(phase_binding,('schema_version','binder','sources','actual_script_sha256','bound_review_sha256','actual_authorization','prepared_source_actions_executed'),'phase binding7')
+    for key,expected in dict(schema_version=1,binder='/root',actual_script_sha256=binding['actual_script_sha256'],
+                            bound_review_sha256=selection['metadata_bound_review_sha256'],actual_authorization=None,prepared_source_actions_executed=False).items():
+        typed(phase_binding[key],expected,'phase Source nominal')
+    need(type(phase_binding['sources']) is list and len(phase_binding['sources'])==4,'complete four phase rows')
+    exact(phase_peer,table['phase20_keys'],'actual different phase Source peer20')
+    for key,expected in dict(schema_version=1,record_type='guard006_root_metadata_phase_ps_source_binding_review',reviewer='/root/owner_docs_review',
+                            source_author='/root/renewal_runtime_inventory',metadata_only=True,actual_authorization_or_entry_approved=False,
+                            exact_two_literal_reversal_all_four=True,phase_source_binding_sha256=selection['phase_source_binding_sha256']).items():
+        typed(phase_peer[key],expected,'different phase Source acceptance')
+    for key,expected in dict(verdict='PASS_STATIC_ACTUAL_PHASE_PS_SOURCE_BINDINGS_ONLY',reviewer_agent='/root/owner_docs_review',
+        binding_author='/root',PowerShell_parser_errors=0,bound_metadata_source_sha256=binding['actual_script_sha256'],
+        bound_source_review_sha256=selection['metadata_bound_review_sha256']).items():
+        typed(phase_peer[key],expected,'complete phase Source nominal')
+    need(type(phase_peer['phase_sources']) is list and len(phase_peer['phase_sources'])==4,'complete phase peer four rows')
+    for actual,role in zip(phase_binding['sources'],PHASE4):
+        exact(actual,('path','sha256','template_sha256','exact_two_literal_reversal'),'phase row4')
+        wanted = table['phase_templates'][role]
+        typed(actual['template_sha256'],wanted['sha256'],'selected phase template pin')
+        typed(actual['exact_two_literal_reversal'],True,'phase exact source reversal')
+        content = read(confined(actual['path']),actual['sha256'],65536)
+        peer_row = phase_peer['phase_sources'][PHASE4.index(role)]
+        typed(peer_row,dict(path=actual['path'],sha256=actual['sha256'],template_sha256=actual['template_sha256'],
+            bytes=len(content),exact_two_literal_reversal=True,PowerShell_parser_errors=0),'phase closed6 exact peer row')
+        peer_field = {'before_writer':'writer_sha256','before_parent':'supervisor_sha256','after_writer':'after_writer_sha256','after_parent':'after_supervisor_sha256'}[role]
+        typed(phase_peer[peer_field],actual['sha256'],'each explicit phase peer source digest')
+        text = content.decode('utf-8',errors='strict')
+        for name,expected in (('BoundScriptSha256',binding['actual_script_sha256']),('BoundReviewSha256',selection['metadata_bound_review_sha256'])):
+            pattern = r'(?m)^\$'+name+r" = '[0-9a-f]{64}'(\r?)$"
+            matches = list(re.finditer(pattern,text))
+            need(len(matches)==1 and matches[0].group().rstrip('\r')=='$'+name+" = '"+expected+"'",'exact selected PS two-literal binding')
+            text = re.sub(pattern,lambda match,n=name:'$'+n+' = $null'+match.group(1),text)
+        typed(text.encode('utf-8'),read(confined(wanted['path']),wanted['sha256'],65536),'all four PS source byte reversal')
+    exact(checker,table['checker_config18_keys'],'actual checker config18')
+    for key,expected in dict(schema_version=1,record_type='metadata3_actual_checker_binding',binder='/root',scope=SCOPE,
+        checker_template_sha256=table['immutable']['checker']['sha256'],checker_source_peer_sha256=selection['checker_source_peer_sha256'],
+        owner_lease_sha256=LEASE_SHA,owner_lease_end_utc=lease_value['lease_end_utc'],actual_actions_executed=False,maximum_wait_seconds=3600).items():
+        typed(checker[key],expected,'different checker selected Source binding')
+    typed(checker['metadata_bindings'],nine,'checker same authentic complete metadata9')
+    closure = {
+        'metadata_script':dict(path=str(M/'capture-root-metadata003.BOUND.py'),sha256=binding['actual_script_sha256']),
+        'metadata_source_binding':dict(path=str(M/'ACTUAL_SOURCE_BINDING_003.json'),sha256=selection['metadata_source_binding_sha256']),
+        'metadata_bound_review':dict(path=str(M/'INDEPENDENT_BOUND_METADATA_REVIEW_003.json'),sha256=selection['metadata_bound_review_sha256']),
+        'phase_source_binding':dict(path=str(M/'PHASE_PS_SOURCE_BINDING_003.json'),sha256=selection['phase_source_binding_sha256']),
+        'phase_source_review':dict(path=str(M/'INDEPENDENT_ROOT_METADATA_PHASE_PS_BINDING_REVIEW_003.json'),sha256=selection['phase_source_review_sha256']),
+    }
+    typed(checker['metadata_sources'],closure,'checker complete exact sourceClosure5')
+    exact(checker['phase_sources'],PHASE4,'checker complete allfourPS')
+    for actual,role in zip(phase_binding['sources'],PHASE4):
+        typed(checker['phase_sources'][role],dict(path=actual['path'],sha256=actual['sha256']),'checker same actual phase Source')
+    typed(checker['root_pipeline_source'],dict(path=str(P/'RUN_ROOT_METADATA_PIPELINE_006.BOUND.ps1'),
+        sha256=root_peer['pipeline_source_sha256'],source_peer_path=str(P.parent/'root-pipeline-independent-review001/SOURCE_REVIEW_ROOT_PIPELINE_001.json'),
+        source_peer_sha256=selection['pipeline_source_peer_sha256']),'checker same Root source+peer')
+    driver_values = dict(SOURCE_CAPSULE_PEER_SHA256=table['immutable']['capsule_peer']['sha256'],
+        HARNESS_STATIC_PEER_SHA256=table['immutable']['static_review']['sha256'],OWNER_SHA256=LEASE_SHA)
+    for role,template_key,values in (('driver','driver_template',driver_values),('observer','observer_template',
+        dict(HARNESS_STATIC_PEER_SHA256=table['immutable']['static_review']['sha256']))):
+        chosen = config['guard_sources'][role]
+        actual = read(confined(chosen['path']),chosen['sha256'],131072)
+        typed(actual,bind(sources[template_key],values,{key:None for key in values}),'exact reviewed guard source literal ABI')
+
+
+if __name__ == '__main__':
+    main()

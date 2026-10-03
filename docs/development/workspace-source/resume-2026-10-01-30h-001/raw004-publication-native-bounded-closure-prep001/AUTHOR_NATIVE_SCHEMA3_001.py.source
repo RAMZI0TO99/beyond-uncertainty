@@ -1,0 +1,167 @@
+"""Own AST/source rewrite. No target definitions are invoked."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+PREP = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\raw004-publication-native-bounded-closure-prep001')
+PATH = PREP / 'front/native_successor_front_common_013_001.py.template'
+source = PATH.read_text(encoding='utf8')
+with (PREP / 'NATIVE_BEFORE_SCHEMA3_001.bytes').open('xb') as stream:
+    stream.write(source.encode())
+policy = json.loads((PREP / 'ALL31_NORMALIZED_POLICY_001.json').read_bytes())
+facts = policy['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS']
+old_inputs = json.loads(next(n.value.args[0].value for n in ast.parse(source).body
+                            if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name)
+                            and n.targets[0].id == 'NATIVE_MIDDLE_INPUTS'))
+inputs = {}
+for role in old_inputs:
+    rows = []
+    for index, fact in enumerate(facts):
+        if role == 'middle_commit_object':
+            limits = policy['_SUCCESSOR_COMPACT_PROOF_LIMITS'][index]['git_commit_object_base64']
+            path, digest, size = None, fact['git_commit_object_sha256'], limits[1]
+        elif role == 'middle_release':
+            path = 'resume-2026-09-28-001/controller-release-' + ('008-proposal017.json' if index == 0 else '009-proposal018.json')
+            digest, size = fact['release_record_sha256'], policy['_SUCCESSOR_COMPACT_PROOF_LIMITS'][index]['release_record_base64'][1]
+        else:
+            path = 'resume-2026-09-28-001/d175-doc-proposal-' + ('017' if index == 0 else '018') + '/candidate-after.json'
+            digest, size = fact['candidate_manifest_sha256'], 31347
+        rows.append(dict(path=path, sha256=digest, size=size, retained_name=f'middle{index + 1}_{role}.bytes', commit=fact['controller_commit']))
+    inputs[role] = rows
+
+def replacement(name, text):
+    global source
+    node = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == name)
+    lines = source.splitlines(keepends=True)
+    source = ''.join(lines[:node.lineno - 1]) + text.strip() + '\n' + ''.join(lines[node.end_lineno:])
+
+def assignment(name, text):
+    global source
+    node = next(n for n in ast.parse(source).body if isinstance(n, ast.Assign)
+                and isinstance(n.targets[0], ast.Name) and n.targets[0].id == name)
+    lines = source.splitlines(keepends=True)
+    source = ''.join(lines[:node.lineno - 1]) + text + '\n' + ''.join(lines[node.end_lineno:])
+
+def function(name):
+    return ast.get_source_segment(source, next(n for n in ast.parse(source).body
+                                              if isinstance(n, ast.FunctionDef) and n.name == name))
+
+assignment('NATIVE_MIDDLE_INPUTS', 'NATIVE_MIDDLE_INPUTS=json.loads(' + repr(json.dumps(inputs,sort_keys=True,separators=(',',':'))) + ')')
+text = function('checked_bindings')
+text = text.replace("NATIVE_SCHEMA2_POLICY['SUCCESSOR_INTERMEDIATE_FACTS']['controller_commit']", repr(facts[0]['controller_commit']) + ',' + repr(facts[1]['controller_commit']))
+replacement('checked_bindings', text)
+text = function('release_and_sources').replace('receipt_only:bool=False)->', 'receipt_only:bool=False,policy:dict)->')
+text = text.replace('NATIVE_SCHEMA2_POLICY', 'policy')
+text = text.replace("policy['SUCCESSOR_INTERMEDIATE_FACTS']['controller_commit']", "policy['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS'][1]['controller_commit']")
+replacement('release_and_sources', text)
+text = function('boundary')
+text = text.replace(' release,rows=release_and_sources(bindings,witness,receipt_only=receipt_only)', ' policy,retained_policy=_native_policy(bindings,witness)\n release,rows=release_and_sources(bindings,witness,receipt_only=receipt_only,policy=policy)')
+text = text.replace('  admission_files(bindings,rows,witness)', '  admission_files(bindings,rows,witness,policy=policy)')
+text = text.replace(' repeat(witness)\n owner(witness,reserve)', " repeat(witness)\n require(_native_policy(bindings,witness)[1]==retained_policy,'all31 policy changed across native boundary')\n owner(witness,reserve)")
+replacement('boundary', text)
+text = function('admission_files').replace('])->dict[str,bytes]:', '],*,policy:dict)->dict[str,bytes]:')
+text = text.replace('_native_schema2_shape(doc,inputs,rows,bindings,witness)', '_native_schema2_shape(doc,inputs,rows,bindings,witness,policy=policy)')
+text = text.replace('_native_external_record(proof,doc,inputs,shape,bindings,witness)', '_native_external_record(proof,doc,inputs,shape,bindings,witness,policy=policy)')
+replacement('admission_files', text)
+replacement('_native_attestation_limit', '''
+def _native_attestation_limit(bindings=None,witness=None):
+ module=_native_raw_module(bindings,witness)
+ _native_policy_snapshot(module)
+ bound=module.__dict__.get('SUCCESSOR_ADMISSION_MAX_BYTES')
+ require(type(bound)is int and bound==395799,'fresh raw004 attestation ceiling differs')
+ return(module,bound)
+''')
+text = function('_native_committed_rows').replace('def _native_committed_rows(commit):', 'def _native_committed_rows(commit,*,policy):').replace('NATIVE_SCHEMA2_POLICY', 'policy')
+replacement('_native_committed_rows', text)
+text = function('_native_middle')
+text = text.replace('def _native_middle(proof:dict,old_rows:list[dict],fresh_rows:list[dict],*,policy,expected_paths):', 'def _native_middle(entry:dict,old_rows:list[dict],fresh_rows:list[dict],*,policy,expected_paths,index):')
+text = text.replace(" middle=policy['SUCCESSOR_INTERMEDIATE_FACTS']", " require(type(index)is int and index in(0,1),'compiled middle role index differs')\n middle=policy['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS'][index]\n _native_exact(entry,policy['_SUCCESSOR_COMPACT_ENTRY_KEYS'],'schema3 middle entry')\n require(canonical(entry['identities'])==canonical(middle),'schema3 middle identities differ')\n proof=entry['proof']")
+for old,new in [('_SUCCESSOR_INTERMEDIATE_PROOF_KEYS','_SUCCESSOR_COMPACT_PROOF_KEYS'),('_SUCCESSOR_INTERMEDIATE_PROOF_MAX_BYTES','_SUCCESSOR_COMPACT_PROOF_MAX_BYTES'),('_SUCCESSOR_INTERMEDIATE_PROOF_LIMITS','_SUCCESSOR_COMPACT_PROOF_LIMITS'),('_SUCCESSOR_INTERMEDIATE_AFTERIMAGES','_SUCCESSOR_COMPACT_AFTERIMAGES'),('_SUCCESSOR_INTERMEDIATE_RELEASE_KEYS','_SUCCESSOR_COMPACT_RELEASE_KEYS')]:
+    text = text.replace("policy['"+old+"']", "policy['"+new+"']" + ('[index]' if new not in ('_SUCCESSOR_COMPACT_PROOF_KEYS',) else ''))
+text = text.replace("release['ParentCommit']==policy['SUCCESSOR_PREDECESSOR_FACTS']['controller_commit']", "release['ParentCommit']==middle['parent_commit']")
+text = text.replace(" _native_grouped_qa(decoded['candidate_manifest_base64'],rows,expected_paths=expected_paths)", " require(_native_compact_qa(rows,policy,middle['candidate_manifest_sha256'])==_native_compact_qa(fresh_rows,policy,middle['candidate_manifest_sha256']),'independent grouped QA differs')")
+text = text.replace("exact36 middle release", "exact36/37 middle release")
+replacement('_native_middle', text)
+
+replacement('_native_schema2_shape', '''
+def _native_schema2_shape(document,inputs,rows,bindings,witness,*,policy):
+ """Schema3 only; the inherited callable name is retained for caller closure."""
+ _native_exact(document,policy['_SUCCESSOR_ATTESTATION_SCHEMA3_KEYS'],'native schema3 attestation')
+ require(type(document['successor_admission_schema_version'])is int and document['successor_admission_schema_version']==3 and document['record_type']=='week8_d176_successor_admission'and document['decision_id']=='D-161'and document['recovery_id']=='week8-exp2a-d161-2026-09-02-attempt-001','native schema3 identity differs')
+ for flag in('scientific_outcomes_consulted','scientific_values_emitted','production_mutation_performed','automatic_retry_allowed'):
+  require(document[flag]is False,'native schema3 scope differs')
+ require(type(document['intermediate_chain'])is list and len(document['intermediate_chain'])==2,'schema3 exactly two ordered middles required')
+ old=parse(read(FRONT/'predecessor-tracked-rows-001.json',PROGRAMMATIC_FACTS['predecessor_rows_sha256'],witness))
+ paths=policy['_SUCCESSOR_COMPACT_QA_PATHS']
+ _native_grouped_qa(inputs['predecessor-candidate-manifest.json'],old,paths)
+ commits=[policy['SUCCESSOR_PREDECESSOR_FACTS']['controller_commit']]+[fact['controller_commit']for fact in policy['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS']]+[bindings['controller_commit']]
+ require(len(set(commits))==4,'schema3 distinct direct lineage commits required')
+ tables=[_native_committed_rows(commit,policy=policy)for commit in commits]
+ require(tables[0]==old and tables[3]==rows,'native independent old/final complete742 differs')
+ objects=[]
+ middle_hashes={role:[]for role in NATIVE_MIDDLE_INPUTS}
+ for index,fact in enumerate(policy['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS']):
+  middle_rows=_native_middle(document['intermediate_chain'][index],tables[index],tables[index+1],policy=policy,expected_paths=paths,index=index)
+  require(middle_rows==tables[index+1],'schema3 independent middle742 differs')
+  values={}
+  for role,pair in NATIVE_MIDDLE_INPUTS.items():
+   descriptor=pair[index]
+   if descriptor['path']is None:
+    require(git(['cat-file','-s',fact['controller_commit']],REPO)==str(descriptor['size']).encode('ascii')+b'\\n','typed middle pre-read size differs')
+    data=git(['cat-file','commit',fact['controller_commit']],REPO)
+   else:
+    data=read(PROJECT/descriptor['path'],descriptor['sha256'],witness,maximum=descriptor['size'])
+   require(len(data)==descriptor['size']and sha(data)==descriptor['sha256'],'independent compiled middle acquisition differs')
+   values[role]=data
+   middle_hashes[role].append(data)
+  _native_commit_object(values['middle_commit_object'],commit=fact['controller_commit'],parent=commits[index],tree=fact['git_tree_sha1'])
+  require(values['middle_manifest']==_native_compact_qa(middle_rows,policy,fact['candidate_manifest_sha256']),'independent original middle QA bytes differ')
+  proof=document['intermediate_chain'][index]['proof']
+  require(base64.b64encode(values['middle_release']).decode('ascii')==proof['release_record_base64']and base64.b64encode(values['middle_commit_object']).decode('ascii')==proof['git_commit_object_base64'],'independent middle proof bytes differ')
+  objects.append(values['middle_commit_object'])
+ changes=[]
+ for table in tables[:3]:
+  left={row['path']:row for row in table}
+  final={row['path']:row for row in rows}
+  require(set(left)==set(final)and all(left[path]['mode']==final[path]['mode']for path in left),'schema3 final changes path/mode scope')
+  changed=sorted(path for path in left if left[path]!=final[path])
+  require(len(changed)==25 and set(changed)==set(policy['SUCCESSOR_ALLOWED_CHANGED_PATHS']),'schema3 all three final finite25 edges differ')
+  changes.append(changed)
+ _native_grouped_qa(inputs['successor-candidate-manifest.json'],rows,paths)
+ require(inputs['predecessor-candidate-manifest.json']==_native_compact_qa(old,policy,policy['SUCCESSOR_PREDECESSOR_FACTS']['predecessor_candidate_manifest_sha256'])and inputs['successor-candidate-manifest.json']==_native_compact_qa(rows,policy,bindings['candidate_manifest_sha256']),'schema3 canonical grouped263 old/final QA differs')
+ final_object=git(['cat-file','commit',commits[3]],REPO)
+ _native_commit_object(final_object,commit=commits[3],parent=commits[2])
+ require([_native_committed_rows(commit,policy=policy)for commit in commits]==tables and all(git(['cat-file','commit',commits[index+1]],REPO)==body for index,body in enumerate(objects))and git(['cat-file','commit',commits[3]],REPO)==final_object,'native four complete742/typed objects drifted')
+ successor={'controller_commit':bindings['controller_commit'],**_native_row_identity(rows),'release_record_sha256':bindings['release_record_sha256'],'candidate_manifest_sha256':bindings['candidate_manifest_sha256']}
+ require(canonical(document['predecessor'])==canonical(policy['SUCCESSOR_PREDECESSOR_FACTS'])and document['predecessor_files']==old and document['successor_files']==rows and document['successor']==successor and document['changed_paths']==changes[0]and document['successor_parent_changed_paths']==changes[2],'native schema3 complete lineage differs')
+ return{'changed_paths':changes[0],'successor_parent_changed_paths':changes[2],'successor':successor,'intermediate':policy['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS'],'middle_full742_identity':[_native_row_identity(table)for table in tables[1:3]],'intermediate_proof_sha256':sha(canonical([entry['proof']for entry in document['intermediate_chain']])),'final_commit_object_sha256':sha(final_object),'middle_input_hashes':{role:_native_middle_role_hash(role,values)for role,values in middle_hashes.items()}}
+''')
+text = function('_native_external_record').replace('def _native_external_record(document,attestation,inputs,shape,bindings,witness):', 'def _native_external_record(document,attestation,inputs,shape,bindings,witness,*,policy):')
+text = text.replace("document['attestation_schema_version']==2", "document['attestation_schema_version']==3")
+text = text.replace(" require(document['intermediate']==NATIVE_SCHEMA2_POLICY['SUCCESSOR_INTERMEDIATE_FACTS'],'native external verifier middle identity differs')", " require(canonical(document['intermediate'])==canonical(policy['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS']),'native external verifier exact two middle identities differ')")
+text = text.replace(' for key,expected in shape.items():', " for key,expected in shape.items():\n  if key=='middle_input_hashes':\n   continue")
+text = text.replace("expected_hashes.update({name:facts['sha256']for name,facts in NATIVE_MIDDLE_INPUTS.items()})", "expected_hashes.update(shape['middle_input_hashes'])")
+replacement('_native_external_record', text)
+
+source += '''
+def _native_compact_qa(rows,policy,pin):
+ table={row['path']:row for row in rows}
+ paths=policy['_SUCCESSOR_COMPACT_QA_PATHS']
+ require(type(paths)is list and len(paths)==263 and len(set(paths))==263 and all(type(path)is str and path.isascii()and path in table for path in paths),'schema3 grouped263 path domain')
+ data=(json.dumps([[path,table[path]['sha256']]for path in paths],indent=2,ensure_ascii=True,allow_nan=False)+'\\n').encode('ascii')
+ require(len(data)==31347 and sha(data)==pin,'schema3 grouped263 canonical byte pin differs')
+ return data
+def _native_middle_role_hash(role,values):
+ require(type(role)is str and role in NATIVE_MIDDLE_INPUTS and type(values)is list and len(values)==2,'compiled two-middle role hash domain')
+ descriptors=[]
+ for value,fact in zip(values,NATIVE_MIDDLE_INPUTS[role],strict=True):
+  require(type(value)is bytes and len(value)==fact['size']and sha(value)==fact['sha256'],'two-middle independently acquired bytes differ')
+  descriptors.append(('git_commit'if fact['path']is None else'file',fact['commit']if fact['path']is None else fact['path'],fact['size'],fact['sha256']))
+ return sha(canonical(['week8_schema3_fixed_middle_role_v1',role,descriptors]))
+'''
+ast.parse(source)
+PATH.write_text(source,encoding='utf8',newline='\n')
+with (PREP / 'COMPILED_TWO_MIDDLE_INPUTS_001.json').open('xb') as stream:
+    stream.write((json.dumps(inputs,indent=2,sort_keys=True)+'\n').encode())
+print(json.dumps({'native_schema3_draft_bytes':len(source.encode()),'target_code_executed':False,'actual_bounds_or_runtime':None}))

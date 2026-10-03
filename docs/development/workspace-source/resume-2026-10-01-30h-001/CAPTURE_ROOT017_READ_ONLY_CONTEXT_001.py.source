@@ -1,0 +1,137 @@
+"""One-use read-only Git/file metadata capture; no project definitions execute."""
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import stat
+import subprocess
+
+ROOT = Path('D:/Aenv/pro2')
+BASE = ROOT / 'resume-2026-10-01-30h-001'
+LIVE = ROOT / 'week8-recovery-controller-worktree'
+GIT = ROOT / 'runtimes/git/mingw64/bin/git.exe'
+GIT_SHA = 'c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9'
+OUT = BASE / 'ROOT017_READ_ONLY_CONTEXT_OBSERVATION_001.json'
+GUARD = BASE / 'ROOT017_OPAQUE_CURRENT742_GUARD_001.json'
+sha = lambda b: hashlib.sha256(b).hexdigest()
+enc = lambda v: (json.dumps(v, indent=2, sort_keys=True, ensure_ascii=True,
+                            allow_nan=False) + '\n').encode('ascii')
+
+def ident(s):
+    return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns,
+            s.st_mode, s.st_nlink, getattr(s, 'st_file_attributes', 0),
+            getattr(s, 'st_birthtime_ns', None)]
+
+def plain(p):
+    for parent in reversed(p.absolute().parents):
+        s = parent.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode)
+        assert not getattr(s, 'st_file_attributes', 0) & 0x400
+    before = p.lstat()
+    assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+    assert not getattr(before, 'st_file_attributes', 0) & 0x400
+    b = p.read_bytes()
+    assert ident(before) == ident(p.lstat()) and len(b) == before.st_size
+    return b, ident(before)
+
+def strict(b):
+    def pairs(items):
+        result = {}
+        for k, v in items:
+            assert k not in result
+            result[k] = v
+        return result
+    return json.loads(b.decode('utf-8'), object_pairs_hook=pairs,
+                      parse_constant=lambda v: (_ for _ in ()).throw(ValueError(v)))
+
+assert not OUT.exists() and not GUARD.exists()
+assert sha(plain(GIT)[0]) == GIT_SHA
+env = {k: v for k, v in os.environ.items()
+       if not k.upper().startswith(('GIT_', 'PYTHON'))}
+env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull,
+           GIT_CONFIG_NOSYSTEM='1', GIT_TERMINAL_PROMPT='0', LC_ALL='C')
+controls = ['--no-pager', '--no-optional-locks', '-c', 'core.fsmonitor=false',
+            '-c', 'core.untrackedCache=false', '-c', 'core.hooksPath=NUL',
+            '-c', 'core.quotepath=false', '-c', 'safe.directory=' + LIVE.as_posix(),
+            '-C', str(LIVE)]
+
+def git(*args):
+    assert sha(plain(GIT)[0]) == GIT_SHA
+    r = subprocess.run([str(GIT), *controls, *args], env=env,
+                       stdin=subprocess.DEVNULL, capture_output=True,
+                       check=True, timeout=30)
+    assert not r.stderr and sha(plain(GIT)[0]) == GIT_SHA
+    return r.stdout
+
+started = datetime.datetime.now(datetime.timezone.utc).isoformat()
+head = git('rev-parse', 'HEAD').decode('ascii').strip()
+log = git('log', '-3', '--format=%H %P %s').decode('utf-8').splitlines()
+paths_blob = git('ls-files', '-z')
+paths = [p.decode('utf-8') for p in paths_blob.split(b'\0') if p]
+assert len(paths) == len(set(p.casefold() for p in paths)) == 742
+rows = []
+for rel in paths:
+    assert rel and '\\' not in rel and not rel.startswith('/')
+    assert all(p not in ('', '.', '..') for p in rel.split('/'))
+    b, s = plain(LIVE / rel)
+    rows.append({'path': rel, 'sha256': sha(b), 'size': len(b), 'stat_raw9': s})
+status = git('status', '--porcelain=v1', '--untracked-files=normal').decode('utf-8').splitlines()
+names = ['resume-2026-09-28-001/controller-release-009-proposal018.json',
+         'resume-2026-09-28-001/controller-release-008-proposal017.json',
+         'resume-2026-09-28-001/controller-release-007-proposal016.json',
+         'resume-2026-09-28-001/full-gate-008/release-verification.json',
+         'resume-2026-09-28-001/SESSION.md']
+inputs = []
+for name in names:
+    b, s = plain(ROOT / name)
+    item = {'path': name, 'sha256': sha(b), 'bytes': len(b), 'stat_raw9': s}
+    if name.endswith('.json'):
+        data = strict(b)
+        item['top_level_keys'] = sorted(data)
+        if 'ControllerCommit' in data:
+            item['release_metadata'] = {k: data[k] for k in (
+                'ControllerCommit', 'ParentCommit', 'Branch', 'CommittedUtc',
+                'FileCount', 'FinalCandidateManifestSha256', 'SourceClean',
+                'RemotePushPerformed', 'ProductionInvoked')}
+        else:
+            item['claimed_verification_summary'] = {k: data[k] for k in (
+                'complete', 'collected_nodes', 'passed', 'skipped',
+                'additional_reported_subtests', 'failures', 'errors')}
+            item['actual_partition_rows_in_record'] = len(data['partitions'])
+    inputs.append(item)
+for row in rows:
+    b, s = plain(LIVE / row['path'])
+    assert sha(b) == row['sha256'] and s == row['stat_raw9']
+for row in inputs:
+    b, s = plain(ROOT / row['path'])
+    assert sha(b) == row['sha256'] and s == row['stat_raw9']
+assert git('ls-files', '-z') == paths_blob
+assert git('rev-parse', 'HEAD').decode('ascii').strip() == head
+assert git('status', '--porcelain=v1', '--untracked-files=normal').decode('utf-8').splitlines() == status
+stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+guard = {'schema_version': 1, 'purpose': 'OPAQUE_CURRENT_BYTES_GUARD_NOT_POLICY_AUTHORITY',
+         'captured_utc': stamp, 'root': str(LIVE), 'head': head, 'rows': rows}
+guard_bytes = enc(guard)
+record = {'schema_version': 1, 'started_utc': started, 'captured_utc': stamp,
+          'scope': 'READ_ONLY_METADATA_NOT_RELEASE_CHAIN_OR_FULLGATE_ACCEPTANCE',
+          'head': head, 'three_commit_log': log, 'porcelain_untracked_normal': status,
+          'tracked_files': len(rows), 'all742_paired_bytes_metadata_matched': True,
+          'source_test_rows': [r for r in rows if r['path'] in (
+              'src/bu/experiments/week8_exp2a_recovery.py',
+              'tests/test_week8_exp2a_recovery.py')],
+          'input_records': inputs, 'git_sha256': GIT_SHA, 'git_controls': controls,
+          'guard': {'path': GUARD.relative_to(ROOT).as_posix(),
+                    'bytes': len(guard_bytes), 'sha256': sha(guard_bytes)},
+          'prior_unpinned_system_git_read_only_lookup_used': True,
+          'initial_wrong_system_git_path_failed_before_execution': True,
+          'sole_executor_ack_received': False, 'mutating_actions_performed': False,
+          'science_outcomes_interpreted': False, 'native_quiet_claimed': False}
+for p, b in ((GUARD, guard_bytes), (OUT, enc(record))):
+    with p.open('xb') as f:
+        f.write(b)
+        f.flush()
+        os.fsync(f.fileno())
+    print(json.dumps({'path': p.name, 'bytes': len(b), 'sha256': sha(b)}))
+print(json.dumps({'head': head, 'status': status, 'source_test_rows': record['source_test_rows'],
+                  'release009_key_count': len(inputs[0]['top_level_keys'])}))

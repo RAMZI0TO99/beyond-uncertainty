@@ -64,8 +64,8 @@ EXPLORATORY_STAGE = "pilot"
 #: across members; a repair needs none, because P§7.3 compares per-transition
 #: error before and after. This is not a tuning choice -- the frozen compute
 #: accounting is taken at one model per repaired arm, so running the registered
-#: K here would cost 8,360 repair fits against the 1,672 budgeted and push the
-#: design to 14,885 fits against P§14.2's ~8,700, i.e. 1.71x budget. Sol's
+#: K here multiplies repair cost fivefold and changes the intervention. D-154
+#: adds single-model extension arms; derive current totals from the plan. Sol's
 #: ruling on the recovered repair path: repaired arms must fail closed.
 REPAIR_ENSEMBLE_SIZE = 1
 
@@ -158,7 +158,7 @@ def evaluate_arm(
         raise ValueError(
             f"repaired arm {arm!r} was given ensemble_size={train.ensemble_size}; "
             f"P§14.2 budgets {REPAIR_ENSEMBLE_SIZE} model per repaired arm and the "
-            "8,197-fit total is taken at that rate. Running the registered ensemble "
+            "execution-plan total is taken at that rate. Running the registered ensemble "
             "here understates repair cost fivefold and evaluates a different "
             "intervention from the budgeted one. The baseline arm keeps its ensemble"
         )
@@ -369,7 +369,7 @@ def _validate_registered_consumption(baseline, repaired, failure_masks) -> None:
         raise ValueError(
             f"repaired evaluation(s) {bad_k} attest an ensemble size other than "
             f"{REPAIR_ENSEMBLE_SIZE}. P§14.2 budgets one model per repaired arm and "
-            "the 8,197-fit total is taken at that rate; an evaluation built from a "
+            "the execution-plan total is taken at that rate; an evaluation built from a "
             "five-member ensemble is a different intervention from the budgeted one. "
             "Checked here as well as at the fit, because an ArmEvaluation can be "
             "constructed without going through evaluate_arm"

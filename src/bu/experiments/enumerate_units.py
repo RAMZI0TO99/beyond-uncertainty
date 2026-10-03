@@ -448,15 +448,18 @@ def obligations(units: tuple[UnitSpec, ...] | None = None) -> tuple[Obligation, 
 def arms_for(unit: UnitSpec) -> tuple[str, ...]:
     """Which repair arms are meaningful for a unit.
 
-    Data repair applies to everything. Model repair is whichever mechanism the
-    condition actually restricted -- and the two are never combined in one
-    intervention (Plan §8.3).
+    Data repair applies to everything. Existing model repairs target the
+    restricted mechanism. D-154 adds one distinct fixed capacity extension for
+    full-observation width-256 conditions; it does not replace an old arm or
+    add a sweep level. Repairs are never combined in one intervention (Plan §8.3).
     """
     arms = ["baseline", "data_repair"]
     if unit.withheld_features:
         arms.append("feature_repair")
     if unit.hidden_size < max(K.HIDDEN_SIZES):
         arms.append("capacity_repair")
+    if not unit.withheld_features and unit.hidden_size == 256:
+        arms.append("capacity_extension_repair")
     return tuple(arms)
 
 
@@ -745,10 +748,18 @@ def summarise(units: tuple[UnitSpec, ...] | None = None) -> str:
     lines.append(f"  Plan §14.2 budgets:     ~8,700")
     delta = fits["total"] - 8700
     if delta > 0:
-        lines.append(f"  OVER by ~{delta:,}. The Week 5 MDE simulation sets the count")
-        lines.append("  actually run; this matrix is the pool, not the plan (§10.7, §14.3).")
+        lines.append(f"  OVER the approximate original fit allowance by ~{delta:,}.")
     else:
-        lines.append(f"  WITHIN budget, with ~{-delta:,} fits of headroom.")
+        lines.append(f"  Below the approximate original fit allowance by ~{-delta:,}.")
+    extension_fits = sum(
+        f.members for f in execution_plan(units)
+        if f.arm == "capacity_extension_repair"
+    )
+    lines.append(
+        f"  D-154 capacity extension: {extension_fits:,} single-model fits included."
+    )
+    lines.append("  Fit counts are not architecture-aware runtime estimates.")
+    lines.append("  Assignment coverage is not evidence of paired-label launch readiness.")
     return "\n".join(lines)
 
 

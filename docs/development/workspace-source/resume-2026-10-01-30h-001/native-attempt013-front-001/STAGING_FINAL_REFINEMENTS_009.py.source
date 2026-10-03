@@ -1,0 +1,184 @@
+"""One-use stdlib staging editor. Never an operational attempt013 helper."""
+import ast
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).parent
+path = ROOT / 'native_successor_front_common_013_001.py.template'
+source = path.read_text(encoding='utf-8')
+
+def replace(old, new):
+    global source
+    assert source.count(old) == 1, old[:100]
+    source = source.replace(old, new)
+
+replace("    document = parse(read(path,bindings['renderer_action_sha256'],witness))", "    data = read(path,bindings['renderer_action_sha256'],witness,maximum=16384)\n    document = parse(data)\n    require(data == canonical(document) + b'\\n', 'renderer finished JSON framing differs')")
+replace("    started = parse(read(started_path,document['started_record_sha256'],witness))", "    require(type(document['started_record_sha256']) is str and HEX64.fullmatch(document['started_record_sha256']) is not None,\n            'renderer started record pin malformed')\n    started_data = read(started_path,document['started_record_sha256'],witness,maximum=16384)\n    started = parse(started_data)\n    require(started_data == canonical(started) + b'\\n', 'renderer started JSON framing differs')\n    distinct = (path,started_path,renderer_script,receipt_renderer,ATTEMPT/'release-receipt-v2.txt',\n                Path(bindings['pre_render_review_path']),Path(bindings['native_review_path']))\n    require(len({(plain(item).st_dev,plain(item).st_ino) for item in distinct}) == len(distinct),\n            'renderer action/native provenance files alias')")
+replace("    pin_reference(document['source_validation'],witness)", "    pin_reference(document['source_validation'],witness)\n        require(rederive_native_lengths(bindings,witness,receipt_only=not observed) == lengths,\n                'reviewed command lengths differ from fixed-width/current-pin derivation')")
+# Previous replacement retains the enclosing check() indentation in its prefix.
+source = source.replace("        pin_reference(document['source_validation'],witness)\n        require", "        pin_reference(document['source_validation'],witness)\n        require")
+
+anchor = '\ndef validate_renderer_action('
+assert source.count(anchor) == 1
+native = '''
+def rederive_native_lengths(bindings: dict[str, Any], witness: dict[str, tuple[bytes, tuple[Any, ...]]],
+                           *, receipt_only: bool) -> dict[str, int]:
+    """Derive memory-only command lines; never create an audit or invoke native code.
+
+    The compressed fixed PowerShell script contains no admission value. Dynamic
+    canonical64 admission/checksum strings occur only in an uncompressed Base64
+    envelope. Its encoded width therefore depends on operation/path widths alone.
+    Before publication a fixed-width zero token proves the same length. After
+    publication every boundary also recomputes the exact actual trusted token.
+    """
+    stage0_path = REPO / 'scripts/week8_recovery_stage0.py'
+    captured = read(stage0_path,bindings['stage0_file_sha256'],witness)
+    name = '_week8_attempt013_external_stage0_derivation'
+    require(name not in sys.modules, 'external stage0 derivation name occupied')
+    loader = importlib.machinery.SourceFileLoader(name,str(stage0_path))
+    specification = importlib.util.spec_from_loader(name,loader)
+    require(specification is not None,'captured stage0 specification unavailable')
+    module = importlib.util.module_from_spec(specification)
+    sys.modules[name] = module
+    try:
+        exec(compile(captured,str(stage0_path),'exec',dont_inherit=True),module.__dict__)
+        require(module.STAGE0_SOURCE_SHA256 == bindings['stage0_source_sha256']
+                and module.STAGE0_ENCODED_SHA256 == bindings['stage0_encoded_sha256']
+                and module.STAGE0_ENVIRONMENT_POLICY_SHA256 == bindings['stage0_environment_policy_sha256']
+                and module.CMD_COMMAND_LINE_LIMIT == 8191
+                and module.STAGE0_ENVELOPE_HEADER == 'WEEK8_D176_STAGE0_ENVELOPE_V2',
+                'captured stage0 generated pins/protocol differ')
+        commands = {'status','adjudicate','recover','seal','monitor','finalize','report','figures'}
+        require(module.COMMANDS == commands,'stage0 operation set differs')
+        lengths = {}
+        admission = '0' * 64 if receipt_only else bindings['admission_sha256']
+        for command in sorted(commands):
+            body = ('WEEK8_D176_STAGE0_ENVELOPE_V2\\n'
+                    + 'r=' + str(ATTEMPT/'release-receipt-v2.txt') + '\\n'
+                    + 'R=' + sha(deterministic_receipt(bindings)) + '\\n'
+                    + 'l=' + str(REPO/'scripts/week8_recovery_native_launcher.ps1') + '\\n'
+                    + 'L=' + bindings['launcher_sha256'] + '\\n'
+                    + 'c=' + command + '\\n' + 'a=' + admission + '\\n').encode('ascii')
+            envelope = base64.b64encode(body + ('h=' + sha(body) + '\\n').encode('ascii')).decode('ascii')
+            if not receipt_only:
+                require(module.render_stage0_envelope(
+                    launcher_path=REPO/'scripts/week8_recovery_native_launcher.ps1',
+                    receipt_path=ATTEMPT/'release-receipt-v2.txt',
+                    launcher_sha256=bindings['launcher_sha256'],receipt_sha256=bindings['receipt_sha256'],
+                    command=command,successor_admission_sha256=admission) == envelope,
+                    'actual stage0 envelope differs from independent canonical derivation')
+            line = module.render_stage0_cmd_command_line(envelope=envelope)
+            require(type(line) is str and line.isascii() and 0 < len(line) <= 8191,
+                    'actual013 command line exceeds unchanged native ceiling')
+            lengths[command] = len(line)
+        require(read(stage0_path,bindings['stage0_file_sha256'],witness) == captured,
+                'stage0 source changed during derivation')
+        return lengths
+    finally:
+        require(sys.modules.get(name) is module,'stage0 derivation module substituted')
+        sys.modules.pop(name,None)
+
+'''
+source = source.replace(anchor, '\n' + native + anchor)
+
+replace("    owner(witness, reserve)\n    history(witness)", "    owner(witness, reserve)\n    host_tasks_disabled()\n    history(witness)")
+anchor = '\ndef quiet_host_twice()'
+tasks = '''
+def host_tasks_disabled() -> None:
+    """Observe both existing task gates, without changing either task."""
+    result = subprocess.run([
+        'C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe',
+        '-NoLogo','-NoProfile','-Command',
+        "@('Codex Router','arbop_p2p_monitor') | ForEach-Object { Get-ScheduledTask -TaskName $_ -ErrorAction Stop } | Select-Object TaskName,TaskPath,State,@{Name='Enabled';Expression={$_.Settings.Enabled}} | ConvertTo-Json -Compress -Depth 4",
+    ],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+        timeout=45,creationflags=0x08000000,check=False)
+    require(result.returncode == 0 and result.stderr == b'','scheduled-task gate query refused')
+    rows = parse(result.stdout)
+    require(type(rows) is list and len(rows) == 2
+            and {row.get('TaskName') for row in rows if type(row) is dict}
+                == {'Codex Router','arbop_p2p_monitor'}
+            and all(type(row) is dict and set(row) == {'TaskName','TaskPath','State','Enabled'}
+                    and row['State'] == 'Disabled' and row['Enabled'] is False for row in rows),
+            'router/monitor scheduled-task disabled gates differ')
+
+'''
+assert source.count(anchor) == 1
+source = source.replace(anchor, '\n' + tasks + anchor)
+replace("    for index in range(2):\n        result = subprocess.run([", "    for index in range(2):\n        host_tasks_disabled()\n        result = subprocess.run([")
+replace("                   (str(row.get('Name', '')).casefold().startswith(('python','pypy'))\n                    and row.get('ProcessId') != os.getpid())]", "                   ((str(row.get('Name', '')).casefold().startswith(('python','pypy'))\n                     or 'd:\\\\aenv\\\\pro3' in str(row.get('ExecutablePath','')).casefold()\n                     or 'd:\\\\aenv\\\\pro3' in str(row.get('CommandLine','')).casefold())\n                    and row.get('ProcessId') != os.getpid())]")
+replace("    encoded = args.bindings_base64\n    data =", "    encoded = args.bindings_base64\n    require(type(encoded) is str and len(encoded) <= 65536,'boundary bindings exceed finite input limit')\n    data =")
+replace("    print('ATTEMPT013_BOUNDARY_PASS')", "    quiet_host_twice()\n    print('ATTEMPT013_BOUNDARY_PASS')")
+
+replace("            and document['front_verification_schema_version'] == 2", "            and type(document['front_verification_schema_version']) is int\n            and document['front_verification_schema_version'] == 2")
+replace("    context = checked_ready_result(result, bindings, command)\n    require(document['historical_admission']", "    if command == 'status':\n        require(document['prior_status_verdict_sha256'] is None and document['launch_intent_sha256'] is None,\n                'status readiness carries unexpected predecessor/intent')\n    else:\n        prior = validate_ready_verdict('status',document['prior_status_verdict_sha256'],bindings)\n        intent = checked_launch_intent(read(ATTEMPT/'adjudicate-launch-intent.json',document['launch_intent_sha256']),\n                                      bindings,'adjudicate',document['prior_status_verdict_sha256'],None)\n        require(intent['prelaunch_file_sha256']['status-stdout.txt'] == prior['stdout_sha256'],\n                'adjudicate launch intent does not bind validated current status')\n    context = checked_ready_result(result, bindings, command)\n    require(document['historical_admission']")
+
+replace("    sealed(document)\n    prior = validate_ready_verdict('adjudicate'", "    sealed(document)\n    for name in ('full_controller_row_count','event_count','resumed','remaining','old_complete'):\n        require(type(document[name]) is int,'pre-recovery accounting must be exact integer')\n    for name in ('prior_verdict_sha256','status_verdict_sha256'):\n        require(type(document[name]) is str and HEX64.fullmatch(document[name]) is not None,\n                'pre-recovery prior verifier pin malformed')\n    prior = validate_ready_verdict('adjudicate'")
+replace("    if not reobserve:\n        return\n    E = load_phase(bindings)", "    E = load_phase(bindings)\n    liveness = document['old_process_liveness']\n    require(type(liveness) is dict and set(liveness) == {'method','snapshots','verdict'}\n            and liveness['method'] == 'two_read_only_CIM_Win32_Process_snapshots'\n            and liveness['verdict'] == 'pass' and type(liveness['snapshots']) is list\n            and len(liveness['snapshots']) == 2\n            and all(type(row) is dict and set(row) == {'snapshot_index','process_count','old_owner_pid_present','orphan_pid_present','old_descendant_present'}\n                    and type(row['snapshot_index']) is int and row['snapshot_index'] == index+1\n                    and type(row['process_count']) is int and row['process_count'] > 0\n                    and all(row[name] is False for name in ('old_owner_pid_present','orphan_pid_present','old_descendant_present'))\n                    for index,row in enumerate(liveness['snapshots']))\n            and document['old_pid_absence'] == {'root_pids':[E.OLD_PID,E.ORPHAN_PID],\n                'known_descendant_pids':[],'method':liveness['method'],'verdict':'pass','snapshots':liveness['snapshots']},\n            'pre-recovery old PID/descendant proof differs')\n    if not reobserve:\n        return")
+replace("    require(type(witness) is dict and witness and E.file_identity_witness(witness) == document['witness_file_identity'],", "    require(type(witness) is dict and witness\n            and all(type(name) is str and str(Path(name)) == os.path.abspath(name)\n                    and PROJECT in Path(name).parents and type(value) is str and HEX64.fullmatch(value) is not None\n                    for name,value in witness.items())\n            and E.file_identity_witness(witness) == document['witness_file_identity'],")
+replace("    for path in document['witness_absent_paths']:\n        E.absent(Path(path))", "    for name in ('witness_absent_paths','witness_historical_absent_paths'):\n        paths = document[name]\n        require(type(paths) is list and all(type(item) is str and str(Path(item)) == os.path.abspath(item)\n                and PROJECT in Path(item).parents for item in paths)\n                and len(paths) == len({item.casefold() for item in paths}),\n                'pre-recovery absent witness paths malformed/aliased')\n    for path in document['witness_absent_paths']:\n        E.absent(Path(path))")
+replace("        require(E.entries(E.RUNTIME_TEMP) == [] and E.runtime_temp_identity() == runtime['identity'],", "        require(document['witness_directory_identity'] == {str(E.RUNTIME_TEMP):runtime['identity']}\n                and E.entries(E.RUNTIME_TEMP) == [] and E.runtime_temp_identity() == runtime['identity'],")
+replace("        require(runtime == {'state':'absent','identity':None}, 'runtime precondition differs')", "        require(runtime == {'state':'absent','identity':None} and document['witness_directory_identity'] == {},\n                'runtime precondition differs')")
+
+replace("    boundary(bindings, reserve=reserve)\n    plain(path.parent", "    boundary(bindings, reserve=reserve)\n    if document.get('phase') == 'pre_recover':\n        validate_pre_recover_document(document,bindings,reobserve=True)\n    quiet_host_twice()\n    owner({},reserve)\n    plain(path.parent")
+replace("            and proof.get('publication_schema_version') == 1", "            and type(proof.get('publication_schema_version')) is int and proof.get('publication_schema_version') == 1")
+replace("            and proof.get('verification_observations') == 2", "            and type(proof.get('verification_observations')) is int and proof.get('verification_observations') == 2")
+replace("                and proof['files'][name]['size'] == len(data)", "                and type(proof['files'][name]['size']) is int and proof['files'][name]['size'] == len(data)")
+ast.parse(source)
+path.write_text(source,encoding='utf-8',newline='\n')
+
+tree = ast.parse(source)
+facts_node = next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(a,ast.Name) and a.id == 'PROGRAMMATIC_FACTS' for a in n.targets))
+facts = json.loads(ast.literal_eval(facts_node.value.args[0]))
+python_sha = facts['frozen_config']['pinned_python_sha256']
+plain_ps = '''function Assert-FrontPlain([string] $Path) {
+    if (-not [IO.Path]::IsPathRooted($Path) -or [IO.Path]::GetFullPath($Path) -cne $Path) { throw 'Front executable source path is noncanonical' }
+    $entry = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if ($entry.PSIsContainer -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Front executable source is not a plain file' }
+    $parent = [IO.Path]::GetDirectoryName($Path)
+    while ($parent) {
+        $dir = Get-Item -LiteralPath $parent -Force -ErrorAction Stop
+        if (-not $dir.PSIsContainer -or ($dir.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Front executable source has a linked ancestor' }
+        $parent = [IO.Path]::GetDirectoryName($parent)
+    }
+}
+'''
+for path in ROOT.glob('*.ps1.template'):
+    text = path.read_text(encoding='utf-8')
+    if path.name.startswith('native-poststatus-'):
+        pass
+    else:
+        old = 'function Assert-FrontBoundary([string] $Phase) {'
+        assert text.count(old) == 1
+        text = text.replace(old, plain_ps + old)
+        old = "    $frontSourceBytes = [IO.File]::ReadAllBytes($FrontHelper)"
+        assert text.count(old) == 1
+        new = "    Assert-FrontPlain $FrontHelper\n    Assert-FrontPlain $Python\n    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $Python).Hash.ToLowerInvariant() -cne '" + python_sha + "') { throw 'Pinned isolated Python image differs' }\n" + old
+        text = text.replace(old,new)
+    # Apply at every original scheduled-task observation; no guard removed.
+    marker = "Get-ScheduledTask -TaskName 'Codex Router' -ErrorAction Stop"
+    if marker in text:
+        lines = text.splitlines()
+        out=[]
+        for line in lines:
+            out.append(line)
+            if marker in line:
+                out += ["    $arbopTask = Get-ScheduledTask -TaskName 'arbop_p2p_monitor' -ErrorAction Stop",
+                        "    if (@($arbopTask).Count -ne 1 -or $arbopTask.State.ToString() -cne 'Disabled' -or $arbopTask.Settings.Enabled -ne $false) { throw 'P2P monitor must remain Disabled throughout native ceremony' }"]
+        text='\n'.join(out)+'\n'
+    if path.name.startswith('run-native-recover-'):
+        old = '$commonBytes = [IO.File]::ReadAllBytes($Common)'
+        assert text.count(old) == 1
+        text=text.replace(old,"Assert-FrontPlain $self\nAssert-FrontPlain $Common\nif ($CommonSha -cne $FrontStagePins.poststatus_common_sha256) { throw 'Recovery common source pin differs across reviewed bindings' }\n"+old)
+    path.write_text(text,encoding='utf-8',newline='\n')
+
+path = ROOT/'native_phase_evidence_common_013_window30h_001.py.template'
+text = path.read_text(encoding='utf-8')
+old='require(doc.get("recovery_schema_version") == 3'
+assert text.count(old) == 1
+text=text.replace(old,'require(type(doc.get("recovery_schema_version")) is int and doc.get("recovery_schema_version") == 3')
+old='and terminal.get("bootstrap_schema_version") == 5'
+assert text.count(old) == 1
+text=text.replace(old,'and type(terminal.get("bootstrap_schema_version")) is int\n            and terminal.get("bootstrap_schema_version") == 5')
+ast.parse(text)
+path.write_text(text,encoding='utf-8',newline='\n')
+print('Final static guard refinements staged; no operational helper imported or run.')

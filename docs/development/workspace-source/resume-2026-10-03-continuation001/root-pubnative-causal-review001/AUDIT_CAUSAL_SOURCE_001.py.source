@@ -1,0 +1,85 @@
+"""Root-owned metadata-only source audit. Never evaluate target definitions."""
+import ast,hashlib,json,os,stat
+from pathlib import Path
+from datetime import datetime,timezone
+ROOT=Path('D:/Aenv/pro2')
+WORK=ROOT/'resume-2026-10-03-continuation001'
+NEW=WORK/'pubnative-causal-tests-prep002'
+OLD=ROOT/'resume-2026-10-01-30h-001/raw004-publication-native-bounded-closure-prep001'
+OUT=WORK/'root-pubnative-causal-review001'
+OBS={}
+def raw(s):return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,getattr(s,'st_file_attributes',None),getattr(s,'st_birthtime_ns',None)]
+def sha(b):return hashlib.sha256(b).hexdigest()
+def read(p,pin=None):
+    a=p.lstat();assert stat.S_ISREG(a.st_mode) and not getattr(a,'st_file_attributes',0)&1024 and a.st_size<=8388608
+    with p.open('rb',buffering=0)as h:
+        opened=os.fstat(h.fileno());b=h.read(8388609);last=os.fstat(h.fileno())
+    z=p.lstat();assert len(b)==a.st_size<=8388608 and raw(a)==raw(z) and raw(opened)==raw(last)
+    if pin is not None:assert sha(b)==pin
+    row=dict(path=str(p),sha256=sha(b),bytes=len(b),path_raw9=raw(a),descriptor_raw9=raw(opened))
+    if str(p)in OBS:assert OBS[str(p)]==row
+    OBS[str(p)]=row
+    return b
+def obj(p,pin=None):return json.loads(read(p,pin))
+def dump(n):return ast.dump(n,include_attributes=False)
+def methods(t):
+    return {(c.name,m.name):dump(m)for c in t.body if isinstance(c,ast.ClassDef)for m in c.body if isinstance(m,ast.FunctionDef)and m.name.startswith('test_')}
+def emit(p,v):
+    b=(json.dumps(v,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+    assert len(b)<=8388608 and not p.exists()
+    with p.open('xb',buffering=0)as f:assert f.write(b)==len(b);os.fsync(f.fileno())
+    assert p.read_bytes()==b
+    return dict(path=str(p),sha256=sha(b),bytes=len(b))
+manifest=obj(NEW/'STAGED_MANIFEST_003.json','6b4b181a1356b54c89c15693016c7103674b483d9dabd895aecd8c0e64ff9cb6')
+for row in manifest['files']:read(NEW/row['path'],row['sha256'])
+source_map=manifest['active_source_map'];assert len(source_map)==35
+production=[r for r in source_map if r['production']];assert len(production)==33
+for r in production:
+    assert read(NEW/r['selected_path'],r['sha256'])==read(OLD/r['ancestor_path'],r['sha256'])
+first=obj(WORK/'pubnative-independent-review001/INDEPENDENT_PUBNATIVE_SOURCE_REVIEW_003.json','e080d318dab7fd22b5e33bd5bc1d3a8f47fb2273cee3755aee268e77980c9bf2')
+assert first['verdict']=='REFUSED_STATIC_TEST_PREPARATION_CAUSAL_CLOSURE'
+native=next(r for r in source_map if r['selected_path']=='source/test_native_schema3_admission_001.py')
+metadata=next(r for r in source_map if r['selected_path']=='source/test_schema3_metadata_grammar_002.py')
+trees={}
+for label,row in [('native',native),('metadata',metadata)]:
+    before=ast.parse(read(OLD/row['ancestor_path']).decode('utf-8'))
+    data=read(NEW/row['selected_path'],row['sha256']);after=ast.parse(data.decode('utf-8'))
+    code=compile(after,str(NEW/row['selected_path']),'exec',dont_inherit=True)
+    assert code.co_name=='<module>'
+    oldm,newm=methods(before),methods(after)
+    trees[label]=(before,after,oldm,newm)
+n0,n1,m0,m1=trees['native'];oldn,newn=trees['native'][2:]
+assert len(oldn)==len(newn)==128 and set(oldn)==set(newn)
+changed=[k for k in oldn if oldn[k]!=newn[k]]
+assert changed==[('BoundedRaw004CausalCases','test_b05_string_integer_collection_and_cycle_budgets_are_causal'),('BoundedRaw004CausalCases','test_b15_fixed_history_acquisition_caps_precede_IO')]
+before,after,oldm,newm=trees['metadata'];assert len(oldm)==29 and len(newm)==30 and all(newm[k]==v for k,v in oldm.items())
+added=set(newm)-set(oldm);assert added=={('FixedHistoryAcquisitionComposition','test_b15_both_producers_fixed_history_caps_precede_open_read_hash')}
+guard_index=next(i for i,n in enumerate(after.body)if isinstance(n,ast.If)and ast.unparse(n.test)=="__name__ == '__main__'")
+class_index=next(i for i,n in enumerate(after.body)if isinstance(n,ast.ClassDef)and n.name=='FixedHistoryAcquisitionComposition')
+helper_index=next(i for i,n in enumerate(after.body)if isinstance(n,ast.FunctionDef)and n.name=='fixed_history_acquisition_namespace')
+assert helper_index<class_index<guard_index
+# Static causal review is separate from actual execution: these assertions
+# check source routes and the exact production function bodies they select.
+text=read(NEW/native['selected_path']).decode('utf-8')
+for expected in ('self.assertIs(type(table),dict)','table.update(additions)','self.assertEqual(len(table),264)',"checks[-1],('raw004 policy collection budget',False)","checks[-2],('raw004 nested source container replaced before callbacks',True)",'table.clear();table.update(baseline)',"n['read'](path,pin,witness)","n['repeat'](witness)","cached={str(path):(payload+b'x',(1,))}"):
+    assert expected in text,expected
+text=read(NEW/metadata['selected_path']).decode('utf-8')
+for expected in ('for template in TEMPLATES:',"ns['pinned_input_role'](role,path,pin)","ns['pinned'](path,pin,maximum=bound)","('OPEN','READ','HASH')",'state[\'size\']=bound+1',"state['size']=bound;events.clear()"):
+    assert expected in text,expected
+common=ast.parse(read(NEW/'front/native_successor_front_common_013_001.py.template').decode('utf-8'))
+functions={n.name:n for n in common.body if isinstance(n,ast.FunctionDef)}
+segment=ast.unparse(functions['read']);assert segment.index('_native_capture_limit')<segment.index('plain(path)')<segment.index('path.open')<segment.index('sha(data)')
+segment=ast.unparse(functions['repeat']);assert segment.index('_native_capture_limit')<segment.index('cached witness exceeds fresh finite cap before hash')<segment.index('sha(data)')
+for path in ('publication/publish-successor-admission-schema3-001.py.template','publication/verify-successor-admission-schema3-001.py.template'):
+    functions={n.name:n for n in ast.parse(read(NEW/path).decode('utf-8')).body if isinstance(n,ast.FunctionDef)}
+    segment=ast.unparse(functions['read']);assert segment.index('file exceeds its finite pre-read cap')<segment.index('path.open')<segment.index('handle.read')
+    for function in ('pinned','pinned_input_role'):
+        segment=ast.unparse(functions[function]);assert segment.index('read(path')<segment.index('sha(data)')
+for pass_no in range(2):
+    for p,r in list(OBS.items()):read(Path(p),r['sha256'])
+observed=list(OBS.values())
+receipt=dict(schema_version=1,record_type='independent_pubnative_causal_correction_source_review',reviewer='/root',source_author='/root/pubnative_review',created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),verdict='PASS_STATIC_CAUSAL_TEST_PREPARATION_ONLY',manifest_sha256=sha(read(NEW/'STAGED_MANIFEST_003.json')),inherited_full_source_review_sha256=sha(read(WORK/'pubnative-independent-review001/INDEPENDENT_PUBNATIVE_SOURCE_REVIEW_003.json')),production_sources_exact=33,native_test_methods=128,native_changed_methods=changed,metadata_prior_methods_exact=29,metadata_methods=30,metadata_new_class_precedes_main=True,causal_review=dict(PN002='Retained exact dict identity remains healthy before264-element mutation; exact collection refusal and preceding true identity check observed in test source; restored control.',PN003_native='Actual fixed-history resolver/read/repeat selected; one oversized path/cached witness with valid pin/descriptor controls; before open/read/hash route separately asserted.',PN003_publication='Both publisher and verifier independently compose real typed-cap derivation with actual pinned_input_role/pinned/read; valid controls, single oversized path, no open/read/hash and restored controls.'),observations=observed,finite_input_paths=len(observed),reads=3,target_definitions_executed=False,target_tests_executed=False,actual_collection=None,actual_results=None,operational_authority=False,limitations=['Source acceptance only; no executed behavior or interoperability result.','Full unchanged production-source audit is inherited from the selected different review; Root confirms exact33 source bytes and directly examines changed test acquisition routes.','Historical owner deadlines remain in unselected production preparations; this review grants no current native or publication execution.'])
+output=emit(OUT/'INDEPENDENT_CAUSAL_CORRECTION_REVIEW_001.json',receipt)
+for p,r in list(OBS.items()):read(Path(p),r['sha256'])
+post=emit(OUT/'INDEPENDENT_CAUSAL_CORRECTION_POST_001.json',dict(schema_version=1,reviewer='/root',review=output,observations=list(OBS.values()),all_inputs_exact=True,target_execution=False))
+print(json.dumps(dict(review=output,post=post,verdict=receipt['verdict'],finite_input_paths=len(observed)),sort_keys=True))

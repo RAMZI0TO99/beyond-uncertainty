@@ -1,0 +1,192 @@
+"""Own AST/text fixture rebasing only; does not compile or execute test definitions."""
+import ast,hashlib,json
+from pathlib import Path
+stage=Path(__file__).absolute().parent
+preserved=json.loads((stage/'PRESERVATION_BEFORE_IMPLEMENTATION_002.json').read_bytes())
+policy=json.loads((stage/'ALL31_NORMALIZED_POLICY_001.json').read_bytes())
+pairs=preserved['pairs']
+def sha(data):return hashlib.sha256(data).hexdigest()
+def capture(expected):
+    row=next(row for row in pairs if row['sha256']==expected)
+    data=(stage/row['copy_relative']).read_bytes()
+    assert sha(data)==expected and len(data)==row['bytes']
+    return data
+def named(relative,source):
+    path=stage/relative;path.parent.mkdir(parents=True,exist_ok=True)
+    with path.open('xb') as stream:stream.write(source)
+    return sha(source)
+fixtures={
+ 'raw004-source.bytes':capture('da64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211'),
+ 'raw004-policy-normalized.bytes':(stage/'ALL31_NORMALIZED_POLICY_001.json').read_bytes(),
+ 'predecessor_rows.bytes':capture('690c6c53979cc2b91d48529b3f79dbba470e909f8c49d0bcf8bc04c288db3d3a'),
+ 'predecessor_manifest.bytes':capture('e0364b12684c4a03df4993d716d7003fb56ec356f263de3aa8c4e4c42112fe6a'),
+ 'predecessor_release.bytes':capture('1be0b739a9d9a66fe857a6a9b59b9ece7421d4e146ee2eac8b95f2bb6f90a75d')}
+descriptors=json.loads((stage/'COMPILED_TWO_MIDDLE_INPUTS_001.json').read_bytes())
+for role,pair in descriptors.items():
+    for i,row in enumerate(pair):fixtures[f'middle{i+1}_{role}.bytes']=capture(row['sha256'])
+for role in descriptors:fixtures[role+'.bytes']=fixtures['middle1_'+role+'.bytes']
+fixture_pins={name:named('source/before/'+name,data) for name,data in fixtures.items()}
+for row in pairs:
+    if row['original_relative'].startswith('publisher-schema2-grammar-revision004/before/'):
+        filename=Path(row['original_relative']).name
+        destination=stage/'publication/before'/filename
+        if not destination.exists():named(str(destination.relative_to(stage)),capture(row['sha256']))
+for role,pair in descriptors.items():
+    for row in pair:named('publication/before/'+row['retained_name'],capture(row['sha256']))
+named('publication/before/raw004-source.bytes',fixtures['raw004-source.bytes'])
+
+def change_definition(text,name,replacement):
+    tree=ast.parse(text)
+    found=[n for n in ast.walk(tree)if isinstance(n,(ast.FunctionDef,ast.ClassDef))and n.name==name]
+    assert len(found)==1,name
+    n=found[0];lines=text.splitlines(keepends=True)
+    indent=' '*n.col_offset
+    replacement='\n'.join(indent+line if line else '' for line in replacement.strip('\n').splitlines())+'\n'
+    lines[n.lineno-1:n.end_lineno]=[replacement]
+    return ''.join(lines)
+
+path=stage/'source/test_native_schema3_admission_001.py';before=path.read_bytes()
+with (stage/'NATIVE_TEST_BEFORE_REBASE_001.bytes').open('xb') as f:f.write(before)
+text=before.decode()
+text=text.replace("'raw003-source.bytes'","'raw004-source.bytes'")
+text=text.replace("namespace['NATIVE_SCHEMA2_POLICY']","namespace['NATIVE_SCHEMA2_POLICY']")
+old="    namespace = {'__name__':'_native_schema2_inert_tests','__file__':str(COMMON)}"
+new="    namespace = {'__name__':'_native_schema3_inert_tests','__file__':str(COMMON)}"
+assert text.count(old)==1;text=text.replace(old,new)
+text=text.replace("    tree = ast.parse(common_bytes(), filename=str(COMMON))", "    names=set(names)\n    if names & GUARDS:\n        names.update(POLICY_HELPERS)\n    tree = ast.parse(common_bytes(), filename=str(COMMON))")
+text=text.replace('    return namespace\n\n\nBASE =', "    namespace['NATIVE_SCHEMA2_POLICY']=json.loads(fixture_bytes('raw004-policy-normalized.bytes'))\n    return namespace\n\n\nPOLICY_HELPERS={'_native_policy_origins','_native_policy_snapshot','_native_policy_source_containers','_native_policy_data'}\nBASE =")
+text=text.replace("'_native_commit_object', '_native_middle', '_native_diffs'}", "'_native_commit_object', '_native_middle', '_native_diffs','_native_compact_qa','_native_middle_role_hash'}")
+text=change_definition(text,'historical_factory','''def historical_factory(namespace,index=0):
+    policy=namespace['NATIVE_SCHEMA2_POLICY']
+    old=json.loads(fixture_bytes('predecessor_rows.bytes'))
+    if index==1:
+        table={row['path']:copy.deepcopy(row) for row in old}
+        for row in policy['_SUCCESSOR_COMPACT_AFTERIMAGES'][0]:table[row['path']]=copy.deepcopy(row)
+        old=[table[path] for path in sorted(table)]
+    table={row['path']:copy.deepcopy(row) for row in old}
+    for row in policy['_SUCCESSOR_COMPACT_AFTERIMAGES'][index]:table[row['path']]=copy.deepcopy(row)
+    middle=[table[path] for path in sorted(table)]
+    proof={'changed_files':copy.deepcopy(policy['_SUCCESSOR_COMPACT_AFTERIMAGES'][index]),
+           'release_record_base64':base64.b64encode(fixture_bytes(f'middle{index+1}_middle_release.bytes')).decode('ascii'),
+           'git_commit_object_base64':base64.b64encode(fixture_bytes(f'middle{index+1}_middle_commit_object.bytes')).decode('ascii')}
+    entry={'identities':copy.deepcopy(policy['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS'][index]),'proof':proof}
+    return old,middle,entry,list(policy['_SUCCESSOR_COMPACT_QA_PATHS'])''')
+text=text.replace("expected_paths=paths)","expected_paths=paths,index=0)")
+text=text.replace("expected_paths=qa)","expected_paths=qa,index=0)")
+text=text.replace("for key in ('release_record_base64', 'candidate_manifest_base64', 'git_commit_object_base64'):","for key in ('release_record_base64', 'git_commit_object_base64'):")
+text=text.replace("malformed[key] = '!' + malformed[key][1:]","malformed['proof'][key] = '!' + malformed['proof'][key][1:]")
+text=text.replace("changed['changed_files']","changed['proof']['changed_files']")
+text=text.replace("raw_policy = source_namespace(BASE)['NATIVE_SCHEMA2_POLICY']","raw_policy = source_namespace(BASE)['NATIVE_SCHEMA2_POLICY']")
+text=text.replace('self.assertEqual(len(names), 16)','self.assertEqual(len(names), 27)')
+text=text.replace("                        observed, cap = namespace['_native_attestation_limit']()", "                        namespace['_NATIVE_POLICY_ORIGINS']={key:module.__dict__[key] for key in namespace['NATIVE_POLICY_NAMES']}\n                        namespace['_NATIVE_POLICY_CONTAINERS']=namespace['_native_policy_source_containers'](namespace['_NATIVE_POLICY_ORIGINS'])\n                        observed, cap = namespace['_native_attestation_limit']()")
+text=text.replace("                        target = module.__dict__[name]", "                        target = module.__dict__[name]\n                        saved=(getattr(target,'__code__',None),getattr(target,'__defaults__',None),getattr(target,'__kwdefaults__',None))")
+text=text.replace("                            namespace['_native_attestation_limit']()\n                    finally:","                            namespace['_native_attestation_limit']()\n                        module.__dict__[name]=target\n                        if kind in ('code','defaults','kwdefaults'):target.__code__,target.__defaults__,target.__kwdefaults__=saved\n                        self.assertEqual(namespace['_native_attestation_limit']()[1],395799)\n                    finally:")
+text=text.replace("input_hashes.update({key: facts['sha256'] for key, facts in namespace['NATIVE_MIDDLE_INPUTS'].items()})", "middle_hashes={role:namespace['_native_middle_role_hash'](role,[fixture_bytes(f'middle{i+1}_{role}.bytes') for i in range(2)]) for role in namespace['NATIVE_MIDDLE_INPUTS']}\n    input_hashes.update(middle_hashes)")
+text=text.replace("'middle_full742_identity': {'TEST_ONLY': 'middle742'},","'middle_full742_identity':[{key:row[key] for key in ('controller_inventory_digest','tracked_tree_digest','tracked_file_count')} for row in namespace['NATIVE_SCHEMA2_POLICY']['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS']],\n        'middle_input_hashes':middle_hashes, 'intermediate':copy.deepcopy(namespace['NATIVE_SCHEMA2_POLICY']['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS']),")
+text=text.replace("'attestation_schema_version': 2,","'attestation_schema_version': 3,")
+text=text.replace("'intermediate': namespace['NATIVE_SCHEMA2_POLICY']['SUCCESSOR_INTERMEDIATE_FACTS'],","'intermediate': namespace['NATIVE_SCHEMA2_POLICY']['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS'],")
+text=text.replace("document = reseal(namespace, document)\n    return", "document.pop('middle_input_hashes',None)\n    document = reseal(namespace, document)\n    return")
+text=text.replace("shape, bindings, {})", "shape, bindings, {},policy=namespace['NATIVE_SCHEMA2_POLICY'])")
+text=text.replace("self.assertEqual(sum(isinstance(n,ast.FunctionDef) for n in tree.body),81)","self.assertEqual(sum(isinstance(n,ast.FunctionDef) for n in tree.body),85)")
+text=text.replace("self.assertIn('unexplained',text);self.assertIn('GeneratorExp',text)", "self.assertIn('GeneratorExp',text)\n        self.assertIn('initializer_bodies',text);self.assertIn('named_bodies',text)\n        self.assertIn('co_firstlineno',text);self.assertIn('co_flags&32',text)\n        self.assertNotIn(\"if item.co_name=='<genexpr>':continue\",text)")
+text=text.replace("'_SUCCESSOR_FROZEN_NATIVE_RECEIPT','_SUCCESSOR_RELEASE_SOURCE_FIELDS'}),16)","'_SUCCESSOR_FROZEN_NATIVE_RECEIPT','_SUCCESSOR_RELEASE_SOURCE_FIELDS'}),27)")
+text=change_definition(text,'FIXTURE_PINS','') if False else text
+tree=ast.parse(text);node=next(n for n in tree.body if isinstance(n,ast.Assign)and isinstance(n.targets[0],ast.Name)and n.targets[0].id=='FIXTURE_PINS')
+lines=text.splitlines(keepends=True);lines[node.lineno-1:node.end_lineno]=['FIXTURE_PINS = '+repr(fixture_pins)+'\n'];text=''.join(lines)
+ast.parse(text);path.write_text(text,encoding='utf-8',newline='\n')
+
+path=stage/'source/test_schema3_metadata_grammar_001.py';before=path.read_bytes()
+with (stage/'METADATA_TEST_BEFORE_REBASE_001.bytes').open('xb') as f:f.write(before)
+text=before.decode()
+text=text.replace('publish-successor-admission-schema2-004.py.template','../publication/publish-successor-admission-schema3-001.py.template').replace('verify-successor-admission-schema2-004.py.template','../publication/verify-successor-admission-schema3-001.py.template')
+text=text.replace('preserved/successor-candidate-raw-revision003/scripts/week8_recovery_raw_authority.py','before/raw004-source.bytes')
+text=text.replace('schema2-004-','schema3-001-').replace('week8_schema2_metadata_roles_004','week8_schema3_metadata_roles_bounded001')
+text=text.replace('len(assignments), 20','len(assignments), 31').replace('len(set(names)), 20','len(set(names)), 31')
+text=text.replace('fixed twenty policy values absent','fixed thirty-one policy values absent').replace('reviewed raw003 literal policy changed','reviewed raw004 literal policy changed')
+text=text.replace('"BINDINGS", "FLAGS"','"BINDINGS", "FLAGS", "MIDDLE_INPUTS"')
+text=text.replace('"read", "create_file", "schema2_release_checks"}', '"read", "create_file", "schema2_release_checks","schema3_compact_qa","schema3_middle_role_hash"}')
+text=text.replace('    return namespace\n\n\ndef historical_fixture', '''    # Existing one-middle case IDs use explicit index0 fixture adapters only.
+    # No proof fields are stripped or repaired: actual production validator sees
+    # every supplied proof byte and all malformed/extra-field witnesses.
+    namespace['schema3_middle']=namespace['schema2_middle']
+    def first_middle(proof,old,middle,*,policy,expected_paths):
+        return namespace['schema3_middle']({'identities':policy['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS'][0],'proof':proof},old,middle,policy=policy,expected_paths=expected_paths,index=0)
+    namespace['schema2_middle']=first_middle
+    return namespace
+
+
+def historical_fixture''')
+text=change_definition(text,'historical_fixture','''def historical_fixture(ns,index=0):
+    policy=copy.deepcopy(ns['COMPILED_POLICY'])
+    old_rows=json.loads((STAGE/'before/predecessor_rows.bytes').read_bytes())
+    old_qa_bytes=(STAGE/'before/predecessor_manifest.bytes').read_bytes()
+    if index==1:
+        table={row['path']:copy.deepcopy(row) for row in old_rows}
+        for row in policy['_SUCCESSOR_COMPACT_AFTERIMAGES'][0]:table[row['path']]=copy.deepcopy(row)
+        old_rows=[table[path] for path in sorted(table)]
+    table={row['path']:copy.deepcopy(row) for row in old_rows}
+    for row in policy['_SUCCESSOR_COMPACT_AFTERIMAGES'][index]:table[row['path']]=copy.deepcopy(row)
+    middle=[table[path] for path in sorted(table)]
+    proof={'changed_files':copy.deepcopy(policy['_SUCCESSOR_COMPACT_AFTERIMAGES'][index]),
+           'release_record_base64':base64.b64encode((STAGE/f'before/middle{index+1}_middle_release.bytes').read_bytes()).decode('ascii'),
+           'git_commit_object_base64':base64.b64encode((STAGE/f'before/middle{index+1}_middle_commit_object.bytes').read_bytes()).decode('ascii')}
+    return policy,old_rows,middle,proof,list(policy['_SUCCESSOR_COMPACT_QA_PATHS']),old_qa_bytes''')
+text=text.replace('base64.b64decode(proof["candidate_manifest_base64"])','(STAGE/"before/middle_manifest.bytes").read_bytes()')
+text=change_definition(text,'test_middle_exact_proof_keysets_afterimages_and_encoded_sizes_refuse','''def test_middle_exact_proof_keysets_afterimages_and_encoded_sizes_refuse(self):
+    for name,ns in self.each_namespace():
+        for index in (0,1):
+            policy,old,middle,proof,paths,_=historical_fixture(ns,index)
+            entry={'identities':policy['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS'][index],'proof':proof}
+            call=lambda value,p=policy:ns['schema3_middle'](value,old,middle,policy=p,expected_paths=paths,index=index)
+            with self.subTest(template=name,index=index):
+                self.assertEqual(call(entry),middle)
+                mutations=[]
+                altered=copy.deepcopy(entry);altered['proof']['changed_files'][0]['size']+=1;mutations.append(altered)
+                altered=copy.deepcopy(entry);altered['proof']['extra']=True;mutations.append(altered)
+                altered=copy.deepcopy(entry);del altered['proof']['changed_files'];mutations.append(altered)
+                for altered in mutations:
+                    with self.assertRaises(ns['Refused']):call(altered)
+                    self.assertEqual(call(entry),middle)
+                cap=policy['_SUCCESSOR_COMPACT_PROOF_MAX_BYTES'][index]
+                self.assertEqual(len(ns['canonical'](proof)),cap)
+                widened=copy.deepcopy(entry);widened['proof']['release_record_base64']+='='
+                self.assertEqual(len(ns['canonical'](widened['proof'])),cap+1)
+                never=lambda *a,**k:(_ for _ in ()).throw(AssertionError('cap must precede decoder'))
+                with patch.dict(ns,base64=SimpleNamespace(b64decode=never,b64encode=base64.b64encode)):
+                    with self.assertRaisesRegex(ns['Refused'],'^intermediate proof cap exceeded$'):call(widened)
+                wider=copy.deepcopy(policy);wider['_SUCCESSOR_COMPACT_PROOF_MAX_BYTES'][index]+=1
+                calls=[]
+                bad=widened['proof']['release_record_base64'].encode('ascii')
+                def decoder(token,*a,**k):
+                    self.assertNotEqual(token,bad,'width gate precedes this decoder')
+                    calls.append(token);return base64.b64decode(token,*a,**k)
+                self.assertEqual(call(entry,wider),middle)
+                with patch.dict(ns,base64=SimpleNamespace(b64decode=decoder,b64encode=base64.b64encode)):
+                    with self.assertRaisesRegex(ns['Refused'],'^middle base64 type/encoded length differs$'):call(widened,wider)
+                self.assertEqual(calls,[proof['git_commit_object_base64'].encode('ascii')])
+                self.assertEqual(call(entry),middle)''')
+text=change_definition(text,'test_schema2_external_sha_seal_schema_and_preparse_cap','''def test_schema2_external_sha_seal_schema_and_preparse_cap(self):
+    for name,ns in self.each_namespace():
+        policy,old,middle1,proof1,_,_=historical_fixture(ns,0)
+        _,_,middle2,proof2,_,_=historical_fixture(ns,1)
+        chain=[{'identities':policy['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS'][i],'proof':proof} for i,proof in enumerate((proof1,proof2))]
+        body={'successor_admission_schema_version':3,'record_type':'week8_d176_successor_admission','decision_id':'D-161','recovery_id':'week8-exp2a-d161-2026-09-02-attempt-001','predecessor':policy['SUCCESSOR_PREDECESSOR_FACTS'],'successor':{},'predecessor_files':old,'successor_files':middle2,'changed_paths':[],'intermediate_chain':chain,'successor_parent_changed_paths':[],**ns['FLAGS']}
+        def seal(value):
+            value=copy.deepcopy(value);value['record_digest']=ns['sha'](ns['canonical'](value))
+            return ns['canonical'](value)+b'\\n'
+        data=seal(body);accept=lambda value:ns['schema2_sealed_attestation'](value,expected_sha256=ns['sha'](value),policy=policy)
+        with self.subTest(template=name):
+            self.assertEqual(accept(data)['intermediate_chain'],chain)
+            with self.assertRaisesRegex(ns['Refused'],'external byte pin'):ns['schema2_sealed_attestation'](data,expected_sha256='0'*64,policy=policy)
+            with patch.dict(ns,strict_json=lambda value:(_ for _ in ()).throw(AssertionError('preparse gate'))):
+                oversized=b'x'*(policy['_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3']+1)
+                with self.assertRaisesRegex(ns['Refused'],'capture'):ns['schema2_sealed_attestation'](oversized,expected_sha256='0'*64,policy=policy)
+            for mutate in (lambda value:value.update(successor_admission_schema_version=True),lambda value:value['intermediate_chain'].reverse(),lambda value:value['intermediate_chain'].pop()):
+                changed=copy.deepcopy(body);mutate(changed)
+                with self.assertRaises(ns['Refused']):accept(seal(changed))
+                self.assertEqual(accept(data)['intermediate_chain'],chain)''')
+text=text.replace("inputs.update({key: row['size'] for key, row in ns['MIDDLE_INPUTS'].items()})","inputs.update({key: sum(row['size'] for row in pair) for key,pair in ns['MIDDLE_INPUTS'].items()})")
+text=text.replace("doc['middle_full742_identity'] = {key: ns['COMPILED_POLICY']['SUCCESSOR_INTERMEDIATE_FACTS'][key]\n                for key in ('controller_inventory_digest', 'tracked_tree_digest', 'tracked_file_count')}","doc['middle_full742_identity'] = [{key: row[key] for key in ('controller_inventory_digest','tracked_tree_digest','tracked_file_count')} for row in ns['COMPILED_POLICY']['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS']]")
+ast.parse(text);path.write_text(text,encoding='utf-8',newline='\n')
+with (stage/'FIXTURE_SOURCE_CAPTURES_001.json').open('x',encoding='utf-8') as f:
+    json.dump({'schema_version':1,'capture_pins':fixture_pins,'scope':'independent source copies for future tests; no tests run'},f,indent=2);f.write('\n')

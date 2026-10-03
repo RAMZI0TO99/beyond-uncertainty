@@ -1,0 +1,274 @@
+"""Create-once static metadata for guard-only front revision002.
+
+This uses stdlib source reads/AST and previously produced PS ParseFile metadata.
+It neither imports nor executes the templates, tests or project code.
+"""
+from __future__ import annotations
+
+import ast
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import stat
+
+ROOT = Path('D:/Aenv/pro2/resume-2026-10-01-30h-001/native-attempt013-front-revision002')
+BEFORE = ROOT / 'front001-before'
+ORIGINAL = ROOT.parent / 'native-attempt013-front-001'
+REPARSE = 0x400
+
+
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True,
+                      allow_nan=False).encode('ascii')
+
+
+def snapshot(info):
+    return tuple(getattr(info, key, None) for key in
+                 ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode',
+                  'st_nlink','st_file_attributes','st_birthtime_ns'))
+
+
+def plain(path, directory=False):
+    require(path.is_absolute(), 'staging path must be absolute')
+    for ancestor in reversed(path.parents):
+        row=ancestor.lstat()
+        require(stat.S_ISDIR(row.st_mode) and not stat.S_ISLNK(row.st_mode)
+                and not getattr(row,'st_file_attributes',0)&REPARSE,
+                'staging ancestor is linked/reparse/non-directory')
+    row=path.lstat()
+    require(not stat.S_ISLNK(row.st_mode) and not getattr(row,'st_file_attributes',0)&REPARSE
+            and (stat.S_ISDIR(row.st_mode) if directory else stat.S_ISREG(row.st_mode) and row.st_nlink==1),
+            'staging path is not an independent plain file/directory')
+    return row
+
+
+def read(path):
+    before=plain(path)
+    data=path.read_bytes()
+    after=plain(path)
+    require(snapshot(before)==snapshot(after) and len(data)==before.st_size,
+            'staging read changed')
+    return data
+
+
+def absent(path):
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        plain(path.parent,directory=True)
+        require(not any(item.name.casefold()==path.name.casefold() for item in path.parent.iterdir()),
+                'staging absent path has a case alias')
+        return
+    raise FileExistsError(str(path))
+
+
+def write(path, data):
+    require(path.parent==ROOT, 'metadata output escaped owned root')
+    absent(path)
+    with path.open('xb',buffering=0) as stream:
+        stream.write(data);stream.flush();os.fsync(stream.fileno())
+    require(read(path)==data, 'metadata readback differs')
+
+
+def emit(name, value):
+    value=dict(value)
+    value['record_digest']=sha(canonical(value))
+    data=canonical(value)+b'\n'
+    write(ROOT/name,data)
+    return {'path':str(ROOT/name),'sha256':sha(data),'size':len(data)}
+
+
+def definition_map(tree):
+    return {node.name:ast.dump(node,include_attributes=False) for node in tree.body
+            if isinstance(node,(ast.FunctionDef,ast.ClassDef))}
+
+
+def other_nodes(tree):
+    return [ast.dump(node,include_attributes=False) for node in tree.body
+            if not isinstance(node,(ast.FunctionDef,ast.ClassDef))]
+
+
+def test_map(tree):
+    return {cls.name+'.'+node.name:ast.dump(node,include_attributes=False)
+            for cls in tree.body if isinstance(cls,ast.ClassDef)
+            for node in cls.body if isinstance(node,ast.FunctionDef) and node.name.startswith('test_')}
+
+
+def main():
+    plain(ROOT,directory=True);plain(BEFORE,directory=True);plain(ORIGINAL,directory=True)
+    for name in ('STATIC_VALIDATION_002.json','BINDING_LIST_002.json','GUARD_INTERFACE_002.json',
+                 'HANDOFF.md','UNBOUND_MANIFEST_002.json'):
+        absent(ROOT/name)
+    preserved=json.loads(read(BEFORE/'PRESERVATION_MANIFEST_002.json'))
+    require(preserved['original_file_count']==61 and len(preserved['files'])==61
+            and preserved['original_frozen_manifest_entry_count']==58,
+            'frozen001 preservation count differs')
+    preservation_rows=[]
+    for record in preserved['files']:
+        source=ORIGINAL/record['path'];copy=BEFORE/record['path']
+        source_data=read(source);copy_data=read(copy)
+        require(source_data==copy_data and sha(source_data)==record['sha256'] and len(source_data)==record['size'],
+                'frozen001 bytes changed: '+record['path'])
+        a,b=plain(source),plain(copy)
+        require((a.st_dev,a.st_ino)!=(b.st_dev,b.st_ino), 'predecessor copy aliases original')
+        preservation_rows.append(record['path'])
+    old_manifest=json.loads(read(BEFORE/'UNBOUND_MANIFEST_001.json'))
+    require(len(old_manifest['files'])==58, 'original manifest count differs')
+    for name,record in old_manifest['files'].items():
+        data=read(BEFORE/name)
+        require(sha(data)==record['sha256'] and len(data)==record['size'], 'original manifest pin differs')
+    contract=read(BEFORE/'OWNED_VERIFIER_PAIR_CONTRACT_001.md')
+    require(sha(contract)==preserved['root_pair_contract_sha256'], 'root pair contract pin differs')
+    bindings=json.loads(read(ROOT/'FRONT_BINDINGS_UNBOUND_001.json'))
+    require(len(bindings)==40 and all(value is None for value in bindings.values()), 'future binding was populated')
+    original_static=json.loads(read(BEFORE/'STATIC_VALIDATION_001.json'))
+    require(len(original_static['bound_and_action_paths_absent'])==20, 'logical path guard count differs')
+    for name in original_static['bound_and_action_paths_absent']:
+        absent(Path(name))
+    templates=sorted(path for path in ROOT.iterdir() if path.name.endswith('.template'))
+    require(len(templates)==13, 'template count differs')
+    rows=[];py_deltas={};byte_changed=[];old_tests={};new_tests={}
+    for path in templates:
+        data=read(path);old=read(BEFORE/path.name)
+        row={'file':path.name,'sha256':sha(data),'size':len(data),'same_bytes_as_frozen001':data==old}
+        if data!=old:byte_changed.append(path.name)
+        if path.name.endswith('.py.template'):
+            current=ast.parse(data.decode('utf-8'),filename=str(path));previous=ast.parse(old.decode('utf-8'))
+            a,b=definition_map(previous),definition_map(current)
+            require(a.keys()<=b.keys(),'Python definition removed')
+            delta={'changed_definitions':sorted(name for name in a if a[name]!=b[name]),
+                   'added_definitions':sorted(b.keys()-a.keys()),'other_top_nodes_unchanged':other_nodes(current)==other_nodes(previous)}
+            py_deltas[path.name]=delta;row['syntax']='AST_PASS'
+            if path.name=='native_successor_front_common_013_001.py.template':
+                require(delta['changed_definitions']==['cross_api_identity','quiet_host_twice','read','validate_pre_recover_document']
+                        and delta['added_definitions']==['_active_verifier_identity','_quiet_snapshot','checked_owned_verifier_pair','validate_quiet_observations']
+                        and delta['other_top_nodes_unchanged'], 'common AST delta escaped guard scope')
+            elif path.name=='test_front_read_guard_013_001.py.template':
+                old_tests=test_map(previous);new_tests=test_map(current)
+                require(len(old_tests)==15 and len(new_tests)==37 and old_tests.keys()<=new_tests.keys()
+                        and all(new_tests[key]==value for key,value in old_tests.items()),'original test body changed')
+            else:
+                require(data==old, 'unrelated Python template changed')
+        rows.append(row)
+    require(byte_changed==['native-poststatus-transport-common-013-window30h-001.ps1.template',
+                          'native_successor_front_common_013_001.py.template','test_front_read_guard_013_001.py.template'],
+            'byte delta escaped three owned guard/test templates')
+    ps_bytes=read(ROOT/'PS_PARSE_ONLY_002.json');ps=json.loads(ps_bytes)
+    require(ps['template_count']==5 and len(ps['templates'])==5 and not ps['tests_executed'], 'PS parse record malformed')
+    by_name={row['file']:row for row in rows}
+    for row in ps['templates']:
+        require(row['parse_errors']==0 and row['nonfunction_statements_unchanged']
+                and row['sha256']==by_name[row['file']]['sha256'] and row['size']==by_name[row['file']]['size'],
+                'PowerShell parse metadata no longer matches source')
+    stamp=datetime.now(timezone.utc).isoformat()
+    hold=['Schema2/two-transition successor policy is not implemented in this guard-only revision.',
+          'Pinned historical and intermediate QA manifests use grouped traversal order; existing front001 global sorting remains a known operational blocker.',
+          'Distinct current release009/proposal018 paths and release schema require a separately reviewed later revision.',
+          'Attempt013 consumption/namespace absence must be independently reverified immediately before any future action.',
+          'Exclusive live executor acknowledgement and the current candidate baseline remain unresolved root coordination gates.']
+    static_record=emit('STATIC_VALIDATION_002.json',{'schema_version':1,'record_type':'guard_only_front_static_validation',
+        'created_at_utc':stamp,'python_templates':[row for row in rows if row['file'].endswith('.py.template')],
+        'python_definition_deltas':py_deltas,'powershell_parse_record':{'sha256':sha(ps_bytes),'size':len(ps_bytes)},
+        'bound_and_action_paths_absent':original_static['bound_and_action_paths_absent'],
+        'binding_count':40,'binding_none_count':40,'template_count':13,'unchanged_template_count':10,
+        'changed_template_names':byte_changed,'original_test_bodies_ast_unchanged':15,'named_test_count':37,
+        'added_named_test_count':22,'added_mode_test_count':6,'added_pair_acquisition_test_count':16,
+        'test_names':sorted(new_tests),'preserved_source001_file_count':61,'preserved_manifest_entry_count':58,
+        'preservation_manifest_sha256':sha(read(BEFORE/'PRESERVATION_MANIFEST_002.json')),
+        'all_preserved_source_and_copy_bytes_reobserved':True,'all_preserved_copies_have_distinct_inode':True,
+        'scope':'Pure source AST, source byte comparison, filesystem absence and PS Parser::ParseFile only.',
+        'known_operational_holds':hold,'tests_executed':False,'project_code_imported_or_executed':False,
+        'operational_helper_imported_or_executed':False,'native_invoked':False,'production_invoked':False,
+        'public_action_performed':False,'operational_authority_granted':False})
+    original_binding_list=json.loads(read(BEFORE/'BINDING_LIST_001.json'))
+    binding_record=emit('BINDING_LIST_002.json',{'schema_version':1,'record_type':'guard_only_front_revision002_binding_list',
+        'created_at_utc':stamp,'inherited_literal_binding_contract':original_binding_list,
+        'inherited_binding_contract_sha256':sha(read(BEFORE/'BINDING_LIST_001.json')),
+        'current_template_pins':{row['file']:{'sha256':row['sha256'],'size':row['size']} for row in rows},
+        'front_fields':sorted(bindings),'front_binding_count':40,'front_none_count':40,
+        'source_bindings_must_be_programmatically_refreshed_after_independent_review':True,
+        'logical_bound_action_root':str(ORIGINAL),'no_self_hash_cycle':True,'future_binding_performed':False,
+        'known_operational_holds':hold,'operational_authority_granted':False})
+    interface_record=emit('GUARD_INTERFACE_002.json',{'schema_version':1,'record_type':'guard_only_front_revision002_interface',
+        'created_at_utc':stamp,'public_pure_pair_validator':'checked_owned_verifier_pair(pair, *, observed_at_ms=None)',
+        'public_pure_snapshot_validator':'validate_quiet_observations(value, *, observed_at_ms=None)',
+        'fresh_acquisition_api':'quiet_host_twice()','row_fields':['role','pid','parent_pid','executable_path','executable_sha256','creation_ms'],
+        'row_roles':['base_verifier','venv_redirector'],'row_count':2,
+        'snapshot_fields':['snapshot_index','process_count','foreign_python_pypy_count','verifier_pid','owned_verifier_pair'],
+        'snapshot_count':2,'raw_cim_fields':['ProcessId','ParentProcessId','Name','ExecutablePath','CommandLine','CreationDate'],
+        'creation_units':'nonboolean integer UTC Unix milliseconds; nullable only for unowned CIM rows',
+        'all_host_pid_zero_allowed':True,'owned_pair_pids_positive':True,'native_zero_foreign_python_guard_changed':False,
+        'windows_known_executable_suffixes':['.exe','.com','.bat','.cmd'],'pathname_execute_bits':0o111,
+        'descriptor_execute_bits':0,'raw_same_api_identity_field_count':9,'canonical_nt_cross_api_identity_field_count':8,
+        'external_public_file_identity_field_count':8,'original_old_process_liveness_schema_unchanged':True,
+        'stored_proof_grants_later_exemption':False,'source_sha256':by_name['native_successor_front_common_013_001.py.template']['sha256'],
+        'powershell_validator_template_sha256':by_name['native-poststatus-transport-common-013-window30h-001.ps1.template']['sha256'],
+        'known_operational_holds':hold,'runtime_accepted':False,'operational_authority_granted':False})
+    handoff='''# Native front revision002: guard-only frozen preparation
+
+This revision addresses the two guard findings in the preserved front001 static refusal: executable stat mode and the owned read-only verifier pair. It is unbound, unrun and operationally held. It does not implement schema2/two-transition admission, grouped QA manifest ordering or release009/proposal018 rebinding. Those are known blockers requiring a distinct later reviewed revision. No general operational acceptance is claimed.
+
+All 61 original front001 files, including its 58-entry frozen manifest and two independent refusal records, remain exact. Independent plain copies are retained under front001-before. The original 13 templates are unchanged; this staging folder contains 13 successor templates. Exactly three successor templates differ: the front common, PowerShell poststatus common and synthetic test template. Ten templates are byte-identical. Logical future bound/action paths remain under native-attempt013-front-001; all 20 were observed absent during this static freeze. That observation grants no future absence or attempt availability.
+
+The Windows reader preserves full raw9 path/path and handle/handle observations. Canonical cross8 requires integer birthtime and pathname ctime equal to birthtime. Only fixed absolute caller paths ending .exe/.com/.bat/.cmd receive the finite mode projection: regular-file type, pathname X exactly0111 and descriptor X exactly0, with every remaining type/read/write/other bit retained. Other suffixes and POSIX require exact mode equality. External public identity remains its original eight pathname fields.
+
+The owned pair is exactly the current base interpreter and its direct waiting venv redirector parent, fixed paths/names/independent image SHA pins, isolated/no-site/no-bytecode/UTF8/safe-path flags, positive exact integer IDs and UTC Unix-ms creation. Parent creation cannot follow child creation; neither creation can exceed fresh observation time. Both pair rows must remain identical in two complete host snapshots. All-host PID0 remains permitted for system inventory rows, never owned pair. Every other Python/PyPy or pro3 process refuses. Image bytes and identities, flags and the current PID/parent relation are reobserved after snapshots. A stored pair never grants a later exemption.
+
+Public pure APIs are checked_owned_verifier_pair(pair, *, observed_at_ms=None) and validate_quiet_observations(value, *, observed_at_ms=None). quiet_host_twice() performs actual fresh acquisition only when independently reviewed and explicitly authorized later. Snapshot rows retain snapshot_index/process_count/foreign_python_pypy_count/verifier_pid and add owned_verifier_pair. Pair rows use exactly role/pid/parent_pid/executable_path/executable_sha256/creation_ms, base_verifier first and venv_redirector second. PS Assert-PoststatusReady validates this same stored contract through Assert-FrontQuietObservations. Existing native zero-foreign-Python guards and separate old-owner/orphan/descendant liveness schema are unchanged.
+
+Static checks: eight Python templates AST-parsed and five PS templates parsed using Parser::ParseFile. The common changes exactly four existing definitions and adds four pair/acquisition definitions; all other common top nodes/facts are AST-identical. PS changes only Assert-PoststatusReady by one validator call and adds Assert-FrontQuietObservations; all other function extents and nonfunction statements remain exact. The 15 original test method bodies remain AST-identical. There are 37 named tests: original15 plus six mode and sixteen pair/acquisition tests. No test or captured definition was executed in this preparation.
+
+The new synthetic tests capture selected definitions by AST without importing a front/project module. Read tests supply stat/path/stream doubles; pair tests supply synthetic fixed image bytes, flags, PID/PPID, CIM JSON, task queries and image identity witnesses. They cover valid two snapshots (including PID0), finite extension masks/read-only bits, wrong file type/RW/X bits, unknown/extra/missing pair or snapshot fields, wrong image/path/role/time/PID/parent, cycles, reuse, foreign Python/PyPy/pro3, false counts, query failure, prequery image-pin refusal and post-snapshot byte/inode/flag/process substitution. These doubles prove no actual quiet host or native authority. Meaningful runtime validation remains required after independent static/scope review and explicit root authorization; no operational main/native ceremony is authorized by the test template.
+
+All 40 front bindings remain None. Inherited literal dependency slots and current staged template hashes are recorded in BINDING_LIST_002.json. Those source hashes are staging identity only; root must propagate actual reviewed successor pins programmatically after all later policy/path/order corrections. The actual owner, source/full742/QA263/release/native proofs, reserves, resource lease, exclusive executor acknowledgement, fresh attempt013 availability and all create-once guards remain required. Do not import, bind, execute, replay or overwrite a consumed helper from this handoff.
+
+Freeze evidence:
+- STATIC_VALIDATION_002.json SHA256 {static_sha}
+- BINDING_LIST_002.json SHA256 {binding_sha}
+- GUARD_INTERFACE_002.json SHA256 {interface_sha}
+- PS_PARSE_ONLY_002.json SHA256 {ps_sha}
+- preserved001 manifest SHA256 {preservation_sha}
+
+Review is pending. No project import, native invocation, production action, historical rewrite, live candidate edit or public action occurred.
+'''.format(static_sha=static_record['sha256'],binding_sha=binding_record['sha256'],interface_sha=interface_record['sha256'],
+           ps_sha=sha(ps_bytes),preservation_sha=sha(read(BEFORE/'PRESERVATION_MANIFEST_002.json')))
+    write(ROOT/'HANDOFF.md',handoff.encode('utf-8'))
+    # Reobserve all frozen predecessor rows after metadata production.
+    for record in preserved['files']:
+        require(read(ORIGINAL/record['path'])==read(BEFORE/record['path'])
+                and sha(read(ORIGINAL/record['path']))==record['sha256'], 'predecessor drift during freeze')
+    files={}
+    for path in sorted(ROOT.iterdir()):
+        if path.is_dir():
+            require(path==BEFORE,'unexpected directory in owned freeze root');continue
+        data=read(path);files[path.name]={'sha256':sha(data),'size':len(data)}
+    manifest=emit('UNBOUND_MANIFEST_002.json',{'schema_version':1,'record_type':'guard_only_native_front_revision002_freeze',
+        'created_at_utc':stamp,'status':'FROZEN_UNBOUND_UNRUN_GUARD_ONLY_PENDING_INDEPENDENT_REVIEW_OPERATIONAL_HOLD',
+        'files':files,'top_level_files_before_manifest':len(files),'top_level_files_including_manifest':len(files)+1,
+        'template_count':13,'python_template_count':8,'powershell_template_count':5,'changed_templates':byte_changed,
+        'byte_identical_template_count':10,'front_binding_count':40,'front_binding_none_count':40,
+        'bound_action_absence_count':20,'named_test_count':37,'old_test_bodies_ast_identical':15,
+        'added_test_count':22,'mode_additions':6,'pair_acquisition_additions':16,'preserved_original_file_count':61,
+        'preserved_original_manifest_entry_count':58,'preservation_manifest_sha256':sha(read(BEFORE/'PRESERVATION_MANIFEST_002.json')),
+        'root_pair_contract_sha256':sha(contract),'logical_bound_action_root':str(ORIGINAL),
+        'known_operational_holds':hold,'guard_interfaces_consistent_static_only':True,'runtime_checks_run':False,
+        'project_code_imported_or_executed':False,'templates_or_tests_executed':False,'native_invoked':False,
+        'public_action_performed':False,'historical_evidence_modified':False,'live_candidate_modified':False,
+        'operational_authority_granted':False})
+    print(json.dumps({'manifest':manifest,'static':static_record,'binding':binding_record,'interface':interface_record,
+                      'templates':{row['file']:row['sha256'] for row in rows},'tests':37,'bindings_none':40},sort_keys=True))
+
+
+if __name__=='__main__':
+    main()

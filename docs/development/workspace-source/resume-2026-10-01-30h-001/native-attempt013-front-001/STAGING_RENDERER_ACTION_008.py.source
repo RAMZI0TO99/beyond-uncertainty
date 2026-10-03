@@ -1,0 +1,129 @@
+"""Stdlib source editing only; no operational source/helper execution."""
+import ast,json,re
+from pathlib import Path
+FRONT=Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-attempt013-front-001')
+common=FRONT/'native_successor_front_common_013_001.py.template'
+text=common.read_text(encoding='utf-8');tree=ast.parse(text)
+node=next(n for n in tree.body if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='BINDING_SCHEMA')
+schema=json.loads(node.value.args[0].value)
+new_slots={'pre_render_review_path':'path','pre_render_review_sha256':'sha256',
+           'renderer_action_sha256':'sha256','renderer_transport_sha256':'sha256'}
+schema.update(new_slots)
+lines=text.splitlines(keepends=True);lines[node.lineno-1:node.end_lineno]=['BINDING_SCHEMA = json.loads('+repr(json.dumps(schema,sort_keys=True,separators=(',',':')))+')\n']
+text=''.join(lines);ast.parse(text);common.write_text(text,encoding='utf-8',newline='\n')
+(FRONT/'FRONT_BINDINGS_UNBOUND_001.json').write_text(json.dumps({k:None for k in sorted(schema)},sort_keys=True,indent=2)+'\n',encoding='utf-8')
+for path in FRONT.glob('*.py.template'):
+    source=path.read_text(encoding='utf-8');t=ast.parse(source)
+    matches=[n for n in t.body if isinstance(n,ast.Assign) and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='FRONT_BINDINGS']
+    if matches:
+        n=matches[0];ls=source.splitlines(keepends=True);ls[n.lineno-1:n.end_lineno]=['FRONT_BINDINGS = json.loads('+repr(json.dumps({k:None for k in sorted(schema)},sort_keys=True,separators=(',',':')))+')\n']
+        source=''.join(ls);ast.parse(source);path.write_text(source,encoding='utf-8',newline='\n')
+for path in FRONT.glob('*.ps1.template'):
+    source=path.read_text(encoding='utf-8');marker='$FrontBindings = [ordered]@{\n'
+    if marker in source:
+        source=source.replace(marker,marker+''.join('    '+k+' = $null\n' for k in new_slots),1)
+        path.write_text(source,encoding='utf-8',newline='\n')
+
+path=FRONT/'render-status013-receipt-window30h-001.ps1.template'
+source=path.read_text(encoding='utf-8')
+function='''
+function ConvertTo-RendererCanonicalJson([object] $Value) {
+    if ($null -eq $Value) { return 'null' }
+    if ($Value -is [bool]) { if ($Value) { return 'true' } else { return 'false' } }
+    if ($Value -is [string]) { return (ConvertTo-Json -InputObject $Value -Compress) }
+    if ($Value -is [int] -or $Value -is [long]) { return $Value.ToString([Globalization.CultureInfo]::InvariantCulture) }
+    if ($Value -is [Collections.IDictionary]) {
+        $names = [string[]]@($Value.Keys)
+        [Array]::Sort($names,[StringComparer]::Ordinal)
+        $parts = @()
+        foreach ($name in $names) { $parts += ((ConvertTo-Json -InputObject $name -Compress) + ':' + (ConvertTo-RendererCanonicalJson $Value[$name])) }
+        return ('{' + ($parts -join ',') + '}')
+    }
+    throw 'Renderer action record has unsupported canonical value type'
+}
+
+function Write-RendererAction([string] $Path,[object] $Document) {
+    Assert-EntryAbsent $Path
+    $data = [Text.UTF8Encoding]::new($false,$true).GetBytes((ConvertTo-RendererCanonicalJson $Document) + [char]10)
+    $file = [IO.File]::Open($Path,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+    try { $file.Write($data,0,$data.Length); $file.Flush($true) } finally { $file.Dispose() }
+    Assert-Plain $Path $false
+    if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($Path)) -cne [Convert]::ToBase64String($data)) { throw 'Renderer action record readback differs' }
+}
+
+$RendererStarted = Join-Path $Front 'renderer-attempt013-started.json'
+$RendererFinished = Join-Path $Front 'renderer-attempt013-finished.json'
+$RendererFailed = Join-Path $Front 'renderer-attempt013-failed.json'
+foreach ($guard in @($RendererStarted,$RendererFinished,$RendererFailed)) { Assert-EntryAbsent $guard }
+$preReview = Get-Content -LiteralPath $FrontBindings.pre_render_review_path -Raw -Encoding UTF8 | ConvertFrom-Json
+$RendererStartedUtc = [DateTimeOffset]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.ffffffzzz',[Globalization.CultureInfo]::InvariantCulture)
+$actionBase = [ordered]@{
+    renderer_evidence_schema_version=1
+    renderer_script_path=$ScriptPath
+    renderer_script_sha256=$ExpectedScriptSha256.ToLowerInvariant()
+    receipt_renderer_path=$Renderer
+    receipt_renderer_sha256=$RendererSha
+    owner_record_sha256=$FrontOwnerSha
+    controller_commit=$ControllerCommit
+    release_record_sha256=$FrontBindings.release_record_sha256
+    candidate_manifest_sha256=$FrontBindings.candidate_manifest_sha256
+    started_at_utc=$RendererStartedUtc
+    stage0=[ordered]@{source_sha256=$SourceSha; encoded_sha256=$EncodedSha; environment_policy_sha256=$EnvironmentSha}
+    pre_render_review=[ordered]@{path=$FrontBindings.pre_render_review_path; sha256=$FrontBindings.pre_render_review_sha256}
+    scientific_outcomes_consulted=$false
+    scientific_values_emitted=$false
+    public_action_performed=$false
+    production_invoked=$false
+    native_invoked=$false
+    native_authority_granted=$false
+}
+$startedAction = [ordered]@{}
+foreach ($key in $actionBase.Keys) { $startedAction[$key]=$actionBase[$key] }
+$startedAction.record_type='attempt013_receipt_renderer_started'
+$startedAction.expected_receipt=[ordered]@{path=$Receipt;sha256=$preReview.receipt.sha256}
+Assert-Plain $Front $true
+Assert-OwnerWindow
+Assert-LocalRelease
+Assert-HostQuiet
+if ((Sha $ScriptPath) -cne $ExpectedScriptSha256.ToLowerInvariant() -or (Sha $Renderer) -cne $RendererSha) { throw 'Renderer source changed before action claim' }
+Write-RendererAction $RendererStarted $startedAction
+$RendererStartedSha=Sha $RendererStarted
+try {
+'''
+needle='[NativeAttemptDirectory013]::Create($Attempt)'
+assert needle in source
+source=source.replace(needle,function+'\n'+needle,1)
+tail='''
+Assert-OwnerWindow
+Assert-LocalRelease
+Assert-HostQuiet
+Assert-CleanGit
+if ((Sha $ScriptPath) -cne $ExpectedScriptSha256.ToLowerInvariant() -or (Sha $Renderer) -cne $RendererSha -or
+    (Sha $RendererStarted) -cne $RendererStartedSha -or (Sha $Receipt) -cne $preReview.receipt.sha256) {
+    throw 'Renderer evidence changed before finished action publication'
+}
+$finishedAction=[ordered]@{}
+foreach ($key in $actionBase.Keys) { $finishedAction[$key]=$actionBase[$key] }
+$finishedAction.record_type='attempt013_receipt_renderer_finished'
+$finishedAction.finished_at_utc=[DateTimeOffset]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.ffffffzzz',[Globalization.CultureInfo]::InvariantCulture)
+$finishedAction.started_record_sha256=$RendererStartedSha
+$finishedAction.receipt=[ordered]@{path=$Receipt;sha256=(Sha $Receipt);size=[long](Get-Item -LiteralPath $Receipt).Length}
+$finishedAction.exit_code=0
+Write-RendererAction $RendererFinished $finishedAction
+Write-Output ('RENDERER_ACTION_SHA256=' + (Sha $RendererFinished))
+} catch {
+    $errorRaw=[Text.UTF8Encoding]::new($false,$true).GetBytes([string]$_)
+    $errorSha=[BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($errorRaw)).Replace('-','').ToLowerInvariant()
+    $failedAction=[ordered]@{renderer_evidence_schema_version=1;record_type='attempt013_receipt_renderer_failed';
+        renderer_script_sha256=$ExpectedScriptSha256.ToLowerInvariant();started_record_sha256=$RendererStartedSha;
+        failed_at_utc=[DateTimeOffset]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.ffffffzzz',[Globalization.CultureInfo]::InvariantCulture);
+        error_sha256=$errorSha;replay_allowed=$false;partial_attempt_preserved=$true;
+        scientific_outcomes_consulted=$false;scientific_values_emitted=$false;public_action_performed=$false;
+        production_invoked=$false;native_invoked=$false;native_authority_granted=$false}
+    Write-RendererAction $RendererFailed $failedAction
+    throw
+}
+'''
+source+=tail
+path.write_text(source,encoding='utf-8',newline='\n')
+print('40-slot front interface and distinct renderer action receipts staged; no receipt created')

@@ -1,0 +1,310 @@
+"""Author-owned metadata composition only; never execute selected target code."""
+import ast
+import hashlib
+import json
+import os
+import stat
+from datetime import datetime, timezone
+from pathlib import Path
+
+WORK = Path(r'D:\Aenv\pro2\resume-2026-10-03-continuation001')
+PREP = WORK / 'root-checker25-runtime-prep001'
+META = WORK / 'metadata3-actual-checker-prep001'
+REF = WORK / 'root-checker19-runtime-prep002'
+AUTHOR = '/root/bootstrap_stage'
+SCOPE = 'SYNTHETIC_METADATA3_CHECKER25_STDLIB_REGRESSIONS_ONLY'
+MODULE = 'isolated_metadata3_checker_tests_025_001'
+TEST = META / 'test_metadata3_actual_checker_preparation_003.py'
+HELPER = META / 'review-metadata3-actual006-corrected009.TEMPLATE.py'
+PEER = WORK / 'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_002.json'
+FULL = WORK / 'metadata3-checker009-independent-review001/INDEPENDENT_METADATA3_CHECKER009_SOURCE_DETAILS_001.json'
+PACKET = META / 'AUTHOR_FROZEN_SOURCE_MANIFEST_009.json'
+PINS = {
+    TEST: ('11babbb00b240059ce441b37e2b4bcbcd3167ff44f674dc3229578a63dd865db', 34563),
+    HELPER: ('3c02e9898ed5fde8cf74f91ff780093ed66ca2a8807a1be2dfe1c9e8976d14e6', 146200),
+    PEER: ('4a7188b0f44de5ac2b454de0ba6bc0e4a07b1891fa24b23c88e119d0547d4137', 795),
+    FULL: ('556bd1a518caf9e284c00adab7fcd937ea71e31ab770bfb4257137e6b6cf0ebe', 192565),
+    PACKET: ('8b296a86c7912141f3e2b880927e515408b7d73994edde6b2bfd7f1676fa0e31', 10908),
+    REF / 'RUN_SYNTHETIC_CHECKER19_001.TEMPLATE.py': ('b5f432381018535d5791281064ec499d88c35169e6e5071cad3b74a88fcf50f9', 14880),
+    REF / 'SUPERVISE_SYNTHETIC_CHECKER19_002.TEMPLATE.ps1': ('20e4201097ca6ba9b2f2db6dc4e66181320a51d18030cf9431652fa13c01f464', 16070),
+}
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+def wire(value):
+    return (json.dumps(value, ensure_ascii=True, sort_keys=True, indent=2) + '\n').encode('ascii')
+
+def need(value, message):
+    if not value:
+        raise ValueError(message)
+
+def raw(info):
+    return [getattr(info, field) for field in ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')]
+
+def observe(path):
+    before = path.lstat()
+    need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and not before.st_file_attributes & 1024 and 0 <= before.st_size <= 2097152, 'plain bounded author input')
+    with path.open('rb', buffering=0) as stream:
+        opened = os.fstat(stream.fileno())
+        left, right = raw(before), raw(opened)
+        need(left[:4] + [left[8], left[5], left[6], left[7]] == right[:4] + [right[8], right[5], right[6], right[7]] and left[4] == left[8], 'author cross API metadata')
+        data = stream.read(before.st_size + 1)
+        need(raw(opened) == raw(os.fstat(stream.fileno())), 'author same API descriptor drift')
+    need(raw(before) == raw(path.lstat()) and len(data) == before.st_size, 'author same API path drift')
+    return data, dict(path=str(path), bytes=len(data), sha256=digest(data), path_raw9=left, descriptor_raw9=right)
+
+def put(path, data):
+    need(not path.exists(), 'create once ' + str(path))
+    with path.open('xb') as stream:
+        need(stream.write(data) == len(data), 'full author write')
+    need(path.read_bytes() == data, 'author output readback')
+
+def replace(text, old, new, minimum=1):
+    count = text.count(old)
+    need(count >= minimum, 'missing source anchor ' + repr(old))
+    return text.replace(old, new)
+
+def methods(tree):
+    return {(cls.name, node.name): node for cls in tree.body if isinstance(cls, ast.ClassDef)
+            for node in cls.body if isinstance(node, ast.FunctionDef) and node.name.startswith('test_')}
+
+def ast_hash(node):
+    return digest(ast.dump(node, include_attributes=False).encode('utf8'))
+
+def selected_definitions(tree):
+    return {node.name: ast_hash(node) for node in tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+
+def ps_functions(text):
+    # Source metadata only. The independently reviewed PowerShell parser remains
+    # the authoritative syntax check; this extraction proves retained text.
+    import re
+    lines = text.splitlines(keepends=True)
+    starts = [index for index, line in enumerate(lines) if re.match(r'^function [A-Za-z0-9_-]+', line)]
+    result = {}
+    for index in starts:
+        name = re.match(r'^function ([A-Za-z0-9_-]+)', lines[index]).group(1)
+        if lines[index].rstrip().endswith('}'):
+            end = index + 1
+        else:
+            end = next(row + 1 for row in range(index + 1, len(lines)) if lines[row].rstrip() == '}')
+        result[name] = ''.join(lines[index:end])
+    return result
+
+def prepare():
+    need(Path(__file__).absolute() == PREP / 'PREPARE_SOURCE_001.py', 'owned metadata source path')
+    need(not (PREP / 'before').exists(), 'preservation namespace fresh')
+    packet_data, packet_observation = observe(PACKET)
+    need((digest(packet_data), len(packet_data)) == PINS[PACKET], 'selected packet pin')
+    packet = json.loads(packet_data)
+    need(packet['payload_count'] == len(packet['payloads']) == 55, 'exact55 selected packet')
+    inputs = [PACKET, PEER, FULL, *[META / row['path'] for row in packet['payloads']],
+              REF / 'RUN_SYNTHETIC_CHECKER19_001.TEMPLATE.py', REF / 'SUPERVISE_SYNTHETIC_CHECKER19_002.TEMPLATE.ps1',
+              REF / 'SOURCE_CONTRACT_002.json', REF / 'SOURCE_MANIFEST_002.json',
+              REF / 'ROOT_SYNTHETIC_CHECKER19_ACCEPTANCE_002.json',
+              WORK / 'metadata3-checker19-runtime-audit-prep001/INDEPENDENT_CHECKER19_RUNNER_SOURCE_REVIEW_002.json',
+              WORK / 'metadata3-checker19-runtime-audit-prep001/INDEPENDENT_CHECKER19_RUNNER_SOURCE_DETAILS_002.json',
+              WORK / 'metadata3-checker19-runtime-audit-prep001/CHECKER19_DISCOVERY_PROJECTION_002.json',
+              WORK / 'OWNER_CONTINUATION_20261003_001.json',
+              WORK / 'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json']
+    inputs = list(dict.fromkeys(inputs))
+    need(all(path.is_relative_to(WORK) for path in inputs), 'finite WORK input scope')
+    payload_pins = {META / row['path']: (row['sha256'], row['bytes']) for row in packet['payloads']}
+    (PREP / 'before').mkdir()
+    captured, pairs = {}, []
+    for ordinal, path in enumerate(inputs):
+        data, initial = observe(path)
+        pin = PINS.get(path, payload_pins.get(path))
+        if pin is not None:
+            need((digest(data), len(data)) == pin, 'frozen input pin ' + str(path))
+        copy_path = PREP / 'before' / ('%03d-' % ordinal + path.name + '.bytes')
+        put(copy_path, data)
+        copy_data, copy_observation = observe(copy_path)
+        need(copy_data == data and copy_observation['path_raw9'][:2] != initial['path_raw9'][:2], 'independent exact before copy')
+        captured[path] = data
+        pairs.append(dict(original=str(path), copy=str(copy_path.relative_to(PREP)), initial=initial, copy_observation=copy_observation))
+    put(PREP / 'BEFORE_PROVENANCE_001.json', wire(dict(schema_version=1, source_author=AUTHOR,
+        record_type='checker25_finite_input_preservation', pairs=pairs, old19_receipts_are_spent_history=True)))
+
+    old_tree = ast.parse(captured[META / 'test_metadata3_actual_checker_preparation_002.py'])
+    new_tree = ast.parse(captured[TEST])
+    old_methods, new_methods = methods(old_tree), methods(new_tree)
+    need(len(old_methods) == 19 and len(new_methods) == 25 and all(ast_hash(node) == ast_hash(new_methods[key]) for key, node in old_methods.items()), 'all19 method ASTs exact')
+    added = sorted(set(new_methods) - set(old_methods))
+    need(len(added) == 6, 'exact six new method names')
+    rows = [dict(id=MODULE + '.' + cls + '.' + name, name=name, body_ast_sha256=ast_hash(node), source_line=node.lineno)
+            for (cls, name), node in new_methods.items()]
+    rows.sort(key=lambda row: row['id'])
+    ordered_ids = [row['id'] for row in rows]
+    projection = dict(schema_version=1, record_type='author_synthetic_checker25_discovery_projection',
+        source_author=AUTHOR, scope=SCOPE, module_name=MODULE,
+        test=dict(path=str(TEST), sha256=PINS[TEST][0], bytes=PINS[TEST][1]),
+        helper=dict(path=str(HELPER), sha256=PINS[HELPER][0], bytes=PINS[HELPER][1]),
+        ordered_ids=ordered_ids, methods=rows,
+        ordered_ids_sha256=digest(('\n'.join(ordered_ids) + '\n').encode('utf8')))
+    projection_data = wire(projection)
+    projection_path = PREP / 'CHECKER25_DISCOVERY_PROJECTION_001.json'
+    put(projection_path, projection_data)
+    plans = []
+    for (cls, name), node in sorted(new_methods.items()):
+        sites = [dict(source_line=call.lineno, call_ast=ast.dump(call, include_attributes=False),
+                      keyword_names=[kw.arg for kw in call.keywords]) for call in ast.walk(node)
+                 if isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute) and call.func.attr == 'subTest']
+        loops = [dict(source_line=loop.lineno, iterable_ast=ast.dump(loop.iter, include_attributes=False),
+                      subtest_site_lines=[call.lineno for call in ast.walk(loop) if isinstance(call, ast.Call)
+                          and isinstance(call.func, ast.Attribute) and call.func.attr == 'subTest'])
+                 for loop in ast.walk(node) if isinstance(loop, (ast.For, ast.AsyncFor))]
+        plans.append(dict(id=MODULE + '.' + cls + '.' + name, body_ast_sha256=ast_hash(node),
+            inherited19=(cls, name) in old_methods, subtest_sites=sites, loop_plans=loops,
+            recovered_call_sites=[call.lineno for call in ast.walk(node) if isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute) and call.func.attr == 'recovered']))
+    put(PREP / 'CHECKER25_TEST_PLAN_001.json', wire(dict(schema_version=1, source_author=AUTHOR, scope=SCOPE,
+        old19_AST_exact=True, new_method_names=[name for cls, name in added], planned_direct_methods=25,
+        declared_subtest_sites=sum(len(row['subtest_sites']) for row in plans), methods=plans,
+        actual_test_count=None, actual_subtest_count=None,
+        limitation='Sites and loop ASTs are source plans, not executed counts. Six new helpers use synthetic5390 table facts and mocks; no real whole inventory, actual metadata or current24 acceptance.')))
+
+    runner = captured[REF / 'RUN_SYNTHETIC_CHECKER19_001.TEMPLATE.py'].decode('utf8')
+    parent = captured[REF / 'SUPERVISE_SYNTHETIC_CHECKER19_002.TEMPLATE.ps1'].decode('utf8')
+    replacements = {
+        'root-checker19-runtime-prep002': 'root-checker25-runtime-prep001',
+        'root-checker19-runtime002': 'root-checker25-runtime001',
+        'RUN_SYNTHETIC_CHECKER19_001': 'RUN_SYNTHETIC_CHECKER25_001',
+        'SUPERVISE_SYNTHETIC_CHECKER19_002': 'SUPERVISE_SYNTHETIC_CHECKER25_001',
+        'ROOT_SYNTHETIC_CHECKER19_GO_001': 'ROOT_SYNTHETIC_CHECKER25_GO_001',
+        'SYNTHETIC_METADATA3_CHECKER19': 'SYNTHETIC_METADATA3_CHECKER25',
+        'root_synthetic_checker19': 'root_synthetic_checker25',
+        'execute_fixed_synthetic_checker19_once': 'execute_fixed_synthetic_checker25_once',
+        'test_metadata3_actual_checker_preparation_002.py': TEST.name,
+        'review-metadata3-actual006-corrected008.TEMPLATE.py': HELPER.name,
+        'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_001.json': str(PEER.relative_to(WORK)).replace('\\', '/'),
+        'metadata3-checker-independent-review001\\INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_001.json': str(PEER.relative_to(WORK)),
+        'metadata3-checker19-runtime-audit-prep001/CHECKER19_DISCOVERY_PROJECTION_002.json': 'root-checker25-runtime-prep001/CHECKER25_DISCOVERY_PROJECTION_001.json',
+        'metadata3-checker19-runtime-audit-prep001\\CHECKER19_DISCOVERY_PROJECTION_002.json': 'root-checker25-runtime-prep001\\CHECKER25_DISCOVERY_PROJECTION_001.json',
+        'metadata3-checker19-runtime-audit-prep001\\INDEPENDENT_CHECKER19_RUNNER_SOURCE_REVIEW_002.json': 'root-checker25-runtime-prep001\\INDEPENDENT_CHECKER25_RUNNER_SOURCE_REVIEW_001.json',
+        'ea0012b190e108edcfc1dece29ed480cd369a34f1ed044edacad415d808934db': PINS[TEST][0],
+        'c097c756d8cf55b1ac98a68313f5e406455b9306af63bd48a6e1cb3add70d3c1': PINS[HELPER][0],
+        '1b4eeb7636d76a30f9ae47108e4128d2a798bc9cfb3da11a980e2be89f10944c': PINS[PEER][0],
+        'aca7d58559403d5b4db5fffd791bfd59d12e85b230aefe09f678a18ed9c3bbb8': digest(projection_data),
+        '26002': '34563', '137182': '146200',
+        'ROOT_PARENT_STARTED_002': 'ROOT_PARENT_STARTED_001',
+        'ROOT_PARENT_TERMINAL_002': 'ROOT_PARENT_TERMINAL_001',
+        'ROOT_PARENT_STDOUT_002': 'ROOT_PARENT_STDOUT_001',
+        'ROOT_PARENT_STDERR_002': 'ROOT_PARENT_STDERR_001',
+    }
+    applied = []
+    for old, new in replacements.items():
+        counts = dict(runner=runner.count(old), parent=parent.count(old))
+        need(sum(counts.values()) > 0, 'missing declared combined anchor ' + old)
+        runner, parent = runner.replace(old, new), parent.replace(old, new)
+        applied.append(dict(old=old, new=new, occurrences=counts))
+    for old, new in {'isolated_metadata3_checker_tests_002': MODULE,
+        "reviewer='/root/owner_docs_review'": "reviewer='/root'",
+        "len(expected)==19": "len(expected)==25", 'exact19 projection': 'exact25 projection',
+        'actual runtime19 discovery exact': 'actual runtime25 discovery exact',
+        'result.testsRun==19': 'result.testsRun==25', 'SYNTHETIC19_RESULT_PUBLISHED': 'SYNTHETIC25_RESULT_PUBLISHED',
+        "('schema_version','record_type','reviewer','scope','module_name','test','helper','ordered_ids','methods','ordered_ids_sha256')": "('schema_version','record_type','source_author','scope','module_name','test','helper','ordered_ids','methods','ordered_ids_sha256')",
+        "record_type='independent_synthetic_checker19_discovery_projection',reviewer='/root/capsule_design_review'": "record_type='author_synthetic_checker25_discovery_projection',source_author='/root/bootstrap_stage'",
+    }.items():
+        runner = replace(runner, old, new)
+    parent = replace(parent, 'independent_checker19_runner_source_review', 'independent_checker25_runner_source_review')
+    parent = replace(parent, "'/root/root_pipeline_binder'", "'/root/bootstrap_stage'")
+    parent = replace(parent, "'PASS_STATIC_SYNTHETIC_CHECKER19_RUNNER_ONLY'", "'PASS_STATIC_SYNTHETIC_CHECKER25_RUNNER_ONLY'")
+    parent = replace(parent, "$rp.reviewer -ceq '/root/capsule_design_review'", "($rp.reviewer -ceq '/root' -or $rp.reviewer -ceq '/root/capsule_design_review')")
+    parent = replace(parent, '# UNRUN source. Root alone selects a genuine once-only synthetic GO and source peers.',
+                     '# Author /root/bootstrap_stage. UNRUN source; ROOT alone selects genuine GO and a different source peer.')
+    runner = replace(runner, '"""UNRUN fixed synthetic stdlib tests, no real metadata or project targets."""',
+        '"""Author /root/bootstrap_stage: UNRUN synthetic25, no actual metadata or project target."""')
+
+    runner = replace(runner, "MASTER_SHA=", "FULL_PEER=WORK/'metadata3-checker009-independent-review001/INDEPENDENT_METADATA3_CHECKER009_SOURCE_DETAILS_001.json'\nSOURCE_MANIFEST=META/'AUTHOR_FROZEN_SOURCE_MANIFEST_009.json'\nFULL_PEER_SHA='" + PINS[FULL][0] + "'\nSOURCE_MANIFEST_SHA='" + PINS[PACKET][0] + "'\nMASTER_SHA=")
+    runner = replace(runner, "(GO,a.expected_root_go_sha256,65536),", "(GO,a.expected_root_go_sha256,65536),(FULL_PEER,FULL_PEER_SHA,192565),(SOURCE_MANIFEST,SOURCE_MANIFEST_SHA,10908),")
+    runner = replace(runner, "source={};proof=[]", "packet=decode(read(SOURCE_MANIFEST,SOURCE_MANIFEST_SHA,10908)[0]);need(type(packet['payload_count']) is int and packet['payload_count']==55 and type(packet['payloads']) is list and len(packet['payloads'])==55,'finite accepted source packet')\n names=set()\n for entry in packet['payloads']:\n  exact(entry,('path','bytes','sha256'));name=entry['path'];need(type(name) is str and re.fullmatch(r'[A-Za-z0-9_.-]{1,160}',name) and name not in names and type(entry['bytes']) is int and 0<=entry['bytes']<=2097152 and type(entry['sha256']) is str and re.fullmatch('[0-9a-f]{64}',entry['sha256']),'finite source packet row');names.add(name);fixed.append((META/name,entry['sha256'],entry['bytes']))\n fixed=list(dict.fromkeys(fixed));source={};proof=[]")
+    runner = replace(runner, 'checker_template_sha256=HELPER_SHA,target_execution=False', 'checker_template_sha256=HELPER_SHA,source_manifest_sha256=SOURCE_MANIFEST_SHA,full_source_details_sha256=FULL_PEER_SHA,target_execution=False')
+    parent = replace(parent, "$MasterSha=", "$FullPeer=Join-Path $Work 'metadata3-checker009-independent-review001\\INDEPENDENT_METADATA3_CHECKER009_SOURCE_DETAILS_001.json'\n$FullPeerSha='" + PINS[FULL][0] + "'\n$SourceManifest=Join-Path $Work 'metadata3-actual-checker-prep001\\AUTHOR_FROZEN_SOURCE_MANIFEST_009.json'\n$SourceManifestSha='" + PINS[PACKET][0] + "'\n$MasterSha=")
+    parent = replace(parent, "@($Projection,$ExpectedProjectionSha256,65536))", "@($Projection,$ExpectedProjectionSha256,65536),@($FullPeer,$FullPeerSha,192565),@($SourceManifest,$SourceManifestSha,10908))")
+    parent = replace(parent, " foreach($row in $sources){[void](Read-Pinned $row[0] $row[1] $row[2])};foreach($row in $runtime)", " $packet=Json (Read-Pinned $SourceManifest $SourceManifestSha 10908);Need ($packet.payload_count -is [int] -and $packet.payload_count -eq 55 -and @($packet.payloads).Count -eq 55) 'Exact55 accepted source packet';$names=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)\n foreach($entry in $packet.payloads){Exact $entry @('path','bytes','sha256');Need ($entry.path -is [string] -and $entry.path -cmatch '\\A[A-Za-z0-9_.-]{1,160}\\z' -and $names.Add($entry.path) -and $entry.bytes -is [int] -and $entry.bytes -ge 0 -and $entry.bytes -le 2097152 -and $entry.sha256 -is [string] -and $entry.sha256 -cmatch '\\A[0-9a-f]{64}\\z') 'Finite source packet row';$sources+=,@((Join-Path (Join-Path $Work 'metadata3-actual-checker-prep001') $entry.path),$entry.sha256,$entry.bytes)}\n foreach($row in $sources){[void](Read-Pinned $row[0] $row[1] $row[2])};foreach($row in $runtime)", minimum=1)
+    # The replacement above is restricted to the first source-check boundary:
+    # post-check must observe the already captured finite source list, not rebuild it.
+    inserted = parent.index(" $packet=Json")
+    next_insert = parent.find(" $packet=Json", inserted + 1)
+    if next_insert >= 0:
+        end = parent.index(" foreach($row in $sources)", next_insert)
+        parent = parent[:next_insert] + parent[end:]
+    peer_guard = " $hp=Json (Read-Pinned $HelperPeer $ExpectedHelperSourcePeerSha256 65536);Exact $hp @('schema_version','record_type','created_utc','reviewer','source_author','scope','verdict','checker_template_sha256','source_manifest_sha256','full_source_details_sha256','target_execution','actual_binding','tests_executed','runtime_acceptance','operational_authority')\n foreach($key in @('record_type','created_utc','reviewer','source_author','scope','verdict','checker_template_sha256','source_manifest_sha256','full_source_details_sha256')){Need ($hp.$key -is [string]) 'Helper peer text type'}\n Need ($hp.schema_version -is [int] -and $hp.schema_version -eq 1 -and $hp.record_type -ceq 'independent_metadata3_checker_source_review' -and $hp.reviewer -ceq '/root' -and $hp.source_author -ceq '/root/actual_record_checker' -and $hp.scope -ceq 'COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY' -and $hp.verdict -ceq 'PASS_STATIC_METADATA3_CHECKER_SOURCE_ONLY' -and $hp.checker_template_sha256 -ceq $ExpectedHelperSha256 -and $hp.source_manifest_sha256 -ceq $SourceManifestSha -and $hp.full_source_details_sha256 -ceq $FullPeerSha -and $null -eq $hp.actual_binding -and $hp.target_execution -is [bool] -and -not $hp.target_execution -and $hp.tests_executed -is [bool] -and -not $hp.tests_executed -and $hp.runtime_acceptance -is [bool] -and -not $hp.runtime_acceptance -and $hp.operational_authority -is [bool] -and -not $hp.operational_authority) 'Selected009 helper Source-only proof'\n"
+    parent = replace(parent, ' $rp=Json', peer_guard + ' $rp=Json')
+    parent = replace(parent, " Need ($rp.schema_version", " foreach($key in @('record_type','created_utc','reviewer','source_author','scope','verdict','runner_source_sha256','parent_source_sha256','source_manifest_sha256')){Need ($rp.$key -is [string]) 'Runner peer text type'}\n Need ($rp.source_manifest_sha256 -cmatch '\\A[0-9a-f]{64}\\z') 'Runner peer manifest SHA'\n Need ($rp.schema_version")
+    parent = replace(parent, " Need ($go.schema_version", " foreach($key in @('record_type','author','scope','created_utc','expires_utc','owner_master_sha256','owner_review_sha256','parent_source_sha256','runner_source_sha256','test_source_sha256','helper_source_sha256','helper_source_peer_sha256','discovery_projection_sha256','decision')){Need ($go.$key -is [string]) 'Root GO text type'}\n Need ($go.schema_version")
+    parent = replace(parent, '$si.RedirectStandardOutput=$true;$si.RedirectStandardError=$true', '$si.RedirectStandardOutput=$true;$si.RedirectStandardError=$true;$si.RedirectStandardInput=$true\n foreach($key in @($si.EnvironmentVariables.Keys)){if($key -match "^(GIT_|PYTHON)"){[void]$si.EnvironmentVariables.Remove($key)}}\n foreach($key in @(\'OMP_NUM_THREADS\',\'MKL_NUM_THREADS\',\'OPENBLAS_NUM_THREADS\',\'NUMEXPR_NUM_THREADS\',\'VECLIB_MAXIMUM_THREADS\')){$si.EnvironmentVariables[$key]=\'1\'}')
+    parent = replace(parent, " 'Owned runner start';$launched=$true", " 'Owned runner start';$launched=$true;$child.StandardInput.Close()")
+    parent = replace(parent, 'Native input preservation', 'Native FileInfo input preservation')
+    need('StringComparison]::Ordinal' in parent and 'NonInteractive' not in parent, 'Ordinal BOM and no NonInteractive')
+    need('root_pipeline_binder' not in runner + parent and 'checker19' not in runner + parent, 'genuine new scope author/names')
+    new_runner_tree = ast.parse(runner)
+    old_runner_tree = ast.parse(captured[REF / 'RUN_SYNTHETIC_CHECKER19_001.TEMPLATE.py'])
+    old_defs, new_defs = selected_definitions(old_runner_tree), selected_definitions(new_runner_tree)
+    need(set(old_defs) == set(new_defs) and all(old_defs[name] == new_defs[name] for name in old_defs if name != 'main'), 'all recorder/reader function ASTs retained')
+    old_ps, new_ps = ps_functions(captured[REF / 'SUPERVISE_SYNTHETIC_CHECKER19_002.TEMPLATE.ps1'].decode('utf8')), ps_functions(parent)
+    need(old_ps == new_ps and len(new_ps) == 9, 'all nine accepted parent functions retained')
+    runner_path = PREP / 'RUN_SYNTHETIC_CHECKER25_001.TEMPLATE.py'
+    parent_path = PREP / 'SUPERVISE_SYNTHETIC_CHECKER25_001.TEMPLATE.ps1'
+    put(runner_path, runner.encode('utf8'))
+    put(parent_path, parent.encode('utf8'))
+    put(PREP / 'SOURCE_CHANGE_AUDIT_001.json', wire(dict(schema_version=1, source_author=AUTHOR,
+        selected_reference_runner_sha256=PINS[REF / 'RUN_SYNTHETIC_CHECKER19_001.TEMPLATE.py'][0],
+        selected_reference_parent_sha256=PINS[REF / 'SUPERVISE_SYNTHETIC_CHECKER19_002.TEMPLATE.ps1'][0],
+        runner_AST_changed=['main'], runner_unchanged_definitions=sorted(name for name in old_defs if name != 'main'),
+        all9_parent_function_texts_exact=True, exact19_test_method_ASTs=True, added_test_methods=[name for cls, name in added],
+        declared_literal_rebases=applied, intentional_new_logic=['selected009 compact+full peer and source packet55 fresh pre/post validation',
+        'author-derived25 projection and exact runtime discovery', 'genuine bootstrap source author and only Root/capsule distinct source reviewer',
+        'PS text nominal types before comparison', 'closed stdin and inherited GIT_/PYTHON removal plus one-thread environment'],
+        target_execution=False, actual_runtime=None)))
+
+    contract = dict(schema_version=1, record_type='synthetic_checker25_source_contract', source_author=AUTHOR,
+        scope=SCOPE, status='AUTHOR_FROZEN_SOURCE_ONLY_DIFFERENT_REVIEW_REQUIRED', target_execution=False,
+        operational_authority=False, planned_direct_methods=25, inherited_method_ASTs_exact=19, new_lossless_controls=6,
+        declared_subtest_sites=sum(len(row['subtest_sites']) for row in plans), actual_subtests=None,
+        private_output='root-checker25-runtime001', source_peer_path=str((PREP / 'INDEPENDENT_CHECKER25_RUNNER_SOURCE_REVIEW_001.json').relative_to(WORK)),
+        source_peer_keys=['schema_version','record_type','created_utc','reviewer','source_author','scope','verdict','runner_source_sha256','parent_source_sha256','source_manifest_sha256','target_execution','actual_runtime'],
+        source_peer_nominals=dict(schema_version=1, record_type='independent_checker25_runner_source_review',
+            source_author=AUTHOR, scope=SCOPE, verdict='PASS_STATIC_SYNTHETIC_CHECKER25_RUNNER_ONLY', target_execution=False, actual_runtime=None),
+        eligible_source_reviewers=['/root', '/root/capsule_design_review'],
+        Root_GO_path='root-checker25-runtime-prep001/ROOT_SYNTHETIC_CHECKER25_GO_001.json',
+        Root_GO_keys=['schema_version','record_type','author','scope','created_utc','expires_utc','owner_master_sha256','owner_review_sha256','parent_source_sha256','runner_source_sha256','test_source_sha256','helper_source_sha256','helper_source_peer_sha256','discovery_projection_sha256','decision'],
+        Root_GO_nominals=dict(schema_version=1, record_type='root_synthetic_checker25_GO', author='/root', scope=SCOPE, decision='execute_fixed_synthetic_checker25_once'),
+        Pro3_ACK_admission='Genuine fresh Pro3 scope ACK is externally authenticated and correlated by ROOT before issuing GO and physical witness. This parent has no fabricated Pro3 producer schema or independent ACK check. Source GO15 remains the accepted closed layout; it cannot itself prove external coordination.',
+        time_policy='Original genuine PS7 Root GO positive duration at most600; parent requires60 seconds remaining; ongoing owner de8f/endNone is distinct and cannot replay old19.',
+        physical_parent_budget=dict(seconds=60, child_cutoff_seconds_from_parent_entry=52, cleanup_drain_reap_cutoff_seconds_from_parent_entry=57, stdout_bytes=65536, stderr_bytes=65536),
+        timing_limit='Source thresholds are cooperative. ROOT must separately supervise and observe complete physical60 including preflight, provider/I/O and receipts. No unconditional kernel deadline, OS Job, descendants or whole-host proof.',
+        resources=dict(free_physical_memory_floor_bytes=1073741824, D_disk_free_floor_bytes=10737418240, maximum_point_age_seconds_through_spawn=60, resource_lease=False),
+        runtime_scope='Two Python executables, Git executable and pyvenv.cfg are byte/raw9 file guards only. No Git execution, site/loaded-dependency closure or whole runtime trees. Exact three EXE mode projection is inherited, all other inputs remain single-link exact mode.',
+        helper_loading='Future approved runner executes only exact test003, whose setUpClass loads exact helper009 definitions. Checker main is called only by the inherited mocked preflight test; no real configure/evidence/READY publication or actual metadata/current24/native target.',
+        source_closure=dict(manifest=dict(path=str(PACKET), sha256=PINS[PACKET][0], bytes=PINS[PACKET][1]), payloads=55, payload_bytes=1533523, compact_peer=dict(path=str(PEER), sha256=PINS[PEER][0], bytes=PINS[PEER][1]), full_peer=dict(path=str(FULL), sha256=PINS[FULL][0], bytes=PINS[FULL][1])),
+        source_packet_limit='Runtime authenticates55 flat named reviewed packet entries and rereads before/after; author provenance preserves all selected inputs separately. This is helper source provenance, not project metadata.',
+        discovery_projection=dict(path=str(projection_path.relative_to(WORK)), bytes=len(projection_data), sha256=digest(projection_data)),
+        runner=dict(path=runner_path.name, bytes=len(runner.encode('utf8')), sha256=digest(runner.encode('utf8'))),
+        parent=dict(path=parent_path.name, bytes=len(parent.encode('utf8')), sha256=digest(parent.encode('utf8'))),
+        runner_cli=['--expected-' + role + '-sha256' for role in ('self','parent','test','helper','helper-source-peer','projection','root-go')],
+        parent_cli=['ExpectedSelfSha256','ExpectedRunnerSha256','ExpectedTestSha256','ExpectedHelperSha256','ExpectedHelperSourcePeerSha256','ExpectedProjectionSha256','ExpectedRootGoSha256','ExpectedRunnerSourcePeerSha256'],
+        owner_master_sha256='de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583',
+        owner_review_sha256='56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0',
+        result_accounting='25 ordered direct starts and one terminal each; all subtest events preserved, full diagnostics offset/length/SHA and complete stream chunks retained. No skips/expected failures/unexpected success accepted; unittest failure or incomplete fixture/discovery cannot emit successful. Actual counts remain None.',
+        stream_caps=dict(event_row_bytes=1024, event_rows=4096, chunk_bytes=131072, combined_chunks=32, combined_event_diagnostic_bytes=4194304),
+        parent_outputs=['ROOT_PARENT_STARTED_001.json','ROOT_PARENT_TERMINAL_001.json','ROOT_PARENT_STDOUT_001.bin','ROOT_PARENT_STDERR_001.bin'],
+        runner_outputs=['discovery.json','result.json','source-byte-proof.json','events-NN.bin','diagnostics-NN.bin'],
+        cache_policy='-I -S -B -X utf8; test/helper Source cache paths absent before and after. Test/helper stdlib imports are not a physical loader lock or sandbox.',
+        fresh_namespace='GO, different source peer and all parent/private result roles remain absent. No old19 GO, receipt, result, module name or output directory is active.',
+        actual_GO=None, actual_Pro3_scope_ACK=None, actual_source_peer=None, actual_parent=None, actual_discovery=None, actual_result=None, actual_acceptance=None)
+    put(PREP / 'SOURCE_CONTRACT_001.json', wire(contract))
+    post_pairs = []
+    for row in pairs:
+        original_data, final = observe(Path(row['original']))
+        copy_data, copy_final = observe(PREP / row['copy'])
+        need(original_data == captured[Path(row['original'])] == copy_data and final == row['initial'] and copy_final == row['copy_observation'], 'preserved source input drift')
+        post_pairs.append(dict(original=row['original'], copy=row['copy'], final=final, copy_final=copy_final))
+    put(PREP / 'SOURCE_PRESERVATION_POST_001.json', wire(dict(schema_version=1, source_author=AUTHOR, pairs=post_pairs,
+        original_copy_bytes_exact=True, selected_targets_executed=False, tests_executed=False)))
+    print(json.dumps(dict(status='SOURCE_COMPOSED_UNRUN', pairs=len(pairs), planned_direct_methods=25,
+        declared_subtest_sites=contract['declared_subtest_sites'], runner_sha256=contract['runner']['sha256'], parent_sha256=contract['parent']['sha256'])))
+
+if __name__ == '__main__':
+    prepare()

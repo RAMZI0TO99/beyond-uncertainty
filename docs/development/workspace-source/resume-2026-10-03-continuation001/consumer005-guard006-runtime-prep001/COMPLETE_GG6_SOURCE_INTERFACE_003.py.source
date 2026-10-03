@@ -1,0 +1,51 @@
+import ast,datetime,difflib,hashlib,json,os
+from pathlib import Path
+ROOT=Path('D:/Aenv/pro2'); OUT=ROOT/'resume-2026-10-03-continuation001/consumer005-guard006-runtime-prep001'; OLD=ROOT/'resume-2026-10-01-30h-001/consumer-guard-test-runtime005'
+def sha(b):return hashlib.sha256(b).hexdigest()
+def enc(v):return (json.dumps(v,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def once(name,b):
+    with (OUT/name).open('xb') as f:f.write(b)
+def literal_assigns(tree):return {t.id:ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) for t in n.targets if isinstance(t,ast.Name) and t.id in {'OWNER_SHA256','SOURCE_CAPSULE_PEER_SHA256','HARNESS_STATIC_PEER_SHA256','ROOT_ACK_KEYS','STATIC_KEYS','BOUND_KEYS','WHOLE_AUTH_KEYS'}}
+def main():
+    child=(OUT/'consumer-guard-child-006.TEMPLATE.py').read_bytes();driver=(OUT/'run-consumer-guard-unit006.TEMPLATE.py').read_bytes();observer=(OUT/'observe-whole-runtime-006.TEMPLATE.py').read_bytes()
+    dl=literal_assigns(ast.parse(driver));ol=literal_assigns(ast.parse(observer))
+    assert dl['OWNER_SHA256'] is None and dl['SOURCE_CAPSULE_PEER_SHA256'] is None and dl['HARNESS_STATIC_PEER_SHA256'] is None
+    assert ol['HARNESS_STATIC_PEER_SHA256'] is None and ol['OWNER_SHA256'] is None
+    text=driver.decode();assert '"owner_master_sha256"' in text and 'SOURCE003' not in text and 'raw_policy_facts' not in text
+    assert '[:4096]' not in text and '"event_manifest"' in text and '"diagnostic_manifest"' in text
+    assert '"--lease-sha256",OWNER_SHA256' in text
+    profile=json.loads((OUT/'GUARD_RUNTIME_PROFILE_006.json').read_bytes())
+    test=(OUT/profile['test']['path']).read_bytes();tree=ast.parse(test);classes=[n for n in tree.body if isinstance(n,ast.ClassDef)]
+    bodypins={cl.name:{n.name:sha(ast.dump(n,include_attributes=False).encode()) for n in cl.body if isinstance(n,ast.FunctionDef) and n.name.startswith('test_')} for cl in classes}
+    # Receipt field sets are source-derived from literal dicts, not manually inferred from older14 schemas.
+    dictionaries={}
+    for label,b in [('child',child),('driver',driver),('observer',observer)]:
+        rows=[]
+        for n in ast.walk(ast.parse(b)):
+            if isinstance(n,ast.Dict) and all(isinstance(k,ast.Constant) and type(k.value) is str for k in n.keys):
+                names=[k.value for k in n.keys]
+                if len(names)>=5:rows.append(dict(line=n.lineno,keys=names,count=len(names)))
+        dictionaries[label]=rows
+    schema=dict(schema_version=1,record_type='consumer006_source_derived_record_schemas_and_caps',root_ack22=dl['ROOT_ACK_KEYS'],harness_static20=dl['STATIC_KEYS'],bound22=dl['BOUND_KEYS'],whole_auth15=ol['WHOLE_AUTH_KEYS'],source_derived_literal_records=dictionaries,
+        event_schemas={'start':['event','id'],'success':['event','id'],'failure':['event','id','diagnostic'],'error':['event','id','diagnostic'],'skip':['event','id','diagnostic'],'subtest':['event','parent_id','id','status','diagnostic']},diagnostic_pointer3=['offset','bytes','sha256'],chunk_row4=['ordinal','path','bytes','sha256'],stream_manifest7=['role','chunks','bytes','rows','maximum_chunks','maximum_chunk_bytes','maximum_stream_bytes'],
+        ceilings={'receipt':262144,'physical_capture_each':131072,'transcript':262144,'canonical_event_row_including_LF':1024,'events':4096,'combined_event_diagnostic_chunks':32,'chunk':131072,'combined_stream_bytes':4194304,'capsule_role':131072,'general_JSON':2097152,'collection_seconds':60,'test_seconds':300,'driver_seconds':420,'Root_seconds':450,'after_reserve_seconds':60,'original_context_and_runtime_freshness_at_GO':90,'original_lifetime':600,'resource_freshness_through_spawn':60},all_types_JSON_builtin_nominal_only=True,actual_schema_validation_or_execution=None)
+    assert len(schema['root_ack22'])==22 and len(schema['harness_static20'])==20 and len(schema['bound22'])==22 and len(schema['whole_auth15'])==15
+    once('SOURCE_RECORD_SCHEMAS_AND_CEILINGS_006.json',enc(schema))
+    once('CURRENT24_BODY_AND_FULL_ID_PROJECTION_006.json',enc(dict(schema_version=1,record_type='exact_current24_source_discovery_and_body_projection',test_sha256=sha(test),body_AST_sha256=bodypins,ordered_potential_full_ids=profile['prepared_full_ids'],all_ASTs_preserved_by_exact_byte_copy=True,actual_collection=None,actual_result=None)))
+    diffs=[]
+    for old,new in [('consumer-guard-child-005.TEMPLATE.py','consumer-guard-child-006.TEMPLATE.py'),('run-consumer-guard-unit005.TEMPLATE.py','run-consumer-guard-unit006.TEMPLATE.py'),('observe-whole-runtime-005.TEMPLATE.py','observe-whole-runtime-006.TEMPLATE.py'),('ROOT_FIRST_LAUNCH_005.TEMPLATE.ps1','ROOT_FIRST_LAUNCH_006.TEMPLATE.ps1')]:
+        diffs.extend(difflib.unified_diff((OLD/old).read_text().splitlines(keepends=True),(OUT/new).read_text().splitlines(keepends=True),fromfile=old,tofile=new))
+    once('LEAF_SOURCE_DIFF_FROM_PRESERVED_GG5_006.patch',''.join(diffs).encode('utf-8'))
+    cases=[('event_row1024','exact1024includingLF genuine accepts;1025 refuses beforewrite'),('event_count4096','4096 complete rows accepted;4097 refuses'),('chunk131072','exact131072bytes accepts;overflow opens next chunk onlywithincombined limits'),('chunk_count32','32 combined chunks accepts;33 refuses beforeopen'),('aggregate4194304','exact4MiBcombined accepts;plusone refuses beforewrite'),('row_nominals','bool ordinals/counts,unknownkeys/noncanonicalJSON/reorderedchunknames refuse'),('diagnostic_full','full UTF8traceback crossingchunkboundary preserves everybyte/order/hash and exact offsets'),('diagnostic_tamper','changed byte/hash/offset/length refuses independentreconstruction'),('no_event_truncation','oversizecanonical event refuses ratherthanslicingIDorerror'),('both_context_timestamps','age90accepts;90plus1tick/future/oneoriginalmissing refuses'),('lease_bounded','exact12/genuinePS7/start>=master/43200accepts;43200plus1tick/boollimit/missingpeer refuses'),('source_capsule','closed18fields/nestedschema/capsuleSHA/fullpeeranchor accept;old51/nested12union orcapwiden refuses'),('class_discovery','two sibling19+5 names/fullIDs accept;extraClass/rebinding/inheritedmethods/43counter refuse'),('physical_capture','131072capturelimit;overflow explicitly refuses/no fullcaptureclaim'),('control_restoration','all24 fixture ASTs retained and genuine cold/reuse controls precede mutatedguards and restoredcontrols')]
+    once('HARNESS_EVIDENCE_CAUSAL_PREPARATION_006.json',enc(dict(schema_version=1,record_type='consumer006_future_causal_validation_obligations',cases=[dict(id=k,required=v,status='UNRUN',actual=None) for k,v in cases],target_tests_added_to_current24=False,actual_harness_self_validation=None)))
+    # All source copies are observed again, with metadata evidence; no target modules imported or definitions executed.
+    projection=json.loads((OUT/'SOURCE_INPUTS_PROJECTION_006.json').read_bytes());pairs=[]
+    for row in projection['entries']:
+        a=Path(row['original_path']);b=OUT/row['copy_path'];assert a.read_bytes()==b.read_bytes() and sha(a.read_bytes())==row['sha256']
+        pairs.append(dict(original=str(a),copy=str(b),bytes=row['bytes'],sha256=row['sha256']))
+    once('AUTHOR_LEAF_STABILITY_AND_LIMITATIONS_006.json',enc(dict(schema_version=1,created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),pairs=pairs,scope='finite selected leaf byte preservation only; initial manifest and supplemental outputs are distinct',target_execution=False,actuals=None,known_limitations=['No helper, test, actualcollection, runtime, binder or phaselease entry occurred.','Inert compilation proves syntax/metadata only.','This firstsourcepackage requires complete different review; source-derived records and futurecausal obligations are not runtime acceptance.','Capture/source provenance and full metadata/two-tree before-after decisions remain independently owned sources.','No OS Job, hardmemory, whole descendant cleanup or loadedsite dependency proof.'])))
+    own=[x for x in OUT.rglob('*') if x.is_file()]
+    rows=[dict(path=str(p.relative_to(OUT)).replace('\\','/'),bytes=len(p.read_bytes()),sha256=sha(p.read_bytes())) for p in sorted(own)]
+    once('FINAL_AUTHOR_SOURCE_MANIFEST_006.json',enc(dict(schema_version=1,author='/root/capsule_design_review',files=rows,status='FROZEN_SOURCE_PREPARATION_DIFFERENT_REVIEW_PENDING',scope=profile['scope'],actual_collection=None,actual_tests=None,actual_lease=None,actual_source_binding=None)))
+    print(json.dumps(dict(final_manifest_sha256=sha((OUT/'FINAL_AUTHOR_SOURCE_MANIFEST_006.json').read_bytes()),payload_files=len(rows),projection_pairs=len(pairs),schema_sha256=sha(enc(schema)))))
+if __name__=='__main__':main()

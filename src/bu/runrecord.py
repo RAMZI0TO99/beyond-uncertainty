@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -22,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .durable import atomic_write_bytes, atomic_write_json
 from .streams import is_confirmatory, seed_partition
 from .config import IDENTITY_VERSION, SCHEMA_VERSION, UNIT_IDENTITY_FIELDS, Config
 
@@ -38,6 +40,40 @@ TRACKED_PACKAGES = (
     "PyYAML",
 )
 
+#: Repository associated with this installed source tree.  Provenance must not
+#: depend on whichever directory happened to be current when a runner started.
+#: In an editable install this is the project checkout; in a built install it
+#: deliberately fails closed unless that installed tree is itself in Git.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+RUNRECORD_GIT_EXECUTABLE_ENV = "BU_RUNRECORD_GIT_EXECUTABLE"
+_D161_GATE_ENV = "BU_D161_ENTRYPOINT_GATE"
+
+
+def _git_argv(*arguments: str) -> list[str]:
+    """Use the D-166 captured Git executable or the ordinary host fallback."""
+
+    configured = os.environ.get(RUNRECORD_GIT_EXECUTABLE_ENV)
+    gated = os.environ.get(_D161_GATE_ENV) is not None
+    if configured is None:
+        if gated:
+            raise ValueError("D-161 provenance requires an absolute captured Git")
+        return ["git", *arguments]
+    if not configured or "\x00" in configured:
+        raise ValueError("captured Git executable path is malformed")
+    path = Path(configured)
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError("captured Git executable is unavailable") from exc
+    if (
+        not path.is_absolute()
+        or path != Path(os.path.abspath(path))
+        or resolved != path
+        or not resolved.is_file()
+    ):
+        raise ValueError("captured Git executable is not one exact absolute file")
+    return [str(resolved), *arguments]
+
 
 @dataclass(frozen=True)
 class GitState:
@@ -46,24 +82,65 @@ class GitState:
     branch: str
 
     @property
+    def identifies_commit(self) -> bool:
+        """True only when ``commit`` is an exact Git SHA-1 object name.
+
+        ``git rev-parse`` writes failures to stderr.  The old wrapper ignored
+        that return code and substituted ``UNCOMMITTED`` while ``git status``
+        produced empty stdout, making a non-repository look clean.  P§13.7
+        requires an exact commit hash; absence of one must fail closed.
+        """
+        return (
+            isinstance(self.commit, str)
+            and len(self.commit) == 40
+            and all(ch in "0123456789abcdef" for ch in self.commit)
+        )
+
+    @property
     def trustworthy(self) -> bool:
-        """False if the code that ran is not the code at `commit`."""
-        return not self.dirty
+        """True only when the code is exactly a named committed tree."""
+        return self.identifies_commit and not self.dirty
 
 
-def git_state(repo: str | Path = ".") -> GitState:
-    def run(*args: str) -> str:
-        return subprocess.run(
-            ["git", *args],
-            cwd=str(repo),
+def _provenance_repo(repo: str | Path | None) -> Path:
+    """Resolve the repository used for provenance.
+
+    ``None`` means the project containing this module. Any supplied path,
+    including ``"."``, is an explicit caller choice and is preserved. Keeping
+    those cases distinct prevents a caller that intentionally names another
+    checkout from being silently rebound to this installed source tree.
+    """
+    if repo is None:
+        return PROJECT_ROOT
+    return Path(repo)
+
+
+def git_state(repo: str | Path | None = None) -> GitState:
+    repo_path = _provenance_repo(repo)
+
+    def run(*args: str) -> tuple[str, bool]:
+        completed = subprocess.run(
+            _git_argv(*args),
+            cwd=str(repo_path),
             capture_output=True,
-            text=True,
             check=False,
-        ).stdout.strip()
+        )
+        # Git emits bytes. Decoding through the Windows process locale made a
+        # UTF-8 source diff crash a provenance check under cp1252. Replacement
+        # is safe for these status/ref names; dirty.diff below keeps raw bytes.
+        output = completed.stdout.decode("utf-8", errors="replace").strip()
+        return output, completed.returncode == 0
 
-    commit = run("rev-parse", "HEAD") or "UNCOMMITTED"
-    branch = run("rev-parse", "--abbrev-ref", "HEAD") or "unknown"
-    dirty = bool(run("status", "--porcelain"))
+    commit_output, commit_ok = run("rev-parse", "HEAD")
+    branch_output, branch_ok = run("rev-parse", "--abbrev-ref", "HEAD")
+    status_output, status_ok = run("status", "--porcelain")
+
+    # A command failure is evidence we do not know the state, never evidence
+    # of a clean tree.  Ignore even plausible-looking stdout from a failed Git
+    # invocation: wrappers and hooks can emit partial/stale output on failure.
+    commit = commit_output if commit_ok and commit_output else "UNCOMMITTED"
+    branch = branch_output if branch_ok and branch_output else "unknown"
+    dirty = bool(status_output) or not (commit_ok and branch_ok and status_ok)
     return GitState(commit=commit, dirty=dirty, branch=branch)
 
 
@@ -83,7 +160,7 @@ def write_run_record(
     config: Config,
     run_dir: str | Path,
     *,
-    repo: str | Path = ".",
+    repo: str | Path | None = None,
     extra: dict[str, Any] | None = None,
 ) -> Path:
     """Write ``run.json`` for a run and return its path.
@@ -100,11 +177,16 @@ def write_run_record(
             f"{path} already exists; run_id {config.run_id} is not unique"
         )
 
-    git = git_state(repo)
+    repo_path = _provenance_repo(repo)
+    git = git_state(repo_path)
     record: dict[str, Any] = {
         "run_id": config.run_id,
         "config_id": config.config_id,
         "unit_id": config.unit_id,
+        # The identity of the computation, distinct from the obligation-specific
+        # run_id (D-033). Historical schema-v2 records may omit this duplicate;
+        # loaders reconstruct and validate it from Config.
+        "fit_id": config.fit_id,
         "seed": config.seed,
         # Promoted to the top level alongside the other identity parts: the
         # stage says which experimental obligation this run discharges, and a
@@ -141,14 +223,17 @@ def write_run_record(
     if extra:
         record["extra"] = extra
 
-    path.write_text(json.dumps(record, indent=2, sort_keys=True))
+    atomic_write_json(path, record)
 
     # A dirty tree is recoverable only if we keep the diff.
     if git.dirty:
         diff = subprocess.run(
-            ["git", "diff", "HEAD"], cwd=str(repo), capture_output=True, text=True
+            _git_argv("diff", "HEAD"), cwd=str(repo_path), capture_output=True,
+            check=False,
         ).stdout
-        (run_dir / "dirty.diff").write_text(diff)
+        # Preserve the exact Git bytes. In particular, never ask the host's
+        # locale codec to interpret a UTF-8 patch before recording it.
+        atomic_write_bytes(run_dir / "dirty.diff", diff)
 
     return path
 

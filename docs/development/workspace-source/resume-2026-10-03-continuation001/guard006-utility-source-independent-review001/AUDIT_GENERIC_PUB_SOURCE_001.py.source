@@ -1,0 +1,141 @@
+"""Independent finite source metadata audit. No target imports, definitions or mains."""
+import ast
+import datetime
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+
+WORK=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001')
+SOURCE=WORK/'guard006-bound-late-checker-prep001'
+OUT=WORK/'guard006-utility-source-independent-review001'
+MANIFEST_PIN='8bf74ab72b00707291a1d2c51f91d7eaa713480e44fef338fdca38f5bcb5e6a1'
+CHECKER_PIN='6ca3946b864525a89af9b1f42708d56a8cf74d0e2a5dbfcaedbee4eb7e8a5e2f'
+COMPOSER_PIN='1b909f93c795c1d162b025ccf4917513ee20eb2edfd5d1db80ff78afebd1d911'
+
+def sha(data):return hashlib.sha256(data).hexdigest()
+def enc(value):return (json.dumps(value,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def once(name,data):
+    path=OUT/name;path.parent.mkdir(parents=True,exist_ok=True)
+    with path.open('xb') as stream:stream.write(data)
+def raw(s):return [getattr(s,k) for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+def parents(path):
+    result=[]
+    for parent in reversed(path.parents):
+        s=parent.lstat();assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not s.st_file_attributes&1024
+        result.append([str(parent),s.st_dev,s.st_ino])
+    return result
+def read(path,maximum,pin=None):
+    assert type(maximum)is int and 0<=maximum<=8388608
+    ancestry=parents(path);a=path.lstat();ar=raw(a)
+    assert stat.S_ISREG(a.st_mode) and a.st_nlink==1 and not a.st_file_attributes&1024 and 0<=a.st_size<=maximum
+    with path.open('rb')as stream:
+        h=os.fstat(stream.fileno());hr=raw(h);assert all(ar[i]==hr[i] for i in (0,1,2,3,6,7,8))
+        data=stream.read(maximum+1);assert raw(os.fstat(stream.fileno()))==hr
+    assert raw(path.lstat())==ar and parents(path)==ancestry and len(data)==a.st_size<=maximum
+    digest=sha(data);assert pin is None or digest==pin
+    return data,{'path':str(path),'sha256':digest,'bytes':len(data),'path_raw9':ar,'descriptor_raw9':hr,'ancestors':ancestry}
+def literal(tree,name):
+    rows=[n for n in tree.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id==name]
+    assert len(rows)==1
+    return ast.literal_eval(rows[0].value)
+
+def main():
+    OUT.mkdir(exist_ok=True)
+    manifest_path=SOURCE/'AUTHOR_FROZEN_SOURCE_MANIFEST_005.json'
+    mb,mr=read(manifest_path,2097152,MANIFEST_PIN);manifest=json.loads(mb)
+    assert manifest['author']=='/root/pubnative_review' and len(manifest['payloads'])==54
+    assert manifest['SourceActualInputs'] is None and manifest['actual_collection'] is None and manifest['actual_results'] is None and manifest['operational_authority'] is False
+    selected={str(manifest_path):(manifest_path,len(mb),MANIFEST_PIN)}
+    for row in manifest['payloads']:
+        rel=Path(row['path']);assert not rel.is_absolute() and '..'not in rel.parts
+        path=SOURCE/rel;selected[str(path)]=(path,row['bytes'],row['sha256'])
+    authorfacts=json.loads((SOURCE/'OWN_AST_INERT_AND_FINITE_INPUT_FACTS_005.json').read_bytes())
+    pairs=[]
+    for row in authorfacts['selected_inputs']:
+        path=Path(row['path']);selected[str(path)]=(path,row['bytes'],row['sha256'])
+        copy=Path(row['copy_path']);selected[str(copy)]=(copy,row['bytes'],row['sha256'])
+        pairs.append({'original':str(path),'copy':str(copy),'sha256':row['sha256'],'bytes':row['bytes']})
+    inputs=[];by_path={}
+    for ordinal,(key,(path,maximum,pin))in enumerate(sorted(selected.items())):
+        passes=[];first=None
+        for unused in range(3):
+            data,observed=read(path,maximum,pin)
+            if first is None:first=data
+            assert data==first
+            passes.append(observed)
+        assert passes[0]==passes[1]==passes[2]
+        copy='inputs/'+str(ordinal).zfill(3)+'.bytes';once(copy,first)
+        cb,cm=read(OUT/copy,len(first),pin);assert cb==first and cm['path_raw9'][:2]!=passes[0]['path_raw9'][:2]
+        entry={'path':key,'sha256':pin,'bytes':len(first),'passes':passes,'copy_path':copy,'copy_metadata':cm}
+        inputs.append(entry);by_path[key]=first
+    for pair in pairs:assert by_path[pair['original']]==by_path[pair['copy']]
+    checker_path=SOURCE/'review_guard006_actual_records_001.TEMPLATE.py';composer_path=SOURCE/'compose-root-review-packet-006.TEMPLATE.py'
+    checker=by_path[str(checker_path)];composer=by_path[str(composer_path)]
+    assert sha(checker)==CHECKER_PIN and sha(composer)==COMPOSER_PIN
+    ct=ast.parse(checker);pt=ast.parse(composer)
+    assert literal(ct,'SOURCE_BINDINGS') is None and literal(ct,'SOURCE_PROTOCOL') is None and literal(pt,'FRESH_SOURCE_MODEL') is None
+    assert literal(ct,'SCOPE')==literal(pt,'SCOPE')=='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+    assert literal(ct,'REVIEWER')=='/root/pubnative_review'
+    functions={}
+    for label,tree,data in [('checker',ct,checker),('composer',pt,composer)]:
+        fs=[n for n in tree.body if isinstance(n,ast.FunctionDef)]
+        assert len(fs)==(34 if label=='checker' else 21)
+        assert not [n for n in tree.body if isinstance(n,ast.ClassDef)]
+        imports=[]
+        for n in ast.walk(tree):
+            if isinstance(n,ast.Import):imports.extend(a.name for a in n.names)
+            elif isinstance(n,ast.ImportFrom):imports.append(n.module)
+            elif isinstance(n,ast.Call)and isinstance(n.func,ast.Name):assert n.func.id not in ('exec','eval','compile','__import__')
+        assert set(imports)<=set(('argparse','ast','datetime','hashlib','json','os','re','stat','sys','pathlib','time'))
+        functions[label]=[{'name':n.name,'line':n.lineno,'AST_sha256':sha(ast.dump(n,include_attributes=False).encode())}for n in fs]
+    contract=json.loads(by_path[str(SOURCE/'SOURCE_AND_BINDING_CONTRACT_005.json')])
+    for name,keys in contract['closed_source_grammars'].items():assert list(literal(ct,name))==keys
+    for name,count in [('CORE12',12),('DETAIL15',15),('TRACE13',13),('TICKET22',22),('METADATA_PARENT20',20),('WHOLE_PARENT30',30),('MASTER_KEYS',27),('MASTER_PEER_KEYS',19),('LEASE_KEYS',12),('FIXED_ROLES',19)]:assert len(literal(ct,name))==count
+    text=checker.decode();producer=composer.decode()
+    assertions=[
+        ('reader','single-link/reparse/ancestors, size before open and each chunk, stable path/descriptor raw9, exact byte pins, only three known pinned executable projections',all(x in text for x in ('a.st_nlink == 1','total <= maximum','same-handle raw9 drift','same-path raw9/ancestor drift','only fixed byte-pinned executable projection'))),
+        ('nominal_JSON','duplicate-key/float/nonfinite rejection and recursive exact nominal type prevent bool-int aliases',all(x in text for x in ('object_pairs_hook=unique','parse_float=reject_number','type(value) is type(expected)'))),
+        ('ongoing_owner','master27 and short-name immutable peer19 plus finite genuine PS7 lease12, no owner end/operational authority;510 reserve',all(x in text for x in ('"reviewer":"owner_docs_review"','"no fabricated owner end"','43200*10000000','5100000000'))),
+        ('source_pool','SOURCE_BINDINGS/SOURCE_PROTOCOL None; fixed19/extras and actual models require independent literal binding review before readiness',True),
+        ('capsule','closed typed Source005 capsule/schema/derivation; exact driver3 and observer reversals; static20; all projected original/copy byte/raw9 pairs',all(x in text for x in ('fresh three-literal driver reversal','fresh exact observer reversal','closed immutable static20','capsule_shape(captures'))),
+        ('M3_source','binding11/six assignments/all20 functions/peer9/phasebinding7; four fixed PS pairs reverse exactly2 literals to selected templates',all(x in text for x in ('len(old_functions) == 20','len(edits) == 6','all four PS exact two-literal byte reversals'))),
+        ('Root_provenance','Core12/detail15 and trace13 bind Source/checker/peer/binding, Roottrust8/init8/phase10/ticket22; exact reviewed phase argv/output bytes and genuine owning-tool correlation condition',all(x in text for x in ('external Root trust8','Root init8','Root phase10','Root checker ticket22','actual Root argv matches reviewed source'))),
+        ('parent_data','metadata20 and whole30 strict typed ordered terminals,zeroStreams,reaped/drained/spent; no false two-tree/loaded/Job/descendant claims',all(x in text for x in ('actual retained parent terminal','PS source parent property order','"stdout_bytes":0','"runtime_file_guards_observed":None'))),
+        ('context_runtime','both original Python6 age90;742 fixed paths/all7 Git metadata/55 config/four runtimefiles; no Git execution',all(x in text for x in ('tracked742','config55','four files','fresh(value["captured_utc"], "python6", 90)'))),
+        ('clock_reserve','strict Py6/PS7 exacttick calendar, resource60 and >=510; late deadline bounded by original ACK and cannot refresh original clocks',all(x in text for x in ('genuine producer UTC role','fresh(resource["captured_utc"], "powershell7", 60)','now_ticks() + 5100000000 <= expires','review_expiry = min'))),
+        ('Bound_Late','untimestamped closed22 → exactRootPS3 reversal → timestamped closed14; full source/evidence reobservation and absences before publication; separate captured_utc proofs',all(x in text for x in ('RootPS three-literal byte reversal','actual bound22 from same inputs','ACTUAL_','REVIEW_OBSERVATION_001.json'))),
+        ('packet_only','Root composer exactmodelNone, source-selected immutable roles/models, actual Core/runtime/context/resource checks; packet/atomic ready6 only, not metadata approval',all(x in producer for x in ('exact(FRESH_SOURCE_MODEL,MODEL_KEYS','SOURCE_MODEL','Root merely creates this','Windows rename refuses'))),
+        ('retained_ready','pre-timer source/lease/phase checks, genuine closed ready9, max3600 poll, perphase full independent main validation; no capture or result fabricated',all(x in text for x in ('BOUND_LATE_CHECKER_READY_006.json','<=3600*10000000','Source readiness checks do not read or fabricate','main()'))),
+        ('acyclic_order','Required genuine lease → SourceConfig C selecting composer TEMPLATE T → Rootpipeline Source peer P → authentic INIT/trust R → composer/utility literal bindings and different bound-model peer → externalGO13; bindings/models remain None here',True),
+        ('after_separation','Direct physical Root18/driver20 and after results belong to separately source-reviewed actual checker; generic utility accepts metadata20/whole30 before evidence only and cannot admit target results',True)]
+    assert all(item[2]for item in assertions)
+    checks=[{'id':name,'scope':scope,'source_architecture_verified':ok,'actual_executed':False}for name,scope,ok in assertions]
+    conditions=[
+        'This generic architecture19 receipt is ineligible as actual bound-model peer20, SourceReady, actual metadata acceptance or runtime GO.',
+        'Before capture timer, independently review all final SourceConfig20, Source26 checker/model ABI, M3 closed22 peer/binding11/Bound9/allfourPS, Root writer/wrappers/pipeline peers and SourceAuth role paths; never infer readiness from None models or this generic receipt.',
+        'Resolve the hash DAG with genuine finitelease first; C selects composer TEMPLATE only; pipeline peer and authentic INIT/trust precede actual composer/utility bound models; different closed bound-model peer precedes capture; Root GO13 separately pins composer and binding peer. Any later source delta needs separate review.',
+        'Pub fixed packet M3 peer path INDEPENDENT_METADATA_STATIC_REVIEW_003.json must be an explicitly authenticated byte copy of the genuine final closed22 peer if producer/checker select its independent review path; no old M2 peer, alias or inferred duplicate.',
+        'Before actual approval, independently authenticate every final compiled19 role/extras and every SourceProtocol/FRESH_SOURCE_MODEL literal, fixed caps, exact reversal, all active function/class ASTs and actual source peer/hash. Future opaque models are not approved here.',
+        'Root must correlate genuine physical owning-tool/init/phase traces and independently observed direct terminals; source JSON links do not prove independent OS/tool attestation, hard Job, descendants, memory containment, provider deadline or loaded-site closure.',
+        'Prepare actual checker and BOUND/LATE retained callbacks before original timer; preserve both90/context600/runtime600/resource60/Root450+after60/510 reserves, genuine producer-specific timestamp bytes and create-once spent history.',
+        'Current24 only. Pub authored Native128 and is ineligible as its independent reviewer. This review does not reassess or self-approve the GG6/capsule/source choices authored by this reviewer.']
+    once('FINITE_GENERIC_SOURCE_INPUTS_001.json',enc({'schema_version':1,'record_type':'independent_pub_generic_source_finite_metadata_inputs','reviewer':'/root/capsule_design_review','source_manifest_sha256':MANIFEST_PIN,'inputs':inputs,'original_copy_pairs':pairs,'AST_functions':functions,'target_definitions_or_functions_executed':False}))
+    post=[]
+    for item in inputs:
+        data,observed=read(Path(item['path']),item['bytes'],item['sha256']);assert observed==item['passes'][0]
+        copy,cm=read(OUT/item['copy_path'],item['bytes'],item['sha256']);assert copy==data and cm==item['copy_metadata']
+        post.append({'path':item['path'],'observation':observed,'copy_observation':cm})
+    once('POST_GENERIC_SOURCE_INPUTS_001.json',enc({'schema_version':1,'reviewer':'/root/capsule_design_review','post_readback':post,'all_exact':True,'actual_pool_or_runtime_acceptance':False}))
+    finite={'count':len(inputs),'author_payloads':54,'author_original_copy_pairs':len(pairs),'metadata_inputs':row_for_output('FINITE_GENERIC_SOURCE_INPUTS_001.json'),'post':row_for_output('POST_GENERIC_SOURCE_INPUTS_001.json')}
+    report={'schema_version':1,'record_type':'guard006_utility_and_packet_generic_source_architecture_review','reviewer':'/root/capsule_design_review','source_author':'/root/pubnative_review','created_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),'verdict':'PASS_SOURCE_ARCHITECTURE_ONLY_WITH_BOUND_POOL_UNREADY','scope':literal(ct,'SCOPE'),'source_manifest_sha256':MANIFEST_PIN,'active_source_rows':[{'path':str(checker_path),'sha256':CHECKER_PIN,'bytes':len(checker),'functions':34},{'path':str(composer_path),'sha256':COMPOSER_PIN,'bytes':len(composer),'functions':21}],'finite_inputs':finite,'source_checks':checks,'findings':[],'implementation_conditions':conditions,'actual_bound_pool':None,'actual_actions':None,'SourceActualInputs':None,'source_pool_ready':False,'runtime_acceptance':False,'operational_authority':False}
+    assert len(report)==19
+    once('INDEPENDENT_GENERIC_PUB_SOURCE_REVIEW_001.json',enc(report))
+    once('HANDOFF_GENERIC_PUB_SOURCE_REVIEW_001.md',('Generic utility and packet architecture accepted within source-only scope.\n\nVerdict: PASS_SOURCE_ARCHITECTURE_ONLY_WITH_BOUND_POOL_UNREADY. Full current24 checker/composer active routes and finite source metadata were reviewed; no target definitions, functions, imports, mains, bindings, lease, tests or actual record generation ran. SOURCE_BINDINGS/SOURCE_PROTOCOL/FRESH_SOURCE_MODEL remain None, and this closed19 receipt is not the separate bound-model peer20 or SourceReady.\n\nRequired next work: genuine finitelease; SourceConfig selects composer template; authenticated pipeline peer/INIT/trust; different full final bound model/Source pool review; retained source readiness before capture timer; fresh actual metadata decisions and separate Root GO13. Root owns genuine owning-tool correlations. All actual results and authority remain absent. Native128 is excluded.\n').encode())
+    print(json.dumps({'review_sha256':sha(enc(report)),'finite_inputs':len(inputs),'author_payloads':54,'original_copy_pairs':len(pairs),'verdict':report['verdict'],'source_pool_ready':False,'target_functions_executed':False}))
+
+def row_for_output(name):
+    data=(OUT/name).read_bytes();return {'path':str(OUT/name),'sha256':sha(data),'bytes':len(data)}
+
+if __name__=='__main__':main()

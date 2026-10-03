@@ -1,0 +1,143 @@
+
+import ast,datetime as dt,hashlib,json,math,os,pathlib,stat,re
+P=pathlib.Path(r"D:\Aenv\pro2");B=P/"resume-2026-10-01-30h-001";R=B/"raw-component-runtime-prep004"
+INPUTS={};BYTES={}
+FIXED_EXE_ROLES={str(P/"pro2/.venv/Scripts/python.exe"),str(P/"runtimes/git/mingw64/bin/git.exe"),str(P/"runtimes/week8-python313-frozen-001/python.exe")}
+RAW_FIELDS=("st_dev","st_ino","st_mode","st_size","st_mtime_ns","st_ctime_ns","st_nlink","st_file_attributes","st_birthtime_ns")
+def raw9(s):return [getattr(s,k) for k in RAW_FIELDS]
+def ancestors(p):
+    rows=[]
+    for d in [*reversed(p.parent.parents),p.parent]:
+        s=d.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not s.st_file_attributes&1024,d
+        rows.append([str(d),s.st_dev,s.st_ino,s.st_mode,s.st_file_attributes])
+    return rows
+def read(p,pin=None,size=None,maximum=8388608):
+    p=pathlib.Path(p);chain=ancestors(p);pre=p.lstat()
+    assert stat.S_ISREG(pre.st_mode) and pre.st_nlink==1 and not pre.st_file_attributes&1024,p
+    assert type(maximum) is int and 0<maximum<=134217728 and 0<=pre.st_size<=maximum,p
+    with p.open("rb") as f:
+        first=os.fstat(f.fileno());assert 0<=first.st_size<=maximum
+        x=f.read(maximum+1);last=os.fstat(f.fileno())
+    post=p.lstat()
+    assert len(x)<=maximum and len(x)==pre.st_size and raw9(pre)==raw9(post) and raw9(first)==raw9(last),p
+    for key in ("st_dev","st_ino","st_size","st_mtime_ns","st_nlink","st_file_attributes","st_birthtime_ns"):
+        assert getattr(pre,key)==getattr(first,key),str(p)+key
+    if pre.st_mode!=first.st_mode:
+        assert os.name=="nt" and str(p) in FIXED_EXE_ROLES,p
+        assert stat.S_IFMT(pre.st_mode)==stat.S_IFMT(first.st_mode) and stat.S_IMODE(pre.st_mode)&~0o111==stat.S_IMODE(first.st_mode)&~0o111,p
+        assert stat.S_IMODE(pre.st_mode)&0o111==0o111 and stat.S_IMODE(first.st_mode)&0o111==0,p
+    assert ancestors(p)==chain,p
+    r={"path":str(p),"sha256":hashlib.sha256(x).hexdigest(),"size":len(x),"path_raw9":raw9(pre),"handle_raw9":raw9(first)}
+    if pin is not None:assert r["sha256"]==pin,p
+    if size is not None:assert len(x)==size,p
+    INPUTS[str(p)]=r;BYTES[str(p)]=x
+    return x
+def pairs(v):
+    d={}
+    for k,x in v:
+        assert k not in d,"duplicate JSON key"
+        d[k]=x
+    return d
+def finite(token):
+    value=float(token);assert math.isfinite(value),"nonfinite JSON number";return value
+def J(x):return json.loads(x,object_pairs_hook=pairs,parse_float=finite,parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def hex64(x):return type(x) is str and re.fullmatch("[0-9a-f]{64}",x) is not None
+def bindings_reverse(source,names,expected):
+    rows=source.splitlines(keepends=True);t=ast.parse(source.decode("utf-8"));edits=[];found={}
+    for n in t.body:
+        if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in names:
+            key=n.targets[0].id;assert key not in found and isinstance(n.value,ast.Constant) and hex64(n.value.value)
+            found[key]=n.value.value
+            assert expected[key]==n.value.value,key
+            start=sum(map(len,rows[:n.value.lineno-1]))+n.value.col_offset
+            end=sum(map(len,rows[:n.value.end_lineno-1]))+n.value.end_col_offset
+            edits.append((start,end))
+    assert set(found)==set(names) and len(edits)==len(names)
+    back=source
+    for start,end in sorted(edits,reverse=True):back=back[:start]+b"None"+back[end:]
+    return back,found,edits
+
+R=B/"raw-consumer-binding-integration-prep004";S=R/"before/revision003"
+def create(p,x):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open("xb") as f:f.write(x)
+ assert read(p)==x
+choice=read(B/"ROOT_CONSUMER_MAPPING_TYPE_CORRECTION_006.json","fdae5a1eec6672ad1dc478da46446c0678ed1aa59276e1b893232e334bf72415")
+create(R/"inputs/source-choice006.json",choice)
+create(R/"inputs/source-choice006.md",read(B/"ROOT_CONSUMER_MAPPING_TYPE_CORRECTION_006.md"))
+direction=J(choice);assert direction["authorization"]["owner"]=="/root/candidate_review"
+baseline=J(read(R/"SOURCE_GUARD_TEST_BINDINGS_004.BASELINE.json"))
+bindings=json.loads(json.dumps(baseline));changes={}
+for role,row in baseline["consumers"].items():
+ p=R/row["path"];x=read(p,row["sha256"],row["size"]);before=read(R/"baseline-pins-only"/row["path"]);assert x==before
+ s=x.decode();tree=ast.parse(x)
+ direct=[n for n in tree.body if isinstance(n,ast.ImportFrom) and n.module=="types"]
+ if direct:
+  assert len(direct)==1
+  segment=ast.get_source_segment(s,direct[0]);assert "\n" not in segment and "MappingProxyType" not in segment
+  oldimport=segment;newimport=segment+", MappingProxyType"
+ else:
+  anchors=[n for n in tree.body if isinstance(n,ast.Import) and any(a.name=="types" for a in n.names)]
+  assert len(anchors)==1
+  oldimport=ast.get_source_segment(s,anchors[0]);newimport=oldimport+"\nfrom types import MappingProxyType"
+  if "\r\n" in s:newimport=newimport.replace("\n","\r\n")
+ assert s.count(oldimport)==1
+ s=s.replace(oldimport,newimport,1)
+ branch="    if isinstance(value, Mapping):";replacement="    if kind in (dict, MappingProxyType):"
+ assert s.count(branch)==1
+ s=s.replace(branch,replacement,1)
+ changed=s.encode();t=ast.parse(changed)
+ back=s.replace(replacement,branch,1).replace(newimport,oldimport,1).encode();assert back==x
+ olddefs={n.name:ast.dump(n,include_attributes=False) for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+ newdefs={n.name:ast.dump(n,include_attributes=False) for n in t.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+ assert set(olddefs)==set(newdefs)
+ changeddefs=[k for k in olddefs if olddefs[k]!=newdefs[k]];assert changeddefs==["_raw_helper_value_identity"]
+ og=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="_raw_helper_value_identity")
+ ng=next(n for n in t.body if isinstance(n,ast.FunctionDef) and n.name==og.name)
+ oldbranch=next(n for n in ast.walk(og) if isinstance(n,ast.If) and isinstance(n.test,ast.Call) and isinstance(n.test.func,ast.Name) and n.test.func.id=="isinstance" and len(n.test.args)==2 and isinstance(n.test.args[1],ast.Name) and n.test.args[1].id=="Mapping")
+ newbranch=next(n for n in ast.walk(ng) if isinstance(n,ast.If) and isinstance(n.test,ast.Compare) and isinstance(n.test.left,ast.Name) and n.test.left.id=="kind" and isinstance(n.test.comparators[0],ast.Tuple) and [z.id for z in n.test.comparators[0].elts if isinstance(z,ast.Name)]==["dict","MappingProxyType"])
+ assert ast.dump(ast.Module(body=oldbranch.body,type_ignores=[]),include_attributes=False)==ast.dump(ast.Module(body=newbranch.body,type_ignores=[]),include_attributes=False)
+ p.write_bytes(changed);assert read(p)==changed
+ final=bindings["consumers"][role];final["sha256"]=hashlib.sha256(changed).hexdigest();final["size"]=len(changed)
+ changes[role]={"path":row["path"],"baseline_sha256":row["sha256"],"after_sha256":final["sha256"],"before_import":oldimport,"after_import":newimport,"changed_definition":"_raw_helper_value_identity","exact_mapping_branch":"kind in (dict, MappingProxyType)","recursive_mapping_body_AST_unchanged":True,"all_other_definition_ASTs_unchanged":True,"mapping_change_reversal_equals_pin_only_baseline":True}
+bindings["guard_mapping_kind_correction_pending_root"]=False
+bindings["root_mapping_source_choice_sha256"]=hashlib.sha256(choice).hexdigest()
+bindings["type_import_fixture_binding"]="MappingProxyType: types.MappingProxyType"
+bindings["prepared_test_method_count"]=19
+create(R/"SOURCE_GUARD_TEST_BINDINGS_004.json",json.dumps(bindings,sort_keys=True,indent=2).encode()+b"\n")
+old=read(S/"test_raw_consumer_guards_003.TEMPLATE.py","1f826e5b1b3860c0456d4e1a16810d194a6fc6ec6132086d871b7d68af5e2f1f")
+source=old.decode()
+source=source.replace("real raw003 definition bytes","real raw004 definition bytes",1)
+source=source.replace('RAW = PREP / "inputs/raw003-source.bytes"','RAW = PREP / "inputs/raw004-source.bytes"',1)
+source=source.replace('SOURCE_GUARD_TEST_BINDINGS_002.json','SOURCE_GUARD_TEST_BINDINGS_004.json')
+source=source.replace('"CodeType": types.CodeType, "RAW_AUTHORITY_HELPER": RAW,','"CodeType": types.CodeType, "MappingProxyType": types.MappingProxyType, "RAW_AUTHORITY_HELPER": RAW,',1)
+source=source.replace("healthy actual raw3 cold/reuse control failed before mutation","healthy actual raw4 cold/reuse control failed before mutation",1)
+helpers="\ndef schema3_policy_changes(name, value):\n    \"\"\"Finite typed mutants, never an unsupported object() placeholder.\"\"\"\n    if name == \"SUCCESSOR_COMPACT_INTERMEDIATE_FACTS\":\n        changed = dict(value[0]); changed[\"controller_commit\"] = \"f\" * 40\n        return [(\"nested_commit\", (types.MappingProxyType(changed), value[1])),\n                (\"middle_order\", tuple(reversed(value))), (\"missing_middle\", value[:1]),\n                (\"outer_list\", list(value)), (\"nested_dict\", (dict(value[0]), value[1]))]\n    if name == \"_SUCCESSOR_COMPACT_AFTERIMAGES\":\n        changed = dict(value[0][0]); changed[\"size\"] += 1\n        first = (types.MappingProxyType(changed), *value[0][1:])\n        reordered = (value[0][1], value[0][0], *value[0][2:])\n        return [(\"nested_size\", (first, value[1])), (\"row_order\", (reordered, value[1])),\n                (\"missing_row\", (value[0][:-1], value[1])), (\"outer_list\", list(value)),\n                (\"nested_dict\", ((dict(value[0][0]), *value[0][1:]), value[1]))]\n    if name == \"_SUCCESSOR_COMPACT_PROOF_LIMITS\":\n        changed = dict(value[0]); key = \"release_record_base64\"\n        width, size, pin = changed[key]\n        changed[key] = (width, size + 1, pin)\n        missing = dict(value[0]); del missing[\"git_commit_object_base64\"]\n        return [(\"decoded_size\", (types.MappingProxyType(changed), value[1])),\n                (\"missing_proof\", (types.MappingProxyType(missing), value[1])),\n                (\"outer_list\", list(value)), (\"nested_dict\", (dict(value[0]), value[1]))]\n    if name == \"_SUCCESSOR_COMPACT_RELEASE_KEYS\":\n        first = set(value[0]); first.remove(\"ControllerCommit\"); first.add(\"UnreviewedCommit\")\n        return [(\"typed_key_change\", (frozenset(first), value[1])),\n                (\"middle_order\", tuple(reversed(value))), (\"outer_list\", list(value))]\n    if name in (\"_SUCCESSOR_COMPACT_ENTRY_KEYS\", \"_SUCCESSOR_COMPACT_PROOF_KEYS\",\n                \"_SUCCESSOR_ATTESTATION_SCHEMA3_KEYS\"):\n        key = sorted(value)[0]\n        return [(\"missing_key\", frozenset(set(value) - {key})),\n                (\"typed_key_change\", frozenset((set(value) - {key}) | {\"unreviewed_\" + key})),\n                (\"set_type\", set(value))]\n    if name == \"_SUCCESSOR_COMPACT_PROOF_MAX_BYTES\":\n        return [(\"typed_bound\", (value[0] + 1, value[1])),\n                (\"middle_order\", tuple(reversed(value))), (\"outer_list\", list(value))]\n    if name == \"_SUCCESSOR_COMPACT_QA_PATHS\":\n        return [(\"grouped_order\", (value[1], value[0], *value[2:])),\n                (\"missing_path\", value[:-1]), (\"outer_list\", list(value))]\n    if name in (\"_SUCCESSOR_COMPACT_QA_BYTES\", \"_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3\"):\n        return [(\"typed_bound\", value + 1), (\"bool_type\", True), (\"float_type\", float(value))]\n    raise AssertionError(\"unknown source-derived schema3 policy\")\n\ndef repack_exact_policy(value):\n    \"\"\"Copy genuine immutable containers with identical type and value.\"\"\"\n    if type(value) is types.MappingProxyType:\n        return types.MappingProxyType({key: repack_exact_policy(value[key])\n                                      for key in reversed(tuple(value))})\n    if type(value) is tuple:\n        return tuple(repack_exact_policy(item) for item in value)\n    if type(value) is frozenset:\n        return frozenset(reversed(sorted(value)))\n    return value\n"
+methods="\n    def test_all_eleven_schema3_policy_values_refuse_typed_changes_cold_and_reuse(self):\n        for role in (\"controller\", \"worker\", \"entrypoint\", \"fit_child\", \"inspector\"):\n            for reuse in (False, True):\n                with guard_fixture(role) as (_, _, _, _, bindings):\n                    policies = bindings[\"schema3_policy_names\"]\n                self.assertEqual(len(policies), 11)\n                for name in policies:\n                    with guard_fixture(role) as (module, _, _, _, _):\n                        cases = schema3_policy_changes(name, module.__dict__[name])\n                    self.assertTrue(cases)\n                    for damage, replacement in cases:\n                        with self.subTest(role=role, reuse=reuse, name=name, damage=damage), guard_fixture(role) as (module, load, namespace, Refused, _):\n                            self.assertEqual(namespace[\"_GUARD_HEALTHY_CONTROL_CALLS\"], 2)\n                            if reuse:\n                                self.assertIs(load(), module)\n                            original = module.__dict__[name]\n                            try:\n                                module.__dict__[name] = replacement\n                                with self.assertRaisesRegex(Refused, \"policy differs from pinned source|identity or API changed\"):\n                                    load()\n                            finally:\n                                module.__dict__[name] = original\n                            self.assertIs(load(), module)\n                            self.assertIs(load(), module)\n\n    def test_schema3_genuine_container_copies_and_mapping_order_remain_accepted(self):\n        for role in (\"controller\", \"worker\", \"entrypoint\", \"fit_child\", \"inspector\"):\n            for reuse in (False, True):\n                for name in (\"SUCCESSOR_COMPACT_INTERMEDIATE_FACTS\", \"_SUCCESSOR_COMPACT_AFTERIMAGES\",\n                             \"_SUCCESSOR_COMPACT_PROOF_LIMITS\", \"_SUCCESSOR_COMPACT_RELEASE_KEYS\"):\n                    with self.subTest(role=role, reuse=reuse, name=name), guard_fixture(role) as (module, load, namespace, _, _):\n                        self.assertEqual(namespace[\"_GUARD_HEALTHY_CONTROL_CALLS\"], 2)\n                        if reuse:\n                            self.assertIs(load(), module)\n                        original = module.__dict__[name]\n                        # Genuine dict/proxy values both reach the real fingerprint branch.\n                        row = module.SUCCESSOR_COMPACT_INTERMEDIATE_FACTS[0]\n                        identity = namespace[\"_raw_helper_value_identity\"]\n                        copied_dict = dict(row)\n                        reversed_dict = dict(reversed(tuple(row.items())))\n                        self.assertEqual(identity(copied_dict), identity(reversed_dict))\n                        self.assertEqual(identity(row), identity(types.MappingProxyType(copied_dict)))\n                        self.assertNotEqual(identity(copied_dict), identity(row))\n                        try:\n                            replacement = repack_exact_policy(original)\n                            self.assertIsNot(replacement, original)\n                            module.__dict__[name] = replacement\n                            self.assertIs(load(), module)\n                            self.assertIs(load(), module)\n                        finally:\n                            module.__dict__[name] = original\n                        self.assertIs(load(), module)\n\n    def test_mapping_proxy_class_name_spoof_refuses_before_user_mapping_methods(self):\n        for role in (\"controller\", \"worker\", \"entrypoint\", \"fit_child\", \"inspector\"):\n            for reuse in (False, True):\n                with self.subTest(role=role, reuse=reuse), guard_fixture(role) as (module, load, namespace, Refused, _):\n                    self.assertEqual(namespace[\"_GUARD_HEALTHY_CONTROL_CALLS\"], 2)\n                    if reuse:\n                        self.assertIs(load(), module)\n                    original = module.SUCCESSOR_COMPACT_INTERMEDIATE_FACTS\n                    row = original[0]\n                    seen = []\n                    class ForeignMapping(Mapping):\n                        def __getitem__(self, key):\n                            seen.append(\"getitem\")\n                            return row[key]\n                        def __iter__(self):\n                            seen.append(\"iter\")\n                            return iter(row)\n                        def __len__(self):\n                            seen.append(\"len\")\n                            return len(row)\n                        def items(self):\n                            seen.append(\"items\")\n                            return row.items()\n                    ForeignMapping.__name__ = \"mappingproxy\"\n                    ForeignMapping.__module__ = type(row).__module__\n                    replacement = ForeignMapping()\n                    self.assertEqual(type(replacement).__name__, type(row).__name__)\n                    self.assertEqual(type(replacement).__module__, type(row).__module__)\n                    self.assertIsNot(type(replacement), types.MappingProxyType)\n                    try:\n                        module.SUCCESSOR_COMPACT_INTERMEDIATE_FACTS = (replacement, original[1])\n                        with self.assertRaisesRegex(Refused, \"unsupported policy/default value\"):\n                            load()\n                        self.assertEqual(seen, [], \"foreign mapping method ran before exact-type refusal\")\n                    finally:\n                        module.SUCCESSOR_COMPACT_INTERMEDIATE_FACTS = original\n                    self.assertIs(load(), module)\n                    self.assertIs(load(), module)\n\n    def test_tuple_class_name_spoof_refuses_cold_and_reuse(self):\n        for role in (\"controller\", \"worker\", \"entrypoint\", \"fit_child\", \"inspector\"):\n            for reuse in (False, True):\n                with self.subTest(role=role, reuse=reuse), guard_fixture(role) as (module, load, namespace, Refused, _):\n                    self.assertEqual(namespace[\"_GUARD_HEALTHY_CONTROL_CALLS\"], 2)\n                    if reuse:\n                        self.assertIs(load(), module)\n                    original = module._SUCCESSOR_COMPACT_QA_PATHS\n                    ForeignTuple = type(\"tuple\", (tuple,), {})\n                    replacement = ForeignTuple(original)\n                    self.assertEqual(type(replacement).__name__, type(original).__name__)\n                    self.assertEqual(tuple(replacement), original)\n                    try:\n                        module._SUCCESSOR_COMPACT_QA_PATHS = replacement\n                        with self.assertRaisesRegex(Refused, \"unsupported policy/default value\"):\n                            load()\n                    finally:\n                        module._SUCCESSOR_COMPACT_QA_PATHS = original\n                    self.assertIs(load(), module)\n                    self.assertIs(load(), module)\n\n    def test_all_four_schema3_helpers_code_globals_defaults_refuse_cold_and_reuse(self):\n        for role in (\"controller\", \"worker\", \"entrypoint\", \"fit_child\", \"inspector\"):\n            for reuse in (False, True):\n                with guard_fixture(role) as (_, _, _, _, bindings):\n                    helpers = bindings[\"schema3_helper_names\"]\n                self.assertEqual(len(helpers), 4)\n                for name in helpers:\n                    for damage in (\"code\", \"defaults\", \"kwdefaults\", \"annotations\", \"replacement\", \"foreign_globals\"):\n                        with self.subTest(role=role, reuse=reuse, name=name, damage=damage), guard_fixture(role) as (module, load, namespace, Refused, _):\n                            self.assertEqual(namespace[\"_GUARD_HEALTHY_CONTROL_CALLS\"], 2)\n                            if reuse:\n                                self.assertIs(load(), module)\n                            function = module.__dict__[name]\n                            original = (function.__code__, function.__defaults__, function.__kwdefaults__, function.__annotations__)\n                            try:\n                                if damage == \"code\":\n                                    function.__code__ = (lambda *args, **kwargs: b\"unreviewed\").__code__\n                                elif damage == \"defaults\":\n                                    function.__defaults__ = ({\"reviewed\": (\"changed\", 1)},)\n                                elif damage == \"kwdefaults\":\n                                    function.__kwdefaults__ = {\"reviewed\": {\"changed\": [1]}}\n                                elif damage == \"annotations\":\n                                    function.__annotations__ = {\"reviewed\": \"changed\"}\n                                elif damage == \"replacement\":\n                                    module.__dict__[name] = lambda *args, **kwargs: b\"unreviewed\"\n                                else:\n                                    foreign = types.FunctionType(function.__code__, dict(module.__dict__),\n                                                                 function.__name__, function.__defaults__)\n                                    foreign.__kwdefaults__ = None if function.__kwdefaults__ is None else dict(function.__kwdefaults__)\n                                    foreign.__annotations__ = dict(function.__annotations__)\n                                    module.__dict__[name] = foreign\n                                with self.assertRaisesRegex(Refused, \"API differs from pinned source|identity or API changed\"):\n                                    load()\n                            finally:\n                                module.__dict__[name] = function\n                                function.__code__, function.__defaults__, function.__kwdefaults__, function.__annotations__ = original\n                            self.assertIs(load(), module)\n                            self.assertIs(load(), module)\n"
+newline="\r\n" if "\r\n" in source else "\n"
+helpers=helpers.replace("\r\n","\n").replace("\n",newline)
+methods=methods.replace("\r\n","\n").replace("\n",newline)
+header="class RawConsumerGuardRegressions(unittest.TestCase):"
+assert source.count(header)==1
+fixtureonly=source
+create(R/"baseline-pins-only/test_raw_consumer_guards_004.FIXTURE_ONLY.py",fixtureonly.encode())
+source=source.replace(header,helpers+newline+header,1)
+main='if __name__ == "__main__":'
+assert source.count(main)==1
+source=source.replace(main,methods+newline+main,1)
+finaltest=source.encode()
+oldtree=ast.parse(old);newtree=ast.parse(finaltest)
+oldclass=next(n for n in oldtree.body if isinstance(n,ast.ClassDef) and n.name=="RawConsumerGuardRegressions")
+newclass=next(n for n in newtree.body if isinstance(n,ast.ClassDef) and n.name=="RawConsumerGuardRegressions")
+oldmethods={n.name:ast.dump(n,include_attributes=False) for n in oldclass.body if isinstance(n,ast.FunctionDef) and n.name.startswith("test_")}
+newmethods={n.name:ast.dump(n,include_attributes=False) for n in newclass.body if isinstance(n,ast.FunctionDef) and n.name.startswith("test_")}
+assert len(oldmethods)==14 and len(newmethods)==19
+assert all(newmethods[k]==v for k,v in oldmethods.items())
+added=[k for k in newmethods if k not in oldmethods];assert len(added)==5
+reversed_source=source.replace(helpers+newline,"",1).replace(methods+newline,"",1)
+assert reversed_source==fixtureonly
+create(R/"test_raw_consumer_guards_004.TEMPLATE.py",finaltest)
+create(R/"EXACT_SOURCE_AND_TEST_CHANGE_AUDIT_004.json",json.dumps({"schema_version":1,"author":"/root/candidate_review","created_at_utc":dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"),"root_source_choices":["inputs/source-choice005.json","inputs/source-choice006.json"],"five_source_changes":changes,"prior_14_test_method_names":list(oldmethods),"all14_prior_test_method_ASTs_exact":True,"appended_test_methods":added,"actual_test_method_count":19,"new_helper_functions":["schema3_policy_changes","repack_exact_policy"],"old16_policy_names_and3_helpers_retained":True,"new11_policy_names":bindings["schema3_policy_names"],"new4_helper_names":bindings["schema3_helper_names"],"new_test_sha256":hashlib.sha256(finaltest).hexdigest(),"new_test_size":len(finaltest),"appended_blocks_reverse_to_fixture_only_baseline":True,"new_mapping_kind_source_tests_UNRUN":True,"source_guard_tests_or_raw_definitions_executed":False},sort_keys=True,indent=2).encode()+b"\n")
+print(json.dumps({"source_changes":{role:row["after_sha256"] for role,row in changes.items()},"test_sha256":hashlib.sha256(finaltest).hexdigest(),"test_size":len(finaltest),"methods":19,"prior14_AST_exact":True}))
+

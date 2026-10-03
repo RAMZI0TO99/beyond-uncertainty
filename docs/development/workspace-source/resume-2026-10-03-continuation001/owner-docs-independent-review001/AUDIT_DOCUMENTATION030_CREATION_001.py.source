@@ -1,0 +1,109 @@
+"""Owned finite metadata audit; no reviewed source execution."""
+from pathlib import Path
+from datetime import datetime, timezone
+import hashlib, json, math, os, re
+ROOT=Path('D:/Aenv/pro2'); BASE=ROOT/'resume-2026-10-03-continuation001'
+OUT=BASE/'owner-docs-independent-review001'
+def sha(b): return hashlib.sha256(b).hexdigest()
+def utc(): return datetime.now(timezone.utc).isoformat(timespec='microseconds')
+def enc(v): return (json.dumps(v,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def pairs(rows):
+ d={}
+ for k,v in rows:
+  assert k not in d
+  d[k]=v
+ return d
+def parse(b):
+ assert not b.startswith(b'\xef\xbb\xbf')
+ return json.loads(b.decode('utf-8','strict'),object_pairs_hook=pairs,parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def raw(s): return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,getattr(s,'st_file_attributes',0),getattr(s,'st_birthtime_ns',None)]
+def read(p):
+ a=p.lstat();b=p.read_bytes();z=p.lstat();assert raw(a)==raw(z) and len(b)==z.st_size
+ return b,dict(path=p.relative_to(ROOT).as_posix(),size=len(b),sha256=sha(b),raw9=raw(z),observed_utc=utc())
+def once(p,b):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open('xb') as f:f.write(b);f.flush();os.fsync(f.fileno())
+auditpath=BASE/'DOCS_REFRESH_AUDIT_030.json';inputpath=BASE/'DOCS_REFRESH_INPUTS_030.json';baselinepath=BASE/'DOCS_REFRESH_BASELINE_030.json'
+audit=parse(auditpath.read_bytes());inputs=parse(inputpath.read_bytes());baseline=parse(baselinepath.read_bytes())
+paths={auditpath,inputpath,baselinepath,BASE/'PUBLISH_CONTINUATION_DOCS_001.py'}
+for row in audit['files']:paths.add(ROOT/row['path'])
+for pair in inputs['inputs']:
+ for role in ['original','copy']:paths.add(ROOT/pair[role]['path'])
+for row in baseline['files']:paths.add(ROOT/row['primary']);paths.add(ROOT/row['before']['path'])
+paths=sorted(paths,key=str);observations=[];data=None
+for idx in range(3):
+ phase={};rows=[]
+ for p in paths:b,row=read(p);phase[p]=b;rows.append(row)
+ if data is None:data=phase
+ else:assert phase==data
+ observations.append(dict(phase=idx+1,rows=rows))
+assert sha(data[auditpath])=='91a8592d6478842c7949a7ffa99114ee342e86f925fbe8f31f9e0cbb3c34aae5'
+assert sha(data[BASE/'CONTINUATION_CHECKPOINT_001.md'])=='af51d5c39e2b3f2a6dc296f56cfb0a331550ab2b770c7c094a51c0d3b60b951a'
+assert audit['checkpoint']==30 and audit['actual_runtime'] is False
+assert len(audit['files'])==27 and len(inputs['inputs'])==audit['actual_input_count']==13 and len(audit['maintained_links'])==24
+for row in audit['files']:
+ b=data[ROOT/row['path']];assert len(b)==row['bytes'] and sha(b)==row['sha256']
+for pair in inputs['inputs']:
+ a=ROOT/pair['original']['path'];b=ROOT/pair['copy']['path'];assert data[a]==data[b]
+ assert (a.stat().st_dev,a.stat().st_ino)!=(b.stat().st_dev,b.stat().st_ino)
+ for role in ['original','copy']:
+  row=pair[role];assert len(data[ROOT/row['path']])==row['bytes'] and sha(data[ROOT/row['path']])==row['sha256']
+for row in baseline['files']:
+ now=data[ROOT/row['primary']];prior=data[ROOT/row['before']['path']]
+ assert len(prior)==row['before']['bytes'] and sha(prior)==row['before']['sha256']
+ if row['proof']=='exact_retained_suffix':assert now.endswith(prior)
+ elif row['proof']=='exact_retained_prefix':assert now.startswith(prior)
+ else:assert row['proof']=='exact_before_copy'
+for row in audit['maintained_links']:
+ p=ROOT/row['document'];dest=(p.parent/row['target']).resolve()
+ assert str(dest)==row['resolved_path'] and dest.is_file()
+ assert ']('+row['target']+')' in data[p].decode('utf-8')
+v=lambda name:parse(data[BASE/name])
+owner=v('OWNER_CONTINUATION_20261003_001.json');ownpeer=v('owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json')
+assert owner['work_end_utc'] is None and owner['fixed_deadline_invented'] is False
+assert ownpeer['verdict']=='PASS_OWNER_DIRECTIVE_AND_LINEAGE_SOURCE_ONLY'
+assert v('capsule-design-independent-review001/INDEPENDENT_COMPACT_CAPSULE_REVIEW_001.json')['verdict']=='PASS_STATIC_COMPACT_CAPSULE_DERIVATION_WITH_IMPLEMENTATION_CONDITIONS'
+assert v('capsule-design-independent-review001/INDEPENDENT_DESIGN002_NARROW_REVIEW_001.json')['verdict']=='PASS_STATIC_DESIGN002_NARROW_CORRECTIONS_WITH_IMPLEMENTATION_CONDITIONS'
+pn=v('pubnative-independent-review001/INDEPENDENT_PUBNATIVE_SOURCE_REVIEW_003.json')
+assert pn['verdict']=='REFUSED_STATIC_TEST_PREPARATION_CAUSAL_CLOSURE'
+assert pn['payloads_verified']==1139 and pn['preservation_pairs_verified']==912
+assert pn['actual_results'] is None and pn['runtime_acceptance'] is False and pn['operational_authority'] is False
+correction=v('pubnative-causal-tests-prep002/STAGED_MANIFEST_003.json')
+assert correction['native_methods']==128 and correction['metadata_methods']==30 and correction['production_sources_byte_identical']==33
+assert correction['actual_results'] is None and correction['operational_authority'] is False
+choice=v('ROOT_SOURCE_IMPLEMENTATION_CHOICE_001.json')
+assert choice['source_only'] is True and choice['actual_runtime_go'] is False
+for key in ['phase_lease','metadata_context','actual_results']:assert choice[key] is None
+assert choice['owner_deadline_invented'] is False
+lease=choice['lease_policy'];assert len(lease['schema_keys'])==12 and len(set(lease['schema_keys']))==12
+assert lease['maximum_seconds']==43200 and lease['actual_lease_sha256'] is None and lease['actual_lease_end_utc'] is None
+assert choice['ownership']['metadata_decisions']!=choice['ownership']['bound_late_currentConsumer24']
+assert choice['preserved_limits']==dict(context_seconds=600,both_original_ages_at_GO_seconds=90,resource_seconds=60,root_budget_seconds=450,after_reserve_seconds=60,receipt_bytes=262144,physical_capture_bytes=131072,canonical_event_row_with_LF_bytes=1024,event_rows=4096,event_chunks=32,chunk_bytes=131072,event_aggregate_bytes=4194304)
+text=data[BASE/'CONTINUATION_CHECKPOINT_001.md'].decode('utf-8')
+for wording in ['ongoing local/private authorization','Correction','no invented overall end']:
+ if wording=='Correction':continue
+ assert wording in text
+assert 'The correction awaits a different review; all tests remain UNRUN.' in text
+assert 'No new current742/263 acceptance is claimed' in text
+assert 'no Root process may impersonate them' in text
+copydir=OUT/'docs030-selected-before001';assert not copydir.exists();copydir.mkdir()
+preserved=[]
+for idx,p in enumerate(paths):
+ c=copydir/f'{idx:02d}.bytes';once(c,data[p]);assert c.read_bytes()==data[p]
+ preserved.append(dict(original=p.relative_to(ROOT).as_posix(),copy=c.relative_to(ROOT).as_posix(),sha256=sha(data[p]),bytes=len(data[p])))
+prepost=[]
+for p in paths:b,row=read(p);assert b==data[p];prepost.append(row)
+record=dict(schema_version=1,record_type='independent_documentation030_creation_review',reviewer='/root/owner_docs_review',created_utc=utc(),verdict='PASS_DOCUMENTATION_FROZEN_CREATION_SCOPE_ONLY',audit_sha256=sha(data[auditpath]),checkpoint_sha256=sha(data[BASE/'CONTINUATION_CHECKPOINT_001.md']),declared_files=27,independent_input_pairs=13,maintained_links=24,finite_inputs=len(paths),observations=observations,prepublication_observations=prepost,preserved_inputs=preserved,blockers=[],primary_files_changed_by_reviewer=False,operational_authority=False,source_runtime_approval=False,checks=['Frozen declared byte hashes and independent original/copy identities','All five prior primary bytes preserved: AGENTS suffix, SESSION/RESOURCE prefixes, HANDOFF/START before copies','Maintained local links resolve and occur in the selected documents','Exact ongoing owner directive/lineage; old expiry is historical, no fabricated owner end','Attributed static capsule/design acceptances and production/native causal refusal/correction remain distinct from runtime','Source-only GG6/M3/choreography choices and two independent actual checker roles; no actual lease/context/GO/results','Finite lease12/43200 is separate from ongoing owner master; original freshness/reserve/evidence caps retained'],limitations=['This is documentation creation and source-choice attribution review, not approval of the new implementations, target compilation, definitions, calls, tests, binding, lease, runtime, Job, native quiet, live apply, fullQA, release or recovery.','Pro3 direct-message provenance and prior host/live readbacks are Root-attributed statements, not independently repeated process/OS/Git witnesses.','Only the finite selected document and source-metadata input paths were read; unknown-file absence is not claimed.'])
+review=OUT/'INDEPENDENT_DOCS_REFRESH_REVIEW_030.json';md=OUT/'INDEPENDENT_DOCS_REFRESH_REVIEW_030.md';post=OUT/'INDEPENDENT_DOCS_REFRESH_POST_030.json'
+once(review,enc(record));once(md,('''# Independent documentation030 creation review
+
+PASS_DOCUMENTATION_FROZEN_CREATION_SCOPE_ONLY. All27 declarations,13 independent original/copy pairs and24 maintained links match frozen byte pins. Five prior primary files are preserved; AGENTS retains its suffix, SESSION and RESOURCE their prefixes, and HANDOFF/START their exact before copies. Selected inputs were read three times, preserved in flat exact byte copies, and read before and after publication.
+
+The exact new owner directive supplies ongoing local/private continuation without an invented fixed owner end. Old expiry/closeout and spent artifacts remain historical. Source choice only selects GG6 current24, M3 and independent metadata versus BOUND/LATE checker work. Its finite12-field lease/max43200 is a future execution selection, with actual lease/context/GO/results absent. Original600/both90/resource60/450+after60 and all evidence limits remain exact.
+
+Capsule and Design002 static acceptances, PubNative causal source-test refusal and pending corrected128/30 preparation are accurately separated from runtime acceptance. Current live/host/Pro3 facts retain Root provenance and finite-readback scope. This review grants no implementation, target execution, binding, lease, quiet, sole-executor, integration/fullQA/release, native recovery or scientific authority.
+''').encode('utf-8'))
+rows=[]
+for p in paths:b,row=read(p);assert b==data[p];rows.append(row)
+once(post,enc(dict(schema_version=1,created_utc=utc(),review_sha256=sha(review.read_bytes()),md_sha256=sha(md.read_bytes()),postpublication_input_observations=rows)))
+print(json.dumps(dict(verdict=record['verdict'],finite_inputs=len(paths),outputs=[dict(path=str(p),sha256=sha(p.read_bytes()),bytes=p.stat().st_size) for p in [review,md,post]])))

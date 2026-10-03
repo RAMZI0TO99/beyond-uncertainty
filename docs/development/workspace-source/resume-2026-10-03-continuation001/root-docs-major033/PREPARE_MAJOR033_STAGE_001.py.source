@@ -1,0 +1,133 @@
+"""Own finite documentation metadata only; never calls publisher or a target.
+
+This draft remains unentered until Root selects the final context and all six
+section sources. All creation is confined to the new Major033 namespace.
+"""
+import argparse, ast, hashlib, json, os, posixpath, re, stat, types
+from datetime import datetime, timezone
+from pathlib import Path
+ROOT = Path(r'D:\Aenv\pro2')
+REL = 'resume-2026-10-03-continuation001'
+OWN = ROOT / REL / 'root-docs-major033'
+CONTEXT = OWN / 'SELECTED_SOURCE_CONTEXT_033_001.json'
+PUB = OWN / 'PUBLISH_MAJOR033_DOCS_001.py'
+PRIMARY = ('AGENTS.md', 'HANDOFF.md', 'START_HERE.md', 'resume-2026-09-28-001/SESSION.md', 'resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md')
+CHECKPOINT = REL + '/CONTINUATION_CHECKPOINT_004.md'
+BASELINES = (
+ ('2bcca95e8274bb626344122e060cf5eb63282627210e8bafe910d60938cef34c', 209807),
+ ('538bf1ad0f59f5f2377f191709805365921ec9f7afb08ea01c347124ed046925', 29987),
+ ('d14b5ac9517f65d163e4b9d62a2f81788bc2677f756cd712a265276e362f030e', 7586),
+ ('ddf0f5499ceabcca25fac9bb88e1fdecdc058cc4cda816c9fb5130c98e12a40d', 356625),
+ ('d62fa028ec08e29d774b879415d537143e8cfe76153f1f9d64fd8d2861290f50', 34577),
+)
+MAX_FILE = 8388608
+def need(value, message):
+ if not value: raise ValueError(message)
+def sha(data): return hashlib.sha256(data).hexdigest()
+def exact(value, keys): need(type(value) is dict and set(value) == set(keys), 'closed keyset')
+def wire(value): return (json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + '\n').encode('ascii')
+def decode(data):
+ def pairs(items):
+  result = {}
+  for key, value in items:
+   need(key not in result, 'duplicate JSON key'); result[key] = value
+  return result
+ def bad(value): raise ValueError('float/nonfinite JSON refused')
+ need(not data.startswith(b'\xef\xbb\xbf'), 'JSON BOM')
+ return json.loads(data.decode('utf-8', errors='strict'), object_pairs_hook=pairs, parse_float=bad, parse_constant=bad)
+def local(relative):
+ need(type(relative) is str and 0 < len(relative) <= 399 and '\\' not in relative and not relative.startswith('/') and all(part not in ('', '.', '..') and ':' not in part for part in relative.split('/')), 'Root-relative canonical path')
+ return ROOT.joinpath(*relative.split('/'))
+def raw(value): return [getattr(value, key) for key in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+def chain(path):
+ result = []
+ for entry in [*reversed(path.parents), path]:
+  value = entry.lstat(); need(stat.S_ISDIR(value.st_mode) and not value.st_file_attributes & 1024, 'plain ancestor')
+  result.append((str(entry), value.st_dev, value.st_ino))
+ return result
+def read(path, pin, size):
+ need(type(size) is int and 0 <= size <= MAX_FILE and type(pin) is str and re.fullmatch('[0-9a-f]{64}', pin), 'fixed row bounds')
+ ancestry = chain(path.parent); before = path.lstat()
+ need(stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and not before.st_file_attributes & 1024 and before.st_size == size, 'plain exact size')
+ with path.open('rb', buffering=0) as stream:
+  descriptor = os.fstat(stream.fileno()); a, b = raw(before), raw(descriptor)
+  need(a[:4]+a[5:] == b[:4]+b[5:], 'ordinary crossAPI8')
+  data = stream.read(size + 1); need(raw(descriptor) == raw(os.fstat(stream.fileno())), 'descriptor raw9')
+ need(raw(before) == raw(path.lstat()) and ancestry == chain(path.parent) and len(data) == size and sha(data) == pin, 'full byte/path/raw9/post proof')
+ return data, dict(path=path.relative_to(ROOT).as_posix(), bytes=size, sha256=pin, path_raw9=raw(before), descriptor_raw9=raw(descriptor))
+def row(path, data): return dict(path=path.relative_to(ROOT).as_posix(), bytes=len(data), sha256=sha(data))
+def pinned(value):
+ exact(value, ('path','bytes','sha256')); return read(local(value['path']), value['sha256'], value['bytes'])
+def once(path, data):
+ need(type(data) is bytes and len(data) <= MAX_FILE, 'own write cap')
+ path.parent.mkdir(parents=True, exist_ok=True); chain(path.parent)
+ with path.open('xb') as stream:
+  need(stream.write(data) == len(data), 'complete own write'); stream.flush(); os.fsync(stream.fileno())
+ need(read(path, sha(data), len(data))[0] == data, 'own readback')
+def main():
+ parser = argparse.ArgumentParser()
+ parser.add_argument('--expected-self-sha256', required=True)
+ parser.add_argument('--expected-context-sha256', required=True)
+ parser.add_argument('--root-selected-source-freeze', choices=('major033',), required=True)
+ args = parser.parse_args()
+ need(Path(__file__).absolute() == OWN/'PREPARE_MAJOR033_STAGE_001.py', 'fixed own source')
+ read(Path(__file__), args.expected_self_sha256, Path(__file__).lstat().st_size)
+ need(not (ROOT/CHECKPOINT).exists() and not (OWN/'STAGED_DOCUMENTATION_MANIFEST_033_001.json').exists() and not (OWN/'ROOT_PUBLISH_RECEIPT_033.json').exists(), 'new Source destinations')
+ context_bytes, context_observation = read(CONTEXT, args.expected_context_sha256, CONTEXT.lstat().st_size)
+ need(len(context_bytes) <= 2097152, 'context cap'); context = decode(context_bytes)
+ exact(context, ('schema_version','record_type','source_author','created_utc','Root_selected_facts_attributed','final_facts','selected_inputs','section_sources','publisher','target_execution','publication_performed','operational_authority'))
+ need(type(context['schema_version']) is int and context['schema_version'] == 1 and context['record_type'] == 'major033_selected_final_source_context' and context['source_author'] == '/root/root_pipeline_binder' and context['Root_selected_facts_attributed'] is True and all(context[key] is False for key in ('target_execution','publication_performed','operational_authority')), 'context scope')
+ need(type(context['final_facts']) is dict and len(context['final_facts']) > 0 and type(context['selected_inputs']) is list and 1 <= len(context['selected_inputs']) <= 99, 'finite selected final evidence')
+ sections = context['section_sources']; need(type(sections) is list and len(sections) == 6, 'five primary sections plus checkpoint')
+ need(tuple(item['destination'] for item in sections) == PRIMARY+(CHECKPOINT,), 'exact Source section order')
+ originals = context['selected_inputs'] + [row(CONTEXT, context_bytes)]
+ selected_paths = {item['path'] for item in originals}
+ need(len(selected_paths) == len(originals), 'no repeated selected input')
+ for item in originals: local(item['path'])
+ # Observe every selected original before creating any fixed candidate/manifest.
+ selected = [(item, *pinned(item)) for item in originals]
+ baselines = [read(ROOT/path, pin, size) for path, (pin, size) in zip(PRIMARY, BASELINES)]
+ text_sections = []
+ for index, item in enumerate(sections):
+  exact(item, ('destination','source')); source_path = local(item['source']['path'])
+  need(source_path == OWN/'selected-sections'/('section-'+str(index)+'.md'), 'fixed own Source section')
+  data, observation = pinned(item['source']); text = data.decode('utf-8', errors='strict')
+  need('{PREPARED_UTC}' in text and 'UNFROZEN' not in text and 'TODO' not in text, 'final selected text')
+  text_sections.append((item['destination'], text, observation))
+ publisher_bytes, publisher_observation = pinned(context['publisher'])
+ need(local(context['publisher']['path']) == PUB, 'fixed own publisher')
+ tree = ast.parse(publisher_bytes); inert = compile(tree, str(PUB), 'exec', dont_inherit=True)
+ need(type(inert) is types.CodeType, 'inert publisher CodeType only')
+ now = datetime.now(timezone.utc).isoformat(timespec='microseconds')
+ evidence, observations = [], []
+ for item, data, observation in selected:
+  copy = OWN/'stage-evidence'/item['path']; once(copy, data)
+  need(read(local(item['path']), item['sha256'], item['bytes'])[1] == observation, 'selected original post exact')
+  evidence.append(dict(original=item, copy=row(copy, data)))
+  observations.append(dict(original=observation, copy=read(copy, sha(data), len(data))[1]))
+ primaries, all_sections = [], {}
+ for index, (destination, text, section_observation) in enumerate(text_sections):
+  delta = text.replace('{PREPARED_UTC}', now).encode('utf-8'); all_sections[destination] = delta.decode('utf-8')
+  if index == 5:
+   checkpoint_candidate = OWN/'candidates'/destination; once(checkpoint_candidate, delta); checkpoint_row = row(checkpoint_candidate, delta); continue
+  before_bytes, baseline_observation = baselines[index]; before_path = OWN/'before'/destination; once(before_path, before_bytes)
+  direction = 'suffix' if index < 3 else 'prefix'; candidate_bytes = delta+before_bytes if index < 3 else before_bytes+delta
+  candidate_path = OWN/'candidates'/destination; once(candidate_path, candidate_bytes)
+  need(candidate_bytes.endswith(before_bytes) if index < 3 else candidate_bytes.startswith(before_bytes), 'whole032 history')
+  primaries.append(dict(destination=destination, before=row(before_path,before_bytes), candidate=row(candidate_path,candidate_bytes), preservation=direction))
+ links = []
+ for origin, text in all_sections.items():
+  for target in re.findall(r'\[[^\]]+\]\(([^)]+)\)', text):
+   resolved = posixpath.normpath(posixpath.join(posixpath.dirname(origin), target)); destination = local(resolved)
+   need(resolved == CHECKPOINT or (destination.is_file() and resolved in selected_paths | set(PRIMARY)), 'selected pinned link resolves'); links.append(dict(origin=origin,target=target,resolved_path=resolved))
+ need(len(links) <= 200, 'finite link budget')
+ manifest = dict(schema_version=1,record_type='major033_documentation_stage',author='/root/root_pipeline_binder',prepared_utc=now,checkpoint=checkpoint_row,primaries=primaries,inputs=evidence,links=links,source_only=True,publication_performed=False,target_execution=False,operational_authority=False)
+ manifest_bytes = wire(manifest); manifest_path = OWN/'STAGED_DOCUMENTATION_MANIFEST_033_001.json'; once(manifest_path,manifest_bytes)
+ for destination, (pin,size), (data,observation) in zip(PRIMARY,BASELINES,baselines): need(read(ROOT/destination,pin,size)[1] == observation, 'current032 primary exact')
+ for item,data,observation in selected: need(read(local(item['path']),item['sha256'],item['bytes'])[1] == observation, 'all originals post exact')
+ for destination,text,observation in text_sections: need(pinned(dict((key,observation[key]) for key in ('path','bytes','sha256')))[1] == observation, 'Source section post exact')
+ need(read(PUB,context['publisher']['sha256'],context['publisher']['bytes'])[1] == publisher_observation and not (ROOT/CHECKPOINT).exists(), 'publisher unchanged and checkpoint uncreated')
+ audit = dict(schema_version=1,record_type='major033_author_finite_stage_audit',created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),source_author='/root/root_pipeline_binder',manifest=row(manifest_path,manifest_bytes),publisher=context['publisher'],selected_inputs=len(evidence),selected_input_observations=observations,section_observations=[item[2] for item in text_sections],primary_baselines=[item[1] for item in baselines],all_current032_bytes_unchanged=True,all032_history_exact=True,publisher_inert_CodeType_only=True,publisher_main_executed=False,checkpoint_destination_created=False,primary_publication=False,target_execution=False,operational_authority=False)
+ audit_path = OWN/'AUTHOR_MAJOR033_STAGE_AUDIT_001.json'; audit_bytes = wire(audit); once(audit_path,audit_bytes)
+ print(json.dumps(dict(manifest=row(manifest_path,manifest_bytes),publisher=context['publisher'],audit=row(audit_path,audit_bytes),primaries=primaries,checkpoint=checkpoint_row,inputs=len(evidence),links=len(links),source_only=True),sort_keys=True))
+if __name__ == '__main__': main()

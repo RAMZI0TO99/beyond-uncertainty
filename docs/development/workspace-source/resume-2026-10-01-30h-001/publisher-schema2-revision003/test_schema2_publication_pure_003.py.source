@@ -1,0 +1,291 @@
+"""UNRUN preparation; pure selected-definition tests, never import raw/project code.
+
+An eventual distinct reviewed driver must authorize this file. These cases do
+not run either publication main, Git, runtime inventory, native gates or fits.
+"""
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+import ast
+import base64
+import binascii
+import copy
+import hashlib
+import json
+import math
+import os
+import re
+import stat
+import unittest
+from datetime import datetime, timezone
+
+STAGE = Path(__file__).resolve().parent
+TEMPLATES = ("publish-successor-admission-schema2-003.py.template",
+             "verify-successor-admission-schema2-003.py.template")
+PURE_NAMES = {"Refused", "require", "sha", "canonical", "strict_json", "exact", "hex_value", "relative",
+              "row_identity", "strict_ast_literal", "schema2_literal_policy", "schema2_file_rows", "schema2_diffs",
+              "schema2_qa", "schema2_commit_object", "schema2_middle", "schema2_sealed_attestation",
+              "read", "create_file", "schema2_release_checks"}
+
+
+def selected_namespace(name):
+    source = (STAGE / name).read_text(encoding="utf-8", errors="strict")
+    module = ast.parse(source)
+    nodes = [node for node in module.body
+             if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in PURE_NAMES]
+    assert {node.name for node in nodes} == PURE_NAMES
+    namespace = dict(globals())
+    for node in module.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and node.targets[0].id in {"HISTORICAL", "COMPILED_POLICY", "BINDINGS", "FLAGS"}):
+            if isinstance(node.value, ast.Call):
+                assert isinstance(node.value.func, ast.Attribute) and node.value.func.attr == "loads"
+                namespace[node.targets[0].id] = json.loads(ast.literal_eval(node.value.args[0]))
+            else:
+                namespace[node.targets[0].id] = ast.literal_eval(node.value)
+    namespace["HEX40"] = re.compile(r"[0-9a-f]{40}\Z", re.ASCII)
+    namespace["HEX64"] = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
+    # Test-only selected-definition compilation. No module main/import/loader or
+    # original raw helper is executed, and no admission context is manufactured.
+    code = compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])),
+                   "<schema2-selected-pure-test-definitions>", "exec")
+    exec(code, namespace)
+    return namespace
+
+
+def historical_fixture(ns):
+    facts = ns["HISTORICAL"]
+    old_rows = json.loads((STAGE / "before" / facts["inputs"]["predecessor_rows"]["retained_name"]).read_bytes())
+    old_qa_bytes = (STAGE / "before" / facts["inputs"]["predecessor_manifest"]["retained_name"]).read_bytes()
+    policy = copy.deepcopy(ns["COMPILED_POLICY"])
+    mapping = {row["path"]: dict(row) for row in old_rows}
+    for row in policy["_SUCCESSOR_INTERMEDIATE_AFTERIMAGES"]:
+        mapping[row["path"]] = dict(row)
+    middle = [mapping[path] for path in sorted(mapping)]
+    proof = {
+        "release_record_base64": base64.b64encode((STAGE / "before/middle_release.bytes").read_bytes()).decode("ascii"),
+        "candidate_manifest_base64": base64.b64encode((STAGE / "before/middle_manifest.bytes").read_bytes()).decode("ascii"),
+        "git_commit_object_base64": base64.b64encode((STAGE / "before/middle_commit_object.bytes").read_bytes()).decode("ascii"),
+        "changed_files": copy.deepcopy(policy["_SUCCESSOR_INTERMEDIATE_AFTERIMAGES"]),
+    }
+    expected_paths = [row[0] for row in json.loads(old_qa_bytes)]
+    return policy, old_rows, middle, proof, expected_paths, old_qa_bytes
+
+
+class Schema2PurePreparation(unittest.TestCase):
+    def each_namespace(self):
+        for name in TEMPLATES:
+            yield name, selected_namespace(name)
+
+    def test_actual_raw003_twenty_constants_and_no_ast_execution(self):
+        # A hostile constructor is rejected by the interpreter rather than run.
+        raw = STAGE / "preserved/successor-candidate-raw-revision003/scripts/week8_recovery_raw_authority.py"
+        for name, ns in self.each_namespace():
+            with self.subTest(template=name):
+                self.assertEqual(ns["schema2_literal_policy"](raw.read_bytes()), ns["COMPILED_POLICY"])
+                for expression in ("__import__('os').system('echo forbidden')", "dict(a=1)",
+                                   "{**{'a': 1}}", "MappingProxyType({'a': 1.0})",
+                                   "frozenset({'a', 'a'})", "tuple(MappingProxyType(row) for row in ({},) if True)"):
+                    with self.subTest(expression=expression):
+                        with self.assertRaises(ns["Refused"]):
+                            ns["strict_ast_literal"](ast.parse(expression, mode="eval").body)
+
+    def test_fixed_assignment_rebinding_and_bool_substitution_refused(self):
+        raw = (STAGE / "preserved/successor-candidate-raw-revision003/scripts/week8_recovery_raw_authority.py").read_bytes()
+        for name, ns in self.each_namespace():
+            with self.subTest(template=name):
+                for extra in (b"\nSUCCESSOR_ADMISSION_MAX_BYTES = True\n",
+                              b"\nSUCCESSOR_ADMISSION_MAX_BYTES: int = 395799\n",
+                              b"\nSUCCESSOR_ADMISSION_MAX_BYTES += 0\n"):
+                    with self.assertRaises(ns["Refused"]):
+                        ns["schema2_literal_policy"](raw + extra)
+
+    def test_actual_grouped_qa_order_accepts_and_global_sort_refuses(self):
+        for name, ns in self.each_namespace():
+            policy, old, middle, proof, paths, data = historical_fixture(ns)
+            with self.subTest(template=name):
+                self.assertNotEqual(paths, sorted(paths))
+                self.assertEqual(ns["schema2_qa"](data, old), json.loads(data))
+                self.assertEqual(ns["schema2_qa"](base64.b64decode(proof["candidate_manifest_base64"]),
+                                                 middle, expected_paths=paths)[0][0], paths[0])
+                sorted_data = ns["canonical"](sorted(json.loads(data))) + b"\n"
+                with self.assertRaises(ns["Refused"]):
+                    ns["schema2_qa"](sorted_data, old, expected_paths=paths)
+                duplicate = json.loads(data); duplicate[-1] = duplicate[0]
+                with self.assertRaises(ns["Refused"]):
+                    ns["schema2_qa"](ns["canonical"](duplicate), old, expected_paths=paths)
+
+    def test_actual_middle_reconstructs_all742_then_refuses_unrelated_fresh_blob(self):
+        for name, ns in self.each_namespace():
+            policy, old, middle, proof, paths, _ = historical_fixture(ns)
+            with self.subTest(template=name):
+                self.assertEqual(len(old), 742)
+                self.assertEqual(ns["schema2_middle"](proof, old, middle, policy=policy, expected_paths=paths), middle)
+                altered = copy.deepcopy(middle)
+                unchanged = next(i for i, row in enumerate(altered)
+                                 if row["path"] not in policy["SUCCESSOR_INTERMEDIATE_FACTS"]["changed_paths"])
+                altered[unchanged]["sha256"] = "0" * 64
+                with self.assertRaisesRegex(ns["Refused"], "full742 reconstructed middle"):
+                    ns["schema2_middle"](proof, old, altered, policy=policy, expected_paths=paths)
+                self.assertEqual(ns["schema2_middle"](proof, old, middle, policy=policy, expected_paths=paths), middle)
+
+    def test_middle_exact_proof_keysets_afterimages_and_encoded_sizes_refuse(self):
+        for name, ns in self.each_namespace():
+            policy, old, middle, proof, paths, _ = historical_fixture(ns)
+            with self.subTest(template=name):
+                witnesses = []
+                changed = copy.deepcopy(proof); changed["changed_files"][0]["size"] += 1; witnesses.append(changed)
+                changed = copy.deepcopy(proof); changed["extra"] = True; witnesses.append(changed)
+                changed = copy.deepcopy(proof); del changed["changed_files"]; witnesses.append(changed)
+                changed = copy.deepcopy(proof); changed["release_record_base64"] += "="; witnesses.append(changed)
+                changed = copy.deepcopy(proof); changed["git_commit_object_base64"] = "!" + changed["git_commit_object_base64"][1:]; witnesses.append(changed)
+                for witness in witnesses:
+                    with self.assertRaises(ns["Refused"]):
+                        ns["schema2_middle"](witness, old, middle, policy=policy, expected_paths=paths)
+
+    def test_typed_middle_commit_unique_parent_with_nonhash_masked_control(self):
+        for name, ns in self.each_namespace():
+            policy, _, _, _, _, _ = historical_fixture(ns)
+            data = (STAGE / "before/middle_commit_object.bytes").read_bytes()
+            facts = policy["SUCCESSOR_INTERMEDIATE_FACTS"]
+            with self.subTest(template=name):
+                ns["schema2_commit_object"](data, commit=facts["controller_commit"], parent=facts["parent_commit"], tree=facts["git_tree_sha1"])
+                merge = data.replace(b"\nauthor ", b"\nparent " + b"1" * 40 + b"\nauthor ", 1)
+                merge_sha = hashlib.sha1(b"commit " + str(len(merge)).encode("ascii") + b"\0" + merge).hexdigest()
+                with self.assertRaisesRegex(ns["Refused"], "exactly the fixed immediate parent"):
+                    ns["schema2_commit_object"](merge, commit=merge_sha, parent=facts["parent_commit"], tree=facts["git_tree_sha1"])
+
+    def test_schema2_external_sha_seal_schema_and_preparse_cap(self):
+        for name, ns in self.each_namespace():
+            policy, old, middle, proof, _, _ = historical_fixture(ns)
+            # Frame-only fixture is intentionally not an admission proof. Complete
+            # tree/diff semantics are covered separately and by future real runs.
+            body = {"successor_admission_schema_version": 2, "record_type": "week8_d176_successor_admission",
+                "decision_id": "D-161", "recovery_id": "week8-exp2a-d161-2026-09-02-attempt-001",
+                "predecessor": policy["SUCCESSOR_PREDECESSOR_FACTS"], "successor": {},
+                "predecessor_files": old, "successor_files": middle, "changed_paths": [],
+                "intermediate": policy["SUCCESSOR_INTERMEDIATE_FACTS"], "intermediate_proof": proof,
+                "successor_parent_changed_paths": [], **ns["FLAGS"]}
+            document = {**body, "record_digest": ns["sha"](ns["canonical"](body))}
+            data = ns["canonical"](document) + b"\n"
+            with self.subTest(template=name):
+                self.assertEqual(ns["schema2_sealed_attestation"](data, expected_sha256=ns["sha"](data), policy=policy), document)
+                with self.assertRaisesRegex(ns["Refused"], "external byte pin"):
+                    ns["schema2_sealed_attestation"](data, expected_sha256="0" * 64, policy=policy)
+                with patch.dict(ns, strict_json=lambda value: (_ for _ in ()).throw(AssertionError("parser must not run"))):
+                    oversized = b"x" * (policy["SUCCESSOR_ADMISSION_MAX_BYTES"] + 1)
+                    with self.assertRaisesRegex(ns["Refused"], "exceeds395799"):
+                        ns["schema2_sealed_attestation"](oversized, expected_sha256="0" * 64, policy=policy)
+                resealed = copy.deepcopy(body); resealed["successor_admission_schema_version"] = 1
+                resealed["record_digest"] = ns["sha"](ns["canonical"](resealed))
+                wrong = ns["canonical"](resealed) + b"\n"
+                with self.assertRaisesRegex(ns["Refused"], "identity/schema"):
+                    ns["schema2_sealed_attestation"](wrong, expected_sha256=ns["sha"](wrong), policy=policy)
+
+    def test_bounded_read_refuses_before_open_or_hash(self):
+        class NeverOpen:
+            def open(self, *args):
+                raise AssertionError("oversized input opened")
+        for name, ns in self.each_namespace():
+            maximum = ns["COMPILED_POLICY"]["SUCCESSOR_ADMISSION_MAX_BYTES"]
+            with self.subTest(template=name), patch.dict(ns, chain=lambda path: None,
+                    plain_info=lambda path: SimpleNamespace(st_size=maximum + 1)):
+                with self.assertRaisesRegex(ns["Refused"], "pre-read cap"):
+                    ns["read"](NeverOpen(), maximum=maximum)
+
+    def test_emitted_attestation_cap_refuses_before_any_filesystem_mutation(self):
+        for name, ns in self.each_namespace():
+            maximum = ns["COMPILED_POLICY"]["SUCCESSOR_ADMISSION_MAX_BYTES"]
+            with self.subTest(template=name), patch.dict(ns,
+                    absent=lambda path: (_ for _ in ()).throw(AssertionError("mutation guard reached"))):
+                for filename in ("attestation.json", "attestation.twin.json"):
+                    with self.assertRaisesRegex(ns["Refused"], "before write"):
+                        ns["create_file"](Path(filename), b"x" * (maximum + 1))
+
+    def test_complete_rows_reject_signed64_bool_mode_membership_and_duplicate_paths(self):
+        for name, ns in self.each_namespace():
+            policy, old, _, _, _, _ = historical_fixture(ns)
+            with self.subTest(template=name):
+                ns["schema2_file_rows"](old, policy=policy, what="positive742")
+                for value in (-1, True, policy["_SUCCESSOR_MAX_FILE_SIZE"] + 1):
+                    changed = copy.deepcopy(old); changed[0]["size"] = value
+                    with self.assertRaises(ns["Refused"]):
+                        ns["schema2_file_rows"](changed, policy=policy, what="badsize")
+                changed = copy.deepcopy(old); changed[0]["mode"] = "120000"
+                with self.assertRaises(ns["Refused"]):
+                    ns["schema2_file_rows"](changed, policy=policy, what="badmode")
+                changed = copy.deepcopy(old); changed[-1] = changed[0]
+                with self.assertRaises(ns["Refused"]):
+                    ns["schema2_file_rows"](changed, policy=policy, what="duplicate")
+
+    def test_coherent_outside_qa_delta_rejected_by_only_finite_diff_gate(self):
+        for name, ns in self.each_namespace():
+            policy, old, middle, _, paths, _ = historical_fixture(ns)
+            final = copy.deepcopy(middle)
+            allowed = set(policy["SUCCESSOR_ALLOWED_CHANGED_PATHS"])
+            for row in final:
+                if row["path"] in allowed:
+                    content = ("synthetic-final/" + row["path"]).encode("ascii")
+                    row.update(size=len(content), sha256=ns["sha"](content),
+                               git_blob=hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\0" + content).hexdigest())
+            with self.subTest(template=name):
+                self.assertEqual(len(ns["schema2_diffs"](old, middle, final, policy=policy)[0]), 25)
+                altered = copy.deepcopy(final)
+                outside = next(row for row in altered if row["path"] not in allowed and row["path"] not in paths)
+                content = ("coherent-outside/" + outside["path"]).encode("ascii")
+                outside.update(size=len(content), sha256=ns["sha"](content),
+                               git_blob=hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\0" + content).hexdigest())
+                qa = ns["canonical"]([[path, next(row["sha256"] for row in altered if row["path"] == path)] for path in paths]) + b"\n"
+                ns["schema2_qa"](qa, altered, expected_paths=paths)
+                with self.assertRaisesRegex(ns["Refused"], "same finite25"):
+                    ns["schema2_diffs"](old, middle, altered, policy=policy)
+                # Test-only expanded policy proves that no stale row/hash/QA
+                # identity masks the finite allowlist refusal. It grants nothing.
+                expanded = copy.deepcopy(policy)
+                expanded["SUCCESSOR_ALLOWED_CHANGED_PATHS"].append(outside["path"])
+                expanded["_SUCCESSOR_REQUIRED_FINAL_CHANGED_COUNT"] = 26
+                self.assertEqual(len(ns["schema2_diffs"](old, middle, altered, policy=expanded)[0]), 26)
+
+    def test_final_exact34_unique_parent_current_source_and_complete_provenance(self):
+        for name, ns in self.each_namespace():
+            policy, old, middle, _, paths, _ = historical_fixture(ns)
+            final = copy.deepcopy(middle)
+            for row in final:
+                if row["path"] in policy["SUCCESSOR_ALLOWED_CHANGED_PATHS"]:
+                    data = ("final-release-fixture/" + row["path"]).encode("ascii")
+                    row.update(size=len(data), sha256=ns["sha"](data),
+                               git_blob=hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest())
+            changed, _ = ns["schema2_diffs"](old, middle, final, policy=policy)
+            qa = ns["canonical"]([[path, next(row["sha256"] for row in final if row["path"] == path)] for path in paths]) + b"\n"
+            old_release = copy.deepcopy(ns["HISTORICAL"]["release"])
+            release = copy.deepcopy(old_release)
+            release.update(ControllerCommit="2" * 40, ParentCommit=policy["SUCCESSOR_INTERMEDIATE_FACTS"]["controller_commit"],
+                           FinalCandidateManifestSha256=ns["sha"](qa), FileCount=25,
+                           NewOwnerWindowSha256=ns["HISTORICAL"]["inputs"]["owner"]["sha256"],
+                           CommittedUtc="2026-10-01T21:12:59.858381+00:00")
+            fields = {**policy["_SUCCESSOR_RELEASE_SOURCE_FIELDS"],
+                "NativeLauncherSha256": "scripts/week8_recovery_native_launcher.ps1",
+                "OuterSha256": "scripts/week8_recovery_outer_bootstrap.txt"}
+            for field, path in fields.items():
+                release[field] = next(row["sha256"] for row in final if row["path"] == path)
+            provenance = {field: {"path": "synthetic-only/" + field, "sha256": value}
+                          for field, value in release.items() if field.endswith("Sha256")
+                          and field not in set(fields) | {"FinalCandidateManifestSha256", "NewOwnerWindowSha256"}}
+            bindings = {**ns["BINDINGS"], "current_commit": release["ControllerCommit"],
+                        "current_candidate_manifest_sha256": ns["sha"](qa)}
+            with self.subTest(template=name), patch.dict(ns, BINDINGS=bindings, EXPECTED_RELEASE_PROVENANCE=provenance):
+                ns["schema2_release_checks"](old_release, release, old, final, changed, old_release["Branch"], policy=policy)
+                wrong = copy.deepcopy(release); wrong["ParentCommit"] = old_release["ControllerCommit"]
+                with self.assertRaisesRegex(ns["Refused"], "provenance differs"):
+                    ns["schema2_release_checks"](old_release, wrong, old, final, changed, old_release["Branch"], policy=policy)
+                wrong = copy.deepcopy(release); wrong["Proposal017DocumentApplicationSha256"] = "1" * 64
+                with self.assertRaises(ns["Refused"]):
+                    ns["schema2_release_checks"](old_release, wrong, old, final, changed, old_release["Branch"], policy=policy)
+                with patch.dict(ns, EXPECTED_RELEASE_PROVENANCE={key: value for key, value in list(provenance.items())[1:]}):
+                    with self.assertRaisesRegex(ns["Refused"], "complete keyset|exact final34"):
+                        ns["schema2_release_checks"](old_release, release, old, final, changed, old_release["Branch"], policy=policy)
+
+
+if __name__ == "__main__":
+    unittest.main()

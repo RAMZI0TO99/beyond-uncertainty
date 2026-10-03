@@ -1,0 +1,109 @@
+"""One-use owned Source compositor; AST/inert CodeType only, no target execution."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+ROOT=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001')
+OWN=ROOT/'metadata3-actual-checker-prep001'
+OLD_NAME='review-metadata3-actual006-corrected008.TEMPLATE.py'
+NEW_NAME='review-metadata3-actual006-corrected009.TEMPLATE.py'
+OLD_SHA='c097c756d8cf55b1ac98a68313f5e406455b9306af63bd48a6e1cb3add70d3c1'
+MANIFEST_SHA='93f8754ed186873cba93960ce027558b86f70fbb2a9f9ee37a3c18fde7b5d4ee'
+PEER_SHA='1b4eeb7636d76a30f9ae47108e4128d2a798bc9cfb3da11a980e2be89f10944c'
+DETAIL_SHA='d4faaf6ae5143c3d9e3c3fa74489b150ccf862b5eaccec414b78bc8a4b144837'
+def digest(data):return hashlib.sha256(data).hexdigest()
+def create(name,data):
+    with (OWN/name).open('xb') as stream:stream.write(data)
+    assert (OWN/name).read_bytes()==data
+def encoded(value):return (json.dumps(value,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def functions(tree):return {node.name:ast.dump(node,include_attributes=False) for node in tree.body if isinstance(node,ast.FunctionDef)}
+def methods(tree):return {node.name:ast.dump(node,include_attributes=False) for cls in tree.body if isinstance(cls,ast.ClassDef) for node in cls.body if isinstance(node,ast.FunctionDef) and node.name.startswith('test_')}
+
+manifest_data=(OWN/'AUTHOR_FROZEN_SOURCE_MANIFEST_008.json').read_bytes();assert digest(manifest_data)==MANIFEST_SHA
+manifest=json.loads(manifest_data)
+for row in manifest['payloads']:
+    first=(OWN/row['path']).read_bytes();second=(OWN/row['path']).read_bytes()
+    assert first==second and len(first)==row['bytes'] and digest(first)==row['sha256']
+peer=(ROOT/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_001.json').read_bytes()
+details=(ROOT/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_DETAILS_002.json').read_bytes()
+assert digest(peer)==PEER_SHA and digest(details)==DETAIL_SHA
+old=(OWN/OLD_NAME).read_bytes();assert digest(old)==OLD_SHA
+text=old.decode('utf8')
+def replace(before,after,count=1):
+    global text
+    assert text.count(before)==count,(before[:100],text.count(before),count)
+    text=text.replace(before,after)
+replace(OLD_NAME,NEW_NAME)
+replace('metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_001.json','metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_002.json',2)
+replace('validated_whole_rows.append(dict(EVIDENCE[-1]))','validated_whole_rows.append(EVIDENCE[-1])',2)
+for name,phase in (('whole_before_result','before'),('whole_after_result','after')):
+    start=text.index('def '+name+'(');end=text.index('\n\ndef ',start+1);part=text[start:end]
+    assert part.count('    register_whole_rows(validated_whole_rows)')==1
+    part=part.replace('    register_whole_rows(validated_whole_rows)',"    register_whole_projection(validated_whole_rows,args,result,trees,'"+phase+"')")
+    text=text[:start]+part+text[end:]
+replace('EVIDENCE.clear();WHOLE_REOBSERVATIONS.clear()','EVIDENCE.clear();WHOLE_REOBSERVATIONS.clear();WHOLE_ORIGIN_ROWS.clear();WHOLE_PROJECTION_STATE.clear()',2)
+helpers=(OWN/'LOSSLESS_WHOLE_PROJECTION_HELPERS_009.py.source').read_text(encoding='utf8')
+marker='\ndef fixed():\n';assert text.count(marker)==1
+text=text.replace(marker,'\n'+helpers+'\n\ndef fixed():\n')
+replace('    final_reobserve(initial,profile)\n',"    final_reobserve(initial,profile)\n    compact,projection=compact_whole_observations(role,args,initial)\n    checks['whole_observation_projection']=projection\n")
+replace('checker_binding_sha256=BINDING_SHA,observations=initial,target_execution=False','checker_binding_sha256=BINDING_SHA,observations=compact,target_execution=False')
+replace('    detail_data=encoded(detail)','    detail_data=detail_publication_bytes(detail)')
+new=text.encode('utf8');assert len(new)<=262144
+new_tree=ast.parse(new,filename=NEW_NAME);inert=compile(new,NEW_NAME,'exec',dont_inherit=True);assert inert.co_name=='<module>'
+old_functions=functions(ast.parse(old));new_functions=functions(new_tree)
+for name in ('read','typed_equal','exact_raw9','current_stream_file','final_reobserve','own_output_read','own_output_cap','once','whole_parent','whole_parent_after'):
+    assert old_functions[name]==new_functions[name],name+' must remain exact'
+create(NEW_NAME,new)
+old_test=(OWN/'test_metadata3_actual_checker_preparation_002.py').read_bytes()
+assert digest(old_test)=='ea0012b190e108edcfc1dece29ed480cd369a34f1ed044edacad415d808934db'
+new_test=old_test.decode('utf8').replace(OLD_NAME,NEW_NAME).replace('isolated_metadata3_checker_source_002','isolated_metadata3_checker_source_003')
+marker="\n\nif __name__=='__main__':";assert new_test.count(marker)==1
+new_test=new_test.replace(marker,'\n'+(OWN/'LOSSLESS_WHOLE_PROJECTION_TEST_METHODS_003.py.source').read_text(encoding='utf8')+marker)
+test_tree=ast.parse(new_test,filename='test_metadata3_actual_checker_preparation_003.py')
+test_code=compile(new_test,'test_metadata3_actual_checker_preparation_003.py','exec',dont_inherit=True);assert test_code.co_name=='<module>'
+old_methods=methods(ast.parse(old_test));new_methods=methods(test_tree)
+assert len(old_methods)==19 and all(new_methods.get(name)==value for name,value in old_methods.items())
+create('test_metadata3_actual_checker_preparation_003.py',new_test.encode('utf8'))
+config=json.loads((OWN/'ACTUAL_CHECKER_BINDING_008.TEMPLATE.json').read_bytes());config['checker_template_sha256']=digest(new)
+assert config['checker_source_peer_sha256'] is None
+create('ACTUAL_CHECKER_BINDING_009.TEMPLATE.json',encoded(config))
+protocol=json.loads((OWN/'SOURCE_PROTOCOL_AND_REVIEW_CONTRACT_008.json').read_bytes())
+protocol['record_type']='metadata3_actual_checker_corrected009_source_protocol'
+protocol['selected_checker']=dict(path=NEW_NAME,sha256=digest(new),bytes=len(new))
+protocol['selected_source_peer_path']=str(ROOT/'metadata3-checker-independent-review001/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_002.json')
+protocol['selected_planned_tests']=dict(path='test_metadata3_actual_checker_preparation_003.py',sha256=digest(new_test.encode('utf8')),bytes=len(new_test.encode('utf8')),methods=list(new_methods),actual_results=None,executed=False)
+protocol['supersedes_selection_not_history']='Source008 and peer001 remain exact accepted Source history; projection009 requires different complete Source acceptance and U007 integration.'
+protocol['accepted008_source_history']=dict(checker_sha256=OLD_SHA,manifest_sha256=MANIFEST_SHA,canonical_peer_sha256=PEER_SHA,full_details_sha256=DETAIL_SHA,synthetic19_test_results=None)
+protocol['whole_observation_projection13']={
+    'keys':['schema_version','record_type','scope','phase','whole_result','table_sources','roots','path_rule','row_rule','counts','ordered_projected_observations_sha256','maximum_detail_bytes','maximum_retained_observations'],
+    'record_type':'guard006_lossless_whole_observation_projection','schema_version':1,'scope':protocol['scope'],
+    'phases':['before','after','none'],'table_roles':['base_first','base_second','scripts_first','scripts_second'],
+    'table_pointer_keys':['role','path','sha256','bytes'],'table_path_rule':'GUARD/whole-runtime-<phase>/<tree>-<pass>.json',
+    'table_maximum_bytes':4194304,'table_keys':['root','identity','rows','root_raw9','directory_metadata'],
+    'reconstructed_observation_keys':['path','bytes','sha256','path_raw9','descriptor_raw9'],
+    'roots':{'base':'D:\\Aenv\\pro2\\runtimes\\week8-python313-frozen-001','scripts':'D:\\Aenv\\pro2\\pro2\\.venv\\Scripts'},
+    'path_rule':'COMPILED_ROOT_JOIN_CANONICAL_RELATIVE_FILE_ROW','row_rule':'FILE_ONLY_PATH_BYTES_SHA256_PATH_RAW9_DESCRIPTOR_RAW9',
+    'counts_keys':['unique_file_count','omitted_observation_count','retained_observation_count','total_observation_count','per_tree'],
+    'per_tree_keys':['base','scripts'],'whole_unique_and_omitted':5390,'whole_per_tree':{'base':5368,'scripts':22},
+    'none':{'whole_result':None,'table_sources':[],'unique_file_count':0,'omitted_observation_count':0,'per_tree':{'base':0,'scripts':0}},
+    'digest_encoding':"json.dumps(rows,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False).encode('ascii')+b'\\n'",
+    'array_order':'base then scripts; first-table file rows in full authenticated UTF16 ordinal row order',
+    'maximum_detail_bytes':2097152,'maximum_retained_observations':4096,
+    'omission_policy':'Only original EVIDENCE objects registered after complete two-tree proof; origin identity, never path/equality/caller membership. Full initial list goes through unchanged final_reobserve first.',
+    'different_utility_obligation':'Independently authenticate all four canonical table streams, whole result/parent/source, validate every directory and file, reconstruct exact5390 row5 facts/digest/coverage, and apply full same-API current whole reader outside compact observation bound.',
+    'ordinary_runtime_policy':'Retain every ordinary/source/config/ticket/runtime4 observation even if identical to a projected path or fact.',
+    'publication_fit':'Actual compact count and exact full encoded Detail bytes checked before Detail/Core/whole acceptance publication; actual fit remains None; no cap increase.'}
+create('SOURCE_PROTOCOL_AND_REVIEW_CONTRACT_009.json',encoded(protocol))
+metadata=dict(schema_version=1,record_type='metadata3_checker_lossless009_author_metadata',source_author='/root/actual_record_checker',source_only=True,
+    selected_checker=protocol['selected_checker'],selected_planned_tests=protocol['selected_planned_tests'],accepted008_source_history=protocol['accepted008_source_history'],
+    source_authorization='Root explicit Source-only projection13 selection; actual execution requires different Source acceptance and explicit isolated runtime GO.',
+    functions_unchanged=[name for name,value in old_functions.items() if new_functions.get(name)==value],
+    functions_changed=[name for name,value in old_functions.items() if new_functions.get(name)!=value],functions_added=[name for name in new_functions if name not in old_functions],
+    prior19_test_ASTs_exact=True,detail15_core12_unchanged=True,existing_caps_unchanged=True,actual_fit=None,actual_source_peer=None,actual_binding=None,actual_lease=None,
+    actual_ready=None,actual_before=None,actual_after=None,actual_results=None,helper_or_target_definitions_imports_mains_tests_Git_FFI_PS_native_executed=False,
+    author_AST_and_inert_CodeType_only=True,author_checks_not_independent_acceptance=True)
+create('AUTHOR_LOSSLESS_SOURCE_METADATA_009.json',encoded(metadata))
+for row in manifest['payloads']:
+    data=(OWN/row['path']).read_bytes();assert len(data)==row['bytes'] and digest(data)==row['sha256']
+print(json.dumps(dict(selected_checker_sha256=digest(new),bytes=len(new),functions=len(new_functions),planned_tests=len(new_methods),actual_results=None),separators=(',',':')))

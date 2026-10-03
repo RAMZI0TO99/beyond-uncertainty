@@ -1,0 +1,69 @@
+"""Distinct one-use read-only raw commit object preservation; not a replay."""
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+
+ROOT = Path('D:/Aenv/pro2')
+BASE = ROOT / 'resume-2026-10-01-30h-001'
+OBS = BASE / 'ROOT017_RELEASE009_COMMITTED_METADATA_OBSERVATION_001.json'
+CONTEXT = BASE / 'ROOT017_READ_ONLY_CONTEXT_OBSERVATION_001.json'
+RAW = BASE / 'ROOT017_RELEASE009_COMMIT_OBJECT_002.bytes'
+OUT = BASE / 'ROOT017_RELEASE009_COMMIT_OBJECT_DETAILS_002.json'
+GIT = ROOT / 'runtimes/git/mingw64/bin/git.exe'
+sha = lambda b: hashlib.sha256(b).hexdigest()
+enc = lambda v: (json.dumps(v, sort_keys=True, indent=2, ensure_ascii=True,
+                            allow_nan=False) + '\n').encode('ascii')
+assert not RAW.exists() and not OUT.exists()
+ob = OBS.read_bytes()
+cb = CONTEXT.read_bytes()
+obs = json.loads(ob)
+context = json.loads(cb)
+assert sha(cb) == obs['context']['sha256']
+assert sha(GIT.read_bytes()) == obs['git_sha256'] == context['git_sha256']
+commit = obs['commit']
+assert re.fullmatch('[0-9a-f]{40}', commit)
+env = {k: v for k, v in os.environ.items() if not k.upper().startswith(('GIT_', 'PYTHON'))}
+env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull,
+           GIT_CONFIG_NOSYSTEM='1', GIT_TERMINAL_PROMPT='0', LC_ALL='C')
+
+def read_object():
+    assert sha(GIT.read_bytes()) == obs['git_sha256']
+    r = subprocess.run([str(GIT), *obs['git_controls'], 'cat-file', 'commit', commit],
+                       env=env, stdin=subprocess.DEVNULL, capture_output=True,
+                       check=True, timeout=30)
+    assert not r.stderr and 0 < len(r.stdout) <= 4096
+    assert sha(GIT.read_bytes()) == obs['git_sha256']
+    return r.stdout
+
+first = read_object()
+assert read_object() == first
+assert sha(first) == obs['commit_object_sha256']
+assert hashlib.sha1(b'commit ' + str(len(first)).encode('ascii') + b'\0' + first).hexdigest() == commit
+header, body = first.split(b'\n\n', 1)
+lines = header.splitlines()
+trees = [line[5:].decode('ascii') for line in lines if line.startswith(b'tree ')]
+parents = [line[7:].decode('ascii') for line in lines if line.startswith(b'parent ')]
+assert len(trees) == 1 and re.fullmatch('[0-9a-f]{40}', trees[0])
+assert parents == obs['exact_commit_object_parents'] and len(parents) == 1
+assert OBS.read_bytes() == ob and CONTEXT.read_bytes() == cb
+record = {'schema_version': 1, 'captured_utc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+          'scope': 'READ_ONLY_RAW_COMMIT_OBJECT_METADATA_PENDING_INDEPENDENT_ADMISSION_REVIEW',
+          'commit': commit, 'git_object_sha1_verified': True, 'exact_parent': parents[0],
+          'tree_sha1': trees[0], 'raw_object': {'path': RAW.relative_to(ROOT).as_posix(),
+                                            'bytes': len(first), 'sha256': sha(first)},
+          'previous_observation': {'path': OBS.relative_to(ROOT).as_posix(), 'sha256': sha(ob)},
+          'git_sha256': obs['git_sha256'], 'two_reads_equal': True,
+          'source_imports_or_target_definitions_executed': False, 'git_mutations': False,
+          'science_outcomes_interpreted': False, 'native_or_chain_authority': False,
+          'raw_identity_text_printed': False}
+for p, b in ((RAW, first), (OUT, enc(record))):
+    with p.open('xb') as f:
+        f.write(b)
+        f.flush()
+        os.fsync(f.fileno())
+    print(json.dumps({'path': p.name, 'bytes': len(b), 'sha256': sha(b)}))
+print(json.dumps({'commit': commit, 'tree_sha1': trees[0], 'object_bytes': len(first)}))

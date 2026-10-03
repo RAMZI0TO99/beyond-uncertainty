@@ -1,0 +1,401 @@
+"""Author-owned stdlib metadata capture. Never import or execute project definitions."""
+import datetime
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import stat
+import subprocess
+import xml.etree.ElementTree as ET
+
+PROJECT = Path('D:/Aenv/pro2')
+WORK = PROJECT / 'resume-2026-10-01-30h-001'
+SESSION_ROOT = PROJECT / 'resume-2026-09-28-001'
+GATE = SESSION_ROOT / 'full-gate-009'
+QA = PROJECT / 'resume-2026-09-05/qa-relocation'
+LIVE = PROJECT / 'week8-recovery-controller-worktree'
+GIT = PROJECT / 'runtimes/git/mingw64/bin/git.exe'
+GIT_SHA = 'c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9'
+OWNER_SHA = '3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff'
+OUT = WORK / 'ROOT021_GATE009_METADATA_OBSERVATION_001.json'
+MD = WORK / 'ROOT021_GATE009_METADATA_OBSERVATION_001.md'
+COPIES = WORK / 'ROOT021_GATE009_METADATA_INPUTS_001'
+MAX_BYTES = 8 * 1024 * 1024
+
+def now():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds')
+
+def sha(blob):
+    return hashlib.sha256(blob).hexdigest()
+
+def enc(value):
+    return (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True,
+                       allow_nan=False) + '\n').encode('ascii')
+
+def raw9(s):
+    return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns,
+            s.st_mode, s.st_nlink, getattr(s, 'st_file_attributes', 0),
+            getattr(s, 'st_birthtime_ns', None)]
+
+def cross5(s):
+    return [s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_nlink]
+
+def directory(path):
+    for parent in reversed((path, *path.parents)):
+        s = parent.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode), str(parent)
+        assert not getattr(s, 'st_file_attributes', 0) & 0x400, str(parent)
+
+def read(path):
+    directory(path.parent)
+    p0 = path.lstat()
+    assert stat.S_ISREG(p0.st_mode) and p0.st_nlink == 1, str(path)
+    assert not getattr(p0, 'st_file_attributes', 0) & 0x400, str(path)
+    assert 0 <= p0.st_size <= MAX_BYTES, str(path)
+    with path.open('rb') as handle:
+        f0 = os.fstat(handle.fileno())
+        assert stat.S_ISREG(f0.st_mode) and f0.st_nlink == 1
+        assert cross5(p0) == cross5(f0), str(path)
+        blob = handle.read(MAX_BYTES + 1)
+        f1 = os.fstat(handle.fileno())
+    p1 = path.lstat()
+    assert raw9(p0) == raw9(p1) and raw9(f0) == raw9(f1), str(path)
+    assert cross5(p1) == cross5(f1) and len(blob) == p0.st_size, str(path)
+    return blob, {'path': str(path), 'sha256': sha(blob), 'bytes': len(blob),
+                  'path_raw9': raw9(p0), 'descriptor_raw9': raw9(f0)}
+
+def strict(blob):
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            assert key not in value, 'duplicate JSON key'
+            value[key] = item
+        return value
+    def finite(token):
+        value = float(token)
+        assert math.isfinite(value), 'nonfinite JSON number'
+        return value
+    def invalid(token):
+        raise ValueError('nonfinite JSON constant: ' + token)
+    return json.loads(blob.decode('utf-8'), object_pairs_hook=pairs,
+                      parse_float=finite, parse_constant=invalid)
+
+def write(path, blob):
+    directory(path.parent)
+    assert not path.exists(), str(path)
+    with path.open('xb') as handle:
+        handle.write(blob)
+        handle.flush()
+        os.fsync(handle.fileno())
+    observed, row = read(path)
+    assert observed == blob
+    return row
+
+def gate_names():
+    directory(GATE)
+    return sorted(item.name for item in GATE.iterdir())
+
+def absent(path):
+    directory(path.parent)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return True
+    return False
+
+started = now()
+directory(WORK)
+assert not OUT.exists() and not MD.exists() and not COPIES.exists()
+gate_initial_names = gate_names()
+git_bytes, git_row = read(GIT)
+assert sha(git_bytes) == GIT_SHA
+env = {k: v for k, v in os.environ.items()
+       if not k.upper().startswith(('GIT_', 'PYTHON'))}
+env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_SYSTEM=os.devnull,
+           GIT_CONFIG_NOSYSTEM='1', GIT_TERMINAL_PROMPT='0', LC_ALL='C')
+controls = ['--no-pager', '--no-optional-locks', '-c', 'core.fsmonitor=false',
+            '-c', 'core.untrackedCache=false', '-c', 'core.hooksPath=NUL',
+            '-c', 'core.quotepath=false', '-c', 'safe.directory=' + LIVE.as_posix(),
+            '-C', str(LIVE)]
+git_observations = []
+
+def git(*args):
+    before, row0 = read(GIT)
+    assert sha(before) == GIT_SHA
+    completed = subprocess.run([str(GIT), *controls, *args], env=env,
+                               stdin=subprocess.DEVNULL, capture_output=True,
+                               timeout=30, check=True)
+    assert not completed.stderr
+    after, row1 = read(GIT)
+    assert before == after and row0 == row1
+    git_observations.append({'args': list(args), 'stdout_sha256': sha(completed.stdout),
+                             'stdout_bytes': len(completed.stdout),
+                             'exit_code': completed.returncode, 'stderr_bytes': 0})
+    return completed.stdout
+
+head0 = git('rev-parse', 'HEAD').decode('ascii').strip()
+status0 = git('status', '--porcelain=v1', '--untracked-files=normal').decode('utf-8').splitlines()
+
+paths = [GATE / name for name in (
+    'plan.json', 'driver-start.json', 'driver-failed.json',
+    'continuation-001-start.json', 'continuation-001-failed.json',
+    'g9-governance-001.accepted.json')]
+paths += [SESSION_ROOT / 'run-full-gate-009-driver-001.py',
+          SESSION_ROOT / 'run-full-gate-009-continuation-001.py',
+          SESSION_ROOT / 'SESSION.md',
+          WORK / 'OWNER_WORK_WINDOW_30H_20261001_001.json',
+          WORK / 'COORDINATION_GATE009_OBSERVATION_012.json',
+          LIVE / 'src/bu/experiments/week8_exp2a_recovery.py',
+          LIVE / 'tests/test_week8_exp2a_recovery.py',
+          QA / 'g9-governance-001/result.json',
+          QA / 'g9-governance-001/junit.xml']
+for attempt in ('g9-b09-heavy-001', 'g9-b09-heavy-002'):
+    paths += [QA / attempt / name for name in ('command.json', 'stdout.txt', 'stderr.txt')]
+assert len(paths) == len(set(paths)) == 21
+blobs = {}
+observations = []
+for path in paths:
+    blob, row = read(path)
+    blobs[path] = blob
+    observations.append(row)
+
+plan = strict(blobs[GATE / 'plan.json'])
+groups = plan['partitions']
+assert type(groups) is list and len(groups) == 45
+assert type(plan['collected_nodes']) is int and plan['collected_nodes'] == 5575
+nodes = []
+offset = 0
+partitions = []
+for index, group in enumerate(groups):
+    assert type(group['Name']) is str and re.fullmatch(r'[a-z0-9-]+', group['Name'])
+    assert type(group['ExpectedNodes']) is int and group['ExpectedNodes'] == len(group['Nodes'])
+    assert group['ExpectedNodes'] > 0 and all(type(n) is str for n in group['Nodes'])
+    original_attempt = 'g9-' + group['Name'] + '-001'
+    active_attempt = 'g9-' + group['Name'] + ('-002' if index == 1 else '-001')
+    receipt_path = GATE / (active_attempt + '.accepted.json')
+    receipt_present = not absent(receipt_path)
+    if receipt_present:
+        assert receipt_path == GATE / 'g9-governance-001.accepted.json'
+    partitions.append({'index_zero_based': index, 'name': group['Name'],
+                       'node_offset_start_inclusive': offset,
+                       'node_offset_end_exclusive': offset + group['ExpectedNodes'],
+                       'expected_nodes': group['ExpectedNodes'],
+                       'nodes_sha256_compact_ascii_lf': sha((json.dumps(group['Nodes'],
+                            ensure_ascii=True, separators=(',', ':')) + '\n').encode('ascii')),
+                       'original_attempt': original_attempt, 'continuation001_attempt': active_attempt,
+                       'accepted_receipt_path': str(receipt_path),
+                       'accepted_receipt_present': receipt_present})
+    offset += group['ExpectedNodes']
+    nodes += group['Nodes']
+assert offset == len(nodes) == len(set(nodes)) == 5575
+assert [row['index_zero_based'] for row in partitions if row['accepted_receipt_present']] == [0]
+assert partitions[0]['expected_nodes'] == 13 and partitions[1]['expected_nodes'] == 1
+
+driver_start = strict(blobs[GATE / 'driver-start.json'])
+first_failed = strict(blobs[GATE / 'driver-failed.json'])
+cont_start = strict(blobs[GATE / 'continuation-001-start.json'])
+second_failed = strict(blobs[GATE / 'continuation-001-failed.json'])
+assert set(first_failed) == set(second_failed) == {'utc', 'attempt', 'accepted_before', 'exit_code', 'result_sha256'}
+for value, attempt in ((first_failed, 'g9-b09-heavy-001'), (second_failed, 'g9-b09-heavy-002')):
+    assert value['attempt'] == attempt and type(value['accepted_before']) is int and value['accepted_before'] == 1
+    assert type(value['exit_code']) is int and value['exit_code'] == 1 and value['result_sha256'] is None
+assert first_failed['utc'] == '2026-10-02T06:30:05.639021+00:00'
+assert second_failed['utc'] == '2026-10-02T07:48:43.741054+00:00'
+assert driver_start['plan_sha256'] == cont_start['plan_sha256'] == sha(blobs[GATE / 'plan.json'])
+assert cont_start['driver_failed_sha256'] == sha(blobs[GATE / 'driver-failed.json'])
+assert cont_start['driver_start_sha256'] == sha(blobs[GATE / 'driver-start.json'])
+assert driver_start['driver_sha256'] == sha(blobs[SESSION_ROOT / 'run-full-gate-009-driver-001.py'])
+assert cont_start['helper_sha256'] == sha(blobs[SESSION_ROOT / 'run-full-gate-009-continuation-001.py'])
+assert cont_start['accepted_before'] == 1 and cont_start['remaining'] == 44
+assert cont_start['failed_attempt_result_sha256'] is None and cont_start['failed_attempt_junit_sha256'] is None
+
+receipt = strict(blobs[GATE / 'g9-governance-001.accepted.json'])
+assert set(receipt) == {'result_sha256', 'junit_sha256'}
+assert receipt['result_sha256'] == sha(blobs[QA / 'g9-governance-001/result.json'])
+assert receipt['junit_sha256'] == sha(blobs[QA / 'g9-governance-001/junit.xml'])
+assert cont_start['accepted_receipt_sha256s'] == {
+    'g9-governance-001': sha(blobs[GATE / 'g9-governance-001.accepted.json'])}
+accepted_result = strict(blobs[QA / 'g9-governance-001/result.json'])
+xml = ET.fromstring(blobs[QA / 'g9-governance-001/junit.xml'])
+cases = xml.findall('.//testcase')
+assert len(cases) == 13
+case_counts = {'testcase_elements': len(cases),
+               'failures': sum(case.find('failure') is not None for case in cases),
+               'errors': sum(case.find('error') is not None for case in cases),
+               'skipped': sum(case.find('skipped') is not None for case in cases)}
+
+failed_outputs = []
+for attempt in ('g9-b09-heavy-001', 'g9-b09-heavy-002'):
+    missing = [{'path': str(QA / attempt / name), 'absent': absent(QA / attempt / name)}
+               for name in ('result.json', 'junit.xml', 'candidate-after.json')]
+    assert all(row['absent'] for row in missing)
+    streams = [{'path': str(QA / attempt / name), 'bytes': len(blobs[QA / attempt / name]),
+                'sha256': sha(blobs[QA / attempt / name])} for name in ('stdout.txt', 'stderr.txt')]
+    failed_outputs.append({'attempt': attempt, 'observed_absent_outputs': missing,
+                           'stream_metadata': streams,
+                           'command_json_metadata': strict(blobs[QA / attempt / 'command.json'])})
+
+session_bytes = blobs[SESSION_ROOT / 'SESSION.md']
+session_text = session_bytes.decode('utf-8')
+heading = '## 2026-10-02 07:53 UTC gate009 heavy timed out TWICE'
+notice = 'RAM watcher deployed (08:00 UTC):'
+assert heading in session_text and notice in session_text
+second_notice_start = session_text.index(heading)
+notice_start = session_text.index(notice, second_notice_start)
+actor_claims = {'second_failure_notice_heading': session_text[second_notice_start:].splitlines()[0],
+                'watcher_notice_first_line': session_text[notice_start:].splitlines()[0],
+                'preserved_session_excerpt_from_second_failure_notice': session_text[second_notice_start:],
+                'actual_second_receipt_utc': second_failed['utc'],
+                'heading_is_not_actual_failure_time': True,
+                'watcher_artifact_independently_known': False,
+                'cause_and_process_ownership_claims_verified': False,
+                'resource_or_security_process_actions_authorized': False}
+owner = strict(blobs[WORK / 'OWNER_WORK_WINDOW_30H_20261001_001.json'])
+assert sha(blobs[WORK / 'OWNER_WORK_WINDOW_30H_20261001_001.json']) == OWNER_SHA
+
+source_rows = [row for row in observations if row['path'].startswith(str(LIVE))]
+for row in source_rows:
+    relative_source = Path(row['path']).relative_to(LIVE).as_posix()
+    key = 'd178_source_sha256' if relative_source == 'src/bu/experiments/week8_exp2a_recovery.py' else 'd178_tests_sha256'
+    assert row['sha256'] == driver_start[key] == cont_start[key]
+
+COPIES.mkdir()
+directory(COPIES)
+copy_pairs = []
+for index, row in enumerate(observations, start=1):
+    original = Path(row['path'])
+    copy = COPIES / ('input-%02d-' % index + original.name + '.bin')
+    copied = write(copy, blobs[original])
+    copy_pairs.append({'original': row, 'copy': copied})
+
+paired_reobservations = []
+session_lateral = None
+for row in observations:
+    original = Path(row['path'])
+    current, observed = read(original)
+    if original == SESSION_ROOT / 'SESSION.md' and current != blobs[original]:
+        assert current.startswith(blobs[original]), 'SESSION was altered rather than appended'
+        session_lateral = {'current': observed, 'captured_prefix_bytes': len(blobs[original]),
+                           'captured_prefix_sha256': sha(blobs[original]),
+                           'later_append_bytes': len(current) - len(blobs[original]),
+                           'later_append_sha256': sha(current[len(blobs[original]):]),
+                           'later_append_is_not_authority': True}
+    else:
+        assert current == blobs[original] and observed == row, str(original)
+    paired_reobservations.append(observed)
+for pair in copy_pairs:
+    copied, observed = read(Path(pair['copy']['path']))
+    assert copied == blobs[Path(pair['original']['path'])] and observed == pair['copy']
+head1 = git('rev-parse', 'HEAD').decode('ascii').strip()
+status1 = git('status', '--porcelain=v1', '--untracked-files=normal').decode('utf-8').splitlines()
+assert head0 == head1 and status0 == status1
+gate_final_names = gate_names()
+assert gate_final_names == gate_initial_names
+known_current_names = {'plan.json', 'driver-start.json', 'driver-failed.json',
+                       'continuation-001-start.json', 'continuation-001-failed.json',
+                       'g9-governance-001.accepted.json'}
+new_gate_names = [name for name in gate_final_names if name not in known_current_names]
+prepared = now()
+record = {
+    'schema_version': 1,
+    'record_type': 'root021_gate009_read_only_metadata_observation',
+    'reviewer': '/root/raw_policy_worker',
+    'started_utc': started, 'captured_utc': prepared,
+    'scope': 'RECEIPT_PLAN_SESSION_AND_OPAQUE_SOURCE_METADATA_ONLY_NOT_GATE_OR_POLICY_ACCEPTANCE',
+    'verdict': 'ACTUAL_SECOND_TERMINAL_METADATA_CONFIRMED_NO_CAUSE_OR_EXECUTION_AUTHORITY',
+    'original_failure': first_failed, 'continuation001_start': cont_start,
+    'actual_second_failure': second_failed,
+    'accepted_receipt_metadata': {'accepted_receipt_count': 1, 'accepted_plan_index': 0,
+        'receipt': receipt, 'result_record': accepted_result, 'xml_element_counts': case_counts,
+        'receipt_hashes_match_actual_result_and_junit_bytes': True,
+        'independent_gate009_full_acceptance_claimed': False},
+    'plan_metadata': {'plan_sha256': sha(blobs[GATE / 'plan.json']),
+        'plan_bytes': len(blobs[GATE / 'plan.json']), 'partitions': 45,
+        'collected_nodes_in_plan': 5575, 'unique_plan_nodes': 5575,
+        'partition_node_counts_sum': 5575, 'accepted_partition_nodes': 13,
+        'unaccepted_partition_count': 44, 'unaccepted_plan_nodes': 5562,
+        'ordered_partition_offsets_and_presence': partitions,
+        'coverage_from_failed_attempts': 0, 'full_current_collection_or_gate_verification_performed': False},
+    'failed_attempt_outputs': failed_outputs,
+    'gate_directory': {'path': str(GATE), 'initial_names': gate_initial_names,
+        'final_names': gate_final_names, 'new_or_other_names_observed': new_gate_names,
+        'continuation002_artifacts_observed_in_this_directory': any('continuation-002' in n for n in gate_final_names),
+        'known_receipt_presence_stable': True},
+    'actor_session_claims': actor_claims,
+    'opaque_current_git_metadata': {'worktree': str(LIVE), 'git_executable': git_row,
+        'git_expected_sha256': GIT_SHA, 'finite_controls': controls,
+        'allowed_commands': ['rev-parse HEAD', 'status --porcelain=v1 --untracked-files=normal'],
+        'head_before': head0, 'head_after': head1, 'porcelain_untracked_normal_before': status0,
+        'porcelain_untracked_normal_after': status1, 'observations': git_observations,
+        'source_and_test_byte_rows': source_rows, 'full263_or_full742_bytes_verified': False,
+        'git_head_or_source_hash_is_policy_or_release_authority': False},
+    'owner_metadata': {'path': str(WORK / 'OWNER_WORK_WINDOW_30H_20261001_001.json'),
+        'sha256': OWNER_SHA, 'existing_owner_record_only': True,
+        'record': owner, 'owner_window_extension_inferred': False},
+    'input_count': len(observations), 'input_copy_pair_count': len(copy_pairs),
+    'inputs': observations, 'preserved_copy_pairs': copy_pairs,
+    'paired_original_reobservations': paired_reobservations,
+    'all_non_session_inputs_byte_and_metadata_stable': True,
+    'session_lateral_append_during_capture': session_lateral,
+    'read_guard': {'ancestors_plain_nonreparse': True, 'regular_one_link_files': True,
+        'maximum_bytes_per_file': MAX_BYTES, 'same_api_path_raw9_before_after': True,
+        'same_api_descriptor_raw9_before_after': True,
+        'cross_api_fields': ['dev', 'inode', 'size', 'mtime_ns', 'nlink'],
+        'ctime_or_mode_cross_api_equality_claimed': False},
+    'actions': {'target_source_import_or_definition_execution': False,
+        'driver_or_test_or_observer_or_native_execution': False,
+        'git_or_live_source_mutation': False, 'process_or_security_software_changes': False,
+        'resource_cause_proof_or_process_ownership_attribution': False,
+        'science_outcome_consultation': False, 'runtime_metadata_captures_or_whole_process_scan': False,
+        'root020_primary_docs_changed': False, 'spent_helper_or_attempt_replay': False},
+    'execution_authority': {'root_canonical_gate_or_release_or_native_ready': False,
+        'sole_executor_ack_established': False, 'owner_stop_or_hold_resolved': False,
+        'resource_lease_released': False, 'native_quiet_established': False,
+        'fit_or_production_authorized': False, 'extra_epoch_authorized': False},
+    'limitations': ['Only finite known Gate009 receipt paths and plan offsets were observed.',
+        'One accepted receipt was byte-bound to its actual result/JUnit; no full gate acceptance is granted.',
+        'No independently known RAM watcher artifact was supplied; only SESSION claims are preserved.',
+        'Exit code 1 and missing result do not independently establish timeout, RAM causality or process ownership.',
+        'Current HEAD/status and two source hashes are opaque metadata, not finite-lineage policy acceptance.',
+        'No free-RAM/resource observer or process scan was executed.'],
+}
+json_row = write(OUT, enc(record))
+text = (
+    '# ROOT021 Gate009 metadata observation\n\n'
+    'Observed ' + prepared + ' by /root/raw_policy_worker. This is a read-only metadata record, '
+    'not Gate009, policy, release or native acceptance.\n\n'
+    'The original driver receipt records **2026-10-02T06:30:05.639021+00:00** '
+    'for g9-b09-heavy-001. The continuation started **2026-10-02T06:50:22.949211+00:00** '
+    'and its second failed receipt records **2026-10-02T07:48:43.741054+00:00**, '
+    'not the actor notice heading 07:53. Both failed receipts are 153 bytes, with '
+    'accepted_before=1, exit_code=1 and result_sha256=null. Both failed attempts '
+    'currently lack result.json, junit.xml and candidate-after.json; their stdout/stderr '
+    'files are empty. Those facts do not prove the claimed resource cause.\n\n'
+    'The plan contains 45 partitions and 5,575 unique node strings. Only governance '
+    'has an accepted receipt: 13 planned nodes, with actual result/JUnit byte hashes '
+    'matching that receipt and 13 testcase elements. There remain 44 unaccepted '
+    'partitions / 5,562 planned nodes. Failed attempts add zero accepted coverage. '
+    'Every partition offset and finite receipt presence is in the JSON. The known '
+    'Gate009 directory has six files and no continuation002 artifact.\n\n'
+    'The actor 07:53 failure/resource attribution and 08:00 RAM-watcher notice are '
+    'preserved from UTF-8 SESSION bytes, with the intervening ROOT020 entry retained. '
+    'No separate actual watcher artifact path is independently known. No watcher/process '
+    'scan, resource measurement, security-software action or ownership attribution was made.\n\n'
+    'Pinned Git ' + GIT_SHA + ' was rehashed before/after the finite read-only HEAD/status '
+    'commands. Opaque current HEAD is ' + head0 + '; status is ' + repr(status0) + '. '
+    'The two current controller/test byte hashes match the actor start receipts. '
+    'No full263/full742 current inventory or source-policy acceptance is claimed.\n\n'
+    'Exactly 21 selected input copies were preserved once, including one plan copy. '
+    'Paired byte/path/descriptor observations were stable; any concurrent SESSION append '
+    'is qualified in the JSON rather than treated as execution authority. ROOT020 primary '
+    'docs and all other source/helper files were left unchanged. Owner hold/sole ACK, '
+    'lease, quiet-host, fits and native authority remain unresolved/ungranted.\n\n'
+    'JSON SHA256: `' + json_row['sha256'] + '` (' + str(json_row['bytes']) + ' bytes).\n')
+md_row = write(MD, text.encode('utf-8'))
+for row in (json_row, md_row):
+    print(json.dumps({'path': row['path'], 'sha256': row['sha256'], 'bytes': row['bytes']}))
+print(json.dumps({'head': head0, 'status': status0, 'input_copy_pairs': len(copy_pairs),
+                  'second_failure_utc': second_failed['utc'], 'remaining_partitions': 44,
+                  'remaining_nodes': 5562, 'source_rows': source_rows}))

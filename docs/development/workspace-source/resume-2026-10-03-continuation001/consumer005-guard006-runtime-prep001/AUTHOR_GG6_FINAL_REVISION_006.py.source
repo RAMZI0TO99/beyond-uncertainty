@@ -1,0 +1,117 @@
+"""Final finite source-role correction; metadata/AST/inert CodeType only."""
+import ast
+import datetime
+import difflib
+import hashlib
+import json
+import types
+from pathlib import Path
+
+OUT=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001/consumer005-guard006-runtime-prep001')
+WORK=OUT.parent
+def sha(data):return hashlib.sha256(data).hexdigest()
+def enc(value):return (json.dumps(value,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def once(name,data):
+    with (OUT/name).open('xb') as stream:stream.write(data)
+def literal(tree,name):
+    nodes=[n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id==name for t in n.targets)]
+    assert len(nodes)==1
+    return nodes[0],ast.literal_eval(nodes[0].value)
+def row(name):
+    data=(OUT/name).read_bytes();return {'path':name,'sha256':sha(data),'bytes':len(data)}
+
+def main():
+    first=json.loads((OUT/'FINAL_AUTHOR_SOURCE_MANIFEST_006.json').read_bytes())
+    rev2=json.loads((OUT/'FINAL_AUTHOR_SOURCE_MANIFEST_007.json').read_bytes())
+    add=json.loads((OUT/'AUTHOR_SOURCE_ADDENDUM_008.json').read_bytes())
+    preserved=first['files']+rev2['selected_files']+[{k:r[k] for k in ('path','sha256','bytes')} for r in add['new_phase_templates'].values()]
+    for item in preserved:
+        data=(OUT/item['path']).read_bytes();assert len(data)==item['bytes'] and sha(data)==item['sha256']
+    oldmap=rev2['selected_source_map'];newmap=dict(oldmap)
+    for role in ('child','driver','observer','root_launcher','profile'):
+        newmap[role]=oldmap[role].replace('rev002','rev003')
+    newmap['timestamp_contract']='EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_006-rev003.json'
+    newmap['schemas']='SOURCE_RECORD_SCHEMAS_AND_CEILINGS_006-rev003.json'
+    newmap.update(add['effective_active_map_additions'])
+    contract=json.loads((OUT/oldmap['timestamp_contract']).read_bytes())
+    contract['record_type']='consumer006_rev003_external_canonical_timestamp_role_contract'
+    contract['external_python6_roles']=[x for x in contract['external_python6_roles'] if not x.startswith('bound-review.')]
+    contract['selected_harness_writers']={
+        newmap['driver']:['.tmp/cg24-006/start.json.created_utc','.tmp/cg24-006/child-start.json.started_utc'],
+        newmap['observer']:['whole-runtime-before/intent.json.created_utc','whole-runtime-after/intent.json.created_utc','whole-runtime-before/result.json.captured_utc','whole-runtime-after/result.json.captured_utc'],
+        newmap['child']:[],
+        newmap['root_launcher']:['ROOT_LAUNCH_START_006.json.started_utc','ROOT_LAUNCH_TERMINAL_006.json.finished_utc']}
+    pub=WORK/'guard006-bound-late-checker-prep001/review_guard006_actual_records_001.TEMPLATE.py'
+    pubbytes=pub.read_bytes();pubtext=pubbytes.decode()
+    assert 'proof_path = OWN / ("ACTUAL_" + phase.upper() + "_REVIEW_OBSERVATION_001.json")' in pubtext
+    assert '"captured_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="microseconds")' in pubtext
+    contract['external_observation_python6_roles']={
+        'writer_source_role_path':str(pub),
+        'writer_expression':'dt.datetime.now(dt.timezone.utc).isoformat(timespec="microseconds")',
+        'bound_observation':{'path':str(pub.parent/'ACTUAL_BOUND_REVIEW_OBSERVATION_001.json'),'field':'captured_utc'},
+        'late_observation':{'path':str(pub.parent/'ACTUAL_LATE_REVIEW_OBSERVATION_001.json'),'field':'captured_utc'},
+        'actual_writer_sha256_selection':None}
+    contract['untimestamped_phase_records']={'INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_006.json':{'closed_keys':22,'timestamp_fields':[]}}
+    contractbytes=enc(contract)
+    sources={};diff=[];facts={};functionchanges={}
+    for role in ('child','driver','observer','root_launcher'):
+        old=(OUT/oldmap[role]).read_bytes();text=old.decode()
+        if role!='root_launcher':
+            node,_=literal(ast.parse(text),'TIMESTAMP_ROLE_CONTRACT')
+            segment=ast.get_source_segment(text,node);assert segment is not None
+            text=text.replace(segment,'TIMESTAMP_ROLE_CONTRACT = '+repr(contract),1)
+        for selected in ('child','driver','observer','root_launcher','profile','timestamp_contract'):
+            text=text.replace(oldmap[selected],newmap[selected])
+        text=text.replace('run-consumer-guard-unit006-rev002.bound.py','run-consumer-guard-unit006-rev003.bound.py')
+        text=text.replace('observe-whole-runtime-006-rev002.BOUND.py','observe-whole-runtime-006-rev003.BOUND.py')
+        text=text.replace('ROOT_FIRST_LAUNCH_006-rev002.BOUND.ps1','ROOT_FIRST_LAUNCH_006-rev003.BOUND.ps1')
+        sources[role]=text
+    profile=json.loads((OUT/oldmap['profile']).read_bytes())
+    profile['selected_source_revision']=3
+    profile['external_canonical_timestamp_role_contract']={'path':newmap['timestamp_contract'],'sha256':sha(contractbytes),'bytes':len(contractbytes)}
+    profile['fixed_runtime_leaves']={k:v.replace('rev002','rev003') for k,v in profile['fixed_runtime_leaves'].items()}
+    for role,key in [('child','child'),('observer','whole_observer'),('root_launcher','root_supervisor')]:
+        data=sources[role].encode();profile[key]={'path':newmap[role],'sha256':sha(data),'bytes':len(data)}
+    profilebytes=enc(profile)
+    node,pin=literal(ast.parse(sources['driver']),'PROFILE_SHA256')
+    segment=ast.get_source_segment(sources['driver'],node)
+    sources['driver']=sources['driver'].replace(segment,'PROFILE_SHA256 = '+repr(sha(profilebytes)),1)
+    for role,text in sources.items():
+        data=text.encode();assert len(data)<=65536
+        if role!='root_launcher':
+            tree=ast.parse(data);code=compile(tree,newmap[role],'exec',dont_inherit=True,optimize=0)
+            assert type(code) is types.CodeType
+            oldtree=ast.parse((OUT/oldmap[role]).read_bytes())
+            oldf={n.name:ast.dump(n,include_attributes=False) for n in oldtree.body if isinstance(n,ast.FunctionDef)}
+            newf={n.name:ast.dump(n,include_attributes=False) for n in tree.body if isinstance(n,ast.FunctionDef)}
+            assert set(oldf)==set(newf)
+            functionchanges[role]=[name for name in oldf if oldf[name]!=newf[name]]
+            assert set(functionchanges[role])<=({'capsule_snapshot','child_main'} if role=='child' else {'capsule_snapshot','driver_main'} if role=='driver' else {'capsule_snapshot','observer_main'})
+            facts[role]={'path':newmap[role],'source_sha256':sha(data),'bytes':len(data),'module_flags':code.co_flags,'functions':len(newf),'classes':sum(isinstance(n,ast.ClassDef) for n in tree.body),'definitions_or_code_executed':False}
+            if role=='driver':assert oldf['reconcile_events']==newf['reconcile_events']
+        once(newmap[role],data)
+        diff.extend(difflib.unified_diff((OUT/oldmap[role]).read_text().splitlines(keepends=True),text.splitlines(keepends=True),fromfile=oldmap[role],tofile=newmap[role]))
+    once(newmap['timestamp_contract'],contractbytes);once(newmap['profile'],profilebytes)
+    schema=json.loads((OUT/oldmap['schemas']).read_bytes());schema['selected_revision']=3
+    schema['selected_source_literal_records']=[]
+    for role,text in sources.items():
+        if role=='root_launcher':continue
+        for n in ast.walk(ast.parse(text)):
+            if isinstance(n,ast.Dict) and all(isinstance(k,ast.Constant) and type(k.value) is str for k in n.keys) and len(n.keys)>=5:
+                schema['selected_source_literal_records'].append({'source':newmap[role],'line':n.lineno,'keys':[k.value for k in n.keys]})
+    schema['timestamp_contract_bound22_has_no_timestamp_fields']=True
+    once(newmap['schemas'],enc(schema))
+    once('REV003_SOURCE_CORRECTION_DIFF_006.patch',''.join(diff).encode())
+    proof={'schema_version':1,'record_type':'gg6_revision003_finite_preservation_and_inert_code_facts','created_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),'source_facts':facts,'changed_functions':functionchanges,'algorithm_changes_from_rev002':False,'bound22_timestamp_fields_added':False,'unchanged_event_reconcile_AST':True,'pub_observation_writer_source_observed':{'path':str(pub),'sha256':sha(pubbytes),'bytes':len(pubbytes),'future_source_authentication_required':True},'preserved_source_rows':preserved,'actual_tests':None,'actual_binding':None,'actual_lease':None,'target_definitions_executed':False}
+    once('REV003_FINITE_SOURCE_AND_INERT_CODE_FACTS_006.json',enc(proof))
+    once('HANDOFF_006_REV003.md',b'GG6 final source revision003 remains UNBOUND and UNRUN.\n\nSelected source map is FINAL_AUTHOR_SOURCE_MANIFEST_009.json and includes exact addendum008 fresh ACK22/BOUND22/LATE14 inert templates. First source34, rev00215 and all three inert template bytes remain exact history.\n\nThe closed timestamp contract truthfully separates untimestamped BOUND22 from ACTUAL_BOUND_REVIEW_OBSERVATION_001.json captured_utc, and names the distinct late observation captured_utc and LATE14 created/expires fields. Driver start and child-start, observer before/after intent and result, and Root physical start/terminal writer fields match their actual source expressions. Actual external producer SHA selection remains null and requires different review.\n\nThe final revision changes contract precision and fixed versioned leaf references only. Source005 test bytes and two sibling19+5 methods, event reconciliation, complete bounded diagnostics, all source/runtime/lease guards and90/600/60/450+60 budgets remain unchanged. No target definition, function, test, phase, binder, Git, FFI or native action ran. Root alone owns genuine actual ACK and GO after different complete source and actual phase reviews.\n')
+    for item in preserved:
+        data=(OUT/item['path']).read_bytes();assert len(data)==item['bytes'] and sha(data)==item['sha256']
+    addbytes=(OUT/'AUTHOR_SOURCE_ADDENDUM_008.json').read_bytes()
+    names=list(newmap.values())+['AUTHOR_SOURCE_ADDENDUM_008.json','AUTHOR_GG6_FINAL_REVISION_006.py','REV003_SOURCE_CORRECTION_DIFF_006.patch','REV003_FINITE_SOURCE_AND_INERT_CODE_FACTS_006.json','HANDOFF_006_REV003.md']
+    selected=[row(name) for name in dict.fromkeys(names) if (OUT/name).is_file()]
+    final={'schema_version':1,'record_type':'gg6_revision003_final_selected_source_manifest','author':'/root/capsule_design_review','scope':profile['scope'],'selected_source_map':newmap,'selected_files':selected,'parent_manifest007_sha256':sha((OUT/'FINAL_AUTHOR_SOURCE_MANIFEST_007.json').read_bytes()),'source_addendum008_sha256':sha(addbytes),'preserved_source_rows':preserved,'status':'FROZEN_FINAL_SOURCE_REV003_DIFFERENT_REVIEW_PENDING','actual_lease':None,'actual_source_binding':None,'actual_runtime':None,'actual_collection':None,'actual_tests':None,'operational_authority':False}
+    once('FINAL_AUTHOR_SOURCE_MANIFEST_009.json',enc(final))
+    print(json.dumps({'manifest_sha256':sha(enc(final)),'selected_files':len(selected),'profile_sha256':sha(profilebytes),'contract_sha256':sha(contractbytes),'driver_sha256':sha(sources['driver'].encode()),'preserved_rows':len(preserved),'changed_functions':functionchanges,'target_definitions_executed':False}))
+
+if __name__=='__main__':main()

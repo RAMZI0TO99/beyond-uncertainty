@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Iterator, Literal
+from typing import Any, Callable, Iterator, Literal
 
 import numpy as np
 import torch
@@ -426,6 +426,8 @@ def train_ensemble(
     arm: str = "baseline",
     granularity: Granularity = "episode",
     logger: Any | None = None,
+    epoch_logger: Callable[[int], Any] | None = None,
+    device: str | torch.device | None = None,
 ) -> Ensemble:
     """Fit ``config.ensemble_size`` members and log each one's validation error.
 
@@ -442,6 +444,13 @@ def train_ensemble(
     the repair was never applied, no error was raised, and every capacity
     condition would have been labelled "repair failed". With the effective unit
     the model was right but the streams moved.
+
+    ``logger`` receives one completed-member summary, preserving the historical
+    metrics contract.  ``epoch_logger`` is an explicit factory for durable
+    epoch curves; it receives the member index so every row remains attributable
+    after the process exits.  Keeping the channels separate avoids silently
+    changing the schema of development records that intentionally store only
+    member summaries.
 
     Only the **training** pool is resampled. Validation and evaluation are fixed
     and shared, so per-member errors are comparable and the evaluation set is
@@ -476,6 +485,8 @@ def train_ensemble(
             ratio=config.bootstrap_ratio,
         )
         model = WorldModel(effective, stream(unit, stage, "init", seed, member=k))
+        if device is not None:
+            model = model.to(torch.device(device))
         result = train(
             model,
             pools.train,
@@ -483,6 +494,7 @@ def train_ensemble(
             config,
             rng=stream(unit, stage, "batch", seed, member=k),
             train_index=index,
+            logger=epoch_logger(k) if epoch_logger is not None else None,
         )
         members.append(model)
         results.append(result)
@@ -494,6 +506,7 @@ def train_ensemble(
             # and a mean would discard exactly it.
             n_unique = len(np.unique(pools.train.episode[index]))
             logger.log(
+                record_type="member_summary",
                 member=k,
                 val_position=result.best_val_position,
                 best_epoch=result.best_epoch,

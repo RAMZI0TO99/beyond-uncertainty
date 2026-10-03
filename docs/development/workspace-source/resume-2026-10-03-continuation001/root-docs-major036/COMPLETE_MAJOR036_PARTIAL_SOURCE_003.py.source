@@ -1,0 +1,110 @@
+"""Distinct bounded Source completion. Never replay spent stage002 or publish."""
+import ast,datetime,hashlib,json,os,re,stat
+from pathlib import Path
+ROOT=Path('D:/Aenv/pro2');WORK=ROOT/'resume-2026-10-03-continuation001';OWN=WORK/'root-docs-major036'
+MAXIMUM=8388608
+PRIMARY=('AGENTS.md','HANDOFF.md','START_HERE.md','resume-2026-09-28-001/SESSION.md','resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md')
+CHECKPOINT='resume-2026-10-03-continuation001/CONTINUATION_CHECKPOINT_007.md'
+KEYS=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')
+def sha(b):return hashlib.sha256(b).hexdigest()
+def wire(v):return (json.dumps(v,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def raw(s):
+    r=[getattr(s,k,None)for k in KEYS];assert all(type(v)is int for v in r)
+    return r
+def read(p):
+    assert p.is_absolute()and p.is_relative_to(ROOT)and '..'not in p.parts
+    a=p.lstat();ar=raw(a);assert stat.S_ISREG(a.st_mode)and a.st_nlink==1 and not a.st_file_attributes&1024 and 0<=a.st_size<=MAXIMUM
+    chain=[]
+    for q in p.parents:
+        s=q.lstat();assert stat.S_ISDIR(s.st_mode)and not stat.S_ISLNK(s.st_mode)and not s.st_file_attributes&1024;chain.append([str(q),s.st_dev,s.st_ino])
+    with p.open('rb')as h:
+        s=os.fstat(h.fileno());hr=raw(s);assert ar[:4]+ar[5:]==hr[:4]+hr[5:]and ar[4]==ar[8]
+        b=h.read(MAXIMUM+1);assert raw(os.fstat(h.fileno()))==hr
+    assert raw(p.lstat())==ar and len(b)==ar[2]and len(b)<=MAXIMUM
+    assert chain==[[str(q),q.lstat().st_dev,q.lstat().st_ino]for q in p.parents]
+    return b,dict(path=str(p),bytes=len(b),sha256=sha(b),path_raw9=ar,descriptor_raw9=hr)
+def decode(b):
+    def pairs(rows):
+        v={}
+        for k,x in rows:assert k not in v;v[k]=x
+        return v
+    def bad(v):raise ValueError('float/nonfinite ordinary JSON')
+    return json.loads(b,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def once(p,b):
+    assert p.is_relative_to(OWN)and not p.exists()and len(b)<=MAXIMUM
+    p.parent.mkdir(parents=True,exist_ok=True)
+    with p.open('xb')as h:assert h.write(b)==len(b);h.flush();os.fsync(h.fileno())
+    assert read(p)[0]==b
+def pointer(p,b):return dict(path=p.relative_to(ROOT).as_posix(),bytes=len(b),sha256=sha(b))
+def AST(n):return ast.dump(n,include_attributes=False)
+
+manifest_path=OWN/'STAGED_DOCUMENTATION_MANIFEST_036_002.json';audit_path=OWN/'AUTHOR_MAJOR036_STAGE_AUDIT_002.json'
+assert not manifest_path.exists()and not audit_path.exists()and not(ROOT/CHECKPOINT).exists()
+source001=read(OWN/'STAGED_DOCUMENTATION_MANIFEST_036_001.json')[0]
+assert sha(source001)=='22e915c37ee438610909ee589cf40070a435204a34326b964da6a0669461cba7'
+contract_body=read(OWN/'DOCUMENTATION_SOURCE_CONTRACT_036_002.json')[0];contract=decode(contract_body)
+assert contract['fixed_review_path'].endswith('INDEPENDENT_MAJOR036_PREPUBLICATION_SOURCE_REVIEW_002.json')and contract['actual_Root_publication']is None
+publisher_path=OWN/'PUBLISH_MAJOR036_DOCS_002.py';publisher=read(publisher_path)[0]
+assert sha(publisher)==contract['publisher_sha256']
+oldpub=read(WORK/'root-docs-major035/PUBLISH_MAJOR035_DOCS_001.py')[0]
+reverse=publisher
+for r in reversed(contract['declared_literal_substitutions']):reverse=reverse.replace(r['selected'].encode(),r['original'].encode())
+assert reverse==oldpub
+f0={n.name:AST(n)for n in ast.parse(oldpub).body if isinstance(n,ast.FunctionDef)}
+f1={n.name:AST(n)for n in ast.parse(publisher).body if isinstance(n,ast.FunctionDef)}
+assert len(f0)==13 and set(f0)==set(f1)and[n for n in f0 if f0[n]!=f1[n]]==['main']
+context=decode(read(OWN/'SELECTED_SOURCE_CONTEXT_036_002.json')[0]);stamp=context['prepared_utc']
+stop=decode(read(WORK/'ROOT_USER_FINISH_INFLIGHT_AND_STOP_001.json')[0])
+assert sha(read(WORK/'ROOT_USER_FINISH_INFLIGHT_AND_STOP_001.json')[0])=='490a1da1af21c3ed2a867246f8fee5affc1c4eee8a199a50daf608eec172bc5f'
+assert stop['author']=='/root'and stop['finish_current_documentation_and_audit_closeout_only']is True and stop['new_INIT2_model_constructor_pool20_capture_unit_or_test_entry_authorized']is False
+
+# Reobserve the exact finite original/copy pairs already made by spent002.
+# This does not re-enter its compositor or replace any partial output.
+evidence=OWN/'stage-evidence002';copies=sorted(p for p in evidence.rglob('*')if p.is_file())
+assert 1<=len(copies)<=95
+inputs=[];observations=[];contents={}
+for copy in copies:
+    original=ROOT/copy.relative_to(evidence)
+    samples=[read(original)for _ in range(3)];assert samples[0]==samples[1]==samples[2]
+    b=samples[0][0];cb,cr=read(copy);assert cb==b
+    row=dict(original_path=str(original),observations=[x[1]for x in samples],owned_copy_path=str(copy),owned_copy_observation=cr)
+    observations.append(row);inputs.append(dict(original=pointer(original,b),copy=pointer(copy,b)));contents[str(original)]=b
+completion_path=Path(__file__).absolute();ownbody=read(completion_path)[0];completion_copy=OWN/'completion-source-evidence003'/completion_path.name;once(completion_copy,ownbody)
+samples=[read(completion_path)for _ in range(3)];assert samples[0]==samples[1]==samples[2]
+cb,cr=read(completion_copy);assert cb==ownbody
+observations.append(dict(original_path=str(completion_path),observations=[x[1]for x in samples],owned_copy_path=str(completion_copy),owned_copy_observation=cr));inputs.append(dict(original=pointer(completion_path,ownbody),copy=pointer(completion_copy,ownbody)));contents[str(completion_path)]=ownbody
+assert len(inputs)<=100
+candidate_rows=[];new_link_origins=[]
+for index,relative in enumerate(PRIMARY):
+    original=ROOT/relative;before=OWN/'before002'/relative;candidate=OWN/'candidates002'/relative
+    old=read(before)[0];current=read(original)[0];new=read(candidate)[0];section=read(OWN/'selected-sections002'/f'section-{index}.md')[0]
+    assert current==old and(new.endswith(old)if index<3 else new.startswith(old))
+    assert b'Only current documentation and audit closeout remain authorized' in section
+    assert b'finishing the current bound-model assembly and audit'not in section
+    candidate_rows.append(dict(destination=relative,before=pointer(before,old),candidate=pointer(candidate,new),preservation='suffix'if index<3 else'prefix'))
+    new_link_origins.append((original,section))
+checkpoint_path=OWN/'candidates002'/CHECKPOINT;checkpoint=read(checkpoint_path)[0];new_link_origins.append((ROOT/CHECKPOINT,checkpoint))
+assert b'Only current documentation and audit closeout remain authorized'in checkpoint
+links=[]
+for origin,b in new_link_origins:
+    for target in re.findall(r'\]\(([^)]+)\)',b.decode('utf8')):
+        assert not re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:',target)
+        resolved=(origin.parent/target).resolve();assert resolved.is_relative_to(ROOT)and(resolved==ROOT/CHECKPOINT or resolved.is_file())
+        links.append(dict(origin=origin.relative_to(ROOT).as_posix(),target=target,resolved_path=resolved.relative_to(ROOT).as_posix()))
+assert len(links)<=200
+named=['root-guard006-pipeline-prep001/ROOT_PIPELINE_INIT_TRACE_002.json','root-guard006-pipeline-prep001/ROOT_PIPELINE_TRUST_SELECTION_002.json','root-guard006-pipeline-prep001/ROOT_METADATA_PIPELINE_GO_002.json','metadata3-actual-checker-prep001/CHECKER_READY_BEFORE_006.json','metadata3-actual-checker-prep001/CHECKER_READY_AFTER_006.json','guard006-bound-late-checker-prep001/BOUND_LATE_CHECKER_READY_006.json','root-guard006-model-prep001/ACTUAL_SOURCE_POOL_PROJECTION_002.json','root-guard006-model-prep001/UTILITY_SOURCE_BINDINGS_002.json','root-guard006-model-prep001/UTILITY_SOURCE_PROTOCOL_002.json','root-guard006-model-prep001/COMPOSER_FRESH_SOURCE_MODEL_002.json','guard006-bound-late-checker-prep001/review_guard006_actual_records_001.BOUND.py','guard006-bound-late-checker-prep001/compose-root-review-packet-006.BOUND.py']
+absences=[]
+for relative in named:assert not(WORK/relative).exists();absences.append(dict(path=str(WORK/relative),observed_absent=True,scope='named filesystem role only, no process/quiet claim'))
+for row in observations:
+    p=Path(row['original_path']);copy=Path(row['owned_copy_path']);b,post=read(p);cb,cpost=read(copy)
+    assert b==contents[str(p)]and post==row['observations'][0]and cb==b and cpost==row['owned_copy_observation']
+    row['post_read']=post;row['owned_copy_post_read']=cpost
+audit=dict(schema_version=1,record_type='major036_author_Source_stage_audit',source_author='/root/actual_record_checker',prepared_utc=stamp,scope=contract['scope'],finite_input_count=len(inputs),selected_link_count=len(links),observations=observations,named_role_absences=absences,whole_five_primary035_bytes_preserved=True,publisher_function_count=13,changed_function_ASTs=['main'],exact_publisher_byte_reversal=True,publisher_definitions_import_main_executed=False,helper_test_target_execution=False,publication_performed=False,operational_authority=False,current_synthetic28_actual_acceptance_only=True,currentConsumer24_UNRUN=True,utility6_plus_F1_deferred_UNRUN=True,actual_models_or_fit_or_capture=None,selected_pro3_evidence_attributed_only=True,selected_pro3_full_component_PASS=False,old_pending_snapshot_bytes_preserved=True,source001_unpublished_superseded_history_preserved=True,source002_partial_refusal_preserved=dict(tool_chunk='43bac4',exit_code=1,wall_time_seconds_text='2.1198554',reason='createonce refused inherited AUDIT_001 output before manifest; all001/partial002 preserved; no replay'),distinct_source_completion_only=True,latest_user_stop_directive_sha256='490a1da1af21c3ed2a867246f8fee5affc1c4eee8a199a50daf608eec172bc5f',no_new_INIT_models_pool_capture_or_tests_authorized=True,goal_pause_after_documentation_closeout_not_project_completion=True)
+once(audit_path,wire(audit))
+manifest=dict(schema_version=1,record_type='major036_documentation_stage',author='/root/actual_record_checker',prepared_utc=stamp,checkpoint=pointer(checkpoint_path,checkpoint),primaries=candidate_rows,inputs=inputs,links=links,source_only=True,publication_performed=False,target_execution=False,operational_authority=False)
+mb=wire(manifest);assert len(mb)<=2097152
+for row in observations:assert read(Path(row['original_path']))[1]==row['observations'][0]
+for row in candidate_rows:assert read(ROOT/row['destination'])[0]==read(ROOT/row['before']['path'])[0]
+assert read(OWN/'STAGED_DOCUMENTATION_MANIFEST_036_001.json')[0]==source001
+once(manifest_path,mb)
+print(json.dumps(dict(manifest_sha256=sha(mb),manifest_bytes=len(mb),publisher_sha256=sha(publisher),publisher_bytes=len(publisher),contract_sha256=sha(contract_body),contract_bytes=len(contract_body),context_sha256=sha(read(OWN/'SELECTED_SOURCE_CONTEXT_036_002.json')[0]),audit_sha256=sha(wire(audit)),audit_bytes=len(wire(audit)),finite_pairs=len(inputs),links=len(links),checkpoint_bytes=len(checkpoint),source001_preserved=True,publication_performed=False,target_execution=False),sort_keys=True))

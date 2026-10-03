@@ -1,0 +1,65 @@
+"""Closeout-only finite metadata reader; no project imports or helper entry."""
+from pathlib import Path
+from datetime import datetime, timezone
+import hashlib, json, os, stat
+
+ROOT = Path('D:/Aenv/pro2')
+BASE = ROOT / 'resume-2026-10-01-30h-001'
+OUT = BASE / 'root-owner-window-closeout001'
+CAP = 1048576
+sha = lambda b: hashlib.sha256(b).hexdigest()
+utc = lambda: datetime.now(timezone.utc).isoformat(timespec='microseconds')
+enc = lambda v: (json.dumps(v, indent=2, sort_keys=True, ensure_ascii=True, allow_nan=False)+'\n').encode('ascii')
+
+def once(p, b):
+    with p.open('xb') as f:
+        f.write(b); f.flush(); os.fsync(f.fileno())
+
+def raw9(s):
+    return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,getattr(s,'st_file_attributes',0),getattr(s,'st_birthtime_ns',None)]
+
+def read(p):
+    try: a = p.lstat()
+    except FileNotFoundError: return None, dict(path=str(p),absent=True,observed_utc=utc())
+    assert stat.S_ISREG(a.st_mode) and a.st_nlink == 1 and not getattr(a,'st_file_attributes',0)&0x400
+    assert 0 <= a.st_size <= CAP
+    with p.open('rb') as f:
+        b0=os.fstat(f.fileno()); data=f.read(CAP+1); b1=os.fstat(f.fileno())
+    z=p.lstat()
+    assert raw9(a)==raw9(z) and raw9(b0)==raw9(b1)
+    cross=lambda s:(s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_nlink)
+    assert cross(a)==cross(b0) and len(data)==a.st_size and len(data)<=CAP
+    return data,dict(path=str(p),absent=False,observed_utc=utc(),bytes=len(data),sha256=sha(data),path_raw9=raw9(a),descriptor_raw9=raw9(b0))
+
+started=utc()
+assert datetime.now(timezone.utc) > datetime(2026,10,2,22,36,15,tzinfo=timezone.utc)
+previous=BASE/'gate009-finite-readonly-observation002/FINITE_GATE009_OBSERVATION_002.json'
+previous_data,previous_row=read(previous)
+assert sha(previous_data)=='f95f77ee19129c7d747298a1496ce588aa4506699b093574b8b3cdb88a21a168'
+old=json.loads(previous_data)
+paths=[Path(r['path']) for r in old['inputs_before']]
+assert len(paths)==99 and len(set(paths))==99
+paths += [ROOT/'week8-recovery-controller-worktree/src/bu/experiments/week8_exp2a_recovery.py',ROOT/'week8-recovery-controller-worktree/tests/test_week8_exp2a_recovery.py']
+copies=OUT/'finite-inputs'; copies.mkdir(exist_ok=False)
+rows=[]; snapshots={}; changed=[]
+for i,p in enumerate(paths):
+    data,row=read(p); snapshots[p]=(data,row)
+    if data is not None:
+        cp=copies/f'input-{i+1:03}.bin';once(cp,data);row['copy_path']=str(cp);row['copy_sha256']=sha(cp.read_bytes())
+    rows.append(row)
+    if i<99:
+        prior=old['inputs_before'][i]
+        if row['absent']!=prior['absent'] or (not row['absent'] and row['sha256']!=prior['sha256']): changed.append(str(p))
+for p,(data,row) in snapshots.items():
+    again,second=read(p)
+    assert again==data and second['absent']==row['absent']
+    if data is not None: assert second['path_raw9']==row['path_raw9'] and second['descriptor_raw9']==row['descriptor_raw9']
+gate=ROOT/'resume-2026-09-28-001/full-gate-009'
+accepted=[Path(r['path']).name for r in rows if not r['absent'] and Path(r['path']).parent==gate and Path(r['path']).name.endswith('.accepted.json')]
+source_rows=rows[-2:]
+record=dict(schema_version=1,record_type='root_expired_owner_finite_closeout_observation',started_utc=started,completed_utc=utc(),owner_end_utc='2026-10-02T22:36:15Z',scope='Closeout-only finite readback of 99 predecessor-selected paths plus two live source/test paths',previous_observation=previous_row,selected_paths_count=len(paths),inputs=rows,changed_from_predecessor=changed,known_current_gate009_accepted_receipts=accepted,live_source_test=source_rows,all_selected_bytes_and_raw9_stable=True,limits=['Finite paths only; no recursive source/runtime/site audit or unknown-file absence','No current full742/263 QA or release acceptance','No target, compiler, test, observer, metadata producer, native or scientific helper entered','Git and scheduled-task restoration are separately attributed Root closeout tools','No sole-executor acknowledgement, lease, quiet or renewed owner authorization'],operational_authority_granted=False)
+target=OUT/'ROOT_CLOSEOUT_FINITE_OBSERVATION_001.json';once(target,enc(record))
+for p,(data,row) in snapshots.items():
+    last,lastrow=read(p);assert last==data and lastrow['absent']==row['absent']
+    if data is not None:assert lastrow['path_raw9']==row['path_raw9'] and lastrow['descriptor_raw9']==row['descriptor_raw9']
+print(json.dumps(dict(record_sha256=sha(target.read_bytes()),selected_paths=len(paths),copies=len(list(copies.iterdir())),known_accepted=accepted,changed_paths=changed,live_source_sha256=[r['sha256'] for r in source_rows])))

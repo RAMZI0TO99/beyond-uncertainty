@@ -1,0 +1,170 @@
+"""Independent root metadata/AST review only. No target definition execution."""
+from pathlib import Path
+import ast
+import datetime
+import hashlib
+import json
+import stat
+
+W = Path(r"D:\Aenv\pro2\resume-2026-10-01-30h-001")
+D = W / "native-attempt013-front-test-runtime002"
+sha = lambda b:hashlib.sha256(b).hexdigest()
+enc = lambda v:(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+"\n").encode("ascii")
+def ident(s):
+    return (s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,
+            getattr(s,"st_file_attributes",None),getattr(s,"st_birthtime_ns",None))
+def observe(p):
+    for q in [*reversed(p.absolute().parents),p.parent]:
+        s=q.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not getattr(s,"st_file_attributes",0)&0x400
+    first=p.lstat()
+    assert stat.S_ISREG(first.st_mode) and first.st_nlink==1 and not getattr(first,"st_file_attributes",0)&0x400
+    b=p.read_bytes()
+    assert ident(first)==ident(p.lstat()) and len(b)==first.st_size
+    return {"path":str(p),"bytes":len(b),"sha256":sha(b),"raw9":list(ident(first))}
+def once(p,b):
+    with p.open("xb") as f:f.write(b)
+
+report = D / "INDEPENDENT_FRONT_GUARD_TEST_RUNTIME_STATIC_REVIEW_002.json"
+mdpath = report.with_suffix(".md")
+assert not report.exists() and not mdpath.exists()
+manifest_path=D/"UNBOUND_MANIFEST_002.json"
+m=json.loads(manifest_path.read_bytes())
+assert m["file_count_excluding_manifest"]==39 and len(m["files"])==39
+files=[manifest_path]
+for row in m["files"]:
+    p=D/row["path"]
+    value=observe(p)
+    assert value["bytes"]==row["bytes"] and value["sha256"]==row["sha256"]
+    files.append(p)
+preservation=json.loads((D/"PRESERVATION_MANIFEST_002.json").read_bytes())
+provenance=json.loads((D/"COPY_PROVENANCE_002.json").read_bytes())
+copy_pairs=[]
+for row in [*preservation["files"],*provenance["copies"]]:
+    original=Path(row["source_path"]);copy=D/row["path"]
+    a,b=observe(original),observe(copy)
+    assert a["bytes"]==b["bytes"]==row["bytes"] and a["sha256"]==b["sha256"]==row["sha256"]
+    assert a["raw9"][:2]!=b["raw9"][:2]
+    copy_pairs.append({"original":str(original),"copy":str(copy),"sha256":a["sha256"]})
+    files.append(original)
+driver=D/m["runner_template_path"]
+assert sha(driver.read_bytes())==m["runner_template_sha256"]
+tree=ast.parse(driver.read_bytes())
+constants={}
+for n in tree.body:
+    if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+        try:constants[n.targets[0].id]=ast.literal_eval(n.value)
+        except (ValueError,TypeError):pass
+runtime=[(W.parent/"runtimes/week8-python313-frozen-001/python.exe","BASE_SHA256"),
+         (W.parent/"pro2/.venv/Scripts/python.exe","VENV_SHA256"),
+         (W.parent/"pro2/.venv/pyvenv.cfg","CFG_SHA256"),
+         (W/"OWNER_WORK_WINDOW_30H_20261001_001.json","OWNER_SHA256"),
+         (W/"OWNER_WORK_WINDOW_30H_20261001_001_REVIEW.md","OWNER_REVIEW_SHA256")]
+for p,key in runtime:
+    assert observe(p)["sha256"]==constants[key]
+    files.append(p)
+for p,key in ((D/"inputs/native_successor_front_common_013_001.py.template","COMMON_SHA256"),
+              (D/"inputs/test_front_read_guard_013_001.py.template","TEST_SHA256"),
+              (D/"COPY_PROVENANCE_002.json","PROVENANCE_SHA256"),
+              (D/"before/INDEPENDENT_FRONT_GUARD_STATIC_REVIEW_002.json","GUARD_REVIEW_SHA256")):
+    assert observe(p)["sha256"]==constants[key]
+guard=json.loads((D/"before/INDEPENDENT_FRONT_GUARD_STATIC_REVIEW_002.json").read_bytes())
+assert guard["verdict"]=="PASS_STATIC_GUARD_ONLY" and guard["test_method_count"]==37
+assert tuple(guard["ordered_test_names"])==constants["CASE_NAMES"] and guard["operational_authority_granted"] is False
+before=list((D/"before/runtime001").glob("run*001.TEMPLATE.py"))
+assert len(before)==1
+old=ast.parse(before[0].read_bytes())
+defs=lambda t:{n.name:ast.dump(n,include_attributes=False) for n in t.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+olddefs,newdefs=defs(old),defs(tree)
+changed=[n for n in olddefs if olddefs[n]!=newdefs[n]]
+assert set(changed)=={"prepare_test_namespace","validate_authorizations","main"}
+assert sum(newdefs[n]==v for n,v in olddefs.items())==21
+assert set(newdefs)-set(olddefs)=={"expected_common_read_plan","independent_reviewer"}
+test_path=D/"inputs/test_front_read_guard_013_001.py.template"
+test_tree=ast.parse(test_path.read_bytes())
+classes={n.name:n for n in test_tree.body if isinstance(n,ast.ClassDef) and n.name in constants["CASE_CLASSES"]}
+case_names=tuple(sorted(c+"."+f.name for c,n in classes.items() for f in n.body
+                        if isinstance(f,ast.FunctionDef) and f.name.startswith("test_")))
+assert len(case_names)==37 and case_names==constants["CASE_NAMES"]==tuple(provenance["case_names"])
+hooks={}
+for c,n in classes.items():
+    for f in n.body:
+        if isinstance(f,ast.FunctionDef):
+            reads=[a for a in ast.walk(f) if isinstance(a,ast.Call) and isinstance(a.func,ast.Attribute) and a.func.attr=="read_text"]
+            if reads:
+                assert len(reads)==1 and f.name in ("setUp","setUpClass")
+                assert isinstance(f.body[0],ast.Assign) and f.body[0].value is reads[0]
+                hooks[c,f.name]=reads[0].lineno
+events=[];prior=None
+for name in case_names:
+    c,_=name.split(".",1)
+    if c!=prior and (c,"setUpClass") in hooks:
+        events.append({"class":c,"hook":"setUpClass","trigger_case":name,"source_line":hooks[c,"setUpClass"]})
+    if (c,"setUp") in hooks:
+        events.append({"class":c,"hook":"setUp","trigger_case":name,"source_line":hooks[c,"setUp"]})
+    prior=c
+assert len(hooks)==3 and len(events)==7
+aliases=constants["REVIEWER_IDENTITY_ALIASES"]
+assert len(aliases)==12 and set(aliases.values())=={"/root","/root/candidate_review","/root/raw_policy_worker","/root/window_docs","/root/bootstrap_stage","/root/keepawake_stage"}
+author_node=next(n.value for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=="SOURCE_AUTHOR_IDENTITIES" for t in n.targets))
+authors=set(ast.literal_eval(author_node.args[0]))
+assert authors=={"/root/bootstrap_stage","/root/keepawake_stage"}
+pred=next(n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name=="independent_reviewer")
+expected=ast.parse("def independent_reviewer(value):\n return type(value) is str and value in REVIEWER_IDENTITY_ALIASES and REVIEWER_IDENTITY_ALIASES[value] not in SOURCE_AUTHOR_IDENTITIES\n").body[0]
+assert ast.dump(pred,include_attributes=False)==ast.dump(expected,include_attributes=False)
+source=driver.read_text(encoding="ascii")
+for fragment in ("source_read_count<len(common_read_plan)","source_read_count==len(common_read_plan)",
+                 "tuple(source_read_events)==common_read_plan","frame=sys._getframe(1)",
+                 "frame.f_lineno==expected['source_line']","receiver._testMethodName==expected['trigger_case'].split('.',1)[1]"):
+    assert fragment in source
+assert source.count("independent_reviewer(")==3
+assert constants["INDEPENDENT_STATIC_REVIEW_SHA256"] is None
+future=[D/"run-front-guard002-synthetic-tests-002.py",D/"INDEPENDENT_FRONT_GUARD_TEST_RUNTIME_BOUND_REVIEW_002.json",
+        D/"ROOT_EXECUTION_ACK_FRONT_GUARD37_002.json",D/"synthetic-run-002",D/"supervised-run-002"]
+assert all(not p.exists() for p in future)
+files=list(dict.fromkeys(files))
+first=[observe(p) for p in files]
+second=[observe(p) for p in files]
+assert first==second
+stamp=datetime.datetime.now(datetime.timezone.utc).isoformat()
+review={"schema_version":1,"reviewer":"/root","source_authors":sorted(authors),"reviewed_utc":stamp,
+ "verdict":"PASS_STATIC","scope":"EXACT_UNBOUND_FRONT37_RUNTIME002_PREPARATION_ONLY",
+ "runner_template_sha256":sha(driver.read_bytes()),"manifest_sha256":sha(manifest_path.read_bytes()),
+ "test_source_sha256":constants["TEST_SHA256"],"common_source_sha256":constants["COMMON_SHA256"],
+ "guard_review_sha256":constants["GUARD_REVIEW_SHA256"],"private_source_copies_verified":True,
+ "tests_executed":False,"selected_definitions_executed":False,"external_supervision_required":True,
+ "operational_authority_granted":False,"input_count":len(files),"paired_inputs":first,
+ "copy_pairs":copy_pairs,"old_unchanged_definition_count":21,"changed_definitions":changed,
+ "ordered_test_names":case_names,"derived_fixture_read_sites":3,"derived_successful_read_events":events,
+ "expected_successful_common_reads":7,"actual_runtime_common_reads":None,"actual_named_cases":None,
+ "future_paths_absent":[str(p) for p in future],"findings":[],
+ "conditions":["Different independently reviewed distinct front37 supervisor/profile and complete<=60s outer envelope required",
+ "Actual one-literal bound driver and exact20-key rootACK and full bound review with external3 SHA CLI pins required before first entry",
+ "First entry is consumed including preflight refusal; preserve every partial receipt/capture and never replay",
+ "Independently reconcile actual named/subtest/JUnit/fixture outcomes and process/owned-cleanup evidence; static lifecycle derivation is not runtime acceptance"],
+ "limitations":["Selected guard/test AST with explicit mocks; no actual owned pair/native quiet/Git/schema2/groupedQA/release009 proof",
+ "No driver-built-in timeout, OS sandbox, descendant cleanup or whole runtime/site closure; separately trusted supervisor/ROOT evidence mandatory",
+ "Receiver/compiled-hook/source-line/current-instance checks model the exact trusted fixture construction; they do not prove arbitrary memory/OS integrity",
+ "Prior runtime001 count/identity refusal preserved; metadata staging failures are not operational test invocations"]}
+once(report,enc(review))
+md=f"""# Independent front37 runtime002 preparation review
+
+**PASS_STATIC**, exact unbound preparation only. Reviewer /root; source authors /root/bootstrap_stage and /root/keepawake_stage. Recorded {stamp}.
+
+All39 manifest rows plus manifest and referenced originals/runtime/owner inputs were freshly observed twice ({len(files)} unique files). Twenty-one original/copy pairs retain exact bytes and distinct inodes. No source definition, import, test, helper, native query, process or operational action executed during review. Only this report pair is published.
+
+Independent AST derivation confirms37 ordered methods, three fixture sites and seven lifecycle events: five AuditBindingTests.setUp calls, then one CapturedReadTests.setUpClass and one OwnedVerifierPairTests.setUpClass. The driver rejects an eighth read and checks each immediate compiled hook's filename, line, receiver class and instance method against the exact event. Success requires seven reads and the exact trace, all37 methods and all subtests passed, no fixture failure/skip/expected/unexpected result. This corrects both three-read cap/equality defects; it does not claim any test has run.
+
+Both review boundaries now use the exact finite twelve-alias/six-canonical predicate and reject the two source authors, unknown/empty/whitespace/descendant identities. Root is an eligible distinct reviewer under the existing contract. External ACK/source/review byte pins remain mandatory. Twenty-one old driver definitions are AST-identical; only namespace preparation, authorization validation and main change, with two narrow helpers added. Old001/refusals and exact common/test bytes are retained.
+
+One review literal remainsNone; actual bound driver, bound review, rootACK and run directories remain absent. A different reviewed front37 supervisor/profile and complete external<=60s envelope are mandatory; the postseal18 profile does not authorize this run. Root must supply exact self/bound-review/ACK hashes externally, prepare the exact20-key ACK and full bound review, and preserve owned handle/capture/exit/cleanup evidence on first one-use entry, including a preflight refusal. Never replay.
+
+The source still compiles selected AST guard/test definitions with OS/CIM/image doubles. It proves no real owned pair, native quiet, raw/schema2/grouped-QA/final release, Git, full runtime/site closure, OS sandbox, memory integrity or descendant cleanup. Runtime acceptance requires actual process, named/subtest/XML and capture reconciliation. Original live ACK, native/resource/science/owner holds remain.
+
+Template SHA256: {review['runner_template_sha256']}
+Manifest SHA256: {review['manifest_sha256']}
+JSON SHA256: {sha(enc(review))}
+"""
+once(mdpath,md.encode("ascii"))
+assert [observe(p) for p in files]==first
+print(json.dumps({"review_sha256":sha(report.read_bytes()),"md_sha256":sha(mdpath.read_bytes()),"inputs":len(files),"copy_pairs":len(copy_pairs),"verdict":review["verdict"]}))

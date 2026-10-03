@@ -1,0 +1,33 @@
+"""Own text/AST source patch; no selected definitions or tests execute."""
+import ast
+from pathlib import Path
+stage=Path(__file__).absolute().parent
+def update(path,text):
+    with(stage/('BEFORE_FINAL_AUDIT_'+path.name+'.bytes')).open('xb')as f:f.write(path.read_bytes())
+    ast.parse(text);path.write_text(text,encoding='utf-8',newline='\n')
+common=stage/'front/native_successor_front_common_013_001.py.template'
+text=common.read_text()
+text=text.replace(" module,maximum=_native_attestation_limit(bindings,witness)\n _,rows=release_and_sources(bindings,witness)\n inputs=admission_files(bindings,rows,witness)"," policy,retained_policy=_native_policy(bindings,witness)\n module,maximum=_native_attestation_limit(bindings,witness)\n _,rows=release_and_sources(bindings,witness,policy=policy)\n inputs=admission_files(bindings,rows,witness,policy=policy)")
+text=text.replace(" return context\ndef main()", " require(_native_policy(bindings,witness)[1]==retained_policy,'all31 policy changed across actual authority callback')\n return context\ndef main()")
+update(common,text)
+for name in('publish-successor-admission-schema3-001.py.template','verify-successor-admission-schema3-001.py.template'):
+    path=stage/'publication'/name;text=path.read_text()
+    tree=ast.parse(text);function=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=='schema2_release_checks')
+    lines=text.splitlines(keepends=True);segment=''.join(lines[function.lineno-1:function.end_lineno])
+    assert segment.count('middle = policy["SUCCESSOR_INTERMEDIATE_FACTS"]')==1
+    segment=segment.replace('middle = policy["SUCCESSOR_INTERMEDIATE_FACTS"]','middle = policy["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"][1]')
+    lines[function.lineno-1:function.end_lineno]=[segment];text=''.join(lines)
+    text=text.replace('COMPILED_POLICY["SUCCESSOR_INTERMEDIATE_FACTS"]["controller_commit"]},','*(row["controller_commit"] for row in COMPILED_POLICY["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"])},')
+    text=text.replace('type(document["intermediate"]) is list and len(document["intermediate"]) == 2 and canonical(document["intermediate"]) == canonical(COMPILED_POLICY["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"])','type(document["intermediate"]) is list and len(document["intermediate"]) == 2')
+    needle='        require(type(document["middle_full742_identity"]) is list'
+    text=text.replace(needle,'        require(canonical(document["intermediate"]) == canonical(COMPILED_POLICY["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"]), "metadata exact ordered intermediates")\n'+needle)
+    update(path,text)
+path=stage/'source/test_native_schema3_admission_001.py';text=path.read_text()
+text=text.replace("RAW_NEW_HELPERS = ('_successor_attestation_size', '_successor_decode_intermediate', '_successor_intermediate_rows')", "RAW_NEW_HELPERS = ('_successor_attestation_size','_successor_decode_intermediate','_successor_intermediate_rows','_successor_compact_qa_bytes','_successor_decode_compact_intermediate','_successor_compact_git_tree_sha1','_successor_compact_intermediate_rows')")
+text=text.replace('release_and_sources=lambda *args: ({}, []), admission_files=lambda *args: inputs,','release_and_sources=lambda *args,**kwargs: ({}, []), admission_files=lambda *args,**kwargs: inputs,\n            _native_policy=lambda *args:(namespace["NATIVE_SCHEMA2_POLICY"],b"TEST_ONLY_SNAPSHOT"),')
+update(path,text)
+path=stage/'source/test_schema3_metadata_grammar_001.py';text=path.read_text()
+text=text.replace('ParentCommit=policy["SUCCESSOR_INTERMEDIATE_FACTS"]["controller_commit"]','ParentCommit=policy["SUCCESSOR_COMPACT_INTERMEDIATE_FACTS"][1]["controller_commit"]')
+text=text.replace("bad['intermediate']['release_file_count'] = 9.0; variants.append((bad, 'scalar type'))", "bad['intermediate'][1]['release_file_count'] = 9.0; variants.append((bad, 'nominal field'))")
+text=text.replace("bad['middle_full742_identity']['tracked_tree_digest'] = 'e' * 64; variants.append((bad, 'fixed597'))", "bad['middle_full742_identity'][1]['tracked_tree_digest'] = 'e' * 64; variants.append((bad, 'fixed middle identity'))")
+update(path,text)

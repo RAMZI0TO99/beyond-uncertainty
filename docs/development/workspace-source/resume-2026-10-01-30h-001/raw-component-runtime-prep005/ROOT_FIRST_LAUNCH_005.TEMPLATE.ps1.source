@@ -1,0 +1,92 @@
+# UNBOUND PREPARATION ONLY. A different agent must review source and actual binding before root runs once.
+$ErrorActionPreference = 'Stop'
+$BoundDriverSha256 = $null
+$RootAckSha256 = $null
+$BoundReviewSha256 = $null
+if ($null -eq $BoundDriverSha256 -or $null -eq $RootAckSha256 -or $null -eq $BoundReviewSha256) {
+    throw 'UNBOUND RAW005 ROOT LAUNCH; no source execution'
+}
+foreach ($value in @($BoundDriverSha256, $RootAckSha256, $BoundReviewSha256)) {
+    if ($value -isnot [string] -or $value -cnotmatch '^[0-9a-f]{64}$') { throw 'Exact external SHA256 required' }
+}
+$Prep = 'D:\Aenv\pro2\resume-2026-10-01-30h-001\raw-component-runtime-prep005'
+$Python = 'D:\Aenv\pro2\runtimes\week8-python313-frozen-001\python.exe'
+$Driver = Join-Path $Prep 'run-isolated-raw-component-005.BOUND.py'
+$Ack = Join-Path $Prep 'ROOT_FIRST_EXECUTION_ACK_RAW005.json'
+$Review = Join-Path $Prep 'INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_005.json'
+$Start = Join-Path $Prep 'ROOT_LAUNCH_START_005.json'
+$Terminal = Join-Path $Prep 'ROOT_LAUNCH_TERMINAL_005.json'
+$Stdout = Join-Path $Prep 'ROOT_LAUNCH_STDOUT_005.txt'
+$Stderr = Join-Path $Prep 'ROOT_LAUNCH_STDERR_005.txt'
+$Scratch = 'D:\Aenv\pro2\.tmp\raw4-005'
+function Assert-Plain-Ancestors([string]$Path) {
+    $parent = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Path))
+    while ($parent) {
+        $info = Get-Item -LiteralPath $parent -Force
+        if (-not $info.PSIsContainer -or ($info.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'Linked/reparse output ancestor'
+        }
+        $next = [IO.Directory]::GetParent($parent)
+        if ($null -eq $next) { break }
+        $parent = $next.FullName
+    }
+}
+function Hash-Plain([string]$Path) {
+    Assert-Plain-Ancestors $Path
+    $info = Get-Item -LiteralPath $Path -Force
+    if ($info.PSIsContainer -or ($info.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Nonplain launch input' }
+    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+function Write-Once([string]$Path, [string]$Text) {
+    Assert-Plain-Ancestors $Path
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try {
+        $bytes = [Text.UTF8Encoding]::new($false).GetBytes($Text + "`n")
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush($true)
+    } finally { $stream.Dispose() }
+}
+foreach ($path in @($Start, $Terminal, $Stdout, $Stderr, $Scratch, (Join-Path $Prep 'ROOT_RUN_INTENT_005.json'), (Join-Path $Prep 'started.json'), (Join-Path $Prep 'finished.json'), (Join-Path $Prep 'failed.json'), (Join-Path $Prep 'collection'), (Join-Path $Prep 'tests'))) {
+    Assert-Plain-Ancestors $path
+    try { [void](Get-Item -LiteralPath $path -Force -ErrorAction Stop); throw 'One-use root capture exists' }
+    catch [System.Management.Automation.ItemNotFoundException] { } # Only absent paths are accepted; access errors propagate.
+}
+if ((Hash-Plain $Python) -cne '5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed' -or
+    (Hash-Plain $Driver) -cne $BoundDriverSha256 -or (Hash-Plain $Ack) -cne $RootAckSha256 -or
+    (Hash-Plain $Review) -cne $BoundReviewSha256) { throw 'External launcher pin differs' }
+$Started = [DateTimeOffset]::UtcNow
+Write-Once $Start (([ordered]@{schema_version=1;started_utc=$Started.ToString('o');bound_driver_sha256=$BoundDriverSha256;ack_sha256=$RootAckSha256;bound_review_sha256=$BoundReviewSha256}) | ConvertTo-Json -Compress)
+# ROOT_LAUNCH_START consumes this exact first execution even if the driver refuses before its own intent.
+# No background helper, no cleanup, no actual native ceremony, no production operation.
+$Info = [Diagnostics.ProcessStartInfo]::new()
+$Info.FileName = $Python
+$Info.Arguments = '-I -S -B -X utf8 "' + $Driver + '" ' + $BoundDriverSha256 + ' ' + $RootAckSha256 + ' ' + $BoundReviewSha256
+$Info.WorkingDirectory = $Prep
+$Info.UseShellExecute = $false
+$Info.CreateNoWindow = $true
+$Info.RedirectStandardOutput = $true
+$Info.RedirectStandardError = $true
+$Process = [Diagnostics.Process]::new()
+$Process.StartInfo = $Info
+$OutFile = [IO.File]::Open($Stdout, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+$ErrFile = [IO.File]::Open($Stderr, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+$Code = $null
+$TimedOut = $false
+$Failure = $null
+try {
+    if (-not $Process.Start()) { throw 'Root driver failed to start' }
+    $OutTask = $Process.StandardOutput.BaseStream.CopyToAsync($OutFile)
+    $ErrTask = $Process.StandardError.BaseStream.CopyToAsync($ErrFile)
+    if (-not $Process.WaitForExit(450000)) {
+        $TimedOut = $true
+        $Process.Kill() # Direct driver only: descendant cleanup is NOT guaranteed by this launcher.
+        if (-not $Process.WaitForExit(60000)) { throw 'Direct driver not reaped' }
+    }
+    $Code = $Process.ExitCode
+    if (-not $OutTask.Wait(60000) -or -not $ErrTask.Wait(60000)) { throw 'Capture drain timeout; descendants may retain handles' }
+} catch { $Failure = $_.Exception.Message }
+finally {
+    $OutFile.Dispose(); $ErrFile.Dispose(); $Process.Dispose()
+    Write-Once $Terminal (([ordered]@{schema_version=1;finished_utc=[DateTimeOffset]::UtcNow.ToString('o');exit_code=$Code;timed_out=$TimedOut;failure=$Failure;bound_driver_sha256=$BoundDriverSha256;ack_sha256=$RootAckSha256;driver_spent=$true;canonical_qa=$false;native_science_production_authority=$false;descendant_cleanup_guaranteed=$false;automatic_cleanup_performed=$false}) | ConvertTo-Json -Compress)
+}
+if ($TimedOut -or $Failure -or $Code -ne 0) { throw 'Raw005 first execution refused/failed; all bytes preserved; never replay' }

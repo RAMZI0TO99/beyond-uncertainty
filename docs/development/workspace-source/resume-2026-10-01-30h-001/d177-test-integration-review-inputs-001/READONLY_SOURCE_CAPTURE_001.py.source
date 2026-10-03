@@ -1,0 +1,96 @@
+from pathlib import Path
+import ast,hashlib,json,os,stat,subprocess
+from datetime import datetime,timezone
+W=Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001')
+LIVE=Path(r'D:\Aenv\pro2\week8-recovery-controller-worktree')
+ROOT=W/'d177-test-integration-review-inputs-001'
+GIT=Path(r'D:\Aenv\pro2\runtimes\git\mingw64\bin\git.exe')
+GIT_SHA='c115a66a1bede6694b513af420cc90f8775be03666a54d1ecb82d6196b929fe9'
+EXPECTED_HEAD='597eb048a1bc441030bfcd88b70fdf9c56f882d0'
+def require(value,message):
+    if not value:raise ValueError(message)
+def sha(data):return hashlib.sha256(data).hexdigest()
+def ident(s):
+    row=(s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,int(getattr(s,'st_file_attributes',0)))
+    if os.name=='nt':
+        b=getattr(s,'st_birthtime_ns',None);require(type(b) is int and b>0,'birthtime absent');return row+(b,)
+    return row
+def cross(s,pathname,path):
+    row=ident(s)
+    if os.name=='nt':
+        require(not pathname or s.st_ctime_ns==s.st_birthtime_ns,'creation projection differs')
+        row=row[:4]+(s.st_birthtime_ns,)+row[5:8]
+        if path==GIT:
+            require(s.st_mode&0o111==(0o111 if pathname else 0),'pinned Git executable mode projection differs')
+            row=row[:5]+(row[5]&~0o111,)+row[6:]
+    return row
+def read(path,expected=None):
+    for p in reversed(path.parents):
+        s=p.lstat();require(stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not int(getattr(s,'st_file_attributes',0))&0x400,'nonplain ancestor')
+    a=path.lstat();require(stat.S_ISREG(a.st_mode) and a.st_nlink==1 and not stat.S_ISLNK(a.st_mode) and not int(getattr(a,'st_file_attributes',0))&0x400,'nonplain file')
+    with path.open('rb',buffering=0) as stream:b=os.fstat(stream.fileno());data=stream.read();c=os.fstat(stream.fileno())
+    d=path.lstat();require(ident(a)==ident(d) and ident(b)==ident(c) and cross(a,True,path)==cross(b,False,path) and len(data)==a.st_size,'file capture drifted')
+    if expected is not None:require(sha(data)==expected,'input hash differs')
+    return data,ident(a)
+read(GIT,GIT_SHA)
+env=dict(os.environ);env.update(GIT_OPTIONAL_LOCKS='0',GIT_CONFIG_GLOBAL=os.devnull,GIT_CONFIG_SYSTEM=os.devnull,GIT_CONFIG_NOSYSTEM='1',GIT_NO_REPLACE_OBJECTS='1')
+def git(*args):
+    r=subprocess.run([str(GIT),'--no-optional-locks','-c','core.fsmonitor=false','-c','core.untrackedCache=false','-c','safe.directory='+str(LIVE),'-C',str(LIVE),*args],stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=env,shell=False,check=True,timeout=60)
+    require(r.stderr==b'','readonly Git emitted stderr')
+    return r.stdout
+head_before=git('rev-parse','HEAD').decode('ascii').strip();require(head_before==EXPECTED_HEAD,'unexpected actual HEAD')
+paths={
+'actor-controller.source':LIVE/'src/bu/experiments/week8_exp2a_recovery.py',
+'actor-tests.source':LIVE/'tests/test_week8_exp2a_recovery.py',
+'frozen18-controller.source':W/'successor-candidate-001/src/bu/experiments/week8_exp2a_recovery.py',
+'frozen18-tests.source':W/'successor-candidate-001/tests/test_week8_exp2a_recovery.py',
+'design002.json':W/'intermediate-release-admission-design-001/INTERMEDIATE_ADMISSION_DESIGN_002.json',
+'design002.md':W/'intermediate-release-admission-design-001/INTERMEDIATE_ADMISSION_DESIGN_002.md',
+'accepted-design-review002.json':W/'intermediate-release-admission-design-001/INDEPENDENT_INTERMEDIATE_DESIGN_REVIEW_002.json',
+'counterexamples001.json':W/'D177_STAGED_STRUCTURAL_COUNTEREXAMPLES_001.json',
+'coordination007.md':W/'COORDINATION_CODE_CORRECTION_BEFORE_GATE_007.md',
+'coordination006.md':W/'COORDINATION_D177_INTEGRATION_REQUEST_006.md',
+'frozen18-manifest.json':W/'successor-candidate-001/INTEGRATED_CODE_MANIFEST_001.json',
+'actual-intermediate-release008.json':Path(r'D:\Aenv\pro2\resume-2026-09-28-001\controller-release-008-proposal017.json')}
+inputs={name:read(path) for name,path in paths.items()}
+require(sha(inputs['actor-controller.source'][0])=='a5ca433fb4a49d6e516c8da91c7fe546dce520ab3c153c1c9ef754640adadf11','actor controller changed from assigned snapshot')
+require(sha(inputs['actor-tests.source'][0])=='07f075f4d6794231fd803f17f80533a88ad4f8a59812b2f168f02fa5b3c8e6b3','actor test changed from assigned snapshot')
+base_tests=git('cat-file','blob',head_before+':tests/test_week8_exp2a_recovery.py')
+base_controller=git('cat-file','blob',head_before+':src/bu/experiments/week8_exp2a_recovery.py')
+def defs(data):
+    return {n.name:n for n in ast.parse(data).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+old=defs(base_tests);actor=defs(inputs['actor-tests.source'][0]);ours=defs(inputs['frozen18-tests.source'][0])
+added=sorted(set(actor)-set(old),key=lambda name:actor[name].lineno)
+added_tests=[name for name in added if name.startswith('test_')]
+require(len(added_tests)==7,'actor added-test count differs')
+changed=[name for name in old if name in actor and ast.dump(old[name],include_attributes=False)!=ast.dump(actor[name],include_attributes=False)]
+base_source_defs=defs(base_controller);actor_source_defs=defs(inputs['actor-controller.source'][0]);ours_source_defs=defs(inputs['frozen18-controller.source'][0])
+git_head_after=git('rev-parse','HEAD').decode('ascii').strip();require(git_head_after==head_before,'HEAD drifted during capture')
+for name,path in paths.items():require(read(path)==inputs[name],'input drifted during capture')
+read(GIT,GIT_SHA)
+require(not ROOT.exists(),'create-once review inputs already exist')
+ROOT.mkdir()
+with (ROOT/'READONLY_SOURCE_CAPTURE_001.py').open('xb') as stream:stream.write(_REVIEW_CAPTURE_BYTES)
+rows={}
+for name,(data,identity) in inputs.items():
+    with (ROOT/name).open('xb') as stream:stream.write(data)
+    require(read(ROOT/name)[0]==data,'review source copy differs')
+    rows[name]={'source_path':str(paths[name]),'sha256':sha(data),'size':len(data),'identity':identity}
+for name,data in {'head597-gate007-tests.source':base_tests,'head597-gate007-controller.source':base_controller}.items():
+    with (ROOT/name).open('xb') as stream:stream.write(data)
+    rows[name]={'git_commit':head_before,'sha256':sha(data),'size':len(data)}
+summary={'schema_version':1,'record_type':'readonly_D177_integration_source_capture','created_at_utc':datetime.now(timezone.utc).isoformat(),
+'head_before':head_before,'head_after':git_head_after,'observations_match':True,'inputs':rows,
+'base_test_count_AST':len([n for n in old if n.startswith('test_')]),'actor_test_count_AST':len([n for n in actor if n.startswith('test_')]),
+'ours_test_count_AST':len([n for n in ours if n.startswith('test_')]),'actor_added_test_names':added_tests,'actor_added_helper_names':[n for n in added if not n.startswith('test_')],
+'actor_modified_existing_definition_ASTs':changed,'actor_removed_existing_definition_names':sorted(set(old)-set(actor)),
+'ours_missing_actor_added_test_names':[n for n in added_tests if n not in ours],
+'actor_added_source_function_names':sorted(set(actor_source_defs)-set(base_source_defs),key=lambda n:actor_source_defs[n].lineno),
+'actor_changed_existing_source_function_ASTs':[n for n in base_source_defs if n in actor_source_defs and ast.dump(base_source_defs[n],include_attributes=False)!=ast.dump(actor_source_defs[n],include_attributes=False)],
+'actor_policy_symbols_absent_from_frozen18':[n for n in sorted(set(actor_source_defs)-set(base_source_defs)) if n not in ours_source_defs],
+'added_tests':{n:{'line':actor[n].lineno,'end_line':actor[n].end_lineno,'AST_sha256':sha(ast.dump(actor[n],include_attributes=False).encode('utf-8')),'decorator_count':len(actor[n].decorator_list)} for n in added_tests},
+'readonly_Git_sha256':GIT_SHA,'Git_optional_locks':'0','Git_stderr_empty':True,'project_code_imported_or_executed':False,'tests_run':False,'Git_mutation':False,'source_mutation':False}
+data=json.dumps(summary,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False).encode('ascii')+b'\n'
+with (ROOT/'SOURCE_CAPTURE_MANIFEST_001.json').open('xb') as stream:stream.write(data)
+print(json.dumps({key:summary[key] for key in ('head_before','head_after','actor_added_test_names','actor_added_helper_names','actor_modified_existing_definition_ASTs','ours_missing_actor_added_test_names','actor_added_source_function_names','actor_changed_existing_source_function_ASTs')}))
+print(json.dumps({'capture_manifest_sha256':sha(data),'gate007_committed_test_sha256':sha(base_tests),'gate007_committed_controller_sha256':sha(base_controller),'input_hashes':{n:r['sha256'] for n,r in rows.items()}},sort_keys=True))

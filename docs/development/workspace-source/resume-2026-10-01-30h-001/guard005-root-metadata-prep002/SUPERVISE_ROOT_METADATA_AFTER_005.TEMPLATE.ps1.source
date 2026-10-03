@@ -1,0 +1,120 @@
+param([Parameter(Mandatory=$true)][string]$ExpectedSelfSha256,[Parameter(Mandatory=$true)][string]$ExpectedAuthorizationSha256)
+$ErrorActionPreference = 'Stop'
+$BoundScriptSha256 = $null
+$BoundReviewSha256 = $null
+$Prep = 'D:\Aenv\pro2\resume-2026-10-01-30h-001\guard005-root-metadata-prep002'
+$Python = 'D:\Aenv\pro2\runtimes\week8-python313-frozen-001\python.exe'
+$Script = Join-Path $Prep 'capture-guard005-root-metadata.BOUND.py'
+$Review = Join-Path $Prep 'INDEPENDENT_BOUND_METADATA_REVIEW_005.json'
+$Auth = Join-Path $Prep 'ROOT_METADATA_AUTHORIZATION_AFTER_005.json'
+$Start = Join-Path $Prep 'ROOT_METADATA_PARENT_START_AFTER_005.json'
+$Terminal = Join-Path $Prep 'ROOT_METADATA_PARENT_TERMINAL_AFTER_005.json'
+$Stdout = Join-Path $Prep 'ROOT_METADATA_PARENT_STDOUT_AFTER_005.txt'
+$Stderr = Join-Path $Prep 'ROOT_METADATA_PARENT_STDERR_AFTER_005.txt'
+function Pin([string]$Path,[string]$Expected,[long]$Cap) {
+    if ($Expected -cnotmatch '^[0-9a-f]{64}$') { throw 'Invalid exact pin' }
+    $item = Get-Item -LiteralPath $Path -Force
+    if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.Length -gt $Cap) { throw 'Nonplain or oversized input' }
+    $stream = [IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    try {
+        if ($stream.Length -ne $item.Length -or $stream.Length -gt $Cap) { throw 'Opened input size differs' }
+        $memory = [IO.MemoryStream]::new()
+        try {
+            $buffer = [byte[]]::new(4096)
+            do {
+                $count = $stream.Read($buffer,0,$buffer.Length)
+                if ($memory.Length + $count -gt $Cap) { throw 'Opened input cap exceeded' }
+                $memory.Write($buffer,0,$count)
+            } while ($count -gt 0)
+            $bytes = $memory.ToArray()
+        } finally { $memory.Dispose() }
+    } finally { $stream.Dispose() }
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try { $hash = [BitConverter]::ToString($hasher.ComputeHash($bytes)).Replace('-','').ToLowerInvariant() } finally { $hasher.Dispose() }
+    $last = Get-Item -LiteralPath $Path -Force
+    if ($hash -cne $Expected -or $bytes.Length -ne $item.Length -or $item.Length -ne $last.Length -or $item.LastWriteTimeUtc.Ticks -ne $last.LastWriteTimeUtc.Ticks -or $item.CreationTimeUtc.Ticks -ne $last.CreationTimeUtc.Ticks -or $item.Attributes -ne $last.Attributes) { throw 'Input pin or metadata drift' }
+    return ,$bytes
+}
+function Write-Once([string]$Path,$Record) {
+    $bytes = [Text.UTF8Encoding]::new($false).GetBytes(($Record | ConvertTo-Json -Compress -Depth 8) + "`n")
+    if ($bytes.Length -gt 65536) { throw 'Parent receipt cap' }
+    $stream = [IO.File]::Open($Path,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+    try { $stream.Write($bytes,0,$bytes.Length); $stream.Flush($true) } finally { $stream.Dispose() }
+}
+if ($BoundScriptSha256 -isnot [string] -or $BoundScriptSha256 -cnotmatch '^[0-9a-f]{64}$' -or $BoundReviewSha256 -isnot [string] -or $BoundReviewSha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'UNBOUND metadata source/review pins' }
+if ([IO.Path]::GetFullPath($PSCommandPath) -cne (Join-Path $Prep 'SUPERVISE_ROOT_METADATA_AFTER_005.BOUND.ps1')) { throw 'Fixed supervisor path required' }
+[void](Pin $PSCommandPath $ExpectedSelfSha256 65536)
+[void](Pin $Python '5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed' 105816)
+[void](Pin $Script $BoundScriptSha256 65536)
+[void](Pin $Review $BoundReviewSha256 65536)
+$authBytes = Pin $Auth $ExpectedAuthorizationSha256 65536
+foreach ($path in @($Start,$Terminal,$Stdout,$Stderr,(Join-Path $Prep 'phase-after-005'))) {
+    try { [void](Get-Item -LiteralPath $path -Force -ErrorAction Stop); throw 'One-use metadata namespace exists' }
+    catch [System.Management.Automation.ItemNotFoundException] { }
+}
+$authRecord = [Text.Encoding]::UTF8.GetString($authBytes) | ConvertFrom-Json
+$now = [DateTimeOffset]::UtcNow
+$authAge = ($now - [DateTimeOffset]::Parse($authRecord.created_utc)).TotalSeconds
+if ($authAge -lt 0 -or $authAge -gt 600 -or ([DateTimeOffset]::Parse('2026-10-02T22:36:15Z') - $now).TotalSeconds -lt 350) { throw 'Fresh authorization and owner reserve required' }
+$info = [Diagnostics.ProcessStartInfo]::new()
+$info.FileName = $Python
+$info.Arguments = '-I -S -B -X utf8 "' + $Script + '" --phase after --expected-script-sha256 ' + $BoundScriptSha256 + ' --expected-review-sha256 ' + $BoundReviewSha256 + ' --expected-authorization-sha256 ' + $ExpectedAuthorizationSha256
+$info.WorkingDirectory = $Prep
+$info.UseShellExecute = $false
+$info.CreateNoWindow = $true
+$info.RedirectStandardInput = $true
+$info.RedirectStandardOutput = $true
+$info.RedirectStandardError = $true
+foreach ($name in @($info.EnvironmentVariables.Keys)) { if ($name -match '^(PYTHON|GIT_)') { $info.EnvironmentVariables.Remove($name) } }
+$info.EnvironmentVariables['PYTHONDONTWRITEBYTECODE']='1'
+foreach ($name in @('OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','NUMEXPR_NUM_THREADS','VECLIB_MAXIMUM_THREADS','BLIS_NUM_THREADS')) { $info.EnvironmentVariables[$name]='1' }
+$process = [Diagnostics.Process]::new()
+$process.StartInfo = $info
+$outFile = $null; $errFile = $null; $watch = [Diagnostics.Stopwatch]::new()
+$started = $false; $reaped = $false; $drained = $false; $overflow = $false; $timedOut = $false; $failure = $null; $code = $null; $outBytes = 0; $errBytes = 0
+Write-Once $Start ([ordered]@{schema_version=1;created_utc=$now.ToString('o');phase='after';authorization_sha256=$ExpectedAuthorizationSha256;supervisor_sha256=$ExpectedSelfSha256;metadata_only=$true;consumed=$true})
+try {
+    $outFile = [IO.File]::Open($Stdout,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+    $errFile = [IO.File]::Open($Stderr,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+    $watch.Start()
+    if (-not $process.Start()) { throw 'Metadata direct child failed to start' }
+    $started = $true
+    $process.StandardInput.Close()
+    $outBuffer = [byte[]]::new(4096); $errBuffer = [byte[]]::new(4096)
+    $outTask = $process.StandardOutput.BaseStream.ReadAsync($outBuffer,0,4096)
+    $errTask = $process.StandardError.BaseStream.ReadAsync($errBuffer,0,4096)
+    $outDone = $false; $errDone = $false
+    while (-not ($reaped -and $outDone -and $errDone)) {
+        foreach ($channel in @('out','err')) {
+            $task = if ($channel -ceq 'out') { $outTask } else { $errTask }
+            $done = if ($channel -ceq 'out') { $outDone } else { $errDone }
+            if (-not $done -and $task.IsCompleted) {
+                $count = $task.GetAwaiter().GetResult()
+                if ($count -eq 0) { if ($channel -ceq 'out') { $outDone=$true } else { $errDone=$true } }
+                else {
+                    $used = if ($channel -ceq 'out') { $outBytes } else { $errBytes }
+                    $keep = [Math]::Min($count,65536-$used)
+                    if ($channel -ceq 'out') { $outFile.Write($outBuffer,0,$keep); $outBytes += $keep; $outTask=$process.StandardOutput.BaseStream.ReadAsync($outBuffer,0,4096) }
+                    else { $errFile.Write($errBuffer,0,$keep); $errBytes += $keep; $errTask=$process.StandardError.BaseStream.ReadAsync($errBuffer,0,4096) }
+                    if ($keep -lt $count) { $overflow=$true }
+                }
+            }
+        }
+        if (($overflow -or $watch.Elapsed.TotalSeconds -ge 300) -and -not $process.HasExited) { $timedOut=($watch.Elapsed.TotalSeconds -ge 300); $process.Kill() }
+        if ($process.HasExited) { $reaped=$true; $code=$process.ExitCode }
+        if ($watch.Elapsed.TotalSeconds -ge 315) { throw 'Metadata parent cooperative capture/reap budget exhausted' }
+        Start-Sleep -Milliseconds 20
+    }
+    $drained=$true
+} catch { $failure=$_.Exception.Message }
+finally {
+    if ($started -and -not $reaped) {
+        try { if (-not $process.HasExited) { $process.Kill() }; $reaped=$process.WaitForExit(1000); if ($reaped) { $code=$process.ExitCode } }
+        catch { $failure=([string]$failure)+'; direct child cleanup unproved' }
+    }
+    if ($null -ne $outFile) { $outFile.Dispose() }
+    if ($null -ne $errFile) { $errFile.Dispose() }
+    $process.Dispose()
+    Write-Once $Terminal ([ordered]@{schema_version=1;finished_utc=[DateTimeOffset]::UtcNow.ToString('o');phase='after';exit_code=$code;timed_out=$timedOut;capture_overflow=$overflow;capture_drain_complete=$drained;direct_child_reaped=$reaped;failure=$failure;stdout_bytes=$outBytes;stderr_bytes=$errBytes;authorization_sha256=$ExpectedAuthorizationSha256;supervisor_sha256=$ExpectedSelfSha256;metadata_only=$true;spent=$true;whole_inventory_trees_observed=0;target_tests_executed=$false;operational_authority_granted=$false;descendant_cleanup_guaranteed=$false;OS_Job_hard_memory_bound=$false})
+}
+if ($timedOut -or $overflow -or $failure -or -not $drained -or -not $reaped -or $code -ne 0) { throw 'Metadata first entry refused; preserve every output; never replay' }

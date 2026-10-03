@@ -1,0 +1,133 @@
+"""Freeze own staged metadata/hand-off; no target namespace or process execution."""
+import ast,collections,difflib,hashlib,json,os,stat
+from datetime import datetime,timezone
+from pathlib import Path
+stage=Path(__file__).absolute().parent
+work=stage.parent
+def digest(data):return hashlib.sha256(data).hexdigest()
+def win(path):
+ path=str(path)
+ return Path(path if path.startswith('\\\\?\\')else'\\\\?\\'+path)
+def observe(path,expected=None):
+ path=win(path);start=path.lstat()
+ assert stat.S_ISREG(start.st_mode)and start.st_nlink==1 and not start.st_file_attributes&1024,path
+ names=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')
+ raw=lambda item:[getattr(item,key)for key in names]
+ p=raw(start)
+ with path.open('rb')as f:
+  opened=os.fstat(f.fileno());fraw=raw(opened)
+  assert p[:4]+p[5:]==fraw[:4]+fraw[5:]and p[4]==p[8],path
+  data=f.read(p[2]+1)
+  assert raw(os.fstat(f.fileno()))==fraw,path
+ assert raw(path.lstat())==p and len(data)==p[2],path
+ record={'bytes':len(data),'sha256':digest(data),'path_raw9':p,'descriptor_raw9':fraw}
+ if expected is not None:assert record==expected,path
+ return data,record
+def once(relative,value):
+ path=stage/relative
+ if type(value)is bytes:data=value
+ elif type(value)is str:data=value.encode('utf8')
+ else:data=(json.dumps(value,sort_keys=True,indent=2)+'\n').encode('ascii')
+ with path.open('xb')as f:f.write(data)
+ return observe(path)[1]
+preservation=json.loads(observe(stage/'PRESERVATION_BEFORE_IMPLEMENTATION_002.json')[0])
+assert preservation['pair_count']==len(preservation['pairs'])==912
+def pairs_pass():
+ rows=[]
+ for pair in preservation['pairs']:
+  original=observe(pair['original'],pair['original_observation'])[1]
+  copy=observe(stage/pair['copy_relative'],pair['copy_observation'])[1]
+  assert original['sha256']==copy['sha256']==pair['sha256']and original['bytes']==pair['bytes']and original['path_raw9'][1]!=copy['path_raw9'][1]
+  rows.append({'original_relative':pair['original_relative'],'sha256':pair['sha256'],'bytes':pair['bytes']})
+ return digest((json.dumps(rows,sort_keys=True,separators=(',',':'))+'\n').encode('ascii'))
+first_pair=pairs_pass()
+audit=json.loads(observe(stage/'SOURCE_SHAPE_BUDGET_TEST_AUDIT_005.json')[0])
+caller=json.loads(observe(stage/'CALLER_BOOTSTRAP_SHARED_SOURCE_AUDIT_003.json')[0])
+caps=json.loads(observe(stage/'FINITE_ACQUISITION_DERIVATION_CONTRACT_003.json')[0])
+assert len(audit['source_files'])==35 and caller['caller_count']==31
+def assign(tree):return{n.targets[0].id:n.value for n in tree.body if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)}
+def defs(tree):return{n.name:n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+def dump(node):return ast.dump(node,include_attributes=False)
+def data_ast(node,values):
+ if isinstance(node,ast.Name):return values[node.id]
+ if isinstance(node,ast.Call)and isinstance(node.func,ast.Name)and node.func.id=='frozenset':return frozenset(data_ast(node.args[0],values))
+ if isinstance(node,ast.BinOp)and isinstance(node.op,ast.BitOr):return data_ast(node.left,values)|data_ast(node.right,values)
+ return ast.literal_eval(node)
+sources=[];tests=[]
+(stage/'diffs').mkdir()
+for index,row in enumerate(audit['source_files']):
+ path=stage/row['path'];data,identity=observe(path)
+ assert row['sha256']==identity['sha256']and row['bytes']==identity['bytes'],row['path']
+ before_map=next(r for r in preservation['active_source_map']if r['active']==row['path'])
+ old=next(r for r in preservation['pairs']if r['original_relative']==before_map['before'])
+ olddata=observe(stage/old['copy_relative'],old['copy_observation'])[0]
+ detail={'path':row['path'],'bytes':len(data),'sha256':identity['sha256'],'before_sha256':old['sha256'],'unchanged':data==olddata}
+ if row['path'].endswith('.py.template')or path.suffix=='.py':
+  tree=ast.parse(data);oldtree=ast.parse(olddata);newdefs,olddefs=defs(tree),defs(oldtree)
+  assert set(olddefs)<=set(newdefs),row['path']
+  detail.update(old_source_names_retained=True,added_source_names=sorted(set(newdefs)-set(olddefs)),changed_source_names=sorted(name for name in olddefs if dump(olddefs[name])!=dump(newdefs[name])))
+  if row['path'].startswith('source/'):
+   methods={c.name+'.'+m.name:m for c in tree.body if isinstance(c,ast.ClassDef)for m in c.body if isinstance(m,ast.FunctionDef)and m.name.startswith('test_')}
+   assert len(methods)==row['method_count']
+   policies=assign(tree)
+   case={'path':row['path'],'bytes':len(data),'sha256':identity['sha256'],'named_methods':len(methods),'old_named_methods':row['old_method_count'],'old_method_names_retained':True,'old_method_ASTs_unchanged':row['old_method_ASTs_unchanged'],'changed_old_method_names':row['changed_old_method_names'],'added_method_names':row['added_method_names'],'method_AST_sha256':{name:digest(dump(node).encode())for name,node in sorted(methods.items())},'actual_case_results':None,'actual_subtest_count':None}
+   if 'NATIVE_SUBTEST_POLICY'in policies:
+    events=ast.literal_eval(policies['NATIVE_SUBTEST_POLICY']);families=ast.literal_eval(policies['NATIVE_CRITICAL_FAMILY_CASES'])
+    assert len(events)==421 and len(families)==75
+    for key,value in events.items():assert value['case_id']in methods and value['control_case_id']in methods,key
+    for family,ids in families.items():assert ids and all(name in methods for name in ids),family
+    case.update(declared_subtest_policy_count=len(events),critical_family_count=len(families),family_coverage=families,declared_subtest_counts=dict(collections.Counter(row['case_id']for row in events.values())))
+   tests.append(case)
+ if data!=olddata:
+  diff=''.join(difflib.unified_diff(olddata.decode('utf8').splitlines(keepends=True),data.decode('utf8').splitlines(keepends=True),fromfile=before_map['before'],tofile=row['path']))
+  detail['diff_path']=f'diffs/{index:02}.diff';once(detail['diff_path'],diff)
+ sources.append(detail)
+publisher=stage/'publication/publish-successor-admission-schema3-001.py.template'
+tree=ast.parse(observe(publisher)[0]);assignments=assign(tree);keysets={}
+for name in('METADATA_BASE_KEYS','METADATA_COMPLETION_KEYS','METADATA_FAILURE_KEYS'):
+ keysets[name]=data_ast(assignments[name],keysets)
+variants={ast.literal_eval(key):data_ast(value,keysets)for key,value in zip(assignments['METADATA_VARIANT_KEYS'].keys,assignments['METADATA_VARIANT_KEYS'].values)}
+variants={kind:sorted(keysets['METADATA_BASE_KEYS']|extra|{'record_digest'})for kind,extra in variants.items()}
+expected={'successor_publication_intent':18,'successor_publication_started':17,'successor_publication_complete':30,'successor_publication_failed':21,'successor_verification_intent':19,'successor_verification_started':17,'successor_verification_pass':33,'successor_verification_failed':21}
+assert {kind:len(keys)for kind,keys in variants.items()}==expected
+policy=json.loads(observe(stage/'ALL31_NORMALIZED_POLICY_001.json')[0])
+assert len(policy)==31 and len(policy['SUCCESSOR_ALLOWED_CHANGED_PATHS'])==25
+iface={'schema_version':1,'status':'AUTHOR_FROZEN_UNBOUND_PENDING_DIFFERENT_COMPLETE_REVIEW','author':'/root/bootstrap_stage','source_choice_sha256':'016705971c3da31dd9d45dff2edde4499cd6202a793750ab7b33182cdc8d2d34','guard_scope_precision_sha256':'deb779edc84f4271dbf79f12a1a90eeafde61e10cfade394ae7da87346af528c','raw004_source_sha256':'da64c4ea68e86bbcd28f7fbccd60baa765cc534afa532c14cd7cb39de782b211','raw004_source_bytes':210452,'raw004_API_required_keyword_only_count':12,'raw004_functions':85,'raw004_classes':7,'raw004_explicit_methods':36,'raw004_initializer_generators':1,'compiled_policy_names':sorted(policy),'typed_policy_bytes':32489,'typed_policy_nodes':578,'typed_policy_depth':4,'typed_policy_sha256':'dbaa86c401cd0694eab1e80392f7dfe7207fa564750e3d9adfcfb908ce00c893','attestation_schema_version':3,'attestation_exact_keys':policy['_SUCCESSOR_ATTESTATION_SCHEMA3_KEYS'],'direct_chain':['ea9c28aa82a1e8559e9c67e62b06dac7f5cea9b7','597eb048a1bc441030bfcd88b70fdf9c56f882d0','3f74b1d248e003168157e207e28ca775364f1f26',None],'compiled_middle_descriptors':json.loads(observe(stage/'COMPILED_TWO_MIDDLE_INPUTS_001.json')[0]),'compiled_middle_role_aggregate_caps':caps['fixed_compiled_pair_caps'],'operational_file_names':['attestation.json','attestation.twin.json','predecessor-release.json','successor-release.json','predecessor-candidate-manifest.json','successor-candidate-manifest.json','current-native-release-receipt.txt'],'metadata_variants':variants,'metadata_sealed_key_counts':expected,'native_binding_schema':caller['uniform_binding_schema'],'native_binding_count':44,'literal_caller_tables':21,'caller_files':31,'python_direct_capture_sites':12,'powershell_direct_capture_sites':8,'nonliteral_dependencies':9,'publication_input_hash_roles':35,'metadata_path_roles':17,'publication_provenance_roles':14,'original_V2_receipt':{'fields':8,'LF_bytes':9,'split_segments_with_terminal_empty':10,'bytes':683},'current_unbound_source_budget':audit['native_budget'],'test_preparation':{'native_named_methods':128,'native_old_names_retained':111,'native_new_methods':17,'native_declared_subtest_policy':421,'metadata_named_methods':29,'metadata_old_names_retained':24,'metadata_new_methods':5,'actual_case_results':None,'actual_cold_reuse_acceptance':None},'remaining_operational_parameters':caps['required_future_parameters'],'binding_DAG':'externally pinned common capture -> final common/test/runtime/source-validation/profile evidence -> native derivation -> publisher/verifier final bindings -> externally pinned44 caller bus; common has no future full profile/result/native-review/producer byte hash literal','strengthening':['all31 source-owned nested container identities before callbacks','bounded578-node/32489-byte fresh typed commitment before allocation','same cold/reuse code/default/annotation/import/class/method/registry checks','module name/package and uppercase namespace checks','nominal function name/qualname/module/doc text before equality','retained direct-child finite Git acquisition; operational ceiling unbound','historical exact byte caps before open/read/hash; same cached reread caps'],'guard_limitations':['no deep stdlib module attribute audit or whole loaded-site closure','Path nominal semantics retained exactly; isinstance(value,Path)','same-source first execution creates code identity; no authority-result cache','cooperative Git process/provider calls are not an unconditional deadline or descendant cleanup proof'],'execution_status':{'target_definitions_executed':False,'target_imports':False,'test_collection':False,'test_execution':False,'Git_calls':False,'FFI_calls':False,'native_calls':False,'source_binding':False,'public_action':False,'scientific_outcomes_consulted':False,'operational_authority':False},'author_qualifications':['only source/AST/inert CodeType/parser metadata checked','unbound source fits but future literal growth may exceed remaining margin','final16 paths/caps/eight OS commands/physical transport/whole Job proof are None','current D178 worktree and future final release were not selected/admitted','different full source peer and separately bounded meaningful runtime are mandatory']}
+once('BOUNDED_CLOSURE_INTERFACE_001.json',iface)
+once('SOURCE_BEFORE_AFTER_DIFF_MANIFEST_001.json',{'schema_version':1,'scope':'author staged source bytes/AST changes only','sources':sources,'source_count':35,'changed_count':sum(not row['unchanged']for row in sources),'unchanged_native_callers':30,'original_source_names_retained':True})
+once('CAUSAL_TEST_MATRIX_001.json',{'schema_version':1,'scope':'planned cases, not observed results','tests':tests,'target_code_executed':False,'actual_results':None,'limits':['schema/policy cases use real static two-middle742/263/release/commit bytes','Git/current-final/runtime/OS/CIM/evidence profiles are explicit doubles','Raw004 definitions execute only in a future independently authorized copied unit fixture; no admission/observation API called','no main entry is selected by pure schema fixtures','a new fresh driver/profile must pin all fixture captures and current source before entry; no old Native37/111 replay or producer85 elevation']})
+second_pair=pairs_pass();assert first_pair==second_pair
+once('PRESERVATION_FINAL_REOBSERVATION_001.json',{'schema_version':1,'scope':'author read-only file observations','pairs':912,'original_copy_identity_and_byte_pins_retained':True,'two_pass_digest':first_pair,'target_code_executed':False})
+handoff=f'''# Bounded Raw004 publication/native closure: staged source only
+
+The package is frozen for a different agent's complete review. It does not grant execution or native authority. The author changed only this new namespace and retained912 independent original/copy pairs. The first nested-copy failure and all intermediate drafts remain preserved.
+
+The35 sources contain31 native callers/dependencies, two publication templates and two test preparations. Thirty native caller files are byte-identical to Native003. The common, publisher and verifier now enforce schema3 with exactly two compiled historical middles and direct EA9→597→3f74→future-final edges, four fresh complete742-row tables, canonical grouped263 QA, three finite25 final diffs, and independently acquired middle release/commit/QA bytes. No directory scan or arbitrary ancestry rule is used. The seven I/O names,12 raw API arguments,44-field bus,35 input hash roles,17 metadata paths and eight sealed metadata keysets are retained.
+
+Native policy capture preserves all31 typed facts in32489 bytes/578 nodes. Its source-owned container identities and finite domains precede iteration/callbacks and serialization. The cold/reuse guard retains named code, defaults, annotations, class/method/property, imported aliases and registry checks. Exact function name/qualname/module/doc text is checked before equality. Path nominal semantics remain unchanged. The new finite Git reader retains its direct process handle and caps buffers before extension; its ceiling is deliberately None until a reviewed derivation selects all command-role bounds. Its30-second cooperative wait and one-second retained-child reap do not prove descendant cleanup or a kernel/provider deadline.
+
+The current unbound common is{audit['native_budget']['common_bytes']} bytes, growth{audit['native_budget']['growth_from178586']} from178586, leaving{audit['native_budget']['source_headroom']} source bytes. At the maximum encoded binding token it makes a{audit['native_budget']['canonical_frame_bytes_at_max_binding']}-byte canonical frame, leaving{audit['native_budget']['frame_headroom']} bytes. This margin is not approval of future literal growth: selected paths/caps may exceed it. All16 path selections, eight quoted OS commands, actual capture witnesses, final cap parity and physical whole-Job evidence remain None. The262142/262144/262145 frame,16384 encoded/12288 decoded bindings,8191 physical argv,383105 readiness,395799 raw ingress and361287 private schema3 limits are unchanged.
+
+All111 Native003 and24 grammar005 test names are retained. The active files have128 native and29 metadata named methods;75 native families and421 declared subtest events are policy data, not observed results. New cases cover all31 replacements, nested callback traps, exact type/metaclass refusal, finite budgets, zero-sized rows, both historical middle reconstructions, three final edges, ordered role-pair hashes, unbound Git refusal, historical pre-read caps, and cold/reused foreign function metadata. Old M02's stale textual assertion is corrected; current Raw004 fixtures use85 functions/7 classes/one initializer generator. Historical Raw00381-function evidence remains preserved. Schema/lineage tests use actual pinned static historical bytes; current Git/final/runtime/OS/CIM/native-profile observations are explicit doubles. A separately reviewed fresh runtime/profile is required.
+
+Author checks: AST and inert CodeType metadata for the new Python sources and authenticated Raw004,15 PowerShell parses with zero errors, shared frame decoder AST equality, GetCommandLineW-before-frame/internal-argv/source order,21 literal44 tables,12 Python and8 direct PowerShell capture sites,9 forwarders,74 shared publisher/verifier function/class ASTs, no direct required-keyword gaps, and paired provenance reobservations. Target definitions/imports/tests/Git/FFI/native/binding/production/public/scientific actions were not executed. Own metadata utilities were run; they only parsed, compiled inert metadata, derived bytes or composed this staged package. Their refused metadata attempts are preserved and must not be mistaken for test failures or successful target runs.
+
+Read BOUNDED_CLOSURE_INTERFACE_001.json, SOURCE_SHAPE_BUDGET_TEST_AUDIT_005.json, CALLER_BOOTSTRAP_SHARED_SOURCE_AUDIT_003.json, FINITE_ACQUISITION_DERIVATION_CONTRACT_003.json, SOURCE_BEFORE_AFTER_DIFF_MANIFEST_001.json and CAUSAL_TEST_MATRIX_001.json. The historical Git batch-response bounds are11400277/11426854/11475344 bytes; fixed three pair-role caps are587/6030/62694. Final25 file caps, final commit/status/stderr limits and all17/35/7 operational metadata selections are unbound. Finite source semantics and actual behavioral closure require independent review and real bounded healthy/negative/restored controls; current D178, final release, source application and native GO are not admitted.
+
+The author now stops. ROOT owns any future binding or first entry, after complete different-agent review, resource/clock/coordination checks and genuine actual evidence. Frozen predecessors, spent runs, twins, science, original reserves and all current live bytes remain untouched.
+'''
+once('HANDOFF.md',handoff)
+third_pair=pairs_pass();assert first_pair==third_pair
+files=[]
+for path in sorted(win(stage).rglob('*')):
+ if path.is_file():
+  data,identity=observe(path)
+  relative=path.relative_to(win(stage)).as_posix()
+  files.append({'path':relative,'bytes':len(data),'sha256':identity['sha256']})
+assert all(row['path']!='STAGED_MANIFEST_001.json'for row in files)
+manifest={'schema_version':1,'status':'AUTHOR_FROZEN_UNBOUND_PENDING_DIFFERENT_COMPLETE_REVIEW','author':'/root/bootstrap_stage','created_at_utc':datetime.now(timezone.utc).isoformat(),'payload_file_count':len(files),'total_with_manifest':len(files)+1,'files':files,'source_count':35,'native_caller_count':31,'original_copy_pairs':912,'source_budget':audit['native_budget'],'native_named_methods':128,'metadata_named_methods':29,'native_declared_subtest_policy':421,'actual_results':None,'actual_bindings':None,'target_code_executed':False,'operational_authority':False,'preservation_three_pass_digest':third_pair}
+manifest_identity=once('STAGED_MANIFEST_001.json',manifest)
+for row in files:
+ actual=observe(stage/row['path'])[1];assert actual['sha256']==row['sha256']and actual['bytes']==row['bytes']
+assert observe(stage/'STAGED_MANIFEST_001.json')[1]==manifest_identity
+print({'manifest':manifest_identity,'payloads':len(files),'sources':35,'native_methods':128,'metadata_methods':29,'native_declared_subtests':421,'budget':audit['native_budget'],'key_sources':{row['path']:row['sha256']for row in sources if not row['unchanged']},'handoff':observe(stage/'HANDOFF.md')[1]['sha256']})

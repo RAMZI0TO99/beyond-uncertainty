@@ -1,0 +1,139 @@
+"""Planned causal stdlib-only tests; source preparation, never executed here.
+
+Future independent runtime approval must authorize loading the new checker
+definitions in an isolated namespace. This file never runs a project target.
+"""
+import copy
+import importlib.util
+import json
+from pathlib import Path
+import unittest
+from unittest.mock import patch
+
+SOURCE=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001/metadata3-actual-checker-prep001/review-metadata3-actual006.TEMPLATE.py')
+
+
+class Metadata3ActualCheckerRegressions(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec=importlib.util.spec_from_file_location('isolated_metadata3_checker_source_001',SOURCE)
+        cls.checker=importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.checker)
+
+    def recovered(self,healthy,mutation):
+        healthy()
+        with self.assertRaises((ValueError,TypeError,KeyError)):
+            mutation()
+        healthy()
+
+    def test_json_duplicate_float_nonfinite_refusals_restore_healthy(self):
+        c=self.checker;healthy=lambda:self.assertEqual(c.decode(b'{"value":1}'),{'value':1})
+        for bad in (b'{"value":1,"value":2}',b'{"value":1.0}',b'{"value":NaN}',b'{"value":1e999}',b'\xef\xbb\xbf{}'):
+            with self.subTest(bad=bad):self.recovered(healthy,lambda:c.decode(bad))
+
+    def test_primitive_identity_refuses_bool_integer_and_foreign_equality(self):
+        c=self.checker
+        class Foreign:
+            def __eq__(self,other):raise AssertionError('foreign callback entered')
+        class EqualitySentinel(type):
+            def __eq__(cls,other):raise AssertionError('foreign metaclass callback entered')
+        class ForeignType(metaclass=EqualitySentinel):pass
+        for left,right in ((1,True),({'files':1},{'files':True}),([1],[True]),(Foreign(),Foreign()),(ForeignType(),ForeignType())):
+            with self.subTest(left_type=type(left).__name__):
+                self.assertTrue(c.typed_equal({'files':1},{'files':1}))
+                self.assertFalse(c.typed_equal(left,right))
+                self.assertTrue(c.typed_equal({'files':1},{'files':1}))
+
+    def test_ps7_and_python6_clocks_are_distinct_and_tick_exact(self):
+        c=self.checker;healthy=lambda:c.stamp('2026-10-03T06:00:00.1234567+00:00','PS')
+        for bad in ('2026-10-03T06:00:00.123456+00:00','2026-10-03T06:00:00.12345678+00:00','2026-10-03T06:00:00.1234567Z'):
+            with self.subTest(bad=bad):self.recovered(healthy,lambda:c.stamp(bad,'PS'))
+        self.assertEqual(str(c.moment_exact('2026-10-03T06:00:00.1234568+00:00','PS')-c.moment_exact('2026-10-03T06:00:00.1234567+00:00','PS')),'1E-7')
+
+    def test_closed_auth_before_ticket_refuses_foreign_role_and_future_selection(self):
+        c=self.checker;ticket={key:None for key in c.TICKET_KEYS};pin='0'*64
+        ticket.update(schema_version=1,record_type='root_metadata_checker_input_ticket',author='/root',scope=c.SCOPE,role='auth_before',
+            path=str(c.role_path('auth_before')),sha256=pin,phase_trace_sha256=pin,root_trust_sha256=pin)
+        healthy=lambda:c.ticket_check('auth_before',ticket,pin)
+        for key,value in (('schema_version',True),('author','/root/actual_record_checker'),('path',str(c.PREP/'other.json')),('context_sha256',pin)):
+            bad=copy.deepcopy(ticket);bad[key]=value
+            with self.subTest(key=key):self.recovered(healthy,lambda:c.ticket_check('auth_before',bad,pin))
+        bad=copy.deepcopy(ticket);bad['unknown']=True
+        self.recovered(healthy,lambda:c.ticket_check('auth_before',bad,pin))
+
+    def stream_fixture(self):
+        c=self.checker;id='isolated_consumer_guard_unit006.RawConsumerGuardRegressions.test_fixture'
+        wire=c.encoded({'event':'start','id':id})+c.encoded({'event':'success','id':id})
+        event=dict(role='events',chunks=[dict(ordinal=0,path='events-00.bin',bytes=len(wire),sha256=c.digest(wire))],bytes=len(wire),rows=2,
+                   maximum_chunks=32,maximum_chunk_bytes=131072,maximum_stream_bytes=4194304)
+        diagnostics=dict(role='diagnostics',chunks=[],bytes=0,rows=0,maximum_chunks=32,maximum_chunk_bytes=131072,maximum_stream_bytes=4194304)
+        result=dict(event_manifest=event,diagnostic_manifest=diagnostics,event_count=2)
+        def reader(path,pin=None,cap=2097152,runtime=False):
+            c.need(path==c.RUNS/'events-00.bin' and pin==c.digest(wire) and cap==len(wire),'fixture complete pinned compiled chunk')
+            return wire,{}
+        return result,reader
+
+    def test_chunk_rows_and_manifest_refusals_restore_complete_healthy(self):
+        c=self.checker;result,reader=self.stream_fixture()
+        with patch.object(c,'read',reader):
+            healthy=lambda:self.assertEqual(len(c.event_streams(result)[0]),2)
+            for key,value in (('bytes',True),('rows',3),('maximum_chunks',33)):
+                bad=copy.deepcopy(result);bad['event_manifest'][key]=value
+                with self.subTest(key=key):self.recovered(healthy,lambda:c.event_streams(bad))
+            for key,value in (('ordinal',True),('path','../events-00.bin'),('sha256','1'*64),('bytes',131073)):
+                bad=copy.deepcopy(result);bad['event_manifest']['chunks'][0][key]=value
+                with self.subTest(key=key):self.recovered(healthy,lambda:c.event_streams(bad))
+
+    def test_combined_chunks_and_bytes_are_rejected_before_any_read(self):
+        c=self.checker;result,reader=self.stream_fixture();healthy=lambda:self.assertEqual(len(c.event_streams(result)[0]),2)
+        with patch.object(c,'read',reader):healthy()
+        bad=copy.deepcopy(result);bad['event_manifest']['bytes']=4194304;bad['diagnostic_manifest']['bytes']=1
+        with patch.object(c,'read',side_effect=AssertionError('premature read')):
+            with self.assertRaises(ValueError):c.event_streams(bad)
+        bad=copy.deepcopy(result);bad['event_manifest']['chunks']*=32;bad['diagnostic_manifest']['chunks']=[{}]
+        with patch.object(c,'read',side_effect=AssertionError('premature read')):
+            with self.assertRaises(ValueError):c.event_streams(bad)
+        with patch.object(c,'read',reader):healthy()
+
+    def test_failure_diagnostics_never_become_healthy_acceptance(self):
+        c=self.checker;result,reader=self.stream_fixture()
+        with patch.object(c,'read',reader):self.assertEqual(len(c.event_streams(result)[0]),2)
+        bad=copy.deepcopy(result);bad['event_count']=3
+        with patch.object(c,'read',reader):
+            with self.assertRaises(ValueError):c.event_streams(bad)
+            self.assertEqual(len(c.event_streams(result)[0]),2)
+
+    def test_complete_failure_diagnostics_are_preserved_and_refused(self):
+        c=self.checker;healthy,reader=self.stream_fixture()
+        with patch.object(c,'read',reader):self.assertEqual(len(c.event_streams(healthy)[0]),2)
+        text=b'complete assertion failure, including tail byte X'
+        id='isolated_consumer_guard_unit006.RawConsumerGuardRegressions.test_fixture'
+        wire=c.encoded({'event':'start','id':id})+c.encoded({'event':'failure','id':id,'diagnostic':{'offset':0,'bytes':len(text),'sha256':c.digest(text)}})
+        bad=copy.deepcopy(healthy);bad['event_manifest']['chunks'][0].update(bytes=len(wire),sha256=c.digest(wire));bad['event_manifest']['bytes']=len(wire)
+        bad['diagnostic_manifest'].update(chunks=[dict(ordinal=0,path='diagnostics-00.bin',bytes=len(text),sha256=c.digest(text))],bytes=len(text))
+        captured=[]
+        def diagnostic_reader(path,pin=None,cap=2097152,runtime=False):
+            value=wire if path==c.RUNS/'events-00.bin' else text
+            c.need(pin==c.digest(value) and cap==len(value),'full declared diagnostics fixture bytes');captured.append(value)
+            return value,{}
+        with patch.object(c,'read',diagnostic_reader):
+            with self.assertRaisesRegex(ValueError,'healthy acceptance contains no diagnostic failure payload'):c.event_streams(bad)
+        self.assertIn(text,captured)
+        with patch.object(c,'read',reader):self.assertEqual(len(c.event_streams(healthy)[0]),2)
+
+    def test_original600_expiry_is_not_replaced_by_after_capture(self):
+        c=self.checker;stamp='2026-10-03T06:00:00.000000+00:00'
+        runtime={'context_selection':dict(path=str(c.PREP/'phase-before-003/OPAQUE_CURRENT_CONTEXT_003.json'),sha256='0'*64),'captured_utc':stamp}
+        context={'captured_utc':stamp};args=type('Args',(),{'context_sha256':'0'*64,'runtime_sha256':'1'*64})()
+        def reader(path,pin=None,cap=2097152,runtime=False):return c.encoded(context if path.name.startswith('OPAQUE') else globals_runtime),{}
+        globals_runtime=runtime
+        with patch.object(c,'read',reader),patch.object(c,'runtime_check',lambda *args:None):
+            base=c.moment_exact(stamp,'Py')
+            with patch.object(c,'now_exact',lambda:base+599):self.assertEqual(c.original_before(args,{})[2],1)
+            with patch.object(c,'now_exact',lambda:base+601):
+                with self.assertRaises(ValueError):c.original_before(args,{})
+            with patch.object(c,'now_exact',lambda:base+599):self.assertEqual(c.original_before(args,{})[2],1)
+
+
+if __name__=='__main__':
+    unittest.main()

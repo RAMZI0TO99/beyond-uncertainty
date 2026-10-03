@@ -1,0 +1,167 @@
+"""UNRUN source-binding utility. No target definitions or phase actions execute.
+
+ROOT may use this only after a different author reviews the exact utility and
+source package. It creates bounded source copies, never authorization/capture.
+"""
+import argparse
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+from pathlib import Path
+
+ROOT = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\guard005-root-metadata-prep002')
+AUTHOR = '/root/bootstrap_stage'
+REVIEWERS = {'/root/window_docs', '/root/keepawake_stage', '/root/candidate_review', '/root/raw_policy_worker'}
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def ancestors(path):
+    rows = []
+    for parent in [*reversed(path.parents), path]:
+        current = parent.lstat()
+        if not stat.S_ISDIR(current.st_mode) or current.st_file_attributes & 0x400:
+            raise RuntimeError('source binding ancestor is nonplain/reparse')
+        rows.append((str(parent), current.st_dev, current.st_ino))
+    return rows
+
+
+def read(path, pin=None, cap=2097152):
+    directory_rows = ancestors(path.parent)
+    before = path.lstat()
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_file_attributes & 0x400 or not 0 <= before.st_size <= cap:
+        raise RuntimeError('source binding input is nonplain or exceeds cap')
+    with path.open('rb') as stream:
+        opened = os.fstat(stream.fileno())
+        data = stream.read(cap+1)
+        final = os.fstat(stream.fileno())
+    after = path.lstat()
+    fields = ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')
+    raw = lambda item: [getattr(item,name) for name in fields]
+    p, f = raw(before), raw(opened)
+    if directory_rows != ancestors(path.parent) or p != raw(after) or f != raw(final) or p[:4]+p[5:] != f[:4]+f[5:] or p[4] != p[8] or len(data) != before.st_size or (pin is not None and sha(data) != pin):
+        raise RuntimeError('source binding bytes/raw-nine drift')
+    return data
+
+
+def once(path, data):
+    if path.parent != ROOT or len(data) > 2097152:
+        raise RuntimeError('finite source-binding output scope/cap differs')
+    directory_rows = ancestors(path.parent)
+    with path.open('xb') as stream:
+        stream.write(data)
+    if directory_rows != ancestors(path.parent) or read(path, sha(data)) != data:
+        raise RuntimeError('new source changed')
+
+
+def hex64(value):
+    return type(value) is str and re.fullmatch('[0-9a-f]{64}',value) is not None
+
+
+def strict(data):
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value: raise RuntimeError('duplicate source-binding record key')
+            value[key] = item
+        return value
+    def no_float(value): raise RuntimeError('source-binding float/nonfinite record')
+    return json.loads(data.decode('utf-8',errors='strict'),object_pairs_hook=pairs,parse_float=no_float,parse_constant=no_float)
+
+
+def functions(data):
+    return {node.name: ast.dump(node,include_attributes=False) for node in ast.parse(data).body if isinstance(node,ast.FunctionDef)}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--expected-self-sha256',required=True)
+    parser.add_argument('--stage',choices=('python','powershell'),required=True)
+    parser.add_argument('--expected-preparer-peer-sha256')
+    parser.add_argument('--expected-bound-review-sha256')
+    args = parser.parse_args()
+    own = Path(__file__).absolute()
+    if own != ROOT/'BIND_SOURCE_AND_PHASES_002.TEMPLATE.py' or not hex64(args.expected_self_sha256):
+        raise RuntimeError('fixed reviewed source binder and external self pin required')
+    read(own,args.expected_self_sha256,65536)
+    plan = strict(read(ROOT/'SOURCE_BINDING_PLAN_002.json'))
+    template = read(ROOT/'capture-guard005-root-metadata.TEMPLATE.py',cap=65536)
+    if args.stage == 'python':
+        if not hex64(args.expected_preparer_peer_sha256) or args.expected_bound_review_sha256 is not None:
+            raise RuntimeError('exact reviewed peer pin required for Python source stage')
+        peer = strict(read(ROOT/'INDEPENDENT_METADATA_STATIC_REVIEW_005.json',args.expected_preparer_peer_sha256))
+        if peer.get('reviewer') not in REVIEWERS or peer.get('reviewer') in (AUTHOR,'/root','root','bootstrap_stage') or peer.get('verdict') != 'PASS_STATIC_METADATA_PREPARATION_ONLY':
+            raise RuntimeError('different-author metadata source peer required')
+        bindings = dict(plan['bindings'])
+        bindings['preparer_static_review_sha256'] = args.expected_preparer_peer_sha256
+        if len(bindings) != 9 or not all(hex64(value) for value in bindings.values()):
+            raise RuntimeError('nine exact source-binding pins required')
+        replacements = dict(plan['role_selections'],BINDINGS=bindings)
+        text = template.decode('utf-8')
+        lines = text.splitlines(keepends=True)
+        nodes = {node.targets[0].id: node.value for node in ast.parse(template).body if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in replacements}
+        if set(nodes) != set(replacements) or len(replacements) != 4:
+            raise RuntimeError('four original top-level binding assignments required')
+        edits = []
+        original_spans = {}
+        for name,node in nodes.items():
+            old = ast.literal_eval(node)
+            if name=='BINDINGS' and (set(old)!=set(bindings) or any(value is not None for value in old.values())) or name!='BINDINGS' and old is not None:
+                raise RuntimeError('only original None source slots may bind')
+            start=sum(map(len,lines[:node.lineno-1]))+node.col_offset
+            end=sum(map(len,lines[:node.end_lineno-1]))+node.end_col_offset
+            edits.append((start,end,repr(replacements[name]),text[start:end]))
+            original_spans[name] = text[start:end]
+        for start,end,new,old in sorted(edits,reverse=True): text=text[:start]+new+text[end:]
+        bound=text.encode('utf-8')
+        if functions(bound)!=functions(template): raise RuntimeError('source functions changed during binding')
+        tree=ast.parse(bound)
+        reverse_edits=[]
+        bound_lines=text.splitlines(keepends=True)
+        for node in tree.body:
+            if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in replacements:
+                start=sum(map(len,bound_lines[:node.value.lineno-1]))+node.value.col_offset
+                end=sum(map(len,bound_lines[:node.value.end_lineno-1]))+node.value.end_col_offset
+                original=original_spans[node.targets[0].id]
+                reverse_edits.append((start,end,original))
+        reverse=text
+        for start,end,value in sorted(reverse_edits,reverse=True): reverse=reverse[:start]+value+reverse[end:]
+        if reverse.encode('utf-8')!=template: raise RuntimeError('exact nine-plus-three binding byte reversal differs')
+        once(ROOT/'capture-guard005-root-metadata.BOUND.py',bound)
+        once(ROOT/'ACTUAL_SOURCE_BINDING_002.json',(json.dumps(dict(schema_version=1,binder='/root',template_sha256=sha(template),actual_script_sha256=sha(bound),bindings=bindings,role_selections=plan['role_selections'],exact_four_assignment_reversal=True,exact17_function_ASTs=True,actual_before_authorization=None,actual_after_authorization=None,target_capture_executed=False),sort_keys=True,indent=2)+'\n').encode('ascii'))
+    else:
+        if not hex64(args.expected_bound_review_sha256) or args.expected_preparer_peer_sha256 is not None:
+            raise RuntimeError('actual different-author bound source review pin required for PS stage')
+        bound=read(ROOT/'capture-guard005-root-metadata.BOUND.py',cap=65536)
+        review=strict(read(ROOT/'INDEPENDENT_BOUND_METADATA_REVIEW_005.json',args.expected_bound_review_sha256,65536))
+        source_binding=strict(read(ROOT/'ACTUAL_SOURCE_BINDING_002.json',cap=65536))
+        expected_review_keys={'actual_script_sha256','metadata_only','phase_set','record_type','reviewer','schema_version','source_author','source_bindings','verdict'}
+        if type(review) is not dict or set(review)!=expected_review_keys or type(review.get('schema_version')) is not int or review['schema_version']!=1 or review.get('record_type')!='guard005_root_metadata_bound_source_review' or review.get('phase_set')!=['before','after'] or review.get('source_bindings')!=source_binding['bindings'] or source_binding['actual_script_sha256']!=sha(bound) or review.get('actual_script_sha256')!=sha(bound) or review.get('verdict')!='PASS_STATIC_BOUND_METADATA_ONLY' or review.get('reviewer') not in REVIEWERS or review.get('source_author')!=AUTHOR or review.get('metadata_only') is not True:
+            raise RuntimeError('exact different bound-source review required')
+        records=[]
+        for name in ('WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005','SUPERVISE_ROOT_METADATA_BEFORE_005','WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_005','SUPERVISE_ROOT_METADATA_AFTER_005'):
+            original=read(ROOT/(name+'.TEMPLATE.ps1'),cap=65536)
+            text=original.decode('utf-8')
+            slots={'BoundScriptSha256':sha(bound),'BoundReviewSha256':args.expected_bound_review_sha256}
+            for key,pin in slots.items():
+                pattern='(?m)^\\$'+key+r' = \$null\r?$'
+                if len(re.findall(pattern,text))!=1: raise RuntimeError('exact two PS source pin slots required')
+                text=re.sub(pattern,lambda match:'$'+key+" = '"+pin+"'"+ ('\r' if match.group().endswith('\r') else ''),text)
+            reverse=text
+            for key in slots:
+                pattern='(?m)^\\$'+key+r" = '[0-9a-f]{64}'\r?$"
+                reverse=re.sub(pattern,lambda match:'$'+key+' = $null'+ ('\r' if match.group().endswith('\r') else ''),reverse)
+            if reverse.encode('utf-8')!=original: raise RuntimeError('PS two-literal byte reversal differs')
+            data=text.encode('utf-8')
+            once(ROOT/(name+'.BOUND.ps1'),data)
+            records.append(dict(path=str(ROOT/(name+'.BOUND.ps1')),sha256=sha(data),template_sha256=sha(original),exact_two_literal_reversal=True))
+        once(ROOT/'PHASE_PS_SOURCE_BINDING_002.json',(json.dumps(dict(schema_version=1,binder='/root',sources=records,actual_script_sha256=sha(bound),bound_review_sha256=args.expected_bound_review_sha256,actual_authorization=None,prepared_source_actions_executed=False),sort_keys=True,indent=2)+'\n').encode('ascii'))
+
+
+if __name__=='__main__':
+    main()

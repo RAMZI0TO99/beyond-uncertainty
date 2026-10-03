@@ -1,0 +1,427 @@
+BEHAVIOR_ROOT = SESSION / 'native-schema2-behavior-runtime002'
+BEHAVIOR_ROLES = {
+    'profile': 'NATIVE_BEHAVIOR_PROFILE_002.json',
+    'validation': 'NATIVE_SOURCE_VALIDATION_002.json',
+    'manifest': 'CASE_MANIFEST_002.json',
+    'template': 'run-native-schema2-behavior-002.TEMPLATE.py',
+    'driver': 'run-native-schema2-behavior-002.BOUND.py',
+    'test': 'source/test_native_schema2_admission_002.py',
+    'authorization': 'ROOT_FIRST_EXECUTION_ACK_002.json',
+    'terminal': 'ROOT_LAUNCH_TERMINAL_002.json',
+    'result': 'results/unittest-result.json',
+    'junit': 'results/Junit.xml',
+    'stdout': 'ROOT_STDOUT_002.txt',
+    'stderr': 'ROOT_STDERR_002.txt',
+    'runtime': 'runtime/RUNTIME_PROFILE_002.json',
+}
+# Derived caps, not arbitrary replacement numbers. This source implements the
+# interpreter; activation waits for an independent finite-grammar derivation.
+NATIVE_BEHAVIOR_CAPS = None
+NATIVE_BEHAVIOR_CAP_DERIVATION_SHA256 = None
+_NATIVE_COMMON_CAPTURE = None
+BEHAVIOR_FALSE_FIELDS = (
+    'operational_authority_granted', 'scientific_outcomes_consulted',
+    'scientific_values_emitted', 'public_action_performed', 'production_invoked',
+)
+BEHAVIOR_PROFILE_KEYS = frozenset((
+    'schema_version','record_type','profile_id','execution_kind','verdict',
+    'owner_sha256','execution','source_identities','source_validation','runner',
+    'runtime','case_manifest','cases','subtests','summary','skip_whitelist',
+    'evidence', *BEHAVIOR_FALSE_FIELDS,
+))
+BEHAVIOR_VALIDATION_KEYS = frozenset((
+    'schema_version','record_type','profile_id','verdict','owner_sha256',
+    'source_identities','driver_binding','runtime_policy','case_manifest',
+    'source_observations','scope',
+))
+
+def _native_uint(value, maximum, what, *, minimum=0):
+    require(type(value) is int and minimum <= value <= maximum,
+            what + ' bounded integer differs')
+    return value
+
+def _native_identity_domain(value, what):
+    require(type(value) in (list, tuple) and len(value) == 8,
+            what + ' identity8 shape differs')
+    maxima = ((1 << 64)-1, (1 << 64)-1, (1 << 63)-1, (1 << 63)-1,
+              (1 << 63)-1, (1 << 32)-1, (1 << 32)-1, (1 << 32)-1)
+    for index, (item, maximum) in enumerate(zip(value, maxima)):
+        _native_uint(item, maximum, what,
+                     minimum=-(1 << 63) if index in (3,4) else 1 if index == 6 else 0)
+    return tuple(value)
+
+def _native_utc(value, what, *, powershell=False):
+    # Preserve each pinned spelling. Python microseconds and ROOT round-trip
+    # seven-digit fractions are different valid role grammars.
+    maximum = 33 if powershell else 32
+    require(type(value) is str and value.isascii() and len(value) <= maximum,
+            what + ' UTC type/width differs')
+    fraction = r'\.\d{7}' if powershell else r'(?:\.\d{6})?'
+    require(re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}' +
+                         fraction + r'\+00:00', value, re.ASCII) is not None,
+            what + ' canonical UTC grammar differs')
+    head, tail = value[:-6].split('.', 1) if '.' in value[:-6] else (value[:-6], '')
+    instant = datetime.fromisoformat(head + '+00:00')
+    if not powershell:
+        require(datetime.fromisoformat(value).isoformat() == value,
+                what + ' canonical Python UTC differs')
+    seconds = int((instant - datetime(1970, 1, 1, tzinfo=timezone.utc)).total_seconds())
+    require(seconds >= 0, what + ' UTC predates epoch')
+    return seconds * 10000000 + (int(tail.ljust(7, '0')) if tail else 0)
+
+def authenticate_common_capture(expected, captured):
+    """Caller supplies an earlier reviewed SHA; proof contents never select it."""
+    global _NATIVE_COMMON_CAPTURE
+    _native_hex(expected, 64, 'trusted common capture SHA')
+    require(type(captured) is bytes and 0 < len(captured) <= 196605
+            and sha(captured) == expected, 'trusted common capture bytes differ')
+    path = Path(__file__).absolute()
+    fresh = read(path, expected, maximum=196605)
+    require(fresh == captured, 'common capture changed before authentication')
+    observation = identity(plain(path))
+    context = (str(path), expected, captured, observation)
+    require(_NATIVE_COMMON_CAPTURE is None or _NATIVE_COMMON_CAPTURE == context,
+            'common capture replaced within one verified module')
+    _NATIVE_COMMON_CAPTURE = context
+
+def _native_current_common(witness):
+    require(type(_NATIVE_COMMON_CAPTURE) is tuple and len(_NATIVE_COMMON_CAPTURE) == 4,
+            'common has no externally authenticated capture')
+    path, expected, captured, observation = _NATIVE_COMMON_CAPTURE
+    require(type(path) is str and type(expected) is str and type(captured) is bytes,
+            'common capture context malformed')
+    require(read(Path(path), expected, witness, maximum=196605) == captured
+            and identity(plain(Path(path))) == observation,
+            'authenticated common source changed/replaced')
+    return {'path': path, 'sha256': expected, 'size': len(captured)}
+
+def _native_behavior_cap(role):
+    require(type(NATIVE_BEHAVIOR_CAPS) is dict
+            and set(NATIVE_BEHAVIOR_CAPS) == set(BEHAVIOR_ROLES)
+            and type(NATIVE_BEHAVIOR_CAP_DERIVATION_SHA256) is str
+            and HEX64.fullmatch(NATIVE_BEHAVIOR_CAP_DERIVATION_SHA256) is not None,
+            'native behavior independent finite caps unbound')
+    return _native_uint(NATIVE_BEHAVIOR_CAPS[role], (1 << 63)-1,
+                        'native behavior ' + role + ' cap', minimum=1)
+
+def _native_behavior_reference(row, role, witness):
+    _native_exact(row, {'path','sha256','size'}, 'behavior ' + role + ' reference')
+    path = BEHAVIOR_ROOT / BEHAVIOR_ROLES[role]
+    require(type(row['path']) is str and row['path'] == str(path),
+            'behavior ' + role + ' fixed path differs')
+    _native_hex(row['sha256'], 64, 'behavior ' + role + ' SHA')
+    maximum = _native_behavior_cap(role)
+    _native_uint(row['size'], maximum, 'behavior ' + role + ' size')
+    data = read(path, row['sha256'], witness, maximum=maximum)
+    require(len(data) == row['size'], 'behavior captured length differs')
+    return data
+
+def _native_behavior_scope(value, what):
+    _native_exact(value, set(BEHAVIOR_FALSE_FIELDS), what + ' scope')
+    require(all(value[key] is False for key in BEHAVIOR_FALSE_FIELDS),
+            what + ' scope authorizes operational/scientific work')
+
+def _native_behavior_header(document, keys, record_type, what):
+    _native_exact(document, keys, what)
+    require(type(document['schema_version']) is int and document['schema_version'] == 1
+            and type(document['record_type']) is str and document['record_type'] == record_type
+            and document['profile_id'] == 'week8_native_schema2_common_actual_inert_v1'
+            and type(document['verdict']) is str and document['verdict'] == 'PASS'
+            and document['owner_sha256'] == PROGRAMMATIC_FACTS['owner_sha256'],
+            what + ' typed identity/verdict differs')
+
+def _native_behavior_manifest(reference, witness):
+    data = _native_behavior_reference(reference, 'manifest', witness)
+    document = parse(data)
+    _native_exact(document, {'schema_version','record_type','test_definition',
+                            'ordered_case_ids','ordered_subtest_ids','family_coverage'},
+                  'behavior case manifest')
+    test_bytes = _native_behavior_reference(document['test_definition'], 'test', witness)
+    tree = ast.parse(test_bytes)
+    cases = [node.name + '.' + method.name for node in tree.body if isinstance(node, ast.ClassDef)
+             for method in node.body if isinstance(method, ast.FunctionDef) and method.name.startswith('test_')]
+    policies = {}
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0],ast.Name)
+                and node.targets[0].id in {'NATIVE_CRITICAL_FAMILY_CASES','NATIVE_SUBTEST_POLICY'}):
+            require(node.targets[0].id not in policies,'behavior duplicate test policy')
+            policies[node.targets[0].id] = ast.literal_eval(node.value)
+    require(set(policies) == {'NATIVE_CRITICAL_FAMILY_CASES','NATIVE_SUBTEST_POLICY'},
+            'behavior test source lacks concrete causal policy')
+    subtests = policies['NATIVE_SUBTEST_POLICY']
+    require(type(subtests) is dict and all(type(key) is str for key in subtests),
+            'behavior source subtest policy malformed')
+    require(type(document['schema_version']) is int and document['schema_version'] == 1
+            and document['record_type'] == 'week8_native_schema2_case_manifest'
+            and type(document['ordered_case_ids']) is list
+            and document['ordered_case_ids'] == cases
+            and len(set(document['ordered_case_ids'])) == len(cases) and len(cases) > 0
+            and type(document['ordered_subtest_ids']) is list
+            and document['ordered_subtest_ids'] == list(subtests)
+            and len(set(document['ordered_subtest_ids'])) == len(subtests),
+            'behavior case/subtest IDs differ from source policy')
+    require(type(document['family_coverage']) is dict
+            and set(document['family_coverage']) == {'M%02d' % i for i in range(1,33)}
+            and all(type(ids) is list and ids and all(type(item) is str
+                and item in cases for item in ids)
+                for ids in document['family_coverage'].values())
+            and document['family_coverage'] == policies['NATIVE_CRITICAL_FAMILY_CASES'],
+            'behavior critical family coverage differs')
+    document = dict(document, __subtest_policy__=subtests)
+    return document
+
+def _native_behavior_sources(value, bindings, witness):
+    _native_exact(value, {'common','project_sources','test_definition','driver_template','bound_driver'},
+                  'behavior source identities')
+    require(value['common'] == _native_current_common(witness),
+            'behavior common identity differs from trusted capture')
+    expected = {relative:bindings[key] for key,relative in SOURCE_BINDINGS.items()
+                if key != 'renderer_sha256'}
+    require(type(value['project_sources']) is dict and set(value['project_sources']) == set(expected),
+            'behavior exact nine project sources differ')
+    for relative, expected_sha in expected.items():
+        row = value['project_sources'][relative]
+        _native_exact(row, {'path','sha256','size'}, 'behavior project reference')
+        require(row['path'] == str(REPO / relative) and row['sha256'] == expected_sha,
+                'behavior project role/hash differs')
+        _native_uint(row['size'], (1 << 63)-1, 'behavior project size', minimum=1)
+        require(len(read(REPO / relative, expected_sha, witness, maximum=row['size'])) == row['size'],
+                'behavior actual project capture length differs')
+    for field,role in (('test_definition','test'),('driver_template','template'),('bound_driver','driver')):
+        _native_behavior_reference(value[field], role, witness)
+    return value
+
+def _native_behavior_runtime(value, witness):
+    _native_exact(value, {'os','implementation','version','flags','python','base_python',
+                         'pyvenv_cfg','runtime_inventory_refs'}, 'behavior runtime')
+    require(value['os'] == 'nt' and value['implementation'] == 'CPython'
+            and type(value['version']) is list and value['version'] == [3,13,5]
+            and value['flags'] == {'isolated':1,'no_site':1,'dont_write_bytecode':True,'utf8_mode':1}
+            and type(value['flags']) is dict
+            and all(type(value['flags'][key]) is int for key in ('isolated','no_site','utf8_mode'))
+            and value['flags']['dont_write_bytecode'] is True,
+            'behavior actual runtime version/flags differs')
+    fixed = PROGRAMMATIC_FACTS['frozen_config']
+    for field,path_key,sha_key in (
+            ('python','pinned_python','pinned_python_sha256'),
+            ('base_python','pinned_base_python','pinned_base_python_sha256'),
+            ('pyvenv_cfg','pinned_pyvenv','pinned_pyvenv_sha256')):
+        row = value[field]
+        _native_exact(row, {'path','sha256','size'}, 'behavior runtime image')
+        path = Path(fixed[path_key])
+        require(row['path'] == str(path) and row['sha256'] == fixed[sha_key],
+                'behavior actual pinned runtime image differs')
+        _native_uint(row['size'], (1 << 63)-1, 'behavior runtime image size',minimum=1)
+        require(len(read(path,row['sha256'],witness,maximum=row['size'])) == row['size'],
+                'behavior runtime image capture length differs')
+    data = _native_behavior_reference(value['runtime_inventory_refs'], 'runtime', witness)
+    profile = parse(data)
+    _native_exact(profile, {'schema_version','record_type','owner_sha256','runtime','inventories','scope'},
+                  'behavior runtime profile')
+    require(type(profile['schema_version']) is int and profile['schema_version'] == 1
+            and profile['record_type'] == 'week8_native_schema2_runtime_profile'
+            and profile['owner_sha256'] == PROGRAMMATIC_FACTS['owner_sha256']
+            and profile['runtime'] == {key:value[key] for key in value if key != 'runtime_inventory_refs'}
+            and profile['inventories'] == NATIVE_PUBLICATION_RUNTIME_FACTS,
+            'behavior complete runtime profile differs')
+    _native_behavior_scope(profile['scope'], 'behavior runtime')
+    return value
+
+def _native_behavior_source_validation(data, reference, bindings, witness):
+    require(type(data) is bytes and len(data) <= _native_behavior_cap('validation'),
+            'behavior source-validation bytes exceed cap')
+    require(_native_behavior_reference(reference, 'validation', witness) == data,
+            'behavior source-validation capture differs')
+    document = parse(data)
+    _native_behavior_header(document, BEHAVIOR_VALIDATION_KEYS,
+        'week8_native_schema2_source_validation', 'behavior source-validation')
+    sources = _native_behavior_sources(document['source_identities'], bindings, witness)
+    _native_behavior_runtime(document['runtime_policy'], witness)
+    manifest = _native_behavior_manifest(document['case_manifest'], witness)
+    require(manifest['test_definition'] == sources['test_definition'],
+            'behavior manifest binds another test source')
+    binding = document['driver_binding']
+    _native_exact(binding, {'template','bound','substitutions','cli'}, 'behavior driver binding')
+    require(binding['template'] == sources['driver_template'] and binding['bound'] == sources['bound_driver'],
+            'behavior driver source binding differs')
+    substitutions = binding['substitutions']
+    expected = {'REVIEWED_COMMON_SHA256':sources['common']['sha256'],
+                'REVIEWED_CASE_MANIFEST_SHA256':document['case_manifest']['sha256'],
+                'REVIEWED_RUNTIME_PROFILE_SHA256':document['runtime_policy']['runtime_inventory_refs']['sha256']}
+    require(type(substitutions) is dict and substitutions == expected,
+            'behavior driver allowlisted substitutions differ')
+    bound = _native_behavior_reference(binding['bound'], 'driver', witness)
+    template = _native_behavior_reference(binding['template'], 'template', witness)
+    normalized = bound
+    for name,expected_sha in expected.items():
+        before = (name + ' = ' + repr(expected_sha)).encode('ascii')
+        after = (name + ' = None').encode('ascii')
+        require(normalized.count(before) == 1 and template.count(after) == 1,
+                'behavior driver binding literal ambiguous')
+        normalized = normalized.replace(before, after)
+    require(normalized == template, 'behavior driver changed beyond exact three bindings')
+    require(binding['cli'] == {'flags':['-I','-S','-B','-X','utf8'],
+             'self_hash':'externally_reviewed_cli','authorization_hash':'externally_reviewed_cli'},
+            'behavior driver trusted CLI grammar differs')
+    observations = document['source_observations']
+    source_rows = [sources['common'],sources['test_definition'],sources['driver_template'],sources['bound_driver'],
+                   *sources['project_sources'].values()]
+    require(type(observations) is list and len(observations) == len(source_rows),
+            'behavior source observation count differs')
+    for observed,row in zip(observations,source_rows):
+        _native_exact(observed, {'path','sha256','size','before','after'}, 'behavior source observation')
+        require({key:observed[key] for key in ('path','sha256','size')} == row
+                and _native_identity_domain(observed['before'],'behavior before')
+                    == _native_identity_domain(observed['after'],'behavior after'),
+                'behavior source changed during validation')
+    _native_behavior_scope(document['scope'], 'behavior source-validation')
+    return dict(document, __reference__=reference, __manifest__=manifest)
+
+def _native_behavior_runtime_evidence(data, reference, bindings, witness=None, *, validation=None):
+    witness = {} if witness is None else witness
+    require(type(data) is bytes and len(data) <= _native_behavior_cap('profile'),
+            'behavior profile exceeds derived cap')
+    # NativeReview itself authenticates this external reference. It is never an
+    # expected digest embedded back into common source or extracted from result.
+    _native_exact(reference, {'path','sha256'}, 'nativeReview behavior reference')
+    profile_ref = dict(reference,size=len(data))
+    require(_native_behavior_reference(profile_ref,'profile',witness) == data,
+            'behavior profile pinned capture differs')
+    document = parse(data)
+    _native_behavior_header(document,BEHAVIOR_PROFILE_KEYS,
+        'week8_native_schema2_typed_behavior_result','behavior profile')
+    require(document['execution_kind'] == 'actual_root_owned_inert_runtime'
+            and document['skip_whitelist'] == []
+            and all(document[key] is False for key in BEHAVIOR_FALSE_FIELDS),
+            'behavior profile execution/scope differs')
+    require(type(validation) is dict,
+            'behavior has no independently captured typed source-validation')
+    require(document['source_identities'] == validation['source_identities']
+            and document['runtime'] == validation['runtime_policy']
+            and document['case_manifest'] == {
+                'sha256':validation['case_manifest']['sha256'],
+                'ordered_case_ids':validation['__manifest__']['ordered_case_ids'],
+                'ordered_subtest_ids':validation['__manifest__']['ordered_subtest_ids']},
+            'behavior differs from independently authenticated source/manifest/runtime')
+    _native_behavior_sources(document['source_identities'],bindings,witness)
+    _native_behavior_runtime(document['runtime'],witness)
+    _native_behavior_reference(document['source_validation'],'validation',witness)
+    require(document['source_validation'] == validation['__reference__'],
+            'behavior source-validation reference differs')
+    execution = document['execution']
+    _native_exact(execution, {'started_utc','finished_utc','elapsed_ms','root_authorization','root_terminal'},
+                  'behavior execution')
+    start = _native_utc(execution['started_utc'],'behavior ROOT start',powershell=True)
+    finish = _native_utc(execution['finished_utc'],'behavior ROOT finish',powershell=True)
+    elapsed = _native_uint(execution['elapsed_ms'],60000,'behavior elapsed')
+    require(start <= finish and 0 <= (finish-start)//10000 <= 60000
+            and abs((finish-start)//10000-elapsed) <= 1,'behavior execution timing differs')
+    ack = parse(_native_behavior_reference(execution['root_authorization'],'authorization',witness))
+    terminal = parse(_native_behavior_reference(execution['root_terminal'],'terminal',witness))
+    _native_exact(ack, {'schema_version','record_type','author','decision','owner_sha256','owner_end_utc',
+        'source_validation','driver','case_manifest','runtime','created_utc','scope'},'behavior ROOT authorization')
+    _native_exact(terminal, {'schema_version','record_type','author','decision','owner_sha256','authorization',
+        'driver','started_utc','finished_utc','elapsed_ms','exit_code','timed_out','result','junit',
+        'stdout','stderr','scope'},'behavior ROOT terminal')
+    require(type(ack['schema_version']) is int and ack['schema_version'] == 1
+            and ack['record_type'] == 'week8_native_schema2_first_execution'
+            and type(terminal['schema_version']) is int and terminal['schema_version'] == 1
+            and terminal['record_type'] == 'week8_native_schema2_launch_terminal'
+            and ack['author'] == terminal['author'] == '/root'
+            and ack['decision'] == 'execute_native_schema2_behavior_once'
+            and terminal['decision'] == 'completed_once'
+            and ack['owner_sha256'] == terminal['owner_sha256'] == PROGRAMMATIC_FACTS['owner_sha256']
+            and ack['owner_end_utc'] == PROGRAMMATIC_FACTS['owner']['work_end_utc']
+            and terminal['authorization'] == execution['root_authorization']
+            and ack['source_validation'] == document['source_validation']
+            and ack['driver'] == terminal['driver'] == document['source_identities']['bound_driver']
+            and ack['case_manifest'] == validation['case_manifest']
+            and ack['runtime'] == document['runtime']['runtime_inventory_refs'],
+            'behavior actual ROOT/source/driver chain differs')
+    ack_time = _native_utc(ack['created_utc'],'behavior authorization',powershell=True)
+    owner_start = _native_utc(PROGRAMMATIC_FACTS['owner']['work_start_utc'].replace('Z','+00:00'),'behavior owner start')
+    owner_end = _native_utc(PROGRAMMATIC_FACTS['owner']['work_end_utc'].replace('Z','+00:00'),'behavior owner end')
+    require(owner_start <= ack_time <= start <= finish <= owner_end,
+            'behavior execution outside authorized owner interval')
+    require(terminal['started_utc'] == execution['started_utc']
+            and terminal['finished_utc'] == execution['finished_utc']
+            and type(terminal['elapsed_ms']) is int and terminal['elapsed_ms'] == elapsed
+            and type(terminal['exit_code']) is int and terminal['exit_code'] == 0
+            and terminal['timed_out'] is False,'behavior terminal is not actual successful execution')
+    _native_behavior_scope(ack['scope'],'behavior authorization')
+    _native_behavior_scope(terminal['scope'],'behavior terminal')
+    runner = document['runner']
+    _native_exact(runner, {'path','sha256','size','command','exit_code','supervision'},'behavior runner')
+    require({key:runner[key] for key in ('path','sha256','size')} == ack['driver']
+            and type(runner['exit_code']) is int and runner['exit_code'] == 0
+            and runner['supervision'] == 'root_retained_child_complete_60s'
+            and runner['command'] == [document['runtime']['base_python']['path'],
+                '-I','-S','-B','-X','utf8',ack['driver']['path'],
+                '--expected-script-sha256',ack['driver']['sha256'],
+                '--root-execution-ack-sha256',execution['root_authorization']['sha256']],
+            'behavior actual runner command differs')
+    evidence = document['evidence']
+    _native_exact(evidence, {'stdout','stderr','result','junit'},'behavior evidence')
+    captures = {}
+    for role in ('stdout','stderr','result','junit'):
+        require(terminal[role] == evidence[role],'behavior terminal capture reference differs')
+        captures[role] = _native_behavior_reference(evidence[role],role,witness)
+    require(captures['stderr'] == b'','behavior stderr is nonempty')
+    result = parse(captures['result'])
+    _native_exact(result, {'schema_version','record_type','case_manifest','cases','subtests','summary',
+                          'scope'},'behavior raw unittest result')
+    require(type(result['schema_version']) is int and result['schema_version'] == 1
+            and result['record_type'] == 'week8_native_schema2_unittest_result'
+            and result['case_manifest'] == document['case_manifest']
+            and result['cases'] == document['cases'] and result['subtests'] == document['subtests']
+            and result['summary'] == document['summary'],'behavior raw result differs from profile')
+    _native_behavior_scope(result['scope'],'behavior raw result')
+    case_ids = validation['__manifest__']['ordered_case_ids']
+    subtest_ids = validation['__manifest__']['ordered_subtest_ids']
+    cases,subtests = document['cases'],document['subtests']
+    require(type(cases) is list and len(cases) == len(case_ids)
+            and type(subtests) is list and len(subtests) == len(subtest_ids),
+            'behavior required case/subtest count differs')
+    for expected,row in zip(case_ids,cases):
+        _native_exact(row, {'case_id','status','elapsed_ms','subtest_count','detail_sha256'},'behavior case')
+        require(row['case_id'] == expected and row['status'] == 'PASS','behavior required case failed/reordered')
+        _native_uint(row['elapsed_ms'],60000,'behavior case elapsed')
+        _native_uint(row['subtest_count'],len(subtest_ids),'behavior case subtests')
+        _native_hex(row['detail_sha256'],64,'behavior case detail')
+    for expected,row in zip(subtest_ids,subtests):
+        _native_exact(row, {'subtest_id','case_id','status','expected_refusal','observed_boundary','control_case_id'},
+                      'behavior subtest')
+        require(row['subtest_id'] == expected and row['case_id'] in case_ids
+                and row['status'] == 'PASS' and type(row['expected_refusal']) is bool
+                and row['control_case_id'] in case_ids
+                and type(row['observed_boundary']) is str and re.fullmatch(
+                    r'[A-Za-z][A-Za-z0-9_]{0,127}',row['observed_boundary'],re.ASCII) is not None,
+                'behavior subtest cause/control differs')
+        require({key:row[key] for key in ('case_id','expected_refusal','observed_boundary','control_case_id')}
+                == validation['__manifest__']['__subtest_policy__'][expected],
+                'behavior subtest differs from pinned causal policy')
+    require(all(row['subtest_count'] == sum(item['case_id'] == row['case_id'] for item in subtests)
+                for row in cases),'behavior per-case subtest totals differ')
+    summary = document['summary']
+    _native_exact(summary, {'required','executed','passed','skipped','failures','errors',
+                           'unexpected_successes','subtests'},'behavior summary')
+    for key,value in summary.items(): _native_uint(value,(1 << 63)-1,'behavior '+key)
+    require(summary == {'required':len(cases),'executed':len(cases),'passed':len(cases),
+        'skipped':0,'failures':0,'errors':0,'unexpected_successes':0,'subtests':len(subtests)},
+        'behavior zero/dropped/skipped/failed coverage differs')
+    import xml.etree.ElementTree as ET
+    xml = ET.fromstring(captures['junit'])
+    require(xml.tag == 'testsuite' and xml.attrib == {'tests':str(len(cases)),'failures':'0',
+            'errors':'0','skipped':'0'},'behavior JUnit suite differs')
+    require(len(xml) == len(cases) and all(child.tag == 'testcase' and child.attrib == {
+            'name':expected} and len(child) == 0 for child,expected in zip(xml,case_ids)),
+            'behavior JUnit ordered cases differ')
+    distinct = [identity(plain(BEHAVIOR_ROOT/path))[:2] for path in BEHAVIOR_ROLES.values()]
+    require(len(set(distinct)) == len(distinct),'behavior artifacts alias by inode')
+    # Refresh executable policy, captured common and complete evidence. This is
+    # not an acceptance-result cache; each boundary performs the full proof.
+    _native_raw_module()
+    _native_behavior_sources(document['source_identities'],bindings,witness)
+    _native_behavior_runtime(document['runtime'],witness)
+    repeat(witness)
+    return document

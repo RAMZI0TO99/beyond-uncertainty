@@ -1,0 +1,184 @@
+"""Distinct owned documentation metadata successor; no publisher main invocation."""
+from pathlib import Path
+from datetime import datetime, timezone
+import ast
+import hashlib
+import json
+import os
+import re
+
+ROOT = Path('D:/Aenv/pro2')
+OWN = ROOT / 'resume-2026-10-03-continuation001/root-docs-major031'
+CHECKPOINT = ROOT / 'resume-2026-10-03-continuation001/CONTINUATION_CHECKPOINT_002.md'
+OLD_MANIFEST = OWN / 'STAGED_DOCUMENTATION_MANIFEST_031.json'
+PREFLIGHT = Path('D:/Aenv/pro3/runs/coordination/next_step_20261003/root_preflight_002.json')
+PEER = ROOT / 'resume-2026-10-03-continuation001/guard006-utility-source-independent-review001/INDEPENDENT_GENERIC_PUB_SOURCE_REVIEW_002.json'
+PREFLIGHT_SHA = '637d08b9f869e4153f0ef1c01b3e56f06a4c986eb9db4a54423d2b5369e3f81f'
+PEER_SHA = '26d3d18bc6558159d68d95aeed1d927fd771bd4bb6351a501aa67e79b1556355'
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def enc(value):
+    return (json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + '\n').encode('ascii')
+
+
+def once(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('xb') as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    assert path.read_bytes() == data
+
+
+def raw9(stat):
+    return [stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns,
+            stat.st_mode, stat.st_nlink, getattr(stat, 'st_file_attributes', 0),
+            getattr(stat, 'st_birthtime_ns', stat.st_ctime_ns)]
+
+
+def observe(path):
+    before = path.stat()
+    with path.open('rb') as stream:
+        descriptor = os.fstat(stream.fileno())
+        data = stream.read()
+        after_descriptor = os.fstat(stream.fileno())
+    after = path.stat()
+    assert raw9(before) == raw9(after) and raw9(descriptor) == raw9(after_descriptor)
+    assert before.st_size == len(data) and before.st_ino == descriptor.st_ino
+    return data, {'path': str(path), 'sha256': sha(data), 'bytes': len(data),
+                  'path_raw9': raw9(after), 'descriptor_raw9': raw9(after_descriptor)}
+
+
+def row(path, data):
+    relative = path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else str(path)
+    return {'path': relative, 'bytes': len(data), 'sha256': sha(data)}
+
+
+def relocate(text, destination):
+    return re.sub(r'\]\(([^)]+)\)', lambda match: '](' + os.path.relpath(ROOT / match.group(1), destination.parent).replace('\\', '/') + ')', text)
+
+
+def main():
+    assert not CHECKPOINT.exists()
+    assert not (OWN / 'STAGED_DOCUMENTATION_CLOSEOUT_MANIFEST_031.json').exists()
+    old_bytes = OLD_MANIFEST.read_bytes()
+    assert sha(old_bytes) == '0e9ae4d77b80ffde46e1d666117d1871e4dfd6de3a2d7a7b5d8dd5593617ae0a'
+    stage = json.loads(old_bytes)
+    body_source = OWN / 'ACTUAL_CLOSEOUT_ADDENDUM_031.md.source'
+    publisher_source = OWN / 'PUBLISH_MAJOR031_DOCS_001.py'
+    checkpoint_old = ROOT / stage['checkpoint']['path']
+    paths = [OLD_MANIFEST, PREFLIGHT, PEER, body_source, publisher_source, Path(__file__).resolve(), checkpoint_old]
+    paths += [ROOT / entry['candidate']['path'] for entry in stage['primaries']]
+    paths += [ROOT / entry['before']['path'] for entry in stage['primaries']]
+    paths += [ROOT / entry['destination'] for entry in stage['primaries']]
+    paths += [Path(entry['original']['path']) if entry['external'] else ROOT / entry['original']['path'] for entry in stage['inputs']]
+    paths += [ROOT / entry['copy']['path'] for entry in stage['inputs']]
+    assert len(set(paths)) == len(paths)
+    blobs = {}
+    observations = []
+    for number in range(3):
+        current = []
+        for path in paths:
+            data, facts = observe(path)
+            if number:
+                assert data == blobs[path]
+            else:
+                blobs[path] = data
+            current.append(facts)
+        observations.append(current)
+    assert sha(blobs[PREFLIGHT]) == PREFLIGHT_SHA and sha(blobs[PEER]) == PEER_SHA
+    assert sha(blobs[publisher_source]) == '29d109190ec81e153cea262e9fecdd7f1cb8d76eb24ce69e7fd8891e18ca1ad3'
+    preflight = json.loads(blobs[PREFLIGHT])
+    assert preflight['state'] == 'refused' and preflight['samples'] == []
+    assert preflight['python_test_job_started'] is False and preflight['consumable_release_created'] is False
+    assert preflight['peer_release_sha256'] == 'c234f7607e9f541018b5fb5001bb06244f9441a8dc1cbc3583c6ee3a10eb92e3'
+    peer = json.loads(blobs[PEER])
+    assert peer['verdict'] == 'PASS_SOURCE_ARCHITECTURE_ONLY_WITH_BOUND_POOL_UNREADY'
+    for entry in stage['primaries']:
+        assert blobs[ROOT / entry['destination']] == blobs[ROOT / entry['before']['path']]
+        for key in ('candidate', 'before'):
+            assert sha(blobs[ROOT / entry[key]['path']]) == entry[key]['sha256']
+    for entry in stage['inputs']:
+        original = Path(entry['original']['path']) if entry['external'] else ROOT / entry['original']['path']
+        assert sha(blobs[original]) == entry['original']['sha256']
+        assert blobs[original] == blobs[ROOT / entry['copy']['path']]
+    stamp = datetime.now(timezone.utc).isoformat(timespec='microseconds')
+    body = blobs[body_source].decode('utf-8').replace('{STAMP}', stamp)
+    body += '\n\n---\n\nThe earlier selected031 source-stage snapshot remains exact history. Its pending statements describe that earlier selection; this addendum records the later facts.\n\n'
+    primaries = []
+    candidate_blobs = []
+    for index, entry in enumerate(stage['primaries']):
+        destination = ROOT / entry['destination']
+        addition = relocate(body, destination).encode('utf-8')
+        old_candidate = blobs[ROOT / entry['candidate']['path']]
+        candidate = addition + old_candidate if index < 3 else old_candidate + b'\n\n' + addition
+        before = blobs[ROOT / entry['before']['path']]
+        assert candidate.endswith(before) if index < 3 else candidate.startswith(before)
+        new_path = OWN / 'candidates002' / entry['destination']
+        candidate_blobs.append((destination, candidate, addition, new_path))
+        primaries.append({'destination': entry['destination'], 'before': entry['before'],
+                          'candidate': row(new_path, candidate), 'preservation': entry['preservation']})
+    checkpoint_bytes = relocate(body, CHECKPOINT).encode('utf-8') + blobs[checkpoint_old]
+    checkpoint_path = OWN / 'candidates002' / CHECKPOINT.relative_to(ROOT)
+    selected_inputs = list(stage['inputs'])
+    selected_inputs.append({'original': row(OLD_MANIFEST, old_bytes), 'copy': row(OLD_MANIFEST, old_bytes), 'external': False})
+    selected_inputs.append({'original': row(PEER, blobs[PEER]),
+                            'copy': row(OWN / 'inputs/continuation/guard006-utility-source-independent-review001/INDEPENDENT_GENERIC_PUB_SOURCE_REVIEW_002.json', blobs[PEER]), 'external': False})
+    selected_inputs.append({'original': row(PREFLIGHT, blobs[PREFLIGHT]),
+                            'copy': row(OWN / 'inputs/pro3/root_preflight_002.json', blobs[PREFLIGHT]), 'external': True})
+    links = list(stage['links'])
+    future_preflight = OWN / 'inputs/pro3/root_preflight_002.json'
+    for destination, addition in [(entry[0], entry[2]) for entry in candidate_blobs] + [(CHECKPOINT, relocate(body, CHECKPOINT).encode('utf-8'))]:
+        for target in re.findall(r'\]\(([^)]+)\)', addition.decode('utf-8')):
+            resolved = (destination.parent / target).resolve()
+            resolved.relative_to(ROOT)
+            assert resolved.is_file() or resolved == future_preflight
+            links.append({'document': destination.relative_to(ROOT).as_posix(), 'target': target, 'resolved_path': resolved.relative_to(ROOT).as_posix()})
+    publisher_text = blobs[publisher_source].decode('utf-8')
+    assert publisher_text.count("MANIFEST = OWN / 'STAGED_DOCUMENTATION_MANIFEST_031.json'") == 1
+    publisher_text = publisher_text.replace("MANIFEST = OWN / 'STAGED_DOCUMENTATION_MANIFEST_031.json'", "MANIFEST = OWN / 'STAGED_DOCUMENTATION_CLOSEOUT_MANIFEST_031.json'")
+    old_guard = "        if row['path'] != 'D:\\\\Aenv\\\\pro3\\\\runs\\\\coordination\\\\next_step_20261003\\\\admission_refusal_audit_001.json' or row['sha256'] != 'ec9900b62bca94acb9ce60da7f8a08c14fc42e07e49f77090a6e8911f9f866d1':"
+    new_guard = "        if (row['path'], row['sha256']) not in ((\n" + old_guard.split(" != ", 1)[1].split(" or ", 1)[0] + ", 'ec9900b62bca94acb9ce60da7f8a08c14fc42e07e49f77090a6e8911f9f866d1'),\n            ('D:\\\\Aenv\\\\pro3\\\\runs\\\\coordination\\\\next_step_20261003\\\\root_preflight_002.json', '" + PREFLIGHT_SHA + "')):"
+    assert publisher_text.count(old_guard) == 1
+    publisher_text = publisher_text.replace(old_guard, new_guard)
+    ast.parse(publisher_text)
+    publisher_bytes = publisher_text.encode('utf-8')
+    publisher_new = OWN / 'PUBLISH_MAJOR031_DOCS_002.py'
+    once(publisher_new, publisher_bytes)
+    once(OWN / 'inputs/continuation/guard006-utility-source-independent-review001/INDEPENDENT_GENERIC_PUB_SOURCE_REVIEW_002.json', blobs[PEER])
+    once(future_preflight, blobs[PREFLIGHT])
+    once(OWN / 'ACTUAL_CLOSEOUT_ADDENDUM_031.md', body.encode('utf-8'))
+    for destination, candidate, addition, new_path in candidate_blobs:
+        once(new_path, candidate)
+    once(checkpoint_path, checkpoint_bytes)
+    new_manifest = dict(stage)
+    new_manifest.update(prepared_utc=stamp, primaries=primaries, checkpoint=row(checkpoint_path, checkpoint_bytes), inputs=selected_inputs, links=links)
+    manifest_bytes = enc(new_manifest)
+    once(OWN / 'STAGED_DOCUMENTATION_CLOSEOUT_MANIFEST_031.json', manifest_bytes)
+    post = []
+    for path in paths:
+        data, facts = observe(path)
+        assert data == blobs[path]
+        post.append(facts)
+    once(OWN / 'AUTHOR_CLOSEOUT_STAGE_AUDIT_002.json', enc({
+        'schema_version': 1, 'record_type': 'major031_distinct_closeout_documentation_stage',
+        'author': '/root/pubnative_review', 'prepared_utc': stamp,
+        'initial_stage_sha256': sha(old_bytes), 'successor_stage_sha256': sha(manifest_bytes),
+        'publisher001_sha256': sha(blobs[publisher_source]), 'publisher002_sha256': sha(publisher_bytes),
+        'publisher_source_changes': ['selected immutable manifest path', 'exact additional external preflight path/SHA pair'],
+        'input_paths': len(paths), 'observations': observations, 'post_observations': post,
+        'original_candidates_preserved': True, 'primary_bytes_unchanged': True,
+        'links_checked': len(links), 'publisher_AST_parsed': True,
+        'publisher_main_executed': False, 'target_execution': False,
+        'different_documentation_creation_review': None, 'operational_authority': False,
+    }))
+    print(json.dumps({'manifest_sha256': sha(manifest_bytes), 'publisher_sha256': sha(publisher_bytes),
+                      'checkpoint_sha256': sha(checkpoint_bytes), 'links': len(links), 'primary_publication': False}))
+
+
+if __name__ == '__main__':
+    main()

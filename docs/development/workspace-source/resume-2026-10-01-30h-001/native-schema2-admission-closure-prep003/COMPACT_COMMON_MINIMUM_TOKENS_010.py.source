@@ -1,0 +1,70 @@
+import ast
+import base64
+import hashlib
+import io
+import json
+import tokenize
+import warnings
+from pathlib import Path
+
+root = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-schema2-admission-closure-prep003')
+path = root / 'front/native_successor_front_common_013_001.py.template'
+old = path.read_text(encoding='utf-8')
+tokens = list(tokenize.generate_tokens(io.StringIO(old).readline))
+assert not any(token.type == getattr(tokenize, 'FSTRING_START', -1) for token in tokens), 'F-string lexical preservation requires a separate source-aware branch'
+strings_before = [token.string for token in tokens if token.type == tokenize.STRING]
+out, levels, previous, line_start = [], [''], None, True
+for token in tokens:
+    if token.type in (tokenize.ENDMARKER, tokenize.ENCODING):
+        continue
+    if token.type == tokenize.INDENT:
+        levels.append(' ' * len(levels)); continue
+    if token.type == tokenize.DEDENT:
+        levels.pop(); continue
+    if token.type == tokenize.NEWLINE:
+        out.append('\n'); previous = None; line_start = True; continue
+    if token.type in (tokenize.NL, tokenize.COMMENT):
+        continue
+    if line_start:
+        out.append(levels[-1]); line_start = False
+    if previous is not None:
+        probe = tokenize.generate_tokens(io.StringIO(previous.string + token.string).readline)
+        observed = []
+        try:
+            for item in probe:
+                if item.type in (tokenize.NL, tokenize.NEWLINE, tokenize.ENDMARKER): break
+                observed.append((item.type,item.string))
+                if len(observed)==2: break
+        except (tokenize.TokenError,IndentationError,SyntaxError):
+            pass
+        if (previous.type==tokenize.NUMBER and token.type==tokenize.NAME) or observed!=[(previous.type,previous.string),(token.type,token.string)]:
+            out.append(' ')
+    out.append(token.string); previous=token
+new=''.join(out)
+with warnings.catch_warnings(record=True) as notices:
+    warnings.simplefilter('error',SyntaxWarning)
+    old_tree=ast.parse(old)
+    new_tree=ast.parse(new)
+assert not notices
+assert ast.dump(new_tree,include_attributes=False)==ast.dump(old_tree,include_attributes=False)
+strings_after=[token.string for token in tokenize.generate_tokens(io.StringIO(new).readline) if token.type==tokenize.STRING]
+assert strings_before==strings_after
+before=root/'before'/'common-layout009'/path.relative_to(root)
+before.parent.mkdir(parents=True,exist_ok=True)
+with before.open('xb') as stream: stream.write(old.encode('utf-8'))
+assert before.stat().st_ino!=path.stat().st_ino and before.read_bytes()==old.encode('utf-8')
+path.write_text(new,encoding='utf-8',newline='\n')
+data=new.encode('utf-8'); encoded=len(base64.b64encode(data))
+record=dict(schema_version=1,author='/root/bootstrap_stage',before_path=str(before),before_sha256=hashlib.sha256(old.encode('utf-8')).hexdigest(),
+            before_bytes=len(old.encode('utf-8')),after_bytes=len(data),after_sha256=hashlib.sha256(data).hexdigest(),
+            Base64_bytes=encoded,whole_AST_equal=True,string_token_bytes_exact=True,string_token_count=len(strings_before),
+            encoded_binding_component_guard=16384,decoded_binding_JSON_limit=12288,
+            frame_with_max_encoded_binding_component=encoded+16384+2,
+            frame_headroom_before_future_source_literal_growth=262142-(encoded+16384+2),
+            raw_common_limit_for_max_encoded_binding_component=184317,
+            historical_ROOT_decoded16384_formula_qualified_as_wrong_role=True,
+            actual_selected16_paths=None,actual_source_literal_growth_allowance=None,actual_eight_OS_commands=None,actual_Windows_captures=None,
+            target_definitions_compilation_import_tests_FFI_Git_native_executed=False)
+with(root/'AST_EQUAL_COMMON_MINIMUM_LAYOUT_CHECKPOINT_010.json').open('xb') as stream:
+    stream.write((json.dumps(record,sort_keys=True,indent=2)+'\n').encode('ascii'))
+print(json.dumps(record,sort_keys=True))

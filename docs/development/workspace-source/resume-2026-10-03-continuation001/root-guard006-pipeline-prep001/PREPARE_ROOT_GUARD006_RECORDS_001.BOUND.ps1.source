@@ -1,0 +1,264 @@
+param([Parameter(Mandatory=$true)][ValidateSet('whole-before-auth','ack','bind-launch')][string]$Stage,[Parameter(Mandatory=$true)][string]$ExpectedSelfSha256,[Parameter(Mandatory=$true)][string]$ExpectedSourceBindingsSha256)
+$ErrorActionPreference='Stop'
+$Work='D:\Aenv\pro2\resume-2026-10-03-continuation001'
+$Prep=Join-Path $Work 'consumer005-guard006-runtime-prep001'
+$Meta=Join-Path $Work 'metadata3-producer-core-prep001'
+$Scope='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY'
+$Pipeline='D:\Aenv\pro2\resume-2026-10-03-continuation001\root-guard006-pipeline-prep001'
+$PipelineBindingRecordType='root_metadata_pipeline_source_binding'
+
+function Read-Bytes([string]$Path,[long]$Maximum,[string]$Pin) {
+    $first=Get-Item -LiteralPath $Path -Force
+    if($first.PSIsContainer -or ($first.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $first.Length -gt $Maximum){throw 'Nonplain/oversize metadata input'}
+    $stream=[IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    try{
+        if($stream.Length -ne $first.Length -or $stream.Length -gt $Maximum){throw 'Opened size drift'}
+        $memory=[IO.MemoryStream]::new()
+        try{
+            $buffer=[byte[]]::new(4096)
+            do{$count=$stream.Read($buffer,0,$buffer.Length);if($memory.Length+$count -gt $Maximum){throw 'Opened cap exceeded'};$memory.Write($buffer,0,$count)}while($count -gt 0)
+            $data=$memory.ToArray()
+        }finally{$memory.Dispose()}
+    }finally{$stream.Dispose()}
+    $last=Get-Item -LiteralPath $Path -Force
+    if($data.Length -ne $first.Length -or $first.Length -ne $last.Length -or $first.LastWriteTimeUtc.Ticks -ne $last.LastWriteTimeUtc.Ticks -or $first.CreationTimeUtc.Ticks -ne $last.CreationTimeUtc.Ticks -or $first.Attributes -ne $last.Attributes){throw 'Metadata input drift'}
+    $sha=[Security.Cryptography.SHA256]::Create()
+    try{$hash=[BitConverter]::ToString($sha.ComputeHash($data)).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+    if($Pin -and $hash -cne $Pin){throw 'Exact metadata input pin differs'}
+    return @{data=$data;sha256=$hash;bytes=$data.Length;path=$Path}
+}
+function Load-Record([string]$Path,[long]$Maximum,[string]$Pin){$row=Read-Bytes $Path $Maximum $Pin;return @{row=$row;value=([Text.Encoding]::UTF8.GetString($row.data)|ConvertFrom-Json)}}
+function Write-Bytes-Once([string]$Path,[byte[]]$Data,[long]$Maximum){
+    if($Data.Length -gt $Maximum){throw 'Metadata output cap'}
+    $stream=[IO.File]::Open($Path,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+    try{$stream.Write($Data,0,$Data.Length);$stream.Flush($true)}finally{$stream.Dispose()}
+    return (Read-Bytes $Path $Maximum '')
+}
+function Write-Record-Once([string]$Path,$Record){return (Write-Bytes-Once $Path ([Text.UTF8Encoding]::new($false).GetBytes(($Record|ConvertTo-Json -Compress -Depth 12)+"`n")) 65536)}
+function Pointer($Row){return [ordered]@{path=$Row.path;sha256=$Row.sha256}}
+function Assert-Absent([string]$Path){try{[void](Get-Item -LiteralPath $Path -Force -ErrorAction Stop);throw 'One-use role exists'}catch [System.Management.Automation.ItemNotFoundException]{}}
+function Pin([string]$Path,[string]$Expected,[long]$Cap){
+    if($Expected -isnot [string] -or $Expected -cnotmatch '\A[0-9a-f]{64}\z'){throw 'Exact pinned stage input'}
+    return ,(Read-Bytes $Path $Cap $Expected).data
+}
+function Exact-Keys($Record,[string[]]$Keys,[string]$Label) {
+    if ($Record -isnot [System.Collections.IDictionary] -or (($Record.Keys | Sort-Object) -join ',') -cne (($Keys | Sort-Object) -join ',')) { throw ($Label+' exact keys') }
+}
+function Owned-JSON($Value) {
+    if ($Value -is [Management.Automation.PSCustomObject]) {
+        $map=@{}
+        foreach($property in $Value.PSObject.Properties) {$map[$property.Name]=Owned-JSON $property.Value}
+        return $map
+    }
+    if ($Value -is [array]) {
+        $items=[object[]]::new($Value.Length)
+        for($j=0;$j -lt $Value.Length;$j++) {$items[$j]=Owned-JSON $Value[$j]}
+        return ,$items
+    }
+    return $Value
+}
+function Strict-Record([byte[]]$Bytes) {
+    $text=[Text.UTF8Encoding]::new($false,$true).GetString($Bytes)
+    # The actual JSON grammar is also parsed by ConvertFrom-Json. This finite
+    # lexical pass rejects duplicate decoded keys and noninteger numbers first.
+    $pattern='"(?:\\["\\/bfnrt]|\\u[0-9A-Fa-f]{4}|[^"\\\x00-\x1f])*"|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|true|false|null|[{}\[\],:]'
+    $tokens=[regex]::Matches($text,$pattern)
+    $objects=[Collections.Generic.Stack[Collections.Generic.HashSet[string]]]::new()
+    $position=0
+    for($i=0;$i -lt $tokens.Count;$i++) {
+        $token=$tokens[$i]
+        if($text.Substring($position,$token.Index-$position) -cnotmatch '\A\s*\z'){throw 'Invalid JSON lexical gap'}
+        $position=$token.Index+$token.Length
+        $part=$token.Value
+        if($part -ceq '{') {
+            if($objects.Count -ge 40){throw 'Bounded JSON object depth'}
+            $objects.Push([Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal))
+        } elseif($part -ceq '}') {
+            if($objects.Count -eq 0){throw 'JSON object stack underflow'}
+            [void]$objects.Pop()
+        } elseif($part.StartsWith('"') -and $i+1 -lt $tokens.Count -and $tokens[$i+1].Value -ceq ':') {
+            $key=(('{'+'"key":'+$part+'}')|ConvertFrom-Json).key
+            if($key -isnot [string] -or $objects.Count -eq 0 -or -not $objects.Peek().Add($key)){throw 'Duplicate or invalid decoded JSON key'}
+        } elseif($part -cmatch '\A-?[0-9]' -and $part -match '[.eE]'){throw 'Noninteger phase JSON'}
+    }
+    if($objects.Count -ne 0 -or $text.Substring($position) -cnotmatch '\A\s*\z'){throw 'Invalid JSON lexical terminal'}
+    $record=Owned-JSON ($text|ConvertFrom-Json)
+    if($record -isnot [System.Collections.IDictionary]){throw 'Exact JSON object role required'}
+    return $record
+}
+
+function Same-Nominal($Actual,$Expected,[string]$Label) {
+    if($null -eq $Expected) {if($null -ne $Actual){throw ($Label+' None required')};return}
+    if($Expected -is [bool]) {if($Actual -isnot [bool] -or $Actual -ne $Expected){throw ($Label+' bool')}}
+    elseif($Expected -is [string]) {if($Actual -isnot [string] -or $Actual -cne $Expected){throw ($Label+' string')}}
+    elseif($Expected -is [int] -or $Expected -is [long]) {if(($Actual -isnot [int] -and $Actual -isnot [long]) -or $Actual -ne $Expected){throw ($Label+' integer')}}
+    else {throw 'Unknown fixed nominal domain'}
+}
+function PS7-Stamp($Value) {
+    if($Value -isnot [string] -or $Value -cnotmatch '\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}\+00:00\z'){throw 'Genuine PowerShell7 UTC required'}
+    $valueStamp=[DateTimeOffset]::ParseExact($Value,'yyyy-MM-ddTHH:mm:ss.fffffffzzz',[Globalization.CultureInfo]::InvariantCulture)
+    if($valueStamp.ToString('o') -cne $Value){throw 'PS7 timestamp roundtrip'}
+    return $valueStamp
+}
+function Phase-Lease([long]$Reserve) {
+    if($ExpectedLeaseSha256 -isnot [string] -or $ExpectedLeaseSha256 -cnotmatch '\A[0-9a-f]{64}\z'){throw 'External genuine lease pin required'}
+    $master=Strict-Record (Pin (Join-Path $Work 'OWNER_CONTINUATION_20261003_001.json') 'de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583' 65536)
+    $masterFixed=Strict-Record ([Text.UTF8Encoding]::new($false).GetBytes('{"schema_version":1,"record_type":"owner_ongoing_local_private_continuation","authority":"owner","owner_directive":"ok then keep working on the project and do not stop unless if there is something that stops you.","record_created_utc":"2026-10-03T06:02:35.1164907+00:00","decision":"resume_project_work_beyond_prior_deadline","authorization_mode":"ongoing_until_completion_owner_stop_or_actual_blocker","work_end_utc":null,"fixed_deadline_invented":false,"predecessor_owner_record":"D:\\Aenv\\pro2\\resume-2026-10-01-30h-001\\OWNER_WORK_WINDOW_30H_20261001_001.json","predecessor_owner_sha256":"3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff","predecessor_work_end_utc":"2026-10-02T22:36:15Z","predecessor_closeout_checkpoint_sha256":"4349b18a95ab897e646790175826788b9e670b4aca6691349b8e9aa5a0fc7c30","scope":"Continue unfinished local/private pro2 corrective source, meaningful validation, reviewed local release and guarded native recovery; major-step docs/handoff updates, independent audits and agent coordination retained","phase_lease_policy":"A future execution may select a reviewed bounded phase deadline under this ongoing authority; it is an execution lease, not a fabricated owner end or renewal of a spent artifact","original_guards_changed":false,"public_actions_authorized":false,"one_use_replay_authorized":false,"frozen_scientific_changes_authorized":false,"additional_recovery_epochs_authorized":false,"unrelated_process_stops_authorized":false,"sole_executor_transfer_asserted":false,"resource_lease_asserted":false,"native_quiet_asserted":false,"review_status_at_creation":"pending_independent_directive_and_lineage_review","successor_bindings_at_creation":null,"historical_records_preserved":true}'))
+    Exact-Keys $master @($masterFixed.Keys) 'Owner master'
+    foreach($name in $masterFixed.Keys){Same-Nominal $master[$name] $masterFixed[$name] ('Master.'+$name)}
+    $peer=Strict-Record (Pin (Join-Path $Work 'owner-docs-independent-review001\INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json') '56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0' 2097152)
+    Exact-Keys $peer @('checks','created_utc','directive_matches_user_verbatim','finite_selected_inputs','genuine_stamp_format','limitations','old_artifacts_renewed','ongoing_authority_supersedes_old_deadline','operational_authorization_or_execution_acceptance','owner_end_utc','post_readback','record_type','reviewer','schema_version','source_choice_implementation_or_runtime_acceptance','source_owner_bytes','source_owner_fields','source_owner_sha256','verdict') 'Owner source review'
+    $peerCore=Strict-Record ([Text.UTF8Encoding]::new($false).GetBytes('{"schema_version":1,"record_type":"independent_owner_continuation_directive_and_lineage_review","reviewer":"owner_docs_review","verdict":"PASS_OWNER_DIRECTIVE_AND_LINEAGE_SOURCE_ONLY","source_owner_sha256":"de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583","owner_end_utc":null,"directive_matches_user_verbatim":true,"old_artifacts_renewed":false,"ongoing_authority_supersedes_old_deadline":true,"operational_authorization_or_execution_acceptance":false,"source_choice_implementation_or_runtime_acceptance":false}'))
+    foreach($name in $peerCore.Keys){Same-Nominal $peer[$name] $peerCore[$name] ('OwnerReview.'+$name)}
+    $lease=Strict-Record (Pin (Join-Path $Work 'EXECUTION_LEASE_GG6_M3_001.json') $ExpectedLeaseSha256 65536)
+    Exact-Keys $lease @('schema_version','record_type','author','scope','created_utc','lease_end_utc','owner_master_sha256','owner_review_sha256','decision','maximum_lease_seconds','lease_is_owner_deadline','operational_authority') 'Execution lease'
+    $nominals=Strict-Record ([Text.UTF8Encoding]::new($false).GetBytes('{"schema_version":1,"record_type":"root_local_private_execution_lease","author":"/root","scope":"COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY","owner_master_sha256":"de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583","owner_review_sha256":"56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0","decision":"authorize_bounded_selected_unit_metadata_and_copied_tests_once","maximum_lease_seconds":43200,"lease_is_owner_deadline":false,"operational_authority":false}'))
+    foreach($name in $nominals.Keys){Same-Nominal $lease[$name] $nominals[$name] ('Lease.'+$name)}
+    $start=PS7-Stamp $lease.created_utc; $end=PS7-Stamp $lease.lease_end_utc; $clock=[DateTimeOffset]::UtcNow
+    if($start -gt $clock -or $clock -ge $end -or ($end-$start).TotalSeconds -le 0 -or ($end-$start).TotalSeconds -gt 43200 -or ($end-$clock).TotalSeconds -lt $Reserve -or $start -lt (PS7-Stamp $master.record_created_utc)){throw 'Finite execution lease clock/reserve'}
+    return $lease
+}
+
+function Pipeline-Row($Row,[string]$ExpectedPath,[long]$Maximum,[string]$Label) {
+    Exact-Keys $Row @('path','sha256','bytes') $Label
+    if($Row.path -isnot [string] -or $Row.path -cne $ExpectedPath -or $Row.sha256 -isnot [string] -or $Row.sha256 -cnotmatch '\A[0-9a-f]{64}\z' -or ($Row.bytes -isnot [int] -and $Row.bytes -isnot [long]) -or $Row.bytes -le 0 -or $Row.bytes -gt $Maximum){throw ($Label+' selected path/pin/size')}
+    $payload=Pin $Row.path $Row.sha256 $Row.bytes
+    if($payload.Length -ne $Row.bytes){throw ($Label+' selected exact size')}
+    return ,$payload
+}
+function Pipeline-Binding {
+    if($ExpectedSourceBindingsSha256 -isnot [string] -or $ExpectedSourceBindingsSha256 -cnotmatch '\A[0-9a-f]{64}\z'){throw 'Reviewed external Root source binding pin required'}
+    $cfg=Strict-Record (Pin (Join-Path $Pipeline 'ROOT_PIPELINE_BINDING_001.json') $ExpectedSourceBindingsSha256 65536)
+    Exact-Keys $cfg @('schema_version','record_type','author','scope','sources','profile','projection','owner_lease_sha256','owner_lease_end_utc','coordination_peer_reply','coordination_root_response','metadata_checker_ready','bound_checker_ready','packet_composer','maximum_retained_seconds','guard_sources','harness_static_review','source_manifest','source_capsule','source_capsule_review') 'Root pipeline binding'
+    Same-Nominal $cfg.schema_version 1 'Pipeline schema'
+    Same-Nominal $cfg.record_type $PipelineBindingRecordType 'Pipeline record type'
+    Same-Nominal $cfg.author '/root' 'Pipeline author'
+    Same-Nominal $cfg.scope $Scope 'Pipeline scope'
+    if(($cfg.maximum_retained_seconds -isnot [int] -and $cfg.maximum_retained_seconds -isnot [long]) -or $cfg.maximum_retained_seconds -lt 1 -or $cfg.maximum_retained_seconds -gt 3600){throw 'Root retained lifetime domain'}
+    if($cfg.owner_lease_sha256 -isnot [string] -or $cfg.owner_lease_sha256 -cnotmatch '\A[0-9a-f]{64}\z'){throw 'Exact execution lease pin'}
+    [void](PS7-Stamp $cfg.owner_lease_end_utc)
+    Exact-Keys $cfg.sources @('metadata_before_writer','metadata_before_parent','metadata_after_writer','metadata_after_parent','root_records','whole_before_parent','whole_after_writer','whole_after_parent') 'Root fixed source roles'
+    $sourcePaths=@{
+        metadata_before_writer=(Join-Path $Meta 'WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_003.BOUND.ps1')
+        metadata_before_parent=(Join-Path $Meta 'SUPERVISE_ROOT_METADATA_BEFORE_003.BOUND.ps1')
+        metadata_after_writer=(Join-Path $Meta 'WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_003.BOUND.ps1')
+        metadata_after_parent=(Join-Path $Meta 'SUPERVISE_ROOT_METADATA_AFTER_003.BOUND.ps1')
+        root_records=(Join-Path $Pipeline 'PREPARE_ROOT_GUARD006_RECORDS_001.BOUND.ps1')
+        whole_before_parent=(Join-Path $Pipeline 'SUPERVISE_ROOT_WHOLE_BEFORE_006.BOUND.ps1')
+        whole_after_writer=(Join-Path $Pipeline 'WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.BOUND.ps1')
+        whole_after_parent=(Join-Path $Pipeline 'SUPERVISE_ROOT_WHOLE_AFTER_006.BOUND.ps1')
+    }
+    foreach($key in $sourcePaths.Keys){[void](Pipeline-Row $cfg.sources[$key] $sourcePaths[$key] 65536 ('Pipeline source '+$key))}
+    Exact-Keys $cfg.guard_sources @('driver','child','observer','launcher_template') 'Guard source roles'
+    $guardPaths=@{
+        driver=(Join-Path $Prep 'run-consumer-guard-unit006-rev003.bound.py')
+        child=(Join-Path $Prep 'consumer-guard-child-006-rev003.TEMPLATE.py')
+        observer=(Join-Path $Prep 'observe-whole-runtime-006-rev003.BOUND.py')
+        launcher_template=(Join-Path $Prep 'ROOT_FIRST_LAUNCH_006-rev003.TEMPLATE.ps1')
+    }
+    foreach($key in $guardPaths.Keys){[void](Pipeline-Row $cfg.guard_sources[$key] $guardPaths[$key] 65536 ('Guard source '+$key))}
+    [void](Pipeline-Row $cfg.profile (Join-Path $Prep 'GUARD_RUNTIME_PROFILE_006-rev003.json') 65536 'Guard profile')
+    [void](Pipeline-Row $cfg.projection (Join-Path $Prep 'SOURCE_INPUTS_PROJECTION_006.json') 2097152 'Guard source projection')
+    [void](Pipeline-Row $cfg.harness_static_review (Join-Path $Prep 'INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_006.json') 2097152 'Guard static peer')
+    [void](Pipeline-Row $cfg.source_manifest (Join-Path $Prep 'inputs\SOURCE_STAGED_MANIFEST_005.json') 2097152 'Source manifest')
+    [void](Pipeline-Row $cfg.source_capsule (Join-Path $Prep 'inputs\ACTUAL_SOURCE_CAPSULE_005.json') 2097152 'Source capsule payload')
+    [void](Pipeline-Row $cfg.source_capsule_review (Join-Path $Work 'capsule-design-independent-review001\INDEPENDENT_COMPACT_CAPSULE_REVIEW_001.json') 131072 'Independent capsule review')
+    foreach($key in @('coordination_peer_reply','coordination_root_response')){
+        $row=$cfg[$key]
+        Exact-Keys $row @('path','sha256','relative') ('Coordination '+$key)
+        if($row.relative -isnot [string] -or $row.relative.Length -le 0 -or $row.relative.Length -gt 399 -or $row.relative.Contains('\') -or $row.relative -match '(^/|:|(^|/)\.{1,2}(/|$)|//)' -or $row.path -isnot [string] -or $row.path -cne ([IO.Path]::GetFullPath((Join-Path $Work $row.relative))) -or $row.sha256 -isnot [string] -or $row.sha256 -cnotmatch '\A[0-9a-f]{64}\z'){throw 'Reviewed canonical coordination role'}
+        [void](Pin $row.path $row.sha256 65536)
+    }
+    foreach($key in @('metadata_checker_ready','bound_checker_ready')){
+        Exact-Keys $cfg[$key] @('path') ('Retained checker ready '+$key)
+        if($cfg[$key].path -isnot [string] -or $cfg[$key].path.Length -le 0 -or $cfg[$key].path.Length -gt 32767){throw 'Retained ready role path'}
+    }
+    Exact-Keys $cfg.packet_composer @('path','sha256') 'Root packet composer'
+    if($cfg.packet_composer.path -isnot [string] -or $cfg.packet_composer.path.Length -le 0 -or $cfg.packet_composer.path.Length -gt 32767 -or $cfg.packet_composer.sha256 -isnot [string] -or $cfg.packet_composer.sha256 -cnotmatch '\A[0-9a-f]{64}\z'){throw 'Reviewed packet composer role'}
+    [void](Pin $cfg.packet_composer.path $cfg.packet_composer.sha256 65536)
+    return $cfg
+}
+
+$Configuration=Pipeline-Binding
+$ObserverSha=$Configuration.guard_sources.observer.sha256
+$ProfileSha=$Configuration.profile.sha256
+$ReviewSha=$Configuration.harness_static_review.sha256
+$OwnerSha=$Configuration.owner_lease_sha256
+$ExpectedLeaseSha256=$OwnerSha
+$DriverSha=$Configuration.guard_sources.driver.sha256
+$SourcePeerSha=$Configuration.source_capsule_review.sha256
+$lease=Phase-Lease 350
+Same-Nominal $lease.lease_end_utc $Configuration.owner_lease_end_utc 'Selected execution lease end'
+if([IO.Path]::GetFullPath($PSCommandPath) -cne (Join-Path $Pipeline 'PREPARE_ROOT_GUARD006_RECORDS_001.BOUND.ps1')){throw 'Fixed Root records source path'}
+[void](Pin $PSCommandPath $ExpectedSelfSha256 65536)
+foreach($path in @((Join-Path $Prep 'ROOT_LAUNCH_START_006.json'),(Join-Path $Prep 'ROOT_LAUNCH_TERMINAL_006.json'),'D:\Aenv\pro2\.tmp\cg24-006')){Assert-Absent $path}
+$owner=Read-Bytes (Join-Path $Work 'EXECUTION_LEASE_GG6_M3_001.json') 65536 $Configuration.owner_lease_sha256
+$profile=Load-Record $Configuration.profile.path 65536 $Configuration.profile.sha256
+$static=Read-Bytes $Configuration.harness_static_review.path 2097152 $Configuration.harness_static_review.sha256
+$sourcePeer=Read-Bytes $Configuration.source_capsule_review.path 131072 $Configuration.source_capsule_review.sha256
+$driver=Read-Bytes $Configuration.guard_sources.driver.path 65536 $Configuration.guard_sources.driver.sha256
+$observer=Read-Bytes $Configuration.guard_sources.observer.path 65536 $Configuration.guard_sources.observer.sha256
+$capture=Load-Record (Join-Path $Meta 'phase-before-003\METADATA_CAPTURE_003.json') 2097152 ''
+if($capture.value.phase -cne 'before' -or $capture.value.metadata_only -ne $true -or $capture.value.operational_authority_granted -ne $false){throw 'Metadata capture role differs'}
+$runtime=Read-Bytes $capture.value.runtime_selection.path 65536 $capture.value.runtime_selection.sha256
+$context=Read-Bytes $capture.value.context.path 1048576 $capture.value.context.sha256
+$now=[DateTimeOffset]::UtcNow
+$runtimeRecord=Strict-Record $runtime.data
+$contextRecord=Strict-Record $context.data
+foreach($record in @($runtimeRecord,$contextRecord)){
+    if($record.captured_utc -isnot [string] -or $record.captured_utc -cnotmatch '\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}\+00:00\z'){throw 'Genuine Python6 original context/runtime stamp'}
+    $stamp=[DateTimeOffset]::ParseExact($record.captured_utc,'yyyy-MM-ddTHH:mm:ss.ffffffzzz',[Globalization.CultureInfo]::InvariantCulture)
+    if($stamp.ToString('yyyy-MM-ddTHH:mm:ss.ffffffzzz') -cne $record.captured_utc){throw 'Original context/runtime stamp roundtrip'}
+    $age=($now-$stamp).TotalSeconds
+    if($age -lt 0 -or $age -gt 600 -or (($Stage -ceq 'ack' -or $Stage -ceq 'bind-launch') -and $age -gt 90)){throw 'Original context/runtime freshness, both90 at unit preparation'}
+}
+[void](Phase-Lease 600)
+if($Stage -ceq 'whole-before-auth'){
+    [void](Phase-Lease 900)
+    Assert-Absent (Join-Path $Prep 'whole-runtime-before')
+    Assert-Absent (Join-Path $Prep 'whole-runtime-after')
+    $record=[ordered]@{schema_version=1;record_type='consumer_guard_unit006_metadata_observation_authorization';author='/root';scope=$Scope;phase='before';created_utc=$now.ToString('o');expires_utc=$now.AddMinutes(15).ToString('o');observer_sha256=$observer.sha256;profile_sha256=$profile.row.sha256;static_review_sha256=$static.sha256;owner_sha256=$owner.sha256;runtime_snapshot=(Pointer $runtime);context_selection=(Pointer $context);before_record_sha256=$null;unit_receipt=$null}
+    $written=Write-Record-Once (Join-Path $Prep 'ROOT_WHOLE_BEFORE_AUTHORIZATION_006.json') $record
+    [ordered]@{path=$written.path;sha256=$written.sha256;bytes=$written.bytes;stage=$Stage;metadata_helper_entered=$false}|ConvertTo-Json -Compress
+}elseif($Stage -ceq 'ack'){
+    [void](Phase-Lease 1800)
+    $whole=Load-Record (Join-Path $Prep 'INDEPENDENT_WHOLE_BEFORE_ACCEPTANCE_006.json') 65536 ''
+    if($whole.value.schema_version -ne 1 -or $whole.value.scope -cne $Scope -or $whole.value.unchanged_against_reviewed_runtime -ne $true -or $whole.value.runtime_snapshot_sha256 -cne $runtime.sha256 -or @('/root/pubnative_review','/root/actual_record_checker','/root/owner_docs_review') -cnotcontains $whole.value.verifier){throw 'Whole acceptance role differs'}
+    $peer=Read-Bytes $Configuration.coordination_peer_reply.path 65536 $Configuration.coordination_peer_reply.sha256
+    $rootResponse=Read-Bytes $Configuration.coordination_root_response.path 65536 $Configuration.coordination_root_response.sha256
+    $coordination=Write-Record-Once (Join-Path $Prep 'ROOT_COORDINATION_ACK_GUARD_UNIT006.json') ([ordered]@{schema_version=1;scope=$Scope;created_utc=[DateTimeOffset]::UtcNow.ToString('o');other_session_acknowledgement=(Pointer $peer);root_response=(Pointer $rootResponse);live_execution_authorized=$false})
+    $os=Get-CimInstance -ClassName Win32_OperatingSystem
+    $disk=Get-PSDrive -Name D
+    $stamp=[DateTimeOffset]::UtcNow
+    $ram=[long]$os.FreePhysicalMemory*1024
+    $diskFree=[long]$disk.Free
+    if($ram -lt 1073741824 -or $diskFree -lt 10737418240){throw 'Fresh unit resource floor fails'}
+    $resource=Write-Record-Once (Join-Path $Prep 'ROOT_RESOURCE_SNAPSHOT_006.json') ([ordered]@{schema_version=1;scope=$Scope;captured_utc=$stamp.ToString('o');free_ram_bytes=$ram;disk_free_bytes=$diskFree;single_thread=$true;author='/root'})
+    $record=[ordered]@{schema_version=1;record_type='consumer_guard_unit006_first_run_ack';decision='execute_copied_consumer_guard_unit006_once';scope=$Scope;author='/root';executor='/root';created_utc=$stamp.ToString('o');expires_utc=$stamp.AddMinutes(30).ToString('o');owner_sha256=$owner.sha256;driver_sha256=$driver.sha256;child_sha256=$profile.value.child.sha256;source_manifest_sha256=$profile.value.source_manifest_sha256;source_peer_sha256=$sourcePeer.sha256;harness_static_review_sha256=$static.sha256;profile_sha256=$profile.row.sha256;source_projection_sha256=$profile.value.source_projection_sha256;runtime_snapshot=(Pointer $runtime);whole_runtime_before=(Pointer $whole.row);resource_snapshot=(Pointer $resource);coordination_acknowledgement=(Pointer $coordination);max_collection_seconds=60;max_test_seconds=300}
+    $written=Write-Record-Once (Join-Path $Prep 'ROOT_EXECUTION_ACK_GUARD_UNIT006.json') $record
+    [ordered]@{path=$written.path;sha256=$written.sha256;bytes=$written.bytes;stage=$Stage;resource_captured_utc=$stamp.ToString('o');free_ram_bytes=$ram;disk_free_bytes=$diskFree;target_test_entered=$false}|ConvertTo-Json -Compress
+}else{
+    $ack=Read-Bytes (Join-Path $Prep 'ROOT_EXECUTION_ACK_GUARD_UNIT006.json') 65536 ''
+    $bound=Load-Record (Join-Path $Prep 'INDEPENDENT_GUARD_RUNTIME_BOUND_REVIEW_006.json') 65536 ''
+    if($bound.value.verdict -cne 'PASS_BOUND_STATIC' -or $bound.value.root_ack_sha256 -cne $ack.sha256 -or $bound.value.driver_sha256 -cne $driver.sha256){throw 'Actual bound review differs'}
+    $template=Read-Bytes $Configuration.guard_sources.launcher_template.path 65536 $Configuration.guard_sources.launcher_template.sha256
+    $text=[Text.Encoding]::UTF8.GetString($template.data)
+    $bindings=@{BoundDriverSha256=$driver.sha256;RootAckSha256=$ack.sha256;BoundReviewSha256=$bound.row.sha256}
+    foreach($name in @('BoundDriverSha256','RootAckSha256','BoundReviewSha256')){
+        $pattern='(?m)^\$'+$name+' = \$null(?<cr>\r?)$'
+        if([regex]::Matches($text,$pattern).Count -ne 1){throw 'Exactly three original slots required'}
+        $replacement='$'+$name+" = '"+$bindings[$name]+"'"
+        $text=[regex]::Replace($text,$pattern,{param($match)$replacement+$match.Groups['cr'].Value})
+    }
+    $written=Write-Bytes-Once (Join-Path $Prep 'ROOT_FIRST_LAUNCH_006-rev003.BOUND.ps1') ([Text.UTF8Encoding]::new($false).GetBytes($text)) 65536
+    $reverse=[Text.Encoding]::UTF8.GetString($written.data)
+    foreach($name in @('BoundDriverSha256','RootAckSha256','BoundReviewSha256')){
+        $pattern='(?m)^\$'+$name+" = '[0-9a-f]{64}'(?<cr>\r?)$"
+        if([regex]::Matches($reverse,$pattern).Count -ne 1){throw 'Exactly three bound reversal slots required'}
+        $replacement='$'+$name+' = $null'
+        $reverse=[regex]::Replace($reverse,$pattern,{param($match)$replacement+$match.Groups['cr'].Value})
+    }
+    if($reverse -cne [Text.Encoding]::UTF8.GetString($template.data)){throw 'RootPS binding reversal differs'}
+    [void](Write-Record-Once (Join-Path $Prep 'ROOT_PS_BINDING_PROVENANCE_006.json') ([ordered]@{schema_version=1;author='/root';created_utc=[DateTimeOffset]::UtcNow.ToString('o');template_sha256=$template.sha256;bound_sha256=$written.sha256;bindings=$bindings;exact_three_value_substitutions=$true;byte_exact_reversal=$true;target_test_entered=$false}))
+    [ordered]@{path=$written.path;sha256=$written.sha256;bytes=$written.bytes;stage=$Stage;target_test_entered=$false}|ConvertTo-Json -Compress
+}

@@ -1,0 +1,222 @@
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+# Reviewed005 lineage; distinct 30-hour attempt. Never run an unbound template.
+$parentSession = 'D:\Aenv\pro2\resume-2026-10-01-30h-001'
+$kaSession = Join-Path $parentSession 'keepawake-30h-001'
+$ownerPath = Join-Path $parentSession 'OWNER_WORK_WINDOW_30H_20261001_001.json'
+$helperPath = Join-Path $kaSession 'keepawake-30h-001.ps1'
+$launcherPath = Join-Path $kaSession 'launch-keepawake-30h-001-once.ps1'
+$stopperPath = Join-Path $kaSession 'stop-keepawake-30h-001-once.ps1'
+$ownerSha = '3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff' # Independently reviewed owner record
+$deadlineText = '2026-10-02T22:36:15Z'
+$deadline = [datetime]::Parse($deadlineText).ToUniversalTime()
+$intentPath = Join-Path $kaSession 'keepawake-30h-001.launch-intent.json'
+$startedPath = Join-Path $kaSession 'keepawake-30h-001.started.json'
+$activatedPath = Join-Path $kaSession 'keepawake-30h-001.activated.json'
+$stoppedPath = Join-Path $kaSession 'keepawake-30h-001.stopped.json'
+$stopRequestPath = Join-Path $kaSession 'keepawake-30h-001.stop-request.json'
+$stdoutPath = Join-Path $kaSession 'keepawake-30h-001.stdout.txt'
+$stderrPath = Join-Path $kaSession 'keepawake-30h-001.stderr.txt'
+$psExe = 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+$arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $helperPath + '"'
+$expectedCommand = '"' + $psExe + '" ' + $arguments
+
+function Test-KaPresent([string] $LiteralPath) {
+    try {
+        $null = Get-Item -LiteralPath $LiteralPath -Force -ErrorAction Stop
+        return $true
+    }
+    catch [System.Management.Automation.ItemNotFoundException] {
+        if ($_.FullyQualifiedErrorId -notlike 'PathNotFound,*') { throw }
+        return $false
+    }
+}
+
+function Assert-KaAbsent([string] $LiteralPath) {
+    if (Test-KaPresent $LiteralPath) { throw "Attempt artifact already exists: $LiteralPath" }
+}
+
+function Get-KaBytes([string] $LiteralPath) {
+    $kaItem = Get-Item -LiteralPath $LiteralPath -Force -ErrorAction Stop
+    if ($kaItem -isnot [IO.FileInfo] -or
+        ($kaItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Expected a regular file: $LiteralPath"
+    }
+    return ,([IO.File]::ReadAllBytes($LiteralPath))
+}
+
+function Get-KaBytesSha([byte[]] $InputBytes) {
+    $kaHasher = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($kaHasher.ComputeHash($InputBytes))).Replace('-', '').ToLowerInvariant() }
+    finally { $kaHasher.Dispose() }
+}
+
+function Get-KaFileSha([string] $LiteralPath) {
+    return Get-KaBytesSha (Get-KaBytes $LiteralPath)
+}
+
+function Read-KaJson([string] $LiteralPath, [string] $ExpectedHash = '') {
+    $kaBytes = Get-KaBytes $LiteralPath
+    $kaHash = Get-KaBytesSha $kaBytes
+    if ($ExpectedHash -ne '' -and $kaHash -cne $ExpectedHash) {
+        throw "Exact-byte hash mismatch: $LiteralPath"
+    }
+    $kaText = [Text.UTF8Encoding]::new($false, $true).GetString($kaBytes)
+    return [pscustomobject]@{
+        Sha256 = $kaHash
+        Value = ($kaText | ConvertFrom-Json -ErrorAction Stop)
+    }
+}
+
+function Write-KaCreateNewJson([string] $LiteralPath, [object] $JsonValue) {
+    $kaBytes = [Text.UTF8Encoding]::new($false).GetBytes(($JsonValue | ConvertTo-Json -Depth 12) + [char]10)
+    $kaStream = [IO.File]::Open($LiteralPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+    try { $kaStream.Write($kaBytes, 0, $kaBytes.Length); $kaStream.Flush($true) }
+    finally { $kaStream.Dispose() }
+}
+
+function Assert-KaOwner {
+    if ($null -eq $ownerSha -or $ownerSha -cnotmatch '^[0-9a-f]{64}$') {
+        throw 'Owner binding is unset or malformed; template execution is refused'
+    }
+    $kaOwner = (Read-KaJson $ownerPath $ownerSha).Value
+    if ($kaOwner.schema -ne 1 -or $kaOwner.authority -cne 'owner' -or
+        $kaOwner.decision -cne 'extend_supervised_local_private_work' -or
+        $kaOwner.work_start_utc -cne '2026-10-01T16:36:15Z' -or
+        $kaOwner.work_end_utc -cne $deadlineText -or $kaOwner.authorized_duration_hours -ne 30 -or
+        $kaOwner.public_actions_authorized -ne $false -or $kaOwner.native_guards_changed -ne $false -or
+        $kaOwner.one_use_replay_authorized -ne $false -or $kaOwner.frozen_scientific_changes_authorized -ne $false -or
+        $kaOwner.additional_recovery_epochs_authorized -ne $false) {
+        throw 'Owner authority, duration, deadline, or scope mismatch'
+    }
+}
+
+function Get-KaProcess([int] $IdentityPid) {
+    $kaProcesses = @(Get-CimInstance -ClassName Win32_Process -Filter ('ProcessId = ' + $IdentityPid) -ErrorAction Stop)
+    if ($kaProcesses.Count -ne 1) { throw 'Expected exactly one live helper process' }
+    $kaProcess = $kaProcesses[0]
+    if ([int]$kaProcess.ProcessId -ne $IdentityPid -or $null -eq $kaProcess.CreationDate -or
+        [string]::IsNullOrWhiteSpace($kaProcess.ExecutablePath) -or
+        [string]::IsNullOrWhiteSpace($kaProcess.CommandLine) -or
+        -not [string]::Equals($kaProcess.ExecutablePath, $psExe, [StringComparison]::OrdinalIgnoreCase) -or
+        -not [string]::Equals($kaProcess.CommandLine.TrimEnd(), $expectedCommand, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Live helper PID, executable, or exact command identity mismatch'
+    }
+    return $kaProcess
+}
+
+function Assert-KaReceiptBinding([object] $Receipt, [string] $BoundHelperSha) {
+    if ($Receipt.deadline_utc -cne $deadlineText -or $Receipt.owner_sha256 -cne $ownerSha -or
+        $Receipt.helper_sha256 -cne $BoundHelperSha) {
+        throw 'Keepawake receipt authority binding mismatch'
+    }
+}
+
+$helperSha = 'b0007062c76bb462cfa59218cd66c5d472e235b3315a8a1f31377d379839a13e' # Exact bound helper; independent bound review required
+
+Assert-KaOwner
+if ($null -eq $helperSha -or $helperSha -cnotmatch '^[0-9a-f]{64}$') {
+    throw 'Helper binding is unset or malformed; template execution is refused'
+}
+if (-not [Environment]::Is64BitProcess) { throw 'Launch from a 64-bit PowerShell process' }
+if (-not [string]::Equals($PSCommandPath, $launcherPath, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Launcher must run from the bound launcher path'
+}
+$null = Get-KaBytes $psExe
+if ([datetime]::UtcNow -ge $deadline) { throw 'Owner window has ended' }
+if ((Get-KaFileSha $helperPath) -cne $helperSha) { throw 'Keepawake helper exact-byte hash mismatch' }
+foreach ($kaPath in @($intentPath, $activatedPath, $startedPath, $stoppedPath,
+                     $stopRequestPath, $stdoutPath, $stderrPath)) { Assert-KaAbsent $kaPath }
+$kaExistingProcesses = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction Stop)
+foreach ($kaExistingProcess in $kaExistingProcesses) {
+    if ([string]::IsNullOrWhiteSpace($kaExistingProcess.CommandLine)) { throw 'Cannot inspect an existing PowerShell command identity' }
+    if ($kaExistingProcess.CommandLine.IndexOf($helperPath, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        throw 'Keepawake helper process is already running'
+    }
+}
+$launcherSha = Get-KaFileSha $launcherPath
+$intent = [pscustomobject]@{
+    schema = 1
+    utc = [datetime]::UtcNow.ToString('o')
+    deadline_utc = $deadlineText
+    owner_sha256 = $ownerSha
+    helper_sha256 = $helperSha
+    launcher_sha256 = $launcherSha
+    expected_process_executable = $psExe
+    expected_process_command = $expectedCommand
+    thread_scope = 'helper_current_thread_only'
+}
+# CreateNew consumes this launch attempt even if any subsequent step fails.
+Write-KaCreateNewJson $intentPath $intent
+$intentSha = Get-KaFileSha $intentPath
+Assert-KaOwner
+if ((Get-KaFileSha $helperPath) -cne $helperSha -or
+    (Get-KaFileSha $launcherPath) -cne $launcherSha -or
+    (Get-KaFileSha $intentPath) -cne $intentSha) { throw 'Bindings changed after intent creation' }
+if ([datetime]::UtcNow -ge $deadline) { throw 'Owner window ended before process launch' }
+
+$kaStartParameters = @{
+    FilePath = $psExe
+    ArgumentList = $arguments
+    WindowStyle = 'Hidden'
+    PassThru = $true
+    RedirectStandardOutput = $stdoutPath
+    RedirectStandardError = $stderrPath
+    ErrorAction = 'Stop'
+}
+$child = Start-Process @kaStartParameters
+$process = Get-KaProcess $child.Id
+$createdUtc = $process.CreationDate.ToUniversalTime().ToString('o')
+if ([datetime]::Parse($createdUtc).ToUniversalTime() -lt [datetime]::Parse($intent.utc).ToUniversalTime().AddSeconds(-2)) {
+    throw 'Launched process creation time differs from intent'
+}
+$waitUntil = [datetime]::UtcNow.AddSeconds(20)
+while (-not (Test-KaPresent $startedPath) -and [datetime]::UtcNow -lt $waitUntil) {
+    $liveProcess = Get-KaProcess $child.Id
+    if ($liveProcess.CreationDate.ToUniversalTime().ToString('o') -cne $createdUtc) { throw 'Helper process creation identity changed while waiting' }
+    if (Test-KaPresent $stoppedPath) { throw 'Helper stopped before launcher activation confirmation' }
+    Start-Sleep -Milliseconds 250
+}
+if (-not (Test-KaPresent $startedPath)) { throw 'Keepawake start receipt timed out' }
+$startedRead = Read-KaJson $startedPath
+$started = $startedRead.Value
+Assert-KaReceiptBinding $started $helperSha
+if ([int]$started.process_id -ne $child.Id -or $started.process_created_utc -cne $createdUtc -or
+    $started.process_executable -cne $process.ExecutablePath -or
+    $started.process_command -cne $process.CommandLine.TrimEnd() -or
+    $started.launch_intent_sha256 -cne $intentSha -or
+    [uint32]$started.previous_state -eq 0 -or [uint32]$started.active_flags -ne [uint32]2147483649 -or
+    $started.thread_scope -cne 'helper_current_thread_only') {
+    throw 'Keepawake start receipt process, launch, or execution-state mismatch'
+}
+# A fresh full identity and exact-byte observation is required before activated.json.
+Assert-KaOwner
+if ((Get-KaFileSha $helperPath) -cne $helperSha -or
+    (Get-KaFileSha $launcherPath) -cne $launcherSha -or
+    (Get-KaFileSha $intentPath) -cne $intentSha -or
+    (Get-KaFileSha $startedPath) -cne $startedRead.Sha256) { throw 'Activation bindings changed' }
+$activationProcess = Get-KaProcess $child.Id
+if ($activationProcess.CreationDate.ToUniversalTime().ToString('o') -cne $createdUtc) {
+    throw 'Helper process creation identity changed before activation confirmation'
+}
+foreach ($kaPath in @($activatedPath, $stoppedPath, $stopRequestPath)) { Assert-KaAbsent $kaPath }
+if ([datetime]::UtcNow -ge $deadline) { throw 'Owner window ended before activation confirmation' }
+$activated = [pscustomobject]@{
+    schema = 1
+    utc = [datetime]::UtcNow.ToString('o')
+    deadline_utc = $deadlineText
+    process_id = $child.Id
+    process_created_utc = $createdUtc
+    process_executable = $activationProcess.ExecutablePath
+    process_command = $activationProcess.CommandLine.TrimEnd()
+    owner_sha256 = $ownerSha
+    helper_sha256 = $helperSha
+    launcher_sha256 = $launcherSha
+    launch_intent_sha256 = $intentSha
+    started_receipt_sha256 = $startedRead.Sha256
+    thread_scope = 'helper_current_thread_only'
+}
+Write-KaCreateNewJson $activatedPath $activated
+$activated | ConvertTo-Json -Depth 12
+

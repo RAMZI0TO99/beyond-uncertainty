@@ -1,0 +1,96 @@
+
+import ast,datetime as dt,hashlib,json,math,os,pathlib,stat,re
+P=pathlib.Path(r"D:\Aenv\pro2");B=P/"resume-2026-10-01-30h-001";R=B/"raw-component-runtime-prep004"
+INPUTS={};BYTES={}
+FIXED_EXE_ROLES={str(P/"pro2/.venv/Scripts/python.exe"),str(P/"runtimes/git/mingw64/bin/git.exe"),str(P/"runtimes/week8-python313-frozen-001/python.exe")}
+RAW_FIELDS=("st_dev","st_ino","st_mode","st_size","st_mtime_ns","st_ctime_ns","st_nlink","st_file_attributes","st_birthtime_ns")
+def raw9(s):return [getattr(s,k) for k in RAW_FIELDS]
+def ancestors(p):
+    rows=[]
+    for d in [*reversed(p.parent.parents),p.parent]:
+        s=d.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not s.st_file_attributes&1024,d
+        rows.append([str(d),s.st_dev,s.st_ino,s.st_mode,s.st_file_attributes])
+    return rows
+def read(p,pin=None,size=None,maximum=8388608):
+    p=pathlib.Path(p);chain=ancestors(p);pre=p.lstat()
+    assert stat.S_ISREG(pre.st_mode) and pre.st_nlink==1 and not pre.st_file_attributes&1024,p
+    assert type(maximum) is int and 0<maximum<=134217728 and 0<=pre.st_size<=maximum,p
+    with p.open("rb") as f:
+        first=os.fstat(f.fileno());assert 0<=first.st_size<=maximum
+        x=f.read(maximum+1);last=os.fstat(f.fileno())
+    post=p.lstat()
+    assert len(x)<=maximum and len(x)==pre.st_size and raw9(pre)==raw9(post) and raw9(first)==raw9(last),p
+    for key in ("st_dev","st_ino","st_size","st_mtime_ns","st_nlink","st_file_attributes","st_birthtime_ns"):
+        assert getattr(pre,key)==getattr(first,key),str(p)+key
+    if pre.st_mode!=first.st_mode:
+        assert os.name=="nt" and str(p) in FIXED_EXE_ROLES,p
+        assert stat.S_IFMT(pre.st_mode)==stat.S_IFMT(first.st_mode) and stat.S_IMODE(pre.st_mode)&~0o111==stat.S_IMODE(first.st_mode)&~0o111,p
+        assert stat.S_IMODE(pre.st_mode)&0o111==0o111 and stat.S_IMODE(first.st_mode)&0o111==0,p
+    assert ancestors(p)==chain,p
+    r={"path":str(p),"sha256":hashlib.sha256(x).hexdigest(),"size":len(x),"path_raw9":raw9(pre),"handle_raw9":raw9(first)}
+    if pin is not None:assert r["sha256"]==pin,p
+    if size is not None:assert len(x)==size,p
+    INPUTS[str(p)]=r;BYTES[str(p)]=x
+    return x
+def pairs(v):
+    d={}
+    for k,x in v:
+        assert k not in d,"duplicate JSON key"
+        d[k]=x
+    return d
+def finite(token):
+    value=float(token);assert math.isfinite(value),"nonfinite JSON number";return value
+def J(x):return json.loads(x,object_pairs_hook=pairs,parse_float=finite,parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def hex64(x):return type(x) is str and re.fullmatch("[0-9a-f]{64}",x) is not None
+def bindings_reverse(source,names,expected):
+    rows=source.splitlines(keepends=True);t=ast.parse(source.decode("utf-8"));edits=[];found={}
+    for n in t.body:
+        if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in names:
+            key=n.targets[0].id;assert key not in found and isinstance(n.value,ast.Constant) and hex64(n.value.value)
+            found[key]=n.value.value
+            assert expected[key]==n.value.value,key
+            start=sum(map(len,rows[:n.value.lineno-1]))+n.value.col_offset
+            end=sum(map(len,rows[:n.value.end_lineno-1]))+n.value.end_col_offset
+            edits.append((start,end))
+    assert set(found)==set(names) and len(edits)==len(names)
+    back=source
+    for start,end in sorted(edits,reverse=True):back=back[:start]+b"None"+back[end:]
+    return back,found,edits
+
+import difflib
+R=B/"raw-consumer-binding-integration-prep004";S=R/"before/revision003"
+def create(p,x):
+ p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open("xb") as f:f.write(x)
+ assert read(p)==x
+bindings=J(read(R/"SOURCE_GUARD_TEST_BINDINGS_004.json"));old=J(read(S/"SOURCE_GUARD_TEST_BINDINGS_002.json"))
+rawmanifest=J(read(R/"inputs/RAW_POLICY_STAGED_MANIFEST_004.json"));rawpeer=J(read(R/"inputs/raw004-peer.json"))
+assert rawmanifest["source_sha256"]==rawpeer["source_sha256"]==bindings["raw_sha256"]
+assert rawpeer["verdict"]=="PASS_STATIC_SOURCE_AND_TEST_PREPARATION_ONLY"
+assert rawpeer["reviewer"]=="/root/candidate_review" and rawpeer["source_author"]=="/root/raw_policy_worker"
+patches=[];nondefs=[];projection=[]
+for role,row in bindings["consumers"].items():
+ before=read(S/row["path"],old["consumers"][role]["sha256"]);after=read(R/row["path"],row["sha256"])
+ beforetree=ast.parse(before);aftertree=ast.parse(after)
+ patches.extend(difflib.unified_diff(before.decode().splitlines(keepends=True),after.decode().splitlines(keepends=True),fromfile="revision003/"+row["path"],tofile="revision004/"+row["path"]))
+ oldcalls=[ast.dump(n,include_attributes=False) for n in ast.walk(beforetree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=="admit_recorded_predecessor"]
+ newcalls=[ast.dump(n,include_attributes=False) for n in ast.walk(aftertree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=="admit_recorded_predecessor"]
+ assert oldcalls==newcalls
+ otherold=[ast.dump(n,include_attributes=False) for n in beforetree.body if not isinstance(n,(ast.FunctionDef,ast.ClassDef,ast.ImportFrom)) and not (isinstance(n,ast.Assign) and isinstance(n.value,ast.Constant) and n.value.value==old["raw_sha256"])]
+ othernew=[ast.dump(n,include_attributes=False) for n in aftertree.body if not isinstance(n,(ast.FunctionDef,ast.ClassDef,ast.ImportFrom)) and not (isinstance(n,ast.Assign) and isinstance(n.value,ast.Constant) and n.value.value==bindings["raw_sha256"])]
+ assert otherold==othernew
+ nondefs.append({"role":role,"all_nontypes_imports_or_unrelated_nondeclarations_AST_exact":True,"admission_call_count":len(newcalls),"all_admission_calls_AST_exact":True})
+ keys=[name for name in old["new_policy_names"]]+bindings["schema3_policy_names"]
+ assert len(keys)==27 and len(set(keys))==27
+ projection.append({"role":role,"path":row["path"],"source_sha256":row["sha256"],"size":row["size"],"captured_policy_names":keys,"schema3_policy_count":11,"schema3_helper_count":4,"selected_guard_and_reader_functions":row["selected_functions"],"raw_source_sha256":bindings["raw_sha256"],"raw_and_outer_only_literal_slots":{"raw":bindings["raw_sha256"],"outer":"505909f8e1d08ade8462535e0edbad19e2b674852815a2ae3ffc7e546dc767cf"},"future_current_release_sha256":None,"future_attestation_sha256":None,"future_operational_binding_review":None})
+oldtest=read(S/"test_raw_consumer_guards_003.TEMPLATE.py");newtest=read(R/"test_raw_consumer_guards_004.TEMPLATE.py")
+patches.extend(difflib.unified_diff(oldtest.decode().splitlines(keepends=True),newtest.decode().splitlines(keepends=True),fromfile="revision003/test_raw_consumer_guards_003.TEMPLATE.py",tofile="revision004/test_raw_consumer_guards_004.TEMPLATE.py"))
+create(R/"SOURCE_AND_TEST_DELTA_004.patch","".join(patches).encode())
+case_map={"schema_version":1,"author":"/root/candidate_review","created_at_utc":dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"),"status":"STATIC_PLANNED_CAUSAL_CONTROLS_ALL_UNRUN","prior_methods_retained_AST_exact":14,"appended_methods":5,"total_methods_AST":19,"roles":["controller","worker","entrypoint","fit_child","inspector"],"phases":["first acceptance after healthy-control cache reset","verified module reuse"],"typed_policy_mutant_variants":38,"planned_appended_subtest_contexts_only":680,"counts_are_not_runtime_results":True,"families":[{"method":"test_all_eleven_schema3_policy_values_refuse_typed_changes_cold_and_reuse","policy_count":11,"typed_mutant_count":38,"role_phase_subtest_contexts":380,"causes":["nested real hex40/int size/decoded-proof size","fixed-middle and afterimage/QA order","omitted middle/row/key/path","tuple-to-list or proxy-to-dict container type","frozenset-to-set","int-to-bool/float"],"expected_error":"policy differs from pinned source|identity or API changed","healthy_controls":"every fixture loads actual raw4 twice, cold-cache reset only after both healthy accepts; two actual accepts after restored original"},{"method":"test_schema3_genuine_container_copies_and_mapping_order_remain_accepted","role_phase_subtest_contexts":40,"causes":"legitimate exact tuple/MappingProxyType/frozenset copies with identical values; actual dict/proxy fingerprint controls and reverse dictionary insertion order","healthy_genuine_dict_proxy":True},{"method":"test_mapping_proxy_class_name_spoof_refuses_before_user_mapping_methods","role_phase_subtest_contexts":10,"causes":"foreign Mapping has genuine name and module strings/rows, exact class differs","user_mapping_method_sentinel":"seen must stay empty: no items/len/iter/getitem allowed before refusal","expected_error":"unsupported policy/default value"},{"method":"test_tuple_class_name_spoof_refuses_cold_and_reuse","role_phase_subtest_contexts":10,"causes":"tuple subclass with genuine tuple name and identical path values fails exact kind","expected_error":"unsupported policy/default value"},{"method":"test_all_four_schema3_helpers_code_globals_defaults_refuse_cold_and_reuse","helper_count":4,"damage_variants":["code","typed nested defaults","typed nested kwdefaults","annotations","replacement function","same code with foreign globals"],"role_phase_subtest_contexts":240,"foreign_function_kwdefaults_and_annotations_restored_for_coherent_comparison":True,"expected_error":"API differs from pinned source|identity or API changed"}],"actual_collection_count":None,"actual_subtest_count":None,"actual_passed":None,"actual_healthy_acceptance":None,"test_or_target_import_or_definition_execution":False}
+assert sum(x["role_phase_subtest_contexts"] for x in case_map["families"])==680
+create(R/"CAUSAL_CASE_MAP_004.json",json.dumps(case_map,sort_keys=True,indent=2).encode()+b"\n")
+closure={"schema_version":4,"author":"/root/candidate_review","status":"SOURCE_AUTHOR_PREPARATION_ONLY_UNRUN_PEER_PENDING","raw_source_sha256":bindings["raw_sha256"],"raw_source4_manifest_sha256":hashlib.sha256(read(R/"inputs/RAW_POLICY_STAGED_MANIFEST_004.json")).hexdigest(),"raw_source4_peer_sha256":hashlib.sha256(read(R/"inputs/raw004-peer.json")).hexdigest(),"raw_source4_peer_scope":"Previously independent Source4 STATIC evidence only, not new consumer-source4 approval or runtime/native authority.","source_bindings":projection,"all5_selected_module_guards_include_the_new4_helpers_and11_policy_globals_generically":True,"raw_top_function_count":85,"raw_top_class_count":7,"raw_initializer_genexpr_count":1,"source_guard_algorithm_change":"Only exact Mapping kind whitelist per Root006; named AST/CodeType pairing, method/default/import/registry/cache guards unchanged.","source_only_closure":{"current_5_sources_frozen_after_pin_and_mapping_change":True,"same_unchanged_required_12_kwargs":True,"seven_operational_evidence_file_roles":True,"global_395799_cap":True,"schema3_private_361287_cap":True,"raw_schema1_schema2_legacy_unmodified":True,"external_expected_attestation_pin_remains_required":True,"incident_terminal_twin_rewrite":False},"nondeclarations_and_admission_projection":nondefs,"actual_fullrelease_generated_dependency_binding":None,"actual_current_native_gate":None,"actual_fullsite_or_operational_authority":None,"actual_target_imports_or_tests":False,"different_peer_required_before_any_runtime_or_operational_rebinding":True,"native_common_guard_and_111_tests":"Outside author ownership; native003 supplemental static capture incompatibility remains independently preserved in inputs/native003-compatibility-supplement.json.","scientific_outcomes_consulted":False,"scientific_values_emitted":False,"public_action":False}
+create(R/"DERIVED_SOURCE_AND_FIXTURE_CLOSURE_MAP_004.json",json.dumps(closure,sort_keys=True,indent=2).encode()+b"\n")
+print(json.dumps({"raw_peer_scope":rawpeer["verdict"],"closure_sha256":INPUTS[str(R/"DERIVED_SOURCE_AND_FIXTURE_CLOSURE_MAP_004.json")]["sha256"],"causal_map_sha256":INPUTS[str(R/"CAUSAL_CASE_MAP_004.json")]["sha256"],"delta_sha256":INPUTS[str(R/"SOURCE_AND_TEST_DELTA_004.patch")]["sha256"],"planned_added_subtest_contexts":680,"actual_results":None}))
+

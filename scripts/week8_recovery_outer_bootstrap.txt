@@ -1,0 +1,40 @@
+import hashlib,importlib.machinery,importlib.util,os,stat,sys
+from pathlib import Path
+R=0x400
+F=("st_dev","st_ino","st_size","st_mtime_ns","st_nlink")
+def capture(path,expected,label):
+ p=Path(path)
+ if not p.is_absolute() or str(p)!=str(Path(os.path.abspath(p))): raise ValueError(label+" path differs")
+ b=p.lstat()
+ if stat.S_ISLNK(b.st_mode) or not stat.S_ISREG(b.st_mode) or int(getattr(b,"st_file_attributes",0))&R or int(getattr(b,"st_nlink",0))!=1: raise ValueError(label+" is not one plain file")
+ with p.open("rb",buffering=0) as f:
+  o=os.fstat(f.fileno())
+  data=f.read()
+  a=os.fstat(f.fileno())
+ z=p.lstat()
+ if len(data)!=b.st_size or any(getattr(b,n,None)!=getattr(x,n,None) for x in (o,a,z) for n in F) or int(getattr(z,"st_file_attributes",0))&R: raise ValueError(label+" changed during capture")
+ digest=hashlib.sha256(data).hexdigest()
+ if digest!=expected: raise ValueError(label+" SHA256 differs")
+ return data,{"path":str(p.resolve(strict=True)),"sha256":digest,"size":len(data)}
+if len(sys.argv)!=9: raise ValueError("outer bootstrap requires six hashes, one commit and one command")
+entry_hash,helper_hash,controller_commit,command,receipt_hash,launcher_hash,stage0_hash,startup_hash=sys.argv[1:]
+if len(controller_commit)!=40 or any(c not in "0123456789abcdef" for c in controller_commit): raise ValueError("outer bootstrap controller commit differs")
+if any(len(v)!=64 or any(c not in "0123456789abcdef" for c in v) for v in (entry_hash,helper_hash,receipt_hash,launcher_hash,stage0_hash,startup_hash)): raise ValueError("outer bootstrap hash binding differs")
+if command not in {"adjudicate","recover","seal","status","monitor","finalize","report","figures"}: raise ValueError("outer bootstrap command differs")
+entry=Path("D:/Aenv/pro2/week8-recovery-controller-worktree/scripts/week8_exp2a_recovery_entrypoint.py")
+helper=Path("D:/Aenv/pro2/week8-recovery-controller-worktree/scripts/week8_recovery_raw_authority.py")
+entry_source,entry_identity=capture(entry,entry_hash,"entrypoint")
+helper_source,helper_identity=capture(helper,helper_hash,"raw helper")
+name="_bu_week8_d161_raw_authority"
+loader=importlib.machinery.SourceFileLoader(name,str(helper))
+spec=importlib.util.spec_from_loader(name,loader)
+if spec is None: raise ValueError("raw helper specification differs")
+module=importlib.util.module_from_spec(spec)
+module.__source_sha256__=helper_hash
+module.__source_identity__=helper_identity
+sys.modules[name]=module
+exec(compile(helper_source,str(helper),"exec",dont_inherit=True),module.__dict__)
+literal_sha=hashlib.sha256(sys.orig_argv[7].encode("utf-8")).hexdigest()
+sys.argv=[str(entry),command]
+scope={"__name__":"__main__","__file__":str(entry),"__package__":None,"__outer_bootstrap_literal_sha256__":literal_sha,"__outer_entrypoint_source_sha256__":entry_hash,"__outer_helper_source_sha256__":helper_hash,"__outer_controller_commit__":controller_commit,"__outer_receipt_sha256__":receipt_hash,"__outer_native_launcher_sha256__":launcher_hash,"__outer_stage0_binding_sha256__":stage0_hash,"__outer_startup_binding_sha256__":startup_hash,"__outer_entrypoint_identity__":entry_identity}
+exec(compile(entry_source,str(entry),"exec",dont_inherit=True),scope,scope)

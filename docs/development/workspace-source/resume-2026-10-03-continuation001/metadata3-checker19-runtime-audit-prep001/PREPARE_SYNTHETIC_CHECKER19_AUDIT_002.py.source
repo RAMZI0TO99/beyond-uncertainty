@@ -1,0 +1,107 @@
+"""Owned bounded metadata preparation; no reviewed definitions or tests run."""
+import ast
+import datetime
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+
+WORK=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001')
+SRC=WORK/'metadata3-actual-checker-prep001'
+OUT=WORK/'metadata3-checker19-runtime-audit-prep001'
+PROFILE=WORK/'consumer005-guard006-runtime-prep001/GUARD_RUNTIME_PROFILE_006-rev003.json'
+TEST='test_metadata3_actual_checker_preparation_002.py'
+CHECKER='review-metadata3-actual006-corrected008.TEMPLATE.py'
+TEST_SHA='ea0012b190e108edcfc1dece29ed480cd369a34f1ed044edacad415d808934db'
+CHECKER_SHA='c097c756d8cf55b1ac98a68313f5e406455b9306af63bd48a6e1cb3add70d3c1'
+MODULE='isolated_metadata3_checker_tests_002'
+SCOPE='SYNTHETIC_METADATA3_CHECKER19_STDLIB_REGRESSIONS_ONLY'
+
+def sha(data):return hashlib.sha256(data).hexdigest()
+def encoded(value):return (json.dumps(value,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+def once(name,data):
+    p=OUT/name;p.parent.mkdir(parents=True,exist_ok=True)
+    with p.open('xb')as f:f.write(data)
+def raw(info):return [getattr(info,k)for k in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+def ancestors(p):
+    rows=[]
+    for parent in reversed(p.parents):
+        s=parent.lstat();assert stat.S_ISDIR(s.st_mode)and not stat.S_ISLNK(s.st_mode)and not s.st_file_attributes&1024
+        rows.append([str(parent),s.st_dev,s.st_ino])
+    return rows
+def read(p,size,pin):
+    assert type(size)is int and 0<=size<=8388608
+    chain=ancestors(p);pre=p.lstat();a=raw(pre)
+    assert stat.S_ISREG(pre.st_mode)and pre.st_nlink==1 and not pre.st_file_attributes&1024 and pre.st_size==size
+    with p.open('rb')as stream:
+        opened=os.fstat(stream.fileno());b=raw(opened)
+        assert all(a[i]==b[i]for i in (0,1,2,3,6,7,8))
+        if a[5]!=b[5]:assert p.suffix.lower()=='.exe'and a[5]&0o111==0o111 and b[5]&0o111==0 and a[5]&~0o111==b[5]
+        body=stream.read(size+1);assert raw(os.fstat(stream.fileno()))==b
+    assert len(body)==size and sha(body)==pin and raw(p.lstat())==a and ancestors(p)==chain
+    return body,dict(path=str(p),bytes=size,sha256=pin,path_raw9=a,descriptor_raw9=b,ancestors=chain)
+def tree(data):return ast.parse(data)
+def imports(t):
+    rows=[]
+    for n in ast.walk(t):
+        if isinstance(n,ast.Import):rows.extend(x.name for x in n.names)
+        if isinstance(n,ast.ImportFrom):rows.append(n.module)
+    return sorted(set(rows))
+def full_methods(t):
+    classes=[n for n in t.body if isinstance(n,ast.ClassDef)]
+    assert len(classes)==1 and classes[0].name=='Metadata3ActualCheckerRegressions'
+    return {n.name:n for n in classes[0].body if isinstance(n,ast.FunctionDef)and n.name.startswith('test_')}
+def main():
+    selected=[(SRC/TEST,26002,TEST_SHA),(SRC/CHECKER,137182,CHECKER_SHA),
+      (SRC/'test_metadata3_actual_checker_preparation_001.py',9205,'a07f641887fe854d3003c122ad4f7cf5fd0f1a129fa7ff9825a95f602c75df30'),
+      (SRC/'SOURCE_PROTOCOL_AND_REVIEW_CONTRACT_008.json',22494,'c51520382649529a6239e0e43b01f3dd6707c0d52180c2b3a2376e4017662393'),
+      (PROFILE,PROFILE.stat().st_size,'70d4d658ff993181eb4056bdd276763cc8ff6a12b7281637e9332a00fb2fa030')]
+    profile=json.loads(read(*selected[-1])[0]);runtime=profile['runtime4_roles'];assert len(runtime)==4
+    selected.extend((Path(r['path']),r['size'],r['sha256'])for r in runtime)
+    inputs=[];bodies={}
+    for i,(p,size,pin)in enumerate(selected):
+        passes=[read(p,size,pin)for _ in range(3)];assert passes[0]==passes[1]==passes[2]
+        copy='inputs002/'+str(i).zfill(2)+'.bytes';once(copy,passes[0][0]);cb,cm=read(OUT/copy,size,pin);assert cb==passes[0][0]and cm['path_raw9'][:2]!=passes[0][1]['path_raw9'][:2]
+        inputs.append(dict(path=str(p),bytes=size,sha256=pin,observations=[x[1]for x in passes],copy_path=copy,copy_observation=cm));bodies[p.name]=passes[0][0]
+    t=tree(bodies[TEST]);c=tree(bodies[CHECKER]);old=full_methods(tree(bodies['test_metadata3_actual_checker_preparation_001.py']));methods=full_methods(t)
+    assert len(old)==9 and len(methods)==19 and set(old)<=set(methods)
+    assert all(ast.dump(n,include_attributes=False)==ast.dump(methods[k],include_attributes=False)for k,n in old.items())
+    allowed={'copy','importlib.util','json','pathlib','unittest','unittest.mock','io','types'}
+    assert set(imports(t))<=allowed
+    assert set(imports(c))<={'argparse','ast','hashlib','json','os','re','stat','sys','time','datetime','decimal','pathlib','math'}
+    assert all(isinstance(n,(ast.Import,ast.ImportFrom,ast.Assign,ast.FunctionDef,ast.If,ast.Expr))for n in c.body)
+    # No imported source is compiled, imported, evaluated or called by this metadata preparation.
+    method_rows=[]
+    for name in sorted(methods):
+        n=methods[name];dump=ast.dump(n,include_attributes=False).encode('utf8')
+        method_rows.append(dict(id=MODULE+'.Metadata3ActualCheckerRegressions.'+name,name=name,lineno=n.lineno,body_AST_sha256=sha(dump),old_AST_preserved=name in old,source_segment=ast.get_source_segment(bodies[TEST].decode('utf8'),n)))
+    ids=[r['id']for r in method_rows]
+    facts=dict(schema_version=1,record_type='independent_synthetic_checker19_test_source_observations',reviewer='/root/capsule_design_review',source_author='/root/actual_record_checker',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),scope=SCOPE,source_inputs=inputs,imports=dict(tests=imports(t),new_checker=imports(c)),expected_methods=method_rows,ordered_ids=ids,ordered_ids_sha256=sha(('\n'.join(ids)+'\n').encode('utf8')),old_nine_AST_exact=True,new_method_count=10,new_checker_definitions_imported_or_called=False,actual_source_peer=None,actual_root_authorization=None,actual_result=None,runtime_acceptance=False,operational_authority=False)
+    once('INDEPENDENT_TEST19_SOURCE_OBSERVATIONS_002.json',encoded(facts))
+    limits=[
+      'This is an independent narrow test-source inspection and metadata preparation; it is not the pending complete checker008 Sourcepeer15.',
+      'Future authorized execution loads only the exact corrected008 new stdlib checker definitions in an isolated namespace. No project target/real Root producer, subprocess, Git, FFI, native or current24 copied test is part of this scope.',
+      'The preflight test calls checker main only with configure/fixed/trust/lease mocks and once raising before actual READY publication. Other I/O helpers use mocked in-memory readers; owned-output lstat/open/fstat patches restore on context exit.',
+      'The old failure_diagnostics case tests an event-count mismatch; the additional complete-failure case reads the complete diagnostic bytes and checks explicit refusal. Neither proves every real diagnostic failure path.',
+      'The owned-detail case proves role-cap separation using small in-memory bytes, not physical16MiB output performance or durability. Whole/runtime route cases mock readers and cannot prove genuine two-tree/loaded-site/OS Job closure.',
+      'Runtime4 provenance below consists of selected byte/raw9 file observations only, not loaded-module closure, host quiet, independent OS tool identity or operational authority.',
+      'No causal source bug was identified by this manual inspection; results remain None and genuine unittest collection/execution may still expose a fixture or checker defect.']
+    contract=dict(schema_version=1,record_type='synthetic_checker19_runtime_audit_preparation',reviewer='/root/capsule_design_review',scope=SCOPE,status='PREPARED_UNBOUND_UNRUN',selected_test=dict(path=str(SRC/TEST),bytes=26002,sha256=TEST_SHA),selected_checker=dict(path=str(SRC/CHECKER),bytes=137182,sha256=CHECKER_SHA),module_name=MODULE,expected_ordered_ids=ids,maximum_runtime_seconds=60,stdout_stderr=dict(encoding='UTF8_STRICT',maximum_bytes_each=131072,omission_or_truncation_accepted=False,overflow_behavior='REFUSE_SYNTHETIC_RESULT_PRESERVE_COMPLETE_BOUNDED_CAPTURE'),required_before_entry=['Root externally selects genuine different complete checker Sourcepeer15; validate exact source/test pins and scope','Root explicitly authorizes synthetic19 stdlib fixture run only','Different source review of genuine physical Root launcher and finite evidence/result recorder; hardcoded finite source/roles and original60s limit','Current selected test/checker/runtime4 bytes and paired path/descriptor raw9 match preparation; no drift or retarget'],required_actual_evidence=['Genuine unittest collection equals all19 sorted full IDs and recorded body ASTs; no missing or additional methods','Real per-method/subtest result records reconcile testsRun/pass/skip/fail/error and full tracebacks; stdout/stderr retained as exact UTF8 bytes/hash/length in observed order','Root physical direct parent start/terminal binds launcher/source/test/sourcepeer/result/capture pins and genuine owning tool; exit0 with timed_out=False,capture_overflow=False,direct_child_reaped=True,capture_drain_complete=True for acceptance','Source and selected runtime4 paired metadata/bytes post-observations remain exact; no assertion of whole loaded runtime or hard Job/descendants','Different reviewer authenticates all concrete result, streams and physical parent evidence before accepting only synthetic19 regressions'],limitations=limits,actual_source_peer=None,actual_root_authorization=None,actual_launcher=None,actual_collection=None,actual_result=None,actual_physical_parent=None,actual_stdout=None,actual_stderr=None,actual_prepost=None,runtime_acceptance=False,real_metadata_acceptance=False,operational_authority=False)
+    once('SYNTHETIC_CHECKER19_RUNTIME_AUDIT_CONTRACT_002.json',encoded(contract))
+    post=[]
+    for row in inputs:
+        body,meta=read(Path(row['path']),row['bytes'],row['sha256']);copy,cm=read(OUT/row['copy_path'],row['bytes'],row['sha256']);assert body==copy and meta==row['observations'][0]and cm==row['copy_observation']
+        post.append(dict(path=row['path'],observation=meta,copy_observation=cm))
+    once('POST_SYNTHETIC_CHECKER19_PREPARATION_002.json',encoded(dict(schema_version=1,observations=post,all_selected_bytes_and_raw9_exact=True,actual_test_execution=False)))
+    projection=dict(schema_version=1,record_type='independent_synthetic_checker19_discovery_projection',reviewer='/root/capsule_design_review',scope=SCOPE,module_name=MODULE,
+      test=contract['selected_test'],helper=contract['selected_checker'],ordered_ids=ids,
+      methods=[dict(id=r['id'],name=r['name'],body_ast_sha256=r['body_AST_sha256'],source_line=r['lineno'])for r in method_rows],ordered_ids_sha256=facts['ordered_ids_sha256'])
+    assert len(projection)==10 and len(projection['methods'])==19
+    once('CHECKER19_DISCOVERY_PROJECTION_002.json',encoded(projection))
+    once('HANDOFF_SYNTHETIC_CHECKER19_002.md',('\n\n'.join(['Independent synthetic checker19 runtime audit is prepared and UNRUN. No genuine Sourcepeer15 or Root runtime authorization has been selected.',
+      'All19 full method IDs and body AST pins are recorded. Old nine method ASTs are exact; ten new methods supply narrow healthy/mutation/restored controls. Selected test/checker/protocol/profile plus four runtime files were independently observed three times, byte-copied and post-observed without importing or calling reviewed definitions.',
+      *limits,'Root owns genuine future launch/authorization and direct60s parent capture. Actual source review, launcher, collection, result, streams and physical parent remain None. This preparation grants no runtime or real metadata/native/current24/whole/quiet/Job authority.'])+'\n').encode('utf8'))
+    print(json.dumps(dict(expected_methods=len(methods),old_methods_preserved=len(old),finite_inputs=len(inputs),source_observations_sha256=sha(encoded(facts)),contract_sha256=sha(encoded(contract)),definitions_tests_or_mains_executed=False)))
+
+if __name__=='__main__':main()

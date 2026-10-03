@@ -1,0 +1,228 @@
+"""Owned metadata/document compositor; does not invoke the publication source."""
+from pathlib import Path
+from datetime import datetime, timezone
+import argparse
+import ast
+import hashlib
+import json
+import os
+import re
+
+ROOT = Path('D:/Aenv/pro2')
+WORK = ROOT / 'resume-2026-10-03-continuation001'
+OWN = WORK / 'root-docs-major031'
+PRIMARY = ('AGENTS.md', 'HANDOFF.md', 'START_HERE.md',
+           'resume-2026-09-28-001/SESSION.md',
+           'resume-2026-10-01-30h-001/RESOURCE_COORDINATION.md')
+CHECKPOINT = 'resume-2026-10-03-continuation001/CONTINUATION_CHECKPOINT_002.md'
+SELECTED = (
+    ('OWNER_CONTINUATION_20261003_001.json', 'de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'),
+    ('owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json', '56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0'),
+    ('consumer005-guard006-runtime-prep001/FINAL_AUTHOR_SOURCE_MANIFEST_009.json', '78320743b0076e5a8cc5056a6f003202a4dcdb19f3bc59a3cbf5da8924bbdba9'),
+    ('gg6-source-independent-review001/INDEPENDENT_GG6_SOURCE_REVIEW_003.json', '82b9643b78e4d4c388781e53b79c8a0546f9b07afca641ccfa71ff677483dae1'),
+    ('gg6-source-independent-review001/INDEPENDENT_GG6_STATIC_SELECTION_003.json', None),
+    ('gg6-source-independent-review001/INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_006.json', '787a60b216f1ac00e7e78f1f0c20d232e0656793cc8c4c02fb646c1aa7d21292'),
+    ('consumer005-guard006-runtime-prep001/INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_006.json', '787a60b216f1ac00e7e78f1f0c20d232e0656793cc8c4c02fb646c1aa7d21292'),
+    ('metadata3-producer-core-prep001/STAGED_MANIFEST_005.json', 'df54adc4ef8303124590fc5c8f1191815ceff6c61f7db56a511390f9de9f7e5a'),
+    ('m3-source-independent-review001/INDEPENDENT_M3_SOURCE_REVIEW_002.json', '78bc1b1a7a3e06e6752283e632651faac1b07f8f307f1612ceac4b1bd015bf30'),
+    ('pubnative-causal-tests-prep002/STAGED_MANIFEST_003.json', '6b4b181a1356b54c89c15693016c7103674b483d9dabd895aecd8c0e64ff9cb6'),
+    ('root-pubnative-causal-review001/INDEPENDENT_CAUSAL_CORRECTION_REVIEW_001.json', '017dbfedae8464aa2f5e2473ef9ef6164fc830be6ce448b35d6f7bc877fa93ab'),
+    ('pubnative-independent-review001/INDEPENDENT_PUBNATIVE_SOURCE_REVIEW_003.json', 'e080d318dab7fd22b5e33bd5bc1d3a8f47fb2273cee3755aee268e77980c9bf2'),
+    ('guard006-utility-source-independent-review001/INDEPENDENT_GENERIC_PUB_SOURCE_REVIEW_001.json', '0dd993d032fd663e687a59ce32a3ac92b15a9ca6af521d22ab8dc7ec480a4489'),
+    ('guard006-bound-late-checker-prep001/AUTHOR_FROZEN_SOURCE_MANIFEST_006.json', '5e9a8f4734c9b497291831bad633855f05b5ba47e4a6db13c53645719de56c9f'),
+    ('guard006-bound-late-checker-prep001/ACYCLIC_BOUND_MODEL_PEER_PROTOCOL_006.json', '18e8893c0f266588824dd57c6f83f77787bf2bcf2418db5da2e551b6e4176464'),
+    ('metadata3-actual-checker-prep001/AUTHOR_FROZEN_SOURCE_MANIFEST_007.json', 'a27031ac594c0705ed3a595766acf6c7fdf4d22692339e7634ca848f13f15e23'),
+    ('ROOT_PRO3_COMPONENT25_RELEASE_001.json', '86320ef445a78aba844f66e2b546d21c7fd45995797d96205f2e6957fa8e7898'),
+    ('CONTINUATION_CHECKPOINT_001.md', None),
+    ('PUBLISH_CONTINUATION_DOCS_001.py', None),
+)
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def enc(value):
+    return (json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + '\n').encode('ascii')
+
+
+def once(destination, data):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with destination.open('xb') as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    assert destination.read_bytes() == data
+
+
+def row(destination, data):
+    return {'path': destination.relative_to(ROOT).as_posix(), 'bytes': len(data), 'sha256': sha(data)}
+
+
+def raw9(stat):
+    return [stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns,
+            stat.st_mode, stat.st_nlink, getattr(stat, 'st_file_attributes', 0),
+            getattr(stat, 'st_birthtime_ns', stat.st_ctime_ns)]
+
+
+def observe(destination):
+    before = destination.stat()
+    with destination.open('rb') as stream:
+        descriptor = os.fstat(stream.fileno())
+        data = stream.read()
+        after_descriptor = os.fstat(stream.fileno())
+    after = destination.stat()
+    assert raw9(before) == raw9(after)
+    assert raw9(descriptor) == raw9(after_descriptor)
+    assert before.st_size == len(data) and before.st_ino == descriptor.st_ino
+    return data, {'path': str(destination), 'bytes': len(data), 'sha256': sha(data),
+                  'path_raw9': raw9(after), 'descriptor_raw9': raw9(after_descriptor)}
+
+
+def relocate(body, document):
+    return re.sub(r'\]\(([^)]+)\)', lambda match: '](' +
+                  os.path.relpath(ROOT / match.group(1), document.parent).replace('\\', '/') + ')', body)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--root-factual-freeze-reference', required=True)
+    parser.add_argument('--pro3-update-file', required=True)
+    parser.add_argument('--extra-source-record', action='append', default=[])
+    args = parser.parse_args()
+    assert not (OWN / 'STAGED_DOCUMENTATION_MANIFEST_031.json').exists()
+    assert not (ROOT / CHECKPOINT).exists()
+    records = [(WORK / name, OWN / 'inputs/continuation' / name, pin) for name, pin in SELECTED]
+    records.append((Path('D:/Aenv/pro3/runs/coordination/next_step_20261003/admission_refusal_audit_001.json'),
+                    OWN / 'inputs/pro3/admission_refusal_audit_001.json',
+                    'ec9900b62bca94acb9ce60da7f8a08c14fc42e07e49f77090a6e8911f9f866d1'))
+    for text in args.extra_source_record:
+        relative, pin = text.rsplit('=', 1)
+        original = (ROOT / relative).resolve()
+        original.relative_to(WORK)
+        assert re.fullmatch('[0-9a-f]{64}', pin)
+        records.append((original, OWN / 'inputs/continuation' / original.relative_to(WORK), pin))
+    update_path = Path(args.pro3_update_file).resolve()
+    update_path.relative_to(OWN)
+    body_path = OWN / 'DOCUMENTATION_BODY_031.md.source'
+    publisher = OWN / 'PUBLISH_MAJOR031_DOCS_001.py'
+    record_paths = [entry[0] for entry in records]
+    originals = [ROOT / name for name in PRIMARY]
+    inputs = record_paths + originals + [body_path, publisher, Path(__file__).resolve(), update_path]
+    assert len(set(inputs)) == len(inputs)
+    passes = []
+    blobs = {}
+    for number in range(3):
+        observations = []
+        for original in inputs:
+            data, observation = observe(original)
+            if number:
+                assert blobs[original] == data
+            else:
+                blobs[original] = data
+            observations.append(observation)
+        passes.append(observations)
+    for original, copy, pin in records:
+        if pin is not None:
+            assert sha(blobs[original]) == pin, original
+    owner = json.loads(blobs[records[0][0]])
+    assert owner['work_end_utc'] is None
+    assert blobs[records[5][0]] == blobs[records[6][0]]
+    ast.parse(blobs[publisher].decode('utf-8'))
+    stamp = datetime.now(timezone.utc).isoformat(timespec='microseconds')
+    body = blobs[body_path].decode('utf-8').replace('{STAMP}', stamp).replace('{PRO3_UPDATE}', blobs[update_path].decode('utf-8').strip())
+    assert '{STAMP}' not in body and '{PRO3_UPDATE}' not in body
+    root_body = body.encode('utf-8')
+    checkpoint_body = relocate(body, ROOT / CHECKPOINT).encode('utf-8')
+    header = ('**MAJOR STEP031 - COMPLETE GG6/M3 AND CAUSAL TEST SOURCE REVIEWS; ACTUAL CHAIN STILL UNREADY.**\n'
+              'Prepared ' + stamp + '. Read [checkpoint031](' + CHECKPOINT + '), HANDOFF, START_HERE and newest SESSION. '
+              'Ownerde8f ongoing/endNone. GG6final009/fullpeer82b9643b/static20 787a60b2 byte-exact copy; M3final005/fullpeer78bc1b1a; '
+              'Native128/Meta30 causal SourcePASS017dbfed, all testsUNRUN. Generic005 Sourcepeer0dd993d0 keeps actual pool unready; '
+              'corrected006 different peer pending. Root pipeline hash-cycle fix SOURCE DRAFT; metadata checker007 defects under one008 correction. '
+              'Actual lease/bind/capture/GO/results absent at selected source stage. Preserve600/both90/resource60/510reserve/450+after60/caps, '
+              'all spent/refused/withdrawn identities, frozen science/twins/epoch, monitor restoration at029, no replay/public/push/native quiet inference. '
+              'Prior primary bytes are retained exactly below.\n\n').encode('utf-8')
+    handoff = ('# Current pro2 handoff - major031\n\n' + body.split('\n\n', 1)[1] + '\n\n---\n\n').encode('utf-8')
+    start = ('# Start here - major031\n\nRead [HANDOFF](HANDOFF.md), [checkpoint031](' + CHECKPOINT + ') and newest '
+             '[SESSION](resume-2026-09-28-001/SESSION.md).\n\n'
+             'GG6 current24, M3 and corrected Native128/Meta30 causal tests have different source acceptances; every test remains UNRUN. '
+             'Complete corrected generic utility006, metadata checker008 and Root pipeline source reviews before admitting the actual bound pool and finite lease. '
+             'No fresh lease/bind/capture/unit GO exists. The owner continues with no overall end; each actual phase retains the original bounded guards. '
+             'See checkpoint031 for the Pro3 refusal and any separately selected fresh grant. Preserve all older bytes and scientific/recovery history.\n\n---\n\n').encode('utf-8')
+    session = ('\n\n## ' + stamp + ' - MAJOR031: source acceptance, actual pipeline still unfinished\n\n' +
+               relocate(body, ROOT / PRIMARY[3]) + '\n').encode('utf-8')
+    resource = ('\n\n### ' + stamp + ' - major031 resource coordination\n\n' +
+                '[Checkpoint031](../resume-2026-10-03-continuation001/CONTINUATION_CHECKPOINT_002.md). '
+                'Pro3release00186320ef window06:40:42.6796148 to06:50:42.6796148Z expired; different ec9900b6 refusal audit proves finite named-path nonlaunch snapshot, '
+                'original failing sample unpersisted, later samples below5GiB are not two-sample admission. Root reports no Python/testJob and one CIMwait. '
+                + relocate(blobs[update_path].decode('utf-8').strip(), ROOT / PRIMARY[4]) + '\n\n'
+                'No pro2 actual finite lease/resource lease/sole-executor/native quiet agreement exists at this selected source stage. '
+                'Monitor was already restoredEnabled/Ready at029. Preserve freshness600/both90/resource60/Root450+after60 and all floors/caps; no unrelated process stop.\n').encode('utf-8')
+    additions = [header, handoff, start, session, resource]
+    candidates = [addition + blobs[original] if index < 3 else blobs[original] + addition
+                  for index, (original, addition) in enumerate(zip(originals, additions))]
+    links = []
+    linked_documents = list(zip(originals, additions)) + [(ROOT / CHECKPOINT, checkpoint_body)]
+    future = {ROOT / CHECKPOINT, OWN / 'inputs/pro3/admission_refusal_audit_001.json'}
+    for document, addition in linked_documents:
+        for target in re.findall(r'\]\(([^)]+)\)', addition.decode('utf-8')):
+            destination = (document.parent / target).resolve()
+            destination.relative_to(ROOT)
+            assert destination.is_file() or destination in future, (document, target)
+            links.append({'document': document.relative_to(ROOT).as_posix(), 'target': target,
+                          'resolved_path': destination.relative_to(ROOT).as_posix()})
+    input_rows = []
+    for original, copy, pin in records:
+        once(copy, blobs[original])
+        original_row = {'path': str(original), 'bytes': len(blobs[original]), 'sha256': sha(blobs[original])}
+        if original.is_relative_to(ROOT):
+            original_row['path'] = original.relative_to(ROOT).as_posix()
+        input_rows.append({'original': original_row, 'copy': row(copy, blobs[original]), 'external': not original.is_relative_to(ROOT)})
+    primaries = []
+    for index, original in enumerate(originals):
+        before = OWN / 'before' / original.relative_to(ROOT)
+        candidate = OWN / 'candidates' / original.relative_to(ROOT)
+        once(before, blobs[original])
+        once(candidate, candidates[index])
+        primaries.append({'destination': PRIMARY[index], 'before': row(before, blobs[original]),
+                          'candidate': row(candidate, candidates[index]), 'preservation': 'suffix' if index < 3 else 'prefix'})
+    checkpoint_candidate = OWN / 'candidates' / CHECKPOINT
+    once(checkpoint_candidate, checkpoint_body)
+    once(OWN / 'BODY_PREPARED_031.md', root_body)
+    copy_observations = []
+    copy_paths = [entry[1] for entry in records] + [OWN / 'before' / original.relative_to(ROOT) for original in originals]
+    copy_paths += [OWN / 'candidates' / original.relative_to(ROOT) for original in originals] + [checkpoint_candidate]
+    for copy in copy_paths:
+        _, observation = observe(copy)
+        copy_observations.append(observation)
+    post = []
+    for original in inputs:
+        data, observation = observe(original)
+        assert data == blobs[original]
+        post.append(observation)
+    manifest = {'schema_version': 1, 'record_type': 'major031_documentation_stage',
+                'author': '/root/pubnative_review', 'prepared_utc': stamp,
+                'checkpoint': row(checkpoint_candidate, checkpoint_body), 'primaries': primaries,
+                'inputs': input_rows, 'links': links, 'source_only': True,
+                'publication_performed': False, 'target_execution': False, 'operational_authority': False}
+    once(OWN / 'STAGED_DOCUMENTATION_MANIFEST_031.json', enc(manifest))
+    once(OWN / 'AUTHOR_DOCUMENTATION_STAGE_AUDIT_031.json', enc({
+        'schema_version': 1, 'record_type': 'major031_author_documentation_stage_audit',
+        'author': '/root/pubnative_review', 'prepared_utc': stamp,
+        'root_factual_freeze_reference': args.root_factual_freeze_reference,
+        'stage_manifest_sha256': sha(enc(manifest)), 'source_publisher_sha256': sha(blobs[publisher]),
+        'input_paths': len(inputs), 'observations': passes, 'post_observations': post,
+        'copy_observations': copy_observations,
+        'input_copies': len(input_rows), 'primary_copies': 5,
+        'links_checked': len(links), 'link_scope': 'new additions only; older links retained without re-adjudication',
+        'publisher_AST_parsed': True, 'publisher_main_executed': False,
+        'primary_bytes_unchanged': True, 'all_old_primary_bytes_retained_in_candidates': True,
+        'different_documentation_creation_review': None, 'target_execution': False,
+        'operational_authority': False, 'batch_atomicity_claimed': False,
+    }))
+    print(json.dumps({'stage_manifest_sha256': sha(enc(manifest)), 'publisher_sha256': sha(blobs[publisher]),
+                      'primary_count': 5, 'new_links': len(links), 'publication_performed': False}))
+
+
+if __name__ == '__main__':
+    main()

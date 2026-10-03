@@ -1,0 +1,330 @@
+"""Independent metadata-only observation; never import or execute target sources."""
+import ast
+import hashlib
+import json
+import os
+import re
+import stat
+import struct
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(r"D:\Aenv\pro2")
+OUT = Path(__file__).parent
+SESSION = ROOT / "resume-2026-09-28-001"
+CURRENT = ROOT / "resume-2026-10-01-30h-001"
+PREP = CURRENT / "raw-component-runtime-prep003"
+LAUNCHER = ROOT / "week8-recovery-controller-worktree/scripts/week8_recovery_native_launcher.ps1"
+FIELDS = ["st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_mode", "st_nlink", "st_file_attributes", "st_birthtime_ns"]
+INPUTS = {
+    "native_launcher": LAUNCHER,
+    "prior_runtime_verifier": SESSION / "verify-runtime-release-014.py",
+    "prior_restore_source": SESSION / "restore-frozen-base-pyc-003.py",
+    "prior_restore_verifier": SESSION / "verify-frozen-base-pyc-restore-003.py",
+    "historical_base_manifest": SESSION / "runtime-release-013/base-inventory.json",
+    "historical_restore_success": SESSION / "runtime-base-pyc-restore-003/success.json",
+    "historical_restore_copies_verified": SESSION / "runtime-base-pyc-restore-003/copies-verified.json",
+    "actor_repair_claim": SESSION / "runtime-pyc-drift-repair-20261002-001.json",
+    "raw_driver": PREP / "run-isolated-raw-component-003.BOUND.py",
+    "raw_child": PREP / "raw-test-child-003.TEMPLATE.py",
+    "raw_source": PREP / "source/scripts/week8_recovery_raw_authority.py",
+    "raw_tests": PREP / "source/tests/test_week8_recovery_raw_authority.py",
+    "metadata_source": PREP / "source/scripts/week8_relocation_metadata.py",
+    "provenance_source": PREP / "source/src/bu/experiments/week8_relocation_provenance.py",
+    "pytest_rewrite_source": ROOT / "pro2/.venv/Lib/site-packages/_pytest/assertion/rewrite.py",
+    "root_ps_source": PREP / "ROOT_FIRST_LAUNCH_003.BOUND.ps1",
+}
+
+def utc():
+    return datetime.now(timezone.utc).isoformat()
+
+def require(value, message):
+    if not value:
+        raise RuntimeError(message)
+
+def identity(info):
+    return [getattr(info, name) for name in FIELDS]
+
+def common(info):
+    return tuple(getattr(info, name) for name in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink", "st_file_attributes", "st_birthtime_ns"))
+
+def plain(info, directory=False):
+    require(not info.st_file_attributes & 0x400, "reparse entry")
+    require(stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode), "unexpected entry type")
+    if not directory:
+        require(info.st_nlink == 1, "hardlinked file")
+
+def ancestors(path):
+    for parent in reversed(path.parents):
+        plain(parent.lstat(), True)
+
+def read(path, collect=False):
+    ancestors(path)
+    before = path.lstat()
+    plain(before)
+    digest = hashlib.sha256()
+    parts = []
+    total = 0
+    with path.open("rb") as stream:
+        opened = os.fstat(stream.fileno())
+        plain(opened)
+        require(common(before) == common(opened), "path/handle identity mismatch")
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+            total += len(chunk)
+            if collect:
+                parts.append(chunk)
+        closed = os.fstat(stream.fileno())
+        require(identity(opened) == identity(closed), "handle changed while read")
+    after = path.lstat()
+    require(identity(before) == identity(after), "path changed while read")
+    require(common(after) == common(closed), "path/handle final identity mismatch")
+    require(total == before.st_size, "byte count mismatch")
+    return {"path": str(path), "sha256": digest.hexdigest(), "size": total,
+            "path_identity": identity(before), "handle_identity": identity(opened)}, b"".join(parts) if collect else None
+
+def write_bytes(name, value):
+    path = OUT / name
+    with path.open("xb") as stream:
+        stream.write(value)
+    observed, copied = read(path, True)
+    require(copied == value, "written bytes changed")
+    return observed
+
+def write_json(name, value):
+    return write_bytes(name, (json.dumps(value, sort_keys=True, ensure_ascii=True, indent=2, allow_nan=False) + "\n").encode("ascii"))
+
+def ordinal(value):
+    encoded = value.encode("utf-16-le", "surrogatepass")
+    return struct.unpack("<" + "H" * (len(encoded) // 2), encoded)
+
+def tree(root):
+    started = utc()
+    ancestors(root)
+    root_before = root.lstat()
+    plain(root_before, True)
+    rows = []
+    directory_metadata = {}
+    def walk(folder):
+        before = folder.lstat()
+        plain(before, True)
+        with os.scandir(folder) as entries:
+            names = [entry.name for entry in entries]
+        require(len(names) == len(set(names)), "duplicate names")
+        for name in names:
+            path = folder / name
+            relative = path.relative_to(root).as_posix()
+            require(not any(c in relative for c in ("\t", "\n", "\r")), "unserializable path")
+            info = path.lstat()
+            if stat.S_ISDIR(info.st_mode):
+                plain(info, True)
+                rows.append({"kind": "directory", "path": relative, "path_identity": identity(info)})
+                walk(path)
+            else:
+                observed, _ = read(path)
+                rows.append({"kind": "file", "path": relative, "size": observed["size"],
+                             "sha256": observed["sha256"], "path_identity": observed["path_identity"],
+                             "handle_identity": observed["handle_identity"]})
+        require(identity(before) == identity(folder.lstat()), "directory changed during traversal")
+        directory_metadata[str(folder)] = identity(before)
+    walk(root)
+    rows.sort(key=lambda row: ordinal(row["path"]))
+    digest = hashlib.sha256()
+    files = directories = total = 0
+    for row in rows:
+        if row["kind"] == "directory":
+            directories += 1
+            line = f"D\t{row['path']}\n"
+        else:
+            files += 1
+            total += row["size"]
+            line = f"F\t{row['path']}\t{row['size']}\t{row['sha256']}\n"
+        digest.update(line.encode("utf-8"))
+        require(row["path_identity"] == identity((root / row["path"]).lstat()), "entry changed after capture")
+    require(identity(root_before) == identity(root.lstat()), "root changed during traversal")
+    return {"root": str(root), "started_at_utc": started, "finished_at_utc": utc(),
+            "identity": {"files": files, "directories": directories, "bytes": total, "sha256": digest.hexdigest()},
+            "root_identity": identity(root_before), "rows": rows,
+            "directory_metadata": directory_metadata,
+            "non_ascii_paths": [row["path"] for row in rows if not row["path"].isascii()]}
+
+def literals(source):
+    result = {}
+    for node in ast.parse(source).body:
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            try:
+                value = ast.literal_eval(node.value)
+            except (ValueError, TypeError):
+                continue
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    result[target.id] = value
+    return result
+
+def dotted(node):
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return dotted(node.value) + "." + node.attr
+    return "<dynamic>"
+
+def surfaces(source):
+    result = []
+    def visit(node, scopes):
+        current = scopes + [node.name] if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) else scopes
+        if isinstance(node, ast.Call):
+            name = dotted(node.func)
+            if "subprocess" in name or name in ("real_run", "os.system", "os.popen", "exec", "eval") or name.endswith((".Popen", ".run", ".system", ".popen")):
+                result.append({"line": node.lineno, "scope": current, "call": name,
+                               "source": ast.get_source_segment(source, node)})
+        for child in ast.iter_child_nodes(node):
+            visit(child, current)
+    visit(ast.parse(source), [])
+    return result
+
+def main():
+    require(sys.flags.isolated == sys.flags.no_site == sys.flags.dont_write_bytecode == 1, "metadata runtime flags")
+    require(sys.flags.optimize == 0 and sys.flags.utf8_mode == 1, "metadata runtime flags")
+    require(set(p.name for p in OUT.iterdir()) == {Path(__file__).name}, "observation output not fresh")
+    write_json("started.json", {"utc": utc(), "scope": "metadata_only", "reviewer": "/root/keepawake_stage",
+               "argv_flags": ["-I", "-S", "-B", "-X", "utf8"], "executable": sys.executable,
+               "python_version": sys.version, "target_sources_imported": False, "runtime_files_modified": False})
+    copied = {}
+    content = {}
+    (OUT / "inputs").mkdir()
+    for name, path in INPUTS.items():
+        observed, value = read(path, True)
+        preserved = write_bytes("inputs/" + name + path.suffix, value)
+        require(observed["path_identity"][:2] != preserved["path_identity"][:2], "copy aliases source")
+        copied[name] = {"source": observed, "copy": preserved}
+        content[name] = value
+    ps = content["native_launcher"].decode("utf-8-sig")
+    def psval(name):
+        match = re.search(r"(?m)^\$" + re.escape(name) + r"\s*=\s*(?:'([^']*)'|([0-9]+))\s*$", ps)
+        require(match is not None, "missing launcher constant " + name)
+        return match[1] if match[1] is not None else int(match[2])
+    base = Path(psval("BaseRuntime"))
+    scripts = Path(psval("VenvScripts"))
+    expected = {label: {"files": psval(prefix + "FileCount"), "directories": psval(prefix + "DirectoryCount"),
+                        "bytes": psval(prefix + "TotalBytes"), "sha256": psval(prefix + "InventorySha256")}
+                for label, prefix in (("base", "ExpectedBaseRuntime"), ("scripts", "ExpectedVenvScripts"))}
+    old_constants = literals(content["prior_restore_source"].decode("utf-8-sig"))
+    require(copied["historical_base_manifest"]["source"]["sha256"] == old_constants["MANIFEST_SHA256"], "historical manifest source pin")
+    historical = json.loads(content["historical_base_manifest"])
+    require(isinstance(historical, list), "historical manifest type")
+    old_rows = {row["path"]: row for row in historical}
+    require(len(old_rows) == len(historical), "historical manifest duplicate")
+    observations = {}
+    matches = {}
+    for label, root in (("base", base), ("scripts", scripts)):
+        first = tree(root)
+        first_file = write_json(label + "-observation-first.json", first)
+        print(json.dumps({"phase": label + "_first", "identity": first["identity"]}), flush=True)
+        second = tree(root)
+        second_file = write_json(label + "-observation-second.json", second)
+        stable = first["identity"] == second["identity"] and first["rows"] == second["rows"] and first["root_identity"] == second["root_identity"] and first["directory_metadata"] == second["directory_metadata"]
+        matches[label] = {"expected_identity": expected[label], "actual_identity": first["identity"],
+                          "matches_expected": first["identity"] == expected[label], "bytes_and_metadata_stable_twice": stable}
+        observations[label] = {"first": first_file, "second": second_file, "captured": first}
+        print(json.dumps({"phase": label + "_second", **matches[label]}), flush=True)
+    def portable(row):
+        return {key: row[key] for key in ("kind", "path", "size", "sha256") if key in row}
+    base_map = {row["path"]: row for row in observations["base"]["captured"]["rows"]}
+    current_portable = {name: portable(row) for name, row in base_map.items()}
+    historical_differences = [{"path": name, "historical": old_rows.get(name), "current": current_portable.get(name)}
+                              for name in sorted(set(old_rows) | set(current_portable), key=ordinal)
+                              if old_rows.get(name) != current_portable.get(name)]
+    actor = json.loads(content["actor_repair_claim"])
+    actor_checks = []
+    require(len(actor["restored"]) == 8, "actor claim expected eight entries")
+    for claim in actor["restored"]:
+        relative = claim["path"]
+        require(not Path(relative).is_absolute() and ".." not in Path(relative).parts, "unsafe claim path")
+        current = base_map.get(relative)
+        old = old_rows.get(relative)
+        actor_checks.append({"path": relative, "claim": claim, "current": portable(current) if current else None,
+                             "historical": old,
+                             "current_matches_claimed_pin": current is not None and current["sha256"] == claim["pinned_sha256"],
+                             "claim_matches_historical_pin": old is not None and old["sha256"] == claim["pinned_sha256"]})
+    separate = {}
+    for name, path, pin in (
+        ("base_executable", base / "python.exe", psval("ExpectedBasePythonSha256")),
+        ("venv_executable", ROOT / "pro2/.venv/Scripts/python.exe", psval("ExpectedPythonSha256")),
+        ("pyvenv_config", ROOT / "pro2/.venv/pyvenv.cfg", psval("ExpectedPyvenvSha256")),
+    ):
+        first, _ = read(path)
+        second, _ = read(path)
+        separate[name] = {"expected_sha256": pin, "first": first, "second": second,
+                          "matches_pin": first["sha256"] == pin, "stable_twice": first == second}
+    source_map = {name: surfaces(content[name].decode("utf-8-sig")) for name in
+                  ("raw_driver", "raw_child", "raw_source", "raw_tests", "metadata_source", "provenance_source")}
+    ranges = {"raw_driver": [(269, 289), (381, 412)], "raw_child": [(1, 25), (66, 89)],
+              "raw_tests": [(39, 82), (89, 160), (208, 243)], "raw_source": [(963, 1084)],
+              "pytest_rewrite_source": [(151, 186)], "root_ps_source": [(1, 140)]}
+    excerpts = {name: [{"first_line": lo, "last_line": hi, "source": "\n".join(content[name].decode("utf-8-sig").splitlines()[lo-1:hi])}
+                       for lo, hi in extents] for name, extents in ranges.items()}
+    audit = {
+        "ast_call_map": source_map, "source_extents": excerpts,
+        "driver_child": "Both collect and test use fixed frozen base Python -I -S -B -X utf8; driver constructs PYTHONDONTWRITEBYTECODE=1 child environment; child validates dont_write_bytecode.",
+        "probe": "Raw tests line64 launches [sys.executable, probe, authority, name] without -B/-I. Its environment comprehension removes only parameterized pythonhashseed/bu_d161_invocation_digest/git_config_count and retains PYTHONDONTWRITEBYTECODE=1. Because probe is not -I, CPython honors inherited bytecode prohibition.",
+        "setup_git": "Raw tests line98 setup Git uses synthetic repos; _setup_environment removes only GIT_* and retains bytecode prohibition. Git operations write synthetic .git/worktree, not frozen runtime.",
+        "raw_git": "Raw _git_bytes1069 uses only finite rev-parse/ls-files/ls-tree query allowlist, fixed Git image, no shell, no pager/optional locks, disabled fsmonitor/untrackedCache/hooks/attributes, isolated Git environment. No Python process is explicitly launched.",
+        "hostile_helpers": "Test _hostile_command127 intentionally configures bare Python command strings. They must never run; marker tests check nonexecution. Raw isolated Git environment omits PYTHONDONTWRITEBYTECODE, so an unexpected security failure that executes a hostile Python helper could write global pycs. This contingency is not an observed execution and is not removed by a false claim that every hypothetical subprocess inherits -B.",
+        "pytest": "Pinned installed assertion rewrite source164 computes write = not sys.dont_write_bytecode, gating pyc writes; child -B makes false. no:cacheprovider avoids pytest cache. This is selected local source evidence, not full site or loaded runtime closure.",
+        "support": "AST maps show no subprocess/os.system/os.popen in relocation metadata/provenance. In-process compile/exec is recorded separately, no target definition was executed by this observation.",
+        "known_explicit_global_cache_writer_in_normal_reviewed_path": False,
+        "future_test_security_failure_cannot_be_ruled_out_statically": True,
+        "global_runtime_recheck_required_after_future_run": True,
+    }
+    audit_file = write_json("SUBPROCESS_AND_CACHE_SOURCE_AUDIT_001.json", audit)
+    for name, path in INPUTS.items():
+        final, final_bytes = read(path, True)
+        require(final == copied[name]["source"] and final_bytes == content[name], "source input changed " + name)
+    all_matches = all(row["matches_expected"] and row["bytes_and_metadata_stable_twice"] for row in matches.values())
+    all_matches = all_matches and not historical_differences and all(row["matches_pin"] and row["stable_twice"] for row in separate.values())
+    result = {
+        "schema_version": 1, "record_type": "independent_frozen_runtime_whole_tree_observation",
+        "reviewer": "/root/keepawake_stage", "finished_at_utc": utc(),
+        "verdict": "MATCHES_PINNED_BYTES_AND_METADATA_TWICE" if all_matches else "DRIFT_OR_UNSTABLE_OBSERVATION",
+        "trees": matches, "tree_observation_files": {name: {k: row[k] for k in ("first", "second")} for name, row in observations.items()},
+        "stat_fields": FIELDS,
+        "read_guards": {"same_api_path_and_handle": "all nine fields independently before/after", "cross_api": "dev/ino/size/mtime/nlink/attributes/birth; Windows ctime/mode API projection differences retained as observations", "atime_excluded": True, "ancestors_plain": True, "reparse_or_hardlinked_files_refused": True},
+        "digest_algorithm": {"row_order": "All directory and file relative slash paths mixed, ascending .NET Ordinal equivalent UTF16 unsigned code-unit tuple", "directory_row": "D\\t<relative>\\n", "file_row": "F\\t<relative>\\t<decimal-byte-size>\\t<lowercase-sha256>\\n", "encoding": "UTF8, no BOM; LF; root excluded", "digest": "SHA256 of concatenated rows", "native_launcher_source_function_lines": [353, 401], "mode_metadata_in_native_digest": False},
+        "historical_base_manifest_differences": historical_differences,
+        "actor_claim": {"input": copied["actor_repair_claim"], "cause_attribution_independently_verified": False,
+                        "eight_current_and_historical_pin_comparisons": actor_checks,
+                        "no_runtime_repair_performed_by_this_observer": True},
+        "separate_entry_pins": separate, "source_inputs_and_independent_copies": copied,
+        "source_cache_audit": audit_file,
+        "limits": ["Sequential independent file reads; no retained native lock set or native admission proof.", "No project/target source imported, no target definitions/tests/native helper executed; pycs hashed as opaque bytes, never marshal loaded.", "No actor cache-write cause attribution established.", "No loaded Lib/DLL/site closure proof, no future RAM/owner/coordination/execution authorization.", "Future unexpected hostile helper execution is a conditional cache risk; reobserve both full trees after future raw unit run."],
+        "runtime_files_modified": False, "public_action_performed": False, "production_authority_granted": False,
+    }
+    result_file = write_json("WHOLE_RUNTIME_OBSERVATION_001.json", result)
+    handoff = (f"# Frozen runtime whole-tree observation001\n\nVerdict: {result['verdict']}.\n\n"
+               f"Result SHA256: {result_file['sha256']}. Both full trees were streamed twice; raw path/handle metadata and each path were reobserved. Native digest mixes all entries globally by UTF16 Ordinal path, with UTF8 D/F rows and LF.\n\n"
+               f"Base: {matches['base']}. Scripts: {matches['scripts']}. Historical base-manifest differences: {len(historical_differences)}. Eight actor-claimed restored pycs were checked against current bytes and independently pinned historical manifest; cause remains an unverified actor claim.\n\n"
+               "The source-only cache audit distinguishes inherited bytecode prevention in the probe/setup paths from hostile commands that must never execute. It identifies no normal reviewed path explicitly writing global caches, but unexpected hostile-helper execution remains a conditional risk. Perform a fresh external full-base/Scripts comparison after any future raw run, using both observation row sets as the before baseline.\n\n"
+               "No runtime repair, target imports, test/native/helper execution, retained native locks, loaded closure or operational authority. Entry image/config pins are separate facts. Observation is time-local, not a future launch guarantee.\n")
+    handoff_file = write_bytes("HANDOFF.md", handoff.encode("utf-8"))
+    listing = []
+    for path in sorted(OUT.rglob("*"), key=lambda p: ordinal(p.relative_to(OUT).as_posix())):
+        if path.is_file():
+            observed, _ = read(path)
+            listing.append(observed)
+    manifest = write_json("OBSERVATION_MANIFEST_001.json", {"schema_version": 1, "record_type": "metadata_observation_frozen_manifest",
+                          "result_sha256": result_file["sha256"], "handoff_sha256": handoff_file["sha256"], "files": listing,
+                          "target_imports_or_tests_performed": False, "runtime_mutations_performed": False})
+    print(json.dumps({"result": result_file, "handoff": handoff_file, "manifest": manifest,
+                      "verdict": result["verdict"], "historical_differences": len(historical_differences),
+                      "actor_eight_all_match": all(row["current_matches_claimed_pin"] and row["claim_matches_historical_pin"] for row in actor_checks)}), flush=True)
+
+if __name__ == "__main__":
+    try:
+        main()
+    except BaseException as error:
+        try:
+            write_json("METADATA_OBSERVATION_REFUSAL_001.json", {"utc": utc(), "error_type": type(error).__name__, "reason": str(error), "target_execution": False, "runtime_mutation": False})
+        finally:
+            raise

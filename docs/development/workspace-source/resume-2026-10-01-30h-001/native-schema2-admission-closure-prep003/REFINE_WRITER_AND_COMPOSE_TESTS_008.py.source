@@ -1,0 +1,98 @@
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+root = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-schema2-admission-closure-prep003')
+composition = json.loads((root / 'FRAME_SOURCE_COMPOSITION_003.json').read_bytes())
+source_test = root / 'source/test_native_schema2_admission_002.py'
+common_path = root / 'front/native_successor_front_common_013_001.py.template'
+paths = [*(root / relative for relative in composition['updated_direct_PS_bridges']), source_test, common_path,
+         root / 'EXPANDED_FRAME_SENDER_003.ps1.txt', root / 'FRAME_SENDER_003.FRAGMENT.ps1']
+pairs = []
+for path in paths:
+    data = path.read_bytes()
+    copy = root / 'before' / 'writer-and-test007' / path.relative_to(root)
+    copy.parent.mkdir(parents=True, exist_ok=True)
+    with copy.open('xb') as stream:
+        stream.write(data)
+    assert data == copy.read_bytes() and path.stat().st_ino != copy.stat().st_ino
+    pairs.append(dict(original=str(path), copy=str(copy), sha256=hashlib.sha256(data).hexdigest(), bytes=len(data)))
+for path in paths[:8] + paths[-2:]:
+    text = path.read_text(encoding='utf-8')
+    text = text.replace('$buffers = @((New-Object byte[] 4096),(New-Object byte[] 4096))', '$buffers = New-Object object[] 2\n    $buffers[0] = [byte[]]::new(4096); $buffers[1] = [byte[]]::new(4096)')
+    text = text.replace('} finally { $process.StandardInput.Close() }', '} finally { $input.Close() }')
+    text = text.replace("-not $row.Contains('path') -or -not $row.Contains('sha256')", "@($row.Keys | Where-Object { $_ -isnot [string] -or @('path','sha256') -cnotcontains $_ }).Count -ne 0")
+    old_cleanup = '''        if ($launched -and -not $complete -and -not $process.HasExited) {
+            $process.Kill()
+            if (-not $process.WaitForExit(5000)) { throw 'Frame owned child cleanup unconfirmed' }
+        }
+        $stdout.Dispose(); $process.Dispose()'''
+    new_cleanup = '''        try {
+            $cleanupClock = [Diagnostics.Stopwatch]::StartNew()
+            if ($launched -and -not $complete -and -not $process.HasExited) {
+                $process.Kill()
+                $remaining = [Math]::Max(0,5000-[int]$cleanupClock.ElapsedMilliseconds)
+                if ($remaining -eq 0 -or -not $process.WaitForExit($remaining)) { throw 'Frame direct owned launcher cleanup unconfirmed' }
+            }
+            # This retained handle does not prove disappearance of its base-Python child.
+            # Separately reviewed ROOT whole-Job custody and physical cleanup evidence are mandatory.
+        } finally { $stdout.Dispose(); $process.Dispose() }'''
+    assert old_cleanup in text
+    text = text.replace(old_cleanup, new_cleanup)
+    path.write_text(text, encoding='utf-8', newline='\n')
+
+old_test = source_test.read_text(encoding='utf-8')
+old_tree = ast.parse(old_test)
+fragment = (root / 'FRAME_TESTS_008.FRAGMENT.py').read_text(encoding='utf-8')
+fragment_tree = ast.parse(fragment)
+frame_class = fragment_tree.body[0]
+assert isinstance(frame_class, ast.ClassDef)
+new_methods = [node for node in frame_class.body if isinstance(node, ast.FunctionDef) and node.name.startswith('test_')]
+assert len(new_methods) == 26
+for method in new_methods:
+    assert sum(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'bad' for node in ast.walk(method)) == 1
+policy_nodes = {node.targets[0].id: node for node in old_tree.body if isinstance(node, ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in {'NATIVE_CRITICAL_FAMILY_CASES','NATIVE_SUBTEST_POLICY'}}
+families = ast.literal_eval(policy_nodes['NATIVE_CRITICAL_FAMILY_CASES'].value)
+subtests = ast.literal_eval(policy_nodes['NATIVE_SUBTEST_POLICY'].value)
+assert len(families) == 32 and len(subtests) == 272
+for index, method in enumerate(new_methods, 1):
+    case = frame_class.name + '.' + method.name
+    families['F%02d' % index] = [case]
+    subtests[case+'#0001'] = dict(case_id=case, expected_refusal=True,
+        observed_boundary='source-pinned byte frame family F%02d' % index,
+        control_case_id='NativeFrameFamilies.test_f01_canonical_two_line_frame_has_healthy_retained_control')
+replacements = []
+for key, value in (('NATIVE_CRITICAL_FAMILY_CASES', families), ('NATIVE_SUBTEST_POLICY', subtests)):
+    node = policy_nodes[key]
+    replacements.append((node.lineno, node.end_lineno, key + ' = ' + repr(value) + '\n'))
+lines = old_test.splitlines(keepends=True)
+for first,last,replacement in sorted(replacements, reverse=True):
+    lines[first-1:last] = [replacement]
+bootstrap = (root / 'CAPTURED_FRAME_BOOTSTRAP_003.py.txt').read_text(encoding='utf-8')
+new_test = ''.join(lines) + '\nNATIVE_FRAME_BOOTSTRAP_TEST_SOURCE = ' + repr(bootstrap) + '\n\n' + fragment
+new_tree = ast.parse(new_test)
+old_methods = {node.name+'.'+method.name: ast.dump(method,include_attributes=False) for node in old_tree.body if isinstance(node,ast.ClassDef) for method in node.body if isinstance(method,ast.FunctionDef) and method.name.startswith('test_')}
+current_methods = {node.name+'.'+method.name: ast.dump(method,include_attributes=False) for node in new_tree.body if isinstance(node,ast.ClassDef) for method in node.body if isinstance(method,ast.FunctionDef) and method.name.startswith('test_')}
+assert len(old_methods)==85 and len(current_methods)==111
+assert all(current_methods[name]==dump for name,dump in old_methods.items())
+source_test.write_text(new_test, encoding='utf-8', newline='\n')
+
+common = common_path.read_text(encoding='utf-8')
+needle = "set (document ['family_coverage'])=={'M%02d'%i for i in range (1 ,33 )}"
+assert common.count(needle)==1
+common = common.replace(needle, "set (document ['family_coverage'])==({'M%02d'%i for i in range (1 ,33 )}|{'F%02d'%i for i in range (1 ,27 )})")
+ast.parse(common)
+common_path.write_text(common, encoding='utf-8', newline='\n')
+record = dict(schema_version=1, author='/root/bootstrap_stage', before_pairs=pairs,
+              preserved85_method_ASTs=True, old_method_count=85, added_frame_family_method_count=26,
+              total_named_method_count=111, old_policy_event_count=272, added_policy_event_count=26,
+              planned_source_policy_event_count=298, actual_case_results=None, actual_subtest_results=None,
+              coverage_family_count=58, physical_PS_writer_or_Windows_FFI_witness=None,
+              direct_launcher_cleanup_only=True, external_whole_Job_custody_required_before_operational_binding=True,
+              target_compilation_definitions_import_tests_FFI_Git_native_executed=False,
+              test_sha256=hashlib.sha256(new_test.encode('utf-8')).hexdigest(),
+              common_sha256=hashlib.sha256(common.encode('utf-8')).hexdigest())
+with (root / 'FRAME_CASE_POLICY_CHECKPOINT_008.json').open('xb') as stream:
+    stream.write((json.dumps(record,sort_keys=True,indent=2)+'\n').encode('ascii'))
+print(json.dumps({key:value for key,value in record.items() if key!='before_pairs'},sort_keys=True))

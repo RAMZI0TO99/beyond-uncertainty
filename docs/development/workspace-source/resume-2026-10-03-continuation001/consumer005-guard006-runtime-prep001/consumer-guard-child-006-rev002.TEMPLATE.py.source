@@ -1,0 +1,694 @@
+import traceback
+import argparse
+import ast
+import hashlib
+import json
+import math
+import os
+import stat
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+PROJECT = Path("D:/Aenv/pro2")
+WORK = PROJECT / "resume-2026-10-03-continuation001"
+PREP = WORK / "consumer005-guard006-runtime-prep001"
+RUNS = PROJECT / ".tmp/cg24-006"
+BASE_PYTHON = PROJECT / "runtimes/week8-python313-frozen-001/python.exe"
+BASE_PYTHON_SHA256 = "5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed"
+OWNER_PATH = WORK / "EXECUTION_LEASE_GG6_M3_001.json"
+OWNER_SHA256 = None
+OWNER_END = None
+OWNER_MASTER_PATH = Path('D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\OWNER_CONTINUATION_20261003_001.json')
+OWNER_MASTER_SHA256 = 'de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'
+OWNER_REVIEW_PATH = Path('D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\owner-docs-independent-review001\\INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json')
+OWNER_REVIEW_SHA256 = '56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0'
+CAPSULE_PEER_PATH = Path('D:\\Aenv\\pro2\\resume-2026-10-03-continuation001\\capsule-design-independent-review001\\INDEPENDENT_COMPACT_CAPSULE_REVIEW_001.json')
+CAPSULE_PEER_SHA256 = "007a4fa04849b2b497046609fcc7058abc4db19d933aa932fd61420394fce2e1"
+OWNER_MASTER_EXPECTED = {'schema_version': 1, 'record_type': 'owner_ongoing_local_private_continuation', 'authority': 'owner', 'owner_directive': 'ok then keep working on the project and do not stop unless if there is something that stops you.', 'record_created_utc': '2026-10-03T06:02:35.1164907+00:00', 'decision': 'resume_project_work_beyond_prior_deadline', 'authorization_mode': 'ongoing_until_completion_owner_stop_or_actual_blocker', 'work_end_utc': None, 'fixed_deadline_invented': False, 'predecessor_owner_record': 'D:\\Aenv\\pro2\\resume-2026-10-01-30h-001\\OWNER_WORK_WINDOW_30H_20261001_001.json', 'predecessor_owner_sha256': '3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff', 'predecessor_work_end_utc': '2026-10-02T22:36:15Z', 'predecessor_closeout_checkpoint_sha256': '4349b18a95ab897e646790175826788b9e670b4aca6691349b8e9aa5a0fc7c30', 'scope': 'Continue unfinished local/private pro2 corrective source, meaningful validation, reviewed local release and guarded native recovery; major-step docs/handoff updates, independent audits and agent coordination retained', 'phase_lease_policy': 'A future execution may select a reviewed bounded phase deadline under this ongoing authority; it is an execution lease, not a fabricated owner end or renewal of a spent artifact', 'original_guards_changed': False, 'public_actions_authorized': False, 'one_use_replay_authorized': False, 'frozen_scientific_changes_authorized': False, 'additional_recovery_epochs_authorized': False, 'unrelated_process_stops_authorized': False, 'sole_executor_transfer_asserted': False, 'resource_lease_asserted': False, 'native_quiet_asserted': False, 'review_status_at_creation': 'pending_independent_directive_and_lineage_review', 'successor_bindings_at_creation': None, 'historical_records_preserved': True}
+OWNER_REVIEW_KEYS = ('checks', 'created_utc', 'directive_matches_user_verbatim', 'finite_selected_inputs', 'genuine_stamp_format', 'limitations', 'old_artifacts_renewed', 'ongoing_authority_supersedes_old_deadline', 'operational_authorization_or_execution_acceptance', 'owner_end_utc', 'post_readback', 'record_type', 'reviewer', 'schema_version', 'source_choice_implementation_or_runtime_acceptance', 'source_owner_bytes', 'source_owner_fields', 'source_owner_sha256', 'verdict')
+OWNER_REVIEW_CORE = {'schema_version': 1, 'record_type': 'independent_owner_continuation_directive_and_lineage_review', 'reviewer': 'owner_docs_review', 'verdict': 'PASS_OWNER_DIRECTIVE_AND_LINEAGE_SOURCE_ONLY', 'source_owner_sha256': 'de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583', 'owner_end_utc': None, 'directive_matches_user_verbatim': True, 'old_artifacts_renewed': False, 'ongoing_authority_supersedes_old_deadline': True, 'operational_authorization_or_execution_acceptance': False, 'source_choice_implementation_or_runtime_acceptance': False}
+
+SCOPE = "COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY"
+AUTHOR = "/root/capsule_design_review"
+REVIEWERS = frozenset(("/root/pubnative_review", "/root/actual_record_checker", "/root/owner_docs_review", "/root"))
+SOURCE_AUTHORS = ("/root/candidate_review",)
+MAX_JSON = 2 * 1024 * 1024
+MAX_RECEIPT = 262144
+MAX_CAPTURE = 131072
+MAX_TRANSCRIPT = 262144
+MAX_EVENTS = 4096
+MAX_COLLECTION = 60
+MAX_TESTS = 300
+MAX_TOTAL = 420
+
+
+def require(ok, message):
+    if not ok:
+        raise RuntimeError(message)
+
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def hex64(value):
+    return type(value) is str and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def ancestors(path):
+    result = []
+    for parent in [*reversed(path.absolute().parents), path.absolute()]:
+        info = parent.lstat()
+        require(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+                and not getattr(info, "st_file_attributes", 0) & 0x400, "linked/reparse ancestor")
+        result.append((str(parent), info.st_dev, info.st_ino))
+    return tuple(result)
+
+
+def raw(info):
+    return tuple(getattr(info, name, None) for name in
+                 ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_mode",
+                  "st_nlink", "st_file_attributes", "st_birthtime_ns"))
+
+
+def cross(info):
+    return tuple(getattr(info, name, None) for name in
+                 ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink"))
+
+
+def read(path, pin=None, maximum=MAX_JSON):
+    require(type(maximum) is int and maximum > 0, "read cap type")
+    chain = ancestors(path.parent)
+    before = path.lstat()
+    require(stat.S_ISREG(before.st_mode) and not stat.S_ISLNK(before.st_mode)
+            and before.st_nlink == 1 and not getattr(before, "st_file_attributes", 0) & 0x400,
+            "not a plain one-link file")
+    require(0 <= before.st_size <= maximum, "path exceeds pre-read cap")
+    with path.open("rb") as stream:
+        first = os.fstat(stream.fileno())
+        require(cross(before) == cross(first) and 0 <= first.st_size <= maximum,
+                "opened identity or cap differs")
+        value = stream.read(maximum + 1)
+        last = os.fstat(stream.fileno())
+    after = path.lstat()
+    require(len(value) <= maximum and len(value) == before.st_size
+            and raw(before) == raw(after) and raw(first) == raw(last)
+            and cross(before) == cross(first) == cross(last) == cross(after)
+            and ancestors(path.parent) == chain, "changed capture")
+    if pin is not None:
+        require(hex64(pin) and digest(value) == pin, "source byte pin differs")
+    return value, {"sha256": digest(value), "bytes": len(value),
+                   "path_raw9": raw(before), "descriptor_raw9": raw(first)}
+
+
+def duplicates(rows):
+    result = {}
+    for key, value in rows:
+        require(key not in result, "duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def finite(token):
+    value = float(token)
+    require(math.isfinite(value), "nonfinite JSON")
+    return value
+
+
+def decode(data):
+    return json.loads(data.decode("utf-8"), object_pairs_hook=duplicates, parse_float=finite,
+                      parse_constant=lambda _: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+
+
+def encoded(value):
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+                       allow_nan=False) + "\n").encode("ascii")
+
+
+def exact(value, names, what):
+    require(type(value) is dict and set(value) == set(names), what + " keys")
+
+
+# The inherited timestamp parser checks aware UTC, not canonical producer syntax.
+# Independent actual-record review must enforce each genuine producer role before
+# binding, per EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_006.json.
+def timestamp(value):
+    require(type(value) is str, "timestamp type")
+    result = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    require(result.tzinfo is not None and result.utcoffset() == timedelta(0), "aware UTC required")
+    return result
+
+
+def work_path(value):
+    require(type(value) is str, "evidence path type")
+    path = Path(value)
+    require(path.is_absolute() and path == path.absolute() and ".." not in path.parts
+            and path.is_relative_to(WORK), "outside work path")
+    ancestors(path.parent)
+    return path
+
+
+def pointer(value):
+    exact(value, ("path", "sha256"), "external pointer")
+    require(hex64(value["sha256"]), "external pin type")
+    return work_path(value["path"]), value["sha256"]
+
+
+def absent(path):
+    ancestors(path.parent)
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return True
+    return False
+
+
+def once(path, data, maximum=MAX_RECEIPT):
+    require(len(data) <= maximum and absent(path), "one-use output exists or cap")
+    chain = ancestors(path.parent)
+    with path.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    require(ancestors(path.parent) == chain and read(path, digest(data), maximum)[0] == data,
+            "output changed")
+
+
+def runtime_entry(lease_sha256):
+    require(Path(sys.executable).resolve(strict=True) == BASE_PYTHON.resolve(strict=True)
+            and sys.version_info[:3] == (3, 13, 5), "direct frozen base/version required")
+    require(sys.flags.isolated == 1 and sys.flags.no_site == 1
+            and sys.flags.dont_write_bytecode == 1 and sys.flags.safe_path
+            and sys.flags.utf8_mode == 1 and sys.flags.optimize == 0,
+            "I-S-B safe flags required")
+    read(BASE_PYTHON, BASE_PYTHON_SHA256, 105816)
+    lease_entry(lease_sha256)
+
+
+def typed_equal(value, expected, label):
+    require(type(value) is type(expected), label+" exact nominal type")
+    if type(expected) is dict:
+        exact(value, expected, label)
+        for key in expected: typed_equal(value[key],expected[key],label+"."+key)
+    elif type(expected) is list:
+        require(len(value)==len(expected),label+" fixed list")
+        for item,wanted in zip(value,expected): typed_equal(item,wanted,label)
+    else: require(value==expected,label+" literal")
+
+def exact_ticks(value, powershell=False):
+    require(type(value) is str,"tick stamp nominal")
+    width=7 if powershell else 6
+    require(re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{"+str(width)+r"}\+00:00",value) is not None,
+            "genuine producer tick stamp")
+    parsed=timestamp(value);delta=parsed-datetime(1970,1,1,tzinfo=timezone.utc)
+    return (delta.days*86400+delta.seconds)*10000000+delta.microseconds*10+(int(value[26]) if powershell else 0)
+
+def lease_entry(lease_sha256):
+    global OWNER_END
+    require(hex64(lease_sha256), "finite execution lease externally selected")
+    master = decode(read(OWNER_MASTER_PATH, OWNER_MASTER_SHA256, 16384)[0])
+    typed_equal(master,OWNER_MASTER_EXPECTED,"ongoing owner27")
+    require(master["record_type"] == "owner_ongoing_local_private_continuation"
+            and master["authorization_mode"] == "ongoing_until_completion_owner_stop_or_actual_blocker"
+            and master["work_end_utc"] is None and master["fixed_deadline_invented"] is False
+            and master["original_guards_changed"] is False, "ongoing owner source role")
+    peer=decode(read(OWNER_REVIEW_PATH, OWNER_REVIEW_SHA256, 65536)[0])
+    exact(peer,OWNER_REVIEW_KEYS,"ongoing owner source peer19")
+    for key,wanted in OWNER_REVIEW_CORE.items(): typed_equal(peer[key],wanted,"ongoing owner source peer core")
+    lease = decode(read(OWNER_PATH, lease_sha256, 65536)[0])
+    exact(lease, ("schema_version","record_type","author","scope","created_utc","lease_end_utc",
+                 "owner_master_sha256","owner_review_sha256","decision","maximum_lease_seconds",
+                 "lease_is_owner_deadline","operational_authority"), "finite phase lease12")
+    require(type(lease["schema_version"]) is int and lease["schema_version"] == 1
+            and type(lease["maximum_lease_seconds"]) is int and lease["maximum_lease_seconds"] == 43200
+            and type(lease["record_type"]) is str and lease["record_type"] == "root_local_private_execution_lease"
+            and type(lease["author"]) is str and lease["author"] == "/root"
+            and type(lease["scope"]) is str and lease["scope"] == SCOPE
+            and lease["owner_master_sha256"] == OWNER_MASTER_SHA256
+            and lease["owner_review_sha256"] == OWNER_REVIEW_SHA256
+            and lease["decision"] == "authorize_bounded_selected_unit_metadata_and_copied_tests_once"
+            and lease["lease_is_owner_deadline"] is False and lease["operational_authority"] is False,
+            "lease scope and unchanged ongoing source")
+    require(all(type(lease[k]) is str and re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}\+00:00", lease[k])
+                for k in ("created_utc","lease_end_utc")), "genuine PS7 lease timestamps")
+    created, OWNER_END = timestamp(lease["created_utc"]), timestamp(lease["lease_end_utc"])
+    start_ticks,end_ticks=exact_ticks(lease["created_utc"],True),exact_ticks(lease["lease_end_utc"],True)
+    now_ticks=exact_ticks(datetime.now(timezone.utc).isoformat(timespec="microseconds"))
+    require(start_ticks<=now_ticks<end_ticks and 0<end_ticks-start_ticks<=43200*10000000
+            and start_ticks>=exact_ticks(master["record_created_utc"],True),"exact finite lease ticks and master chronology")
+    require(created <= datetime.now(timezone.utc) < OWNER_END
+            and timedelta(0) < OWNER_END-created <= timedelta(seconds=43200), "finite lease is expired or invalid")
+    return lease
+
+def nominal_shape(value, contract):
+    kind = contract["kind"]
+    allowed = {"exact_builtin_dict":dict,"exact_builtin_list":list,"exact_builtin_str":str,
+               "exact_builtin_int_not_bool":int,"exact_builtin_bool":bool,"None":type(None)}
+    require(type(value) is allowed[kind], "closed nominal type")
+    if type(value) is dict:
+        require(sorted(value) == contract["closed_keys"], "closed nominal keys")
+        for name in contract["closed_keys"]: nominal_shape(value[name], contract["fields"][name])
+    elif type(value) is list:
+        require(len(value) == contract["length"], "closed nominal list length")
+        for item, node in zip(value, contract["items"]): nominal_shape(item, node)
+    elif type(value) is str:
+        require(value == contract["value"] and len(value.encode("utf-8")) <= contract["maximum_UTF8_bytes"], "pinned nominal string")
+    else:
+        require(value == contract["value"], "pinned nominal value")
+
+TIMESTAMP_ROLE_CONTRACT = {'schema_version': 1, 'record_type': 'consumer006_rev002_external_canonical_timestamp_role_contract', 'author': '/root/capsule_design_review', 'scope': 'COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY', 'source_only': True, 'python_role': {'fraction_digits': 6, 'length': 32, 'suffix': '+00:00', 'writer': "datetime UTC isoformat(timespec='microseconds')"}, 'root_powershell_role': {'fraction_digits': 7, 'length': 33, 'suffix': '+00:00', 'writer': "DateTimeOffset.UtcNow.ToString('o')"}, 'selected_harness_writers': {'run-consumer-guard-unit006-rev002.TEMPLATE.py': ['scratch/start.json.created_utc'], 'observe-whole-runtime-006-rev002.TEMPLATE.py': ['observer-start.created_utc', 'whole-result.captured_utc'], 'consumer-guard-child-006-rev002.TEMPLATE.py': [], 'ROOT_FIRST_LAUNCH_006-rev002.TEMPLATE.ps1': ['ROOT_LAUNCH_START_006.json.started_utc', 'ROOT_LAUNCH_TERMINAL_006.json.finished_utc']}, 'external_python6_roles': ['metadata-context.captured_utc', 'runtime-metadata.captured_utc', 'whole-before.captured_utc', 'whole-after.captured_utc', 'independent-actual-record-review.created_utc', 'bound-review.created_utc', 'bound-review.expires_utc', 'late-review.created_utc', 'late-review.expires_utc'], 'external_root_powershell7_roles': ['execution-lease.created_utc', 'execution-lease.lease_end_utc', 'root-authorization.created_utc', 'root-authorization.expires_utc', 'root-ack.created_utc', 'root-ack.expires_utc', 'resource.captured_utc', 'coordination.created_utc'], 'owner_master': {'sha256': 'de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583', 'created_utc_field': 'record_created_utc', 'fraction_digits': 7, 'owner_end_utc': None}, 'finite_lease': {'maximum_seconds': 43200, 'is_owner_deadline': False, 'start_not_before_owner_master': True, 'seventh_digit_preserved_for_comparison': True}, 'actual_external_producer_selection': None, 'actual_external_record_acceptance': None, 'runtime_acceptance': False, 'operational_authority': False, 'implementation_condition': 'Different actual-record reviewers must authenticate every external producer and the exact canonical producer-specific timestamp shape before binding or acceptance. Parsing aware UTC alone is insufficient.'}
+
+def capsule_snapshot(profile):
+    role = profile["external_canonical_timestamp_role_contract"]
+    exact(role,("path","sha256","bytes"),"timestamp contract source role")
+    require(role["path"]=="EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_006.json"
+            and type(role["bytes"]) is int and 0<role["bytes"]<=65536,
+            "fixed bounded timestamp contract source")
+    contract = decode(read(PREP/role["path"],role["sha256"],role["bytes"])[0])
+    typed_equal(contract, TIMESTAMP_ROLE_CONTRACT, "closed canonical timestamp role contract")
+    row = profile["source_capsule"]
+    value = decode(read(PREP / row["path"], row["sha256"], 131072)[0])
+    schema = decode(read(PREP / profile["capsule_schema"]["path"], profile["capsule_schema"]["sha256"], 131072)[0])
+    require(schema["maximum_capsule_bytes"] == 131072 and type(schema["maximum_capsule_bytes"]) is int, "capsule cap contract")
+    nominal_shape(value, schema["closed_entire_fixed_capsule_shape"])
+    require(value["anchors"]["full_peer"]["sha256"] == "5a283496929bffed9b022bff382719cbb918df94f5a5224b9c8022e237e9d096"
+            and value["anchors"]["test"]["sha256"] == profile["test"]["sha256"]
+            and value["anchors"]["raw4"]["sha256"] == profile["raw_source_sha256"]
+            and value["operational_authority_granted"] is False
+            and value["discovery"]["actual_collection"] is None and value["discovery"]["actual_results"] is None,
+            "capsule frozen source roles")
+    read(PREP / profile["capsule_derivation"]["path"], profile["capsule_derivation"]["sha256"], 131072)
+    peer = decode(read(CAPSULE_PEER_PATH, CAPSULE_PEER_SHA256, 131072)[0])
+    require(peer["verdict"] == "PASS_STATIC_COMPACT_CAPSULE_DERIVATION_WITH_IMPLEMENTATION_CONDITIONS"
+            and peer["reviewer"] == "/root/capsule_design_review"
+            and peer["capsule_sha256"] == row["sha256"] and peer["operational_authority"] is False,
+            "different authenticated compact capsule source acceptance")
+    return value
+
+def source_snapshot(profile):
+    require(profile["source_projection_sha256"] == profile["source_projection"]["sha256"], "projection identity")
+    projection = decode(read(PREP / profile["source_projection"]["path"],
+                             profile["source_projection_sha256"], MAX_JSON)[0])
+    capsule_snapshot(profile)
+    answer = []
+    for row in projection["entries"]:
+        if not row["runtime_source_reobserve_required"]:
+            continue
+        original = Path(row["original_path"])
+        require(original.is_absolute() and original.is_relative_to(PROJECT / "resume-2026-10-01-30h-001"), "fixed historical source leaf")
+        relative = Path(row["copy_path"])
+        require(not relative.is_absolute() and ".." not in relative.parts, "copy projection escape")
+        original_bytes, original_meta = read(original, row["sha256"], row["bytes"])
+        copied_bytes, copied_meta = read(PREP / relative, row["sha256"], row["bytes"])
+        require(original_bytes == copied_bytes, "copy original differs")
+        require(encoded(original_meta) == encoded(row["original_metadata"])
+                and encoded(copied_meta) == encoded(row["copy_metadata"]), "frozen source/copy metadata differs")
+        answer.append({"path": row["copy_path"], "original": original_meta, "copy": copied_meta})
+    return answer
+
+def metadata_row(path, expected, maximum):
+    exact(expected, ("path", "sha256", "bytes", "path_raw9", "descriptor_raw9"), "opaque metadata row")
+    require(expected["path"] == str(path) and type(expected["bytes"]) is int
+            and 0 <= expected["bytes"] <= maximum, "opaque row path/size")
+    require(all(type(expected[name]) is list and len(expected[name]) == 9
+                and all(type(value) is int for value in expected[name])
+                for name in ("path_raw9", "descriptor_raw9")), "opaque raw9 metadata type")
+    data, observed = read(path, expected["sha256"], maximum)
+    require(len(data) == expected["bytes"] and list(observed["path_raw9"]) == expected["path_raw9"]
+            and list(observed["descriptor_raw9"]) == expected["descriptor_raw9"], "opaque byte/metadata drift")
+    return {"path": str(path), **observed}
+
+
+def context_snapshot(profile, value):
+    exact(value, ("schema_version", "scope", "captured_utc", "head", "tracked_rows",
+                  "git_metadata", "configurations", "runtime_roles_projection_sha256"), "opaque context")
+    require(type(value["schema_version"]) is int and value["schema_version"] == 1
+            and value["scope"] == SCOPE
+            and value["runtime_roles_projection_sha256"] == profile["runtime_roles_projection_sha256"], "opaque context role")
+    require(0 <= (datetime.now(timezone.utc)-timestamp(value["captured_utc"])).total_seconds() <= 600,
+            "fresh opaque context required")
+    cfg = profile["context_profile"]
+    live = Path(cfg["live_root"])
+    require(live == PROJECT / "week8-recovery-controller-worktree", "fixed opaque live root")
+    require(type(value["head"]) is str and len(value["head"]) == 40
+            and all(c in "0123456789abcdef" for c in value["head"]), "opaque HEAD syntax")
+    require(type(value["tracked_rows"]) is list and len(value["tracked_rows"]) == cfg["tracked_count"] == 742,
+            "opaque tracked row count")
+    paths = [row.get("path") for row in value["tracked_rows"] if type(row) is dict]
+    require(len(paths) == 742 and all(type(path) is str for path in paths)
+            and paths == sorted(paths) and len(set(path.casefold() for path in paths)) == 742
+            and digest(encoded(paths)) == cfg["historical_authenticated_pathset_sha256"], "fixed opaque742 path sequence")
+    result = {"head": value["head"], "tracked_rows": [], "git_metadata": [], "configurations": []}
+    for row in value["tracked_rows"]:
+        relative = Path(row["path"])
+        require(not relative.is_absolute() and ".." not in relative.parts and relative.as_posix() == row["path"]
+                and len(row["path"]) <= 399, "opaque relative path")
+        actual = dict(row)
+        actual["path"] = str(live / relative)
+        observed = metadata_row(live / relative, actual, cfg["maximum_file_bytes"])
+        observed["path"] = row["path"]
+        result["tracked_rows"].append(observed)
+    git_paths = cfg["head_paths"] + cfg["optional_git_metadata_paths"]
+    config_paths = [str(Path(parent) / name) for parent in cfg["configuration_parents"]
+                    for name in cfg["configuration_names"]]
+    for field, allowed in (("git_metadata", git_paths), ("configurations", config_paths)):
+        require(type(value[field]) is list and [row.get("path") for row in value[field] if type(row) is dict] == allowed,
+                "opaque fixed path coverage")
+        for row in value[field]:
+            exact(row, ("path", "exists", "identity"), "opaque optional row")
+            require(type(row["exists"]) is bool, "opaque existence type")
+            path = Path(row["path"])
+            if row["exists"]:
+                observed = metadata_row(path, row["identity"], cfg["maximum_git_metadata_bytes"])
+                result[field].append({"path": str(path), "exists": True, "identity": observed})
+            else:
+                require(row["identity"] is None and absent(path), "opaque absence drift")
+                require(field != "git_metadata" or row["path"] not in cfg["head_paths"], "required HEAD metadata absent")
+                result[field].append({"path": str(path), "exists": False, "identity": None})
+    # These explicit bytes anchor the observed branch HEAD without invoking Git.
+    head_path = Path(cfg["head_paths"][-1])
+    expected_head = next(row["identity"]["sha256"] for row in value["git_metadata"] if row["path"] == str(head_path))
+    require(read(head_path, expected_head, 128)[0].decode("ascii").strip() == value["head"], "opaque actual branch HEAD differs")
+    return result
+
+
+import importlib.machinery
+import importlib.util
+import re
+import subprocess
+import types
+import typing
+import tempfile
+import base64
+import binascii
+from collections.abc import Mapping
+from contextlib import contextmanager
+import unittest
+from unittest import mock
+
+
+MAX_EVENT_ROW = 1024
+MAX_STREAM_CHUNKS = 32
+MAX_STREAM_CHUNK = 131072
+MAX_STREAM_BYTES = 4194304
+EVIDENCE_BUDGET = {"bytes":0,"chunks":0}
+
+class EvidenceStream:
+    def __init__(self, prefix, maximum_rows=None):
+        require(type(prefix) is str and prefix in ("events","diagnostics"), "fixed evidence stream role")
+        self.prefix, self.maximum_rows = prefix, maximum_rows
+        self.buffer = bytearray(); self.rows = 0; self.total = 0; self.entries = []
+    def append(self, data, row=False):
+        require(type(data) is bytes and type(row) is bool, "evidence bytes nominal")
+        if row:
+            require(data.endswith(b"\n") and len(data) <= MAX_EVENT_ROW and self.rows < MAX_EVENTS, "event row/count cap")
+        require(self.total+len(data) <= MAX_STREAM_BYTES and EVIDENCE_BUDGET["bytes"]+len(data) <= MAX_STREAM_BYTES,
+                "complete combined evidence exceeds aggregate cap")
+        EVIDENCE_BUDGET["bytes"] += len(data)
+        if row and len(self.buffer)+len(data) > MAX_STREAM_CHUNK: self.flush()
+        if row:
+            self.buffer.extend(data); self.rows += 1; self.total += len(data)
+        else:
+            # Full diagnostic bytes can span fixed chunks; no byte is dropped.
+            position=0
+            while position<len(data):
+                if len(self.buffer)==MAX_STREAM_CHUNK: self.flush()
+                take=min(MAX_STREAM_CHUNK-len(self.buffer),len(data)-position)
+                self.buffer.extend(data[position:position+take]);position+=take;self.total+=take
+    def flush(self):
+        if not self.buffer:return
+        require(len(self.entries)<MAX_STREAM_CHUNKS and EVIDENCE_BUDGET["chunks"]<MAX_STREAM_CHUNKS,
+                "complete combined evidence chunk count cap")
+        name=self.prefix+"-"+str(len(self.entries)).zfill(2)+".bin"
+        value=bytes(self.buffer);once(RUNS/name,value,MAX_STREAM_CHUNK)
+        self.entries.append({"ordinal":len(self.entries),"path":name,"bytes":len(value),"sha256":digest(value)})
+        EVIDENCE_BUDGET["chunks"] += 1
+        self.buffer.clear()
+    def finish(self):
+        self.flush()
+        return {"role":self.prefix,"chunks":self.entries,"bytes":self.total,"rows":self.rows,
+                "maximum_chunks":MAX_STREAM_CHUNKS,"maximum_chunk_bytes":MAX_STREAM_CHUNK,"maximum_stream_bytes":MAX_STREAM_BYTES}
+
+def validate_event(value):
+    require(type(value) is dict and type(value.get("event")) is str, "event nominal")
+    kind=value["event"]
+    keys={"start":("event","id"),"success":("event","id"),"failure":("event","id","diagnostic"),
+          "error":("event","id","diagnostic"),"skip":("event","id","diagnostic"),
+          "subtest":("event","parent_id","id","status","diagnostic")}
+    require(kind in keys, "finite event kind");exact(value,keys[kind],"event row")
+    for field in ("id","parent_id","status"):
+        if field in value: require(type(value[field]) is str, "event text nominal")
+    if kind=="subtest": require(value["status"] in ("passed","failed"), "subtest finite status")
+    if "diagnostic" in value:
+        item=value["diagnostic"]
+        require(item is None or type(item) is dict, "diagnostic pointer nominal")
+        if item is not None:
+            exact(item,("offset","bytes","sha256"),"diagnostic reference")
+            require(type(item["offset"]) is int and type(item["bytes"]) is int
+                    and 0<=item["offset"]<=MAX_STREAM_BYTES and 0<=item["bytes"]<=MAX_STREAM_BYTES
+                    and item["offset"]+item["bytes"]<=MAX_STREAM_BYTES and hex64(item["sha256"]),"diagnostic bounded reference")
+    data=encoded(value);require(len(data)<=MAX_EVENT_ROW,"canonical event row bytes including LF")
+    return data
+
+def stream_read(value, role):
+    exact(value,("role","chunks","bytes","rows","maximum_chunks","maximum_chunk_bytes","maximum_stream_bytes"),"stream manifest")
+    require(type(value["role"]) is str and value["role"]==role and type(value["chunks"]) is list
+            and len(value["chunks"])<=MAX_STREAM_CHUNKS and type(value["bytes"]) is int
+            and 0<=value["bytes"]<=MAX_STREAM_BYTES and type(value["rows"]) is int and 0<=value["rows"]<=MAX_EVENTS,
+            "stream nominal/caps")
+    require(all(type(value[k]) is int and value[k]==limit for k,limit in
+                (("maximum_chunks",MAX_STREAM_CHUNKS),("maximum_chunk_bytes",MAX_STREAM_CHUNK),("maximum_stream_bytes",MAX_STREAM_BYTES))), "stream fixed ceilings")
+    result=bytearray()
+    for ordinal,row in enumerate(value["chunks"]):
+        exact(row,("ordinal","path","bytes","sha256"),"chunk manifest row")
+        require(type(row["ordinal"]) is int and row["ordinal"]==ordinal and type(row["bytes"]) is int
+                and 0<row["bytes"]<=MAX_STREAM_CHUNK and type(row["path"]) is str
+                and row["path"]==role+"-"+str(ordinal).zfill(2)+".bin" and hex64(row["sha256"]),"chunk closed names/types")
+        require(len(result)+row["bytes"]<=MAX_STREAM_BYTES,"stream preread aggregate cap")
+        part=read(RUNS/row["path"],row["sha256"],row["bytes"])[0]
+        require(len(part)==row["bytes"],"complete chunk size");result.extend(part)
+    require(len(result)==value["bytes"],"stream complete bytes")
+    if role=="events":
+        rows=[]
+        for part in result.splitlines(keepends=True):
+            require(len(part)<=MAX_EVENT_ROW and part.endswith(b"\n") and len(rows)<MAX_EVENTS,"event reobserve finite row")
+            row=decode(part);require(validate_event(row)==part,"event canonical bytes");rows.append(row)
+        require(len(rows)==value["rows"],"event exact count")
+        return rows
+    require(value["rows"]==0,"diagnostic rows not inferred")
+    return bytes(result)
+
+def child_main():
+    parser = argparse.ArgumentParser()
+    for name in ("expected-self-sha256", "expected-profile-sha256", "root-ack-path", "root-ack-sha256", "lease-sha256"):
+        parser.add_argument("--" + name, required=True)
+    args = parser.parse_args()
+    require(hex64(args.expected_self_sha256) and hex64(args.expected_profile_sha256)
+            and hex64(args.root_ack_sha256), "child external pins")
+    runtime_entry(args.lease_sha256)
+    require(Path(__file__).resolve(strict=True) == (PREP / "consumer-guard-child-006-rev002.TEMPLATE.py").resolve(strict=True), "fixed child source path")
+    own_before=read(Path(__file__), args.expected_self_sha256, 65536)[1]
+    profile_bytes,profile_before=read(PREP / "GUARD_RUNTIME_PROFILE_006-rev002.json", args.expected_profile_sha256, 65536)
+    profile = decode(profile_bytes)
+    ack_bytes,ack_before=read(work_path(args.root_ack_path), args.root_ack_sha256, 65536)
+    ack = decode(ack_bytes)
+    require(ack["scope"] == SCOPE and ack["child_sha256"] == args.expected_self_sha256
+            and ack["profile_sha256"] == args.expected_profile_sha256
+            and ack["author"] == ack["executor"] == "/root"
+            and timestamp(ack["created_utc"]) <= datetime.now(timezone.utc) < timestamp(ack["expires_utc"])
+            and timestamp(ack["expires_utc"]) <= OWNER_END, "child root ACK binding")
+    start = decode(read(RUNS / "start.json", maximum=65536)[0])
+    require(start["root_ack_sha256"] == args.root_ack_sha256
+            and start["child_sha256"] == args.expected_self_sha256, "owned first-entry start binding")
+    for name in ("collection.json", "result.json", "transcript.txt"):
+        require(absent(RUNS / name), "child evidence already exists")
+    before = source_snapshot(profile)
+    test_bytes = read(PREP / profile["test"]["path"], profile["test"]["sha256"], profile["test"]["bytes"])[0]
+    test_tree = ast.parse(test_bytes)
+    classes = [node for node in test_tree.body if isinstance(node, ast.ClassDef)]
+    require([node.name for node in classes] == profile["test_classes"], "exact two sibling classes")
+    class_names = {node.name for node in classes}
+    prepared = {}
+    for node in classes:
+        require([ast.unparse(base) for base in node.bases] == ["unittest.TestCase"] and not node.keywords,
+                "direct sibling TestCase AST")
+        prepared[node.name] = sorted(method.name for method in node.body
+            if isinstance(method, ast.FunctionDef) and method.name.startswith("test_"))
+    require(prepared == profile["prepared_class_method_names"]
+            and [len(prepared[name]) for name in profile["test_classes"]] == [19,5], "exact24 prepared methods")
+    for node in test_tree.body:
+        targets = node.targets if isinstance(node,ast.Assign) else [node.target] if isinstance(node,ast.AnnAssign) else []
+        require(not any(isinstance(target,ast.Name) and target.id in class_names for target in targets), "class rebinding prohibited")
+    collection_start = time.monotonic()
+    namespace_name = "isolated_consumer_guard_unit006"
+    require(namespace_name not in sys.modules, "test namespace already occupied")
+    private_names = ("_bu_week8_d161_raw_authority", "_bu_week8_d161_static_raw_authority")
+    original_private = {name: sys.modules.get(name) for name in private_names}
+    require(all(value is None for value in original_private.values()), "inherited raw namespace")
+    path_state = (tuple(sys.path), tuple(sys.meta_path), tuple(sys.path_hooks), dict(sys.path_importer_cache))
+    def import_snapshot():
+        return {"sys_path": list(sys.path), "meta_path_ids": [id(value) for value in sys.meta_path],
+                "path_hook_ids": [id(value) for value in sys.path_hooks],
+                "importer_cache": [[key,id(value)] for key,value in sorted(sys.path_importer_cache.items())],
+                "private_namespace_ids": {name:None if sys.modules.get(name) is None else id(sys.modules[name]) for name in private_names}}
+    import_before = import_snapshot()
+    def deny_spawn_or_ffi(event, values):
+        if event.startswith(("subprocess.", "ctypes.", "socket.")) or event in ("os.system", "os.posix_spawn", "os.spawn", "os.exec"):
+            raise RuntimeError("isolated unit prohibits process/native/network API: " + event)
+        if event == "open" and values and isinstance(values[0], (str,bytes)):
+            filename, mode, flags = values
+            writing = (type(mode) is str and any(c in mode for c in "wax+")) or bool(flags & (os.O_WRONLY|os.O_RDWR|os.O_CREAT|os.O_TRUNC|os.O_APPEND))
+            if writing:
+                require(Path(os.fsdecode(filename)).absolute().is_relative_to(RUNS), "Python audit write outside owned scratch")
+        if event in ("os.remove", "os.rmdir", "os.mkdir", "os.rename"):
+            for filename in values[:2] if event == "os.rename" else values[:1]:
+                if isinstance(filename, (str,bytes)):
+                    require(Path(os.fsdecode(filename)).absolute().is_relative_to(RUNS), "Python audit mutation outside scratch")
+    sys.addaudithook(deny_spawn_or_ffi)
+    module = types.ModuleType(namespace_name)
+    module.__file__ = str(PREP / profile["test"]["path"])
+    sys.modules[namespace_name] = module
+    try:
+        exec(compile(test_bytes, module.__file__, "exec", dont_inherit=True, optimize=0), module.__dict__)
+        discovered = []
+        for class_name in profile["test_classes"]:
+            case = module.__dict__[class_name]
+            require(type(case) is type and case.__bases__ == (unittest.TestCase,), "exact direct class runtime")
+            loaded_names = unittest.defaultTestLoader.getTestCaseNames(case)
+            require(loaded_names == prepared[class_name], "fresh unittest source names differ")
+            discovered.extend(case(name) for name in loaded_names)
+        ids = [test.id() for test in discovered]
+        require(ids == profile["prepared_full_ids"] and len(ids) == len(set(ids)) == 24, "exact24 fresh full IDs")
+        require(time.monotonic() - collection_start <= MAX_COLLECTION, "collection deadline")
+        collection_bytes = encoded({"scope": SCOPE, "ordered_ids": ids,
+             "ordered_ids_sha256": digest(encoded(ids)), "collected_methods": len(ids),
+             "collection_elapsed_seconds": time.monotonic() - collection_start,
+             "profile_sha256": args.expected_profile_sha256, "child_sha256": args.expected_self_sha256,
+             "root_ack_sha256": args.root_ack_sha256})
+        once(RUNS / "collection.json", collection_bytes, MAX_RECEIPT)
+        event_stream = EvidenceStream("events", MAX_EVENTS)
+        diagnostic_stream = EvidenceStream("diagnostics")
+        event_count = 0
+        subtest_count = 0
+        passing_subtest_count = 0
+        methods = []
+        active = {}
+        transcript_parts = []
+        transcript_size = 0
+        test_start = time.monotonic()
+        def diagnostic(value):
+            require(type(value) is str, "complete diagnostic text nominal")
+            data = value.encode("utf-8")
+            reference = {"offset": diagnostic_stream.total,"bytes":len(data),"sha256":digest(data)}
+            diagnostic_stream.append(data)
+            return reference
+        def event(value):
+            nonlocal event_count,subtest_count,passing_subtest_count
+            require(time.monotonic() - test_start <= MAX_TESTS, "test deadline exceeded")
+            event_stream.append(validate_event(value), row=True)
+            event_count += 1
+            if value["event"] == "subtest":
+                subtest_count += 1
+                passing_subtest_count += value["status"] == "passed"
+        class CappedText:
+            def write(self, value):
+                nonlocal transcript_size
+                data = value.encode("utf-8")
+                require(transcript_size + len(data) <= MAX_TRANSCRIPT, "transcript cap")
+                transcript_size += len(data)
+                transcript_parts.append(value)
+                return len(value)
+            def flush(self):
+                pass
+        class Result(unittest.TextTestResult):
+            def startTest(self, test):
+                active[test.id()] = {"id": test.id(), "status": "started"}
+                event({"event": "start", "id": test.id()})
+                super().startTest(test)
+            def addSuccess(self, test):
+                active[test.id()]["status"] = "passed"
+                event({"event": "success", "id": test.id()})
+                super().addSuccess(test)
+            def addFailure(self, test, error):
+                active[test.id()]["status"] = "failure"
+                event({"event": "failure", "id": test.id(), "diagnostic":diagnostic("".join(traceback.format_exception(*error)))})
+                super().addFailure(test, error)
+            def addError(self, test, error):
+                active[test.id()]["status"] = "error"
+                event({"event": "error", "id": test.id(), "diagnostic":diagnostic("".join(traceback.format_exception(*error)))})
+                super().addError(test, error)
+            def addSkip(self, test, reason):
+                active[test.id()]["status"] = "skip"
+                event({"event": "skip", "id": test.id(), "diagnostic":diagnostic(reason)})
+                super().addSkip(test, reason)
+            def addSubTest(self, test, subtest, error):
+                status = "passed" if error is None else "failed"
+                if error is not None:
+                    active[test.id()]["status"] = "subtest-failure"
+                event({"event": "subtest", "parent_id": test.id(), "id": subtest.id(), "status": status,
+                       "diagnostic":None if error is None else diagnostic("".join(traceback.format_exception(*error)))})
+                super().addSubTest(test, subtest, error)
+            def stopTest(self, test):
+                methods.append(dict(active.pop(test.id())))
+                super().stopTest(test)
+        suite = unittest.TestSuite(discovered)
+        result = unittest.TextTestRunner(stream=CappedText(), resultclass=Result,
+                                        verbosity=2, failfast=True).run(suite)
+        sys.modules.pop(namespace_name, None)
+        owned_namespace_clean = namespace_name not in sys.modules
+        private_clean = all(sys.modules.get(name) is original_private[name] for name in private_names)
+        import_after = import_snapshot()
+        path_clean = (tuple(sys.path), tuple(sys.meta_path), tuple(sys.path_hooks), dict(sys.path_importer_cache)) == path_state
+        forbidden_modules = sorted(name for name in sys.modules if name == "bu" or name.startswith("bu.")
+                                   or name.split(".")[0] in ("torch", "numpy", "scipy", "pytest"))
+        after = source_snapshot(profile)
+        require(read(Path(__file__),args.expected_self_sha256,65536)[1] == own_before
+                and read(PREP/"GUARD_RUNTIME_PROFILE_006-rev002.json",args.expected_profile_sha256,65536)[1] == profile_before
+                and read(work_path(args.root_ack_path),args.root_ack_sha256,65536)[1] == ack_before,
+                "child own/profile/ACK byte metadata changed")
+        transcript = "".join(transcript_parts).encode("utf-8")
+        once(RUNS / "transcript.txt", transcript, MAX_TRANSCRIPT)
+        require(not active, "unterminated test method")
+        passed = sum(row["status"] == "passed" for row in methods)
+        skipped = len(result.skipped)
+        require(skipped == 0, "no prepared guard skip whitelist")
+        accepted = (result.wasSuccessful() and passed == len(ids) and len(methods) == len(ids)
+                    and owned_namespace_clean and private_clean and path_clean and not forbidden_modules and before == after
+                    and time.monotonic() - test_start <= MAX_TESTS)
+        report = {"scope": SCOPE, "accepted": accepted, "collected_methods": len(ids),
+                  "tests_run": result.testsRun, "passed": passed, "skipped": skipped,
+                  "failures": len(result.failures), "errors": len(result.errors),
+                  "methods": methods, "event_manifest": event_stream.finish(), "diagnostic_manifest": diagnostic_stream.finish(),
+                  "event_count": event_count, "reported_subtests": subtest_count, "passing_subtests": passing_subtest_count,
+                  "ordered_ids_sha256": digest(encoded(ids)), "transcript_sha256": digest(transcript),
+                  "private_raw_namespaces_restored": private_clean, "import_path_state_restored": path_clean,
+                  "owned_test_namespace_removed": owned_namespace_clean, "import_state_before": import_before,
+                  "import_state_after": import_after,
+                  "forbidden_project_or_thirdparty_modules": forbidden_modules, "sources_initial": before,
+                  "sources_final": after, "elapsed_test_seconds": time.monotonic() - test_start,
+                  "source_peer_sha256": ack["source_peer_sha256"], "root_ack_sha256": args.root_ack_sha256,
+                  "profile_sha256": args.expected_profile_sha256, "native_fit_Git_fullQA": False,
+                  "OS_sandbox_hard_Job_memory_descendant_cleanup_proved": False}
+        result_bytes = encoded(report)
+        once(RUNS / "result.json", result_bytes, MAX_RECEIPT)
+        # Direct child pipe pins the immutable data receipts; the supervisor never
+        # treats a mutable file's own observed hash as its initial trust anchor.
+        sys.stdout.write(encoded({"result_sha256": digest(result_bytes),
+             "collection_sha256": digest(collection_bytes), "transcript_sha256": digest(transcript),
+             "profile_sha256": args.expected_profile_sha256, "child_sha256": args.expected_self_sha256,
+             "root_ack_sha256": args.root_ack_sha256}).decode("ascii"))
+        sys.stdout.flush()
+        return 0 if accepted else 1
+    finally:
+        sys.modules.pop(namespace_name, None)
+        for name, value in original_private.items():
+            if value is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = value
+
+
+if __name__ == "__main__":
+    raise SystemExit(child_main())

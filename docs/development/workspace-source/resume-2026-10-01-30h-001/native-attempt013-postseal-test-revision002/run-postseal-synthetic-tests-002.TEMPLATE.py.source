@@ -1,0 +1,229 @@
+"""UNBOUND/UNRUN once-only synthetic test driver; no project/native imports.
+
+Loads only reviewed external guard definitions and mocked stdlib test bodies.
+Independent review, exact two-pin binding plus externally trusted script SHA and a fresh root ACK are required.
+"""
+from __future__ import annotations
+import argparse,ast,hashlib,io,json,os,re,stat,sys,types,unittest
+from datetime import datetime,timedelta,timezone
+from pathlib import Path
+
+EXPECTED_SCRIPT_SHA256=None
+INDEPENDENT_REVIEW_SHA256=None
+ROOT_ACK_SHA256=None
+ROOT=Path('D:/Aenv/pro2/resume-2026-10-01-30h-001/native-attempt013-postseal-test-revision002')
+POLICY=Path('D:/Aenv/pro2/resume-2026-10-01-30h-001/native-attempt013-postseal-001/native_successor_postseal_common_013_001.py.template')
+TEST=ROOT/'test_native_successor_postseal_013_002.py.template'
+REVIEW=ROOT/'INDEPENDENT_POSTSEAL_TEST_REVISION_REVIEW_002.json'
+ACK=ROOT/'ROOT_EXECUTION_ACK_POSTSEAL_TESTS_002.json'
+OWNER=Path('D:/Aenv/pro2/resume-2026-10-01-30h-001/OWNER_WORK_WINDOW_30H_20261001_001.json')
+RUNS=ROOT/'synthetic-run-002'
+OWNER_SHA256='3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff'
+POLICY_SHA256='527f6942e2b2fa74f66d3e88c5af8543e92c04f5b8bf5d10f4eb2452ff314761'
+TEST_SHA256='3e9c539812b0b07f75d868f135a7c968fb9d2583c92ff09548f479158b8e0066'
+PYTHON=Path('C:/Users/aladdin-alyanai/AppData/Local/Programs/Python/Python313/python.exe')
+PYTHON_SHA256='5341746f92483a93e44c313de830f2fba2956f0759094404a16b2fed06c9a2ed'
+OWNER_START=datetime(2026,10,1,16,36,15,tzinfo=timezone.utc)
+OWNER_END=datetime(2026,10,2,22,36,15,tzinfo=timezone.utc)
+CASE_NAMES=('test_inventory_arithmetic_all_eight_operations', 'test_intent_valid_immutable_current_binding', 'test_intent_each_current_pin_refuses_drift', 'test_intent_extra_missing_duplicate_fields_refuse', 'test_intent_strict_framing_and_exact_prefix_refuse', 'test_intent_timezone_and_unchanged_reserve_refuse', 'test_binary_response_exact_bytes_accept', 'test_binary_response_bool_oversize_and_nonascii_refuse', 'test_quiet_delegates_exact_pair_and_cutoff', 'test_quiet_omitted_cutoff_reaches_public_validator', 'test_quiet_extra_fields_bool_zero_and_unknown_pair_refuse', 'test_quiet_missing_final_public_validator_refuses', 'test_old_pid_liveness_two_snapshots_accept', 'test_old_pid_bool_duplicate_extra_and_live_refuse', 'test_plain_py_windows_creation_split_accepts_sameapi_stable', 'test_plain_py_windows_sameapi_birth_mode_topology_changes_refuse', 'test_plain_py_capture_hash_and_size_bound_refuse', 'test_record_unknown_missing_schema_refuse_before_authority')
+POLICY_FUNCTION_NAMES=('require','sha','bootstrap_capture','file_names','checked_quiet','checked_intent','checked_response','validate_liveness','checked_record')
+POLICY_CONSTANT_NAMES=('PHASES','RESERVES','RECORD_FIELDS')
+TEST_FUNCTION_NAMES=('canonical','parse','require','quiet_rows','intent')
+TEST_CONSTANT_NAMES=('AUDIT_BYTES','H','F','OWNER')
+STARTED=RUNS/'started.json'
+FINISHED=RUNS/'finished.json'
+FAILED=RUNS/'failed.json'
+WITNESSES={}
+
+def require(value,message):
+    if not value:raise ValueError(message)
+
+def sha(data):return hashlib.sha256(data).hexdigest()
+
+def canonical(value):
+    return json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False).encode('ascii')
+
+def parse(data):
+    def unique(rows):
+        result={}
+        for key,value in rows:
+            require(key not in result,'duplicate JSON field')
+            result[key]=value
+        return result
+    return json.loads(data,object_pairs_hook=unique,
+        parse_constant=lambda token:(_ for _ in ()).throw(ValueError('nonfinite JSON token')))
+
+def raw_identity(info):
+    row=(info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns,info.st_ctime_ns,info.st_mode,
+         info.st_nlink,int(getattr(info,'st_file_attributes',0)))
+    require(all(type(value) is int for value in row),'integer stat fields required')
+    if os.name=='nt':
+        birth=getattr(info,'st_birthtime_ns',None)
+        require(type(birth) is int and birth>0,'Windows birthtime required')
+        return row+(birth,)
+    return row
+
+def cross_identity(info,*,pathname,path):
+    row=raw_identity(info)
+    if os.name=='nt':
+        require(not pathname or info.st_ctime_ns==info.st_birthtime_ns,'pathname creation projection changed')
+        row=row[:4]+(info.st_birthtime_ns,)+row[5:8]
+        if path==PYTHON:
+            require(stat.S_ISREG(info.st_mode),'fixed interpreter type changed')
+            require((info.st_mode&0o111)==(0o111 if pathname else 0),'fixed interpreter execute-bit projection changed')
+            row=row[:5]+(row[5]&~0o111,)+row[6:]
+    return row
+
+def read(path,expected,*,maximum=1048576):
+    require(type(expected) is str and re.fullmatch(r'[0-9a-f]{64}',expected) is not None,'reviewed input pin unbound')
+    for parent in reversed(path.parents):
+        info=parent.lstat()
+        require(stat.S_ISDIR(info.st_mode) and not stat.S_ISLNK(info.st_mode)
+                and not int(getattr(info,'st_file_attributes',0))&0x400,'input ancestor nonplain')
+    before=path.lstat()
+    require(stat.S_ISREG(before.st_mode) and before.st_nlink==1 and not stat.S_ISLNK(before.st_mode)
+            and not int(getattr(before,'st_file_attributes',0))&0x400,'input is not a plain one-link file')
+    with path.open('rb',buffering=0) as stream:
+        opened=os.fstat(stream.fileno());data=stream.read(maximum+1);closed=os.fstat(stream.fileno())
+    after=path.lstat()
+    require(raw_identity(before)==raw_identity(after) and raw_identity(opened)==raw_identity(closed)
+            and cross_identity(before,pathname=True,path=path)==cross_identity(opened,pathname=False,path=path)
+            and 0<len(data)<=maximum and len(data)==before.st_size and sha(data)==expected,'input changed or capture pin differs')
+    witness=(data,raw_identity(before))
+    if path in WITNESSES:require(WITNESSES[path]==witness,'input changed after first observation')
+    else:WITNESSES[path]=witness
+    return data
+
+def absent(path):
+    try:path.lstat()
+    except FileNotFoundError:return
+    raise ValueError('create-once path already exists: '+str(path))
+
+def active_owner():
+    now=datetime.now(timezone.utc)
+    require(OWNER_START<=now<OWNER_END,'reviewed owner window inactive')
+    read(OWNER,OWNER_SHA256,maximum=65536)
+    return now
+
+def reobserve():
+    for path,(data,identity) in tuple(WITNESSES.items()):
+        require(read(path,sha(data),maximum=max(len(data),1))==data,'input changed at boundary')
+    active_owner()
+
+def write_once(path,document):
+    absent(path);payload=canonical(document)+b'\n'
+    descriptor=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL|getattr(os,'O_BINARY',0),0o400)
+    with os.fdopen(descriptor,'wb') as stream:stream.write(payload);stream.flush();os.fsync(stream.fileno())
+    require(read(path,sha(payload),maximum=max(len(payload),1))==payload,'exclusive receipt publication differs')
+
+def template_projection(source):
+    tree=ast.parse(source)
+    names={'INDEPENDENT_REVIEW_SHA256','ROOT_ACK_SHA256'}
+    assignments={node.targets[0].id:node for node in tree.body if isinstance(node,ast.Assign)
+                 and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in names}
+    require(set(assignments)==names,'exact two binding assignments absent')
+    lines=source.decode('ascii').splitlines(keepends=True)
+    for name,node in assignments.items():
+        require(node.lineno==node.end_lineno,'binding must remain single-line')
+        lines[node.lineno-1]=name+'=None\n'
+    return ''.join(lines).encode('ascii')
+
+def selected_definitions(source,names,constants,classes=()):
+    tree=ast.parse(source)
+    chosen=[]
+    found_functions=[];found_constants=[];found_classes=[]
+    for node in tree.body:
+        if isinstance(node,ast.FunctionDef) and node.name in names:
+            chosen.append(node);found_functions.append(node.name)
+        elif isinstance(node,ast.ClassDef) and node.name in classes:
+            chosen.append(node);found_classes.append(node.name)
+        elif isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name) and node.targets[0].id in constants:
+            chosen.append(node);found_constants.append(node.targets[0].id)
+    require(set(found_functions)==set(names) and len(found_functions)==len(names)
+            and set(found_constants)==set(constants) and len(found_constants)==len(constants)
+            and set(found_classes)==set(classes) and len(found_classes)==len(classes),'definition selection differs')
+    return ast.Module(body=chosen,type_ignores=[])
+
+def main():
+    global EXPECTED_SCRIPT_SHA256
+    parser=argparse.ArgumentParser(allow_abbrev=False)
+    parser.add_argument('--expected-script-sha256',required=True)
+    args=parser.parse_args()
+    EXPECTED_SCRIPT_SHA256=args.expected_script_sha256
+    # Binding is checked before any source read, receipt claim or compiled code.
+    for pin in (EXPECTED_SCRIPT_SHA256,INDEPENDENT_REVIEW_SHA256,ROOT_ACK_SHA256):
+        require(type(pin) is str and re.fullmatch(r'[0-9a-f]{64}',pin) is not None,'unbound driver refuses')
+    require(sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode,'isolated -I -S -B required')
+    require(os.name=='nt' and Path(sys.executable)==PYTHON,'fixed Windows base interpreter required')
+    self_path=ROOT/'run-postseal-synthetic-tests-002.py'
+    require(Path(__file__)==self_path,'bound driver must use fixed reviewed path')
+    source=read(self_path,EXPECTED_SCRIPT_SHA256)
+    read(PYTHON,PYTHON_SHA256)
+    active_owner()
+    review=parse(read(REVIEW,INDEPENDENT_REVIEW_SHA256))
+    require(type(review) is dict and review.get('verdict')=='PASS_STATIC'
+            and review.get('runner_template_sha256')==sha(template_projection(source))
+            and review.get('test_template_sha256')==TEST_SHA256
+            and review.get('policy_template_sha256')==POLICY_SHA256,'independent static review differs')
+    ack=parse(read(ACK,ROOT_ACK_SHA256))
+    fields={'schema_version','record_type','runner_template_sha256','independent_review_sha256',
+            'test_template_sha256','policy_template_sha256','owner_sha256','run_authorized',
+            'project_execution_authorized','native_execution_authorized'}
+    require(type(ack) is dict and set(ack)==fields and type(ack['schema_version']) is int and ack['schema_version']==1
+            and ack['record_type']=='postseal_synthetic_test_root_ack'
+            and ack['runner_template_sha256']==sha(template_projection(source))
+            and ack['independent_review_sha256']==INDEPENDENT_REVIEW_SHA256
+            and ack['test_template_sha256']==TEST_SHA256 and ack['policy_template_sha256']==POLICY_SHA256
+            and ack['owner_sha256']==OWNER_SHA256 and ack['run_authorized'] is True
+            and ack['project_execution_authorized'] is False and ack['native_execution_authorized'] is False,
+            'fresh exact root synthetic-only ACK unavailable')
+    policy_source=read(POLICY,POLICY_SHA256,maximum=262144)
+    test_source=read(TEST,TEST_SHA256,maximum=65536)
+    policy_module=selected_definitions(policy_source,POLICY_FUNCTION_NAMES,POLICY_CONSTANT_NAMES)
+    test_module=selected_definitions(test_source,TEST_FUNCTION_NAMES,TEST_CONSTANT_NAMES,('FakeFront','GuardTests'))
+    test_tree=ast.parse(test_source)
+    guard=next(node for node in test_tree.body if isinstance(node,ast.ClassDef) and node.name=='GuardTests')
+    actual_cases=tuple(node.name for node in guard.body if isinstance(node,ast.FunctionDef) and node.name.startswith('test_'))
+    require(actual_cases==CASE_NAMES and len(actual_cases)==18,'exact reviewed 18 named cases differ')
+    for target in (RUNS,STARTED,FINISHED,FAILED):absent(target)
+    reobserve();RUNS.mkdir()
+    started_at=active_owner().isoformat()
+    common={'schema_version':1,'runner_sha256':EXPECTED_SCRIPT_SHA256,'runner_template_sha256':sha(template_projection(source)),
+            'test_template_sha256':TEST_SHA256,'policy_template_sha256':POLICY_SHA256,
+            'independent_review_sha256':INDEPENDENT_REVIEW_SHA256,'root_ack_sha256':ROOT_ACK_SHA256,
+            'owner_sha256':OWNER_SHA256,'started_at_utc':started_at,'planned_named_tests':18,
+            'project_code_imported_or_executed':False,'operational_helper_main_executed':False,
+            'native_invoked':False,'public_action_performed':False,
+            'scientific_outcomes_consulted':False,'scientific_values_emitted':False}
+    write_once(STARTED,dict(common,record_type='postseal_synthetic_test_started'))
+    try:
+        namespace={'__name__':'_isolated_reviewed_downstream_guard_tests','re':re,'os':os,'stat':stat,'sys':sys,'hashlib':hashlib,
+                   'datetime':datetime,'timedelta':timedelta,'timezone':timezone,'Path':Path,'HEX64':re.compile(r'[0-9a-f]{64}\Z',re.ASCII)}
+        exec(compile(policy_module,str(POLICY),'exec',dont_inherit=True),namespace)
+        tests={'__name__':'_postseal_synthetic_tests','ast':ast,'copy':__import__('copy'),'hashlib':hashlib,'io':io,'json':json,
+               'os':os,'re':re,'stat':stat,'sys':sys,'types':types,'unittest':unittest,'datetime':datetime,
+               'timedelta':timedelta,'timezone':timezone,'Path':Path,'NAMESPACE':namespace}
+        exec(compile(test_module,str(TEST),'exec',dont_inherit=True),tests)
+        stream=io.StringIO()
+        suite=unittest.TestSuite(tests['GuardTests'](name) for name in CASE_NAMES)
+        result=unittest.TextTestRunner(stream=stream,verbosity=2).run(suite)
+        transcript=stream.getvalue()
+        require(len(transcript.encode('utf-8'))<=131072,'synthetic transcript exceeds reviewed cap')
+        reobserve()
+        document=dict(common,record_type='postseal_synthetic_test_finished',finished_at_utc=active_owner().isoformat(),
+            tests_run=result.testsRun,failures=len(result.failures),errors=len(result.errors),skips=len(result.skipped),
+            successful=result.wasSuccessful(),transcript=transcript,exit_code=0 if result.wasSuccessful() else 1)
+        require(result.testsRun==18,'incomplete named-test execution')
+        write_once(FINISHED,document)
+        raise SystemExit(document['exit_code'])
+    except SystemExit:
+        raise
+    except BaseException as error:
+        # Preserve the consumed attempt and best-effort refusal evidence; never replay.
+        if not FINISHED.exists() and not FAILED.exists():
+            write_once(FAILED,dict(common,record_type='postseal_synthetic_test_failed',
+                finished_at_utc=datetime.now(timezone.utc).isoformat(),error_type=type(error).__name__,
+                error=str(error)[:4096],exit_code=1))
+        raise
+
+if __name__=='__main__':main()

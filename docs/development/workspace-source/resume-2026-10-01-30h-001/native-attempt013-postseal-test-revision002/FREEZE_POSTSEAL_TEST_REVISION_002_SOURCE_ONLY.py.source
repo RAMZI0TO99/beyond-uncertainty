@@ -1,0 +1,169 @@
+"""Executed once: source-only final freeze; does not import templates/tests."""
+from pathlib import Path
+import ast,hashlib,json,os,stat
+from datetime import datetime,timezone
+OLD=Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-attempt013-postseal-001')
+ROOT=Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\native-attempt013-postseal-test-revision002')
+MANIFEST_SHA='350e7ec84cbcb7839d1658bcde2993e67ff2df0dde4a1e8d135ec287bfaeebdf'
+REVIEW_NAMES=('INDEPENDENT_POSTSEAL_STATIC_REVIEW_001.json','INDEPENDENT_POSTSEAL_STATIC_REVIEW_001.md')
+def require(value,message):
+    if not value:raise ValueError(message)
+def sha(data):return hashlib.sha256(data).hexdigest()
+def canonical(value):return json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=True,allow_nan=False).encode('ascii')+b'\n'
+def identity(info):
+    values=(info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns,info.st_ctime_ns,info.st_mode,info.st_nlink,int(getattr(info,'st_file_attributes',0)))
+    if os.name=='nt':
+        birth=getattr(info,'st_birthtime_ns',None);require(type(birth) is int and birth>0,'Windows birthtime absent');return values+(birth,)
+    return values
+def cross(info,*,pathname):
+    values=identity(info)
+    if os.name=='nt':
+        require(not pathname or info.st_ctime_ns==info.st_birthtime_ns,'creation projection differs')
+        return values[:4]+(info.st_birthtime_ns,)+values[5:8]
+    return values
+def read(path,expected=None):
+    for parent in reversed(path.parents):
+        s=parent.lstat();require(stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not int(getattr(s,'st_file_attributes',0))&0x400,'nonplain ancestor')
+    before=path.lstat();require(stat.S_ISREG(before.st_mode) and before.st_nlink==1 and not stat.S_ISLNK(before.st_mode) and not int(getattr(before,'st_file_attributes',0))&0x400,'nonplain source')
+    with path.open('rb',buffering=0) as stream:
+        opened=os.fstat(stream.fileno());data=stream.read();closed=os.fstat(stream.fileno())
+    after=path.lstat();require(identity(before)==identity(after) and identity(opened)==identity(closed) and cross(before,pathname=True)==cross(opened,pathname=False) and len(data)==before.st_size,'source capture changed')
+    if expected is not None:require(sha(data)==expected,'source pin differs: '+str(path))
+    return data
+def write(path,data):
+    path.parent.mkdir(parents=True,exist_ok=True)
+    with path.open('xb') as stream:stream.write(data)
+    require(read(path)==data,'write readback differs')
+def absent(path):
+    try:path.lstat()
+    except FileNotFoundError:return
+    raise ValueError('future path already exists: '+str(path))
+old_manifest_data=read(OLD/'UNBOUND_MANIFEST_001.json',MANIFEST_SHA);old_manifest=json.loads(old_manifest_data)
+old_inputs={}
+for name,row in old_manifest['files'].items():
+    data=read(OLD/name,row['sha256']);require(len(data)==row['size'],'original size differs')
+    require(read(ROOT/'preserved-postseal001'/name)==data,'preserved64 differs');old_inputs[name]=data
+require(read(ROOT/'preserved-postseal001'/'UNBOUND_MANIFEST_001.json')==old_manifest_data,'preserved original manifest differs')
+old_inputs['UNBOUND_MANIFEST_001.json']=old_manifest_data
+review_inputs={name:read(OLD/name) for name in REVIEW_NAMES}
+review_json=json.loads(review_inputs[REVIEW_NAMES[0]])
+require(review_json['status']=='REFUSED_STATIC_TESTS','independent original review disposition differs')
+require([finding['id'] for finding in review_json['findings']]==['PS001','PS002','PS003'],'independent original finding set differs')
+for name,data in review_inputs.items():write(ROOT/'preserved-postseal001-review'/name,data)
+provenance=json.loads(read(ROOT/'PREPARATION_PROVENANCE_002.json'))
+test_name='test_native_successor_postseal_013_002.py.template'
+runner_name='run-postseal-synthetic-tests-002.TEMPLATE.py'
+policy_name='native_successor_postseal_common_013_001.py.template'
+test=read(ROOT/test_name,provenance['test_template_sha256'])
+runner=read(ROOT/runner_name,provenance['runner_template_sha256'])
+policy=read(ROOT/policy_name,old_manifest['files'][policy_name]['sha256'])
+test_tree=ast.parse(test);runner_tree=ast.parse(runner);policy_tree=ast.parse(policy)
+guard=next(node for node in test_tree.body if isinstance(node,ast.ClassDef) and node.name=='GuardTests')
+case_names=[node.name for node in guard.body if isinstance(node,ast.FunctionDef) and node.name.startswith('test_')]
+require(len(case_names)==18,'exact18 case count differs')
+substitutions=json.loads(read(ROOT/'EXACT_TEST_SUBSTITUTIONS_002.json'))
+reversed_test=test.decode('ascii')
+for change in reversed(substitutions['changes']):
+    require(reversed_test.count(change['new'])==1,'reverse source substitution ambiguous')
+    reversed_test=reversed_test.replace(change['new'],change['old'],1)
+require(reversed_test.encode('ascii')==old_inputs['test_native_successor_postseal_013_001.py.template'],'reverse test differs')
+driver_assignments={node.targets[0].id:node.value for node in runner_tree.body if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name)}
+for name in ('INDEPENDENT_REVIEW_SHA256','ROOT_ACK_SHA256'):
+    require(isinstance(driver_assignments[name],ast.Constant) and driver_assignments[name].value is None,'driver future bound pin differs')
+selected_functions=('require','sha','bootstrap_capture','file_names','checked_quiet','checked_intent','checked_response','validate_liveness','checked_record')
+selected_constants=('PHASES','RESERVES','RECORD_FIELDS')
+policy_defs={node.name:node for node in policy_tree.body if isinstance(node,ast.FunctionDef) and node.name in selected_functions}
+require(set(policy_defs)==set(selected_functions),'selected9 policy definitions absent')
+operational=provenance['operational_artifacts']
+require(len(operational)==19,'operational19 count differs')
+for name,row in operational.items():require(read(ROOT/name,row['sha256'])==old_inputs[name],'operational source modified')
+future_paths=['run-postseal-synthetic-tests-002.py','synthetic-run-002','INDEPENDENT_POSTSEAL_TEST_REVISION_REVIEW_002.json','ROOT_EXECUTION_ACK_POSTSEAL_TESTS_002.json']
+for name in future_paths:absent(ROOT/name)
+preservation={'schema_version':1,'record_type':'exact_prior_postseal_source_and_independent_review_preservation',
+    'source_root':str(OLD),'original_manifest_sha256':MANIFEST_SHA,'original_file_count':64,
+    'original64_files':{name:{'sha256':sha(data),'size':len(data),'copy_path':'preserved-postseal001/'+name} for name,data in old_inputs.items()},
+    'independent_review_status':review_json['status'],
+    'independent_review_findings':['PS001','PS002','PS003'],
+    'independent_review_files':{name:{'sha256':sha(data),'size':len(data),'copy_path':'preserved-postseal001-review/'+name} for name,data in review_inputs.items()},
+    'observation_count':2,'original_files_modified':False,'review_files_modified':False,
+    'earlier_preparation_pending_review_metadata_preserved':True}
+write(ROOT/'PRESERVED_SOURCE_AND_REVIEW_002.json',canonical(preservation))
+recipe={'schema_version':1,'record_type':'unbound_once_only_postseal_synthetic_test_recipe',
+    'status':'UNBOUND_UNRUN','runner_template_path':str(ROOT/runner_name),'runner_template_sha256':sha(runner),
+    'future_bound_runner_path':str(ROOT/'run-postseal-synthetic-tests-002.py'),
+    'test_template_path':str(ROOT/test_name),'test_template_sha256':sha(test),
+    'policy_template_path':str(OLD/policy_name),'policy_template_sha256':sha(policy),
+    'original_independent_review_path':str(OLD/REVIEW_NAMES[0]),'original_independent_review_sha256':sha(review_inputs[REVIEW_NAMES[0]]),
+    'future_independent_review_path':str(ROOT/'INDEPENDENT_POSTSEAL_TEST_REVISION_REVIEW_002.json'),'future_independent_review_sha256':None,
+    'future_root_ack_path':str(ROOT/'ROOT_EXECUTION_ACK_POSTSEAL_TESTS_002.json'),'future_root_ack_sha256':None,
+    'bound_script_sha256':None,'expected_self_sha256_transport':'mandatory externally trusted --expected-script-sha256; not an embedded selfhash',
+    'independent_review_required_exact_fields':{'verdict':'PASS_STATIC','runner_template_sha256':sha(runner),
+        'test_template_sha256':sha(test),'policy_template_sha256':sha(policy)},
+    'root_ack_exact_field_set':['schema_version','record_type','runner_template_sha256','independent_review_sha256',
+        'test_template_sha256','policy_template_sha256','owner_sha256','run_authorized',
+        'project_execution_authorized','native_execution_authorized'],
+    'root_ack_record_type':'postseal_synthetic_test_root_ack','root_ack_schema_version':1,
+    'root_ack_template_not_bound_script_binding_avoids_hash_cycle':True,
+    'exact_source_binding_fields':['INDEPENDENT_REVIEW_SHA256','ROOT_ACK_SHA256'],
+    'named_test_count':18,'named_tests':case_names,'old_named_test_count':17,
+    'new_positive_control':'test_quiet_omitted_cutoff_reaches_public_validator',
+    'guard_policy_definitions':list(selected_functions),'guard_policy_literal_assignments':list(selected_constants),
+    'test_ast_definition_selection':['canonical','parse','require','quiet_rows','intent','FakeFront','GuardTests'],
+    'test_ast_constant_selection':['AUDIT_BYTES','H','F','OWNER'],'mains_excluded':['operational policy main','test-template main'],
+    'synthetic_run_path':str(ROOT/'synthetic-run-002'),'create_once_receipts':['started.json','finished.json','failed.json'],
+    'transcript_byte_ceiling':131072,'source_pins_and_same_file_observations_rechecked_before_claim_and_after_tests':True,
+    'runtime_invocation_flags':['-I','-S','-B'],'project_imports_permitted':False,'native_or_CSharp_execution_permitted':False,
+    'test_execution_authorized':False,'independent_static_and_bound_review_required':True,'root_explicit_first_run_authorization_required':True,
+    'full_runtime_or_site_closure_claimed':False,'OS_write_sandbox_claimed':False,'metadata_fault_may_preserve_partial_consumed_artifacts':True,
+    'operational_schema2_intermediate_grouped_QA_and_release009_acceptance_proven':False}
+write(ROOT/'SYNTHETIC_TEST_RECIPE_002.json',canonical(recipe))
+audit=json.loads(read(ROOT/'CLONE_INTERFACE_AUDIT_002.json'))
+static={'schema_version':1,'record_type':'author_source_only_postseal_test_static_validation','status':'AST_ONLY_UNRUN',
+    'created_at_utc':datetime.now(timezone.utc).isoformat(),'test_template_sha256':sha(test),'runner_template_sha256':sha(runner),
+    'python_AST_parsed':{test_name:True,runner_name:True,policy_name:True},'AST_definition_inspection_only':True,
+    'old17_test_names_retained':True,'named_test_count':18,'unchanged_existing_test_AST_count':14,
+    'changed_existing_test_ASTs':audit['changed_existing_case_ASTs'],'exact_test_substitution_count':8,
+    'exact_reverse_reproduces_original_test_bytes':True,'all64_original_inputs_preserved':True,
+    'independent_original_review_JSON_MD_preserved':True,'all19_operational_artifacts_byte_identical':True,
+    'driver_two_future_source_pin_assignments_None':True,'driver_expected_self_SHA_uses_external_CLI':True,
+    'driver_three_foreign_mains_not_imported_or_executed':True,
+    'future_execution_paths_absent':future_paths,'driver_and_tests_executed':False,'selected_guard_definitions_executed':False,
+    'project_code_imported_or_executed':False,'native_invoked':False,'CSharp_compiled':False,
+    'binding_performed':False,'runtime_PASS_claimed':False,'independent_review_by_different_author_required':True,
+    'source_editor_initial_long_command_rejected_before_process_or_file_creation':True,
+    'source_editor_execution_scope':'own retained stdlib-only source assembly and freeze; templates/tests never executed'}
+write(ROOT/'STATIC_SOURCE_VALIDATION_002.json',canonical(static))
+for name,data in old_inputs.items():
+    require(read(OLD/name,sha(data))==data and read(ROOT/'preserved-postseal001'/name,sha(data))==data,'original changed on second observation')
+for name,data in review_inputs.items():
+    require(read(OLD/name,sha(data))==data and read(ROOT/'preserved-postseal001-review'/name,sha(data))==data,'review changed on second observation')
+rows={}
+for path in sorted(ROOT.rglob('*')):
+    if path.is_dir():continue
+    name=path.relative_to(ROOT).as_posix();data=read(path)
+    rows[name]={'sha256':sha(data),'size':len(data)}
+require('UNBOUND_MANIFEST_002.json' not in rows,'manifest already frozen')
+manifest={'schema_version':1,'record_type':'frozen_unbound_postseal_test_revision002_preparation',
+    'created_at_utc':datetime.now(timezone.utc).isoformat(),'package_root':str(ROOT),
+    'file_count_excluding_manifest':len(rows),'total_file_count_including_manifest':len(rows)+1,'files':rows,
+    'original64_source_files_and_manifest_preserved':True,'original_independent_review_JSON_MD_preserved':True,
+    'operational_artifact_count':19,'operational_artifacts_byte_identical':True,
+    'original_source_manifest_sha256':MANIFEST_SHA,'independent_original_review_status':review_json['status'],
+    'independent_original_review_sha256':sha(review_inputs[REVIEW_NAMES[0]]),'named_test_count':18,
+    'old_named_test_count':17,'old17_test_names_retained':True,'unchanged_existing_test_AST_count':14,
+    'exact_source_substitution_count':8,'source_AST_pass':True,'author_independent_review_claimed':False,
+    'all_future_execution_bindings_unbound':True,'future_independent_review_sha256':None,'future_root_ack_sha256':None,
+    'future_bound_script_sha256':None,'bound_runner_or_receipts_created':False,'templates_or_tests_imported_or_executed':False,
+    'selected_guard_definitions_executed':False,'project_code_imported_or_executed':False,
+    'CSharp_compiled_or_executed':False,'native_execution_performed':False,'public_action_performed':False,
+    'operational_authority_granted':False,'production_or_historical_evidence_modified':False,
+    'scientific_outcomes_consulted':False,'scientific_values_emitted':False,
+    'owner_end_utc':'2026-10-02T22:36:15Z','future_operational_front_schema2_grouped_QA_release009_holds_retained':True}
+write(ROOT/'UNBOUND_MANIFEST_002.json',canonical(manifest))
+for name,row in rows.items():require(len(read(ROOT/name,row['sha256']))==row['size'],'final freeze file differs')
+print(json.dumps({'file_count':len(rows)+1,'manifest_sha256':sha(read(ROOT/'UNBOUND_MANIFEST_002.json')),
+    'handoff_sha256':sha(read(ROOT/'HANDOFF.md')),'test_sha256':sha(test),'runner_sha256':sha(runner),
+    'recipe_sha256':sha(read(ROOT/'SYNTHETIC_TEST_RECIPE_002.json')),'original_review_sha256':sha(review_inputs[REVIEW_NAMES[0]]),
+    'named_tests':18,'operational19_byte_exact':True,'original64_and_review_preserved':True,'source_only_AST_pass':True,
+    'unbound_unrun':True},sort_keys=True))
+

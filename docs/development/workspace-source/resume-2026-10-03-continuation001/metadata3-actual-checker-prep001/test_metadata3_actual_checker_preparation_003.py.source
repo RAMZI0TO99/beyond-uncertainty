@@ -1,0 +1,413 @@
+"""Planned causal stdlib-only tests; source preparation, never executed here.
+
+Future independent runtime approval must authorize loading the new checker
+definitions in an isolated namespace. This file never runs a project target.
+"""
+import copy
+import importlib.util
+import json
+from pathlib import Path
+import unittest
+from unittest.mock import patch
+
+SOURCE=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001/metadata3-actual-checker-prep001/review-metadata3-actual006-corrected009.TEMPLATE.py')
+
+
+class Metadata3ActualCheckerRegressions(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec=importlib.util.spec_from_file_location('isolated_metadata3_checker_source_003',SOURCE)
+        cls.checker=importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.checker)
+
+    def recovered(self,healthy,mutation):
+        healthy()
+        with self.assertRaises((ValueError,TypeError,KeyError)):
+            mutation()
+        healthy()
+
+    def test_json_duplicate_float_nonfinite_refusals_restore_healthy(self):
+        c=self.checker;healthy=lambda:self.assertEqual(c.decode(b'{"value":1}'),{'value':1})
+        for bad in (b'{"value":1,"value":2}',b'{"value":1.0}',b'{"value":NaN}',b'{"value":1e999}',b'\xef\xbb\xbf{}'):
+            with self.subTest(bad=bad):self.recovered(healthy,lambda:c.decode(bad))
+
+    def test_primitive_identity_refuses_bool_integer_and_foreign_equality(self):
+        c=self.checker
+        class Foreign:
+            def __eq__(self,other):raise AssertionError('foreign callback entered')
+        class EqualitySentinel(type):
+            def __eq__(cls,other):raise AssertionError('foreign metaclass callback entered')
+        class ForeignType(metaclass=EqualitySentinel):pass
+        for left,right in ((1,True),({'files':1},{'files':True}),([1],[True]),(Foreign(),Foreign()),(ForeignType(),ForeignType())):
+            with self.subTest(left_type=type(left).__name__):
+                self.assertTrue(c.typed_equal({'files':1},{'files':1}))
+                self.assertFalse(c.typed_equal(left,right))
+                self.assertTrue(c.typed_equal({'files':1},{'files':1}))
+
+    def test_ps7_and_python6_clocks_are_distinct_and_tick_exact(self):
+        c=self.checker;healthy=lambda:c.stamp('2026-10-03T06:00:00.1234567+00:00','PS')
+        for bad in ('2026-10-03T06:00:00.123456+00:00','2026-10-03T06:00:00.12345678+00:00','2026-10-03T06:00:00.1234567Z'):
+            with self.subTest(bad=bad):self.recovered(healthy,lambda:c.stamp(bad,'PS'))
+        self.assertEqual(str(c.moment_exact('2026-10-03T06:00:00.1234568+00:00','PS')-c.moment_exact('2026-10-03T06:00:00.1234567+00:00','PS')),'1E-7')
+
+    def test_closed_auth_before_ticket_refuses_foreign_role_and_future_selection(self):
+        c=self.checker;ticket={key:None for key in c.TICKET_KEYS};pin='0'*64
+        ticket.update(schema_version=1,record_type='root_metadata_checker_input_ticket',author='/root',scope=c.SCOPE,role='auth_before',
+            path=str(c.role_path('auth_before')),sha256=pin,phase_trace_sha256=pin,root_trust_sha256=pin)
+        healthy=lambda:c.ticket_check('auth_before',ticket,pin)
+        for key,value in (('schema_version',True),('author','/root/actual_record_checker'),('path',str(c.PREP/'other.json')),('context_sha256',pin)):
+            bad=copy.deepcopy(ticket);bad[key]=value
+            with self.subTest(key=key):self.recovered(healthy,lambda:c.ticket_check('auth_before',bad,pin))
+        bad=copy.deepcopy(ticket);bad['unknown']=True
+        self.recovered(healthy,lambda:c.ticket_check('auth_before',bad,pin))
+
+    def stream_fixture(self):
+        c=self.checker;id='isolated_consumer_guard_unit006.RawConsumerGuardRegressions.test_fixture'
+        wire=c.encoded({'event':'start','id':id})+c.encoded({'event':'success','id':id})
+        event=dict(role='events',chunks=[dict(ordinal=0,path='events-00.bin',bytes=len(wire),sha256=c.digest(wire))],bytes=len(wire),rows=2,
+                   maximum_chunks=32,maximum_chunk_bytes=131072,maximum_stream_bytes=4194304)
+        diagnostics=dict(role='diagnostics',chunks=[],bytes=0,rows=0,maximum_chunks=32,maximum_chunk_bytes=131072,maximum_stream_bytes=4194304)
+        result=dict(event_manifest=event,diagnostic_manifest=diagnostics,event_count=2)
+        def reader(path,pin=None,cap=2097152,runtime=False):
+            c.need(path==c.RUNS/'events-00.bin' and pin==c.digest(wire) and cap==len(wire),'fixture complete pinned compiled chunk')
+            return wire,{}
+        return result,reader
+
+    def test_chunk_rows_and_manifest_refusals_restore_complete_healthy(self):
+        c=self.checker;result,reader=self.stream_fixture()
+        with patch.object(c,'read',reader):
+            healthy=lambda:self.assertEqual(len(c.event_streams(result)[0]),2)
+            for key,value in (('bytes',True),('rows',3),('maximum_chunks',33)):
+                bad=copy.deepcopy(result);bad['event_manifest'][key]=value
+                with self.subTest(key=key):self.recovered(healthy,lambda:c.event_streams(bad))
+            for key,value in (('ordinal',True),('path','../events-00.bin'),('sha256','1'*64),('bytes',131073)):
+                bad=copy.deepcopy(result);bad['event_manifest']['chunks'][0][key]=value
+                with self.subTest(key=key):self.recovered(healthy,lambda:c.event_streams(bad))
+
+    def test_combined_chunks_and_bytes_are_rejected_before_any_read(self):
+        c=self.checker;result,reader=self.stream_fixture();healthy=lambda:self.assertEqual(len(c.event_streams(result)[0]),2)
+        with patch.object(c,'read',reader):healthy()
+        bad=copy.deepcopy(result);bad['event_manifest']['bytes']=4194304;bad['diagnostic_manifest']['bytes']=1
+        with patch.object(c,'read',side_effect=AssertionError('premature read')):
+            with self.assertRaises(ValueError):c.event_streams(bad)
+        bad=copy.deepcopy(result);bad['event_manifest']['chunks']*=32;bad['diagnostic_manifest']['chunks']=[{}]
+        with patch.object(c,'read',side_effect=AssertionError('premature read')):
+            with self.assertRaises(ValueError):c.event_streams(bad)
+        with patch.object(c,'read',reader):healthy()
+
+    def test_failure_diagnostics_never_become_healthy_acceptance(self):
+        c=self.checker;result,reader=self.stream_fixture()
+        with patch.object(c,'read',reader):self.assertEqual(len(c.event_streams(result)[0]),2)
+        bad=copy.deepcopy(result);bad['event_count']=3
+        with patch.object(c,'read',reader):
+            with self.assertRaises(ValueError):c.event_streams(bad)
+            self.assertEqual(len(c.event_streams(result)[0]),2)
+
+    def test_complete_failure_diagnostics_are_preserved_and_refused(self):
+        c=self.checker;healthy,reader=self.stream_fixture()
+        with patch.object(c,'read',reader):self.assertEqual(len(c.event_streams(healthy)[0]),2)
+        text=b'complete assertion failure, including tail byte X'
+        id='isolated_consumer_guard_unit006.RawConsumerGuardRegressions.test_fixture'
+        wire=c.encoded({'event':'start','id':id})+c.encoded({'event':'failure','id':id,'diagnostic':{'offset':0,'bytes':len(text),'sha256':c.digest(text)}})
+        bad=copy.deepcopy(healthy);bad['event_manifest']['chunks'][0].update(bytes=len(wire),sha256=c.digest(wire));bad['event_manifest']['bytes']=len(wire)
+        bad['diagnostic_manifest'].update(chunks=[dict(ordinal=0,path='diagnostics-00.bin',bytes=len(text),sha256=c.digest(text))],bytes=len(text))
+        captured=[]
+        def diagnostic_reader(path,pin=None,cap=2097152,runtime=False):
+            value=wire if path==c.RUNS/'events-00.bin' else text
+            c.need(pin==c.digest(value) and cap==len(value),'full declared diagnostics fixture bytes');captured.append(value)
+            return value,{}
+        with patch.object(c,'read',diagnostic_reader):
+            with self.assertRaisesRegex(ValueError,'healthy acceptance contains no diagnostic failure payload'):c.event_streams(bad)
+        self.assertIn(text,captured)
+        with patch.object(c,'read',reader):self.assertEqual(len(c.event_streams(healthy)[0]),2)
+
+    def test_original600_expiry_is_not_replaced_by_after_capture(self):
+        c=self.checker;stamp='2026-10-03T06:00:00.000000+00:00'
+        runtime={'context_selection':dict(path=str(c.PREP/'phase-before-003/OPAQUE_CURRENT_CONTEXT_003.json'),sha256='0'*64),'captured_utc':stamp}
+        context={'captured_utc':stamp};args=type('Args',(),{'context_sha256':'0'*64,'runtime_sha256':'1'*64})()
+        def reader(path,pin=None,cap=2097152,runtime=False):return c.encoded(context if path.name.startswith('OPAQUE') else globals_runtime),{}
+        globals_runtime=runtime
+        with patch.object(c,'read',reader),patch.object(c,'runtime_check',lambda *args:None):
+            base=c.moment_exact(stamp,'Py')
+            with patch.object(c,'now_exact',lambda:base+599):self.assertEqual(c.original_before(args,{})[2],1)
+            with patch.object(c,'now_exact',lambda:base+601):
+                with self.assertRaises(ValueError):c.original_before(args,{})
+            with patch.object(c,'now_exact',lambda:base+599):self.assertEqual(c.original_before(args,{})[2],1)
+
+    def test_preflight_refusals_prevent_ready_and_restore_complete_entry_order(self):
+        c=self.checker;events=[]
+        argv=['checker','--self-sha256','0'*64,'--source-peer-sha256','1'*64,'--binding-sha256','2'*64,'--root-trust-sha256','3'*64,'--execution-nonce','4'*32,'--roles','before']
+        def fixed():events.append('full_source');return {},{}
+        def trust(pin):events.append('authenticated_trust');return (),(),(),()
+        def lease():events.append('lease')
+        def publish(*args):events.append('READY');raise RuntimeError('fixture stops before publication')
+        with patch.object(c.sys,'argv',argv),patch.object(c,'configure',lambda args:None),patch.object(c,'fixed',fixed),patch.object(c,'root_trust_preflight',trust),patch.object(c,'lease_check',lease),patch.object(c,'once',publish):
+            def healthy():
+                events.clear()
+                with self.assertRaisesRegex(RuntimeError,'fixture stops'):c.main()
+                self.assertEqual(events,['full_source','authenticated_trust','lease','READY'])
+            healthy()
+            for name in ('fixed','root_trust_preflight'):
+                events.clear()
+                with patch.object(c,name,side_effect=ValueError('independent preflight refusal')):
+                    with self.assertRaises(ValueError):c.main()
+                self.assertNotIn('READY',events)
+                healthy()
+
+    def test_python_source_binding_roundtrip_refuses_unreviewed_edits(self):
+        c=self.checker;bindings={key:'1'*64 for key in ('guard_profile_sha256','source_projection_sha256','raw_source_sha256','source_manifest_sha256','source_peer_sha256','guard_harness_static_review_sha256','preparer_static_review_sha256','coordination_peer_reply_sha256','coordination_root_response_sha256')}
+        slots=dict(BINDINGS=bindings,UNIT_TERMINAL_RELATIVE='ROOT_LAUNCH_TERMINAL_006.json',COORDINATION_PEER_REPLY_RELATIVE='peer.json',COORDINATION_ROOT_RESPONSE_RELATIVE='response.json',OWNER_SHA='2'*64,OWNER_END='2026-10-03T06:00:00.1234567+00:00')
+        original=dict(slots,BINDINGS={key:None for key in bindings})
+        original.update({key:None for key in slots if key!='BINDINGS'})
+        template=(''.join(key+' = '+repr(original[key])+'\n' for key in slots)+'\ndef retained_body():\n    return 1\n').encode('ascii')
+        bound=(''.join(key+' = '+repr(value)+'\n' for key,value in slots.items())+'\ndef retained_body():\n    return 1\n').encode('ascii')
+        with patch.object(c,'BINDINGS',bindings):
+            healthy=lambda:c.python_source_reversal(template,bound,slots)
+            for bad in (bound.replace(b'return 1',b'return 2'),b'# unreviewed additional source\n'+bound,bound.replace(b'ROOT_LAUNCH_TERMINAL_006',b'ROOT_LAUNCH_TERMINAL_999'),bound+b'OWNER_SHA = None\n'):
+                self.recovered(healthy,lambda:c.python_source_reversal(template,bad,slots))
+
+    def test_bound9_exact_nominal_refusals_restore_source_proof(self):
+        c=self.checker;bindings={'source': '1'*64};pin='2'*64
+        record=dict(schema_version=1,record_type='guard006_root_metadata_bound_source_review',reviewer='/root/owner_docs_review',source_author='/root/renewal_runtime_inventory',verdict='PASS_STATIC_BOUND_METADATA_ONLY',actual_script_sha256=pin,source_bindings=bindings,phase_set=['before','after'],metadata_only=True)
+        with patch.object(c,'BOUND',pin),patch.object(c,'BINDINGS',bindings):
+            healthy=lambda:self.assertEqual(c.bound_metadata_review(record),record)
+            for key,value in (('record_type','wrong'),('schema_version',True),('metadata_only',1),('reviewer','owner_docs_review'),('phase_set',['after','before'])):
+                bad=copy.deepcopy(record);bad[key]=value
+                self.recovered(healthy,lambda:c.bound_metadata_review(bad))
+            bad=copy.deepcopy(record);bad['unknown']=None
+            self.recovered(healthy,lambda:c.bound_metadata_review(bad))
+
+    def test_after_bridge_roundtrip_uses_selected_root_bound_writer(self):
+        c=self.checker;wire=b'fixture retained driver20 bytes';pin=c.digest(wire);writer='1'*64
+        args=type('Args',(),dict(driver_finished_sha256=pin,bridge_provenance_sha256='2'*64,unit_terminal_sha256='3'*64,before_result_sha256='4'*64))()
+        provenance={key:None for key in c.COPY_KEYS}
+        provenance.update(schema_version=1,record_type='root_guard006_driver_scoped_finished_receipt_copy',author='/root',scope=c.SCOPE,created_utc='2026-10-03T06:00:00.0000002+00:00',source_path=str(c.RUNS/'finished.json'),copy_path=str(c.GUARD/'ROOT_DRIVER_SCOPED_FINISHED_RECEIPT_006.json'),sha256=pin,bytes=len(wire),producer_sha256=writer,physical_root_unit_terminal_sha256=args.unit_terminal_sha256,whole_before_result_sha256=args.before_result_sha256,byte_identical_copy=True,canonical_fullQA_native_fit_authority=False,target_execution_performed=False)
+        data=(json.dumps(provenance,separators=(',',':'),ensure_ascii=True)+'\n').encode('ascii');calls=[]
+        def reader(path,pin=None,cap=2097152,runtime=False):
+            calls.append(path)
+            if path==c.GUARD/'ROOT_DRIVER_SCOPED_FINISHED_RECEIPT_PROVENANCE_006.json':return data,{}
+            if path==c.PIPELINE/'WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.BOUND.ps1':self.assertEqual(pin,writer);return b'fixture source',{}
+            self.assertIn(path,(c.RUNS/'finished.json',c.GUARD/'ROOT_DRIVER_SCOPED_FINISHED_RECEIPT_006.json'));return wire,{}
+        with patch.object(c,'actual_unit',lambda *args:({},dict(finished_utc='2026-10-03T06:00:00.0000001+00:00'))),patch.object(c,'WHOLE_AFTER_WRITER',writer),patch.object(c,'read',reader):
+            healthy=lambda:c.whole_bridge(args,{})
+            healthy();self.assertIn(c.PIPELINE/'WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.BOUND.ps1',calls)
+            wrong=copy.deepcopy(provenance);wrong['producer_sha256']='9'*64
+            original=data;data=(json.dumps(wrong,separators=(',',':'),ensure_ascii=True)+'\n').encode('ascii')
+            with self.assertRaises(ValueError):c.whole_bridge(args,{})
+            data=original;healthy()
+
+    def source_peer_fixture(self):
+        c=self.checker;names=list(c.M3_SOURCE_NAMES)+['finite-'+str(i)+'.json' for i in range(6)]
+        bodies={name:('# source fixture '+name+'\n').encode('ascii') for name in names}
+        rows=[dict(path=name,bytes=len(bodies[name]),sha256=c.digest(bodies[name]),two_read_match=True) for name in names]
+        manifest=dict(payload_count=12,payloads=rows,active_source_count=6,selected_source_paths=list(c.M3_SOURCE_NAMES))
+        observation=dict(path=str(c.PREP/'fixture-reference.json'),bytes=0,sha256='0'*64,raw9=list(range(9)),observed_utc='2026-10-03T06:00:00.000000+00:00')
+        peer=dict(schema_version=1,record_type='guard006_metadata_successor_source_preparation_review',source_author='/root/renewal_runtime_inventory',reviewer='/root/owner_docs_review',created_utc=observation['observed_utc'],verdict='PASS_STATIC_METADATA_PREPARATION_ONLY',scope=c.SCOPE,source_manifest_sha256=c.M3_MANIFEST_SHA,manifest_payload_count=12,finite_input_count=13,observations=[dict(phase=i,rows=[copy.deepcopy(observation) for _ in range(13)]) for i in range(1,4)],preserved_inputs=[dict(path=observation['path'],bytes=0,sha256='0'*64,copy='fixture-copy-'+str(i)) for i in range(13)],prepublication_observations=[copy.deepcopy(observation) for _ in range(13)],syntax_and_inert_metadata=[],active_source_rows=[dict(path=str(c.PREP/name),bytes=len(bodies[name]),sha256=c.digest(bodies[name])) for name in c.M3_SOURCE_NAMES],source_checks=[],findings=[],implementation_conditions=[],actual_results=None,runtime_acceptance=False,operational_authority=False,post_capture_reference=None)
+        def reader(path,pin=None,cap=2097152,runtime=False):
+            self.assertIn(path.name,bodies);body=bodies[path.name]
+            self.assertEqual(pin,c.digest(body));self.assertEqual(cap,65536)
+            return body,{}
+        return peer,manifest,reader
+
+    def test_complete_manifest_and_six_source_closure_refuse_partial_proofs(self):
+        c=self.checker;peer,manifest,reader=self.source_peer_fixture()
+        with patch.object(c,'selected',lambda path,pin,cap=2097152:manifest),patch.object(c,'read',reader):
+            healthy=lambda:self.assertEqual(tuple(c.m3_source_review(peer)),c.M3_SOURCE_NAMES)
+            for key,value in (('manifest_payload_count',True),('source_manifest_sha256','9'*64),('post_capture_reference',{}),('findings',['blocking']),('finite_input_count',14)):
+                bad=copy.deepcopy(peer);bad[key]=value
+                self.recovered(healthy,lambda:c.m3_source_review(bad))
+            bad=copy.deepcopy(peer);bad['active_source_rows'][0]['sha256']='8'*64
+            self.recovered(healthy,lambda:c.m3_source_review(bad))
+            bad=copy.deepcopy(peer);bad['observations'][1]['rows'][0]['raw9'][6]=True
+            self.recovered(healthy,lambda:c.m3_source_review(bad))
+            incomplete=copy.deepcopy(manifest);incomplete['payloads'].pop()
+            healthy()
+            with patch.object(c,'selected',lambda *args:incomplete):
+                with self.assertRaises(ValueError):c.m3_source_review(peer)
+            healthy()
+
+    def phase_peer_fixture(self):
+        c=self.checker;bound='1'*64;review='2'*64;binding='3'*64
+        keys=('before_writer','before_parent','after_writer','after_parent');phase_sources={};templates={};bodies={};rows=[];peer_rows=[]
+        for key,name in zip(keys,c.M3_SOURCE_NAMES[2:]):
+            template=("$BoundScriptSha256 = $null\n$BoundReviewSha256 = $null\n# retained "+key+'\n').encode('ascii')
+            wire=template.replace(b'$BoundScriptSha256 = $null',("$BoundScriptSha256 = '"+bound+"'").encode()).replace(b'$BoundReviewSha256 = $null',("$BoundReviewSha256 = '"+review+"'").encode())
+            path=c.PREP/(key+'.BOUND.ps1');templates[name]=template;bodies[str(path)]=wire
+            row=dict(path=str(path),sha256=c.digest(wire),template_sha256=c.digest(template),exact_two_literal_reversal=True);rows.append(row)
+            phase_sources[key]=dict(path=str(path),sha256=c.digest(wire));peer_rows.append(dict(row,bytes=len(wire),PowerShell_parser_errors=0))
+        peer=dict(PowerShell_parser_errors=0,actual_authorization_or_entry_approved=False,after_supervisor_sha256=phase_sources['after_parent']['sha256'],after_writer_sha256=phase_sources['after_writer']['sha256'],binding_author='/root',bound_metadata_source_sha256=bound,bound_source_review_sha256=review,created_utc='2026-10-03T06:00:00.000000+00:00',exact_two_literal_reversal_all_four=True,metadata_only=True,phase_source_binding_sha256=binding,phase_sources=peer_rows,record_type='guard006_root_metadata_phase_ps_source_binding_review',reviewer='/root/owner_docs_review',reviewer_agent='/root/owner_docs_review',schema_version=1,source_author='/root/renewal_runtime_inventory',supervisor_sha256=phase_sources['before_parent']['sha256'],verdict='PASS_STATIC_ACTUAL_PHASE_PS_SOURCE_BINDINGS_ONLY',writer_sha256=phase_sources['before_writer']['sha256'])
+        def reader(path,pin=None,cap=2097152,runtime=False):
+            body=bodies[str(path)];self.assertEqual(pin,c.digest(body));self.assertEqual(cap,65536);return body,{}
+        return peer,dict(sources=rows),templates,reader,dict(phase_sources=phase_sources),bound,review,binding
+
+    def test_phase_peer_closed20_rows6_and_exact_ps_roundtrip(self):
+        c=self.checker;peer,binding,templates,reader,config,bound,review,pin=self.phase_peer_fixture()
+        with patch.object(c,'CONFIG',config),patch.object(c,'BOUND',bound),patch.object(c,'BOUND_REVIEW',review),patch.object(c,'PHASE_BINDING',pin),patch.object(c,'read',reader):
+            healthy=lambda:c.phase_source_review(peer,binding,templates)
+            for key,value in (('schema_version',True),('metadata_only',1),('PowerShell_parser_errors',False),('record_type','wrong'),('writer_sha256','0'*64)):
+                bad=copy.deepcopy(peer);bad[key]=value;self.recovered(healthy,lambda:c.phase_source_review(bad,binding,templates))
+            bad=copy.deepcopy(peer);bad['scope']=c.SCOPE
+            self.recovered(healthy,lambda:c.phase_source_review(bad,binding,templates))
+            for key,value in (('bytes',True),('PowerShell_parser_errors',False),('template_sha256','0'*64)):
+                bad=copy.deepcopy(peer);bad['phase_sources'][0][key]=value
+                self.recovered(healthy,lambda:c.phase_source_review(bad,binding,templates))
+            bad_templates=copy.deepcopy(templates);bad_templates[c.M3_SOURCE_NAMES[2]]+=b'# unreviewed content\n'
+            self.recovered(healthy,lambda:c.phase_source_review(peer,binding,bad_templates))
+
+    def test_whole_raw9_exact_integers_refuse_bool_restore_healthy(self):
+        c=self.checker;healthy=lambda:self.assertEqual(c.exact_raw9(list(range(9))),list(range(9)))
+        for index in range(9):
+            bad=list(range(9));bad[index]=True
+            self.recovered(healthy,lambda:c.exact_raw9(bad))
+        for bad in (tuple(range(9)),list(range(8)),[0.0]+list(range(1,9))):self.recovered(healthy,lambda:c.exact_raw9(bad))
+        self.assertFalse(c.typed_equal({'directories':0},{'directories':False}))
+        self.assertFalse(c.typed_equal({'folder':list(range(9))},{'folder':[False]+list(range(1,9))}))
+
+    def test_final_reread_keeps_authenticated_whole_and_narrow_runtime_policies(self):
+        c=self.checker;pin='935016795f3e6908e75acbc2040a01e2e4cdb494a57c42f63a0d6eedb2372256'
+        runtime=dict(path=str(c.PROJECT/'pro2/.venv/Scripts/python.exe'),sha256=pin,bytes=1,path_raw9=list(range(9)),descriptor_raw9=list(range(9)))
+        whole=dict(path=str(c.WHOLE_ROOTS['base']/'fixture.exe'),sha256='4'*64,bytes=1,path_raw9=list(range(9)),descriptor_raw9=[1]*9)
+        ordinary=dict(path=str(c.CHECKER/'fixture.txt'),sha256='5'*64,bytes=1,path_raw9=list(range(9)),descriptor_raw9=list(range(9)))
+        calls=[];lookup={row['path']:row for row in (runtime,ordinary)}
+        def reader(path,pin=None,cap=2097152,runtime=False):
+            self.assertNotEqual(str(path),whole['path']);calls.append(('read',str(path),runtime));return b'x',lookup[str(path)]
+        def stream(path,row):self.assertEqual(row,whole);calls.append(('whole',str(path)))
+        profile=dict(runtime4_roles=[runtime])
+        membership={(whole['path'],whole['sha256']):whole}
+        with patch.object(c,'WHOLE_REOBSERVATIONS',membership),patch.object(c,'read',reader),patch.object(c,'current_stream_file',stream):
+            def healthy():
+                calls.clear();c.final_reobserve([runtime,whole,ordinary],profile)
+                self.assertEqual(calls,[('read',runtime['path'],True),('whole',whole['path']),('read',ordinary['path'],False)])
+            healthy()
+            unselected=copy.deepcopy(runtime);unselected['path']=str(c.CHECKER/'unselected.exe');lookup[unselected['path']]=unselected
+            calls.clear();c.final_reobserve([unselected],profile)
+            self.assertEqual(calls,[('read',unselected['path'],False)])
+            healthy()
+            bad=copy.deepcopy(whole);bad['path_raw9'][0]=False
+            with self.assertRaises(AssertionError):c.final_reobserve([bad],profile)
+            healthy()
+
+    def test_owned_detail16mib_roundtrip_does_not_relax_input8mib(self):
+        import io
+        from types import SimpleNamespace
+        c=self.checker;path=c.PREP/'INDEPENDENT_ACTUAL_DETAIL_AUTH_BEFORE_006.json';wire=b'{"fixture":true}\n'
+        info=SimpleNamespace(st_dev=1,st_ino=2,st_size=len(wire),st_mtime_ns=3,st_ctime_ns=4,st_birthtime_ns=4,st_mode=c.stat.S_IFREG|0o644,st_nlink=1,st_file_attributes=0)
+        class MemoryFile(io.BytesIO):
+            def fileno(self):return 7
+        with patch.object(c,'ancestors',lambda path:[]),patch.object(c.Path,'lstat',lambda path:info),patch.object(c.Path,'open',lambda *args,**kwargs:MemoryFile(wire)),patch.object(c.os,'fstat',lambda fd:info):
+            healthy=lambda:self.assertEqual(c.own_output_read(path,c.digest(wire),16777216),wire)
+            healthy()
+            for bad_path,bad_cap in ((path,8388608),(path,True),(c.CHECKER/'unselected.json',16777216)):
+                self.recovered(healthy,lambda:c.own_output_read(bad_path,c.digest(wire),bad_cap))
+            with self.assertRaisesRegex(ValueError,'invalid cap'):c.read(path,c.digest(wire),16777216)
+            healthy()
+
+    def test_python6_timestamp_requires_fraction_and_preserves_ps7_ticks(self):
+        c=self.checker;healthy=lambda:c.stamp('2026-10-03T06:00:00.000000+00:00','Py')
+        for bad in ('2026-10-03T06:00:00+00:00','2026-10-03T06:00:00.0000000+00:00','2026-10-03T06:00:00.00000+00:00'):
+            self.recovered(healthy,lambda:c.stamp(bad,'Py'))
+        c.stamp('2026-10-03T06:00:00.0000001+00:00','PS')
+
+    def projection_fixture(self):
+        # Synthetic5390 tables for isolated pure helpers, never a Root whole result.
+        c=self.checker;trees={};expected={}
+        for role,count in (('base',5368),('scripts',22)):
+            raw9=[1,2,1,4,5,6,1,8,9]
+            rows=[dict(kind='file',path='file-%05d.bin'%index,bytes=1,sha256=c.digest(b'x'),path_raw9=list(raw9),descriptor_raw9=list(raw9)) for index in range(count)]
+            lines=['F\t'+row['path']+'\t1\t'+row['sha256']+'\n' for row in rows]
+            identity=dict(files=count,directories=0,bytes=count,sha256=c.digest(''.join(lines).encode('utf8')))
+            expected[role]=identity
+            table=dict(root=str(c.WHOLE_ROOTS[role]),identity=identity,rows=rows,root_raw9=list(raw9),directory_metadata={str(c.WHOLE_ROOTS[role]):list(raw9)})
+            trees[role+'-first']=table;trees[role+'-second']=copy.deepcopy(table)
+        args=type('SyntheticProjectionArgs',(),dict(path=str(c.GUARD/'whole-runtime-before/result.json'),sha256='a'*64))()
+        pointers=[]
+        for role in c.PROJECTION_TABLE_ROLES:
+            tree,pass_name=role.split('_');data=c.encoded(trees[tree+'-'+pass_name])
+            pointers.append(dict(path=str(c.GUARD/'whole-runtime-before'/(tree+'-'+pass_name+'.json')),sha256=c.digest(data),bytes=len(data)))
+        return trees,expected,args,dict(phase='before',observation_files=pointers)
+
+    def test_lossless5390_projection_roundtrip_retains_equal_runtime_and_ordinary_rows(self):
+        c=self.checker;trees,expected,args,result=self.projection_fixture()
+        with patch.object(c,'WHOLE_EXPECTED',expected),patch.object(c,'EVIDENCE',[]),patch.object(c,'WHOLE_REOBSERVATIONS',{}),patch.object(c,'WHOLE_ORIGIN_ROWS',[]),patch.object(c,'WHOLE_PROJECTION_STATE',{}):
+            rows,counts=c.reconstruct_whole_projection_rows(trees)
+            self.assertEqual(counts,dict(base=5368,scripts=22));self.assertEqual(len(rows),5390)
+            # Same facts, different observation origins: runtime4/source rows stay.
+            runtime=copy.deepcopy(rows[0]);ordinary=copy.deepcopy(rows[-1])
+            c.EVIDENCE.extend([runtime]+rows+[ordinary]);c.register_whole_projection(rows,args,result,trees,'before')
+            compact,projection=c.compact_whole_observations('whole_before_result',args,list(c.EVIDENCE))
+            self.assertEqual(len(compact),2);self.assertIs(compact[0],runtime);self.assertIs(compact[1],ordinary)
+            self.assertEqual(projection['ordered_projected_observations_sha256'],c.digest(c.encoded(rows)))
+            self.assertEqual(projection['counts'],dict(unique_file_count=5390,omitted_observation_count=5390,retained_observation_count=2,total_observation_count=5392,per_tree=counts))
+            self.assertEqual(set(projection),set(c.PROJECTION_KEYS))
+
+    def test_projection_all_table_pointer_mutations_refuse_and_restore_lossless_roundtrip(self):
+        c=self.checker;trees,expected,args,result=self.projection_fixture()
+        def run(changed):
+            with patch.object(c,'WHOLE_EXPECTED',expected),patch.object(c,'EVIDENCE',[]),patch.object(c,'WHOLE_REOBSERVATIONS',{}),patch.object(c,'WHOLE_ORIGIN_ROWS',[]),patch.object(c,'WHOLE_PROJECTION_STATE',{}):
+                rows,_=c.reconstruct_whole_projection_rows(trees);c.EVIDENCE.extend(rows)
+                c.register_whole_projection(rows,args,changed,trees,'before')
+        healthy=lambda:run(result)
+        mutations=[]
+        for key,value in (('path',result['observation_files'][1]['path']),('sha256','b'*64),('bytes',True),('bytes',4194305)):
+            changed=copy.deepcopy(result);changed['observation_files'][0][key]=value;mutations.append(changed)
+        missing=copy.deepcopy(result);missing['observation_files'].pop();mutations.append(missing)
+        duplicate=copy.deepcopy(result);duplicate['observation_files'][1]=copy.deepcopy(duplicate['observation_files'][0]);mutations.append(duplicate)
+        for changed in mutations:self.recovered(healthy,lambda changed=changed:run(changed))
+
+    def test_projection_typed_rows_path_order_alias_and_cross_pass_refusals_restore_all5390(self):
+        c=self.checker;trees,expected,_,_=self.projection_fixture()
+        with patch.object(c,'WHOLE_EXPECTED',expected):
+            healthy=lambda:self.assertEqual(len(c.reconstruct_whole_projection_rows(trees)[0]),5390)
+            mutations=[]
+            for field,value in (('bytes',True),('sha256','g'*64),('path','../escape.bin'),('path','file-00001.bin'),('path','FILE-00001.BIN')):
+                changed=copy.deepcopy(trees)
+                for pass_name in ('first','second'):changed['base-'+pass_name]['rows'][0][field]=value
+                mutations.append(changed)
+            changed=copy.deepcopy(trees)
+            for pass_name in ('first','second'):changed['base-'+pass_name]['rows'][0]['path_raw9'][0]=True
+            mutations.append(changed)
+            changed=copy.deepcopy(trees)
+            for pass_name in ('first','second'):changed['base-'+pass_name]['identity']['files']=True
+            mutations.append(changed)
+            changed=copy.deepcopy(trees)
+            for pass_name in ('first','second'):changed['base-'+pass_name]['rows'][0:2]=list(reversed(changed['base-'+pass_name]['rows'][0:2]))
+            mutations.append(changed)
+            changed=copy.deepcopy(trees);changed['base-second']['rows'][0]['descriptor_raw9'][1]+=1;mutations.append(changed)
+            for changed in mutations:self.recovered(healthy,lambda changed=changed:c.reconstruct_whole_projection_rows(changed))
+
+    def test_projection_missing_origin_or_changed_registered_fact_refuses_restores_membership(self):
+        c=self.checker;trees,expected,args,result=self.projection_fixture()
+        with patch.object(c,'WHOLE_EXPECTED',expected),patch.object(c,'EVIDENCE',[]),patch.object(c,'WHOLE_REOBSERVATIONS',{}),patch.object(c,'WHOLE_ORIGIN_ROWS',[]),patch.object(c,'WHOLE_PROJECTION_STATE',{}):
+            rows,_=c.reconstruct_whole_projection_rows(trees);ordinary=copy.deepcopy(rows[0])
+            c.EVIDENCE.extend(rows+[ordinary]);c.register_whole_projection(rows,args,result,trees,'before')
+            initial=list(c.EVIDENCE);healthy=lambda:self.assertEqual(len(c.compact_whole_observations('whole_before_result',args,initial)[0]),1)
+            self.recovered(healthy,lambda:c.compact_whole_observations('whole_before_result',args,initial[1:]))
+            original=rows[0]['bytes'];rows[0]['bytes']=2
+            with self.assertRaises(ValueError):c.compact_whole_observations('whole_before_result',args,initial)
+            rows[0]['bytes']=original;healthy()
+            self.recovered(healthy,lambda:c.compact_whole_observations('capture_before',args,initial))
+
+    def test_nonwhole_projection_cannot_omit_any_observation_and_obeys4096(self):
+        c=self.checker;ordinary=dict(path='synthetic',bytes=0,sha256='a'*64,path_raw9=[0]*9,descriptor_raw9=[0]*9)
+        with patch.object(c,'WHOLE_ORIGIN_ROWS',[]),patch.object(c,'WHOLE_PROJECTION_STATE',{}):
+            healthy=lambda:self.assertEqual(c.compact_whole_observations('capture_before',None,[ordinary])[1]['counts']['omitted_observation_count'],0)
+            healthy();compact,projection=c.compact_whole_observations('capture_before',None,[dict(ordinary) for _ in range(4096)])
+            self.assertEqual(len(compact),4096);self.assertIsNone(projection['whole_result']);self.assertEqual(projection['table_sources'],[])
+            self.recovered(healthy,lambda:c.compact_whole_observations('capture_before',None,[dict(ordinary) for _ in range(4097)]))
+            self.recovered(healthy,lambda:c.compact_whole_observations('capture_before',None,[]))
+
+    def test_exact_detail2mib_boundary_refuses_before_any_output_and_restores(self):
+        c=self.checker;detail=dict(observations=[dict(value=1)],padding='')
+        overhead=len(c.encoded(detail));detail['padding']='x'*(2097152-overhead)
+        # Exercise the actual byte publication gate without Root evidence or PASS.
+        self.assertEqual(len(c.detail_publication_bytes(detail)),2097152)
+        with patch.object(c,'once',side_effect=AssertionError('output published despite refusal')):
+            detail['padding']+='x'
+            with self.assertRaises(ValueError):c.detail_publication_bytes(detail)
+            detail['padding']=detail['padding'][:-1];self.assertEqual(len(c.detail_publication_bytes(detail)),2097152)
+            detail['observations']=[dict(value=1) for _ in range(4097)]
+            with self.assertRaises(ValueError):c.detail_publication_bytes(detail)
+
+
+if __name__=='__main__':
+    unittest.main()

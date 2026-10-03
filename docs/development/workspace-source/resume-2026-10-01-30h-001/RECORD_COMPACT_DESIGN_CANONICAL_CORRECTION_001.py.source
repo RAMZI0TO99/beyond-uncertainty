@@ -1,0 +1,92 @@
+"""One-use AST metadata correction; never compile or execute target source."""
+from pathlib import Path
+from datetime import datetime, timezone
+import ast
+import hashlib
+import json
+import os
+
+base = Path('D:/Aenv/pro2/resume-2026-10-01-30h-001')
+source = base / 'successor-candidate-raw-revision003/scripts/week8_recovery_raw_authority.py'
+design = base / 'FINITE_RELEASE_CHAIN_COMPACT_DESIGN_002.json'
+peer = base / 'INDEPENDENT_FINITE_RELEASE_CHAIN_COMPACT_REVIEW_002.json'
+output = base / 'FINITE_RELEASE_CHAIN_COMPACT_CANONICAL_CORRECTION_001.json'
+markdown = base / 'FINITE_RELEASE_CHAIN_COMPACT_CANONICAL_CORRECTION_001.md'
+assert not output.exists() and not markdown.exists()
+inputs = {}
+for path in (source, design, peer):
+    data = path.read_bytes()
+    assert path.read_bytes() == data
+    inputs[path] = data
+text = inputs[source].decode('utf-8', errors='strict')
+tree = ast.parse(text)
+function = next(n for n in tree.body if isinstance(n, ast.FunctionDef)
+                and n.name == '_admit_recorded_predecessor')
+matches = []
+for node in function.body:
+    if isinstance(node, ast.If):
+        for compare in ast.walk(node.test):
+            if (isinstance(compare, ast.Compare) and isinstance(compare.left, ast.Name)
+                    and compare.left.id == 'attestation_bytes'
+                    and len(compare.ops) == 1 and isinstance(compare.ops[0], ast.NotEq)):
+                rhs = compare.comparators[0]
+                if (isinstance(rhs, ast.BinOp) and isinstance(rhs.op, ast.Add)
+                        and isinstance(rhs.left, ast.Call)
+                        and isinstance(rhs.left.func, ast.Name)
+                        and rhs.left.func.id == 'canonical_json_bytes'
+                        and isinstance(rhs.right, ast.Constant) and rhs.right.value == b'\n'):
+                    matches.append((node, compare))
+assert len(matches) == 1
+statement, comparison = matches[0]
+dispatch = next(n for n in function.body if isinstance(n, ast.If)
+                and 'version not in (1, 2)' in (ast.get_source_segment(text, n.test) or ''))
+assert dispatch.lineno < statement.lineno
+assert not any(isinstance(n, ast.If) and n is not statement and
+               n.lineno < statement.lineno <= n.end_lineno for n in ast.walk(function))
+rows = [dict(path=str(path), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+        for path, data in inputs.items()]
+record = dict(schema_version=1, record_type='compact_design_canonical_premise_correction',
+              created_utc=datetime.now(timezone.utc).isoformat(), author='/root', inputs=rows,
+              existing_versions=[1, 2], canonical_check_line=comparison.lineno,
+              canonical_check=ast.get_source_segment(text, comparison),
+              dispatch_line=dispatch.lineno,
+              applicability='Unconditional admission contract check after existing schema1/2 dispatch.',
+              corrected_false_design_key='raw7fe_does_not_currently_require_canonical_input_bytes',
+              correction='Existing schema1/2 admission already requires exact canonical bytes plus one LF. '
+                         'The isolated JSON parser/seal helper does not describe full admission semantics.',
+              schema3_requirement='Preserve the existing legacy canonical check and extend its coverage '
+                                  'to schema3. Do not remove, weaken, or newly attribute it only to schema3.',
+              arithmetic_recomputed_here=False,
+              maximum361287_math_status='Independent compact review arithmetic remains a separately preserved fact.',
+              original_design_or_review_edited=False, implementation_authorized=False,
+              target_definitions_imported_compiled_or_executed=False,
+              tests_Git_FFI_native_or_process_actions=False,
+              independent_correction_review='AWAITING_DIFFERENT_METADATA_REVIEW')
+body = (json.dumps(record, indent=2, sort_keys=True, ensure_ascii=True,
+                   allow_nan=False)+'\n').encode('ascii')
+md = f'''# Compact design002 existing-canonical premise correction
+
+Actual pinned raw3 source {rows[0]['sha256']} already requires canonical attestation
+bytes plus oneLF at line{comparison.lineno}, after the legacy1/2 dispatch at
+line{dispatch.lineno}. The compact design's key
+`raw7fe_does_not_currently_require_canonical_input_bytes` is a false attribution:
+the parser/seal helpers are only part of the full admission function.
+
+Preserve design002 and its independent review byte for byte. Future schema3 source
+must retain legacy canonical semantics and extend the same check to schema3.
+The independently reviewed361287 arithmetic is not recomputed or promoted here.
+No implementation, target definition, compile, test, Git, FFI or native action ran.
+This metadata correction awaits a different review and grants no source/runtime
+acceptance. Checkpoint019 wording describes the new schema3 design obligation;
+it must not be interpreted as saying legacy noncanonical bytes are admitted.
+'''.encode('utf-8')
+for path, data in ((output, body), (markdown, md)):
+    with path.open('xb') as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+for path, data in inputs.items():
+    assert path.read_bytes() == data
+print(json.dumps(dict(outputs=[dict(path=str(path), bytes=len(data),
+                                   sha256=hashlib.sha256(data).hexdigest())
+                             for path, data in ((output, body), (markdown, md))])))

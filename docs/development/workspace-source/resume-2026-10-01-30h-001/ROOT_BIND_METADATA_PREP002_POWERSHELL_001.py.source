@@ -1,0 +1,34 @@
+"""Once-only phase source-copy binding after the different bound9 review."""
+from pathlib import Path
+from datetime import datetime,timezone
+import hashlib,json,os,subprocess
+base=Path('D:/Aenv/pro2/resume-2026-10-01-30h-001');p=base/'guard005-root-metadata-prep002'
+sha=lambda d:hashlib.sha256(d).hexdigest()
+peer_bytes=(p/'INDEPENDENT_BOUND_METADATA_REVIEW_005.json').read_bytes();peer=json.loads(peer_bytes)
+assert sha(peer_bytes)=='212f343d424511a8420bdfe71fd3501cda41b01b5ac87e4c233f87499d98bf71'
+assert set(peer)=={'actual_script_sha256','metadata_only','phase_set','record_type','reviewer','schema_version','source_author','source_bindings','verdict'}
+assert peer['verdict']=='PASS_STATIC_BOUND_METADATA_ONLY' and peer['reviewer']=='/root/window_docs' and peer['metadata_only'] is True and peer['phase_set']==['before','after']
+bound_bytes=(p/'capture-guard005-root-metadata.BOUND.py').read_bytes();assert sha(bound_bytes)==peer['actual_script_sha256']
+static_bytes=(p/'INDEPENDENT_METADATA_STATIC_REVIEW_005.json').read_bytes();static=json.loads(static_bytes)
+assert sha(static_bytes)==peer['source_bindings']['preparer_static_review_sha256']
+manifest_bytes=(p/'STAGED_MANIFEST_002.json').read_bytes();assert sha(manifest_bytes)==static['manifest_sha256']
+manifest=json.loads(manifest_bytes);row=next(r for r in manifest['files'] if r['relative_path']=='BIND_SOURCE_AND_PHASES_002.TEMPLATE.py')
+binder=p/row['relative_path'];assert sha(binder.read_bytes())==row['sha256']
+for name in ('WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_005','SUPERVISE_ROOT_METADATA_BEFORE_005','WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_005','SUPERVISE_ROOT_METADATA_AFTER_005'):
+ assert not (p/(name+'.BOUND.ps1')).exists(),name
+for name in ('PHASE_PS_SOURCE_BINDING_002.json','ROOT_METADATA_AUTHORIZATION_BEFORE_005.json','ROOT_METADATA_AUTHORIZATION_AFTER_005.json','phase-before-005','phase-after-005'):assert not (p/name).exists(),name
+record=dict(schema_version=1,author='/root',created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),stage='powershell_source_copy_only',binder_sha256=row['sha256'],actual_bound_source_sha256=sha(bound_bytes),actual_bound_review_sha256=sha(peer_bytes),decision='CREATE_FOUR_REVIEWED_PHASE_SOURCE_COPIES_WITH_TWO_SHA_SUBSTITUTIONS_EACH_ONCE',phase_authorization_or_entry=False,unit_or_target_execution_authorized=False)
+with (p/'ROOT_SOURCE_BINDING_AUTHORIZATION_POWERSHELL_002_001.json').open('xb') as stream:stream.write((json.dumps(record,indent=2,sort_keys=True)+'\n').encode());stream.flush();os.fsync(stream.fileno())
+python=Path('D:/Aenv/pro2/pro2/.venv/Scripts/python.exe');assert sha(python.read_bytes())=='935016795f3e6908e75acbc2040a01e2e4cdb494a57c42f63a0d6eedb2372256'
+env=os.environ.copy()
+for key in list(env):
+ if key.startswith('PYTHON') or key.startswith('GIT_'):del env[key]
+env['PYTHONDONTWRITEBYTECODE']='1'
+result=subprocess.run([str(python),'-I','-S','-B','-X','utf8',str(binder),'--expected-self-sha256',row['sha256'],'--stage','powershell','--expected-bound-review-sha256',sha(peer_bytes)],cwd=base,env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30,check=False)
+assert len(result.stdout)<=65536 and len(result.stderr)<=65536
+terminal=dict(schema_version=1,author='/root',finished_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),stage='powershell_source_copy_only',exit_code=result.returncode,stdout_sha256=sha(result.stdout),stderr_sha256=sha(result.stderr),stdout_bytes=len(result.stdout),stderr_bytes=len(result.stderr),metadata_phase_or_unit_entered=False)
+with (p/'ROOT_SOURCE_BINDING_TERMINAL_POWERSHELL_002_001.json').open('xb') as stream:stream.write((json.dumps(terminal,indent=2,sort_keys=True)+'\n').encode());stream.flush();os.fsync(stream.fileno())
+print(json.dumps(terminal))
+if result.returncode:print(result.stderr.decode('utf-8',errors='replace'))
+assert result.returncode==0
+print(json.dumps(dict(phase_source_binding_sha256=sha((p/'PHASE_PS_SOURCE_BINDING_002.json').read_bytes()),metadata_phase_entered=False)))

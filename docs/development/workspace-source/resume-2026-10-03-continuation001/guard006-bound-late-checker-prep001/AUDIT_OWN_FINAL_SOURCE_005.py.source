@@ -1,0 +1,96 @@
+"""Own metadata preparation only; never execute generated/target definitions."""
+import ast
+import datetime
+import difflib
+import hashlib
+import json
+import stat
+import types
+from pathlib import Path
+
+P=Path(__file__).parent
+WORK=P.parent
+PROJECT=WORK.parent
+PIN=lambda b:hashlib.sha256(b).hexdigest()
+
+def once(path,data):
+    with path.open('xb')as stream:stream.write(data)
+    assert path.read_bytes()==data
+
+def emit(name,value):
+    data=(json.dumps(value,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('ascii')
+    once(P/name,data)
+    return dict(path=name,sha256=PIN(data),bytes=len(data))
+
+def raw(st):
+    return [getattr(st,key,None)for key in('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+
+inputs=[
+    P/'review_guard006_actual_records_001.TEMPLATE.py',
+    P/'compose-root-review-packet-006.TEMPLATE.py',
+    P/'CAUSAL_FIXTURE_PLAN_001.json',
+    P/'before/review_gg5_actual_records_001.py.bytes',
+    P/'before/compose-root-review-packet-001.py.bytes',
+    WORK/'OWNER_CONTINUATION_20261003_001.json',
+    WORK/'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json',
+    WORK/'consumer005-guard006-runtime-prep001/FINAL_AUTHOR_SOURCE_MANIFEST_009.json',
+    WORK/'consumer005-guard006-runtime-prep001/AUTHOR_SOURCE_ADDENDUM_008.json',
+    WORK/'consumer005-guard006-runtime-prep001/GUARD_RUNTIME_PROFILE_006-rev003.json',
+    WORK/'consumer005-guard006-runtime-prep001/SOURCE_RECORD_SCHEMAS_AND_CEILINGS_006-rev003.json',
+    WORK/'consumer005-guard006-runtime-prep001/EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_006-rev003.json',
+    WORK/'consumer005-guard006-runtime-prep001/inputs/COMPACT_CAPSULE_CLOSED_SCHEMA_001.json',
+    WORK/'metadata3-producer-core-prep001/STAGED_MANIFEST_005.json',
+    WORK/'metadata3-producer-core-prep001/SOURCE_SCHEMA_AND_REVIEW_CONTRACT_005.json',
+]
+
+selected=P/'selected-source-005'
+selected.mkdir(exist_ok=False)
+rows=[]
+data_by_path={}
+for index,path in enumerate(inputs):
+    passes=[]
+    for unused in range(3):
+        left=raw(path.lstat());data=path.read_bytes();right=raw(path.lstat())
+        assert left==right and stat.S_ISREG(left[5])and left[6]==1
+        passes.append(dict(sha256=PIN(data),bytes=len(data),raw9=left))
+    assert all(row==passes[0]for row in passes)
+    copy=selected/(str(index).zfill(2)+'.bytes');once(copy,data)
+    assert raw(copy.lstat())[:2]!=left[:2]
+    data_by_path[path]=data
+    rows.append(dict(path=str(path),copy_path=str(copy),sha256=PIN(data),bytes=len(data),passes=passes))
+
+assert PIN(data_by_path[WORK/'OWNER_CONTINUATION_20261003_001.json'])=='de8f80d656211873477d2ada0c03eb62fd16a64a361def9d9bbad58a0323f583'
+assert PIN(data_by_path[WORK/'owner-docs-independent-review001/INDEPENDENT_OWNER_CONTINUATION_REVIEW_001.json'])=='56a702c2883b8a7c66095c2f1501fcb8e755da7198552b026dcb85cdccb453d0'
+facts=[]
+for path in inputs[:2]:
+    data=data_by_path[path];tree=ast.parse(data,filename=str(path))
+    names=[node.name for node in tree.body if isinstance(node,(ast.FunctionDef,ast.ClassDef))]
+    assert len(names)==len(set(names))
+    imports=[n for n in tree.body if isinstance(n,(ast.Import,ast.ImportFrom))]
+    modules=[alias.name for n in imports if isinstance(n,ast.Import)for alias in n.names]+[n.module for n in imports if isinstance(n,ast.ImportFrom)]
+    assert set(modules)<={'argparse','ast','datetime','hashlib','json','os','re','stat','sys','pathlib'}
+    code=compile(tree,str(path),'exec',dont_inherit=True,optimize=0)
+    codes=[]
+    def walk(value):
+        codes.append(dict(name=value.co_name,qualname=value.co_qualname,argcount=value.co_argcount,flags=value.co_flags,bytes=len(value.co_code)))
+        for item in value.co_consts:
+            if type(item)is types.CodeType:walk(item)
+    walk(code)
+    literals={n.targets[0].id:ast.literal_eval(n.value)for n in tree.body if isinstance(n,ast.Assign)and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)and n.targets[0].id in ('SOURCE_BINDINGS','SOURCE_PROTOCOL','FRESH_SOURCE_MODEL','FIXED_ROLES','FIXED19','CORE12','DETAIL15','TRACE13','TICKET22','METADATA_PARENT20','WHOLE_PARENT30')}
+    if path==inputs[0]:
+        assert literals['SOURCE_BINDINGS']is None and literals['SOURCE_PROTOCOL']is None
+        assert len(literals['FIXED_ROLES'])==19 and len(literals['CORE12'])==12 and len(literals['DETAIL15'])==15 and len(literals['TRACE13'])==13 and len(literals['TICKET22'])==22 and len(literals['METADATA_PARENT20'])==20 and len(literals['WHOLE_PARENT30'])==30
+    else:assert literals['FRESH_SOURCE_MODEL']is None and len(literals['FIXED19'])==19 and len(literals['CORE12'])==12
+    facts.append(dict(path=path.name,sha256=PIN(data),bytes=len(data),function_class_names=names,top_level_modules=modules,code_types=codes,inert_compilation_only=True,definitions_executed=False,mains_executed=False))
+
+for old,new,name in ((inputs[3],inputs[0],'CHECKER_SOURCE_FROM_PRESERVED_GG5_005.patch'),(inputs[4],inputs[1],'COMPOSER_SOURCE_FROM_PRESERVED_GG5_005.patch')):
+    diff=''.join(difflib.unified_diff(data_by_path[old].decode().splitlines(True),data_by_path[new].decode().splitlines(True),fromfile=str(old),tofile=str(new)))
+    once(P/name,diff.encode('utf8'))
+
+for row in rows:
+    path=Path(row['path']);data=path.read_bytes();assert PIN(data)==row['sha256']and raw(path.lstat())==row['passes'][0]['raw9']
+    assert Path(row['copy_path']).read_bytes()==data
+    row['post_readback']=dict(sha256=PIN(data),bytes=len(data),raw9=raw(path.lstat()))
+
+emit('OWN_AST_INERT_AND_FINITE_INPUT_FACTS_005.json',dict(schema_version=1,record_type='guard006_bound_late_author_ast_inert_source_facts',author='/root/pubnative_review',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),status='AUTHOR_SOURCE_FACTS_NOT_INDEPENDENT_ACCEPTANCE',selected_inputs=rows,source_facts=facts,target_compiler_or_definitions_or_import_or_calls=False,Git_FFI_PowerShell_runtime_binding_or_tests_executed=False,actual_collection=None,actual_results=None))
+print(json.dumps(dict(status='OWN_AST_INERT_SOURCE_FACTS_EMITTED_NO_MAIN',finite_inputs=len(rows),own_sources=facts and len(facts),target_execution=False)))

@@ -1,0 +1,123 @@
+"""Owned source audit metadata/copies only; never executes a reviewed definition."""
+import ast
+import hashlib
+import json
+import os
+import stat
+import sys
+from datetime import datetime,timezone
+from pathlib import Path
+
+ROOT=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001')
+AUTHOR=ROOT/'root-guard006-model-prep001'
+OWN=ROOT/'root-model-constructor-independent-review001'
+MANIFEST_SHA='c35202fc3d9ea45828d5f8f9617165232ad1649b8056c527350b8eac92f05ea4'
+SOURCE_SHA='3e165f33ca9ff2179751fec17d25be1346c2cf5d373278838ca91b1b0f66b7bd'
+TABLE_SHA='b01516f22dd1db00323bfaff1a37494e24fec3e6ba8ef6374ebb3c5f8d478890'
+observations=[];contents={}
+def sha(data):return hashlib.sha256(data).hexdigest()
+def raw(info):
+    result=[getattr(info,key) for key in ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+    assert all(type(value) is int for value in result)
+    return result
+def ancestors(path):
+    answer=[]
+    for parent in reversed(path.parents):
+        info=parent.lstat();assert stat.S_ISDIR(info.st_mode) and not info.st_file_attributes&1024
+        answer.append([str(parent),info.st_dev,info.st_ino])
+    return answer
+def read(path,expected=None,size=None):
+    assert path.is_absolute() and path.is_relative_to(ROOT) and '..' not in path.parts
+    chain=ancestors(path);a=raw(path.lstat());assert stat.S_ISREG(a[5]) and a[6]==1 and not a[7]&1024 and 0<=a[2]<=8388608
+    with path.open('rb') as stream:
+        b=raw(os.fstat(stream.fileno()));assert a[:4]+a[5:]==b[:4]+b[5:]
+        data=stream.read(8388609);assert len(data)<=8388608 and raw(os.fstat(stream.fileno()))==b
+    assert raw(path.lstat())==a and ancestors(path)==chain and len(data)==a[2]
+    if expected is not None:assert sha(data)==expected
+    if size is not None:assert len(data)==size
+    data.decode('utf8',errors='strict')
+    return data,dict(path=str(path),sha256=sha(data),bytes=len(data),path_raw9=a,descriptor_raw9=b,ancestors=chain)
+def unique(rows):
+    result={}
+    for key,value in rows:
+        assert key not in result
+        result[key]=value
+    return result
+def no_number(value):raise ValueError('noninteger JSON in Source review')
+def decode(data):return json.loads(data.decode('utf8'),object_pairs_hook=unique,parse_float=no_number,parse_constant=no_number)
+def write(name,value):
+    data=(json.dumps(value,indent=2,ensure_ascii=True,allow_nan=False)+'\n').encode('ascii')
+    with (OWN/name).open('xb') as stream:stream.write(data)
+    assert (OWN/name).read_bytes()==data
+def observe(path,expected,size,label):
+    key=str(path)
+    if key in contents:
+        assert sha(contents[key])==expected and len(contents[key])==size
+        return contents[key]
+    data,first=read(path,expected,size);again,second=read(path,expected,size);third_data,third=read(path,expected,size)
+    assert data==again==third_data and first==second==third
+    index=len(observations);copy_path=OWN/'copies'/('%03d.bytes'%index)
+    with copy_path.open('xb') as stream:assert stream.write(data)==len(data)
+    copy_facts=[]
+    for _ in range(3):
+        copied,facts=read(copy_path,expected,size);assert copied==data;copy_facts.append(facts)
+    assert copy_facts[0]==copy_facts[1]==copy_facts[2]
+    observations.append(dict(label=label,path=key,sha256=expected,bytes=size,three_observations=[first,second,third],copy_path=str(copy_path),copy_observations=copy_facts))
+    contents[key]=data
+    return data
+
+assert sys.version_info[:2]==(3,13) and sys.flags.isolated and sys.flags.no_site and sys.flags.dont_write_bytecode and sys.flags.utf8_mode
+(OWN/'copies').mkdir(exist_ok=False)
+manifest_path=AUTHOR/'AUTHOR_FROZEN_MODEL_CONSTRUCTOR_SOURCE_MANIFEST_001.json'
+data,facts=read(manifest_path,MANIFEST_SHA);manifest=decode(data)
+observe(manifest_path,MANIFEST_SHA,len(data),'author_manifest')
+assert len(manifest['payloads'])==61
+for index,row in enumerate(manifest['payloads']):
+    path=AUTHOR/row['path'];assert path.is_relative_to(AUTHOR) and '..' not in path.parts
+    observe(path,row['sha256'],row['bytes'],'author_payload_%02d'%index)
+finite=decode(contents[str(AUTHOR/'MODEL_CONSTRUCTOR_FINITE_SOURCE_FACTS_001.json')])
+assert len(finite['finite_inputs'])==50
+for index,row in enumerate(finite['finite_inputs']):
+    original=observe(Path(row['path']),row['sha256'],row['bytes'],'selected_original_%02d'%index)
+    author_copy=contents[str(Path(row['copy_path']))];assert original==author_copy
+table=decode(contents[str(AUTHOR/'IMMUTABLE_MODEL_INPUTS_001.json')]);assert sha(contents[str(AUTHOR/'IMMUTABLE_MODEL_INPUTS_001.json')])==TABLE_SHA
+assert len(table['immutable'])==46
+for key,row in table['immutable'].items():
+    assert type(row['cap']) is int and 0<row['cap']<=8388608 and 0<row['bytes']<=row['cap']
+    assert sha(contents[row['path']])==row['sha256'] and len(contents[row['path']])==row['bytes']
+source=contents[str(AUTHOR/'ASSEMBLE_GUARD006_SOURCE_MODELS_001.TEMPLATE.py')];assert sha(source)==SOURCE_SHA and len(source)==51205
+tree=ast.parse(source,filename='reviewed_constructor_source_only.py')
+inert=compile(source,'reviewed_constructor_source_only.py','exec',dont_inherit=True);assert inert.co_name=='<module>'
+functions={node.name:node for node in tree.body if isinstance(node,ast.FunctionDef)}
+literals={}
+for node in tree.body:
+    if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name):
+        try:literals[node.targets[0].id]=ast.literal_eval(node.value)
+        except (ValueError,TypeError):pass
+syntax_inputs=[]
+for path,data in contents.items():
+    # Parse selected .py and JSON only; never compile/execute older reviewed targets.
+    if Path(path).suffix=='.py':
+        parsed=ast.parse(data,filename=path)
+        syntax_inputs.append(dict(path=path,syntax='AST_ONLY',function_count=sum(isinstance(node,ast.FunctionDef) for node in parsed.body)))
+    elif Path(path).suffix=='.json':
+        value=decode(data);syntax_inputs.append(dict(path=path,syntax='strict_duplicate_float_nonfinite_JSON',top_level_type=type(value).__name__))
+for item in observations:
+    data,post=read(Path(item['path']),item['sha256'],item['bytes']);assert data==contents[item['path']] and post==item['three_observations'][0]
+    copied,post_copy=read(Path(item['copy_path']),item['sha256'],item['bytes']);assert copied==data and post_copy==item['copy_observations'][0]
+    item['post_observation']=post;item['copy_post_observation']=post_copy
+main=functions['main']
+calls=[dict(line=node.lineno,name=ast.unparse(node.func)) for node in ast.walk(main) if isinstance(node,ast.Call)]
+metadata=dict(schema_version=1,record_type='independent_model_constructor_full_source_collection',reviewer='/root/actual_record_checker',source_author='/root/pubnative_review',
+    created_utc=datetime.now(timezone.utc).isoformat(timespec='microseconds'),constructor_sha256=SOURCE_SHA,source_manifest_sha256=MANIFEST_SHA,table_sha256=TABLE_SHA,
+    payload_count=61,selected_original_copy_pairs=50,unique_input_count=len(observations),observations=observations,syntax_inputs=syntax_inputs,
+    constructor_function_count=len(functions),constructor_functions=[dict(name=name,line=node.lineno,end_line=node.end_lineno,ast_sha256=sha(ast.dump(node,include_attributes=False).encode('utf8'))) for name,node in functions.items()],
+    constructor_literal_contracts=literals,main_calls_sorted=sorted(calls,key=lambda row:(row['line'],row['name'])),
+    BASE_executable=sys.executable,flags=dict(isolated=bool(sys.flags.isolated),no_site=bool(sys.flags.no_site),dont_write_bytecode=bool(sys.flags.dont_write_bytecode),utf8=bool(sys.flags.utf8_mode)),
+    constructor_AST_and_inert_CodeType_only=True,reviewed_helpers_definitions_imports_main_binding_tests_executed=False,actual_selection=None,actual_models=None,actual_fit=None,target_execution=False,operational_authority=False,
+    source_collection_not_source_acceptance=True)
+write('FULL_SOURCE_COLLECTION_001.json',metadata)
+summary=dict(unique_inputs=len(observations),payloads=61,pairs=50,constructor_functions=len(functions),literal_key_counts={key:len(value) for key,value in literals.items() if type(value) in (list,tuple)},
+    collection_sha256=sha((OWN/'FULL_SOURCE_COLLECTION_001.json').read_bytes()),collection_bytes=(OWN/'FULL_SOURCE_COLLECTION_001.json').stat().st_size,actual_models=None)
+write('SOURCE_COLLECTION_SUMMARY_001.json',summary)
+print(json.dumps(summary,separators=(',',':')))

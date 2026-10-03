@@ -1,0 +1,263 @@
+"""Create-once major019 docs; preserve history and validate every new link first."""
+from pathlib import Path
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+import re
+
+ROOT = Path('D:/Aenv/pro2')
+BASE = ROOT / 'resume-2026-10-01-30h-001'
+BEFORE = BASE / 'root-docs-before-major019'
+INPUTS = BASE / 'root-docs-inputs-major019'
+CHECKPOINT = BASE / '30H_RESUME_CHECKPOINT_019.md'
+assert not BEFORE.exists() and not INPUTS.exists() and not CHECKPOINT.exists()
+
+def sha(b):
+    return hashlib.sha256(b).hexdigest()
+
+def encoded(v):
+    return (json.dumps(v, indent=2, sort_keys=True, ensure_ascii=True,
+                       allow_nan=False) + '\n').encode('ascii')
+
+def once(p, b):
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open('xb') as stream:
+        stream.write(b)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+def row(p):
+    b = p.read_bytes()
+    return dict(path=p.relative_to(ROOT).as_posix(), bytes=len(b), sha256=sha(b))
+
+local = [
+    '30H_RESUME_CHECKPOINT_018.md', 'DOCS_REFRESH_AUDIT_018.json',
+    'INDEPENDENT_DOCS_REFRESH_REVIEW_018.json', 'INDEPENDENT_DOCS_REFRESH_REVIEW_018.md',
+    'INDEPENDENT_ACTUAL_GATE008_CONTINUATION_REVIEW_001.json',
+    'consumer-guard-test-runtime004/GUARD_RUNTIME_PREPARATION_MANIFEST_004.json',
+    'consumer-guard-test-runtime004/INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_004.json',
+    'consumer-guard-test-runtime004/INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_004.md',
+    'publisher-schema2-grammar-test-revision005/TEST_PREPARATION_MANIFEST_005.json',
+    'publisher-schema2-grammar-test-revision005/HANDOFF_005.md',
+    'publisher-schema2-grammar-test-revision005/INDEPENDENT_METADATA_GRAMMAR_TEST_REVIEW_005.json',
+    'publisher-schema2-grammar-test-revision005/INDEPENDENT_METADATA_GRAMMAR_TEST_REVIEW_005.md',
+    'FINITE_RELEASE_CHAIN_COMPACT_DESIGN_002.json', 'FINITE_RELEASE_CHAIN_COMPACT_DESIGN_002.md',
+    'INDEPENDENT_FINITE_RELEASE_CHAIN_COMPACT_REVIEW_002.json',
+    'INDEPENDENT_FINITE_RELEASE_CHAIN_COMPACT_REVIEW_002.md',
+    'native-stdin-frame-transport-design003/DESIGN_MANIFEST_003.json',
+    'native-stdin-frame-transport-design003/STDIN_FRAME_NATIVE_TRANSPORT_DESIGN_003.json',
+    'native-stdin-frame-transport-design003/STDIN_FRAME_NATIVE_TRANSPORT_DESIGN_003.md',
+    'ROOT019_RESOURCE_OBSERVATION_001.json',
+    'COORDINATION_GATE009_TIMEOUT_RESOURCE_REQUEST_012.md',
+    'COORDINATION_GATE009_OBSERVATION_012.json',
+    'PRO3_ACK007_METADATA_CAPTURE_001.md', 'OWNER_WORK_WINDOW_30H_20261001_001.json',
+]
+# The native review is optional: its actual creation status remains explicit.
+native_optional = [
+    'native-stdin-frame-transport-design003/INDEPENDENT_NATIVE_STDIN_FRAME_DESIGN_REVIEW_003.json',
+    'native-stdin-frame-transport-design003/INDEPENDENT_NATIVE_STDIN_FRAME_DESIGN_REVIEW_003.md',
+]
+assert all((BASE / n).is_file() for n in local), 'Required major019 facts not yet frozen'
+optional_present = [(BASE / n).is_file() for n in native_optional]
+assert optional_present[0] == optional_present[1], 'Native review must be a frozen pair'
+if all(optional_present):
+    local += native_optional
+names = ['resume-2026-10-01-30h-001/' + n for n in local] + [
+    'resume-2026-09-28-001/full-gate-009/driver-start.json',
+    'resume-2026-09-28-001/full-gate-009/driver-failed.json',
+]
+data = {n: (ROOT / n).read_bytes() for n in names}
+key = lambda n: 'resume-2026-10-01-30h-001/' + n
+short = lambda n: sha(data[key(n)])[:8]
+load = lambda n: json.loads(data[key(n)].decode('utf-8'))
+docs = load('INDEPENDENT_DOCS_REFRESH_REVIEW_018.json')
+grammar = load('publisher-schema2-grammar-test-revision005/INDEPENDENT_METADATA_GRAMMAR_TEST_REVIEW_005.json')
+compact = load('INDEPENDENT_FINITE_RELEASE_CHAIN_COMPACT_REVIEW_002.json')
+resource = load('ROOT019_RESOURCE_OBSERVATION_001.json')
+failed = json.loads(data['resume-2026-09-28-001/full-gate-009/driver-failed.json'].decode('utf-8'))
+assert failed['accepted_before'] == 1 and failed['result_sha256'] is None
+assert 'PASS' in docs['verdict'] and grammar['verdict'] == 'STATIC_TEST_PREPARATION_ONLY'
+assert compact.get('approved_for_execution', False) is False
+native_review = load(native_optional[0]) if all(optional_present) else None
+stamp = datetime.now(timezone.utc).isoformat()
+native_status = native_review['verdict'] if native_review else 'DIFFERENT_DESIGN_REVIEW_PENDING'
+native_detail = (f"Different review is [{native_status}]({native_optional[0]}), {short(native_optional[0])}. "
+                 if native_review else 'Different independent design review remains pending. ')
+body = f'''# Major step019 - reviewed copied tests and compact proof design; live ownership unresolved
+
+Recorded {stamp}. Local/private owner window ends **2026-10-02T22:36:15Z**.
+The [checkpoint018 documentation audit](INDEPENDENT_DOCS_REFRESH_REVIEW_018.json),
+{short('INDEPENDENT_DOCS_REFRESH_REVIEW_018.json')}, verifies43 declared files,
+30 evidence pairs and28 links. It preserves a later657-byte actor SESSION append
+outside the frozen checkpoint's claims. All previous bytes and reviewer refusals remain.
+
+The [compact finite-chain review](INDEPENDENT_FINITE_RELEASE_CHAIN_COMPACT_REVIEW_002.json),
+{short('INDEPENDENT_FINITE_RELEASE_CHAIN_COMPACT_REVIEW_002.json')}, records
+**{compact['verdict']}**. Its independently reconstructed schema3 maximum is361287
+bytes, leaving34512 below the unchanged395799 limit. Both QA Base64 copies are removed
+only from the proposed schema3 proofs. Source-fixed grouped263 paths and checked742
+tables reproduce all three original31347-byte QA streams byte for byte. Exact
+EA9->597->3f74->future direct parents, historical9+9 changes, finite25 final scope,
+34/36/37/34 release schemas, Git objects and receipts stay required. Schema3 alone
+requires canonical ASCII JSON plus oneLF equality; legacy1/2 parsing stays unchanged.
+This is conditional source-design evidence, not an implementation, execution or
+current release/native acceptance. Overall transport and selected-role cap closure
+remain refused/unproved. Preserve the earlier444068-byte lower-bound refusal.
+
+The [copied guard launcher004 review](consumer-guard-test-runtime004/INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_004.json),
+{short('consumer-guard-test-runtime004/INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_004.json')},
+is **REFUSED_STATIC_PREPARATION**. Twelve003 pins remain across four active004
+templates, and the claimed intrinsic UTC33 check is absent. The author also found
+a thirteenth stale profile pin in the late14 template. Distinct005 preparation is
+authorized to derive all active pins and state genuine producer timestamp roles;
+no actual binding or test execution is authorized here. All14 copied methods remain
+unrun. Every004 file/refusal and all earlier namespaces remain immutable.
+
+The [metadata test005 review](publisher-schema2-grammar-test-revision005/INDEPENDENT_METADATA_GRAMMAR_TEST_REVIEW_005.json),
+{short('publisher-schema2-grammar-test-revision005/INDEPENDENT_METADATA_GRAMMAR_TEST_REVIEW_005.json')},
+passes as **STATIC_TEST_PREPARATION_ONLY**. All24 method ASTs stay exact; only the
+fixture iterator adds real healthy writer AND reader controls before each fresh
+mutation and after normal negative completion. Reversal restores exact test004.
+All84 declared files,101 pairs and155 finite inputs were stable. A separate copied
+stdlib runtime harness is being prepared; actual collection, results and subtests
+remain unknown. Publisher/verifier source and operational None fields are unchanged,
+and their fixed597 policy remains inapplicable to the additional3f74 intermediate.
+
+The [native stdin-frame design003](native-stdin-frame-transport-design003/STDIN_FRAME_NATIVE_TRANSPORT_DESIGN_003.json)
+is frozen source-only:292 declarations plus manifest preserve all283 Native002 files.
+{native_detail}Current common196095bytes plus the44-field binding bus produces a268978-byte
+lower witness, above262144. The in-memory184287-byte AST-unparse preview is arithmetic,
+not source or runtime acceptance. Selected16 paths, role caps, final source/literal/
+logic growth and actual8 command lengths remain unknown. Proposed transport retains
+44 fields, byte-exact twoLF, encoded-sum and frame limits,16384 binding parser limit,
+8191 actual Windows command limit and physical command capture before artificial
+argv insertion. No45th field, helper role, cap growth or receipt/envelope change.
+Canonical two-Base64 frames have lengths2 modulo4:262142 is the largest representable
+frame under262144; raw exact-cap probes cannot be called healthy canonical witnesses.
+Any later implementation must carry this causal-test distinction. No framing source
+or native operation has executed.
+
+Gate008 remains independently accepted **D177 data only**:45 partitions,5569 distinct
+nodes,5550passed/19expected skips/zero failures/errors. The51 suite-counter surplus
+has no individual extra IDs. It grants no D178, staged correction, release009 or native
+acceptance. Explicit3f74 metadata and all failed/probe/continuation evidence remain.
+The actual [gate009 failure receipt](../resume-2026-09-28-001/full-gate-009/driver-failed.json)
+records {failed['utc']}, {failed['attempt']}, accepted_before1, exit1 and null result
+SHA. The actor describes a3500-second heavy timeout and continuation preparation;
+ROOT authenticates the terminal record, not that cause or a continuation result.
+The driver/attempt are spent. No5575-node final result or executor transfer is proved.
+
+[Coordination012](COORDINATION_GATE009_TIMEOUT_RESOURCE_REQUEST_012.md),
+{short('COORDINATION_GATE009_TIMEOUT_RESOURCE_REQUEST_012.md')}, is copied to Pro3's
+coordination folder with no delivery/ACK claim. The [fresh resource snapshot](ROOT019_RESOURCE_OBSERVATION_001.json)
+records {resource['captured_utc']}, RAM {resource['free_ram_bytes']}bytes and Dfree
+{resource['d_free_bytes']}bytes. PID62728's path/creation are observed, not its ownership
+or RAM causality. No process/task was changed. [Pro3 ACK007](PRO3_ACK007_METADATA_CAPTURE_001.md)
+retains component/heavy/qualification holds and a proposed120-second no-fit request;
+no window is granted. Guarded copied units require separately reviewed before/after
+metadata of two whole trees plus four runtime files, fresh current742 context,
+at least1GiB RAM/10GiB disk, actual bound/late review and root first-entry ACK.
+These are unit scopes, not four-tree/site/loaded-code or native quiet proof.
+
+ROOT canonical apply/fullQA/newgate/commit/native remains held without older executor
+STOP/sole-transfer ACK. App thread tools remain unavailable. Science stays E2A150local/
+149synced/111untouched/299events; Gate1FAIL/H2H3untested. Preserve D177/D178/history83/84,
+incident/terminal twins, existing epoch, frozen science/outcomes and every spent helper.
+Recovery111fits requires proofs and seal precedes downstream fits. Original reserves,
+pipedGO/noNonInteractive/no-public/no-push/no-replay/no-extraepoch guards remain.
+Keeper launch is consumed; monitor restoration is due at closeout. This checkpoint
+awaits a different documentation audit. No source or operational authority arises.
+'''
+primary = [ROOT / 'AGENTS.md', ROOT / 'HANDOFF.md', ROOT / 'START_HERE.md',
+           ROOT / 'resume-2026-09-28-001/SESSION.md', BASE / 'RESOURCE_COORDINATION.md']
+before = {p: p.read_bytes() for p in primary}
+header = f'''**MAJOR STEP019 - COMPACT CHAIN DESIGN REVIEWED; COPIED METADATA TESTS STATIC PASS; GUARD004 REFUSED; ACTOR GATE009 TERMINAL.**
+Recorded {stamp}. Owner ends2026-10-02T22:36:15Z. Read [checkpoint019](resume-2026-10-01-30h-001/30H_RESUME_CHECKPOINT_019.md), HANDOFF, START_HERE and newest SESSION.
+ROOT018 docs{short('INDEPENDENT_DOCS_REFRESH_REVIEW_018.json')} pass frozen43/30pairs/28links with657B laterSESSION retained. Compact002 differentreview{short('INDEPENDENT_FINITE_RELEASE_CHAIN_COMPACT_REVIEW_002.json')} verdict {compact['verdict']}; exact361287<395799/schema3canonical/groupedQA reconstruction/overalltransportclosure unaccepted/no implementation authority. Guard004 formalREFUSED{short('consumer-guard-test-runtime004/INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_004.json')}:12 stale pins+unsupportedintrinsicUTC33; author13thlatepin found/new005source-only/14UNRUN. Grammar005 peer{short('publisher-schema2-grammar-test-revision005/INDEPENDENT_METADATA_GRAMMAR_TEST_REVIEW_005.json')} STATIC_TEST_PREPARATION_ONLY84files101pairs155inputs/solefixturehelper/24UNRUN. Nativeframe003 frozen293files/status {native_status}/current268978overcap/actualpaths-caps-growth-argvNone/no framing implementation; canonicaltwoBase64max262142 under262144. Actor009actual06:30:05failed/accepted1/resultNone/causeclaimunproved/no continuation result/soleACK. Resource06:47RAM2030669824/D296623853568 snapshot/PID62728ownership-causeunproved;coord012localPro3bridge/no delivery/lease/quiet. RootcanonicalHELD; originalscience/twins/epoch/spent helpers/caps/reserves/pipedGO/noNonInteractive/no-public/no-replay retained;monitorrestorecloseout. Earlier bytes exact history.
+
+'''.encode('utf-8')
+def root_link(match):
+    target = match.group(1)
+    return '](' + (target[3:] if target.startswith('../') else 'resume-2026-10-01-30h-001/' + target) + ')'
+handoff = re.sub(r'\]\(([^)]+)\)', root_link,
+                 body.replace('# Major step019 - reviewed copied tests and compact proof design; live ownership unresolved',
+                              '# Current pro2 handoff - major step019')).encode('utf-8')
+start = b'''# Start here
+
+Read [HANDOFF](HANDOFF.md), [checkpoint019](resume-2026-10-01-30h-001/30H_RESUME_CHECKPOINT_019.md) and newest [SESSION](resume-2026-09-28-001/SESSION.md).
+
+Gate008 data is accepted for D177 only. Gate009 has a terminal failure receipt after one accepted partition; no final or continuation acceptance is established. Canonical apply, gates, release and native remain held without sole-executor coordination.
+
+Compact finite-chain design has reviewed size arithmetic within395799 but no implementation or transport acceptance. Native frame design is frozen with actual paths/caps/growth/argv still unknown. Guard004 launcher is refused;005 is being prepared. Metadata005 tests pass source review; all14 guard and24 metadata methods remain unrun pending separate bounded execution review.
+
+Owner ends2026-10-02T22:36:15Z. Pro3 holds and native quiet remain unresolved. Preserve science, twins, epoch, actor history and spent helpers. Original limits/reserves/pipedGO/noNonInteractive/no-public/no-replay stay. Keeper launch consumed; monitor restoration due at closeout.
+'''
+entry = f'''
+
+## {stamp} - ROOT MAJOR019: reviewed designs/tests, refused launcher and actor terminal
+
+See [checkpoint019](../resume-2026-10-01-30h-001/30H_RESUME_CHECKPOINT_019.md). ROOT018 docs{short('INDEPENDENT_DOCS_REFRESH_REVIEW_018.json')} frozen43/30pairs/28links/657B actorappend retained. Compact002 peer{short('INDEPENDENT_FINITE_RELEASE_CHAIN_COMPACT_REVIEW_002.json')} {compact['verdict']}/361287/headroom34512/schema3canonical/groupedQA reconstruction/overallclosure unaccepted. Guard004REFUSED{short('consumer-guard-test-runtime004/INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_004.json')}12stale+UTCclaim/author13thlatepin/new005source-only/14UNRUN. Grammar005peer{short('publisher-schema2-grammar-test-revision005/INDEPENDENT_METADATA_GRAMMAR_TEST_REVIEW_005.json')} static84/101pairs/155inputs/solehelper/24UNRUN/newunitprep only. Nativeframe003293files/status{native_status}/current268978overcap/unparse184287arithmetic/paths-caps-growth-argvNone/canonicalmax262142/no framing source/native. Actor009receipt06:30:05failed1accepted/resultNone/timeoutcauseclaimnotproved/no continuation acceptance/noACK. Resource06:47RAM2030669824/D296623853568/PID62728ownership-causeunproved/nochanges. Coord012localroot+Pro3bridgeACK007held/no delivery/no lease/quiet; copiedunits2whole trees+4runtimefiles no site/loadedclosure. Rootcanonicalheld/science-twins-epoch-history-spent/caps/reserves/pipedGO/noNonInteractive/no-public/no-replay unchanged/monitorrestorecloseout. ROOT019 awaits different docs audit.
+'''.encode('utf-8')
+resource_entry = f'''
+
+### {stamp} - major019 terminal metadata and continued resource hold
+
+[Snapshot](ROOT019_RESOURCE_OBSERVATION_001.json)06:47:39UTC RAM2030669824bytes/D296623853568bytes is time-local only. PID62728 path/creation observed; ownership and RAMcause unproved/no process changes. [Coordination012](COORDINATION_GATE009_TIMEOUT_RESOURCE_REQUEST_012.md) has localPro3copy/no delivery/ACK. Pro3ACK007 component/heavy/qualification120s requestHELD/no new modewindow. Gate009failedreceipt1accepted/nullresult doesnotauthorizecontinuation/lease/nativequiet. Guard14/metadata24UNRUN; copiedscope two wholeinventorytrees+four runtimefiles, not4trees/allsite/loadedcode. Rootcanonicalheld/keeperconsumed/monitorrestorecloseout; [checkpoint019](30H_RESUME_CHECKPOINT_019.md).
+'''.encode('utf-8')
+maintained = []
+for p, b in [(primary[0], header), (primary[1], handoff), (primary[2], start),
+             (CHECKPOINT, body.encode()), (primary[3], entry), (primary[4], resource_entry)]:
+    for target in re.findall(r'\]\(([^)]+)\)', b.decode('utf-8')):
+        resolved = (p.parent / target).resolve()
+        assert resolved == CHECKPOINT.resolve() or resolved.is_file(), (p, target)
+        maintained.append(dict(document=p.relative_to(ROOT).as_posix(), target=target,
+                               resolved_path=str(resolved)))
+for n, b in data.items():
+    assert (ROOT / n).read_bytes() == b
+    once(INPUTS / n, b)
+for p, b in before.items():
+    once(BEFORE / p.relative_to(ROOT), b)
+once(CHECKPOINT, body.encode())
+for p, b in {primary[0]: header + before[primary[0]], primary[1]: handoff,
+             primary[2]: start}.items():
+    assert p.read_bytes() == before[p]
+    p.write_bytes(b)
+for p, b in [(primary[3], entry), (primary[4], resource_entry)]:
+    assert p.read_bytes() == before[p]
+    with p.open('ab') as stream:
+        stream.write(b)
+baseline = []
+for p, b in before.items():
+    proof = 'exact_before_copy'
+    if p.name == 'AGENTS.md':
+        assert p.read_bytes().endswith(b)
+        proof = 'exact_retained_suffix'
+    if p.name in ('SESSION.md', 'RESOURCE_COORDINATION.md'):
+        assert p.read_bytes().startswith(b)
+        proof = 'exact_retained_prefix'
+    baseline.append(dict(primary=p.relative_to(ROOT).as_posix(),
+                         before=row(BEFORE / p.relative_to(ROOT)), proof=proof))
+once(BASE / 'DOCS_REFRESH_BASELINE_019.json', encoded(dict(schema_version=1, created_utc=stamp, files=baseline)))
+input_rows = [dict(original=row(ROOT / n), copy=row(INPUTS / n)) for n in names]
+once(BASE / 'DOCS_REFRESH_INPUTS_019.json', encoded(dict(schema_version=1, created_utc=stamp, inputs=input_rows)))
+declared = [*primary, CHECKPOINT, BASE / 'DOCS_REFRESH_BASELINE_019.json',
+            BASE / 'DOCS_REFRESH_INPUTS_019.json', *[BEFORE / p.relative_to(ROOT) for p in primary],
+            *[INPUTS / n for n in names]]
+facts = dict(owner_end_utc='2026-10-02T22:36:15Z', root018_docs=docs['verdict'],
+             compact_design=compact['verdict'], attestation_design_max=361287,
+             attestation_cap=395799, complete_encoding_closure_accepted=False,
+             native_frame_design_review=native_status, framing_source_implemented=False,
+             guard004='REFUSED_STATIC_PREPARATION', guard005='AUTHORING_UNBOUND_UNRUN',
+             grammar005=grammar['verdict'], guard_tests_executed=0, metadata_tests_executed=0,
+             gate009_terminal_record=True, gate009_accepted_before=1,
+             gate009_timeout_cause_proven=False, gate009_continuation_accepted=False,
+             sole_executor_ack_received=False, quiet_or_lease=False,
+             source_or_operational_approval_granted_by_docs=False,
+             pro3_bridge_written_delivery_not_proven=True, process_changes=False)
+audit = dict(schema_version=1, checkpoint=19, created_utc=stamp,
+             status='AWAITING_INDEPENDENT_DOCUMENTATION_REVIEW', files=[row(p) for p in declared],
+             actual_input_count=len(input_rows), maintained_links=maintained, facts=facts)
+once(BASE / 'DOCS_REFRESH_AUDIT_019.json', encoded(audit))
+print(json.dumps(dict(checkpoint_sha256=sha(CHECKPOINT.read_bytes()), audit_sha256=sha(encoded(audit)),
+                      declared_files=len(declared), inputs=len(input_rows), maintained_links=len(maintained))))

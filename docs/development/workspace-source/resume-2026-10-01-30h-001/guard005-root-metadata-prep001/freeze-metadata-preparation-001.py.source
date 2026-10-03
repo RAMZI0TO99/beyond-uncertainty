@@ -1,0 +1,106 @@
+import ast
+import hashlib
+import json
+import os
+import stat
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\guard005-root-metadata-prep001')
+
+def observe(path):
+    before = path.lstat()
+    assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and not before.st_file_attributes & 0x400
+    with path.open('rb') as stream:
+        opened = os.fstat(stream.fileno())
+        data = stream.read()
+        final = os.fstat(stream.fileno())
+    after = path.lstat()
+    names = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')
+    raw = lambda info: [getattr(info, name) for name in names]
+    p, f = raw(before), raw(opened)
+    assert all(type(value) is int for value in p + f) and p[8] >= 0 and f[8] >= 0
+    assert p == raw(after) and f == raw(final)
+    assert p[:4] + p[5:] == f[:4] + f[5:] and p[4] == p[8]
+    assert len(data) == before.st_size
+    return data, {'path': str(path), 'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data), 'path_raw9': p, 'descriptor_raw9': f}
+
+source = root / 'capture-guard005-root-metadata.TEMPLATE.py'
+data, source_row = observe(source)
+tree = ast.parse(data, filename=str(source))
+# Metadata compilation only. The resulting code is never executed or made into functions.
+compiled = compile(data, str(source), 'exec', dont_inherit=True, optimize=0)
+assert compiled.co_name == '<module>'
+old_data = observe(root / 'before-utc-correction-001' / source.name)[0]
+old_tree = ast.parse(old_data)
+assert len(tree.body) == len(old_tree.body)
+changed = []
+for old, current in zip(old_tree.body, tree.body):
+    if ast.dump(old, include_attributes=False) != ast.dump(current, include_attributes=False):
+        assert isinstance(old, ast.FunctionDef) and isinstance(current, ast.FunctionDef) and old.name == current.name
+        changed.append(current.name)
+assert changed == ['decode', 'utc', 'git', 'snapshot', 'main'], changed
+assignments = {target.id: ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
+               for target in node.targets if isinstance(target, ast.Name) and target.id in
+               ('BINDINGS', 'UNIT_TERMINAL_RELATIVE', 'COORDINATION_PEER_REPLY_RELATIVE', 'COORDINATION_ROOT_RESPONSE_RELATIVE')}
+assert len(assignments['BINDINGS']) == 9 and all(value is None for value in assignments['BINDINGS'].values())
+assert all(assignments[key] is None for key in assignments if key != 'BINDINGS')
+
+contract_path = root / 'METADATA_PREPARATION_CONTRACT_001.json'
+contract = json.loads(observe(contract_path)[0])
+assert contract['source_template']['sha256'] == 'fa0850e00a660deaf2d9efb042ddc7d9a6c0b4e34c02d17bc74f8fa5f53e0045'
+contract['source_template'] = {key: source_row[key] for key in ('path', 'sha256', 'bytes')}
+contract['timestamp_grammar'] = {
+    'Python': {'fractional_digits': [0, 6], 'maximum_characters': 32, 'roundtrip': True, 'offset': '+00:00'},
+    'supporting_PowerShell': {'fractional_digits': [0, 7], 'maximum_characters': 33, 'first_six_digits_roundtrip': True, 'seventh_digit_preserved_in_pinned_text': True, 'offset': '+00:00'},
+    'legacy_owner_timestamp': 'Separately authenticated immutable legacy owner record; not rewritten into this grammar.'}
+contract['JSON_float_policy'] = 'All decimal/exponent tokens and nonfinite constants are refused; accepted role fields have integer/string/container/boolean/null domains.'
+contract['Git_capture_scope'] = {'commands': [['rev-parse', 'HEAD'], ['ls-files', '-z'], ['status', '--porcelain=v1', '--untracked-files=normal']], 'ignored_clean_state_established': False, 'guaranteed_healthy_capacity_claimed': False}
+contract['prefreeze_correction'] = {'before_manifest': 'PREFREEZE_UTC_BEFORE_MANIFEST_001.json', 'changed_source_functions': changed, 'reason': 'Exact fractional UTC shape/roundtrip and reject-all-floats; omit optional full ignored scan; no cap expansion.', 'prepared_definitions_executed': False}
+contract['proposed_causal_controls'].append({'control': 'Authentic Python zero/six and supporting PS zero/seven fractional timestamps', 'mutation': 'short fractional widths, decimal/exponent JSON including 1e999, invalid dates, negative/boolean schema integer', 'boundary': 'JSON/timestamp typed preflight before Git or current742 capture', 'unrun': True})
+contract_path.write_bytes((json.dumps(contract, sort_keys=True, indent=2) + '\n').encode('ascii'))
+
+paths = sorted((path for path in root.rglob('*') if path.is_file()), key=lambda path: path.relative_to(root).as_posix())
+assert not (root / 'STAGED_MANIFEST_001.json').exists()
+first = {str(path): observe(path)[1] for path in paths}
+preservation = json.loads(observe(root / 'INPUT_PRESERVATION_001.json')[0])
+input_pairs = []
+for pair in preservation['files']:
+    original, copied = observe(Path(pair['original']['path'])), observe(Path(pair['copy']['path']))
+    assert original[0] == copied[0] and original[1]['sha256'] == pair['original']['sha256'] == pair['copy']['sha256']
+    assert original[1]['path_raw9'][1] != copied[1]['path_raw9'][1]
+    input_pairs.append({'original': original[1], 'copy': copied[1]})
+for path in paths:
+    assert observe(path)[1] == first[str(path)]
+for pair in input_pairs:
+    assert observe(Path(pair['original']['path']))[1] == pair['original']
+    assert observe(Path(pair['copy']['path']))[1] == pair['copy']
+future_absences = [
+    'capture-guard005-root-metadata.BOUND.py', 'INDEPENDENT_BOUND_METADATA_REVIEW_005.json',
+    'ROOT_METADATA_AUTHORIZATION_BEFORE_005.json', 'ROOT_METADATA_AUTHORIZATION_AFTER_005.json',
+    'phase-before-005', 'phase-after-005']
+for name in future_absences:
+    assert not (root / name).exists()
+record = {
+    'schema_version': 1, 'record_type': 'guard005_root_metadata_preparation_manifest', 'author': '/root/bootstrap_stage',
+    'created_utc': datetime.now(timezone.utc).isoformat(), 'status': 'UNBOUND_UNRUN_PENDING_DIFFERENT_PEER',
+    'files': [{'relative_path': path.relative_to(root).as_posix(), **first[str(path)]} for path in paths],
+    'declared_file_count_excluding_manifest': len(paths), 'total_file_count_including_manifest': len(paths) + 1,
+    'source_template': source_row, 'contract': observe(contract_path)[1], 'handoff': observe(root / 'HANDOFF.md')[1],
+    'independent_historical_input_pairs': input_pairs, 'input_pair_count': len(input_pairs),
+    'future_digest_bindings': assignments['BINDINGS'], 'future_role_paths': {key: value for key, value in assignments.items() if key != 'BINDINGS'},
+    'future_paths_observed_absent': future_absences, 'AST_top_function_count': sum(isinstance(node, ast.FunctionDef) for node in tree.body),
+    'initial_draft_AST_delta': changed, 'nonexecuting_compile_metadata': True, 'prepared_source_or_target_definitions_executed': False,
+    'Git_or_capture_or_tests_or_native_executed': False, 'actual_current_context': None, 'actual_runtime_selection': None,
+    'operational_authority_granted': False, 'whole_inventory_trees_captured': 0, 'separate_raw_observer_tree_scope': ['frozen base', 'venv Scripts'],
+    'separately_captured_runtime_file_count_planned': 4, 'all_site_or_loaded_code_closure_claimed': False,
+    'external_ROOT_retained_parent_supervision_and_different_actual_record_reviews_required': True}
+manifest_data = (json.dumps(record, sort_keys=True, indent=2) + '\n').encode('ascii')
+with (root / 'STAGED_MANIFEST_001.json').open('xb') as stream:
+    stream.write(manifest_data)
+for path in paths:
+    assert observe(path)[1] == first[str(path)]
+for pair in input_pairs:
+    assert observe(Path(pair['original']['path']))[1] == pair['original']
+    assert observe(Path(pair['copy']['path']))[1] == pair['copy']
+print(json.dumps({'manifest_sha256': hashlib.sha256(manifest_data).hexdigest(), 'declared_files': len(paths), 'total_files': len(paths) + 1, 'source': source_row, 'contract': record['contract'], 'handoff': record['handoff'], 'input_pairs': len(input_pairs), 'future_digest_count': 9, 'future_path_count': 3}, sort_keys=True))

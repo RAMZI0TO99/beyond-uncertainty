@@ -1,0 +1,176 @@
+"""One-use ROOT metadata binding; no target definitions, driver or tests execute."""
+import ctypes
+import hashlib
+import json
+import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+ROOT = Path('D:/Aenv/pro2')
+PREP = ROOT / 'resume-2026-10-01-30h-001/raw-component-runtime-prep004'
+
+def read(path):
+    return path.read_bytes()
+
+def digest(value):
+    return hashlib.sha256(value).hexdigest()
+
+def parsed(path):
+    return json.loads(read(path))
+
+def once(path, value):
+    data = ((json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True,
+                        allow_nan=False) + '\n').encode('ascii')
+            if not isinstance(value, bytes) else value)
+    with path.open('xb') as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    return digest(data)
+
+selection = parsed(PREP / 'BOUND_PREPARATION_004_ROOT_001.json')
+review_path = PREP / 'INDEPENDENT_RAW_HARNESS_BOUND_REVIEW_004.json'
+review_bytes = read(review_path)
+review = json.loads(review_bytes)
+assert review['verdict'] == 'PASS_BOUND_FOR_ROOT_FIRST_EXECUTION_ONLY'
+assert review['reviewer'] == review['reviewer_agent'] == '/root/candidate_review'
+assert digest(read(Path(selection['driver']['path']))) == selection['driver']['sha256'] == review['bound_driver_sha256']
+assert digest(read(Path(selection['observer']['path']))) == selection['observer']['sha256'] == review['bound_observer_sha256']
+assert digest(read(Path(selection['static_review']['path']))) == selection['static_review']['sha256'] == review['static_review_sha256']
+assert len(review_bytes) < 2097152
+before_path = PREP / 'whole-runtime-before/result.json'
+before_bytes = read(before_path)
+before = json.loads(before_bytes)
+assert len(before) == 13 and before['phase'] == 'before'
+assert before['verdict'] == 'MATCHES_PINNED_RUNTIME_TWICE'
+assert before['observer_sha256'] == selection['observer']['sha256']
+assert before['static_review_sha256'] == selection['static_review']['sha256']
+assert before['target_execution'] is False and before['runtime_mutation'] is False
+assert before['before_record_sha256'] is None
+assert len(before['observation_files']) == 4
+for row in before['observation_files']:
+    path = Path(row['path'])
+    assert path.parent == before_path.parent and 0 < row['size'] <= 4194304
+    value = read(path)
+    assert len(value) == row['size'] and digest(value) == row['sha256']
+now = datetime.now(timezone.utc)
+assert 0 <= (now - datetime.fromisoformat(before['finished_utc'])).total_seconds() < 600
+expiry = now + timedelta(hours=2)
+owner = parsed(PREP / 'inputs/OWNER_WORK_WINDOW_30H_20261001_001.json')
+assert expiry < datetime.fromisoformat(owner['work_end_utc'].replace('Z', '+00:00'))
+assert (expiry - now).total_seconds() > 4500
+
+class Memory(ctypes.Structure):
+    _fields_ = [('length', ctypes.c_ulong), ('load', ctypes.c_ulong),
+                ('total_phys', ctypes.c_ulonglong), ('avail_phys', ctypes.c_ulonglong),
+                ('total_page', ctypes.c_ulonglong), ('avail_page', ctypes.c_ulonglong),
+                ('total_virtual', ctypes.c_ulonglong), ('avail_virtual', ctypes.c_ulonglong),
+                ('avail_extended', ctypes.c_ulonglong)]
+
+memory = Memory()
+memory.length = ctypes.sizeof(memory)
+assert ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(memory))
+disk = ctypes.c_ulonglong()
+assert ctypes.windll.kernel32.GetDiskFreeSpaceExW(str(ROOT), ctypes.byref(disk), None, None)
+assert memory.avail_phys >= 1073741824 and disk.value >= 10737418240
+resource = {'schema_version': 1, 'captured_utc': now.isoformat(),
+            'free_ram_bytes': memory.avail_phys, 'd_free_bytes': disk.value,
+            'required_free_ram_bytes': 1073741824, 'required_free_disk_bytes': 10737418240,
+            'unrelated_processes_or_tasks_modified': False, 'native_quiet_claimed': False}
+
+copy = PREP / 'source'
+names = ('pytest.toml', '.pytest.toml', 'pytest.ini', '.pytest.ini',
+         'pyproject.toml', 'tox.ini', 'setup.cfg', 'conftest.py')
+ancestors = [copy / 'tests', *(copy / 'tests').parents]
+assert len(ancestors) == 7
+config_observations = []
+for parent in ancestors:
+    for name in names:
+        path = parent / name
+        try:
+            path.lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            raise AssertionError(str(path))
+        config_observations.append({'path': str(path), 'exists': False})
+assert len(config_observations) == 56
+prefixes = ('PYTEST', 'PYTHON', 'GIT_', 'COVERAGE')
+environment_profile = {
+    'schema_version': 1, 'captured_utc': now.isoformat(), 'source': str(copy),
+    'ancestor_configuration_observations': config_observations,
+    'ambient_matching_names_only': sorted(k for k in os.environ if k.upper().startswith(prefixes)),
+    'root_launch_temporarily_removes_prefixes': list(prefixes),
+    'root_launch_restores_ambient_process_environment_in_finally': True,
+    'driver_child_explicit_pytest_autoload_off_one_thread_profile': True,
+    'full_site_runtime_closure_or_import_trace_proven': False}
+
+ack = parsed(PREP / 'ROOT_FIRST_EXECUTION_ACK_RAW004.TEMPLATE.json')
+assert len(ack) == 22
+ack.update({
+    'created_utc': now.isoformat(), 'expires_utc': expiry.isoformat(),
+    'bound_driver_sha256': selection['driver']['sha256'],
+    'bound_review_sha256': digest(review_bytes),
+    'static_review_sha256': selection['static_review']['sha256'],
+    'raw_source_peer_review_sha256': selection['source003_peer']['sha256'],
+    'raw_test_peer_review_sha256': selection['test004_peer']['sha256'],
+    'child_sha256': selection['templates']['child']['sha256'],
+    'min_free_ram_bytes': 1073741824,
+    'whole_runtime_before': {'path': str(before_path), 'sha256': digest(before_bytes)}})
+for key, selected_name in (('runtime_snapshot', 'selected_runtime_guard'),
+                           ('live_guard_snapshot', 'selected_live_guard')):
+    row = selection[selected_name]
+    value = read(Path(row['path']))
+    assert digest(value) == row['sha256']
+    captured = datetime.fromisoformat(json.loads(value)['captured_utc'])
+    assert 0 <= (now - captured).total_seconds() < 18000
+    assert (expiry - captured).total_seconds() < 18000
+    ack[key] = {'path': row['path'], 'sha256': row['sha256']}
+coordination_path = ROOT / 'resume-2026-10-01-30h-001/root-docs-inputs-major010/external-pro3/PRO3_COORDINATION_ACK_20261001_006.md'
+coordination_bytes = read(coordination_path)
+assert coordination_bytes and coordination_bytes == read(coordination_path)
+ack['coordination_acknowledgement'] = {'path': str(coordination_path), 'sha256': digest(coordination_bytes)}
+assert all(v is not None for v in ack.values()) and len(ack) == 22
+future = ['ROOT_FIRST_EXECUTION_ACK_RAW004.json', 'ROOT_FIRST_LAUNCH_004.BOUND.ps1',
+          'ROOT_LAUNCH_START_004.json', 'ROOT_LAUNCH_TERMINAL_004.json',
+          'ROOT_LAUNCH_STDOUT_004.txt', 'ROOT_LAUNCH_STDERR_004.txt',
+          'ROOT_RUN_INTENT_004.json', 'started.json', 'finished.json', 'failed.json',
+          'ROOT_RAW004_PRE_BIND_RESOURCE_001.json', 'ROOT_RAW004_ENVIRONMENT_PROFILE_001.json',
+          'ROOT_ACK_LAUNCH_BINDING_004_001.json', 'collection', 'tests']
+assert not any((PREP / name).exists() for name in future)
+assert not (ROOT / '.tmp/raw4-004').exists()
+
+resource_sha = once(PREP / 'ROOT_RAW004_PRE_BIND_RESOURCE_001.json', resource)
+profile_sha = once(PREP / 'ROOT_RAW004_ENVIRONMENT_PROFILE_001.json', environment_profile)
+ack_sha = once(PREP / 'ROOT_FIRST_EXECUTION_ACK_RAW004.json', ack)
+original = read(PREP / 'ROOT_FIRST_LAUNCH_004.TEMPLATE.ps1')
+bound = original
+bindings = {'BoundDriverSha256': selection['driver']['sha256'],
+            'RootAckSha256': ack_sha, 'BoundReviewSha256': digest(review_bytes)}
+for key, value in bindings.items():
+    old = ('$' + key + ' = $null').encode('ascii')
+    new = ('$' + key + " = '" + value + "'").encode('ascii')
+    assert bound.count(old) == 1
+    bound = bound.replace(old, new, 1)
+reverse = bound
+for key, value in bindings.items():
+    reverse = reverse.replace(('$' + key + " = '" + value + "'").encode('ascii'),
+                              ('$' + key + ' = $null').encode('ascii'), 1)
+assert reverse == original
+launcher_sha = once(PREP / 'ROOT_FIRST_LAUNCH_004.BOUND.ps1', bound)
+receipt = {'schema_version': 1, 'created_utc': now.isoformat(), 'author': '/root',
+           'status': 'BOUND_ACK_LAUNCHER_PREPARATION_ONLY_PENDING_DIFFERENT_LATE_REVIEW',
+           'ack_sha256': ack_sha, 'bound_launcher_sha256': launcher_sha,
+           'template_launcher_sha256': digest(original),
+           'bound_driver_sha256': selection['driver']['sha256'],
+           'bound_observer_sha256': selection['observer']['sha256'],
+           'bound_review_sha256': digest(review_bytes),
+           'resource_observation_sha256': resource_sha, 'environment_profile_sha256': profile_sha,
+           'whole_before_sha256': digest(before_bytes),
+           'exact_three_literal_reverse': reverse == original,
+           'driver_launcher_tests_executed': False, 'canonical_qa_native_release_authority': False}
+receipt_sha = once(PREP / 'ROOT_ACK_LAUNCH_BINDING_004_001.json', receipt)
+print(json.dumps({'ack_sha256': ack_sha, 'launcher_sha256': launcher_sha,
+                  'binding_receipt_sha256': receipt_sha, 'environment_profile_sha256': profile_sha,
+                  'resource_sha256': resource_sha, 'whole_before_sha256': digest(before_bytes),
+                  'created_utc': now.isoformat(), 'expires_utc': expiry.isoformat()}))

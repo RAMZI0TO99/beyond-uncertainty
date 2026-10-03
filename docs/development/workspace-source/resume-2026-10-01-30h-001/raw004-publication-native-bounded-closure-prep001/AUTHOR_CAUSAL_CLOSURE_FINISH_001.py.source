@@ -1,0 +1,115 @@
+"""Own source text/AST finishing; target definitions/tests remain unrun."""
+import ast,json
+from pathlib import Path
+stage=Path(__file__).absolute().parent
+fragment=stage/'source/BOUNDED_RAW004_CAUSAL_TESTS_001.fragment'
+text=fragment.read_text()
+text=text.replace('import contextlib\n','import contextlib,io\n')
+text=text.replace("        final=document['successor_files'];saved=copy.deepcopy(final);final[:]=copy.deepcopy(table)\n",'')
+text=text.replace("        finally:table[:]=original;final[:]=saved","        finally:table[:]=original")
+text=text.replace("        calls=[];n['subprocess']=types.SimpleNamespace(Popen=lambda *a,**k:calls.append((a,k)))",'''        calls=[]
+        def process(*args,**kwargs):
+            calls.append((args,kwargs))
+            return types.SimpleNamespace(returncode=0,stdin=None,stdout=io.BytesIO(b'x'),stderr=io.BytesIO(b''),poll=lambda:0,wait=lambda **kw:0)
+        n['subprocess']=types.SimpleNamespace(Popen=process)
+        self.assertEqual(n['_bounded_git_run']([],cwd=None,env={},maximum=1),b'x')
+        before=len(calls)''')
+text=text.replace('        self.assertEqual(calls,[])\n\n',"        self.assertEqual(len(calls),before)\n        self.assertEqual(n['_bounded_git_run']([],cwd=None,env={},maximum=1),b'x')\n\n")
+# Above applies only the final blank-line-terminated cap test; the earlier
+# metaclass/mapping callback assertions have further statements after them.
+ast.parse(text)
+with (stage/'CAUSAL_FRAGMENT_BEFORE_FINISH_001.bytes').open('xb')as f:f.write(fragment.read_bytes())
+fragment.write_text(text,encoding='utf-8',newline='\n')
+test=stage/'source/test_native_schema3_admission_001.py'
+with(stage/'NATIVE_TEST_BEFORE_CAUSAL_APPEND_001.bytes').open('xb')as f:f.write(test.read_bytes())
+source=test.read_text()+text
+tree=ast.parse(source)
+family=next(n for n in tree.body if isinstance(n,ast.Assign)and isinstance(n.targets[0],ast.Name)and n.targets[0].id=='NATIVE_CRITICAL_FAMILY_CASES')
+values=ast.literal_eval(family.value)
+values.update({f'B{i:02}':['BoundedRaw004CausalCases.'+method.name] for i,method in enumerate(next(n for n in tree.body if isinstance(n,ast.ClassDef)and n.name=='BoundedRaw004CausalCases').body,1) if isinstance(method,ast.FunctionDef)})
+lines=source.splitlines(keepends=True);lines[family.lineno-1:family.end_lineno]=['NATIVE_CRITICAL_FAMILY_CASES = '+repr(values)+'\n'];source=''.join(lines)
+ast.parse(source);test.write_text(source,encoding='utf-8',newline='\n')
+common=stage/'front/native_successor_front_common_013_001.py.template'
+with(stage/'NATIVE_BEFORE_CAUSAL_FINISH_001.bytes').open('xb')as f:f.write(common.read_bytes())
+source=common.read_text()
+source=source.replace('type(descriptor)in(staticmethod,classmethod)','(type(descriptor)is staticmethod or type(descriptor)is classmethod)')
+source=source.replace("({'M%02d'%i for i in range(1,33)}|{'F%02d'%i for i in range(1,27)})", "({'M%02d'%i for i in range(1,33)}|{'F%02d'%i for i in range(1,27)}|{'B%02d'%i for i in range(1,15)})")
+source=source.replace(" doc=parse(inputs['attestation.json'])", " require(len(inputs['attestation.json'])<=policy['_SUCCESSOR_ATTESTATION_MAX_BYTES_SCHEMA3'],'schema3 private preparse attestation ceiling')\n doc=parse(inputs['attestation.json'])")
+ast.parse(source);common.write_text(source,encoding='utf-8',newline='\n')
+for name in ('publish-successor-admission-schema3-001.py.template','verify-successor-admission-schema3-001.py.template'):
+    path=stage/'publication'/name
+    with(stage/('PUB_BEFORE_CAUSAL_FINISH_'+name+'.bytes')).open('xb')as f:f.write(path.read_bytes())
+    source=path.read_text().replace('fixed twenty policy values absent','fixed thirty-one policy values absent').replace('reviewed raw003 literal policy changed','reviewed raw004 literal policy changed')
+    source=source.replace('"attestation capture exceeds395799 before hash/parse"','"schema3 private/global prehash capture ceiling"')
+    ast.parse(source);path.write_text(source,encoding='utf-8',newline='\n')
+metadata=stage/'source/test_schema3_metadata_grammar_001.py'
+with(stage/'METADATA_TEST_BEFORE_TWO_MIDDLE_APPEND_001.bytes').open('xb')as f:f.write(metadata.read_bytes())
+source=metadata.read_text()+'''
+
+class Schema3BoundedPreparation(unittest.TestCase):
+    def test_two_ordered_middle_actual742_and_grouped263_controls(self):
+        for name in TEMPLATES:
+            n=selected_namespace(name)
+            previous=None
+            for index in (0,1):
+                p,old,middle,proof,paths,_=historical_fixture(n,index)
+                if previous is not None:self.assertEqual(old,previous)
+                entry={'identities':p['SUCCESSOR_COMPACT_INTERMEDIATE_FACTS'][index],'proof':proof}
+                call=lambda e:n['schema3_middle'](e,old,middle,policy=p,expected_paths=paths,index=index)
+                self.assertEqual(call(entry),middle)
+                self.assertEqual(len(n['schema3_compact_qa'](middle,p,entry['identities']['candidate_manifest_sha256'])),31347)
+                for mutate in (lambda e:e.update(extra=True),lambda e:e['identities'].update(tracked_file_count=True),lambda e:e['proof']['changed_files'][0].update(size=True)):
+                    changed=copy.deepcopy(entry);mutate(changed)
+                    with self.assertRaises(n['Refused']):call(changed)
+                    self.assertEqual(call(entry),middle)
+                previous=middle
+
+    def test_all31_current_raw004_and_source_initializers_are_data_only(self):
+        raw=(STAGE/'before/raw004-source.bytes').read_bytes()
+        tree=ast.parse(raw)
+        self.assertEqual(sum(isinstance(n,ast.FunctionDef) for n in tree.body),85)
+        self.assertEqual(sum(isinstance(n,ast.ClassDef) for n in tree.body),7)
+        for name in TEMPLATES:
+            n=selected_namespace(name)
+            self.assertEqual(len(n['schema2_literal_policy'](raw)),31)
+            altered=raw+b'\\nSUCCESSOR_COMPACT_INTERMEDIATE_FACTS = ()\\n'
+            with self.assertRaises(n['Refused']):n['schema2_literal_policy'](altered)
+            self.assertEqual(n['schema2_literal_policy'](raw),n['COMPILED_POLICY'])
+
+    def test_metadata_two_middle_nominals_order_and_pair_input_hashes(self):
+        for name in TEMPLATES:
+            n=grammar_namespace(name);context,documents=grammar_fixture(n)
+            for kind in ('successor_publication_complete','successor_verification_pass'):
+                good=documents[kind]
+                self.assertEqual(len(good['intermediate']),2)
+                self.assertEqual(len(good['middle_full742_identity']),2)
+                n['sealed_receipt_bytes'](good)
+                for mutate in (lambda v:v['intermediate'].reverse(),lambda v:v['middle_full742_identity'].pop(),lambda v:v['middle_full742_identity'][1].update(tracked_file_count=True)):
+                    changed=copy.deepcopy(good);mutate(changed)
+                    with self.assertRaises(n['Refused']):n['sealed_receipt_bytes'](changed)
+                    n['sealed_receipt_bytes'](good)
+
+    def test_middle_pair_caps_are_587_6030_and_62694_without_role_growth(self):
+        for name in TEMPLATES:
+            n=grammar_namespace(name);context,documents=grammar_fixture(n)
+            self.assertEqual(len(context['paths']),17);self.assertEqual(len(context['input_caps']),35)
+            for role,expected in [('middle_commit_object',587),('middle_release',6030),('middle_manifest',62694)]:
+                self.assertEqual(context['input_caps'][role],expected)
+                original=n['INPUT_ROLE_MAX_BYTES'][role]
+                n['INPUT_ROLE_MAX_BYTES'][role]+=1
+                try:
+                    with self.assertRaises(n['Refused']):n['metadata_context']()
+                finally:n['INPUT_ROLE_MAX_BYTES'][role]=original
+                self.assertEqual(n['metadata_context'](),context)
+
+    def test_zero_full742_rows_are_valid_and_bool_zero_is_refused(self):
+        for name in TEMPLATES:
+            n=selected_namespace(name);p,rows,*_=historical_fixture(n)
+            zero=copy.deepcopy(rows);zero[0].update(size=0,sha256=n['sha'](b''),git_blob=hashlib.sha1(b'blob 0\\0').hexdigest())
+            self.assertEqual(n['schema2_file_rows'](zero,policy=p,what='zero742'),zero)
+            for size in(True,False,-1):
+                changed=copy.deepcopy(zero);changed[0]['size']=size
+                with self.assertRaises(n['Refused']):n['schema2_file_rows'](changed,policy=p,what='bad742')
+                self.assertEqual(n['schema2_file_rows'](zero,policy=p,what='restored742'),zero)
+'''
+ast.parse(source);metadata.write_text(source,encoding='utf-8',newline='\n')

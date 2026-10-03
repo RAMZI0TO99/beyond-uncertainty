@@ -1,0 +1,91 @@
+import ast
+import hashlib
+import json
+import os
+import stat
+from pathlib import Path
+
+work = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001')
+root = work / 'native-schema2-admission-closure-prep003'
+old = work / 'native-schema2-admission-closure-prep002'
+design = work / 'native-stdin-frame-transport-design003'
+
+def observe(path):
+    before = path.lstat()
+    assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1 and not before.st_file_attributes & 0x400
+    with path.open('rb') as stream:
+        opened = os.fstat(stream.fileno())
+        data = stream.read()
+        final = os.fstat(stream.fileno())
+    after = path.lstat()
+    names = ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns', 'st_mode', 'st_nlink', 'st_file_attributes', 'st_birthtime_ns')
+    raw = lambda info: [getattr(info, name) for name in names]
+    p, f = raw(before), raw(opened)
+    assert p == raw(after) and f == raw(final) and p[:4] + p[5:] == f[:4] + f[5:] and p[4] == p[8]
+    assert len(data) == p[2]
+    return data, dict(path=str(path), sha256=hashlib.sha256(data).hexdigest(), bytes=len(data), path_raw9=p, descriptor_raw9=f)
+
+def write_once(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('xb') as stream:
+        stream.write(data)
+
+expected = (
+    (old / 'STAGED_MANIFEST_002.json', 'ce1eceb7cdc34df4ec2b73708d2e4f5bf82500ad91131751b51c358156ae4ab4'),
+    (design / 'DESIGN_MANIFEST_003.json', '844738f78ac1ed8a6ce1640597c318026108ed3e685f84e21109313f575fde5e'),
+    (work / 'ROOT_REVIEWED_SOURCE_PREPARATION_CHOICES_004.json', '1c2c07e6'))
+for path, digest in expected:
+    data, row = observe(path)
+    assert row['sha256'].startswith(digest)
+    if path.name.endswith('MANIFEST_002.json') or path.name == 'DESIGN_MANIFEST_003.json':
+        manifest = json.loads(data)
+        for declared in manifest['files']:
+            actual = observe(path.parent / declared['relative_path'])[1]
+            assert actual['sha256'] == declared['sha256'] and actual['bytes'] == declared['bytes']
+pairs = []
+for parent, label in ((old, 'native002'), (design, 'design003')):
+    originals = sorted((path for path in parent.rglob('*') if path.is_file()), key=lambda path: path.relative_to(parent).as_posix())
+    for path in originals:
+        data, original = observe(path)
+        target = root / 'before' / label / path.relative_to(parent)
+        write_once(target, data)
+        copy = observe(target)[1]
+        assert original['sha256'] == copy['sha256'] and original['path_raw9'][1] != copy['path_raw9'][1]
+        pairs.append(dict(original=original, copy=copy))
+for name in ('ROOT_REVIEWED_SOURCE_PREPARATION_CHOICES_004.json', 'ROOT_REVIEWED_SOURCE_PREPARATION_CHOICES_004.md'):
+    data, original = observe(work / name)
+    target = root / 'before' / name
+    write_once(target, data)
+    copy = observe(target)[1]
+    assert original['path_raw9'][1] != copy['path_raw9'][1]
+    pairs.append(dict(original=original, copy=copy))
+caller_map = json.loads(observe(design / 'SOURCE_AND_CALLER_METADATA_003.json')[0])
+assert caller_map['caller_count'] == len(caller_map['callers']) == 31
+for item in caller_map['callers']:
+    relative = item['relative_path']
+    data = observe(old / relative)[0]
+    assert hashlib.sha256(data).hexdigest() == item['sha256']
+    write_once(root / relative, data)
+test_relative = 'source/test_native_schema2_admission_002.py'
+write_once(root / test_relative, observe(old / test_relative)[0])
+common_relative = 'front/native_successor_front_common_013_001.py.template'
+common = root / common_relative
+original = observe(common)[0]
+original_tree = ast.parse(original)
+compact = (ast.unparse(original_tree) + '\n').encode('utf-8')
+assert ast.dump(ast.parse(compact), include_attributes=False) == ast.dump(original_tree, include_attributes=False)
+assert len(compact) == 184287
+write_once(root / 'before' / 'compaction-baseline' / common_relative, compact)
+common.write_bytes(compact)
+for pair in pairs:
+    assert observe(Path(pair['original']['path']))[1] == pair['original']
+    assert observe(Path(pair['copy']['path']))[1] == pair['copy']
+record = dict(schema_version=1, author='/root/bootstrap_stage', status='SOURCE_PREPARATION_ONLY',
+              original_copy_pairs=pairs, pair_count=len(pairs), preserved_native002_count=283,
+              preserved_design003_count=sum('design003' in Path(pair['copy']['path']).parts for pair in pairs),
+              active_caller_count=31, active_test_count=1, original_common_bytes=len(original),
+              original_common_sha256=hashlib.sha256(original).hexdigest(), compact_common_bytes=len(compact),
+              compact_common_sha256=hashlib.sha256(compact).hexdigest(), whole_AST_equal=True,
+              target_definitions_imports_tests_compilation_FFI_Git_native_executed=False)
+write_once(root / 'PRESERVATION_AND_COMPACTION_001.json', (json.dumps(record, sort_keys=True, indent=2) + '\n').encode('ascii'))
+print(json.dumps({key: record[key] for key in ('pair_count', 'preserved_native002_count', 'preserved_design003_count', 'compact_common_bytes', 'compact_common_sha256')}, sort_keys=True))

@@ -1,0 +1,183 @@
+
+import ast,datetime as dt,hashlib,json,math,os,pathlib,stat,re
+P=pathlib.Path(r"D:\Aenv\pro2");B=P/"resume-2026-10-01-30h-001";R=B/"raw-component-runtime-prep004"
+INPUTS={};BYTES={}
+FIXED_EXE_ROLES={str(P/"pro2/.venv/Scripts/python.exe"),str(P/"runtimes/git/mingw64/bin/git.exe"),str(P/"runtimes/week8-python313-frozen-001/python.exe")}
+RAW_FIELDS=("st_dev","st_ino","st_mode","st_size","st_mtime_ns","st_ctime_ns","st_nlink","st_file_attributes","st_birthtime_ns")
+def raw9(s):return [getattr(s,k) for k in RAW_FIELDS]
+def ancestors(p):
+    rows=[]
+    for d in [*reversed(p.parent.parents),p.parent]:
+        s=d.lstat()
+        assert stat.S_ISDIR(s.st_mode) and not stat.S_ISLNK(s.st_mode) and not s.st_file_attributes&1024,d
+        rows.append([str(d),s.st_dev,s.st_ino,s.st_mode,s.st_file_attributes])
+    return rows
+def read(p,pin=None,size=None,maximum=8388608):
+    p=pathlib.Path(p);chain=ancestors(p);pre=p.lstat()
+    assert stat.S_ISREG(pre.st_mode) and pre.st_nlink==1 and not pre.st_file_attributes&1024,p
+    assert type(maximum) is int and 0<maximum<=134217728 and 0<=pre.st_size<=maximum,p
+    with p.open("rb") as f:
+        first=os.fstat(f.fileno());assert 0<=first.st_size<=maximum
+        x=f.read(maximum+1);last=os.fstat(f.fileno())
+    post=p.lstat()
+    assert len(x)<=maximum and len(x)==pre.st_size and raw9(pre)==raw9(post) and raw9(first)==raw9(last),p
+    for key in ("st_dev","st_ino","st_size","st_mtime_ns","st_nlink","st_file_attributes","st_birthtime_ns"):
+        assert getattr(pre,key)==getattr(first,key),str(p)+key
+    if pre.st_mode!=first.st_mode:
+        assert os.name=="nt" and str(p) in FIXED_EXE_ROLES,p
+        assert stat.S_IFMT(pre.st_mode)==stat.S_IFMT(first.st_mode) and stat.S_IMODE(pre.st_mode)&~0o111==stat.S_IMODE(first.st_mode)&~0o111,p
+        assert stat.S_IMODE(pre.st_mode)&0o111==0o111 and stat.S_IMODE(first.st_mode)&0o111==0,p
+    assert ancestors(p)==chain,p
+    r={"path":str(p),"sha256":hashlib.sha256(x).hexdigest(),"size":len(x),"path_raw9":raw9(pre),"handle_raw9":raw9(first)}
+    if pin is not None:assert r["sha256"]==pin,p
+    if size is not None:assert len(x)==size,p
+    INPUTS[str(p)]=r;BYTES[str(p)]=x
+    return x
+def pairs(v):
+    d={}
+    for k,x in v:
+        assert k not in d,"duplicate JSON key"
+        d[k]=x
+    return d
+def finite(token):
+    value=float(token);assert math.isfinite(value),"nonfinite JSON number";return value
+def J(x):return json.loads(x,object_pairs_hook=pairs,parse_float=finite,parse_constant=lambda x:(_ for _ in ()).throw(ValueError(x)))
+def hex64(x):return type(x) is str and re.fullmatch("[0-9a-f]{64}",x) is not None
+def bindings_reverse(source,names,expected):
+    rows=source.splitlines(keepends=True);t=ast.parse(source.decode("utf-8"));edits=[];found={}
+    for n in t.body:
+        if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in names:
+            key=n.targets[0].id;assert key not in found and isinstance(n.value,ast.Constant) and hex64(n.value.value)
+            found[key]=n.value.value
+            assert expected[key]==n.value.value,key
+            start=sum(map(len,rows[:n.value.lineno-1]))+n.value.col_offset
+            end=sum(map(len,rows[:n.value.end_lineno-1]))+n.value.end_col_offset
+            edits.append((start,end))
+    assert set(found)==set(names) and len(edits)==len(names)
+    back=source
+    for start,end in sorted(edits,reverse=True):back=back[:start]+b"None"+back[end:]
+    return back,found,edits
+
+
+D=B/"consumer005-isolated-unit-harness-design001";S=B/"raw-consumer-binding-integration-prep005";G=B/"consumer-guard-test-runtime005";Q=B/"consumer005-complete-static-audit001"
+assert not D.exists();D.mkdir()
+def sha(x):return hashlib.sha256(x).hexdigest()
+def create(name,x):
+ p=D/name;p.parent.mkdir(parents=True,exist_ok=True)
+ with p.open("xb")as f:f.write(x)
+ assert read(p,sha(x),len(x),maximum=33554432)==x
+def record(name,v):create(name,(json.dumps(v,sort_keys=True,indent=2,ensure_ascii=True,allow_nan=False)+"\n").encode("ascii"))
+selection=[]
+for name in ("STAGED_MANIFEST_005.json","AUTHOR_POST_FREEZE_STABILITY_005.json","SOURCE_GUARD_TEST_BINDINGS_005.json","test_raw_consumer_guards_005.TEMPLATE.py","DERIVED_SOURCE_AND_FIXTURE_CLOSURE_MAP_005.json","AUTHOR_SOURCE_AND_TEST_AST_DELTA_005.json","CAUSAL_CASE_MAP_005.json","HANDOFF_005.md","inputs/raw004-source.bytes","inputs/raw004-peer.json","inputs/owner.json","inputs/source-choice007.json","inputs/source-choice007.md"):
+ selection.append((S/name,"source005/"+name))
+table=J(read(S/"SOURCE_GUARD_TEST_BINDINGS_005.json","d47448acb23abc7fb623a3e2b128926809ff6350767ef5d0bec2eb588ebd1233"))
+for row in table["consumers"].values():selection.append((S/row["path"],"source005/"+row["path"]))
+for name in ("INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.json","INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.md","COMPLETE_SOURCE_AUDIT_MANIFEST_001.json"):
+ selection.append((Q/name,"source005-peer/"+name))
+for name in ("INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_005.json","GUARD_RUNTIME_PROFILE_005.json","BINDING_AND_EXECUTION_CONTRACT_005.json","ROOT_FIRST_LAUNCH_005.TEMPLATE.ps1","consumer-guard-child-005.TEMPLATE.py","run-consumer-guard-unit005.TEMPLATE.py","observe-whole-runtime-005.TEMPLATE.py","EXTERNAL_CANONICAL_TIMESTAMP_ROLE_CONTRACT_005.json","TYPED_SOURCE_PEER12_AND_LATE14_CONTRACT_005.json"):
+ selection.append((G/name,"legacyGG5/"+name))
+selection.append((P/"runtimes/week8-python313-frozen-001/Lib/unittest/case.py","stdlib-reference/unittest-case.bytes"))
+pair_rows=[]
+for original,name in selection:
+ x=read(original,maximum=33554432);a=dict(INPUTS[str(original)]);copy=D/"inputs"/name;create("inputs/"+name,x)
+ pair_rows.append({"original":a,"copy":dict(INPUTS[str(copy)])})
+snapshots=[];times=[]
+for _ in range(3):
+ obs=[]
+ for pair in pair_rows:
+  for side in ("original","copy"):
+   v=pair[side];read(v["path"],v["sha256"],v["size"],maximum=33554432);assert INPUTS[v["path"]]==v
+  obs.append(pair)
+ snapshots.append(obs);times.append(dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"))
+assert snapshots[0]==snapshots[1]==snapshots[2]
+test=read(S/"test_raw_consumer_guards_005.TEMPLATE.py","e5c17197561357dd9826a76f1d8f18a7a02306fe8235b455af0aeb32a5bcf7ca",48580);tree=ast.parse(test)
+classes=[]
+for c in tree.body:
+ if isinstance(c,ast.ClassDef):
+  names=[n.name for n in c.body if isinstance(n,ast.FunctionDef)and n.name.startswith("test_")]
+  if names:classes.append({"name":c.name,"line":c.lineno,"bases":[ast.unparse(x)for x in c.bases],"direct_method_count":len(names),"direct_method_names":names,"class_keywords":[ast.unparse(x)for x in c.keywords]})
+assert len(classes)==2 and [r["direct_method_count"]for r in classes]==[19,5]and all(r["bases"]==["unittest.TestCase"]for r in classes)
+class_names={r["name"]for r in classes}
+rebindings=[ast.unparse(n)for n in tree.body if isinstance(n,(ast.Assign,ast.AnnAssign))and any(isinstance(x,ast.Name)and x.id in class_names for x in (n.targets if isinstance(n,ast.Assign)else[n.target]))]
+assert not rebindings
+precision={"schema_version":1,"record_type":"AST_discovery_precision_not_collection","author":"/root/candidate_review","created_at_utc":times[-1],"source005_test_sha256":sha(test),"source005_test_size":len(test),"source005_manifest_sha256":sha(read(S/"STAGED_MANIFEST_005.json")),"classes":classes,"module_level_class_rebindings":rebindings,"new_class_inherits_old19":False,"prepared_direct_methods_AST":24,"potential_distinct_direct_test_IDs":24,"potential43_due_to_inheritance":False,"actual_collection_IDs":None,"actual_collection_count":None,"actual_results":None,"source005_or_handoff_amended":False,"source_binding_five_hashes_reobserved":table["consumers"],"limitation":"AST shows two unrelated direct unittest.TestCase subclasses,19+5. Future fresh loader must independently confirm both class objects, complete name lists and ordered IDs. A prepared AST count is never an actual collection receipt."}
+record("AST_DISCOVERY_PRECISION_001.json",precision)
+create("AST_DISCOVERY_PRECISION_001.md",("# Consumer005 discovery precision\n\nBoth classes directly inherit unittest.TestCase:19 and5 directly defined test methods. The new class does not inherit the old19. No module-level rebind appears. Therefore24 potential directly defined IDs, not43; actual collection remains None.\n\nThis separate AST/byte clarification changes no frozen source, manifest or handoff. A future fresh harness must select both classes, compare actual loaded names/IDs with the pinned AST projection and record the actual collection independently.\n").encode())
+peer=J(read(Q/"INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.json","5a283496929bffed9b022bff382719cbb918df94f5a5224b9c8022e237e9d096",2553985))
+assert peer["reviewer"]=="/root/native_frame_explorer"and peer["actual_collection"]is None and peer["actual_results"]is None and peer["operational_authority_granted"]is False
+oldpeer=J(read(G/"INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_005.json","aa73d51d0e0e5ce604dc851d3cefef42dd5f901bd4fc759b581d29a64b9aac6a",2521))
+assert oldpeer["verdict"]=="PASS_STATIC_PREPARATION_ONLY"
+child=read(G/"consumer-guard-child-005.TEMPLATE.py","054d63971850437a7ef42bc9e84734200dd1a87d29b3ba10d10e2d5d1cbe68b6",24738)
+ct=ast.parse(child)
+literal_cap=next(ast.literal_eval(n.value)for n in ct.body if isinstance(n,ast.Assign)and any(isinstance(v,ast.Name)and v.id=="MAX_RECEIPT"for v in n.targets));assert literal_cap==262144
+policyfn=next(n for n in tree.body if isinstance(n,ast.FunctionDef)and n.name=="schema3_policy_changes");cases={}
+for branch in policyfn.body:
+ if not isinstance(branch,ast.If)or not isinstance(branch.test,ast.Compare):continue
+ v=ast.literal_eval(branch.test.comparators[0]);names=[v]if isinstance(branch.test.ops[0],ast.Eq)else list(v)
+ ret=next(n for n in branch.body if isinstance(n,ast.Return));labels=[ast.literal_eval(n.elts[0])for n in ret.value.elts]
+ for name in names:cases[name]=labels
+assert len(cases)==11 and sum(map(len,cases.values()))==38
+roles=("controller","worker","entrypoint","fit_child","inspector")
+bound_cases=[
+ ("test_all_sixteen_new_policies_refuse_before_first_acceptance_and_reuse",{n:[None]for n in table["new_policy_names"]},False),
+ ("test_all_eleven_schema3_policy_values_refuse_typed_changes_cold_and_reuse",cases,True),
+ ("test_all_four_schema3_helpers_code_globals_defaults_refuse_cold_and_reuse",{n:["code","defaults","kwdefaults","annotations","replacement","foreign_globals"]for n in table["schema3_helper_names"]},True)]
+witnesses={}
+for namespace,label in (("","EMPTY_NAMESPACE_STRICT_LOWER_BOUND"),("isolated_consumer_guard_unit006","ILLUSTRATIVE_UNSELECTED_NAMESPACE")):
+ events=[];families=[]
+ for method,case_map,with_damage in bound_cases:
+  parent=namespace+".RawConsumerGuardRegressions."+method;family=[]
+  for role in roles:
+   for reuse in (False,True):
+    for name,damages in case_map.items():
+     for damage in damages:
+      params={"role":role,"reuse":reuse,"name":name}
+      if with_damage:params["damage"]=damage
+      identity=parent+" ("+", ".join(k+"="+repr(v)for k,v in params.items())+")"
+      family.append({"event":"subtest","parent_id":parent,"id":identity,"status":"passed"})
+  events.extend(family);families.append({"method":method,"healthy_completion_subset_rows":len(family),"compact_row_bytes_no_list_punctuation":sum(len(json.dumps(e,sort_keys=True,separators=(",",":")).encode())for e in family)})
+ x=(json.dumps(events,sort_keys=True,separators=(",",":"),ensure_ascii=True)+"\n").encode()
+ create(label+".bytes",x)
+ witnesses[label]={"namespace":namespace,"family_subset":families,"subset_rows_arithmetic_only":len(events),"canonical_subset_bytes":len(x),"canonical_subset_sha256":sha(x),"old_receipt_cap":literal_cap,"overrun":len(x)-literal_cap,"actual_runtime_evidence":False,"all_other21_methods_and_method_events_source_snapshots_result_envelope_omitted":True}
+assert witnesses["EMPTY_NAMESPACE_STRICT_LOWER_BOUND"]["canonical_subset_bytes"]==276146 and witnesses["EMPTY_NAMESPACE_STRICT_LOWER_BOUND"]["overrun"]==14002
+record("EVENT_RECEIPT_CAP_LOWER_BOUND_001.json",{"schema_version":1,"record_type":"unsealed_data_arithmetic_not_runtime_or_authority","author":"/root/candidate_review","created_at_utc":times[-1],"source005_test_sha256":sha(test),"old_child_sha256":sha(child),"pinned_stdlib_SubTest_id_reference":next(v for v in pair_rows if v["copy"]["path"].endswith("unittest-case.bytes")),"source_of_parameter_format":"Pinned unittest.case _SubTest.id/_subDescription; comma-space kwargs repr order. No TestCase/loader/function called.","cases38_from_AST_return_labels":cases,"models":witnesses,"conclusion":"Unchanged old event-in-one-result layout cannot represent a complete healthy source005 run within262144 even with empty namespace; this is a future harness transport issue, not an observed test failure or consumer source defect.","counts_are_not_actual_collection_or_subtests":True})
+test_subtests=[{"line":n.lineno,"kwargs":{k.arg:ast.unparse(k.value)for k in n.keywords}}for n in ast.walk(tree)if isinstance(n,ast.Call)and isinstance(n.func,ast.Attribute)and n.func.attr=="subTest"]
+design={"schema_version":1,"record_type":"consumer005_isolated_unit_harness_source_design_only","author":"/root/candidate_review","created_at_utc":times[-1],"status":"DESIGN_ONLY_REQUIRES_REVIEWED_READER_AND_EVENT_TRANSPORT_CHOICES","approved_for_harness_source_implementation":False,"binding_or_execution_authorized":False,"source005":{"manifest_sha256":sha(read(S/"STAGED_MANIFEST_005.json")),"test_sha256":sha(test),"binding_sha256":sha(read(S/"SOURCE_GUARD_TEST_BINDINGS_005.json")),"source_bindings":table["consumers"],"raw_sha256":table["raw_sha256"],"independent_full_peer":{"path":str(Q/"INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.json"),"sha256":sha(read(Q/"INDEPENDENT_CONSUMER005_COMPLETE_SOURCE_REVIEW_001.json",maximum=33554432)),"size":2553985,"keys":len(peer),"verdict":peer["verdict"],"reviewer":peer["reviewer"],"scope":"STATIC complete source/causal test preparation only; Path and runtime limits preserved"}},"legacyGG5":{"peer_sha256":sha(read(G/"INDEPENDENT_GUARD_RUNTIME_STATIC_REVIEW_005.json")),"peer_scope":oldpeer["verdict"],"template_child_sha256":sha(child),"algorithm_reuse_is_not_runtime_or_new_harness_approval":True},"discovery":{"classes":classes,"expected_AST_potential_methods":24,"actual_collection":None,"required_future_delta":"Replace old exactly-one-class selector with closed pinned two-class table. Validate each actual class object/base/name and each fresh loaded sorted name list; construct full ordered class.method IDs and compare with pinned AST tuples; reject duplicate/extra/missing IDs. Record actual collection before tests, never infer counts from24AST or inherit43.","future_namespace":None},"import_and_IO_policy":{"preload":"Ordinary stdlib imports required by pinned test/Raw4/selected helpers before audit hook; derive finite required import roots from AST. Retain isolated no-site no-bytecode safe UTF8/noopt flags and one-thread environment.","future_import_guard":"After preload, reject audited imports of bu/project/torch/numpy/scipy/pytest and any unreviewed not-preloaded module; retain explicit source-hash-gated copied Raw4/selected-code execution only. Reobserve import/path/private-module state and restore copied private modules, never import full consumers.","network_FFI_process":"Deny subprocess/ctypes/socket/OS spawn/exec/system audit events throughout unit phase.","filesystem":"Only copied fixture reads and owned scratch writes; no operational/current record access.6 TemporaryDirectory sites exist; tempfile cleanup needs scoped owned-scratch directory traversal, so a blanket listdir/scandir ban would mask healthy tests. Derive each allowed scratch cleanup read/mutation path, reject outside-scratch inventories; no OS sandbox/atomic path lock guarantee.","all24_method_ASTs_and_scientific_scope":"Byte-exact test5/Source5/Raw4 copies; healthy actual module controls and all causal mutations/restoration must run; no outcomes, fits, native, Git or live code. Scientific/constants/epochs/twins preserved.","actual_preload_or_denial_probe_results":None},"known_incompatible_legacy_interfaces":[{"issue":"old child permits exactly one class","required":"two-class declared and actual fresh collection, no discovery guess"},{"issue":"old source peer exact12/general2MiB cannot consume full new peer38/2553985B","required":"Different reviewed compact source acceptance capsule referencing exact full review, OR separately reviewed closed38-key exact-role read cap for this one receipt; no fabricated compatible record/no general cap widening. Choice remainsNone."},{"issue":"old inline event result262144 proven too small","required":"bounded complete event transport below; no blanket cap growth/no dropped subtests"}],"event_transport_proposal":{"approved":False,"retained_max_events":4096,"retained_result_receipt_cap":262144,"retained_stdout_stderr_cap_each":131072,"retained_transcript_cap":262144,"proposed_event_line_cap_includingLF":1024,"proposed_createonce_chunk_cap":131072,"proposed_max_chunks":32,"proposed_finite_chunk_names":"events-0001.jsonl through events-0032.jsonl under fresh owned scratch; all absent before claim; unknown/missing/extra/reordered files refuse","packing_proof":"Rotate only when next complete <=1024-byte record would overflow131072 or finalEOF; each nonlast closed chunk contains>=128rows. At most4096 rows therefore<=32chunks; no splitting/dropping records or premature arbitrary flush. Aggregate<=4194304 but each read/write remains<=131072 and result<=262144.","actual_legal_row_bound":None,"row_bound_requirement":"Derive complete passing-event grammar from pinned24method names/classes/module namespace and all17subTest sites/role/reuse/name/damage/bound/case domains. Require ASCII safe namespace finitewidth, byte cap before append. Proposed1024 must be proved for healthy domains before implementation; unforeseen rows refuse.","subtest_AST_sites":test_subtests,"integrity":"Ordered child-generated fullstream digest plus each chunk plain-file path/SHA/size/row-count/ordinal, createonce manifest; bounded duplicate/finite line parser. Child final result pins event manifest and aggregate counts; externally captured child summary pins result/collection/transcript/event manifest. Parent verifies all chunk bytes/order/strict event schemas and collection-to-start/success/failure/subtest completeness. No actual hash derived from a mutable record becomes initial external trust.","result_schema":"Explicit reviewed replacement of full inline events list by finite chunk manifest pointer/count/digests and truthful counts. Keep unchanged fixed authority protocols20static/22bound/22ACK/14late/15observer only if full dependency refresh proves their fields still bind all new source/profile/child bytes. Every changed result/collection/projection shape needs separate review; no implicit compatibility.","actual_event_rows_or_chunk_results":None},"source_peer_reader_choice":None,"closed_protocol_and_hash_order":{"fixed_protocol_keysets":[20,22,22,14,15],"source_peer_old12_not_reused_blindly":True,"order":["accepted Source5+actual sourcepeer reader contract+copied input projection","immutable new child/observer/RootPS templates","profile","driver template","different harnessstatic20","actual driver/observer binding with reverse proof","fresh reviewed current742/HEAD/index/config and runtime FOURFILES plus TWOtrees metadata","reviewed wholebefore/resource/coordination/owner","actual ROOTACK22","different actualbound22","bound ROOTPS","different actual late14","external ROOTPS selfSHA+lateSHA first-entry","actual collection/unit/chunks/terminal","separate wholeafter and independent reconciliation"],"canonical_role_obligations":"Python produced metadata six fractional UTC digits/+00:00; supporting ROOTPS seven digits/+00:00; legacy owner spelling byte-pinned separately. Inherited awareUTC parsers do not alone enforce producer shape; external actual-record reviewer required."},"resources_time_cleanup_limits":{"collection_seconds":60,"tests_seconds":300,"direct_cleanup_reserve_seconds":60,"driver_nominal_seconds":420,"root_nominal_seconds":450,"minimum_fresh_RAM_bytes":1073741824,"minimum_fresh_D_bytes":10737418240,"owner_end_utc":"2026-10-02T22:36:15Z","owner_sha256":table.get("owner_sha256","3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff"),"maximum_ACK_hours":5,"whole_before_expiry_check":"Entry-only observer authorization/expiry does not supervise later phases; externally retained ROOT phase supervision and actual clock acceptance required.","candid_limits":"Cooperative clocks/waits/IO may stall; UTC wall-clock/+1s reaping inherited. Direct owned Process handles only; no Job/OS memory or physical deadline guarantee, no descendant/site/atomic file closure. Resource snapshots are not leases/quiet/native authority."},"future_actual":{"harness_source":None,"harness_static_review":None,"source_peer_compact_capsule_or_new_role_reader":None,"actual_bound_driver":None,"actual_bound_observer":None,"actual_bound_review":None,"current742_context":None,"runtime_fourfiles":None,"whole_two_trees_before":None,"whole_two_trees_after":None,"resource_snapshot":None,"held_coordination_ack":None,"ROOT_ACK":None,"ROOTPS":None,"late_review":None,"collection":None,"tests":None,"subtests":None,"event_chunks":None,"terminal":None,"reconciliation":None},"no_operational_source_or_code_authority":True,"live_frozen_science_records_or_original_artifacts_modified":False,"target_compile_or_definitions_import_functions_collection_tests_Git_FFI_process_native_executed":False}
+record("HARNESS_SOURCE_DESIGN_001.json",design)
+md=[
+ "# Consumer005 isolated harness design","",
+ "DESIGN ONLY. No harness source, bindings, ACK or runtime was created. Consumer005 has a separate complete different-author STATIC source/causal-test peer; all24 methods remain UNRUN.",
+ "",
+ "Both test classes directly subclass unittest.TestCase:19+5 distinct direct methods, no inherited43. The old runner hardcodes one class. A new runner must select both pinned classes, compare actual fresh loader names and ordered IDs against the AST table, then persist actual collection.",
+ "",
+ "Old GG5 peer aa73 is STATIC preparation only. It is a factual algorithm dependency, never approval of the new harness/runtime. New full Source005 peer is2553985bytes/38keys; old source-peer12/2MiB reader is incompatible. A different reviewed compact receipt or exact role-only closed parser/cap is required. This design creates neither and widens no cap.",
+ "",
+ "Old inline subtest events cannot fit: three source-fixed families alone emit780 hypothetical passing events. Even an empty namespace strict underestimate gives276146bytes,14002over262144, omitting21other methods and all envelope/source metadata. This is data arithmetic, not collection, runtime failure or a production defect.",
+ "",
+ "Proposed route: retain all full events in finite createonce JSONL chunks<=131072bytes, rows<=1024bytes, at most4096rows/32chunks; bounded strict readers verify every line and chunk order/SHA/size/count/fullstream digest. The result stays<=262144 and references the immutable chunk manifest. Ordinary stdout/stderr and transcript caps remain.1024 healthy-row grammar is still pending finite derivation/review; no implementation is authorized.",
+ "",
+ "Use byte-exact Source005/test/Raw4 copies only. Preload required stdlib before denying unknown/project/thirdparty imports and process/native/network events. Six TemporaryDirectory sites require owned-scratch cleanup traversal; blanket inventory denial would mask positives. Permit only reviewed scratch cleanup and reject outside inventories. No full consumer, operational record, fit or live code executes.",
+ "",
+ "Refresh every dependent source/profile/child/driver/observer/ROOTPS/protocol pin programmatically. Keep closed20/22/22/14/15 contracts only when their actual new shapes are explicitly reviewed; no old peer-schema union or field coercion. Break PS/late hash cycle with independent external CLI self/late pins as before. Real Python six-digit UTC and PS seven-digit UTC producer-role review stays external and explicit.",
+ "",
+ "Whole metadata means TWO inventory trees plus FOUR independent runtime files, not allsite or fourtrees. Fresh current742/HEAD/index/config guards are opaque preservation only. One-thread60/300/60/420 and Root450nominal budgets,1GiB RAM/10GiB D, owner ending22:36:15 and held coordination remain. Direct handles/cooperative timers prove no physical deadline, Job, descendant/site closure or hard filesystem sandbox; ROOT retained phase supervision and actual clock checks remain mandatory.",
+ "",
+ "All actual source preparation/binding/current context/whole/resource/coordination/ACK/late/collection/results/terminal/reconciliation slots remain None. Source-only design requires explicit choices and different harness peer before any implementation/entry. Frozen Consumer005 and earlier GG5 records were not amended.",
+ ""]
+create("HARNESS_SOURCE_DESIGN_001.md","\n".join(md).encode())
+record("SELECTED_INPUT_PRESERVATION_001.json",{"schema_version":1,"author":"/root/candidate_review","created_at_utc":times[-1],"scope":"selected source005/peer/GG5/stdlib metadata only; not whole source package re-review","pairs":pair_rows,"observations":3,"observation_times":times,"all_byte_and_sameAPI_raw9_stable":True,"target_execution":False})
+post=[]
+for pair in pair_rows:
+ for side in ("original","copy"):
+  r=pair[side];read(r["path"],r["sha256"],r["size"],maximum=33554432);assert INPUTS[r["path"]]==r
+ post.append(pair)
+assert post==pair_rows
+paths=sorted([p for p in D.rglob("*")if p.is_file()],key=lambda p:p.relative_to(D).as_posix())
+payload={}
+for p in paths:read(p,maximum=33554432);payload[p.relative_to(D).as_posix()]=dict(INPUTS[str(p)])
+record("DESIGN_MANIFEST_001.json",{"schema_version":1,"author":"/root/candidate_review","created_at_utc":dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"),"status":"FROZEN_DESIGN_ONLY_NOT_SOURCE_OR_EXECUTION_AUTHORITY","payload_files":len(payload),"creation_including_manifest":len(payload)+1,"selected_pairs":len(pair_rows),"observations":3,"post_original_copy_stability":True,"files":payload,"actual_collection":None,"actual_tests":None,"source_implementation":None,"approved_for_implementation":False,"target_execution":False})
+manifest=read(D/"DESIGN_MANIFEST_001.json")
+for p in paths:read(p,payload[p.relative_to(D).as_posix()]["sha256"],payload[p.relative_to(D).as_posix()]["size"],maximum=33554432);assert INPUTS[str(p)]==payload[p.relative_to(D).as_posix()]
+record("DESIGN_POST_FREEZE_STABILITY_001.json",{"schema_version":1,"author":"/root/candidate_review","created_at_utc":dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00","Z"),"manifest_sha256":sha(manifest),"payload_files":len(payload),"actual_files_including_manifest_and_this_receipt":len(payload)+2,"all_declared_payload_and_selected_original_copy_pairs_stable":True,"target_execution":False})
+print(json.dumps({"selected_pairs":len(pair_rows),"payload":len(payload),"actual":len(payload)+2,"manifest_sha256":sha(manifest),"discovery_sha256":sha(read(D/"AST_DISCOVERY_PRECISION_001.json")),"design_sha256":sha(read(D/"HARNESS_SOURCE_DESIGN_001.json")),"design_md_sha256":sha(read(D/"HARNESS_SOURCE_DESIGN_001.md")),"lower_bound_sha256":sha(read(D/"EVENT_RECEIPT_CAP_LOWER_BOUND_001.json")),"post_sha256":sha(read(D/"DESIGN_POST_FREEZE_STABILITY_001.json")),"actual_execution":False}))
+

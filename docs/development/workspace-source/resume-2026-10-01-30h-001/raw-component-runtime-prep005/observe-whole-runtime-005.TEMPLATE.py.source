@@ -1,0 +1,188 @@
+"""UNBOUND metadata-only whole runtime observer. No project/native/target execution."""
+import ast,hashlib,json,os,stat,struct,sys
+from datetime import datetime,timezone
+from pathlib import Path
+HARNESS_STATIC_REVIEW_SHA256 = None
+if HARNESS_STATIC_REVIEW_SHA256 is None:
+    raise RuntimeError('UNBOUND RAW004 WHOLE OBSERVER; no observation output')
+PREP = Path(r'D:\Aenv\pro2\resume-2026-10-01-30h-001\raw-component-runtime-prep005')
+OUT = PREP
+OWNER_SHA256 = '3ea2fb0aa19fb4526c93fa8429d140b415a0afe118f62fe1691067d7945b2eff'
+FIELDS = ['st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns']
+EXPECTED = {'base': {'files': 5368, 'directories': 504, 'bytes': 155022742, 'sha256': '0a5aff918e4a46fae2427a593261f8e3640ba439ba4ffebf5081b15eb7df6760'}, 'scripts': {'files': 22, 'directories': 0, 'bytes': 2145329, 'sha256': 'baa95b3f7e3e50a9b388fca6c4fd238fb55fc2e62f4cdc07c1b7c57caa9a54ad'}}
+ROOTS = {'base': 'D:\\Aenv\\pro2\\runtimes\\week8-python313-frozen-001', 'scripts': 'D:\\Aenv\\pro2\\pro2\\.venv\\Scripts'}
+def utc():
+    return datetime.now(timezone.utc).isoformat()
+
+def require(value, message):
+    if not value:
+        raise RuntimeError(message)
+
+def identity(info):
+    return [getattr(info, name) for name in FIELDS]
+
+def common(info):
+    return tuple(getattr(info, name) for name in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_nlink", "st_file_attributes", "st_birthtime_ns"))
+
+def plain(info, directory=False):
+    require(not info.st_file_attributes & 0x400, "reparse entry")
+    require(stat.S_ISDIR(info.st_mode) if directory else stat.S_ISREG(info.st_mode), "unexpected entry type")
+    if not directory:
+        require(info.st_nlink == 1, "hardlinked file")
+
+def ancestors(path):
+    for parent in reversed(path.parents):
+        plain(parent.lstat(), True)
+
+def read(path, collect=False):
+    ancestors(path)
+    before = path.lstat()
+    plain(before)
+    digest = hashlib.sha256()
+    parts = []
+    total = 0
+    require(not collect or before.st_size <= 4194304, "pre-read metadata byte ceiling")
+    with path.open("rb") as stream:
+        opened = os.fstat(stream.fileno())
+        plain(opened)
+        require(common(before) == common(opened), "path/handle identity mismatch")
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+            total += len(chunk)
+            if collect:
+                parts.append(chunk)
+        closed = os.fstat(stream.fileno())
+        require(identity(opened) == identity(closed), "handle changed while read")
+    after = path.lstat()
+    require(identity(before) == identity(after), "path changed while read")
+    require(common(after) == common(closed), "path/handle final identity mismatch")
+    require(total == before.st_size, "byte count mismatch")
+    return {"path": str(path), "sha256": digest.hexdigest(), "size": total,
+            "path_identity": identity(before), "handle_identity": identity(opened)}, b"".join(parts) if collect else None
+
+def write_bytes(name, value):
+    path = OUT / name
+    require(len(value) <= 4194304, "pre-write metadata byte ceiling")
+    with path.open("xb") as stream:
+        stream.write(value)
+    observed, copied = read(path, True)
+    require(copied == value, "written bytes changed")
+    return observed
+
+def write_json(name, value):
+    return write_bytes(name, (json.dumps(value, sort_keys=True, ensure_ascii=True, indent=2, allow_nan=False) + "\n").encode("ascii"))
+
+def ordinal(value):
+    encoded = value.encode("utf-16-le", "surrogatepass")
+    return struct.unpack("<" + "H" * (len(encoded) // 2), encoded)
+
+def tree(root):
+    started = utc()
+    ancestors(root)
+    root_before = root.lstat()
+    plain(root_before, True)
+    rows = []
+    directory_metadata = {}
+    def walk(folder):
+        before = folder.lstat()
+        plain(before, True)
+        with os.scandir(folder) as entries:
+            names = [entry.name for entry in entries]
+        require(len(names) == len(set(names)), "duplicate names")
+        for name in names:
+            path = folder / name
+            relative = path.relative_to(root).as_posix()
+            require(not any(c in relative for c in ("\t", "\n", "\r")), "unserializable path")
+            info = path.lstat()
+            if stat.S_ISDIR(info.st_mode):
+                plain(info, True)
+                rows.append({"kind": "directory", "path": relative, "path_identity": identity(info)})
+                walk(path)
+            else:
+                observed, _ = read(path)
+                rows.append({"kind": "file", "path": relative, "size": observed["size"],
+                             "sha256": observed["sha256"], "path_identity": observed["path_identity"],
+                             "handle_identity": observed["handle_identity"]})
+        require(identity(before) == identity(folder.lstat()), "directory changed during traversal")
+        directory_metadata[str(folder)] = identity(before)
+    walk(root)
+    rows.sort(key=lambda row: ordinal(row["path"]))
+    digest = hashlib.sha256()
+    files = directories = total = 0
+    for row in rows:
+        if row["kind"] == "directory":
+            directories += 1
+            line = f"D\t{row['path']}\n"
+        else:
+            files += 1
+            total += row["size"]
+            line = f"F\t{row['path']}\t{row['size']}\t{row['sha256']}\n"
+        digest.update(line.encode("utf-8"))
+        require(row["path_identity"] == identity((root / row["path"]).lstat()), "entry changed after capture")
+    require(identity(root_before) == identity(root.lstat()), "root changed during traversal")
+    return {"root": str(root), "started_at_utc": started, "finished_at_utc": utc(),
+            "identity": {"files": files, "directories": directories, "bytes": total, "sha256": digest.hexdigest()},
+            "root_identity": identity(root_before), "rows": rows,
+            "directory_metadata": directory_metadata,
+            "non_ascii_paths": [row["path"] for row in rows if not row["path"].isascii()]}
+
+
+def strict_json(value):
+    def duplicates(rows):
+        result={}
+        for key, item in rows:
+            require(key not in result, 'duplicate JSON key');result[key]=item
+        return result
+    def finite(token):
+        import math
+        number=float(token);require(math.isfinite(number),'nonfinite JSON');return number
+    return json.loads(value,object_pairs_hook=duplicates,parse_float=finite,parse_constant=lambda token: (_ for _ in ()).throw(ValueError('nonfinite JSON')))
+def projection(source):
+    text=source.decode('utf-8');lines=text.splitlines(keepends=True)
+    fields=[n.value for n in ast.parse(text).body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id=='HARNESS_STATIC_REVIEW_SHA256']
+    require(len(fields)==1,'one observer binding literal')
+    node=fields[0];start=sum(len(x) for x in lines[:node.lineno-1])+node.col_offset;end=sum(len(x) for x in lines[:node.end_lineno-1])+node.end_col_offset
+    return hashlib.sha256((text[:start]+'None'+text[end:]).encode('utf-8')).hexdigest()
+def main():
+    global OUT
+    require(sys.flags.isolated==sys.flags.no_site==sys.flags.dont_write_bytecode==1 and sys.flags.utf8_mode==1 and sys.flags.optimize==0,'metadata flags')
+    require(len(sys.argv)==4 and sys.argv[2] in ('before','after'),'expected CLI selfSHA phase beforeSHA-or-dash')
+    selfsha,phase,before_sha=sys.argv[1:];require(len(selfsha)==64 and all(c in '0123456789abcdef' for c in selfsha),'external self pin')
+    selfpath=Path(__file__).absolute();require(selfpath==PREP/'observe-whole-runtime-005.BOUND.py','bound observer path')
+    own,ownbytes=read(selfpath,True);require(own['sha256']==selfsha,'externally reviewed observer bytes')
+    _,reviewbytes=read(PREP/'INDEPENDENT_RAW_HARNESS_STATIC_REVIEW_005.json',True);require(hashlib.sha256(reviewbytes).hexdigest()==HARNESS_STATIC_REVIEW_SHA256,'static review bytes')
+    review=strict_json(reviewbytes);require(review['verdict']=='PASS_STATIC_PREPARATION_ONLY' and review['whole_observer_template_sha256']==projection(ownbytes),'observer static projection')
+    identifier=review.get('reviewer');identifier=identifier.get('canonical_identity') if type(identifier) is dict else identifier
+    allowed={'/root/keepawake_stage','keepawake_stage','/root/candidate_review','candidate_review','/root/bootstrap_stage','bootstrap_stage','/root/window_docs','window_docs','/root/gate_evidence','gate_evidence'}
+    require(type(identifier) is str and identifier in allowed,'independent reviewer identity')
+    _,ownerbytes=read(PREP/'inputs/OWNER_WORK_WINDOW_30H_20261001_001.json',True);require(hashlib.sha256(ownerbytes).hexdigest()==OWNER_SHA256,'owner pin')
+    owner=strict_json(ownerbytes);now=datetime.now(timezone.utc);require(datetime.fromisoformat(owner['work_start_utc'].replace('Z','+00:00'))<=now<datetime.fromisoformat(owner['work_end_utc'].replace('Z','+00:00')),'owner interval')
+    if phase=='before':require(before_sha=='-','before has no future self-cycle')
+    else:require(len(before_sha)==64 and all(c in '0123456789abcdef' for c in before_sha),'external before pin')
+    OUT=PREP/('whole-runtime-'+phase);ancestors(OUT)
+    try:OUT.lstat()
+    except FileNotFoundError:pass
+    else:raise RuntimeError('whole observer one-use output exists')
+    OUT.mkdir();started=utc();write_json('intent.json',{'phase':phase,'started_utc':started,'self_sha256':selfsha,'scope':'OPAQUE_RUNTIME_BYTES_METADATA_ONLY','target_execution':False})
+    try:
+        records=[];trees={};before=None
+        if phase=='after':
+            _,b=read(PREP/'whole-runtime-before/result.json',True);require(hashlib.sha256(b).hexdigest()==before_sha,'actual before result pin');before=strict_json(b)
+            require(before['phase']=='before' and before['verdict']=='MATCHES_PINNED_RUNTIME_TWICE' and before['observer_sha256']==selfsha and before['static_review_sha256']==HARNESS_STATIC_REVIEW_SHA256,'before observer identity')
+        for name in ('base','scripts'):
+            first=tree(Path(ROOTS[name]));second=tree(Path(ROOTS[name]))
+            require(first['identity']==second['identity']==EXPECTED[name] and first['rows']==second['rows'] and first['directory_metadata']==second['directory_metadata'] and first['root_identity']==second['root_identity'],'whole tree mismatch or unstable')
+            if before is not None:
+                row=next(r for r in before['observation_files'] if Path(r['path']).name==name+'-first.json')
+                oldpath=Path(row['path']);require(oldpath==PREP/'whole-runtime-before'/(name+'-first.json') and type(row['size']) is int and 0<row['size']<=4194304 and oldpath.lstat().st_size==row['size'],'before observation fixed path/cap')
+                _,b=read(oldpath,True);require(hashlib.sha256(b).hexdigest()==row['sha256'],'before row pin');old=strict_json(b)
+                require(old['identity']==first['identity'] and old['rows']==first['rows'] and old['directory_metadata']==first['directory_metadata'] and old['root_identity']==first['root_identity'],'runtime bytes or metadata drift after unit')
+            for suffix,value in [('first',first),('second',second)]:
+                info=write_json(name+'-'+suffix+'.json',value);require(info['size']<=4194304,'whole observation finite cap');records.append({k:info[k] for k in ('path','sha256','size')})
+            trees[name]=first['identity']
+        result={'schema_version':1,'phase':phase,'verdict':'MATCHES_PINNED_RUNTIME_TWICE' if phase=='before' else 'MATCHES_BEFORE_BYTES_AND_METADATA_TWICE','started_utc':started,'finished_utc':utc(),'observer_sha256':selfsha,'static_review_sha256':HARNESS_STATIC_REVIEW_SHA256,'owner_sha256':OWNER_SHA256,'trees':trees,'observation_files':records,'before_record_sha256':None if phase=='before' else before_sha,'runtime_mutation':False,'target_execution':False}
+        actual=write_json('result.json',result);print(json.dumps({'result':actual,'limits':'Sequential file metadata observation only; no retained native lock, loaded closure, OS sandbox or process-tree proof.'}),flush=True)
+    except BaseException as error:
+        write_json('failed.json',{'phase':phase,'finished_utc':utc(),'error_type':type(error).__name__,'error':str(error),'spent':True,'runtime_mutation':False,'target_execution':False})
+        raise
+if __name__=='__main__':main()

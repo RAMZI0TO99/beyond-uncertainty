@@ -1,0 +1,118 @@
+"""Root read-only successor002: exact-repo trust, optional locks off. Run once."""
+import ast
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import stat
+import subprocess
+
+ROOT = Path(r"D:\Aenv\pro2")
+WORK = ROOT / "resume-2026-10-01-30h-001"
+LIVE = ROOT / "week8-recovery-controller-worktree"
+PREP = WORK / "raw-component-runtime-prep003"
+GIT = ROOT / "runtimes/git/mingw64/bin/git.exe"
+sha = lambda b: hashlib.sha256(b).hexdigest()
+encode = lambda v: (json.dumps(v, sort_keys=True, indent=2, ensure_ascii=True, allow_nan=False)+"\n").encode("ascii")
+
+def identity(s):
+    return (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns,
+            s.st_mode, s.st_nlink, getattr(s, "st_file_attributes", 0),
+            getattr(s, "st_birthtime_ns", None))
+
+def plain(path):
+    for parent in [*reversed(path.absolute().parents), path.parent]:
+        p = parent.lstat()
+        assert stat.S_ISDIR(p.st_mode) and not stat.S_ISLNK(p.st_mode)
+        assert not getattr(p, "st_file_attributes", 0) & 0x400
+    before = path.lstat()
+    assert stat.S_ISREG(before.st_mode) and before.st_nlink == 1
+    assert not stat.S_ISLNK(before.st_mode) and not getattr(before, "st_file_attributes", 0) & 0x400
+    data = path.read_bytes()
+    assert identity(before) == identity(path.lstat()) and len(data) == before.st_size
+    return data, before
+
+def once(name, value):
+    path = WORK / name
+    data = encode(value)
+    with path.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    print(json.dumps({"file":name,"bytes":len(data),"sha256":sha(data)}))
+
+outputs = ("LIVE_D177_ROOT012_OBSERVATION_001.json", "RAW003_CURRENT_LIVE_GUARD_ROOT012_001.json",
+           "RAW003_RUNTIME_GUARD_ROOT012_001.json")
+assert all(not (WORK / name).exists() for name in outputs)
+template, _ = plain(PREP / "run-isolated-raw-component-003.TEMPLATE.py")
+tree = ast.parse(template)
+fixed = next(n.value for n in tree.body if isinstance(n, ast.Assign)
+             and any(isinstance(t, ast.Name) and t.id == "RUNTIME_FIXED" for t in n.targets))
+assert isinstance(fixed, ast.Dict) and len(fixed.keys) == 4
+pins = [ast.literal_eval(v) for v in fixed.values]
+runtime_paths = [ROOT / "pro2/.venv/Scripts/python.exe", GIT, ROOT / "pro2/.venv/pyvenv.cfg",
+                 ROOT / "runtimes/week8-python313-frozen-001/python.exe"]
+runtime_rows = []
+for path, pin in zip(runtime_paths, pins, strict=True):
+    data, _ = plain(path)
+    assert sha(data) == pin
+    runtime_rows.append({"path":str(path),"sha256":sha(data),"size":len(data)})
+env = {k:v for k,v in os.environ.items() if not k.upper().startswith(("GIT_", "PYTHON"))}
+env.update({"GIT_CONFIG_GLOBAL":os.devnull,"GIT_CONFIG_SYSTEM":os.devnull,"GIT_CONFIG_NOSYSTEM":"1","GIT_TERMINAL_PROMPT":"0","LC_ALL":"C"})
+def git(*args):
+    assert sha(plain(GIT)[0]) == pins[1]
+    result = subprocess.run([str(GIT), "--no-pager", "--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "core.quotepath=false", "-c", "safe.directory="+LIVE.as_posix(), "-C", str(LIVE), *args], env=env,
+                            stdin=subprocess.DEVNULL, capture_output=True, check=True, timeout=30)
+    assert not result.stderr
+    assert sha(plain(GIT)[0]) == pins[1]
+    return result.stdout
+
+start = datetime.datetime.now(datetime.timezone.utc).isoformat()
+head = git("rev-parse", "HEAD").decode("ascii").strip()
+tracked = git("ls-files", "-z")
+paths = [v.decode("utf-8") for v in tracked.split(b"\0") if v]
+assert len(paths) == 742 and len(set(p.casefold() for p in paths)) == 742
+rows = []
+identities = []
+for rel in paths:
+    assert rel and "\\" not in rel and not rel.startswith("/")
+    assert all(p not in ("", ".", "..") for p in rel.split("/"))
+    data, info = plain(LIVE / rel)
+    rows.append({"path":rel,"sha256":sha(data),"size":len(data),"mode":stat.S_IMODE(info.st_mode)})
+    identities.append(identity(info))
+for row, first in zip(rows, identities, strict=True):
+    data, info = plain(LIVE / row["path"])
+    assert sha(data) == row["sha256"] and identity(info) == first
+assert git("ls-files", "-z") == tracked
+assert git("rev-parse", "HEAD").decode("ascii").strip() == head
+status = git("status", "--porcelain=v1", "--untracked-files=all", "--ignored").decode("utf-8")
+gate = ROOT / "resume-2026-09-28-001/full-gate-008"
+gate_rows = []
+for path in sorted(gate.iterdir()):
+    if path.is_file():
+        data, _ = plain(path)
+        gate_rows.append({"name":path.name,"bytes":len(data),"sha256":sha(data)})
+pytest_path = ROOT / "pro2/.venv/Lib/site-packages/pytest/__init__.py"
+pytest_data, _ = plain(pytest_path)
+metadata = ROOT / "pro2/.venv/Lib/site-packages/pytest-9.1.1.dist-info/METADATA"
+meta, _ = plain(metadata)
+assert b"\nVersion: 9.1.1\n" in meta.replace(b"\r\n", b"\n")
+for path, row in zip(runtime_paths, runtime_rows, strict=True):
+    data, _ = plain(path)
+    assert sha(data) == row["sha256"] and len(data) == row["size"]
+stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+once(outputs[1], {"schema_version":1,"purpose":"OPAQUE_CURRENT_BYTES_GUARD_NOT_POLICY_AUTHORITY",
+                 "captured_utc":stamp,"root":str(LIVE),"rows":rows})
+once(outputs[2], {"schema_version":1,"purpose":"RAW003_ISOLATED_RUNTIME_GUARD_ONLY",
+                 "captured_utc":stamp,"entries":runtime_rows,
+                 "pytest":{"path":str(pytest_path),"sha256":sha(pytest_data),"size":len(pytest_data),"version":"9.1.1"}})
+once(outputs[0], {"schema_version":1,"started_utc":start,"captured_utc":stamp,"head":head,
+                 "git_sha256":pins[1],"tracked_files":len(rows),"paired_file_observations":True,
+                 "tracked_pathset_reobserved":True,"status_with_ignored":status,
+                 "source_test_rows":[r for r in rows if r["path"] in (
+                     "src/bu/experiments/week8_exp2a_recovery.py", "tests/test_week8_exp2a_recovery.py")],
+                 "actor_gate008_top_level_file_observations":gate_rows,
+                 "actor_result_or_junit_acceptance_audited":False,"full_host_quiet_proved":False,
+                 "root_live_executor_ack_received":False,"operational_admission_authority":False,
+                 "opaque_live_snapshot":outputs[1],"runtime_snapshot":outputs[2]})

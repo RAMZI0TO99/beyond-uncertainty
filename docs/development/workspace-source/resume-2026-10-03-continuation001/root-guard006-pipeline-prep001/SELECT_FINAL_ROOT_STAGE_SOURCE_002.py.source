@@ -1,0 +1,49 @@
+"""Author-only retarget of unfrozen owned stage drafts, with preimages retained."""
+import hashlib
+import json
+from pathlib import Path
+
+ROOT=Path('D:/Aenv/pro2/resume-2026-10-03-continuation001/root-guard006-pipeline-prep001')
+NAMES=('PREPARE_ROOT_GUARD006_RECORDS_001.TEMPLATE.ps1',
+    'SUPERVISE_ROOT_WHOLE_BEFORE_006.TEMPLATE.ps1',
+    'WRITE_ROOT_WHOLE_AFTER_AUTHORIZATION_006.TEMPLATE.ps1',
+    'SUPERVISE_ROOT_WHOLE_AFTER_006.TEMPLATE.ps1')
+def once(name,data):
+    with (ROOT/name).open('xb') as stream: stream.write(data)
+def sha(data):return hashlib.sha256(data).hexdigest()
+outputs=[]
+for name in NAMES:
+    before=(ROOT/name).read_bytes()
+    if b'rev002' not in before or b'rev003' in before:raise ValueError('Exact draft-to-final source selection')
+    after=before.replace(b'rev002',b'rev003')
+    if name.startswith('PREPARE_'):
+        text=after.decode('utf-8')
+        old="""        $pattern='(?m)^\\$'+$name+' = \\$null\\r?$'
+        if([regex]::Matches($text,$pattern).Count -ne 1){throw 'Exactly three original slots required'}
+        $replacement='$'+$name+" = '"+$bindings[$name]+"'"
+        $text=[regex]::Replace($text,$pattern,{param($match)$replacement})"""
+        new="""        $pattern='(?m)^\\$'+$name+' = \\$null(?<cr>\\r?)$'
+        if([regex]::Matches($text,$pattern).Count -ne 1){throw 'Exactly three original slots required'}
+        $replacement='$'+$name+" = '"+$bindings[$name]+"'"
+        $text=[regex]::Replace($text,$pattern,{param($match)$replacement+$match.Groups['cr'].Value})"""
+        if text.count(old)!=1:raise ValueError('Exact inherited RootPS binding grammar')
+        text=text.replace(old,new)
+        old="""    foreach($name in @('BoundDriverSha256','RootAckSha256','BoundReviewSha256')){$pattern='(?m)^\\$'+$name+" = '[0-9a-f]{64}'\\r?$";$replacement='$'+$name+' = $null';$reverse=[regex]::Replace($reverse,$pattern,{param($match)$replacement})}"""
+        new="""    foreach($name in @('BoundDriverSha256','RootAckSha256','BoundReviewSha256')){
+        $pattern='(?m)^\\$'+$name+" = '[0-9a-f]{64}'(?<cr>\\r?)$"
+        if([regex]::Matches($reverse,$pattern).Count -ne 1){throw 'Exactly three bound reversal slots required'}
+        $replacement='$'+$name+' = $null'
+        $reverse=[regex]::Replace($reverse,$pattern,{param($match)$replacement+$match.Groups['cr'].Value})
+    }"""
+        if text.count(old)!=1:raise ValueError('Exact inherited RootPS reversal grammar')
+        after=text.replace(old,new).encode('utf-8')
+    outputs.append((name,before,after))
+for name,before,after in outputs:
+    once('AUTHOR_REV002_DRAFT_'+name+'.bytes',before)
+    (ROOT/name).write_bytes(after)
+once('AUTHOR_FINAL_FOUR_STAGE_SOURCE_SELECTION_002.json',(json.dumps(dict(schema_version=1,
+    source_author='/root/renewal_runtime_inventory',actual_producer_role='/root',source_stage_actions_executed=False,
+    actual_bindings=None,actual_results=None,selected_guard_revision='rev003',
+    rows=[dict(path=name,bytes=len(after),sha256=sha(after),preserved_draft_path='AUTHOR_REV002_DRAFT_'+name+'.bytes',preserved_draft_sha256=sha(before)) for name,before,after in outputs],
+    delta=['explicit final GG6 rev003 selected paths','Root launcher three original literal bindings and reverse preserve CR suffix verbatim'],
+),sort_keys=True,indent=2)+'\n').encode())

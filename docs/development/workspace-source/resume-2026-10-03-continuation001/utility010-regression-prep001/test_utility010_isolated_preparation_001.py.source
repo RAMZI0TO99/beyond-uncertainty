@@ -1,0 +1,340 @@
+"""SOURCE ONLY. Future authorized synthetic regression loading, never run by author.
+
+Records, PID17, nonces and logical Root nominals below are fixture data only.
+No processes, PowerShell, Root authority files, publication or unit entry occur.
+Six controls are runnable in a separate admitted Windows Python fixture runtime;
+the constructor004 complete-model cap control is explicitly deferred.
+"""
+import ast
+import copy
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import stat
+import sys
+import tempfile
+import tokenize
+import types
+import unittest
+from unittest.mock import patch
+
+HERE = Path(__file__).resolve().parent
+INPUTS = HERE / 'inputs'
+PINS = {
+    'utility010.py': ('2811fe89f1c8580563c436b2f11c45db35ad1ee8c02ba312a00db399e5924de8', 81410),
+    'utility008.py': ('98167867d0feedd106054a884222d16f9fb77dcf40df6c9f42bda9a14939f0e1', 81402),
+    'utility007.py': ('8f620adad426d38315392b94e5a9e46a66f1a1eb63613aa5fb79a9715abbc8fd', 85149),
+    'pipeline_peer16.json': ('d45a6cf273dd8ea8df2db150969e438c2ef7f1a042830dddfaf58b528d13b5fc', None),
+}
+ROLES = ('capture_before', 'whole_before_result')
+CHANGES = {
+    'RUN_ROOT_METADATA_PIPELINE_006.BOUND.ps1': 'RUN_ROOT_METADATA_PIPELINE_007.BOUND.ps1',
+    'ROOT_PIPELINE_TRUST_SELECTION_001.json': 'ROOT_PIPELINE_TRUST_SELECTION_002.json',
+    'ROOT_PIPELINE_INIT_TRACE_001.json': 'ROOT_PIPELINE_INIT_TRACE_002.json',
+}
+
+
+def raw9(info):
+    result = [getattr(info, key, None) for key in ('st_dev','st_ino','st_size','st_mtime_ns',
+              'st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')]
+    if not all(type(item) is int for item in result):
+        raise ValueError('Windows raw9 exact integers')
+    return result
+
+
+def authenticated_bytes(name):
+    """The loader compiles ONLY the same bounded bytes authenticated here."""
+    p = INPUTS / name
+    pin, length = PINS[name]
+    a = p.lstat(); ar = raw9(a)
+    if not stat.S_ISREG(a.st_mode) or a.st_nlink != 1 or a.st_file_attributes & 0x400:
+        raise ValueError('private pinned plain Source input')
+    maximum = 131072
+    if not 0 < a.st_size <= maximum or (length is not None and a.st_size != length):
+        raise ValueError('Source byte count/cap before loader')
+    ancestors = [(str(q), q.lstat().st_dev, q.lstat().st_ino) for q in p.parents]
+    if any(not q.is_dir() or q.is_symlink() or q.lstat().st_file_attributes & 0x400 for q in p.parents):
+        raise ValueError('private plain Source ancestors')
+    fd = os.open(p, os.O_RDONLY | os.O_BINARY)
+    try:
+        h = os.fstat(fd); hr = raw9(h)
+        if not stat.S_ISREG(h.st_mode) or h.st_nlink != 1 or h.st_file_attributes & 0x400:
+            raise ValueError('plain Source descriptor')
+        if a.st_ctime_ns != a.st_birthtime_ns or any(ar[i] != hr[i] for i in (0,1,2,3,6,7,8)) or ar[5] != hr[5]:
+            raise ValueError('Source descriptor identity/API8 cross creation')
+        data = b''
+        while True:
+            part = os.read(fd, min(65536, maximum + 1 - len(data)))
+            if not part:
+                break
+            data += part
+            if len(data) > maximum:
+                raise ValueError('Source read cap')
+        if raw9(os.fstat(fd)) != hr:
+            raise ValueError('Source descriptor drift')
+    finally:
+        os.close(fd)
+    if raw9(p.lstat()) != ar or ancestors != [(str(q), q.lstat().st_dev, q.lstat().st_ino) for q in p.parents]:
+        raise ValueError('Source pathname drift')
+    if len(data) != a.st_size or hashlib.sha256(data).hexdigest() != pin:
+        raise ValueError('Source SHA/byte authentication before compile')
+    return data
+
+
+def protected_lines(data):
+    out = set()
+    for token in tokenize.tokenize(io.BytesIO(data).readline):
+        if token.type == tokenize.STRING and token.end[0] > token.start[0]:
+            out.update(range(token.start[0] + 1, token.end[0] + 1))
+    return out
+
+
+def compact(data):
+    protected = protected_lines(data)
+    lines = data.splitlines(keepends=True)
+    for index, line in enumerate(lines, 1):
+        spaces = len(line) - len(line.lstrip(b' '))
+        if index not in protected and spaces > 0 and spaces % 4 == 0:
+            lines[index - 1] = b' ' * (spaces // 4) + line[spaces:]
+    return b''.join(lines)
+
+
+def ast_identity(actual, expected):
+    if ast.dump(ast.parse(actual), include_attributes=False) != ast.dump(ast.parse(expected), include_attributes=False):
+        raise ValueError('whole Module AST changed')
+
+
+def multiline_identity(actual, expected):
+    a = actual.splitlines(keepends=True); e = expected.splitlines(keepends=True)
+    protected = protected_lines(expected)
+    if len(a) != len(e) or any(a[index - 1] != e[index - 1] for index in protected):
+        raise ValueError('protected multiline bytes changed')
+
+
+class Utility010IsolatedRegressions(unittest.TestCase):
+    __module__ = 'isolated_utility010_regressions'
+    @classmethod
+    def setUpClass(cls):
+        # FUTURE EXECUTION ONLY: no author compile/exec/import of these bytes.
+        source = authenticated_bytes('utility010.py')
+        module = types.ModuleType('isolated_utility010_fixture')
+        module.__file__ = str(INPUTS / 'utility010.py')
+        exec(compile(source, module.__file__, 'exec', dont_inherit=True), vars(module))
+        cls.u = module
+        cls.peer_original = json.loads(authenticated_bytes('pipeline_peer16.json'))
+        cls.u007 = authenticated_bytes('utility007.py')
+        cls.u008 = authenticated_bytes('utility008.py')
+
+    def invoke(self, role, mutation=None):
+        """Fresh private tree each call, complete real reader, no stale ledger masking."""
+        u = self.u
+        with tempfile.TemporaryDirectory(prefix='utility010-synthetic-') as folder:
+            project = Path(folder).resolve(); work = project / 'work'
+            root = work / 'root-guard006-pipeline-prep001'; root.mkdir(parents=True)
+            private = work / 'synthetic'; private.mkdir()
+            def write(p, value):
+                data = (json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True) + '\n').encode('ascii')
+                p.write_bytes(data)
+                return hashlib.sha256(data).hexdigest()
+            def point(p, value):
+                return {'path': str(p), 'sha256': write(p, value)}
+            pipeline = root / 'RUN_ROOT_METADATA_PIPELINE_007.BOUND.ps1'
+            pipeline.write_bytes(b'# INERT SYNTHETIC SOURCE; NEVER EXECUTED\n')
+            source_sha = hashlib.sha256(pipeline.read_bytes()).hexdigest()
+            peer = copy.deepcopy(self.peer_original)
+            peer['pipeline_source_sha256'] = source_sha
+            if mutation in ('nested', 'unknown'):
+                token = '{{authorization_sha256}}' if mutation == 'nested' else '{unknown_sha256}'
+                tokens = peer['phase_argv_templates'][role]
+                tokens[tokens.index('{authorization_sha256}')] = token
+            peer_path = private / 'synthetic-peer16.json'; peer_sha = write(peer_path, peer)
+            init_path = root / ('ROOT_PIPELINE_INIT_TRACE_001.json' if mutation == 'init' else 'ROOT_PIPELINE_INIT_TRACE_002.json')
+            init = dict(schema_version=1, record_type='root_pipeline_init_trace', author='/root', scope=u.SCOPE,
+                        created_utc='2026-10-03T00:00:00.0000001+00:00', pid=17, nonce='1'*32, pipeline_source_sha256=source_sha)
+            init_sha = write(init_path, init)
+            trust = dict(schema_version=1, record_type='root_pipeline_trust_selection', author='/root', scope=u.SCOPE,
+                         pipeline_source_sha256=source_sha, pipeline_source_peer_sha256=peer_sha,
+                         init_trace={'path':str(init_path),'sha256':init_sha}, physical_root_tool_chunk='synthetic_fixture_cell_17')
+            trust_path = root / ('ROOT_PIPELINE_TRUST_SELECTION_001.json' if mutation == 'trust' else 'ROOT_PIPELINE_TRUST_SELECTION_002.json')
+            trust_sha = write(trust_path, trust)
+            input_pointer = point(private / 'input.json', {'synthetic': 'input'})
+            parent_pointer = point(private / 'parent.json', {'synthetic': 'parent'})
+            actual = dict(context=point(private / 'context.json', {'synthetic':'context'}),
+                          runtime_selection=point(private / 'runtime.json', {'synthetic':'runtime'}))
+            approval = dict(input_sha256=input_pointer['sha256'], parent_terminal_sha256=parent_pointer['sha256'],
+                            context_sha256=actual['context']['sha256'], runtime_snapshot_sha256=actual['runtime_selection']['sha256'])
+            pins = dict(metadata_script_sha256='2'*64, metadata_bound_review_sha256='3'*64, observer_sha256='4'*64,
+                        profile_sha256='5'*64, harness_static_review_sha256='6'*64, owner_lease_sha256='7'*64)
+            ticket = {key:None for key in u.TICKET22}
+            ticket.update(schema_version=1, record_type='root_metadata_checker_input_ticket', author='/root', scope=u.SCOPE,
+                          role=role, path=input_pointer['path'], sha256=approval['input_sha256'], authorization_sha256='8'*64,
+                          terminal_path=parent_pointer['path'], terminal_sha256=approval['parent_terminal_sha256'],
+                          context_sha256=approval['context_sha256'], runtime_sha256=approval['runtime_snapshot_sha256'], root_trust_sha256=trust_sha)
+            # Expected argv uses the healthy authentic P16 tokens; bad Source tokens
+            # are cryptographically rebound in peer/trust/phase/ticket, never masked.
+            substitutions = {key:value for key,value in ticket.items() if type(value) is str}; substitutions.update(pins)
+            argv = [substitutions[token[1:-1]] if token.startswith('{') else token
+                    for token in self.peer_original['phase_argv_templates'][role]]
+            outputs = [input_pointer, parent_pointer]
+            if role == 'capture_before':outputs += [actual['context'], actual['runtime_selection']]
+            phase = dict(schema_version=1, record_type='root_pipeline_phase_trace', author='/root', scope=u.SCOPE, phase=role,
+                         created_utc='2026-10-03T00:00:00.0000002+00:00', pipeline_source_sha256=source_sha,
+                         init_trace_sha256=init_sha, argv=argv, outputs=outputs)
+            phase_path = root / ('ROOT_PIPELINE_PHASE_TRACE_'+role.upper()+'_006.json'); phase_sha = write(phase_path, phase)
+            ticket['phase_trace_sha256'] = phase_sha
+            ticket_path = private / 'ticket22.json'; ticket_sha = write(ticket_path, ticket)
+            trace = dict(root_trust_selection_sha256=trust_sha, root_reported_tool_chunk='synthetic_fixture_cell_17',
+                         pipeline_source_sha256=source_sha, init_trace_sha256=init_sha, phase_trace_sha256=phase_sha,
+                         root_launch_pid=17, root_launch_nonce='1'*32, checker_pid=17, checker_launch_nonce='9'*32,
+                         reviewer='/root/actual_record_checker', physical_tool_identity_externally_correlated_by_Root=True,
+                         independent_OS_or_tool_attestation=False, hard_Job_or_descendant_or_provider_deadline_proved=False)
+            # These trace flags are synthetic logical reader fixtures. They are
+            # never an assertion that a real Root process/tool was correlated.
+            ticket_stat = ticket_path.lstat()
+            with ticket_path.open('rb') as handle:ticket_descriptor = os.fstat(handle.fileno())
+            ticket_row = dict(path=str(ticket_path), sha256=ticket_sha, bytes=ticket_stat.st_size,
+                              path_raw9=raw9(ticket_stat), descriptor_raw9=raw9(ticket_descriptor))
+            detail = dict(schema_version=1, record_type='synthetic_utility010_provenance_detail',
+                          reviewer='/root/actual_record_checker', role=role, created_utc='2026-10-03T00:00:00.000003+00:00',
+                          checks={'synthetic_fixture_only':True}, source_closure={}, phase_sources={},
+                          execution_owner_trace=trace, checker_source_sha256='a'*64, checker_source_peer_sha256='b'*64,
+                          checker_binding_sha256='c'*64, observations=[ticket_row], target_execution=False, action_authorization=False)
+            self.assertEqual(set(trace), set(u.TRACE13)); self.assertEqual(set(detail), set(u.DETAIL15))
+            evidence = dict(ticket_path=str(ticket_path), input_path=input_pointer['path'], parent_path=parent_pointer['path'], argv_bindings=pins)
+            selected_path = root / 'RUN_ROOT_METADATA_PIPELINE_006.BOUND.ps1' if mutation == 'pipeline' else pipeline
+            protocol = dict(root_pipeline_source=dict(path=str(selected_path), sha256=source_sha, maximum=131072),
+                            root_pipeline_peer=dict(path=str(peer_path), sha256=peer_sha, maximum=131072,
+                                                    keys=list(peer), values=copy.deepcopy(peer)))
+            calls = []; opens = []; original_read = u.read; original_open = os.open
+            def read_spy(p, pin=None, maximum=2097152):
+                calls.append(str(p)); return original_read(p, pin, maximum)
+            def open_spy(p, *args, **kwargs):
+                opens.append(str(p)); return original_open(p, *args, **kwargs)
+            with patch.multiple(u, PROJECT=project, WORK=work, SOURCE_PROTOCOL=protocol,
+                                SOURCE_BINDINGS={'root_trust_selection_sha256':trust_sha}, OWNER_PIN=pins['owner_lease_sha256'],
+                                OBSERVER_PIN=pins['observer_sha256'], PROFILE_PIN=pins['profile_sha256'],
+                                STATIC_PIN=pins['harness_static_review_sha256'], observations={}):
+                with patch.object(u, 'read', read_spy), patch.object(u.os, 'open', open_spy):
+                    try:
+                        returned = u.physical_provenance(detail, approval, evidence, actual)
+                    except (ValueError, FileNotFoundError) as exc:
+                        outcome = exc
+                    else:
+                        self.assertEqual(returned, ticket)
+                        self.assertEqual(len(outputs), 4 if role == 'capture_before' else 2)
+                        self.assertIn(str(ticket_path), opens)
+                        outcome = returned
+            # Return only private logical names; temp files deleted before return.
+            return outcome, calls, opens, root
+
+    def check_healthy(self, role):
+        outcome, calls, opens, root = self.invoke(role)
+        self.assertIs(type(outcome), dict)
+        self.assertEqual(len(calls), 6)
+        self.assertEqual(len(opens), 6)
+
+    def test_P1_fixed_pipeline_refusal_before_open_restores_full_healthy(self):
+        for role in ROLES:
+            with self.subTest(role=role):
+                self.check_healthy(role)
+                error, calls, opens, root = self.invoke(role, 'pipeline')
+                self.assertIs(type(error), ValueError); self.assertEqual(str(error), 'fixed Root pipeline')
+                self.assertEqual(calls, []); self.assertEqual(opens, [])
+                self.check_healthy(role)
+
+    def test_P2_trust002_missing_has_no_fallback_restores_full_healthy(self):
+        for role in ROLES:
+            with self.subTest(role=role):
+                self.check_healthy(role)
+                error, calls, opens, root = self.invoke(role, 'trust')
+                self.assertIs(type(error), FileNotFoundError)
+                expected = str(root / 'ROOT_PIPELINE_TRUST_SELECTION_002.json')
+                self.assertEqual(error.filename, expected); self.assertEqual(calls[-1], expected)
+                self.assertNotIn(str(root / 'ROOT_PIPELINE_TRUST_SELECTION_001.json'), calls)
+                self.assertNotIn(expected, opens); self.assertEqual(len(opens), 2)
+                self.check_healthy(role)
+
+    def test_P3_init001_pointer_refusal_before_open_restores_full_healthy(self):
+        for role in ROLES:
+            with self.subTest(role=role):
+                self.check_healthy(role)
+                error, calls, opens, root = self.invoke(role, 'init')
+                self.assertIs(type(error), ValueError); self.assertEqual(str(error), 'Root fixed init path')
+                self.assertEqual(len(opens), 3)
+                self.assertNotIn(str(root / 'ROOT_PIPELINE_INIT_TRACE_001.json'), calls)
+                self.assertNotIn(str(root / 'ROOT_PIPELINE_INIT_TRACE_002.json'), calls)
+                self.check_healthy(role)
+
+    def test_L1_whole_Module_AST_compaction_negative_and_restored(self):
+        literal = self.u007
+        for old, new in CHANGES.items():
+            self.assertEqual(literal.count(('"'+old+'"').encode()), 1)
+            literal = literal.replace(('"'+old+'"').encode(), ('"'+new+'"').encode())
+        self.assertEqual(compact(literal), self.u008)
+        ast_identity(self.u008, literal)
+        self.assertEqual(self.u008.count(b'maximum + 1 - total'), 1)
+        bad = self.u008.replace(b'maximum + 1 - total', b'maximum + 2 - total')
+        with self.assertRaisesRegex(ValueError, '^whole Module AST changed$'):ast_identity(bad, literal)
+        ast_identity(self.u008, literal)
+        restored = self.u008
+        for old, new in CHANGES.items():restored = restored.replace(('"'+new+'"').encode(), ('"'+old+'"').encode())
+        ast_identity(restored, self.u007)
+
+    def test_L2_multiline_interior_bytes_negative_and_restored(self):
+        protected = protected_lines(self.u007)
+        self.assertEqual(sorted(protected), [2,3,4,5,6])
+        good = compact(self.u007)
+        multiline_identity(good, self.u007)
+        lines = good.splitlines(keepends=True); lines[1] = b' '+lines[1]
+        bad = b''.join(lines)
+        with self.assertRaisesRegex(ValueError, '^protected multiline bytes changed$'):multiline_identity(bad, self.u007)
+        with self.assertRaisesRegex(ValueError, '^whole Module AST changed$'):ast_identity(bad, self.u007)
+        multiline_identity(good, self.u007); ast_identity(good, self.u007)
+
+    @unittest.skip('U8F1 deferred: constructor004/table002/full selected actual model absent; no cap-control stand-in')
+    def test_F1_complete_constructor004_cap_refusal_before_outputs_deferred(self):
+        self.fail('Source prerequisite missing; must be replaced by separately reviewed full constructor004 causal preparation')
+
+    def test_argv_full_provenance_nested_unknown_refusals_restore_healthy(self):
+        for role in ROLES:
+            for mutation, reason in (('nested','no arbitrary argv interpolation'), ('unknown','closed source substitution')):
+                with self.subTest(role=role, mutation=mutation):
+                    self.check_healthy(role)
+                    error, calls, opens, root = self.invoke(role, mutation)
+                    self.assertIs(type(error), ValueError); self.assertEqual(str(error), reason)
+                    self.assertEqual(len(calls), 6); self.assertEqual(len(opens), 6)
+                    self.check_healthy(role)
+
+
+class FixtureEventResult(unittest.TextTestResult):
+    """Declared stdout JSONL fixture events; stderr remains unittest diagnostics."""
+    def event(self, event, test, **fields):
+        row = dict(event=event, id=test.id(), synthetic_only=True, **fields)
+        data = (json.dumps(row, sort_keys=True, separators=(',', ':'))+'\n').encode('ascii')
+        if len(data) > 4096:raise ValueError('fixture event row cap')
+        sys.stdout.buffer.write(data); sys.stdout.buffer.flush()
+
+    def startTest(self, test):
+        super().startTest(test); self.event('start', test)
+
+    def addSuccess(self, test):
+        super().addSuccess(test); self.event('success', test)
+
+    def addSkip(self, test, reason):
+        super().addSkip(test, reason); self.event('skip', test, reason=reason)
+
+    def addSubTest(self, test, subtest, err):
+        super().addSubTest(test, subtest, err)
+        self.event('subtest', test, subtest=subtest.id(), success=err is None)
+
+    def addFailure(self, test, err):
+        super().addFailure(test, err); self.event('failure', test)
+
+    def addError(self, test, err):
+        super().addError(test, err); self.event('error', test)
+
+
+if __name__ == '__main__':
+    unittest.main(testRunner=unittest.TextTestRunner(resultclass=FixtureEventResult))
