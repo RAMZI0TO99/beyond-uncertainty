@@ -16,10 +16,11 @@ the learned critic and final hypothesis evaluations remain future work.
 
 ## Research status
 
-The latest recorded [project snapshot](PROJECT_STATE.md) is dated **2026-08-23**
-and reports completion of Weeks 4–5 of the infrastructure phase. These are
-documented project milestones, not a fresh execution or independent validation
-of the experiments.
+The earlier GitHub snapshot dated **2026-08-23** reported completion of Weeks 4–5
+of the infrastructure phase. The [project ledger](PROJECT_STATE.md) now includes
+later Week 7/8 development. Read the [2026-10-03 closeout](docs/development/CLOSEOUT_2026-10-03.md)
+for the current paused status, completed checks and unfinished validation.
+Recorded development milestones do not establish the scientific hypotheses.
 
 | Research question | Recorded status |
 |---|---|
