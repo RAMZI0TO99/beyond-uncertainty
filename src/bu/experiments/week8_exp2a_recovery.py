@@ -176,19 +176,23 @@ RECOVERY_COPY_ROOT = (
     / "week8-exp2a-recovery-2026-09-02-attempt-001-project-evidence"
 )
 
-# D-177 reviewed controller-succession pins.  The incident authority was
-# recorded by the D-175 controller commit; recovery can only run from its
-# verified reviewed successor.  The succession is admitted only through this
-# exact release record, its reviewed candidate manifest, and a fresh walk of
-# the current controller worktree that equals that manifest's rows.
+# D-178 reviewed controller-succession release chain.  The incident authority
+# pins a controller commit that predates later reviewed releases, and the
+# release record for a commit is necessarily written after that commit exists,
+# so no single source-pinned record can ever cover the controller's own
+# current commit (a bootstrapping regress: recover would refuse forever).
+# The succession is therefore admitted only through the complete chain of
+# reviewed release records in the session directory, the worktree's own Git
+# ancestry across the whole walked path, the last step's reviewed candidate
+# manifest, and a fresh walk of the current controller worktree that equals
+# that manifest's rows.  The records are never hash-pinned in this source:
+# their trust is the strict schema below, the Git ancestry of every walked
+# commit, and the deterministic manifest-file binding of the last step.
 RELEASE_SESSION_ROOT = WORKSPACE_ROOT / "resume-2026-09-28-001"
-RELEASE008_RECORD = "controller-release-008-proposal017.json"
-RELEASE008_SHA256 = (
-    "8ba1ce7e8f802cc6df1235d28b1b13b6b84ac995215d8c6393d5b794564d5569"
-)
-RELEASE008_MANIFEST = (
-    RELEASE_SESSION_ROOT / "d175-doc-proposal-017" / "candidate-after.json"
-)
+RELEASE_BRANCH = "sol2-week8-recovery"
+RELEASE_RECORD_GLOB = "controller-release-*.json"
+RELEASE_MANIFEST_DIR_GLOB = "d175-doc-proposal-*"
+RELEASE_MANIFEST_FILE_NAME = "candidate-after.json"
 
 INCIDENT_FILE = "incident.json"
 EPOCH001_TERMINAL_FILE = "epoch-001-terminal.json"
@@ -856,10 +860,12 @@ def _gate_file_identity(
     return row
 
 
-def _read_bound_plain_bytes(
-    path: Path, *, expected_sha256: str, what: str
-) -> tuple[bytes, dict[str, Any]]:
-    """Capture exactly the one-link bytes that were identity-checked."""
+def _capture_plain_bytes(path: Path, *, what: str) -> tuple[bytes, str]:
+    """Capture exactly the one-link bytes that were identity-checked.
+
+    Same one-link plain-file discipline as the bound reader, without any
+    source-pinned digest: the caller learns the captured digest instead.
+    """
 
     try:
         before = path.lstat()
@@ -893,7 +899,15 @@ def _read_bound_plain_bytes(
         or int(getattr(after_path, "st_file_attributes", 0)) & reparse
     ):
         raise RecoveryRefused(f"{what} changed during capture")
-    digest = sha256_bytes(data)
+    return data, sha256_bytes(data)
+
+
+def _read_bound_plain_bytes(
+    path: Path, *, expected_sha256: str, what: str
+) -> tuple[bytes, dict[str, Any]]:
+    """Capture exactly the one-link bytes that were identity-checked."""
+
+    data, digest = _capture_plain_bytes(path, what=what)
     if digest != expected_sha256:
         raise RecoveryRefused(f"{what} SHA256 differs")
     return data, {
@@ -1334,7 +1348,7 @@ def _release_candidate_rows() -> list[list[str]]:
     rows: list[list[str]] = []
     for folder in _RELEASE_CANDIDATE_FOLDERS:
         inventory = _plain_tree_inventory(
-            root / folder, what=f"D-177 release candidate {folder}"
+            root / folder, what=f"D-178 release candidate {folder}"
         )
         file_rows = [
             row
@@ -1358,26 +1372,177 @@ def _release_candidate_rows() -> list[list[str]]:
             or info.st_nlink != 1
         ):
             raise RecoveryRefused(
-                "D-177 release candidate top-level entry is not plain"
+                "D-178 release candidate top-level entry is not plain"
             )
         rows.append([child.name, sha256_file(child)])
     if len(rows) != len({row[0] for row in rows}):
-        raise RecoveryRefused("D-177 release candidate walk repeats a path")
+        raise RecoveryRefused("D-178 release candidate walk repeats a path")
     return rows
 
 
-def _pinned_release_record() -> dict[str, Any]:
-    """Load the one pinned controller release record by exact hash."""
+_RELEASE_RECORD_REQUIRED_KEYS = frozenset(
+    {
+        "Branch",
+        "ParentCommit",
+        "ControllerCommit",
+        "RemotePushPerformed",
+        "CommittedBlobsMatchReviewedWorktreeBytes",
+        "FinalCandidateManifestSha256",
+        "FileCount",
+    }
+)
+# Fail-closed bound on release-chain path enumeration: a session directory
+# whose records enumerate more simple paths than this refuses instead of
+# burning unbounded work on a pathological edge set.
+_RELEASE_CHAIN_MAX_PATHS = 64
 
-    data, _identity = _read_bound_plain_bytes(
-        RELEASE_SESSION_ROOT / RELEASE008_RECORD,
-        expected_sha256=RELEASE008_SHA256,
-        what="D-177 pinned controller release record",
+
+def _valid_release_record_schema(record: object) -> bool:
+    """Hard schema gate for every scanned controller release record.
+
+    Requires the reviewed-succession invariants rather than a pinned hash:
+    a distinct parent/child hex40 pair, no remote push, committed blobs
+    matching the reviewed worktree bytes, a hex64 reviewed candidate
+    manifest digest, a positive file count, and the controller's live
+    review branch.
+    """
+
+    if type(record) is not dict or not _RELEASE_RECORD_REQUIRED_KEYS <= set(record):
+        return False
+    parent_commit = record["ParentCommit"]
+    controller_commit = record["ControllerCommit"]
+    manifest_sha256 = record["FinalCandidateManifestSha256"]
+    file_count = record["FileCount"]
+    return (
+        type(parent_commit) is str
+        and _HEX40.fullmatch(parent_commit) is not None
+        and type(controller_commit) is str
+        and _HEX40.fullmatch(controller_commit) is not None
+        and parent_commit != controller_commit
+        and record["RemotePushPerformed"] is False
+        and record["CommittedBlobsMatchReviewedWorktreeBytes"] is True
+        and type(manifest_sha256) is str
+        and _HEX64.fullmatch(manifest_sha256) is not None
+        and type(file_count) is int
+        and file_count > 0
+        and record["Branch"] == RELEASE_BRANCH
     )
-    record = json.loads(data.decode("utf-8", errors="strict"))
-    if type(record) is not dict:
-        raise RecoveryRefused("D-177 pinned release record is not an object")
-    return record
+
+
+def _release_chain_records() -> list[dict[str, Any]]:
+    """Scan the release session for every controller release record.
+
+    Reads each ``controller-release-*.json`` in deterministic name order
+    with the one-link plain-capture discipline, parses it as strict JSON
+    (no duplicate keys, no non-finite constants), and hard-validates its
+    schema.  Any anomaly anywhere in the scan — an unreadable or non-plain
+    record, non-strict JSON, one malformed record, or two records claiming
+    the same parent/child succession — yields an empty list so the caller
+    refuses the whole succession.  Records are never hash-pinned here.
+    """
+
+    try:
+        records_root = RELEASE_SESSION_ROOT.resolve(strict=True)
+        paths = sorted(
+            (path for path in records_root.glob(RELEASE_RECORD_GLOB)),
+            key=lambda path: path.name,
+        )
+        records: list[dict[str, Any]] = []
+        edges: set[tuple[str, str]] = set()
+        for path in paths:
+            data, _digest = _capture_plain_bytes(
+                path, what="D-178 controller release record"
+            )
+            record = json.loads(
+                data.decode("utf-8", errors="strict"),
+                object_pairs_hook=_no_duplicate_object,
+                parse_constant=lambda token: (_ for _ in ()).throw(
+                    RecoveryRefused(
+                        "D-178 controller release record has non-finite JSON"
+                    )
+                ),
+            )
+            if not _valid_release_record_schema(record):
+                return []
+            edge = (record["ParentCommit"], record["ControllerCommit"])
+            if edge in edges:
+                return []
+            edges.add(edge)
+            records.append(record)
+    except (
+        RecoveryRefused,
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        ValueError,
+        RecursionError,
+    ):
+        return []
+    return records
+
+
+def _release_chain_paths(
+    edges: Mapping[str, Sequence[str]],
+    start_commit: str,
+    goal_commit: str,
+) -> list[list[str]]:
+    """Enumerate every simple release-record path from start to goal.
+
+    Deterministic depth-first walk over the parent-to-child edge map; each
+    successor list is walked in sorted order.  Refuses (empty result) once
+    more than ``_RELEASE_CHAIN_MAX_PATHS`` simple paths exist.
+    """
+
+    paths: list[list[str]] = []
+
+    def walk(commit: str, visited: tuple[str, ...]) -> None:
+        if len(paths) > _RELEASE_CHAIN_MAX_PATHS:
+            return
+        if commit == goal_commit:
+            paths.append(list(visited))
+            return
+        for child in sorted(edges.get(commit, ())):
+            if child in visited:
+                continue
+            walk(child, visited + (child,))
+            if len(paths) > _RELEASE_CHAIN_MAX_PATHS:
+                return
+
+    walk(start_commit, (start_commit,))
+    if len(paths) > _RELEASE_CHAIN_MAX_PATHS:
+        return []
+    return paths
+
+
+def _locate_release_manifest(expected_manifest_sha256: str) -> Path | None:
+    """Locate the exactly one reviewed manifest file for a record digest.
+
+    Scans ``d175-doc-proposal-*/candidate-after.json`` under the release
+    session root in deterministic name order, hashes each plain capture,
+    and returns the single manifest whose digest equals the record's
+    ``FinalCandidateManifestSha256``.  Zero matches, more than one match,
+    or any non-plain candidate manifest refuses (``None`` propagates only
+    for the match-count outcomes; capture anomalies refuse outright).
+    """
+
+    matches: list[Path] = []
+    session_root = RELEASE_SESSION_ROOT.resolve(strict=True)
+    for directory in sorted(
+        session_root.glob(RELEASE_MANIFEST_DIR_GLOB), key=lambda path: path.name
+    ):
+        candidate = directory / RELEASE_MANIFEST_FILE_NAME
+        try:
+            candidate.lstat()
+        except FileNotFoundError:
+            continue
+        _data, digest = _capture_plain_bytes(
+            candidate, what="D-178 reviewed release candidate manifest"
+        )
+        if digest == expected_manifest_sha256:
+            matches.append(candidate)
+    if len(matches) != 1:
+        return None
+    return matches[0]
 
 
 def _release_manifest_binds_current_worktree(
@@ -1391,10 +1556,13 @@ def _release_manifest_binds_current_worktree(
         or _HEX64.fullmatch(expected_manifest_sha256) is None
     ):
         return False
+    manifest = _locate_release_manifest(expected_manifest_sha256)
+    if manifest is None:
+        return False
     data, _identity = _read_bound_plain_bytes(
-        RELEASE008_MANIFEST,
+        manifest,
         expected_sha256=expected_manifest_sha256,
-        what="D-177 reviewed release candidate manifest",
+        what="D-178 reviewed release candidate manifest",
     )
     rows = json.loads(data.decode("utf-8", errors="strict"))
     if type(rows) is not list or not rows:
@@ -1471,16 +1639,25 @@ def _reviewed_controller_succession(
     current_authority: Mapping[str, Any],
     incident_authority: Mapping[str, Any],
 ) -> bool:
-    """Accept exactly one reviewed controller-succession step, or nothing.
+    """Accept a fully reviewed controller-succession chain, or nothing.
 
     The current controller must descend from the incident controller in the
-    controller worktree's own Git, the pinned release record must prove that
-    exact parent/child succession with no remote push and committed blobs
-    matching the reviewed worktree bytes, its reviewed candidate manifest
-    must bind byte-for-byte to a fresh walk of the current worktree, every
-    non-controller-identity authority field must still match exactly, and
-    the loaded-module inventories must satisfy the succession attestation.
-    Any anomaly refuses.
+    controller worktree's own Git, and the release session's controller
+    release records — every one schema-validated, never hash-pinned here —
+    must contain a complete parent/child path from the incident commit to
+    the current commit, proving the reviewedness of each succession step.
+    Every consecutive parent/child pair on that path must also be a real
+    Git ancestor step — a forwarded edge, never a backwards or sideways
+    one (defense in depth; this subsumes intermediate-to-current ancestry,
+    since verified edges chain transitively to the current commit).  The
+    last step is bound hard:
+    exactly one record whose ``ControllerCommit`` is the current commit,
+    its ``FinalCandidateManifestSha256`` matching exactly one reviewed
+    ``candidate-after.json`` manifest file, and those manifest rows equal
+    to a fresh walk of the current worktree.  Every non-controller-identity
+    authority field must still match exactly, and the loaded-module
+    inventories must satisfy the succession attestation.  Any anomaly
+    refuses.
     """
 
     incident_commit = incident_authority["controller_worktree"]["git_commit"]
@@ -1489,15 +1666,33 @@ def _reviewed_controller_succession(
         return False
     if not _lineage_git_is_ancestor(incident_commit, current_commit):
         return False
-    record = _pinned_release_record()
-    if (
-        record.get("ParentCommit") != incident_commit
-        or record.get("ControllerCommit") != current_commit
-        or record.get("RemotePushPerformed") is not False
-        or record.get("CommittedBlobsMatchReviewedWorktreeBytes") is not True
+    records = _release_chain_records()
+    if not records:
+        return False
+    edges: dict[str, list[str]] = {}
+    for record in records:
+        edges.setdefault(record["ParentCommit"], []).append(
+            record["ControllerCommit"]
+        )
+    final_records = [
+        record
+        for record in records
+        if record["ControllerCommit"] == current_commit
+    ]
+    if len(final_records) != 1:
+        return False
+    paths = _release_chain_paths(edges, incident_commit, current_commit)
+    if not paths:
+        return False
+    if not any(
+        all(
+            _lineage_git_is_ancestor(parent, child)
+            for parent, child in zip(path, path[1:])
+        )
+        for path in paths
     ):
         return False
-    if not _release_manifest_binds_current_worktree(record):
+    if not _release_manifest_binds_current_worktree(final_records[0]):
         return False
     if _succession_authority_projection(
         current_authority
@@ -1512,14 +1707,16 @@ def _authority_lineage_matches(
     current_authority: Mapping[str, Any],
     incident_authority: Mapping[str, Any],
 ) -> bool:
-    """Cross-launch authority gate for the D-177 reviewed-succession era.
+    """Cross-launch authority gate for the D-178 release-chain era.
 
     Accepts the same controller unchanged (the D-176 command-invariant
     projection equality) or exactly the reviewed controller succession
-    proved by the pinned release record, the worktree's own Git ancestry,
-    the reviewed candidate manifest, exact equality of every remaining
-    authority field, and the loaded-module succession attestation.  Any
-    anomaly returns False so callers keep their unchanged refusal.
+    proved by the release session's schema-validated release-chain
+    records, the worktree's own Git ancestry over the whole walked path,
+    the last step's reviewed candidate manifest, exact equality of every
+    remaining authority field, and the loaded-module succession
+    attestation.  Any anomaly returns False so callers keep their
+    unchanged refusal.
     """
 
     try:
