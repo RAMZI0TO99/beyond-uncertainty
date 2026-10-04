@@ -1,3 +1,17 @@
+# 2026-10-04 Current status — ALL FOUR CURRENT SUITES GREEN; constructor018 ready for the FIT
+
+**STAGED DOCUMENTATION.** This block records the current state after the 2026-10-03/04 continuation sessions; earlier checkpoints below remain unchanged history. Nothing here authorizes a native action or public step by itself.
+
+The current local released controller is D-178 `bd5bd2e818863c23e3d4e18b8b0f97578979b5cd` (2026-10-04; release010/proposal019, parent `3f74b1d248e003168157e207e28ca775364f1f26`). The release-chain succession is validated end-to-end: the controller's own functions prove the full chain ea9c28aa→597eb048→3f74b1d2→bd5bd2e8 against real Git.
+
+**ALL FOUR CURRENT SUITES GREEN** (first-ever executions or full corrections): current24 24/24 (authored harness); Raw58 251+2 expected skips; Metadata30+2 30 passed + 614 subtests (after two reviewed rounds fixing seven production defect sites in the publication templates — the exact() set-vs-iterable class); Native128 128/128 (twelve reviewed rounds from first-ever 46). The repaired templates are re-staged (STAGED_MANIFEST_004). Gate009: 5,560+20+0 across all 109 modules (per-file partitions).
+
+The lease004 constructor cascade completed TEN full-gate audit rounds (the different-reviewer's importlib simulation of the constructor's own gates, exercising every check main() performs): constructor018 `87b7d50c812ee0a52363e1062b900a37989688557eaeaed5a179dda2a156e8a8` + table016 `182741282a003813e8a3987a9a8d9fbc22e01b92e6ff334604949a03bd4ece3d` are ready. The TENTH audit proved main() runs to completion with only P4 (a checker_binding path) hypothetically fixed — and P4 IS fixed on disk. The fit gate holds: utility 130,517 bytes ≤ 131,072 (margin 555), composer 27,945. Zero one-use records were consumed across the entire cascade.
+
+Next: 11th audit on constructor018 (expected first all-pass) → manifest018/review018 → fresh lease005 + pipeline020 → SELECTION_003 template + selector → INIT3 → selector → **CONSTRUCTOR FIT** → pool peer20 → reviewer READY → capture → current24 validation → attempt013 native front and D-161's sole recovery. Pro3's host-job root cause is required reading before any native front. DELTA block 86 remains withheld at the 400-line cap.
+
+---
+
 # 2026-10-03 D-178 status — reviewed release-chain succession; complete partitioned gate009
 
 **STAGED DOCUMENTATION.** This block records the D-178 cycle state; earlier checkpoints below remain unchanged history. Nothing here authorizes a native action or public step by itself. Prepared under the 12-hour user resumption `ROOT_USER_RESUMPTION_12H_20261003_001.json` (2026-10-03, local/private, commits authorized after docs; no push).
