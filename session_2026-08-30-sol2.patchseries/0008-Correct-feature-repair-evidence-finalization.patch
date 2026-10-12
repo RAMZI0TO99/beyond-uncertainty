@@ -1,0 +1,784 @@
+From 7be59bdecc84dd6c0bf7a92995aa0491855fa5be Mon Sep 17 00:00:00 2001
+From: Ramzi Alashmali <ai.research@sofa.ye>
+Date: Sun, 30 Aug 2026 17:58:57 +0300
+Subject: [PATCH] Correct feature-repair evidence finalization
+
+---
+ src/bu/experiments/label_evidence.py        |  54 +++--
+ src/bu/experiments/repair_label_finalize.py | 220 ++++++++++++++++++++
+ src/bu/experiments/repair_label_launch.py   |  64 +++++-
+ tests/test_label_evidence.py                |  58 +++++-
+ tests/test_repair_label_finalize.py         | 183 ++++++++++++++++
+ tests/test_repair_label_launch.py           |  31 ++-
+ tests/test_repair_label_run.py              |  10 +-
+ 7 files changed, 593 insertions(+), 27 deletions(-)
+ create mode 100644 src/bu/experiments/repair_label_finalize.py
+ create mode 100644 tests/test_repair_label_finalize.py
+
+diff --git a/src/bu/experiments/label_evidence.py b/src/bu/experiments/label_evidence.py
+index bb923c1..93db094 100644
+--- a/src/bu/experiments/label_evidence.py
++++ b/src/bu/experiments/label_evidence.py
+@@ -319,12 +319,15 @@ def _load_projected_fit(source: object) -> _ProjectedFit:
+ 
+ 
+ def _verified_pool_binding(verified: VerifiedFitEvidence) -> tuple[np.ndarray, str]:
+-    """Bind the verified full action inventory to its verified pool digest.
++    """Bind the verified action inventory to its arm-specific encoded-pool digest.
+ 
+     Both values are exposed only after :func:`load_fit_evidence` has independently
+     revalidated the sidecar, source documents, and diagnostic artifacts.  This
+     consumer still canonicalises a private action copy and validates the digest
+-    shape before comparing arms.
++    shape before comparing arms.  The digest includes encoded ``obs`` and
++    ``next_obs``.  It is therefore equal for data/capacity repairs but must differ
++    for a feature repair that restores a withheld input; trajectory pairing is
++    checked separately on action, episode, and step inventories.
+     """
+ 
+     action = verified.diagnostics.get("evaluation_action")
+@@ -413,24 +416,45 @@ def _validate_condition(
+ 
+     baseline_scale = base.evaluation.scale
+     for name, projected in (("data_repair", data), ("model_repair", model)):
+-        if not np.array_equal(
+-            projected.evaluation_action, base.evaluation_action
+-        ):
+-            raise ValueError(
+-                f"seed {seed} {name} evidence does not use the baseline's exact "
+-                "full evaluation_action inventory; cross-arm label comparisons "
+-                "require one shared evaluation pool"
+-            )
+-        if projected.evaluation_pool_digest != base.evaluation_pool_digest:
+-            raise ValueError(
+-                f"seed {seed} {name} evaluation_pool_digest does not equal the "
+-                "baseline's independently verified pool digest"
+-            )
++        inventories = (
++            (
++                "evaluation_action",
++                projected.evaluation_action,
++                base.evaluation_action,
++            ),
++            ("episode", projected.evaluation.episode, base.evaluation.episode),
++            ("step", projected.evaluation.step, base.evaluation.step),
++        )
++        for inventory_name, observed, expected in inventories:
++            if not np.array_equal(observed, expected):
++                raise ValueError(
++                    f"seed {seed} {name} evidence does not use the baseline's "
++                    f"exact full {inventory_name} inventory; cross-arm label "
++                    "comparisons require one shared latent trajectory pool"
++                )
+         if projected.evaluation.scale.as_row() != baseline_scale.as_row():
+             raise ValueError(
+                 f"seed {seed} {name} evidence does not attest the baseline's exact "
+                 "full-pool normalisation scale"
+             )
++    if data.evaluation_pool_digest != base.evaluation_pool_digest:
++        raise ValueError(
++            f"seed {seed} data_repair evaluation_pool_digest does not equal the "
++            "baseline's independently verified encoded-pool digest"
++        )
++    if model_arm == "capacity_repair":
++        if model.evaluation_pool_digest != base.evaluation_pool_digest:
++            raise ValueError(
++                f"seed {seed} capacity_repair evaluation_pool_digest does not "
++                "equal the baseline's independently verified encoded-pool digest"
++            )
++    elif model.evaluation_pool_digest == base.evaluation_pool_digest:
++        raise ValueError(
++            f"seed {seed} feature_repair evaluation_pool_digest unexpectedly "
++            "equals the baseline's encoded-pool digest; restoring a withheld "
++            "feature must change encoded obs/next_obs while preserving the exact "
++            "latent trajectory inventory"
++        )
+     # The persisted values have been compared. Reuse one object so the existing
+     # acceptance boundary can also enforce its object-identity invariant.
+     data = replace(data, evaluation=replace(data.evaluation, scale=baseline_scale))
+diff --git a/src/bu/experiments/repair_label_finalize.py b/src/bu/experiments/repair_label_finalize.py
+new file mode 100644
+index 0000000..4b59c84
+--- /dev/null
++++ b/src/bu/experiments/repair_label_finalize.py
+@@ -0,0 +1,220 @@
++"""Correction-only finalizer for the immutable Week-6 smoke sidecars.
++
++This module exists because the first production finalization failed closed after
++all sixty fits: the old consumer required a feature repair's encoded observation
++pool digest to equal the baseline digest even though restoring a withheld feature
++necessarily changes encoded ``obs``/``next_obs``.  D-147 corrects that consumer
++invariant without retraining or mutating a fit.
++
++The boundary below has no fitting, process-spawn, timeout, executor, or recovery
++capability.  It revalidates the original immutable preflight, permits only a clean
++environment-identical correction commit, reloads every sidecar against the
++original fit commit, rechecks exact plan/order/scale and durable copies, derives
++the label, and records both commits in a correction report.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import uuid
++from collections.abc import Sequence
++from pathlib import Path
++from typing import Any
++
++from ..durable import atomic_write_json, read_json, sha256_file
++from ..runrecord import git_state
++from . import repair_label_launch as L
++from . import repair_label_preflight as PF
++from . import repair_label_run as R
++from .supervisor import acquire_batch_lease
++
++
++REPAIR_LABEL_FINALIZATION_SCHEMA_VERSION = 1
++REPAIR_LABEL_FINALIZATION_DIRECTORY = "repair_label_finalization_reports"
++REPAIR_LABEL_FINALIZATION_LEASE = "week6-repair-label-finalization"
++CORRECTION_RECORD = "D-147"
++
++
++def finalize_existing_repair_label_smoke(
++    *,
++    preflight_report: str | Path,
++    output_root: str | Path,
++    sync_root: str | Path,
++) -> dict[str, Any]:
++    """Finalize exactly sixty existing fits; this function cannot train one."""
++
++    validated = L._validate_repair_label_preflight(
++        preflight_report,
++        output_root=output_root,
++        sync_root=sync_root,
++        require_current_commit=False,
++    )
++    finalizer = git_state()
++    if finalizer.dirty or not finalizer.trustworthy:
++        raise ValueError("repair-label correction finalizer requires a clean tree")
++    if finalizer.commit == validated.git_commit:
++        raise ValueError(
++            "the correction-only finalizer requires a commit after the failed "
++            "preflight commit; use the ordinary launcher when source is unchanged"
++        )
++
++    unit = R.registered_week6_smoke_unit()
++    model_arm, seeds, planned = R._registered_plan(unit, validated.output_root)
++    expected_order = tuple(
++        (seed, arm)
++        for seed in range(1000, 1020)
++        for arm in ("baseline", "data_repair", "feature_repair")
++    )
++    if model_arm != "feature_repair" or tuple(
++        (item.seed, item.arm) for item in planned
++    ) != expected_order:
++        raise ValueError("correction finalizer is not the exact registered smoke plan")
++
++    lease = acquire_batch_lease(
++        validated.output_root, lease_name=REPAIR_LABEL_FINALIZATION_LEASE
++    )
++    released_path: Path | None = None
++    verified_fits = 0
++    synced_fits = 0
++    baseline_scale = None
++    sync_fit_directory = PF.ensure_regular_child_directory(
++        validated.sync_directory, R.FIT_DIRECTORY
++    )
++    try:
++        for item in planned:
++            verified = L._load_bound_fit(
++                item, expected_commit=validated.git_commit
++            )
++            if item.arm == "baseline":
++                baseline_scale = verified.scale
++            elif (
++                baseline_scale is None
++                or R._scale_fingerprint(verified.scale)
++                != R._scale_fingerprint(baseline_scale)
++            ):
++                raise ValueError(
++                    f"repair fit {item.spec.fit_id} does not reuse its seed's "
++                    "exact baseline scale"
++                )
++            L._sync_tree(
++                item.path, sync_fit_directory / item.spec.fit_id
++            )
++            verified_fits += 1
++            synced_fits += 1
++
++        if verified_fits != 60 or synced_fits != 60:
++            raise ValueError(
++                f"correction finalizer requires 60/60 verified and synced fits, "
++                f"got {verified_fits}/{synced_fits}"
++            )
++        result = R._finalize_registered_label(
++            validated.output_root,
++            expected_git_commit=validated.git_commit,
++        )
++        forbidden = {
++            "excluded",
++            "exclusion_rate",
++            "registered_planning_exclusion_rate",
++            "planning_assumption_missed",
++            "shortfall_before_reserve",
++        }
++        if forbidden & set(result.counts):
++            raise ValueError("Week-6 correction crossed into Week-8 analysis")
++        label_sync = PF.sync_immutable_file(
++            result.label_path, validated.sync_directory / result.label_path.name
++        )
++        count_sync = PF.sync_immutable_file(
++            result.count_path, validated.sync_directory / result.count_path.name
++        )
++    finally:
++        released_path = lease.release()
++
++    report: dict[str, Any] = {
++        "repair_label_finalization_schema_version": (
++            REPAIR_LABEL_FINALIZATION_SCHEMA_VERSION
++        ),
++        "status": "complete_after_fail_closed_correction",
++        "correction_record": CORRECTION_RECORD,
++        "corrected_invariant": (
++            "feature repair preserves action/episode/step latent-trajectory "
++            "inventories while its encoded obs/next_obs pool digest must differ"
++        ),
++        "unit_id": R.WEEK6_SMOKE_UNIT_ID,
++        "seeds": list(seeds),
++        "arms": ["baseline", "data_repair", model_arm],
++        "fit_count": len(planned),
++        "executed_fits": 0,
++        "retrained_fits": 0,
++        "verified_existing_fits": verified_fits,
++        "synced_fits": synced_fits,
++        "preflight": {
++            "path": str(validated.report_path),
++            "sha256": validated.report_sha256,
++            "fit_commit": validated.git_commit,
++        },
++        "finalizer": {
++            "commit": finalizer.commit,
++            "branch": finalizer.branch,
++            "dirty": finalizer.dirty,
++            "trustworthy": finalizer.trustworthy,
++        },
++        "label": label_sync,
++        "counts": {"values": result.counts, "sync": count_sync},
++        "lease": {
++            "name": REPAIR_LABEL_FINALIZATION_LEASE,
++            "released_history_path": str(released_path.resolve(strict=True)),
++        },
++    }
++    report_id = uuid.uuid4().hex
++    report["finalization_id"] = report_id
++    report_path = (
++        validated.output_root
++        / REPAIR_LABEL_FINALIZATION_DIRECTORY
++        / f"{report_id}.json"
++    )
++    atomic_write_json(report_path, report)
++    if read_json(report_path) != report:
++        raise ValueError("persisted correction finalization report differs from memory")
++    sync_report_directory = PF.ensure_regular_child_directory(
++        validated.sync_directory, REPAIR_LABEL_FINALIZATION_DIRECTORY
++    )
++    report_sync = PF.sync_immutable_file(
++        report_path, sync_report_directory / report_path.name
++    )
++    return {
++        **report,
++        "report": {
++            "path": str(report_path.resolve(strict=True)),
++            "sha256": sha256_file(report_path),
++            "sync": report_sync,
++        },
++    }
++
++
++def _parser() -> argparse.ArgumentParser:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Finalize the existing immutable Week-6 smoke fits after D-147; "
++            "this command has no fitting capability."
++        )
++    )
++    parser.add_argument("--preflight-report", required=True)
++    parser.add_argument("--output-root", required=True)
++    parser.add_argument("--sync-root", required=True)
++    return parser
++
++
++def main(argv: Sequence[str] | None = None) -> dict[str, Any]:
++    args = _parser().parse_args(argv)
++    report = finalize_existing_repair_label_smoke(
++        preflight_report=args.preflight_report,
++        output_root=args.output_root,
++        sync_root=args.sync_root,
++    )
++    print(json.dumps(report, indent=2, sort_keys=True))
++    return report
++
++
++if __name__ == "__main__":  # pragma: no cover
++    main()
+diff --git a/src/bu/experiments/repair_label_launch.py b/src/bu/experiments/repair_label_launch.py
+index 0f964aa..0a8df63 100644
+--- a/src/bu/experiments/repair_label_launch.py
++++ b/src/bu/experiments/repair_label_launch.py
+@@ -301,13 +301,24 @@ def _validate_preflight_copy(report_path: Path, sync_directory: Path) -> None:
+         raise ValueError("synced smoke preflight report differs from the source")
+ 
+ 
+-def validate_repair_label_preflight(
++def _validate_repair_label_preflight(
+     preflight_report: str | Path,
+     *,
+     output_root: str | Path,
+     sync_root: str | Path,
++    require_current_commit: bool,
+ ) -> ValidatedRepairLabelPreflight:
+-    """Re-attest the immutable report, environment, roots, plan, and sync."""
++    """Re-attest the immutable report, environment, roots, plan, and sync.
++
++    The private ``require_current_commit=False`` road exists only for the
++    correction-only finalizer: it keeps the original preflight commit as the
++    required commit of every immutable fit, while requiring the current
++    finalizer tree to be clean, trustworthy, and otherwise environment-identical.
++    The public launcher has no such option and always requires exact equality.
++    """
++
++    if type(require_current_commit) is not bool:
++        raise ValueError("require_current_commit must be an exact bool")
+ 
+     requested = Path(preflight_report)
+     PF._regular_file(requested, what="smoke preflight report")
+@@ -383,8 +394,35 @@ def validate_repair_label_preflight(
+         "packages": versions,
+         "exact_pins": pins,
+     }
+-    if report["environment"] != current_environment:
+-        raise ValueError("smoke preflight is not the current clean pinned environment")
++    recorded_environment = _strict_keys(
++        report["environment"],
++        {"git", "python", "platform", "packages", "exact_pins"},
++        what="smoke preflight environment",
++    )
++    recorded_git = _strict_keys(
++        recorded_environment["git"],
++        {"commit", "branch", "dirty", "trustworthy"},
++        what="smoke preflight git state",
++    )
++    if (
++        type(recorded_git["commit"]) is not str
++        or not recorded_git["commit"]
++        or recorded_git["dirty"] is not False
++        or recorded_git["trustworthy"] is not True
++    ):
++        raise ValueError("smoke preflight does not name one clean trustworthy commit")
++    if require_current_commit:
++        if recorded_environment != current_environment:
++            raise ValueError("smoke preflight is not the current clean pinned environment")
++    else:
++        if state.dirty or not state.trustworthy:
++            raise ValueError("correction finalization requires a clean trustworthy tree")
++        for key in ("python", "platform", "packages", "exact_pins"):
++            if recorded_environment[key] != current_environment[key]:
++                raise ValueError(
++                    "correction finalizer environment differs from the fit preflight "
++                    f"at {key!r}"
++                )
+     if report["device"] != P._verify_device("cpu"):
+         raise ValueError("smoke preflight is not the current frozen CPU route")
+ 
+@@ -422,7 +460,7 @@ def validate_repair_label_preflight(
+     return ValidatedRepairLabelPreflight(
+         report_path=path,
+         report_sha256=sha256_file(path),
+-        git_commit=state.commit,
++        git_commit=recorded_git["commit"],
+         output_root=roots["output"],
+         staging_root=roots["staging"],
+         sync_root=roots["sync"],
+@@ -431,6 +469,22 @@ def validate_repair_label_preflight(
+     )
+ 
+ 
++def validate_repair_label_preflight(
++    preflight_report: str | Path,
++    *,
++    output_root: str | Path,
++    sync_root: str | Path,
++) -> ValidatedRepairLabelPreflight:
++    """Re-attest a launch preflight against the exact current commit."""
++
++    return _validate_repair_label_preflight(
++        preflight_report,
++        output_root=output_root,
++        sync_root=sync_root,
++        require_current_commit=True,
++    )
++
++
+ def _load_bound_fit(planned: R._PlannedFit, *, expected_commit: str) -> VerifiedFitEvidence:
+     if planned.path.is_symlink() or not planned.path.is_dir():
+         if planned.path.exists() or planned.path.is_symlink():
+diff --git a/tests/test_label_evidence.py b/tests/test_label_evidence.py
+index b38ea97..18a0c02 100644
+--- a/tests/test_label_evidence.py
++++ b/tests/test_label_evidence.py
+@@ -106,8 +106,9 @@ class _SyntheticFitStore:
+         else:
+             evaluation_action = np.asarray(evaluation_action)
+         if evaluation_pool_digest is None:
++            pool_kind = "feature-restored" if arm == "feature_repair" else "baseline"
+             evaluation_pool_digest = hashlib.sha256(
+-                f"pool:{spec.unit_id}:{seed}".encode("ascii")
++                f"pool:{spec.unit_id}:{seed}:{pool_kind}".encode("ascii")
+             ).hexdigest()
+         verified = VerifiedFitEvidence(
+             fit_dir=path,
+@@ -426,13 +427,62 @@ def test_cross_arm_independently_verified_pool_digest_must_match(
+             model_works=False,
+         )
+     )
+-    source = Path(conditions[0].model_repair).resolve()
++    source = Path(conditions[0].data_repair).resolve()
+     verified = fit_store.entries[source]
+     fit_store.entries[source] = replace(
+         verified, evaluation_pool_digest="f" * 64
+     )
+ 
+-    with pytest.raises(ValueError, match="independently verified pool digest"):
++    with pytest.raises(ValueError, match="independently verified encoded-pool digest"):
++        build_label_evidence(conditions, path=tmp_path / "label.json")
++
++
++def test_feature_repair_encoded_pool_digest_must_change(fit_store, tmp_path):
++    conditions = list(
++        _conditions(
++            fit_store,
++            _units_with_one_model_repair()[0],
++            data_works=True,
++            model_works=False,
++        )
++    )
++    baseline = fit_store.entries[Path(conditions[0].baseline).resolve()]
++    source = Path(conditions[0].model_repair).resolve()
++    feature = fit_store.entries[source]
++    assert feature.arm == "feature_repair"
++    fit_store.entries[source] = replace(
++        feature, evaluation_pool_digest=baseline.evaluation_pool_digest
++    )
++
++    with pytest.raises(ValueError, match="restoring a withheld feature"):
++        build_label_evidence(conditions, path=tmp_path / "label.json")
++
++
++@pytest.mark.parametrize("inventory", ["episode", "step"])
++def test_cross_arm_latent_trajectory_inventory_must_match(
++    fit_store, tmp_path, inventory
++):
++    conditions = list(
++        _conditions(
++            fit_store,
++            _units_with_one_model_repair()[0],
++            data_works=True,
++            model_works=False,
++        )
++    )
++    source = Path(conditions[0].model_repair).resolve()
++    verified = fit_store.entries[source]
++    changed = np.array(verified.diagnostics[inventory], copy=True)
++    changed[-1] += 1
++    fit_store.entries[source] = replace(
++        verified,
++        diagnostics=MappingProxyType(
++            {**dict(verified.diagnostics), inventory: changed}
++        ),
++        **{inventory: changed},
++    )
++
++    with pytest.raises(ValueError, match=f"exact full {inventory} inventory"):
+         build_label_evidence(conditions, path=tmp_path / "label.json")
+ 
+ 
+@@ -458,7 +508,7 @@ def test_loader_rechecks_cross_arm_pool_binding(fit_store, tmp_path, binding):
+         fit_store.entries[source] = replace(
+             verified, evaluation_pool_digest="e" * 64
+         )
+-        message = "independently verified pool digest"
++        message = "independently verified encoded-pool digest"
+ 
+     with pytest.raises(ValueError, match=message):
+         load_label_evidence(path)
+diff --git a/tests/test_repair_label_finalize.py b/tests/test_repair_label_finalize.py
+new file mode 100644
+index 0000000..63463b3
+--- /dev/null
++++ b/tests/test_repair_label_finalize.py
+@@ -0,0 +1,183 @@
++"""Correction-only Week-6 smoke finalization never trains or mutates a fit."""
++
++from __future__ import annotations
++
++import inspect
++import json
++from pathlib import Path
++from types import SimpleNamespace
++
++import pytest
++import torch
++
++from bu.models.uncertainty import NormalisationScale
++from bu.runrecord import GitState
++from bu.experiments import repair_label_finalize as F
++from bu.experiments import repair_label_launch as L
++from bu.experiments import repair_label_preflight as PF
++from bu.experiments import repair_label_run as R
++
++
++FIT_COMMIT = "a" * 40
++FINALIZER_COMMIT = "b" * 40
++
++
++@pytest.fixture
++def correction_boundary(tmp_path, monkeypatch):
++    output = tmp_path / "output"
++    sync = tmp_path / "sync"
++    staging = tmp_path / "staging"
++    preflight_root = tmp_path / "preflight"
++    for path in (output, sync, staging, preflight_root):
++        path.mkdir()
++    sync_directory = sync / PF.REPAIR_LABEL_SYNC_DIRECTORY
++    sync_directory.mkdir()
++    preflight = preflight_root / PF.REPAIR_LABEL_PREFLIGHT_FILE
++    preflight.write_text("{}\n", encoding="utf-8")
++    validated = L.ValidatedRepairLabelPreflight(
++        report_path=preflight,
++        report_sha256="c" * 64,
++        git_commit=FIT_COMMIT,
++        output_root=output.resolve(),
++        staging_root=staging.resolve(),
++        sync_root=sync.resolve(),
++        sync_directory=sync_directory.resolve(),
++        report={},
++    )
++
++    monkeypatch.setattr(
++        L,
++        "_validate_repair_label_preflight",
++        lambda *args, **kwargs: validated,
++    )
++    monkeypatch.setattr(
++        F,
++        "git_state",
++        lambda: GitState(FINALIZER_COMMIT, False, "main"),
++    )
++
++    unit = R.registered_week6_smoke_unit()
++    _model_arm, _seeds, planned = R._registered_plan(unit, output)
++    scales = {
++        seed: NormalisationScale(
++            torch.tensor([1.0 + seed / 10000, 2.0]), n_reference=1000
++        )
++        for seed in range(1000, 1020)
++    }
++    loads = []
++
++    def load(item, *, expected_commit):
++        loads.append((item.spec.fit_id, expected_commit))
++        return SimpleNamespace(scale=scales[item.seed])
++
++    syncs = []
++
++    def sync_tree(source, destination):
++        syncs.append((Path(source), Path(destination)))
++
++    monkeypatch.setattr(L, "_load_bound_fit", load)
++    monkeypatch.setattr(L, "_sync_tree", sync_tree)
++
++    def finalize(root, *, expected_git_commit):
++        assert Path(root).resolve() == output.resolve()
++        assert expected_git_commit == FIT_COMMIT
++        label = output / "label_evidence.json"
++        counts = output / "label_counts.json"
++        label.write_text('{"label":"synthetic"}\n', encoding="utf-8")
++        values = {
++            "label_count_schema_version": 1,
++            "attempted": 1,
++            "observed_0": 1,
++            "observed_1": 0,
++            "ambiguous": 0,
++            "undiagnosed": 0,
++            "count_digest": "d" * 64,
++        }
++        counts.write_text(json.dumps(values) + "\n", encoding="utf-8")
++        return SimpleNamespace(label_path=label, count_path=counts, counts=values)
++
++    monkeypatch.setattr(R, "_finalize_registered_label", finalize)
++    return SimpleNamespace(
++        output=output,
++        sync=sync,
++        preflight=preflight,
++        planned=planned,
++        loads=loads,
++        syncs=syncs,
++    )
++
++
++def _finalize(boundary):
++    return F.finalize_existing_repair_label_smoke(
++        preflight_report=boundary.preflight,
++        output_root=boundary.output,
++        sync_root=boundary.sync,
++    )
++
++
++def test_correction_finalizer_reuses_exactly_sixty_original_commit_fits(
++    correction_boundary,
++):
++    report = _finalize(correction_boundary)
++
++    assert len(correction_boundary.loads) == 60
++    assert {commit for _fit, commit in correction_boundary.loads} == {FIT_COMMIT}
++    assert len(correction_boundary.syncs) == 60
++    assert report["executed_fits"] == 0
++    assert report["retrained_fits"] == 0
++    assert report["verified_existing_fits"] == 60
++    assert report["synced_fits"] == 60
++    assert report["preflight"]["fit_commit"] == FIT_COMMIT
++    assert report["finalizer"]["commit"] == FINALIZER_COMMIT
++    assert report["correction_record"] == "D-147"
++    assert report["counts"]["values"]["attempted"] == 1
++    assert Path(report["report"]["path"]).is_file()
++    assert Path(report["report"]["sync"]["destination_path"]).is_file()
++
++
++def test_correction_finalizer_has_no_fit_or_process_boundary():
++    source = inspect.getsource(F)
++    for forbidden in (
++        "run_confirmatory_fit",
++        "run_isolated_attempt",
++        "_fit_worker",
++        "attempt_timeout_seconds",
++    ):
++        assert forbidden not in source
++
++
++def test_same_commit_is_refused_before_plan_or_label(correction_boundary, monkeypatch):
++    monkeypatch.setattr(F, "git_state", lambda: GitState(FIT_COMMIT, False, "main"))
++    with pytest.raises(ValueError, match="commit after the failed preflight commit"):
++        _finalize(correction_boundary)
++    assert not (correction_boundary.output / "label_evidence.json").exists()
++
++
++def test_missing_existing_fit_fails_and_releases_lease(correction_boundary, monkeypatch):
++    def missing(_item, *, expected_commit):
++        assert expected_commit == FIT_COMMIT
++        raise FileNotFoundError("synthetic missing fit")
++
++    monkeypatch.setattr(L, "_load_bound_fit", missing)
++    with pytest.raises(FileNotFoundError, match="synthetic missing fit"):
++        _finalize(correction_boundary)
++    assert not (correction_boundary.output / "label_evidence.json").exists()
++    history = correction_boundary.output / "leases" / "history"
++    assert len(list(history.glob("*.released.json"))) == 1
++
++
++def test_week8_count_fields_remain_refused(correction_boundary, monkeypatch):
++    def forbidden_counts(root, *, expected_git_commit):
++        label = Path(root) / "label_evidence.json"
++        counts = Path(root) / "label_counts.json"
++        label.write_text("{}\n", encoding="utf-8")
++        counts.write_text("{}\n", encoding="utf-8")
++        return SimpleNamespace(
++            label_path=label,
++            count_path=counts,
++            counts={"attempted": 1, "exclusion_rate": 0.0},
++        )
++
++    monkeypatch.setattr(R, "_finalize_registered_label", forbidden_counts)
++    with pytest.raises(ValueError, match="crossed into Week-8"):
++        _finalize(correction_boundary)
+diff --git a/tests/test_repair_label_launch.py b/tests/test_repair_label_launch.py
+index 18804f3..ea0db30 100644
+--- a/tests/test_repair_label_launch.py
++++ b/tests/test_repair_label_launch.py
+@@ -66,7 +66,11 @@ class _SyntheticFits:
+             execution_run_id=spec.execution_run_id,
+             execution_digest=hashlib.sha256(spec.fit_id.encode()).hexdigest(),
+             evaluation_pool_digest=hashlib.sha256(
+-                f"pool:{payload['seed']}".encode()
++                (
++                    f"pool:{payload['seed']}:feature-restored"
++                    if payload["arm"] == "feature_repair"
++                    else f"pool:{payload['seed']}:baseline"
++                ).encode()
+             ).hexdigest(),
+             diagnostics=MappingProxyType({}),
+             error=empty,
+@@ -191,6 +195,31 @@ def _launch(ready_report, roots):
+     )
+ 
+ 
++def test_only_private_correction_validation_accepts_a_clean_new_commit(
++    ready_report, roots, environment, monkeypatch
++):
++    _old_state, versions, pins = environment()
++
++    def corrected_environment():
++        return GitState("d" * 40, False, "main"), versions, pins
++
++    monkeypatch.setattr(L.P, "_verify_environment", corrected_environment)
++    with pytest.raises(ValueError, match="current clean pinned environment"):
++        L.validate_repair_label_preflight(
++            ready_report,
++            output_root=roots["output"],
++            sync_root=roots["sync"],
++        )
++
++    validated = L._validate_repair_label_preflight(
++        ready_report,
++        output_root=roots["output"],
++        sync_root=roots["sync"],
++        require_current_commit=False,
++    )
++    assert validated.git_commit == COMMIT
++
++
+ def test_launch_executes_exact_order_binds_commit_syncs_each_and_counts_only(
+     ready_report, roots, synthetic_execution
+ ):
+diff --git a/tests/test_repair_label_run.py b/tests/test_repair_label_run.py
+index 4c69de4..05a12fe 100644
+--- a/tests/test_repair_label_run.py
++++ b/tests/test_repair_label_run.py
+@@ -93,7 +93,12 @@ def _write_synthetic_schema_v3_fit(
+     record_dir = root / spec.execution_run_id
+     record_dir.mkdir()
+     threading = {"num_threads": 4, "num_interop_threads": 4}
+-    pool_digest = hashlib.sha256(b"synthetic-fixed-evaluation-pool").hexdigest()
++    pool_name = (
++        b"synthetic-feature-restored-evaluation-pool"
++        if arm == "feature_repair"
++        else b"synthetic-fixed-evaluation-pool"
++    )
++    pool_digest = hashlib.sha256(pool_name).hexdigest()
+     role_run_ids = {role: spec.run_id_for(role) for role in spec.roles}
+     effective_unit = Config(unit=config.effective_unit).to_dict()["unit"]
+     base_unit = config.to_dict()["unit"]
+@@ -295,8 +300,9 @@ class _SyntheticPersistedFits:
+             np.arange(4, dtype=np.int64),
+             (K.EVALUATION_EPISODES * K.EPISODE_LENGTH) // 4,
+         )
++        pool_kind = "feature-restored" if arm == "feature_repair" else "baseline"
+         pool_digest = hashlib.sha256(
+-            f"synthetic-evaluation-pool:{seed}".encode("ascii")
++            f"synthetic-evaluation-pool:{seed}:{pool_kind}".encode("ascii")
+         ).hexdigest()
+         verified = VerifiedFitEvidence(
+             fit_dir=path,
+-- 
+2.53.0.windows.3
+

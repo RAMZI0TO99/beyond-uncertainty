@@ -3212,6 +3212,15 @@ D177_INCIDENT_MODULE_SHA256 = (
 D177_CURRENT_MODULE_SHA256 = (
     "08a1a01d6f50861c3ce756a79554307213e0d389a9781815763dc80be8dd411d"
 )
+# D-178 release-chain era: the incident authority still pins the D-175
+# controller commit, the successor step is the D-177 commit, and the
+# current controller sits at the D-177 release-009 commit (3f74b1d).
+D178_MIDDLE_COMMIT = D177_CURRENT_COMMIT
+D178_CURRENT_COMMIT = "3f74b1d248e003168157e207e28ca775364f1f26"
+D178_CURRENT_MODULE_SHA256 = (
+    "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809"
+)
+SYNTHETIC_RELEASE_RECORD_PREFIX = "controller-release-9"
 
 
 def _lineage_succession_authority(
@@ -3308,13 +3317,25 @@ def _lineage_succession_authority(
     }
 
 
-def _stage_reviewed_succession(
+def _stage_reviewed_controller_chain(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    record_fields: dict[str, Any] | None = None,
+    commits: list[str],
+    current_module_sha256: str = D177_CURRENT_MODULE_SHA256,
+    record_overrides: dict[int, dict[str, Any]] | None = None,
+    skip_records: set[int] | None = None,
+    write_manifest_for: set[int] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], Path]:
-    """Stage a synthetic controller worktree, release record and manifest."""
+    """Stage a synthetic controller worktree, release-record chain, manifest.
+
+    Writes one schema-valid synthetic release record per successive commit
+    pair (named so ``RELEASE_RECORD_GLOB`` matches, in deterministic name
+    order), writes the reviewed ``candidate-after.json`` manifest for the
+    records in ``write_manifest_for`` (default: only the last record), and
+    monkeypatches the module-level release-session, worktree and Git pins
+    the chain scanner and manifest locator read at call time.
+    """
 
     controller = tmp_path / "controller"
     session = tmp_path / "session"
@@ -3340,28 +3361,40 @@ def _stage_reviewed_succession(
         ["docs/synthetic.md", R.sha256_bytes(files["docs/synthetic.md"])],
         ["README.md", R.sha256_bytes(files["README.md"])],
     ]
-    manifest_directory = session / "d175-doc-proposal-017"
-    manifest_directory.mkdir(parents=True)
     manifest_bytes = (json.dumps(manifest_rows, indent=2) + "\n").encode("utf-8")
-    atomic_write_bytes(
-        manifest_directory / "candidate-after.json", manifest_bytes
-    )
-    record: dict[str, Any] = {
-        "ControllerCommit": D177_CURRENT_COMMIT,
-        "ParentCommit": D177_INCIDENT_COMMIT,
-        "RemotePushPerformed": False,
-        "CommittedBlobsMatchReviewedWorktreeBytes": True,
-        "FinalCandidateManifestSha256": R.sha256_bytes(manifest_bytes),
-    }
-    if record_fields is not None:
-        record.update(record_fields)
-    record_bytes = (json.dumps(record, indent=2) + "\n").encode("utf-8")
-    atomic_write_bytes(session / R.RELEASE008_RECORD, record_bytes)
+    manifest_sha256 = R.sha256_bytes(manifest_bytes)
+    if write_manifest_for is None:
+        write_manifest_for = {len(commits) - 2}
+    for index in sorted(write_manifest_for):
+        manifest_directory = session / f"d175-doc-proposal-{17 + index:03d}"
+        manifest_directory.mkdir(parents=True, exist_ok=True)
+        atomic_write_bytes(
+            manifest_directory / R.RELEASE_MANIFEST_FILE_NAME, manifest_bytes
+        )
+    for index in range(len(commits) - 1):
+        if skip_records is not None and index in skip_records:
+            continue
+        record: dict[str, Any] = {
+            "ControllerCommit": commits[index + 1],
+            "ParentCommit": commits[index],
+            "RemotePushPerformed": False,
+            "CommittedBlobsMatchReviewedWorktreeBytes": True,
+            "FinalCandidateManifestSha256": (
+                manifest_sha256
+                if index in write_manifest_for
+                else R.sha256_bytes(
+                    f"synthetic intermediate manifest {index}".encode("utf-8")
+                )
+            ),
+            "FileCount": len(manifest_rows),
+            "Branch": R.RELEASE_BRANCH,
+        }
+        if record_overrides is not None and index in record_overrides:
+            record.update(record_overrides[index])
+        record_bytes = (json.dumps(record, indent=2) + "\n").encode("utf-8")
+        record_name = f"{SYNTHETIC_RELEASE_RECORD_PREFIX}{1 + index:02d}-synthetic.json"
+        atomic_write_bytes(session / record_name, record_bytes)
     monkeypatch.setattr(R, "RELEASE_SESSION_ROOT", session)
-    monkeypatch.setattr(
-        R, "RELEASE008_MANIFEST", manifest_directory / "candidate-after.json"
-    )
-    monkeypatch.setattr(R, "RELEASE008_SHA256", R.sha256_bytes(record_bytes))
     monkeypatch.setattr(R, "CONTROLLER_WORKTREE", controller)
     git_executable = tmp_path / "git-runtime" / "git.exe"
     atomic_write_bytes(git_executable, b"synthetic-lineage-git")
@@ -3371,16 +3404,33 @@ def _stage_reviewed_succession(
         R, "EXPECTED_PINNED_GIT_SHA256", R.sha256_bytes(b"synthetic-lineage-git")
     )
     incident = _lineage_succession_authority(
-        git_commit=D177_INCIDENT_COMMIT,
+        git_commit=commits[0],
         module_sha256=D177_INCIDENT_MODULE_SHA256,
         command="adjudicate",
     )
     current = _lineage_succession_authority(
-        git_commit=D177_CURRENT_COMMIT,
-        module_sha256=D177_CURRENT_MODULE_SHA256,
+        git_commit=commits[-1],
+        module_sha256=current_module_sha256,
         command="recover",
     )
     return incident, current, controller
+
+
+def _stage_reviewed_succession(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    record_fields: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], Path]:
+    """Stage the D-177 single-step succession as a one-edge release chain."""
+
+    overrides = {0: record_fields} if record_fields is not None else None
+    return _stage_reviewed_controller_chain(
+        tmp_path,
+        monkeypatch,
+        commits=[D177_INCIDENT_COMMIT, D177_CURRENT_COMMIT],
+        record_overrides=overrides,
+    )
 
 
 def _recorded_lineage_git(
@@ -3418,18 +3468,18 @@ def test_lineage_matches_reviewed_succession(
     run, commands = _recorded_lineage_git(0)
     monkeypatch.setattr(R.subprocess, "run", run)
     assert R._authority_lineage_matches(current, incident) is True
-    assert len(commands) == 1
-    command = commands[0]
-    assert command[-4:] == [
-        "merge-base",
-        "--is-ancestor",
-        D177_INCIDENT_COMMIT,
-        D177_CURRENT_COMMIT,
-    ]
+    assert len(commands) == 2
     resolved_controller = str(controller.resolve())
-    assert command[command.index("-C") + 1] == resolved_controller
-    assert f"safe.directory={resolved_controller}" in command
-    assert command[0] == str((tmp_path / "git-runtime" / "git.exe").resolve())
+    for command in commands:
+        assert command[-4:] == [
+            "merge-base",
+            "--is-ancestor",
+            D177_INCIDENT_COMMIT,
+            D177_CURRENT_COMMIT,
+        ]
+        assert command[command.index("-C") + 1] == resolved_controller
+        assert f"safe.directory={resolved_controller}" in command
+        assert command[0] == str((tmp_path / "git-runtime" / "git.exe").resolve())
 
 
 def test_lineage_refuses_unrelated_commit(
@@ -3462,9 +3512,12 @@ def test_lineage_refuses_tampered_record(
         tmp_path / "second", monkeypatch
     )
     session = tmp_path / "second" / "session"
-    tampered = json.loads((session / R.RELEASE008_RECORD).read_text(encoding="utf-8"))
+    record_path = next(
+        iter(sorted(session.glob(f"{SYNTHETIC_RELEASE_RECORD_PREFIX}*-synthetic.json")))
+    )
+    tampered = json.loads(record_path.read_text(encoding="utf-8"))
     tampered["RemotePushPerformed"] = True
-    (session / R.RELEASE008_RECORD).write_bytes(
+    record_path.write_bytes(
         (json.dumps(tampered, indent=2) + "\n").encode("utf-8")
     )
     run2, _commands2 = _recorded_lineage_git(0)
@@ -3544,3 +3597,210 @@ def test_lineage_refuses_loaded_module_inventory_drift(
     assert R._authority_lineage_matches(current, incident) is False
     current["loaded_controller_modules"].pop()
     assert R._authority_lineage_matches(current, incident) is True
+
+
+def test_lineage_matches_reviewed_release_chain_of_two(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    incident, current, _controller = _stage_reviewed_controller_chain(
+        tmp_path,
+        monkeypatch,
+        commits=[D177_INCIDENT_COMMIT, D178_MIDDLE_COMMIT, D178_CURRENT_COMMIT],
+        current_module_sha256=D178_CURRENT_MODULE_SHA256,
+    )
+    run, commands = _recorded_lineage_git(0)
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current, incident) is True
+    assert len(commands) == 3
+    assert commands[0][-4:] == [
+        "merge-base",
+        "--is-ancestor",
+        D177_INCIDENT_COMMIT,
+        D178_CURRENT_COMMIT,
+    ]
+    assert commands[1][-4:] == [
+        "merge-base",
+        "--is-ancestor",
+        D177_INCIDENT_COMMIT,
+        D178_MIDDLE_COMMIT,
+    ]
+    assert commands[2][-4:] == [
+        "merge-base",
+        "--is-ancestor",
+        D178_MIDDLE_COMMIT,
+        D178_CURRENT_COMMIT,
+    ]
+
+    # Defense in depth: the overall ancestry holds, but the incident→middle
+    # record edge is not a real forwarded Git step, so the chain must refuse
+    # even though the middle commit would satisfy an ancestry-of-current
+    # check alone.
+    selective_commands: list[list[str]] = []
+
+    def selective_run(command: Any, **kwargs: Any) -> SimpleNamespace:
+        selective_commands.append(list(command))
+        accepted = command[-1] == D178_CURRENT_COMMIT and command[-2] in (
+            D177_INCIDENT_COMMIT,
+            D178_CURRENT_COMMIT,
+        )
+        return SimpleNamespace(
+            returncode=0 if accepted else 1, stdout=b"", stderr=b""
+        )
+
+    monkeypatch.setattr(R.subprocess, "run", selective_run)
+    assert R._authority_lineage_matches(current, incident) is False
+    assert len(selective_commands) == 2
+
+
+def test_lineage_refuses_release_chain_missing_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    incident, current, _controller = _stage_reviewed_controller_chain(
+        tmp_path,
+        monkeypatch,
+        commits=[D177_INCIDENT_COMMIT, D178_MIDDLE_COMMIT, D178_CURRENT_COMMIT],
+        current_module_sha256=D178_CURRENT_MODULE_SHA256,
+        skip_records={1},
+    )
+    run, commands = _recorded_lineage_git(0)
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current, incident) is False
+    assert len(commands) == 1
+
+    incident2, current2, _controller2 = _stage_reviewed_controller_chain(
+        tmp_path / "second",
+        monkeypatch,
+        commits=[D177_INCIDENT_COMMIT, D178_MIDDLE_COMMIT, D178_CURRENT_COMMIT],
+        current_module_sha256=D178_CURRENT_MODULE_SHA256,
+        skip_records={0},
+    )
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current2, incident2) is False
+
+
+def test_lineage_refuses_tampered_release_record_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    incident, current, _controller = _stage_reviewed_controller_chain(
+        tmp_path,
+        monkeypatch,
+        commits=[D177_INCIDENT_COMMIT, D178_MIDDLE_COMMIT, D178_CURRENT_COMMIT],
+        current_module_sha256=D178_CURRENT_MODULE_SHA256,
+        record_overrides={0: {"Branch": "main"}},
+    )
+    run, _commands = _recorded_lineage_git(0)
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current, incident) is False
+
+    incident2, current2, _controller2 = _stage_reviewed_controller_chain(
+        tmp_path / "second",
+        monkeypatch,
+        commits=[D177_INCIDENT_COMMIT, D178_MIDDLE_COMMIT, D178_CURRENT_COMMIT],
+        current_module_sha256=D178_CURRENT_MODULE_SHA256,
+        record_overrides={1: {"ControllerCommit": "zz" * 20}},
+    )
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current2, incident2) is False
+
+    incident3, current3, _controller3 = _stage_reviewed_controller_chain(
+        tmp_path / "third",
+        monkeypatch,
+        commits=[D177_INCIDENT_COMMIT, D178_MIDDLE_COMMIT, D178_CURRENT_COMMIT],
+        current_module_sha256=D178_CURRENT_MODULE_SHA256,
+    )
+    session = tmp_path / "third" / "session"
+    record_path = next(
+        iter(sorted(session.glob(f"{SYNTHETIC_RELEASE_RECORD_PREFIX}*-synthetic.json")))
+    )
+    duplicated = (
+        '{"Branch": "sol2-week8-recovery", "Branch": "sol2-week8-recovery"}\n'
+    ).encode("utf-8")
+    record_path.write_bytes(duplicated)
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current3, incident3) is False
+
+
+def test_lineage_refuses_release_chain_manifest_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    incident, current, controller = _stage_reviewed_controller_chain(
+        tmp_path,
+        monkeypatch,
+        commits=[D177_INCIDENT_COMMIT, D178_MIDDLE_COMMIT, D178_CURRENT_COMMIT],
+        current_module_sha256=D178_CURRENT_MODULE_SHA256,
+    )
+    run, _commands = _recorded_lineage_git(0)
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(current, incident) is True
+    manifest_path = (
+        tmp_path / "session" / "d175-doc-proposal-018" / "candidate-after.json"
+    )
+    original_manifest = manifest_path.read_bytes()
+    drifted_rows = json.loads(original_manifest.decode("utf-8"))
+    drifted_rows[0][1] = "0" * 64
+    manifest_path.write_bytes(
+        (json.dumps(drifted_rows, indent=2) + "\n").encode("utf-8")
+    )
+    assert R._authority_lineage_matches(current, incident) is False
+    manifest_path.write_bytes(original_manifest)
+    assert R._authority_lineage_matches(current, incident) is True
+    duplicate_directory = tmp_path / "session" / "d175-doc-proposal-099"
+    duplicate_directory.mkdir()
+    atomic_write_bytes(
+        duplicate_directory / "candidate-after.json", original_manifest
+    )
+    assert R._authority_lineage_matches(current, incident) is False
+    os.remove(duplicate_directory / "candidate-after.json")
+    os.rmdir(duplicate_directory)
+    assert R._authority_lineage_matches(current, incident) is True
+    original_readme = (controller / "README.md").read_bytes()
+    (controller / "README.md").write_bytes(b"# drifted controller\n")
+    assert R._authority_lineage_matches(current, incident) is False
+    (controller / "README.md").write_bytes(original_readme)
+    assert R._authority_lineage_matches(current, incident) is True
+
+
+def test_lineage_refuses_unrelated_current_commit_despite_git(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    incident, _staged_current, _controller = _stage_reviewed_controller_chain(
+        tmp_path,
+        monkeypatch,
+        commits=[D177_INCIDENT_COMMIT, D178_MIDDLE_COMMIT, D178_CURRENT_COMMIT],
+        current_module_sha256=D178_CURRENT_MODULE_SHA256,
+    )
+    unrelated = _lineage_succession_authority(
+        git_commit="f" * 40,
+        module_sha256=D178_CURRENT_MODULE_SHA256,
+        command="recover",
+    )
+    run, commands = _recorded_lineage_git(0)
+    monkeypatch.setattr(R.subprocess, "run", run)
+    assert R._authority_lineage_matches(unrelated, incident) is False
+    assert len(commands) == 1
+
+
+def test_lineage_matches_same_controller_without_release_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    empty_session = tmp_path / "empty-session"
+    empty_session.mkdir()
+    monkeypatch.setattr(R, "RELEASE_SESSION_ROOT", empty_session)
+    monkeypatch.setattr(
+        R.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail(
+            "same-controller match must not run git or scan release records"
+        ),
+    )
+    adjudicate = _lineage_succession_authority(
+        git_commit=D178_CURRENT_COMMIT,
+        module_sha256=D178_CURRENT_MODULE_SHA256,
+        command="adjudicate",
+    )
+    recover = _lineage_succession_authority(
+        git_commit=D178_CURRENT_COMMIT,
+        module_sha256=D178_CURRENT_MODULE_SHA256,
+        command="recover",
+    )
+    assert R._authority_lineage_matches(recover, adjudicate) is True
