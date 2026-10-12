@@ -1,5 +1,29 @@
 # Beyond Uncertainty
 
+To continue this project on another device, start with [CONTINUE.md](CONTINUE.md).
+The repository includes the current source, saved scientific data and an indexed,
+byte-preserving workspace snapshot through **STEP079**, including the records
+needed by a new coding agent. The default clone is the continuation entry point.
+
+For Windows x64 with an installed general-host **CPython 3.13**, run from the
+repository root:
+
+```powershell
+git clone https://github.com/RAMZI0TO99/beyond-uncertainty.git
+cd beyond-uncertainty
+py -3.13 tools/continuation.py verify
+py -3.13 tools/continuation.py restore --destination .continuation/workspace
+py -3.13 tools/setup_dev.py
+```
+
+The setup creates a new development environment; it runs no project tests or
+training. Verification and restoration use only Python's standard library.
+The saved workspace has its original logical paths and file bytes. The current
+source family is still **31/45** with 14 roles pending; the project is unfinished.
+Historical Windows/runtime identities and execution admissions require fresh
+device bindings. Read [the environment guide](requirements/README.md) and the
+continuation guide before invoking an archived helper or scientific command.
+
 **When a world model makes a bad prediction, does it need more data or a
 different model?**
 
@@ -18,8 +42,10 @@ the learned critic and final hypothesis evaluations remain future work.
 
 The earlier GitHub snapshot dated **2026-08-23** reported completion of Weeks 4–5
 of the infrastructure phase. The [project ledger](PROJECT_STATE.md) now includes
-later Week 7/8 development. Read the [2026-10-03 closeout](docs/development/CLOSEOUT_2026-10-03.md)
-for the current paused status, completed checks and unfinished validation.
+later Week 7/8 development. Read [CONTINUE.md](CONTINUE.md) for the completed
+STEP079 Source checkpoint and current continuation boundaries. The
+[2026-10-03 closeout](docs/development/CLOSEOUT_2026-10-03.md) retains an earlier
+dated status, completed checks and unfinished validation.
 Recorded development milestones do not establish the scientific hypotheses.
 
 | Research question | Recorded status |
@@ -73,34 +99,24 @@ ambiguous and undiagnosed conditions can reduce the usable dataset.
 
 ## Install and inspect
 
-Requires **Python 3.11 or newer**. Exact dependencies, including PyTorch,
-Gymnasium, NumPy, SciPy, pandas, and pytest, are pinned in
-[pyproject.toml](pyproject.toml). The commands below use a Unix-style shell;
-on Windows, use the corresponding `.venv\Scripts\python.exe` path.
+Use the Windows x64/CPython 3.13 setup at the top of this page and the
+[environment guide](requirements/README.md). It creates a fresh isolated CPU
+development environment with 37 pinned distributions and this checkout in
+editable mode. Inspect the installed distribution metadata with:
 
-```bash
-git clone https://github.com/RAMZI0TO99/beyond-uncertainty.git
-cd beyond-uncertainty
-python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[dev]"
-.venv/bin/python -m pytest -q
+```powershell
+py -3.13 tools/setup_dev.py --check --venv .venv
 ```
 
-The original research environment uses
-`python3 -m venv --system-site-packages .venv` to reuse an installed CUDA-enabled
-PyTorch when it satisfies the pinned version. A fully isolated environment is
-the default above. Choose a compatible Python/platform combination for the
-pinned packages; installation and the full suite have not been re-run as part
-of this README update.
+The package's general declaration is Python 3.11 or newer; Linux/macOS require a
+separately resolved compatible environment. The current pinned setup was
+validated on Windows x64/CPython 3.13.5. The full research suite was not run for
+this portability update. Historical shared-site/CUDA environments are retained
+as provenance rather than reused by setup.
 
-Inspect the design matrix without running model training:
-
-```bash
-.venv/bin/python -m bu.experiments.enumerate_units
-```
-
-The report distinguishes construction families from measured diagnosis labels,
-lists stage obligations, and accounts for model fits shared across stages.
+The research commands below describe existing tooling. Invoke them only after
+reading CONTINUE.md and establishing the current scope and device bindings for
+that work; setup does not invoke project modules, tests or scientific cases.
 
 ## Reproduce figures from existing evidence
 
@@ -222,10 +238,12 @@ Operational material is kept separately from the visitor-facing overview:
 
 See [LICENSE](LICENSE) for the repository's existing license.
 
-## Development closeout - 2026-10-03
+## Historical development closeout - 2026-10-03
 
 The accepted Week 7/8 recovery source and a dated handoff are available on this
-branch. Development is paused at the owner's request. Current model-pool admission,
-metadata capture and remaining validation suites are unfinished; no new scientific
-conclusion is claimed. Read the [current closeout](docs/development/CLOSEOUT_2026-10-03.md)
-for completed checks, archived preparations and the unvalidated D178 draft.
+branch. That dated closeout recorded an owner-requested pause and unfinished
+model-pool admission, metadata capture and validation suites. Read the
+[historical closeout](docs/development/CLOSEOUT_2026-10-03.md) for those completed
+checks, archived preparations and the unvalidated D178 draft. The current Source
+continuation point is recorded in [CONTINUE.md](CONTINUE.md); this packaging
+update makes no new scientific claim.

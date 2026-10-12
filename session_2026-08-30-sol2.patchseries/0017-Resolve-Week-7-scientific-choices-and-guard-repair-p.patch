@@ -1,0 +1,3025 @@
+From ee02542f814ae977fa15036393ca6ea2829aa4ee Mon Sep 17 00:00:00 2001
+From: Ramzi Alashmali <ai.research@sofa.ye>
+Date: Mon, 31 Aug 2026 11:37:22 +0300
+Subject: [PATCH] Resolve Week 7 scientific choices and guard repair pairing
+
+---
+ CLAUDE.md                                     |  26 +-
+ DECISIONS.md                                  |  20 +
+ DELTA_TO_SOL.md                               |  36 +-
+ PROJECT_STATE.md                              |  32 +-
+ PROJECT_STATE_ARCHIVE.md                      |   7 +
+ ...weep_pairing_and_ordinary_labels_design.md | 113 ++++
+ docs/week7_baseline_launch_design.md          |  91 +++
+ docs/week7_open_decisions.md                  |   8 +
+ docs/week7_scientific_amendment.md            | 123 ++++
+ docs/week7_scientific_amendment_log.md        | 119 ++++
+ src/bu/config.py                              |  17 +-
+ src/bu/constants.py                           |  19 +-
+ src/bu/experiments/confirmatory.py            |  38 +-
+ src/bu/experiments/enumerate_units.py         |  23 +-
+ src/bu/experiments/experiment_1_report.py     | 534 ++++++++++++++++++
+ src/bu/experiments/fit_evidence.py            |   5 +-
+ src/bu/experiments/label_evidence.py          |   8 +-
+ src/bu/experiments/repair.py                  |   8 +-
+ src/bu/experiments/w4_timing.py               |  21 +
+ src/bu/stats/trend.py                         |  10 +-
+ tests/test_capacity_extension.py              | 318 +++++++++++
+ tests/test_confirmatory.py                    |   2 +-
+ tests/test_enumerate_units.py                 |  23 +-
+ tests/test_experiment_1_report.py             | 472 ++++++++++++++++
+ tests/test_label_evidence.py                  |   2 +-
+ tests/test_repair.py                          |   4 +-
+ tests/test_streams.py                         |  18 +-
+ tests/test_sweep_repair_pairing.py            | 300 ++++++++++
+ tests/test_trend.py                           |  43 +-
+ tests/test_w4_timing.py                       |  23 +-
+ 30 files changed, 2372 insertions(+), 91 deletions(-)
+ create mode 100644 docs/sweep_pairing_and_ordinary_labels_design.md
+ create mode 100644 docs/week7_baseline_launch_design.md
+ create mode 100644 docs/week7_scientific_amendment.md
+ create mode 100644 docs/week7_scientific_amendment_log.md
+ create mode 100644 src/bu/experiments/experiment_1_report.py
+ create mode 100644 tests/test_capacity_extension.py
+ create mode 100644 tests/test_experiment_1_report.py
+ create mode 100644 tests/test_sweep_repair_pairing.py
+
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 03f7f8c..e5febe1 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -1,5 +1,15 @@
+ # CLAUDE.md — operational handoff
+ 
++**2026-08-31 D-154/D-155 update:** the owner expressly delegated the missing
++scientific choices to Sol2. Read `docs/week7_scientific_amendment.md` and its
++implementation log: fixed width-512 extension for 173 previously uncovered
++conditions; separate five-configuration H1 reporting, one Week-7 analysis reused
++at Week 10; prior exposure disclosed. These choices no longer await permission.
++External Sol certification remains pending (deltas 64–69). Full verification:
++2,293 passed, 7 expected skips, 0 failures. The 225-unit sweep repair stream mismatch
++must refuse before execution until a versioned baseline-pairing correction is
++verified. Do not silently change old stream meanings or retrain old fits.
++
+ You are the active implementation agent (Claude/Codex; the student currently
+ calls this role **Sol2**) working on a Bachelor's thesis with the student and an
+ external reviewing agent called Sol. **You have no memory of previous sessions.**
+@@ -491,14 +501,13 @@ rerun. These are confirmatory smoke evidence, not development diagnostics.
+ 3. For further execution, distinguish prepared configurations from outstanding
+    work: five Experiment-2A baselines already exist in smoke evidence. Reuse
+    source-verified physical fits, preserving roles, rather than rerunning them.
+-4. Carry unresolved missing model repairs and pooled H1/timing choices to Sol.
+-   Do not infer repair labels from baseline-only fits. Deliver deltas **64–68**
++4. Carry the owner's D-154 scientific amendments and D-155 pairing finding to Sol.
++   Do not infer repair labels from baseline-only fits. Deliver deltas **64–69**
+    with the cumulative patches; nothing is certified by the name Sol2.
+ 
+-**Owner authority covers D-151's aid/reminder and D-153's Week-7 implementation
+-with deferred review.** This increment is source/synthetic only. Do not open Week-7
+-scientific results, choose missing model repairs, invent baseline
+-roles, duplicate multi-role fits, recalibrate the threshold, expand the design,
++**Owner authority now also covers D-154's specified scientific choices.** Follow
++its explicit verification and single-report boundary before result access; do not
++invent baseline roles, duplicate multi-role fits, recalibrate the threshold, expand the design,
+ consume reserve units, or use the splitter/balancer on real inputs.
+ 
+ ### What exists in Week 3
+@@ -584,9 +593,10 @@ consume reserve units, or use the splitter/balancer on real inputs.
+   pending (D-141…D-152).
+ 
+ Still scientifically gated: registered split seed/targets, real critic
+-splitting, reserve use and later whole-design repair coverage. Owner-authorised
++splitting and reserve use. Whole-design repair assignments are now complete;
++sweep pairing and label execution still need verified engineering. Owner-authorised
+ Week-6 collection is DEV-017; Week-7 routine implementation before review is
+-DEV-018. The latter does not register an unspecified scientific choice.
++DEV-018; the specifically delegated scientific amendments are DEV-019/D-154.
+ **The MDE is not among them — that claim was stale.** Sol ruled on all three
+ questions in **D-089**: the simulation is a **diagnostic**, not H3's estimator;
+ MDE-vs-margin is a **necessary sensitivity check and explicitly not an
+diff --git a/DECISIONS.md b/DECISIONS.md
+index 84b7c96..88d5c06 100644
+--- a/DECISIONS.md
++++ b/DECISIONS.md
+@@ -2437,3 +2437,23 @@ The registered launcher ran from 16:01:47.156664Z to 16:47:51.118893Z (**2,763.9
+ **Implementation/audit closeout:** the reader passed **61 tests in 134.39 s**, including 150 fabricated on-disk sidecars through the unmodified production reader and cross-size pool/scale adversaries; stored float64 scale precision is preserved rather than rounded through the convenience tensor. Figure tests passed **41 in 11.30 s**, and existing/new figure tests together **48 in 17.79 s**. Every actual plotted scalar and its identity/digest are checked; two synthetic PNGs were visually reviewed. Main review corrected a test-only dependency on a pre-set plotting-cache environment. An independent configuration audit checked all 775 fits/795 roles and refused eight re-signed malformed plans without a substantive finding. A coordination interruption was recovered using the same workers; the interrupted test attempt was not counted. The state gate caught and then cleared a misplaced delta-68 append (**13 passed in 0.64 s**); earlier delta bodies were mechanically verified unchanged apart from whitespace, and the old session entry was archived verbatim. `docs/week7_open_decisions.md` makes the remaining scientific and human obligations explicit. The full suite and a separately added full-reader-to-PNG composition test are the remaining verification steps. The reconstructed `.gitignore` scratch entry is local-only, not part of the transferable implementation patch.
+ 
+ **Final verification:** the first full run returned **1,796 passed, 7 skipped, 1 failed in 1,508.53 s**. The failure was reproduced: an old test assumed pytest scratch was outside any repository, whereas this session confines scratch to the project. Its fixture now bounds real Git discovery at the temporary parent; production provenance and the fail-closed assertions are unchanged. Infrastructure then passed **47/1/0 in 14.16 s**. The added real-reader-to-real-PNG composition test passed **1 in 86.01 s**, reopening all 150 fabricated sidecars and preserving source bytes/timestamps. A fresh final full run of the corrected tree, including that test, passed **1,798 tests, skipped 7, failed 0 in 1,519.40 s**. The seven skips are the same three CUDA, three Windows symlink, and one vacuous identity case. Final XML SHA-256: `99cc93d9f3f27c63786cf78c062ef4752e590e812b75ca72d4f8427f68cbb10d`; initial report and composition report are retained separately in `.tmp/week7-full-suite/`. These are verification artifacts, not scientific evidence. The full suite includes its existing synthetic/development fixtures and certified tracked-log checks; no new experimental fit, real Experiment-1 analysis, label, inference or GPU work occurred. Week-7 engineering is complete for these interfaces, **not the whole week**: the missing repair/H1 rules and human work remain open. Patch 0016 and delta 68 carry this result; external Sol review is pending.
++
++### D-154 · 2026-08-31 · CHANGE RECORD — owner delegates unresolved repair and H1 decisions to Sol2
++
++**Authority:** the owner explicitly said “you can resolve those scientific you have my permetion.” This supersedes the unresolved-choice stops in D-151/D-153 for the choices specified here. Sol2 makes the decisions; external Sol has not reviewed or certified them. DEV-019 records the methodological and review-timing departures. The original plan and past ledger entries are preserved.
++
++**Change Record, fixed before dependent implementation:** add `CAPACITY_EXTENSION_HIDDEN_SIZE = 512` in `constants.py`, for the distinct `capacity_extension_repair` arm on full-observation width-256 conditions only. Existing `HIDDEN_SIZES`, capacity-repair target 256, feature restoration, data budget, depth, seeds, endpoint, failure threshold and all existing identities remain unchanged. No tuning/escalation after outcomes. The new arm is one model and changes width only; it neither proves realizability nor guarantees a label. All 173 uncovered design conditions receive this intervention: 7 canonical ×20 and 166 others ×3 = **638** added single-model trainings. Required total becomes **8,835**, versus 8,197 previously; 300 units/240 groups and the 150-fit ablation allowance are unchanged. This is fit accounting, not an architecture-aware timing estimate.
++
++**H1 reporting/timing:** `docs/week7_scientific_amendment.md` fixes separate reports for all five configurations, both metrics, six sizes and seeds 1000–1004; unchanged D-068 mathematics and disagreement reading rule. Error trends are diagnostic only. The explicit all-five-disagreement conjunction is an **amended operational summary**, not an originally preregistered global test or simultaneous 95% confidence claim. Week 7 may compute one immutable source-bound report; Week 10 interprets that same evidence, not an independent repeat. No added seeds, subset selection, smoothing, changed estimator or result-driven repair changes. Model adequacy and repair labels are not inferred from trends.
++
++**Has data been seen? Yes.** Prior development/calibration evidence, D-149's smoke label and D-150's two disclosed raw confirmatory per-fit summaries are known; the 150 Experiment-1 fits already exist. No new outcome was inspected to choose these rules. These are post-collection, partially exposed amendments, never represented as fully blinded pre-data preregistration. Newly specified aggregate interpretations carry that limitation. The fixed original per-configuration statistic is retained. Student authorship obligations, Gate 1 FAIL, Gate dates and external review remain unchanged.
++
++**Implementation boundary:** preserve/reverify old fit bytes, roles and generating commits; never manufacture a baseline repair role or a label from incomplete interventions. Ordinary sweep pairing and its three-seed label adapter require separate engineering verification. Two independent source reviews supported the fixed extension and separate H1 reports; the repair review also identified a possible sweep stream mismatch, to be reproduced before dependent sweep execution. No new training is authorised merely by a preparation file. **Plan ref:** P§4.2, §7.2–7.4, §14.2; S§W7/9/10; D-025, D-032, D-068, D-087, D-143–D-153. **Reviewed by Sol:** not yet — delta 69.
++
++### D-155 · 2026-08-31 · Sweep repair stream mismatch independently reproduced; stop invalid executions, preserve history
++
++**Finding:** the independent repair review identified that `comparison_stage()` sends every `exp3_repairs` condition to its family's canonical comparison, whereas a sweep baseline's `config_sweep` stage keys data by the unit. Main independently compared all data-purpose keys over the 300 design units: **225 mismatches, all 225 sweep-only units; zero canonical mismatches**. This is source-only evidence, not a new experiment. Completed canonical Experiment-1 and smoke fits are unaffected. Merely projecting a baseline role in the future label adapter would not fix the distinct trajectories.
++
++**Decision:** add an actual pre-compute refusal in `run_confirmatory` for any repair whose data-purpose keys differ from the unit's authoritative baseline stage. Keep registration/inventory separate from execution eligibility. Do not silently rewrite `STREAM_VERSION`, old stream functions, old roles, identities or sidecars. The required eventual procedure is baseline-anchored pairing with an explicit versioned evidence contract; engineering must prove exact datasets, seeds, scales, historical compatibility and reuse before sweep repairs can launch. Assignment counts from D-154 remain planning counts, not proof of 300 usable labels or revised wall-hours. No sweep repair is run to investigate this defect. **Plan ref:** P§7.2; D-030/D-033/D-038/D-055/D-154. **Reviewed by Sol:** not yet — delta 69.
++
++**D-154/D-155 implementation verification:** full CPU suite **2,293 passed, 7 skipped, 0 failed in 1,679.75 s**; `.tmp/amendment-full-suite/results.xml`, SHA256 `6b8c98295b9fbb8765d088e52d6363e539884a98dca67ba3ffd148f67f92dab8`. Skips are three unavailable CUDA checks, three Windows symlink-privilege cases, and one vacuous identity-exclusion case. All 2,947 old execution-plan rows retain their exact pre-change fingerprint; all 300 units now have one model-repair assignment. Actual guard tests refuse sweep repairs before work, while canonical executions and baselines remain eligible. The legacy size-only timing path refuses to price 638 width-512 fits using old rates; historical timing records still recompute unchanged. The report reader/writer and replay have real-loader synthetic integration and adversarial tests. Independent follow-up designs identified the need for contemporaneous symbolic anchors before future sweep baselines (feature restoration can reorder encoded object slots), qualified corrected-repair identities, and a separate nine-source/three-seed label adapter. These designs are not built or certified. No new experimental outcome or training was opened during implementation; source-bound Week-7 reporting follows this clean verified revision.
+diff --git a/DELTA_TO_SOL.md b/DELTA_TO_SOL.md
+index 78d705c..670555b 100644
+--- a/DELTA_TO_SOL.md
++++ b/DELTA_TO_SOL.md
+@@ -360,24 +360,22 @@ PREVIOUS_DELTA_ID: 67
+ DATE: 2026-08-31
+ SUBJECT: D-153 / DEV-018 — owner continues Week-7 implementation; review deferred.
+ BUNDLE_FILE: cumulative session_2026-08-30-sol2.patchseries (0001..0016) plus real-repo SOL_BUNDLE.txt.
+-The owner explicitly asked Sol2 to proceed and said you would review later.
+-This defers review, not certification. Week-6 own-voice prose remains open.
+-NEW: exact source-bound150-fit Experiment-1 adapter; descriptive per-configuration
+-figure preparation; immutable100-fit Exp2A/675-fit sweep baseline preparation.
+-No configuration pooling, H1 verdict, repair assignment, reserve or launch.
+-Five Exp2A baselines overlap the completed smoke: requirements are not new work.
+-Every future execution must reconcile those source-verified fits first.
+-PREPARATION: project-local week7-preparation-2026-08-31/week7_baseline_preparation.json;
+-SHA256 9b380e4bbefa4d3c1c5a52e6ab89f8b63cac42dbfaf90cf5b19419fcc9152044.
+-TESTS: preparation24/0 in34.19s; evidence61/0 in134.39s; figures41/0 in11.30s;
+-old+new figures48/0 in17.79s; state13/0 in0.64s. Full-suite closeout follows.
+-FINAL: 1,798 passed / 7 skipped / 0 failed in1,519.40s. Initial full run1796/7/1
+-exposed an old outside-repository scratch assumption; real-Git fixture isolation
+-corrected, production unchanged, infrastructure47/1/0. Added real150-source-to-PNG
+-composition1/0 passed and is included in the final full suite. Prior failure retained.
+-DATA: no real Experiment-1 payload, new fit, label, inference or GPU in this increment.
+-Prior deltas remain undelivered and unaltered in substance; delta67 was only reflowed.
+-Please review implementation and the existing unresolved repair/inference choices.
+-Week7 engineering progressed, not whole-week completion; human prose stays open.
++The owner explicitly asked Sol2 to proceed and said you would review later. This defers review, not certification. Week-6 own-voice prose remains open. NEW: exact source-bound150-fit Experiment-1 adapter; descriptive per-configuration figure preparation; immutable100-fit Exp2A/675-fit sweep baseline preparation. No configuration pooling, H1 verdict, repair assignment, reserve or launch. Five Exp2A baselines overlap the completed smoke: requirements are not new work. Every future execution must reconcile those source-verified fits first. PREPARATION: project-local week7-preparation-2026-08-31/week7_baseline_preparation.json; SHA256 9b380e4bbefa4d3c1c5a52e6ab89f8b63cac42dbfaf90cf5b19419fcc9152044. TESTS: preparation24/0 in34.19s; evidence61/0 in134.39s; figures41/0 in11.30s; old+new figures48/0 in17.79s; state13/0 in0.64s. Full-suite closeout follows. FINAL: 1,798 passed / 7 skipped / 0 failed in1,519.40s. Initial full run1796/7/1 exposed an old outside-repository scratch assumption; real-Git fixture isolation corrected, production unchanged, infrastructure47/1/0. Added real150-source-to-PNG composition1/0 passed and is included in the final full suite. Prior failure retained. DATA: no real Experiment-1 payload, new fit, label, inference or GPU in this increment. Prior deltas remain undelivered and unaltered in substance; delta67 was only reflowed. Please review implementation and the existing unresolved repair/inference choices. Week7 engineering progressed, not whole-week completion; human prose stays open.
++=== END UPDATE ===
++```
++
++```
++=== UPDATE FOR SOL ===
++DELTA_ID: 69
++PREVIOUS_DELTA_ID: 68
++DATE: 2026-08-31
++SUBJECT: D-154/D-155/DEV-019 — owner delegates scientific choices; fixed amendments and sweep-pairing refusal.
++COVERS SESSIONS: 2026-08-31 (Sol2 scientific decisions) · Fixed repair extension and H1 reporting amendment
++The owner expressly permitted Sol2 to resolve the missing scientific choices; this is not your certification. Original plan/history preserved; prior development, smoke label and two exposed Experiment-1 summaries disclosed. No claim of fully blinded preregistration.
++D-154: new capacity_extension_repair is full-observation width256→512 only, one model, all other budgets/settings unchanged; existing capacity→256 untouched. All173 gaps receive one fixed intervention:7×20+166×3=638 extra single-model fits;8,835 planned trainings,300units/240groups unchanged. Not a runtime/realizability/label-completeness claim.
++H1: unchanged per-configuration statistic,5configs×5seeds×6sizes; diagnostic error trends; all-five disagreement summary explicitly amended, not a calibrated global test. One immutable Week7 report; Week10 interpretation reuses it. No pooling, tuning, extra seeds or labels inferred from trends.
++D-155: independent source review found, and main reproduced,225/225sweep-only baseline/repair data-key mismatches,0canonical. Guard before compute; old stream meanings preserved. Baseline-anchored versioned correction/three-seed label adapter remain engineering work. Existing Experiment1/smoke unaffected.
++IMPLEMENTATION/TESTS: in progress; complete record in docs/week7_scientific_amendment_log.md. No new scientific result or training yet. Student own-voice work remains open. Please review the amendment, exposure disclosure and implementation; do not mistake authorization for certification.
++VERIFIED CLOSEOUT: full CPU suite 2,293 passed / 7 expected skips / 0 failed in1,679.75s; XML SHA256 6b8c98295b9fbb8765d088e52d6363e539884a98dca67ba3ffd148f67f92dab8. All2,947old fit-plan rows unchanged; all300units have exactly one model-repair assignment. Current size-only timing refuses to misprice638width512fits. Independent launch/pairing designs now require contemporaneous symbolic anchors for future sweep baselines, qualified repair-procedure identities, original-role reuse and a separate three-seed ordinary-label boundary; these are not yet implemented. The authorized real Experiment1 report follows a clean implementation commit; no retraining is planned.
+ === END UPDATE ===
+ ```
+diff --git a/PROJECT_STATE.md b/PROJECT_STATE.md
+index e998799..d4c3be3 100644
+--- a/PROJECT_STATE.md
++++ b/PROJECT_STATE.md
+@@ -41,14 +41,14 @@ This is the shared working file for the project. It is written by Claude/Codex,
+ |---|---|
+ | **Last updated** | 2026-08-31 |
+ | **Updated by** | Codex — owner label **Sol2** (DEV-015); external Sol remains reviewer |
+-| **Phase** | **Phase B — Week-7 implementation, with Week-6 student prose still open**. Phase A (Weeks 1–5) remains complete/certified; Gate 1 FAIL (D-120/D-152) |
++| **Phase** | **Phase B — Week-7 scientific amendments and reporting, with Week-6 student prose still open**. Phase A (Weeks 1–5) remains complete/certified; Gate 1 FAIL (D-120/D-152) |
+ | **Current week / day** | Calendar **Week 3 Monday** (2026-08-31); schedule dates unchanged. Owner opened **Week-7 implementation** ahead of external review (D-153/DEV-018). Week-6 machine work: smoke 60/60 plus observed label 0 (D-149), Experiment 1 150/150 complete (D-150), strict >20% correction (D-151). **Week 6 still needs the student's ~400-word own-voice closeout; external certification is separate and pending.** Gate 1 FAIL; compute NOT ADJUDICABLE; no expansion |
+ | **Next gate** | **Gate 1 SIGNED OFF 2026-08-20 — FAIL** on the MDE condition (D-098); next is **Gate 2**, Week 10 Saturday = **2026-10-24** |
+ | **Repository** | [`RAMZI0TO99/beyond-uncertainty`](https://github.com/RAMZI0TO99/beyond-uncertainty) — **private**. See *Revision* row for the exact state |
+ | **Revision** | This export is a reconstructed local `master` with no remote; its commits are handoff artefacts, not project history. **Exact real-repository patch target: `66edf4a11dce39b91974d5c331cca81424f83b6e`** (post-D-132 state proved by the existing bundle). **Sol-certified review base remains `4e55291e08396ffe4a903ae73b1390396675643b`** (D-131); use `BASE=4e55291` for Sol's diff after applying the series, but never apply the series directly to that older tree (D-140) |
+-| **Tests** | Final D-153 full CPU suite: **1,798 passing, 7 skipped, 0 failing in 1,519.40 s**. The first run's one test-isolation failure was reproduced and corrected without production changes; infrastructure **47/1/0**, standalone composition **1/0/0**; all are included in the final run, not added again |
++| **Tests** | D-154/D-155 full CPU suite: **2,293 passed, 7 expected skips, 0 failures in 1,679.75 s**. XML SHA256 `6b8c98295b9fbb8765d088e52d6363e539884a98dca67ba3ffd148f67f92dab8`; focused runs overlap and are not added. D-153's prior failure/correction remains recorded in the ledger |
+ | **Compute used** | **0 GPU-hours**. Prior official: 675 CPU member fits. Week 6 adds **210 physical sidecars / 890 member-model trainings**: smoke 60/140 plus Experiment 1 150/750, pending Sol; no retry, timeout or rerun |
+-| **Design scale** | 300 units (the statistical unit) in **240 comparison groups** · unit-level class balance **150/150**, group counts 125/115 · **8,197 model fits** vs P§14.2's ~8,700 |
++| **Design scale** | 300 units in **240 comparison groups** · intended balance **150/150**, group counts 125/115 · D-154 adds 638 repair models: **8,835 required model trainings** including 150 ablations. This is not a runtime estimate or proof of label completeness |
+ **Hypothesis status**
+ 
+ | | Claim | Status | Decided at |
+@@ -58,16 +58,9 @@ This is the shared working file for the project. It is written by Claude/Codex,
+ | H3 | Learned critic beats fitted (error, disagreement) rule by > 5 pts | Not tested | W15 Fri |
+ **Done — Weeks 1 and 2, every "Done when" criterion verified rather than asserted.**
+ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and the ledger: Week 1 build and audit (D-005, D-006, D-015, D-016); Week 2 enumerator, policy, collector and audit (D-018 … D-021); Sol's early rulings (D-009, D-012, D-013); all eight 2026-08-16 reviews actioned with every finding independently verified (D-025 … D-057 — 375 phantom fits, the D-042 bound-as-measurement and D-044 estimand-comparison lessons); Week 3 Mon–Wed built then substantially corrected (non-stationary policy, derived split, degenerate N=100 bootstrap — D-046 … D-057); the D-030 named streams verified on their pairing properties (D-038, D-039).
+-**Next:** D-153's verified Experiment-1 input/figure tools and 775 baseline configuration requirements are implementation-complete and tested, ahead of Sol review at the owner's direction. Real Experiment-1 figures/trends, missing repair assignments and later launches remain unexecuted; see `docs/week7_open_decisions.md`. The student's independent Week-6 ~400-word rewrite/defense stays open. All new writes are project-local; C evidence remains read-only; external certification is pending.
++**Next:** D-154/DEV-019's fixed width-512 intervention and separate H1 reporting are implemented and full-suite verified. Save the clean revision, then produce the one authorized Week-7 source-bound coefficient report and descriptive figures; no new outcome has yet been opened. Sweep-only repairs still need D-155's versioned pairing correction, forward baseline anchors and ordinary-label adapter (designs in `docs/`). Do not call assignment coverage launch readiness. Student own-voice work and external Sol certification remain open; all writes stay project-local.
+ 
+-0. **W3 Mon — DONE and Sol-ruled** (D-046, D-047, D-048). Criterion met across all five capacity levels and all four withholding configurations. Beyond it: blocked movement transitions carry **1.67×** the position error of free moves; `interact` is deterministic and predictable in every canonical condition (0 aliased successors) but aliased when position is withheld — a second mechanism behind D-026.
+-1. **W3 Tue — DONE** (D-049). Trains 5,000 transitions, early-stops at epoch 10 of 31 in 1.5s CPU, curve reaching `load_runs()`. Split by episode and **strided**, all of D-047's constraints implemented. Measured: a transition-level split is **4.5–8.7× optimistic**, worst at small n.
+-2. **W3 Wed — DONE** (D-050). Five members on 5,000 transitions in 8.0s CPU; per-member validation errors 0.0034–0.0061, sd 0.0010, each drawing ~50 of 80 training episodes. **Raised Q-011.**
+-3. **W3 Fri and Sat — DONE** (D-058, corrected by **D-059**). 90 fits on CPU, rerun with per-transition export. **Error falls monotonically in N; disagreement does not** — it peaks at N=250, direction reproduced in all three seeds paired (+0.179, +0.360, +0.102). Measured **per member**: at N=100 members range 0.219–0.639 of the target's variation, at N=250 0.220–0.836, at N=5,000 0.939–0.974. The mechanism is **heterogeneous contraction, not collapse** — disagreement peaks where the spread across members is widest. The lowest whole-pool ratio is at N=100 (0.462), but that is **not** the registered H2 ratio, which is defined over the failure set and needs the W4 Fri threshold.
+-4. **W3 closeout — DONE** (D-061, D-062, D-063), on Sol's review of deltas 27–28. Two serious findings, both verified first and **one of them different from how it was stated**: the MC-dropout fix restored state without re-enabling dropout (measured on a real dropout model: **exactly zero** disagreement under the old path), and the rerun hazard was reachable through a *different-scope* rerun rather than the append path, which `write_run_record` already blocked. Scale ruling adopted and the pilot's numbers reproduce **exactly**. No second trunk.
+-5. **W4 Mon — DONE** (D-068, D-069). The trend test is one function for both stages, built under Sol's rule **frozen before it saw data**, with 22 tests. On the pilot: **rho = −0.9429, 95% CI [−0.9429, −0.8286], PASS** on development seeds. The N=250 peak costs exactly one of fifteen pairwise inversions and weakens rho naturally, as Sol predicted — nothing removed, nothing smoothed. **The interval is coarse, and that is the finding:** the 27 resamples take only **two** distinct values, so it is the full support rather than a tight estimate. Development evidence about the pipeline, **not** a measurement of H1 and **not** the gate.
+-6. **W4 Tue — DONE. Rung 0 PASSES** (D-074). All three configurations, on the certified commit with a clean tree: **rho = −0.9429** for every one, intervals [−0.9429, −0.9429] (uniform), [−0.9429, −0.8286] (clustered), [−0.9429, −0.9429] (sparse). 90 ensembles / 450 fits in **4 m 52 s** on CPU; `recompute()` exact; suite green after. Per Sol the ladder **stops here** — rungs 1 and 2 are not run. **Read the interval correctly:** the exact bootstrap is discrete with 2–3 atoms, and uniform and sparse are degenerate only just (second atom at 1.63% and 2.14% against a 2.5% threshold). The *verdict* is unaffected — every atom is far below zero — but the width is not a precision claim. **The N=250 peak reproduces in 14 of 15 curves**; clustered seed 4 peaks at N=500 instead. Disagreement is **not** monotone in dataset size; the test passes because Spearman tolerates one inversion.
+-7. **W4 Fri — DONE and EXECUTED** (D-103). It ran once, into `attempt-001`, and **will not be rerun**: the threshold has been inspected, so Sol's invalidation protocol can no longer be satisfied. 45 cells, 225 fits, 4.3 min at 4/4 threads; recomputes bit-identically. C-010 (D-076) was what it ran on and Sol had cleared it. **The number is frozen and certified**: the D-106 withhold was lifted once the artefact bytes were delivered, the D-035 promotion was executed as D-107, and Sol certified it (D-109, 2026-08-22).
++**Certified Weeks 1–5 history:** detailed development results, corrections and provenance remain in `PROJECT_STATE_ARCHIVE.md` and D-046–D-120. The W4 gate passed at rung 0; threshold calibration is permanently frozen; no historical fit or result is being replaced.
+ 
+ **GATE 1 IS SIGNED OFF: FAIL** (D-098, §5). Reliability **PASS** (rung 0, certified). Compute **NOT ADJUDICABLE across hosts** (D-119 — local wall-hours vs a GPU-hour trigger; §5's signed "PASS — contingent" is superseded). Permutation calibration **PASS** (D-094). Five-point MDE **FAIL** — never rename it a pass; H1's machinery works, power failed. The unchanged **300-unit design continues** under a recorded power limitation, **Direction C authorised**; expansion to the 1,500–2,000 held-out units five points would need is refused. The 18–22 table stays **uncertified and optimistic** until the simulation uses H3's final group-level inference with null size validated at .05.
+ 
+@@ -82,11 +75,12 @@ Detail is in `PROJECT_STATE_ARCHIVE.md` §7 and the ledger: Week 1 build and aud
+ ---
+ ## 2. Frozen constants — *changing any of these requires a §3 Change Record and a Sol review*
+ 
+-These are the preregistered quantities. They are fixed **before** data collection and are not revised after seeing data. Their whole purpose is to be un-adjustable later.
++Original quantities were fixed **before** dependent data collection and are not revised after seeing outcomes. D-154's new extension width is explicitly a post-collection, partially exposed amendment, not original preregistration; its rule is now fixed and awaits external review.
+ 
+ | Constant | Value | Source |
+ |---|---|---|
+ | Data-repair budget | **10×** the failure-condition dataset, same generating process | P§7.2 |
++| Capacity extension | **512** hidden units, distinct single-model arm on full-observation width-256 sources only; old capacity repair remains 256; no outcome-driven escalation | D-154 / DEV-019, owner-authorised amendment, Sol review pending |
+ | Repair acceptance | Negative fixed effect, 95% CI excluding zero, **and** **> 20%** relative reduction in mean per-transition error | P§7.3 |
+ | Acceptance test | **Equal-seed mean paired difference, t interval on `n_seeds − 1` df**; equal-seed denominator; **no fallback** — fails closed. *Changed under D-094 and D-100, Sol-authorised, before any data was seen* | P§7.3, D-094, D-100 |
+ | H3 equivalence margin | **±5 percentage points** balanced accuracy | P§4.2 |
+@@ -306,6 +300,8 @@ The index below carries every id, so a decision cannot go missing from view.
+ | **D-151** | 2026-08-30 | **Strict practical-effect boundary restored** — AI-only Week-6 scaffold/reminder plus source-only Week-7 readiness audit; no result opened | Correction — for Sol |
+ | **D-152** | 2026-08-30 | **Phase-one terminology resolved** — scheduled Phase A already complete/certified; pipeline PHASE 1 is per-condition, not global launch authority | Scope audit — for Sol |
+ | **D-153** | 2026-08-31 | **Owner opens Week-7 implementation before Sol review** — verified Experiment-1 inputs/figures and exact baseline configuration preparation; synthetic validation | Owner-authorised — for Sol |
++| **D-154** | 2026-08-31 | **CHANGE RECORD: fixed width-512 extension and five-configuration H1 reporting/timing** — owner delegates scientific choices; prior exposure disclosed | Owner-authorised — for Sol |
++| **D-155** | 2026-08-31 | **225 sweep baseline/repair stream mismatches reproduced** — fail closed before fitting; no silent historical stream rewrite | Finding + guard — for Sol |
+ ## 4. Deviation log — *append-only · satisfies the schedule's mandated deviation log*
+ 
+ Anything not done as written, and why. **The schedule requires several of these to appear in the thesis methodology**: the reliability-gate rung reached, the PPO substitution, any repair-budget or configuration-count reduction, any cut experiment, and the W2 decision on whether the Experiment 2A conditions are drawn from the configuration sweep or are additional to it.
+@@ -399,6 +395,9 @@ Format: `Week n Day | what was skipped or substituted | why | goes in methodolog
+ 
+ ---
+ 
++### DEV-019 · 2026-08-31 · Owner delegates scientific amendments before external review
++**Deviation:** D-154 adds a fixed width-512 model-repair arm outside the original width grid, retains all existing conditions/interventions, and specifies five-configuration reporting plus one Week-7 analysis reused at Week 10. Prior data existence, smoke outcome and two exposed Experiment-1 per-fit summaries are disclosed. These are post-collection amendments, not original fully blinded preregistration; external Sol remains reviewer. **Goes in methodology:** yes. Scientific authority is delegated; student authorship is not.
++
+ ## 5. Gate records
+ 
+ A gate is signed off in writing, with the verdict and the evidence behind it, on the day it falls. **Slip is absorbed by catch-up days, never by moving a gate.**
+@@ -494,7 +493,8 @@ Two conditions:
+ 
+ Closed entries are in `PROJECT_STATE_ARCHIVE.md` in chronological order; §3 indexes every decision regardless of where its session lives. A 2026-08-30 audit counted **93 unique Claude session headings and 98 total**: five duplicate archived headings are preserved pending Sol's ruling rather than silently deleted. Read controlling corrections before historical claims: D-109 before D-108; D-115/D-119 before D-114/DEV-010; D-121/D-122 before affected prose; D-138…D-146 before D-133…D-137.
+ *(All prior sessions through the post-Fable audit are archived in full because this file repeatedly reached its 500-line paste cap, never because their decisions stopped mattering.)*
+-### 2026-08-31 (Sol2 Week-7 implementation) · Verified evidence and baseline configuration preparation · Claude
++*(The completed D-153 implementation session is archived verbatim.)*
++
++### 2026-08-31 (Sol2 scientific decisions) · Fixed repair extension and H1 reporting amendment · Claude
+ 
+-The owner explicitly deferred external Sol review and directed the next step (DEV-018/D-153). Week-6 machine work remains complete; the student's independent prose stays open alongside Week-7 engineering. Source-bound Experiment-1 inputs/figures and exact Experiment-2A/sweep baseline preparation are being built and synthetically tested. No new fit, label, inference or real Experiment-1 payload has been opened in this increment. Delta 68 carries the changes and final verification.
+-Closeout: D-153 completed the three tools, 775 validated configuration requirements and synthetic visual QA. Final full suite **1,798 passed / 7 skipped / 0 failed in 1,519.40 s**; the earlier fixture failure and recovery are retained in the ledger. No real Experiment-1 payload or new experimental fit was opened; Week 7 is not scientifically complete. Transferable patch 0016 and delta 68 carry the handoff; external review and the human obligations remain open.
++Owner authorization recorded as D-154/DEV-019 before dependent implementation. Two independent reviews supported the fixed extension and separate trend reports. Main reproduced the additional 225-unit sweep stream defect (D-155); canonical evidence is unaffected. New code and synthetic verification began without opening new scientific results or training models. Closeout: full CPU suite **2,293/7/0 in 1,679.75 s**; five independent agents completed their implementation/review assignments. Source-bound reporting is next. Delta 69 carries this session and the detailed implementation log.
+diff --git a/PROJECT_STATE_ARCHIVE.md b/PROJECT_STATE_ARCHIVE.md
+index 20154ed..a31b54f 100644
+--- a/PROJECT_STATE_ARCHIVE.md
++++ b/PROJECT_STATE_ARCHIVE.md
+@@ -5818,3 +5818,10 @@ The owner extended Sol2 work through a full Week-6 implementation audit. A sourc
+ ### 2026-08-30 (Sol2 Week-6 execution) · Owner-authorised CPU preflight and registered run · Claude
+ 
+ The owner authorised frozen-CPU compute and kept the device on. D-146…D-149 closed the smoke with 60 immutable fits, label 0 and exact counts. D-150 preflighted and ran Experiment 1 at clean `f036fe0`: 150/150 executed/synchronized in 46m04s, 0 failure/recovery events, 750 member trainings, byte-identical project copy and final validated monitor. An operational raw tail exposed two per-fit summaries mid-run; no adaptation occurred and the inspection is disclosed for Sol. D-151 then supplied an explicitly AI-only 406-word student scaffold/reminder, restored the plan's strict `>20%` repair boundary in both executable checks (smoke unchanged), and documented why Week-7 result work remains unopened. D-152 resolves “phase one”: Phase A is already complete/certified with Gate 1 FAIL, while plan PHASE 1 is a repeated per-condition pipeline, not global launch authority. Week-6 machine work is done; only the student's own-voice Thursday prose/explain-and-defend step prevents local completion, while external certification remains pending.
++
++## Archived from PROJECT_STATE.md §7 on 2026-08-31 — D-153 implementation closeout
++
++### 2026-08-31 (Sol2 Week-7 implementation) · Verified evidence and baseline configuration preparation · Claude
++
++The owner explicitly deferred external Sol review and directed the next step (DEV-018/D-153). Week-6 machine work remains complete; the student's independent prose stays open alongside Week-7 engineering. Source-bound Experiment-1 inputs/figures and exact Experiment-2A/sweep baseline preparation are being built and synthetically tested. No new fit, label, inference or real Experiment-1 payload has been opened in this increment. Delta 68 carries the changes and final verification.
++Closeout: D-153 completed the three tools, 775 validated configuration requirements and synthetic visual QA. Final full suite **1,798 passed / 7 skipped / 0 failed in 1,519.40 s**; the earlier fixture failure and recovery are retained in the ledger. No real Experiment-1 payload or new experimental fit was opened; Week 7 is not scientifically complete. Transferable patch 0016 and delta 68 carry the handoff; external review and the human obligations remain open.
+diff --git a/docs/sweep_pairing_and_ordinary_labels_design.md b/docs/sweep_pairing_and_ordinary_labels_design.md
+new file mode 100644
+index 0000000..76bb346
+--- /dev/null
++++ b/docs/sweep_pairing_and_ordinary_labels_design.md
+@@ -0,0 +1,113 @@
++# D-155 follow-up — pairing and ordinary labels (design only)
++
++2026-08-31, Sol2. Independent read-only review; no implementation, experimental
++payload inspection, test or training in this design pass. D-154's choices remain
++fixed. This is not a certified procedure or evidence that the guard is cleared.
++
++## Separate baseline-anchored sweep procedure
++
++Keep every legacy stream function, version-3 key and canonical evidence meaning
++unchanged. Retain D-155's refusal in the legacy runner. Add a narrow registered
++procedure for sweep-only repairs that distinguishes the `exp3_repairs`
++obligation from the `config_sweep` data-generation stage. The latter anchors
++all six data-purpose keys; model-purpose keys remain based on the original unit.
++No caller-selected stage or bypass flag is appropriate.
++
++A versioned contract must bind original unit, arm, seed, baseline identity,
++independently expected baseline commit and evidence digest, normalization,
++data/model stream keys and dataset-compatibility evidence. Paths must not define
++the contract: a verified independent copy is the same scientific anchor.
++
++Retain Config-derived identities as obligation references. Corrected physical
++executions need procedure-qualified fit/run identities bound to the baseline
++execution digest. A legacy repair with the same Config fit ID cannot satisfy
++this new procedure. Introduce a separate evidence schema and strict reader;
++never teach the legacy schema to accept contradictory stage/identity meanings.
++Launch, checkpoints, deduplication, copying and recovery must use the qualified
++physical identity while accounting still counts each scientific obligation once.
++
++Candidate modules are `repair_pairing.py` (registered contract and pool
++collection) and `paired_repair_evidence.py` (execution, persisted evidence and
++strict reload). Reuse necessary execution/scoring helpers only with regression
++coverage preserving legacy defaults. Ordinary `RunLogger.start(Config)` cannot
++stamp procedure-qualified physical identity without a truthful new record path.
++
++## Dataset compatibility, not key equality alone
++
++Data repair needs an exact original-training-data prefix in the 10x pool and
++unchanged validation/evaluation. Capacity repair needs unchanged raw pools.
++Feature restoration needs the same underlying trajectories/targets, with the
++restored data projected through the baseline encoding; equal action/episode/
++step arrays alone are insufficient. All arms retain the baseline full-pool
++normalization before failure masks.
++
++Current sidecars do not contemporaneously bind complete training/validation
++pools. For genuinely old evidence, deterministic reconstruction requires the
++original generating source and environment, and a new external-to-source anchor
++artifact must distinguish reconstructed from contemporaneous digests. Missing
++compatibility blocks execution, never authorizes retraining or editing a source.
++
++Before future sweep baseline collection, require contemporaneous anchor capture
++in the new baseline launch path. No sweep baseline is documented as completed
++in this session's source inventory. Do not create avoidable provenance gaps
++and then rely on a reconstruction that could have been captured originally.
++The read-only addendum identified the capture hook; it is not implemented here.
++
++Add a versioned collection entry point sharing the existing loop. Capture each
++symbolic `(state, action, next_state, episode, step)` immediately after the
++environment transition, without consuming randomness, altering policy state
++or collecting extra transitions. Before training, persist train/validation/
++evaluation arrays and full symbolic anchors, bind their metadata/digests, and
++verify them against the exact pool objects consumed. After fit completion,
++publish a separate binding of anchor digest to fit-evidence digest, avoiding
++circular hashing. Companion artifacts preserve legacy baseline Config IDs and
++fit schema; the new sweep launcher and recovery boundary require them.
++
++The existing dataset retains encoded observations and ordered transition IDs,
++but not latent GridStates. Full symbolic states must capture agent position
++and every object's position, shape, colour and activation. **Do not project by
++merely deleting feature columns:** the encoder sorts object slots by visible
++descriptors, so feature restoration can reorder them. Re-encode identical
++symbolic states through each arm's encoder and compare exact arrays. Keep all
++latent anchors experimenter-only, outside both model inputs and critic X.
++
++## Separate ordinary-unit label boundary
++
++`ordinary_label_evidence.py` should derive eligibility from the registered
++`exp3_repairs` obligation, covering 285 units rather than only 225 sweep units:
++
++| Conditions | Original baseline role | Required label seeds |
++|---|---|---|
++| 15 canonical validation conditions (existing boundary) | `repair_validation` projection | 1000–1019 |
++| 60 other canonical conditions | `exp1`, `exp2a` or `exp2b` | 1000–1002 |
++| 225 sweep-only conditions | `config_sweep` | 1000–1002 |
++
++Require nine verified sources for an ordinary label: three arms at three seeds.
++Reuse original baseline roles/commits, not fabricated `exp3_repairs` baseline
++projections. Canonical ordinary repairs retain their valid old procedure;
++sweep repairs require the new contract. Keep the existing 20-seed public label
++API exact. A private shared array-assembly helper may be extracted, but public
++stage/pairing checks must not be weakened.
++
++The existing equal-seed acceptance test already supports three seeds (two
++degrees of freedom); retain its thresholds, weighting, fail-closed behavior
++and four-way label mapping. Group by the authoritative baseline stage, not the
++repair stage. Missing/unperformed repairs are pending; invalid evidence or an
++empty required failure set is blocked. Neither state is an observed ambiguous
++or undiagnosed label, and neither supplies an exclusion rate or critic input.
++
++## Tests before execution
++
++Preserve the 8,100-key legacy fingerprint, Config identities, canonical role
++projections and exact 20-seed refusals. Cover all sweep units, assigned arms and
++seeds; compare actual datasets, prefixes and feature projections. Reject wrong
++commits/anchors, rewritten contracts, missing compatibility or changed scales
++before training. Prove qualified identity separation, copy stability, cross-
++schema refusal and resume without refitting. Reopen all nine sources on label
++creation/reload; test missing, duplicate, extra/development seeds and all pending
++states. C-007 remains incomplete until the final label-to-critic bridge is
++independently verified.
++
++No additional scientific choice was identified for this correction or the
++already-registered three-seed inference. Changing empty-failure-set treatment,
++eligibility, inference or seed counts would require a separate amendment.
+diff --git a/docs/week7_baseline_launch_design.md b/docs/week7_baseline_launch_design.md
+new file mode 100644
+index 0000000..8c9b6c7
+--- /dev/null
++++ b/docs/week7_baseline_launch_design.md
+@@ -0,0 +1,91 @@
++# Week-7 baseline launch — implementation design, not launch authority/evidence
++
++2026-08-31, Sol2, following an independent read-only review. This document
++records the next engineering step under the owner's continuing authorization.
++No launch adapter or result is implied by this design.
++
++## Fixed inventory and historical reuse
++
++The D-153 preparation remains immutable: 100 Experiment-2A requirements and
++675 sweep baseline requirements, rederived from the registered execution plan.
++Its file SHA-256 is
++`9b380e4bbefa4d3c1c5a52e6ab89f8b63cac42dbfaf90cf5b19419fcc9152044`.
++
++Five Experiment-2A baselines overlap the completed smoke: unit `d5baeb907ac3`,
++fits `f011e07e0a65-s1000` through `f011e07e0a65-s1004`, execution stage `exp2a`,
++roles `exp2a` and `repair_validation`. Reverify their original source evidence
++against the independently pinned historical execution commit and their separate
++project-local copies. Missing or corrupt reuse evidence must stop, not permit
++replacement training. These are five satisfied requirements, never five new
++executions or new results. The additional smoke seeds are not Exp2A jobs.
++
++Keep the five references outside the next batch directories. The existing
++batch engine uses one execution commit and checkpoint journal per batch; placing
++old fits into a new batch would misrepresent their provenance. Schedule exactly
++the other 95 requirements at the new clean execution commit.
++
++## Proposed fixed operational sweep partition
++
++Derive all 675 baseline jobs, group by `group_of(unit, stage_of(unit))`, sort
++group IDs lexicographically, then unit ID and seed. The registered sweep has
++225 singleton comparison groups. One complete group (three seeds) per batch
++preserves all units and groups and yields 225 deterministic batches. This
++ordering must be fixed without consulting outcomes and the complete partition
++must be serialized and rederived, not only its first member.
++
++The first group is unit `0184fbfcd8b9`: position-causal, uniform, confound 0.9,
++capacity family, width 64, 5,000 transitions, fully observed. Its baseline fits
++are `cc428cf4ab47-s1000`, `cc428cf4ab47-s1001`, `cc428cf4ab47-s1002`, with stage
++and sole role `config_sweep`. This is an operational order, not a selected
++scientific subset. All remaining 672 baselines stay owed. The initial proposed
++execution scope is 95 new Exp2A fits plus that complete first sweep group.
++
++This proposal is not yet a frozen execution artifact: the implementation must
++produce and validate the complete configuration-bound manifest before launch.
++
++## Narrow adapters, unchanged historical launchers
++
++1. `week7_launch_plan`: exact preparation binding, five reuse obligations,
++   95 new Exp2A jobs, complete sweep partition, strict configuration comparison
++   even when a forged document carries a recomputed digest.
++2. `week7_sources`: original-commit, identity, role, sidecar and tree-digest
++   reconciliation; independently verify copies; reopen at launch/resume and
++   completion. Never trust a source's own commit claim as the expected commit.
++3. `week7_preflight`: reuse package/device/storage checks but validate this
++   exact plan; project containment, separate non-aliasing roots, same-volume
++   staging/output, durable copy and readback of plan, ledger, report and canary.
++4. `week7_launch`: exact preflight revalidation, common live lease, matching
++   local/durable Week7 start receipts, then the existing fixed production
++   executor with fit-evidence verification, mandatory fresh-process timeout,
++   staging and durable incremental copies. No executor override. Preserve
++   checkpoint recovery, quarantine and token-checked release.
++
++Integration requirement from D-155's follow-up review: new sweep baselines must
++capture contemporaneous train/validation/evaluation and symbolic-state anchors
++before training, and bind them to completed fit evidence afterwards. Make the
++companion artifacts mandatory at launch/recovery. See
++`sweep_pairing_and_ordinary_labels_design.md`; the encoder's object ordering
++means feature restoration cannot be checked by simply deleting columns.
++This added evidence-capture interface is not yet built. Do not launch the first
++sweep batch with an avoidable requirement for later historical reconstruction.
++
++Existing Experiment-1 and smoke public entry points remain exact and unchanged;
++their restrictions must not be relaxed to admit the new jobs. Reuse the lower
++level batch engine behind a new narrow boundary, not the synthetic interface.
++
++## Required verification before compute
++
++Use fabricated evidence to exercise exact inventory and role checks, full
++partition coverage/order, old-commit reuse under a new launcher commit, and
++zero executor calls for reused fits. Reject absent/changed sources, forged
++digests, dirty or changed Git, package/device drift, aliases, lease conflicts
++and age-only recovery. Cover interrupted publication/copying, timeout and
++resume without refitting. Regression-test historical launch restrictions.
++
++D-155 refuses sweep **repairs**, not baselines. Its versioned pairing correction
++and the three-seed repair-label adapter remain separate required work. Baseline
++completion alone supplies no observed repair labels or exclusion counts.
++
++All writes, scratch, caches and copies stay inside `D:/Aenv/pro/pro`. New CPU
++use must be announced before execution. Source reads at reconciliation access
++experimental payloads internally; metadata-only checks are not a substitute.
+diff --git a/docs/week7_open_decisions.md b/docs/week7_open_decisions.md
+index 0b0ea44..351a2fc 100644
+--- a/docs/week7_open_decisions.md
++++ b/docs/week7_open_decisions.md
+@@ -1,5 +1,13 @@
+ # Week 7 — decisions still needed for scientific completion
+ 
++**Update 2026-08-31, D-154:** the owner has delegated and Sol2 has resolved the
++repair-assignment and H1 reporting/timing questions below. See
++`week7_scientific_amendment.md` for the fixed rules and prior-exposure disclosure.
++The text below preserves the questions as raised, not current permission stops.
++External review is pending. Remaining engineering includes D-155's reproduced
++sweep stream mismatch, the three-seed label adapter and historical-fit reuse;
++student prose remains open. Scientific decisions do not imply launch readiness.
++
+ Prepared by Sol2 on 2026-08-31. These are unresolved choices, not registrations
+ or proposed findings. The owner has deferred external Sol's review and opened
+ routine implementation (D-153/DEV-018). That permits building the supporting
+diff --git a/docs/week7_scientific_amendment.md b/docs/week7_scientific_amendment.md
+new file mode 100644
+index 0000000..08d0fae
+--- /dev/null
++++ b/docs/week7_scientific_amendment.md
+@@ -0,0 +1,123 @@
++# Week 7 scientific amendment — D-154
++
++Decision owner: Sol2, acting on the project owner's explicit instruction on
++2026-08-31: “you can resolve those scientific you have my permetion.”
++External Sol review and certification remain pending. This is a prospective
++amendment to unresolved specifications, not a claim of original preregistration.
++
++## What was already known
++
++The 300-condition design, development experiments, permanently frozen failure
++threshold, one completed 20-seed smoke label, and 150 Experiment-1 baseline fits
++already exist. D-149's smoke outcome is known. D-150 disclosed two raw per-fit
++Experiment-1 summaries seen during collection. No new experimental result was
++opened to choose this amendment. It would be false to describe this as a fully
++blinded, pre-data registration. The original plan, decisions and evidence remain
++unchanged and reviewable. Any new aggregate claim must carry this limitation.
++
++## 1. Complete the missing model intervention, without replacing existing arms
++
++Retain feature restoration where already registered, and retain the original
++capacity repair to width 256 for lower-width conditions. For full-observation
++conditions already at width 256, register a distinct arm:
++`capacity_extension_repair`, with fixed hidden width **512** and unchanged depth,
++training procedure, original dataset size, seed policy and evaluation pool.
++It is a single model, not an ensemble, and is never combined with feature or
++data repair. No other width is tried if it fails. No parameter is selected by
++examining outcomes. `HIDDEN_SIZES` and all existing arm meanings stay unchanged.
++
++Reason: P§7.2 requires a real hypothesis-class intervention on the original data
++budget. The old enumeration supplied neither restoration nor capacity headroom
++for 173 conditions. Doubling the existing ceiling is one explicit, finite
++capacity intervention, not a no-op or a guarantee of realizability. Choosing a
++new arm name preserves the interpretation and identities of historical fits;
++changing what `capacity_repair` means would not. Removing those conditions or
++assigning their intended labels would change the target population or fabricate
++counterfactual evidence. An unperformed repair is not a failed repair.
++
++Source-only inventory before implementation: 150 estimation-family and 23
++capacity-family conditions, all full-observation/width 256; seven canonical
++repair-validation conditions and 166 others. Extra work is **7×20 + 166×3 = 638
++single-model fits**. Total model-training requirements become **8,835**, from
++8,197, including the unchanged 150-fit ablation allowance. This is a count, not
++a runtime estimate: wider models cost more, and timing must be measured before
++their production batch. No samples, baseline fits, seeds or reserve conditions
++are added. Existing fits must be reused after source verification.
++
++The new arm is only applicable at full observation and width 256. Conditions
++with multiple pre-existing applicable repairs still fail closed rather than
++selecting the best observed arm. The actual 300-condition design must expose
++exactly one model repair per condition after this change. Old Config, unit,
++fit and run identifiers remain stable. New-arm evidence has new arm/fit IDs.
++
++## 2. Experiment-1 reporting and timing
++
++Analyze each of the five registered configurations separately, using all six
++dataset sizes and exactly seeds 1000–1004. Call the existing `trend_test` on
++disagreement; do not pool configurations or write a second estimator. The
++negative direction, strict upper-CI-bound-below-zero rule, exact 5^5 paired-seed
++bootstrap and linear quantiles remain unchanged. Also apply that same statistic
++to error as the schedule requests, but label it diagnostic: it neither changes
++nor supplies an additional veto to the disagreement reading rule.
++
++The overall **amended descriptive decision summary** is “all five meet the
++registered disagreement criterion” only if all five do. Otherwise report which
++do not, without discarding any configuration or interpreting non-rejection as
++proof of no relationship. This all-five summary is fixed here, not attributed
++to D-068 or transplanted silently from the three-configuration Week-4 gate. It
++is not a newly calibrated omnibus test, simultaneous confidence region or
++pristine pre-data confirmatory claim. Individual intervals are pointwise and
++the exact bootstrap enumeration is not exact frequentist coverage.
++
++Permit one source-bound Week-7 coefficient/interval report, matching S§W7 Tue.
++Persist its complete input provenance, per-configuration estimates, diagnostics,
++bootstrap support/masses and this amendment's identity. Week 10 reviews that
++same report and its limitations; it does not buy another statistical look,
++new seeds, a preferred subset or a different estimator. Exact regeneration is
++verification, not independent replication. Undefined coefficients are explicit
++failures under D-068, never silently omitted or serialized as invalid JSON.
++
++The trend report measures the Experiment-1 operational prediction; it does not
++establish model adequacy or repair-derived class membership. The full H1
++interpretation and Gate-2 deliberation remain Week-10 obligations, informed by
++the scheduled repair validation, with original dates unchanged. Outcomes must
++not tune the new repair width or any later design choice.
++
++## 3. Labels, existing fits and launch scope
++
++Baseline-only Experiment-1 fits cannot produce repair labels. Week-7 reporting
++must distinguish completed labels from pending paired repairs; pending is not
++`undiagnosed` and is not an exclusion count. Canonical 20-seed repair validation
++remains Week 9. Sweep labels retain three seeds. No intended label substitutes
++for Table 2's two observed repair outcomes.
++
++Where a baseline already carries a hypothesis/sweep role, future label adapters
++must verify and use that original role's evidence at the required overlapping
++seeds; they must not invent an `exp3_repairs` baseline role or retrain it merely
++to obtain that name. The adapter still needs implementation and audit. Existing
++smoke and Experiment-1 fits retain their original execution commits.
++
++The 775 prepared baseline requirements are not 775 outstanding jobs: five
++Experiment-2A baselines already exist. Production launches still require exact
++inventory/reuse reconciliation, clean commit, isolated workers, a lease,
++durable independent project-local copy and a frozen batch manifest. This
++amendment supplies scientific decisions, not evidence that those engineering
++checks have already passed. Reserve use, critic split parameters, H3 inference,
++threshold changes and extra seeds are outside it.
++
++## Reporting and authorship
++
++Record these departures in methodology and the Sol handoff. The student still
++owes the independent Week-6 explanation/defense and later own-voice results
++writing. Neither this document nor an AI draft satisfies that requirement.
++
++The disclosure approach follows the [Center for Open Science guidance on
++changes to preregistration](https://www.cos.io/blog/preregistration-plan-not-prison):
++preserve the original plan, state what changed and why, and disclose what data
++were already known. This local Git record is not an external OSF registration.
++
++## Verification record
++
++Implementation, independent review findings, test outcomes and any subsequent
++result access will be recorded in `week7_scientific_amendment_log.md`. Until
++those entries exist, this document records decisions, not completed execution.
+diff --git a/docs/week7_scientific_amendment_log.md b/docs/week7_scientific_amendment_log.md
+new file mode 100644
+index 0000000..1b111cb
+--- /dev/null
++++ b/docs/week7_scientific_amendment_log.md
+@@ -0,0 +1,119 @@
++# D-154 implementation and verification log
++
++2026-08-31, Sol2. Owner explicitly authorized resolution of the scientific
++choices after the Week-7 implementation handoff. External Sol is still the
++reviewer, not the author of these decisions.
++
++Read source/ledger and the authoritative plan/schedule text. Read-only inventory
++confirmed 173 full-observation width-256 conditions without a model repair,
++including seven canonical validation conditions; prospective added fits 638.
++An initial sandboxed Python invocation could not create its process; the same
++read-only check completed under scoped execution approval. No experiment ran.
++
++Two independent agents are reviewing the repair and H1 choices. The main agent
++recorded the proposed fixed rules in `week7_scientific_amendment.md` before any
++dependent scientific implementation or new result access. No experimental
++payload, plot, trend or label has been opened in this increment so far.
++
++Both reviewers recommended the fixed extension and separate H1 reporting with
++explicit post-collection exposure limitations. The repair reviewer identified
++a separate sweep-pairing defect. Main reproduced mismatched data-stream keys
++for all 225 sweep-only conditions and none of the 75 canonical conditions.
++D-155 specifies a pre-compute guard and requires a versioned baseline-anchored
++correction before those repairs. Existing canonical evidence is unaffected;
++no global stream rewrite is being hidden inside the extension.
++
++Before changing the registry, main captured all 2,947 historical execution-plan
++rows (fit ID, roles, members, Config) as canonical JSON. SHA-256:
++`dd05d299a8f159ceaf749dc89ae5480b2c9777695dfdae8bf3a90aa47d5f3642`.
++The extension tests must reproduce that fingerprint after filtering only the
++new arm. Current planning totals do not claim all those fits have run.
++
++Main integration added extension recognition to the fit-evidence diagnostic
++inventory, updated the exhaustive arm test and extended stream-invariance tests
++across the two disjoint applicability sets. Existing repair messages now refer
++to derived execution-plan accounting rather than repeating the obsolete total.
++
++The legacy timing accountant groups by dataset size only. Its current plan now
++records 638 unbenchmarked extension fits; extrapolation and reconciliation
++refuse to price them at width-256 rates. The timing entry refuses before any
++benchmark compute. Historical stored timing records still recompute unchanged.
++Main timing/stream/document matrix: **83 passed in 9.14 s**. Documentation-only
++gate previously passed **13 in 0.83 s**; these overlap and are not added.
++
++D-155 execution safeguard: **323 passed** (313 new plus ten existing checks).
++The actual call boundary rejected 1,350 repair executions across all 225 sweep
++units before filesystem/data/training access; 960 canonical repair executions
++and 1,350 baseline role executions reached their intended stub boundaries.
++All six data purposes have independent adversarial tests. All 3,660 registered
++obligations and 8,100 legacy stream keys remained unchanged. These are synthetic
++source checks, not executed scientific fits. The underlying pairing procedure
++is still uncorrected; the safeguard must not be described as that correction.
++
++Main review of the new report caught a missing explicit dirty-tree rejection
++beside the trustworthy/commit check, and requested exact per-unit role checks
++instead of relying on the aggregate count of 30 multi-role fits. Both are being
++regression-tested before any real reporting. No new scientific values opened.
++
++Extension worker finished **339 focused tests passing**, including 49 new
++extension tests; a separate overlapping reporting/identity matrix passed 61.
++All 2,947 old fit-plan rows reproduce the pre-amendment fingerprint exactly.
++Main reloaded the existing 775-baseline preparation file under the amended
++registry; its original SHA-256 remains
++`9b380e4bbefa4d3c1c5a52e6ab89f8b63cac42dbfaf90cf5b19419fcc9152044`.
++All 300 design units now have one assigned model intervention; this is not 300
++observed labels. Existing 20-seed label and fit evidence paths have synthetic
++extension coverage, including wrong-effective-width and encoded-pool refusal.
++
++Report worker finished **143 passed, 1 deselected in 117.64 s**, excluding the
++historical real-pilot test from that source/fabricated-only worker run. The full
++suite includes it. The original trend computation and `as_row()` remain exact;
++an additive non-comparing/non-repr `bootstrap_values` field exposes the already
++computed distribution. Both main findings were fixed. The report includes the
++amendment document SHA, all ten metric results, exact-support masses and honest
++exposure/interpretation limits. A second agent audited the final source without
++rerunning tests and found no further actionable defect. Its replay verifies
++the externally pinned report bytes and internal consistency, not unseen source
++evidence; it cannot authenticate a fabricated report plus a substituted digest.
++
++All three agents have finished and were closed. The full CPU suite is running
++on the stable implementation with project-local scratch, plot cache and XML
++report at `.tmp/amendment-full-suite/results.xml`. The owner was notified to
++keep the device on. No new experimental training or GPU work is planned.
++
++A fourth, read-only agent reviewed the next baseline launch path while the
++full suite ran. It verified the exact five-fit smoke overlap by configuration
++inventory and found that the current Experiment-1/smoke launch boundaries are
++deliberately non-generic. Its proposed narrow adapters and complete, outcome-
++independent sweep partition are preserved in `week7_baseline_launch_design.md`.
++No launch source, runtime partition or experiment was created by that review;
++historical payload reconciliation is still required. The agent was closed.
++
++A fifth independent read-only review specified the D-155 correction and ordinary
++label boundary in `sweep_pairing_and_ordinary_labels_design.md`: preserve legacy
++stream meaning, introduce procedure-qualified physical evidence, retain original
++baseline roles, and keep the existing 20-seed API exact. It identified 285
++ordinary three-seed conditions (60 canonical plus 225 sweep), and the need for
++training/validation pool compatibility beyond current evaluation sidecars.
++Main asked it to check contemporaneous anchor capture before future sweep
++baseline collection, avoiding a needless later reconstruction. None is yet an
++implemented correction. The updated state-document gate passed 13 in 0.58 s.
++
++The follow-up confirmed the forward capture requirement and caught a subtle
++encoding issue: restored visible features can reorder object slots, so deleting
++columns is not a valid projection. Full symbolic states must be re-encoded with
++each arm's encoder. Both design documents now carry this finding; no source
++implementation changed and no anchor was fabricated. The reviewer was closed.
++Read-only extraction of the schedule rechecked the entire Week-7 section:
++Tuesday is figures/coefficients, while labels and later launch/throughput are
++separate deliverables. The current full suite collected 2,300 cases; its result
++is still pending, and a collected count is not a passing count.
++
++Final full run: **2,293 passed, 7 skipped, 0 failed in 1,679.75 s**. Three CUDA,
++three Windows symlink-privilege and one vacuous identity test were skipped.
++XML SHA256: `6b8c98295b9fbb8765d088e52d6363e539884a98dca67ba3ffd148f67f92dab8`.
++No overlapping focused count is added. All implementation agents are closed.
++Main will commit this verified amendment before generating the authorized
++Experiment-1 coefficient report and figures from the existing 150 sources.
++The frozen amendment still hashes to
++`4a856c65b4a0ae2f7b609d6dbf88f97e0489931498c26c165bd38b769a1e1707`.
+diff --git a/src/bu/config.py b/src/bu/config.py
+index e8a5230..8438dd4 100644
+--- a/src/bu/config.py
++++ b/src/bu/config.py
+@@ -85,7 +85,10 @@ SCHEMA_VERSION = 2
+ #: not comparable with v2.
+ IDENTITY_VERSION = 2
+ 
+-ARMS = ("baseline", "data_repair", "feature_repair", "capacity_repair")
++ARMS = (
++    "baseline", "data_repair", "feature_repair", "capacity_repair",
++    "capacity_extension_repair",
++)
+ 
+ #: Execution stages, and the seed count each requires (Plan §14.2).
+ #:
+@@ -284,6 +287,18 @@ class Arm:
+                     f"{unit.hidden_size}; there is no capacity to add"
+                 )
+             return dataclasses.replace(unit, hidden_size=largest)
++        if self.kind == "capacity_extension_repair":
++            # D-154 is additive: the source unit and all old arm meanings stay
++            # unchanged. Only the effective model widens; RNG keys must still
++            # use the unresolved source unit (D-055/D-056).
++            if unit.withheld_features or unit.hidden_size != 256:
++                raise ValueError(
++                    "capacity_extension_repair requires full observation and "
++                    "source hidden_size=256"
++                )
++            return dataclasses.replace(
++                unit, hidden_size=K.CAPACITY_EXTENSION_HIDDEN_SIZE
++            )
+         raise AssertionError("unreachable")
+ 
+ 
+diff --git a/src/bu/constants.py b/src/bu/constants.py
+index 110c882..9257766 100644
+--- a/src/bu/constants.py
++++ b/src/bu/constants.py
+@@ -1,7 +1,11 @@
+-"""The preregistration, in code.
+-
+-Every value here is fixed before data collection and is not revised after seeing
+-data (Plan §4.2, §10.6). They live in one file, alone, for a specific reason:
++"""The registered scientific constants, in code.
++
++Original values are fixed before their dependent data collection and are not
++revised after seeing outcomes (Plan §4.2, §10.6). D-154 is an explicitly
++disclosed exception: CAPACITY_EXTENSION_HIDDEN_SIZE is a prospective amendment
++after partial prior exposure and collection, not original pre-data registration.
++It leaves every existing constant unchanged and awaits external Sol review.
++The values live in one file, alone, for a specific reason:
+ in Plan v1.1 a withdrawn two-sigma acceptance rule survived in two sections and
+ would have produced a different ground-truth label depending on which section
+ the implementation happened to follow. Constants scattered across modules fail
+@@ -238,6 +242,13 @@ DATA_SIZES = (100, 250, 500, 1000, 2500, 5000)
+ #: Experiment 2B -- capacity sweep, at complete input features.
+ HIDDEN_SIZES = (16, 32, 64, 128, 256)
+ 
++#: D-154's fixed, distinct capacity_extension_repair for fully observed
++#: width-256 source units only. Changes width alone; never a new sweep level,
++#: a replacement for capacity_repair's 256 target, or an outcome-tuned ladder.
++#: Registered after partial prior exposure, before dependent implementation;
++#: external Sol review remains pending. No realizability or label guarantee.
++CAPACITY_EXTENSION_HIDDEN_SIZE = 512
++
+ #: Experiment 2A -- the four non-zero confound levels between the decoy
+ #: attribute and the withheld causal attribute (Plan §8.2.1). Note that
+ #: confound is ALSO a configuration axis (Plan §13.1.2); whether these are the
+diff --git a/src/bu/experiments/confirmatory.py b/src/bu/experiments/confirmatory.py
+index 38fbf41..4f4919c 100644
+--- a/src/bu/experiments/confirmatory.py
++++ b/src/bu/experiments/confirmatory.py
+@@ -62,8 +62,13 @@ from ..models.uncertainty import (
+ )
+ from ..models.world_model import MOVEMENT_ACTIONS
+ from ..runrecord import git_state
+-from ..streams import assert_roles_share_one_stream, is_confirmatory
+-from .enumerate_units import design_units, execution_plan
++from ..streams import (
++    DATA_PURPOSES,
++    assert_roles_share_one_stream,
++    is_confirmatory,
++    stream_key,
++)
++from .enumerate_units import design_units, execution_plan, stage_of
+ from .repair import (
+     ArmEvaluation,
+     REPAIR_ENSEMBLE_SIZE,
+@@ -155,6 +160,34 @@ def assert_registered_obligation(unit: UnitSpec, *, arm: str, stage: str, seed:
+         )
+ 
+ 
++def _assert_repair_pairing(unit: UnitSpec, *, arm: str, stage: str) -> None:
++    """Refuse unpaired repair execution without changing the registered inventory.
++
++    D-155's safety guard is not a stream correction: sweep-only baselines use
++    unit-keyed data while their repair stages currently select a family group.
++    Compare the original, unresolved unit against its authoritative baseline
++    stage; neither a repaired unit nor the repair's family supplies that stage.
++    """
++    if arm == "baseline":
++        return
++    baseline_stage = stage_of(unit)
++    mismatched = [
++        purpose
++        for purpose in sorted(DATA_PURPOSES)
++        if stream_key(unit, baseline_stage, purpose) != stream_key(unit, stage, purpose)
++    ]
++    if mismatched:
++        raise ValueError(
++            f"Wrong pairing for unit {Config(unit=unit).unit_id}, arm={arm!r}: "
++            f"repair stage {stage!r} and authoritative baseline stage "
++            f"{baseline_stage!r} have mismatched data stream keys for {mismatched}. "
++            "Execution is refused before output, pool collection or training. "
++            "An explicit versioned procedure decision is needed to correct this "
++            "pairing (D-155); registration remains inventory, and this guard "
++            "does not change stream meanings, stage identities or legacy recorded fits."
++        )
++
++
+ @dataclass(frozen=True)
+ class ConfirmatoryRun:
+     """One completed confirmatory fit, and the record that lets it be checked."""
+@@ -268,6 +301,7 @@ def run_confirmatory(
+     """
+     check_confirmatory(stage=stage, seed=seed, arm=arm, unit=unit)
+     assert_registered_obligation(unit, arm=arm, stage=stage, seed=seed)
++    _assert_repair_pairing(unit, arm=arm, stage=stage)
+ 
+     fit_roles = (stage,) if _fit_roles is None else _fit_roles
+     if (
+diff --git a/src/bu/experiments/enumerate_units.py b/src/bu/experiments/enumerate_units.py
+index 914f510..c555f47 100644
+--- a/src/bu/experiments/enumerate_units.py
++++ b/src/bu/experiments/enumerate_units.py
+@@ -448,15 +448,18 @@ def obligations(units: tuple[UnitSpec, ...] | None = None) -> tuple[Obligation,
+ def arms_for(unit: UnitSpec) -> tuple[str, ...]:
+     """Which repair arms are meaningful for a unit.
+ 
+-    Data repair applies to everything. Model repair is whichever mechanism the
+-    condition actually restricted -- and the two are never combined in one
+-    intervention (Plan §8.3).
++    Data repair applies to everything. Existing model repairs target the
++    restricted mechanism. D-154 adds one distinct fixed capacity extension for
++    full-observation width-256 conditions; it does not replace an old arm or
++    add a sweep level. Repairs are never combined in one intervention (Plan §8.3).
+     """
+     arms = ["baseline", "data_repair"]
+     if unit.withheld_features:
+         arms.append("feature_repair")
+     if unit.hidden_size < max(K.HIDDEN_SIZES):
+         arms.append("capacity_repair")
++    if not unit.withheld_features and unit.hidden_size == 256:
++        arms.append("capacity_extension_repair")
+     return tuple(arms)
+ 
+ 
+@@ -745,10 +748,18 @@ def summarise(units: tuple[UnitSpec, ...] | None = None) -> str:
+     lines.append(f"  Plan §14.2 budgets:     ~8,700")
+     delta = fits["total"] - 8700
+     if delta > 0:
+-        lines.append(f"  OVER by ~{delta:,}. The Week 5 MDE simulation sets the count")
+-        lines.append("  actually run; this matrix is the pool, not the plan (§10.7, §14.3).")
++        lines.append(f"  OVER the approximate original fit allowance by ~{delta:,}.")
+     else:
+-        lines.append(f"  WITHIN budget, with ~{-delta:,} fits of headroom.")
++        lines.append(f"  Below the approximate original fit allowance by ~{-delta:,}.")
++    extension_fits = sum(
++        f.members for f in execution_plan(units)
++        if f.arm == "capacity_extension_repair"
++    )
++    lines.append(
++        f"  D-154 capacity extension: {extension_fits:,} single-model fits included."
++    )
++    lines.append("  Fit counts are not architecture-aware runtime estimates.")
++    lines.append("  Assignment coverage is not evidence of paired-label launch readiness.")
+     return "\n".join(lines)
+ 
+ 
+diff --git a/src/bu/experiments/experiment_1_report.py b/src/bu/experiments/experiment_1_report.py
+new file mode 100644
+index 0000000..fe2e08e
+--- /dev/null
++++ b/src/bu/experiments/experiment_1_report.py
+@@ -0,0 +1,534 @@
++"""D-154: one source-bound Week-7 report, artifact-only Week-10 replay.
++
++``write_experiment_1_report`` accepts only 150 explicit source directories, an
++expected FIT commit, and the separately verified clean ANALYSIS commit. It never
++trains. Repeat generation is verification, not another independent analysis.
++
++``replay_experiment_1_report`` reads exactly one report and requires an externally
++retained SHA-256. It never opens the source paths, calls a loader, computes rank
++correlations, or enumerates bootstrap resamples. It checks stored support,
++percentiles, decisions and provenance for internal consistency. The external
++digest authenticates the calculations; replay cannot authenticate an entirely
++fabricated report accompanied by a replacement 'trusted' digest. Independent
++source/computation auditing is a separate, explicitly authorised verification.
++
++There is no CLI, implicit discovery, automatic figure integration, caller-row
++input, or claim of external Sol certification. All output is project-local.
++"""
++
++from __future__ import annotations
++
++import json
++import math
++import re
++import stat
++from collections import Counter
++from collections.abc import Sequence
++from dataclasses import asdict
++from pathlib import Path, PurePosixPath, PureWindowsPath
++from typing import Any
++
++import numpy as np
++
++from .. import durable as D
++from .. import constants as K
++from ..config import Config, UnitSpec
++from ..runrecord import GitState, git_state
++from ..stats.trend import TrendResult, trend_test
++from ..streams import comparison_group_id
++from .experiment_1_evidence import Experiment1Evidence, load_experiment_1_evidence
++
++
++REPORT_SCHEMA_VERSION = 1
++WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
++_AMENDMENT_PATH = Path(__file__).resolve().parents[3] / "docs" / "week7_scientific_amendment.md"
++AMENDMENT_SHA256 = "4a856c65b4a0ae2f7b609d6dbf88f97e0489931498c26c165bd38b769a1e1707"
++_SCALE_DOMAIN, _SCALE_SOURCE = "movement", "evaluation_pool"
++_SEEDS = (1000, 1001, 1002, 1003, 1004)
++_SIZES = (100, 250, 500, 1000, 2500, 5000)
++_PAIRS = (
++    ("shape", "uniform"), ("shape", "clustered"), ("shape", "sparse"),
++    ("colour", "uniform"), ("colour", "clustered"),
++)
++_METRICS = ("disagreement", "error")
++_RULE = {
++    "statistic": "Spearman rho of the equal-seed mean six-size curve",
++    "point_estimand": "equal-seed mean of equal-movement-row, normalised whole-pool means",
++    "bootstrap": "exact_paired_seed_block",
++    "n_resamples": 3125,
++    "confidence_level": 0.95,
++    "quantile_method": "linear",
++    "direction": "negative",
++    "strict_upper_bound_below": 0.0,
++    "interval_scope": "pointwise, not simultaneous; enumeration is not exact coverage",
++    "configuration_pooling": False,
++    "error_is_diagnostic_only": True,
++}
++_DISCLOSURE = {
++    "amendment_id": "D-154",
++    "amendment_document": "docs/week7_scientific_amendment.md",
++    "decision_owner": "Sol2 under explicit project-owner authority",
++    "external_sol_certification": "pending",
++    "registration_status": "post-collection, partially exposed amendment",
++    "fully_blinded_pre_data_registration": False,
++    "prior_knowledge": (
++        "Development/calibration evidence and D-149 smoke label were known; all "
++        "150 Experiment-1 fits existed. D-150 records the agent seeing two raw "
++        "confirmatory per-fit summaries during collection, with no reported adaptation."
++    ),
++    "known_exposed_fit_ids": ["daaba764439a-s1004", "00608aa75f91-s1000"],
++    "new_outcomes_opened_to_choose_amendment": False,
++    "scope": (
++        "Operational Experiment-1 trend only; does not establish model adequacy "
++        "or repair-derived class membership. Pending repairs are not failed "
++        "repairs, undiagnosed labels, or exclusion counts."
++    ),
++    "discreteness": (
++        "A zero-width percentile interval reflects quantile discreteness, not "
++        "zero sampling uncertainty. Support/masses accompany every interval."
++    ),
++    "no_adaptation": "No new seeds, preferred subset, smoothing, estimator change, or outcome-tuned repair/design choices.",
++}
++_TIMING = {
++    "coefficient_analysis": "Week 7, one source-bound report",
++    "week10": "Review this same immutable artifact; no retesting or new seeds",
++    "regeneration": "Verification only, not independent replication",
++    "full_h1_and_gate2": "Week-10 interpretation remains open, informed by scheduled repair validation; dates unchanged",
++}
++_STATUS_REASON = {
++    "negative": "the whole interval lies below zero",
++    "reversed": "the whole interval lies above zero; direction is reversed",
++    "non_directional": "the interval contains or touches zero; this does not prove no relationship",
++    "undefined": "at least one coefficient or paired seed-block resample is undefined; the registered interval fails closed",
++}
++
++
++def _canonical(value: Any) -> bytes:
++    return (json.dumps(value, sort_keys=True, separators=(",", ":"),
++                       ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
++
++
++def _hash(value: Any) -> str:
++    return D.sha256_bytes(_canonical(value))
++
++
++def _same(actual: Any, expected: Any, what: str) -> None:
++    # JSON equality distinguishes bool/int/float, unlike Python ==.
++    if _canonical(actual) != _canonical(expected):
++        raise ValueError(f"inconsistent {what}")
++
++
++def _keys(value: Any, names: set[str], what: str) -> dict:
++    if type(value) is not dict or set(value) != names:
++        raise ValueError(f"invalid {what} schema")
++    return value
++
++
++def _hex(value: Any, length: int, what: str) -> str:
++    if type(value) is not str or re.fullmatch(rf"[0-9a-f]{{{length}}}", value) is None:
++        raise ValueError(f"{what} must be an exact lowercase {length}-hex value")
++    return value
++
++
++def _number(value: Any, what: str, *, nullable: bool = False, rho: bool = False) -> None:
++    if nullable and value is None:
++        return
++    if type(value) is not float or not math.isfinite(value):
++        raise ValueError(f"{what} must be a finite float" + (" or null" if nullable else ""))
++    if (rho and not -1.000000000000001 <= value <= 1.000000000000001) or (not rho and value < 0):
++        raise ValueError(f"{what} outside its scientific range")
++
++
++def _regular(path: Path) -> None:
++    info = path.lstat()
++    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
++        raise ValueError("report must be an independent regular file, not a link")
++
++
++def _analysis_state(expected: str) -> None:
++    try:
++        state = git_state()
++    except OSError as exc:
++        raise ValueError("cannot verify analysis Git provenance") from exc
++    if (type(state) is not GitState or state.dirty is not False
++            or state.trustworthy is not True or state.commit != expected):
++        raise ValueError("analysis_commit must match the current clean trustworthy Git tree")
++
++
++def _writer_contract() -> None:
++    """Positive pre-access check: code/constants still implement report v1.
++
++    Replay deliberately does not call this or read the amendment document.
++    Its frozen v1 rule is not reinterpreted under future live constants.
++    """
++    actual = {
++        "seeds": [K.CONFIRMATORY_SEED_BASE + i for i in range(K.SEEDS_HYPOTHESIS)],
++        "sizes": list(K.DATA_SIZES), "confidence": K.CONFIDENCE_LEVEL,
++        "direction": K.TREND_EXPECTED_DIRECTION,
++        "upper_bound": K.TREND_PASS_REQUIRES_UPPER_BOUND_BELOW,
++        "bootstrap": K.TREND_BOOTSTRAP, "quantile": K.TREND_QUANTILE_METHOD,
++        "scale_domain": K.NORMALISATION_SCALE_DOMAIN,
++        "scale_source": K.NORMALISATION_SCALE_SOURCE,
++    }
++    expected = {
++        "seeds": list(_SEEDS), "sizes": list(_SIZES), "confidence": 0.95,
++        "direction": "negative", "upper_bound": 0.0,
++        "bootstrap": "exact_paired_seed_block", "quantile": "linear",
++        "scale_domain": _SCALE_DOMAIN, "scale_source": _SCALE_SOURCE,
++    }
++    _same(actual, expected, "live constants versus frozen report rule")
++    _same(D.sha256_file(_AMENDMENT_PATH), AMENDMENT_SHA256, "D-154 amendment document digest")
++
++
++def _paths(fit_directories: Sequence[Path], report_path: Path) -> tuple[tuple[Path, ...], Path]:
++    if (not isinstance(fit_directories, Sequence) or isinstance(fit_directories, (str, bytes))
++            or len(fit_directories) != 150 or any(not isinstance(p, Path) for p in fit_directories)):
++        raise ValueError("supply exactly 150 explicit fit directory Paths, never handcrafted rows")
++    if not isinstance(report_path, Path):
++        raise ValueError("report_path must be an explicit Path")
++    if report_path.exists() or report_path.is_symlink():
++        _regular(report_path)
++    paths = tuple(p.resolve() for p in fit_directories)
++    if len(set(paths)) != 150:
++        raise ValueError("duplicate resolved source directory")
++    output = report_path.resolve()
++    if not output.is_relative_to(WORKSPACE_ROOT):
++        raise ValueError("report output must stay inside the project workspace")
++    if any(output == p or p in output.parents or output in p.parents for p in paths):
++        raise ValueError("report output must not overlap a source directory")
++    return paths, output
++
++
++def _input_binding(group: str, metric: str, rows: list[dict]) -> dict:
++    selected = [r for r in rows if r["comparison_group_id"] == group]
++    return {
++        "comparison_group_id": group, "metric": metric,
++        "seeds": list(_SEEDS), "sizes": list(_SIZES),
++        "fit_ids": [r["fit_id"] for r in selected],
++        "seed_curves": [[r[f"mean_{metric}"] for r in selected if r["seed"] == seed]
++                        for seed in _SEEDS],
++    }
++
++
++def _support(result: TrendResult) -> dict:
++    values = result.bootstrap_values
++    if len(values) != 3125 or result.n_resamples != 3125:
++        raise ValueError("core did not supply all 3125 original bootstrap values")
++    counts = Counter(v for v in values if math.isfinite(v))
++    undefined = sum(math.isnan(v) for v in values)
++    if sum(counts.values()) + undefined != len(values):
++        raise ValueError("core bootstrap contains infinity")
++    return {
++        "n_resamples": len(values), "undefined_count": undefined,
++        "undefined_mass": undefined / len(values),
++        "atoms": [{"rho": value, "count": count, "mass": count / len(values)}
++                  for value, count in sorted(counts.items())],
++    }
++
++
++def _status(rho: float | None, low: float | None, high: float | None, undefined: int) -> str:
++    if rho is None or undefined:
++        return "undefined"
++    if low is None or high is None:
++        raise ValueError("defined bootstrap must have both interval endpoints")
++    if high < 0.0:
++        return "negative"
++    return "reversed" if low > 0.0 else "non_directional"
++
++
++def _metric_record(group: str, metric: str, rows: list[dict]) -> dict:
++    binding = _input_binding(group, metric, rows)
++    curves = {seed: dict(zip(_SIZES, values, strict=True))
++              for seed, values in zip(_SEEDS, binding["seed_curves"], strict=True)}
++    result = trend_test(curves, partition="confirmatory")
++    support = _support(result)
++    nullable = lambda value: None if math.isnan(value) else value
++    rho, low, high = (nullable(v) for v in (result.rho, result.ci_low, result.ci_high))
++    status = _status(rho, low, high, support["undefined_count"])
++    if result.passed is not (status == "negative"):
++        raise ValueError("core verdict disagrees with the unchanged reading rule")
++    record = {
++        "metric": metric,
++        "role": "registered_disagreement_component" if metric == "disagreement" else "diagnostic_only",
++        "title": "Disagreement trend: registered criterion" if metric == "disagreement" else "Error trend: diagnostic only",
++        "input_sha256": _hash(binding), "seed_curves": binding["seed_curves"],
++        "rho": rho, "ci_low": low, "ci_high": high,
++        "per_seed_rho": [nullable(v) for v in result.per_seed_rho],
++        "mean_curve": list(result.mean_curve), "support": support,
++        "status": status, "reason": _STATUS_REASON[status],
++    }
++    if metric == "disagreement":
++        record["criterion_met"] = result.passed
++    return record
++
++
++def _overall(configurations: list[dict]) -> dict:
++    if len(configurations) != 5 or len({c["comparison_group_id"] for c in configurations}) != 5:
++        raise ValueError("all-five summary requires exactly five distinct configurations")
++    flags = [c["results"]["disagreement"]["criterion_met"] for c in configurations]
++    if any(type(flag) is not bool for flag in flags):
++        raise ValueError("disagreement component flags must be exact bools")
++    missing = [c["comparison_group_id"] for c, met in zip(configurations, flags, strict=True) if not met]
++    return {
++        "kind": "amended_descriptive_decision_summary", "amendment_id": "D-154",
++        "all_five_meet_disagreement_criterion": all(flags),
++        "n_meeting_criterion": sum(flags), "not_meeting_criterion": missing,
++        "statement": ("all five meet the registered disagreement criterion" if all(flags)
++                      else "support was not established across all five configurations"),
++        "limitation": "New amended operational conjunction, not a pristine preregistered global test, calibrated omnibus test, or simultaneous confidence claim.",
++    }
++
++
++def _build(evidence: Experiment1Evidence, fit_commit: str, analysis_commit: str) -> dict:
++    if type(evidence) is not Experiment1Evidence or evidence.expected_git_commit != fit_commit:
++        raise ValueError("loader returned evidence with incorrect type or fit commit")
++    _same(list(evidence.seeds), list(_SEEDS), "loader seeds")
++    _same(list(evidence.data_sizes), list(_SIZES), "loader sizes")
++    rows = []
++    for row in evidence.rows:
++        cfg = Config(unit=row.unit, stage=row.execution_stage, seed=row.seed)
++        item = {name: getattr(row, name) for name in (
++            "comparison_group_id", "causal_attribute", "layout", "seed", "n_transitions",
++            "unit_id", "config_id", "fit_id", "execution_stage", "execution_run_id",
++            "execution_digest", "evaluation_pool_digest", "n_movement", "mean_error", "mean_disagreement",
++        )}
++        item.update(config=cfg.to_dict(), roles=list(row.roles), source_path=str(row.source_path),
++                    scale={**asdict(row.scale), "vector": list(row.scale.vector)},
++                    transition_identity_sha256=_hash({"episode": row.episode, "step": row.step,
++                                                       "evaluation_action": row.evaluation_action}))
++        rows.append(item)
++    rows.sort(key=lambda r: (r["comparison_group_id"], r["seed"], r["n_transitions"]))
++    # Refuse malformed mocked/future loader output BEFORE any statistic is run.
++    groups = _validate_rows(rows)
++    _same(list(evidence.comparison_group_ids), sorted(groups), "loader configuration IDs")
++    configurations = [
++        {"comparison_group_id": group, "causal_attribute": pair[0], "layout": pair[1],
++         "results": {metric: _metric_record(group, metric, rows) for metric in _METRICS}}
++        for group, pair in sorted(groups.items())
++    ]
++    payload = {
++        "schema_version": REPORT_SCHEMA_VERSION, "kind": "experiment_1_coefficient_report",
++        "amendment": dict(_DISCLOSURE), "timing": dict(_TIMING), "rule": dict(_RULE),
++        "seeds": list(_SEEDS), "data_sizes": list(_SIZES),
++        "provenance": {"expected_fit_commit": fit_commit, "analysis_commit": analysis_commit,
++                       "analysis_git_clean": True, "analysis_git_trustworthy": True,
++                       "amendment_document_sha256": AMENDMENT_SHA256,
++                       "source_inventory_sha256": _hash(rows)},
++        "rows": rows, "configurations": configurations, "overall": _overall(configurations),
++    }
++    return {**payload, "payload_sha256": _hash(payload)}
++
++
++def _validate_rows(rows: Any) -> dict[str, tuple[str, str]]:
++    if type(rows) is not list or len(rows) != 150:
++        raise ValueError("report requires exactly 150 source rows")
++    groups: dict[str, tuple[str, str]] = {}
++    identities, paths, paired = set(), set(), {}
++    multirole = 0
++    row_keys = {
++        "comparison_group_id", "causal_attribute", "layout", "seed", "n_transitions",
++        "unit_id", "config_id", "fit_id", "execution_stage", "execution_run_id", "roles",
++        "source_path", "execution_digest", "evaluation_pool_digest", "n_movement",
++        "mean_error", "mean_disagreement", "config", "scale", "transition_identity_sha256",
++    }
++    for row in rows:
++        _keys(row, row_keys, "source row")
++        pair = (row["causal_attribute"], row["layout"])
++        if (pair not in _PAIRS or type(row["seed"]) is not int or row["seed"] not in _SEEDS
++                or type(row["n_transitions"]) is not int or row["n_transitions"] not in _SIZES):
++            raise ValueError("unregistered configuration, seed, or size")
++        expected = Config(unit=UnitSpec(causal_attribute=pair[0], layout=pair[1], confound_rate=0.0,
++                                       family="estimation", n_transitions=row["n_transitions"]),
++                          stage="exp1", seed=row["seed"])
++        _same(row["config"], expected.to_dict(), "canonical Config")
++        for field in ("unit_id", "config_id", "fit_id"):
++            _same(row[field], getattr(expected, field), field)
++        _same(row["execution_stage"], "exp1", "execution stage")
++        _same(row["execution_run_id"], expected.run_id, "execution run")
++        group = comparison_group_id(expected.unit, "exp1")
++        _same(row["comparison_group_id"], group, "comparison group")
++        groups[group] = pair
++        # D-025's complete six-size reference ladder; not just a total count.
++        expected_roles = ["exp1", "repair_validation"] if pair == ("shape", "uniform") else ["exp1"]
++        _same(row["roles"], expected_roles, "exact registered Experiment-1 roles")
++        multirole += len(row["roles"]) == 2
++        source = row["source_path"]
++        if type(source) is not str or not (PureWindowsPath(source).is_absolute() or PurePosixPath(source).is_absolute()):
++            raise ValueError("source path must be an explicit absolute path")
++        # Pure path comparison only: replay must NOT resolve/stat source paths.
++        path_key = PureWindowsPath(source) if PureWindowsPath(source).is_absolute() else PurePosixPath(source)
++        if row["fit_id"] in identities or path_key in paths:
++            raise ValueError("duplicate source path or physical fit")
++        identities.add(row["fit_id"])
++        paths.add(path_key)
++        for field in ("execution_digest", "evaluation_pool_digest", "transition_identity_sha256"):
++            _hex(row[field], 64, field)
++        if type(row["n_movement"]) is not int or not 0 < row["n_movement"] <= 1000:
++            raise ValueError("invalid movement count")
++        scale = _keys(row["scale"], {"vector", "n_reference", "domain", "source"}, "scale")
++        _same(scale["n_reference"], row["n_movement"], "scale reference count")
++        # Preserve the loader's scale contract without reading any source file.
++        _same(scale["domain"], _SCALE_DOMAIN, "scale domain")
++        _same(scale["source"], _SCALE_SOURCE, "scale source")
++        if type(scale["vector"]) is not list or len(scale["vector"]) != 2:
++            raise ValueError("invalid scale vector")
++        for v in scale["vector"]:
++            _number(v, "scale")
++            if v == 0:
++                raise ValueError("scale must be positive")
++        for metric in _METRICS:
++            _number(row[f"mean_{metric}"], metric)
++        ref = {field: row[field] for field in ("evaluation_pool_digest", "scale", "transition_identity_sha256", "n_movement")}
++        _same(ref, paired.setdefault((group, row["seed"]), ref), "cross-size pairing")
++    if len(groups) != 5 or set(groups.values()) != set(_PAIRS) or multirole != 30:
++        raise ValueError("incomplete five-configuration or 30-multirole inventory")
++    order = [(r["comparison_group_id"], r["seed"], r["n_transitions"]) for r in rows]
++    if order != [(group, seed, size) for group in sorted(groups) for seed in _SEEDS for size in _SIZES]:
++        raise ValueError("source grid must be exact and canonically ordered")
++    return groups
++
++
++def _validate_metric(record: Any, group: str, metric: str, rows: list[dict]) -> None:
++    names = {"metric", "role", "title", "input_sha256", "seed_curves", "rho", "ci_low", "ci_high",
++             "per_seed_rho", "mean_curve", "support", "status", "reason"}
++    if metric == "disagreement":
++        names.add("criterion_met")
++    _keys(record, names, "metric result")
++    _same(record["metric"], metric, "metric name")
++    _same(record["role"], "registered_disagreement_component" if metric == "disagreement" else "diagnostic_only", "metric role")
++    _same(record["title"], "Disagreement trend: registered criterion" if metric == "disagreement" else "Error trend: diagnostic only", "metric title")
++    binding = _input_binding(group, metric, rows)
++    _same(record["seed_curves"], binding["seed_curves"], "metric input curves")
++    _same(record["input_sha256"], _hash(binding), "metric input digest")
++    _same(record["mean_curve"], np.asarray(binding["seed_curves"]).mean(axis=0).tolist(), "stored mean curve")
++    for field in ("rho", "ci_low", "ci_high"):
++        _number(record[field], field, nullable=True, rho=True)
++    if type(record["per_seed_rho"]) is not list or len(record["per_seed_rho"]) != 5:
++        raise ValueError("exactly five per-seed coefficients required")
++    for value in record["per_seed_rho"]:
++        _number(value, "per-seed rho", nullable=True, rho=True)
++    support = _keys(record["support"], {"n_resamples", "undefined_count", "undefined_mass", "atoms"}, "bootstrap support")
++    _same(support["n_resamples"], 3125, "bootstrap size")
++    undefined = support["undefined_count"]
++    if type(undefined) is not int or not 0 <= undefined <= 3125:
++        raise ValueError("invalid undefined-resample count")
++    _same(support["undefined_mass"], undefined / 3125, "undefined mass")
++    if type(support["atoms"]) is not list or len(support["atoms"]) > 3125:
++        raise ValueError("invalid bootstrap atoms")
++    expanded, previous = [], -math.inf
++    for atom in support["atoms"]:
++        _keys(atom, {"rho", "count", "mass"}, "bootstrap atom")
++        _number(atom["rho"], "atom rho", rho=True)
++        if atom["rho"] <= previous or type(atom["count"]) is not int or not 0 < atom["count"] <= 3125:
++            raise ValueError("atoms must be distinct, sorted, and have positive integer counts")
++        previous = atom["rho"]
++        _same(atom["mass"], atom["count"] / 3125, "atom mass")
++        expanded.extend([atom["rho"]] * atom["count"])
++        if len(expanded) + undefined > 3125:
++            raise ValueError("bootstrap masses exceed the full resample space")
++    if len(expanded) + undefined != 3125:
++        raise ValueError("bootstrap counts must total 3125, including undefined resamples")
++    rho, low, high = record["rho"], record["ci_low"], record["ci_high"]
++    if rho is None and not undefined:
++        raise ValueError("undefined point coefficient requires undefined bootstrap support")
++    if rho is not None and rho not in expanded:
++        raise ValueError("the original mean-curve coefficient must occur in bootstrap support")
++    if rho is None or undefined:
++        if low is not None or high is not None:
++            raise ValueError("undefined bootstrap must have null interval endpoints")
++    else:
++        # Algebraic consistency of STORED support, not a new bootstrap/trend.
++        # Match the core's floating-point percentile expressions exactly.
++        bounds = np.percentile(expanded, [100 * (1 - 0.95) / 2, 100 * (1 + 0.95) / 2], method="linear").tolist()
++        _same([low, high], bounds, "interval versus stored bootstrap support")
++    # Every original seed repeated five times is an enumerated resample.
++    if any(value is None for value in record["per_seed_rho"]) and not undefined:
++        raise ValueError("undefined seed coefficient requires undefined bootstrap support")
++    status = _status(rho, low, high, undefined)
++    _same(record["status"], status, "metric status")
++    _same(record["reason"], _STATUS_REASON[status], "metric reason")
++    if metric == "disagreement":
++        _same(record["criterion_met"], status == "negative", "disagreement criterion")
++
++
++def _validate_document(document: Any) -> dict:
++    _keys(document, {"schema_version", "kind", "amendment", "timing", "rule", "seeds", "data_sizes",
++                     "provenance", "rows", "configurations", "overall", "payload_sha256"}, "report")
++    _same(document["schema_version"], REPORT_SCHEMA_VERSION, "report schema version")
++    _same(document["kind"], "experiment_1_coefficient_report", "report kind")
++    _same(document["amendment"], _DISCLOSURE, "amendment disclosure")
++    _same(document["timing"], _TIMING, "timing policy")
++    _same(document["rule"], _RULE, "statistical rule")
++    _same(document["seeds"], list(_SEEDS), "registered seeds")
++    _same(document["data_sizes"], list(_SIZES), "registered sizes")
++    _hex(document["payload_sha256"], 64, "payload digest")
++    _same(document["payload_sha256"], _hash({k: v for k, v in document.items() if k != "payload_sha256"}), "payload digest")
++    provenance = _keys(document["provenance"], {"expected_fit_commit", "analysis_commit", "analysis_git_clean",
++                                               "analysis_git_trustworthy", "source_inventory_sha256",
++                                               "amendment_document_sha256"}, "provenance")
++    for field in ("expected_fit_commit", "analysis_commit"):
++        _hex(provenance[field], 40, field)
++    _same(provenance["analysis_git_clean"], True, "clean analysis tree")
++    _same(provenance["analysis_git_trustworthy"], True, "trustworthy analysis tree")
++    _same(provenance["amendment_document_sha256"], AMENDMENT_SHA256, "amendment document digest")
++    rows = document["rows"]
++    groups = _validate_rows(rows)
++    _same(provenance["source_inventory_sha256"], _hash(rows), "source inventory digest")
++    configurations = document["configurations"]
++    if type(configurations) is not list or len(configurations) != 5:
++        raise ValueError("report requires exactly five configurations")
++    for config, (group, pair) in zip(configurations, sorted(groups.items()), strict=True):
++        _keys(config, {"comparison_group_id", "causal_attribute", "layout", "results"}, "configuration")
++        _same(config["comparison_group_id"], group, "configuration ID")
++        _same([config["causal_attribute"], config["layout"]], list(pair), "configuration metadata")
++        _keys(config["results"], set(_METRICS), "configuration results")
++        for metric in _METRICS:
++            _validate_metric(config["results"][metric], group, metric, rows)
++    _same(document["overall"], _overall(configurations), "all-five amended summary")
++    return document
++
++
++def write_experiment_1_report(
++    fit_directories: Sequence[Path], *, expected_fit_commit: str,
++    analysis_commit: str, report_path: Path,
++) -> Path:
++    """Verify sources, compute the fixed ten results, and publish immutably.
++
++    Both commits are required; analysis provenance is checked before source
++    access and again before publication. Existing artifacts never bypass source
++    verification. No file is published on a scientific/provenance refusal.
++    """
++    _hex(expected_fit_commit, 40, "expected_fit_commit")
++    _hex(analysis_commit, 40, "analysis_commit")
++    sources, output = _paths(fit_directories, report_path)
++    _analysis_state(analysis_commit)
++    _writer_contract()
++    evidence = load_experiment_1_evidence(sources, expected_git_commit=expected_fit_commit)
++    document = _build(evidence, expected_fit_commit, analysis_commit)
++    _validate_document(document)
++    _writer_contract()
++    _analysis_state(analysis_commit)
++    # Recheck links/path containment after analysis as well as before access.
++    if _paths(fit_directories, report_path) != (sources, output):
++        raise ValueError("report/source paths changed during analysis")
++    written = D.atomic_write_json(output, document)
++    return written
++
++
++def replay_experiment_1_report(report_path: Path, *, expected_sha256: str) -> dict:
++    """Read only this artifact using an EXTERNALLY supplied exact-byte digest.
++
++    Stored source paths/digests remain provenance, not instructions to open
++    anything. No Git query, evidence loader or trend function is used here.
++    A returned dict is an inspection copy, never accepted by the writer.
++    """
++    _hex(expected_sha256, 64, "expected_sha256")
++    if not isinstance(report_path, Path):
++        raise ValueError("report_path must be a Path, not a handcrafted report")
++    _regular(report_path)
++    raw = report_path.read_bytes()
++    if D.sha256_bytes(raw) != expected_sha256:
++        raise ValueError("report SHA-256 does not match the externally supplied digest")
++    # Parse the SAME bytes that were hashed; do not reopen with read_json().
++    document = D._decode_json(raw, source=str(report_path))
++    return _validate_document(document)
+diff --git a/src/bu/experiments/fit_evidence.py b/src/bu/experiments/fit_evidence.py
+index 47657c8..42aaeb9 100644
+--- a/src/bu/experiments/fit_evidence.py
++++ b/src/bu/experiments/fit_evidence.py
+@@ -1166,7 +1166,10 @@ def _canonical_array(name: str, value: Any) -> np.ndarray:
+ def _expected_diagnostic_names(arm: str) -> tuple[str, ...]:
+     if arm == "baseline":
+         return _BASELINE_DIAGNOSTICS
+-    if arm in {"data_repair", "feature_repair", "capacity_repair"}:
++    if arm in {
++        "data_repair", "feature_repair", "capacity_repair",
++        "capacity_extension_repair",
++    }:
+         # A repair is deliberately one model, so member disagreement and
+         # predictive variance are undefined rather than fabricated as zero.
+         return _REPAIR_DIAGNOSTICS
+diff --git a/src/bu/experiments/label_evidence.py b/src/bu/experiments/label_evidence.py
+index 4659371..6b9a023 100644
+--- a/src/bu/experiments/label_evidence.py
++++ b/src/bu/experiments/label_evidence.py
+@@ -63,7 +63,9 @@ LABEL_COUNT_FILE = "label_counts.json"
+ # convention, never an empirical estimate.
+ REGISTERED_PLANNING_EXCLUSION_RATE = 0.00
+ 
+-_MODEL_REPAIR_ARMS = ("feature_repair", "capacity_repair")
++_MODEL_REPAIR_ARMS = (
++    "feature_repair", "capacity_repair", "capacity_extension_repair",
++)
+ _LABEL_VALUES = (0, 1, "ambiguous", "undiagnosed")
+ _HEX_DIGEST_LENGTH = 64
+ 
+@@ -442,10 +444,10 @@ def _validate_condition(
+             f"seed {seed} data_repair evaluation_pool_digest does not equal the "
+             "baseline's independently verified encoded-pool digest"
+         )
+-    if model_arm == "capacity_repair":
++    if model_arm in ("capacity_repair", "capacity_extension_repair"):
+         if model.evaluation_pool_digest != base.evaluation_pool_digest:
+             raise ValueError(
+-                f"seed {seed} capacity_repair evaluation_pool_digest does not "
++                f"seed {seed} {model_arm} evaluation_pool_digest does not "
+                 "equal the baseline's independently verified encoded-pool digest"
+             )
+     elif model.evaluation_pool_digest == base.evaluation_pool_digest:
+diff --git a/src/bu/experiments/repair.py b/src/bu/experiments/repair.py
+index 44dcdb3..eb6fa7b 100644
+--- a/src/bu/experiments/repair.py
++++ b/src/bu/experiments/repair.py
+@@ -64,8 +64,8 @@ EXPLORATORY_STAGE = "pilot"
+ #: across members; a repair needs none, because P§7.3 compares per-transition
+ #: error before and after. This is not a tuning choice -- the frozen compute
+ #: accounting is taken at one model per repaired arm, so running the registered
+-#: K here would cost 8,360 repair fits against the 1,672 budgeted and push the
+-#: design to 14,885 fits against P§14.2's ~8,700, i.e. 1.71x budget. Sol's
++#: K here multiplies repair cost fivefold and changes the intervention. D-154
++#: adds single-model extension arms; derive current totals from the plan. Sol's
+ #: ruling on the recovered repair path: repaired arms must fail closed.
+ REPAIR_ENSEMBLE_SIZE = 1
+ 
+@@ -158,7 +158,7 @@ def evaluate_arm(
+         raise ValueError(
+             f"repaired arm {arm!r} was given ensemble_size={train.ensemble_size}; "
+             f"P§14.2 budgets {REPAIR_ENSEMBLE_SIZE} model per repaired arm and the "
+-            "8,197-fit total is taken at that rate. Running the registered ensemble "
++            "execution-plan total is taken at that rate. Running the registered ensemble "
+             "here understates repair cost fivefold and evaluates a different "
+             "intervention from the budgeted one. The baseline arm keeps its ensemble"
+         )
+@@ -369,7 +369,7 @@ def _validate_registered_consumption(baseline, repaired, failure_masks) -> None:
+         raise ValueError(
+             f"repaired evaluation(s) {bad_k} attest an ensemble size other than "
+             f"{REPAIR_ENSEMBLE_SIZE}. P§14.2 budgets one model per repaired arm and "
+-            "the 8,197-fit total is taken at that rate; an evaluation built from a "
++            "the execution-plan total is taken at that rate; an evaluation built from a "
+             "five-member ensemble is a different intervention from the budgeted one. "
+             "Checked here as well as at the fit, because an ArmEvaluation can be "
+             "constructed without going through evaluate_arm"
+diff --git a/src/bu/experiments/w4_timing.py b/src/bu/experiments/w4_timing.py
+index 8b0f475..25a5a87 100644
+--- a/src/bu/experiments/w4_timing.py
++++ b/src/bu/experiments/w4_timing.py
+@@ -183,9 +183,23 @@ def design_accounting() -> dict:
+         "ablations": reference["ablations"],
+         "ablation_assumed_size": ABLATION_ASSUMED_SIZE,
+         "plan_total_model_fits": reference,
++        # D-154: size-only benchmarks cannot price the new width-512 arm.
++        # Historical records lack this field and keep their original totals.
++        "unbenchmarked_capacity_extension_fits": sum(
++            fit.members for fit in plan if fit.arm == "capacity_extension_repair"
++        ),
+     }
+ 
+ 
++def _require_priced_architectures(acct: dict) -> None:
++    if acct.get("unbenchmarked_capacity_extension_fits", 0) != 0:
++        raise ValueError(
++            "D-154 adds width-512 capacity-extension fits. The legacy size-only "
++            "benchmark cannot price them; architecture-aware timing is required. "
++            "Do not report revised wall-hours using width-256 rates."
++        )
++
++
+ def _rate(bench: dict[int, SizeBenchmark], size: int, how: str, kind: str) -> float:
+     """Nearest measured size **at or above** ``size`` — conservative, never below.
+ 
+@@ -211,6 +225,7 @@ def _rate(bench: dict[int, SizeBenchmark], size: int, how: str, kind: str) -> fl
+ 
+ def extrapolate(bench: dict[int, SizeBenchmark], acct: dict, how: str) -> dict:
+     """Total wall seconds for the whole design, training AND collection."""
++    _require_priced_architectures(acct)
+     train = sum(n * _rate(bench, s, how, "fit") for s, n in acct["fits_by_size"].items())
+     coll = sum(n * _rate(bench, s, how, "collection")
+                for s, n in acct["collections_by_size"].items())
+@@ -286,6 +301,11 @@ def reconcile(observed: dict, bench: dict[int, SizeBenchmark], how: str,
+             if f.unit == unit
+             and f.seed in set(observed["seeds_run"])
+             and f.arm in set(observed["arms"])]
++    _require_priced_architectures({
++        "unbenchmarked_capacity_extension_fits": sum(
++            f.members for f in plan if f.arm == "capacity_extension_repair"
++        ),
++    })
+     predicted = 0.0
+     for fit in plan:
+         size = Arm(fit.arm).resolve(fit.unit).n_transitions
+@@ -451,6 +471,7 @@ def main() -> None:
+         )
+ 
+     acct = design_accounting()
++    _require_priced_architectures(acct)  # refuse BEFORE any timing compute
+     sizes = sorted(acct["fits_by_size"])
+ 
+     print(f"W4 FRIDAY TIMING, rebuilt (S§W4 Fri; D-114 refused, D-116)")
+diff --git a/src/bu/stats/trend.py b/src/bu/stats/trend.py
+index 691ad6b..a927097 100644
+--- a/src/bu/stats/trend.py
++++ b/src/bu/stats/trend.py
+@@ -57,11 +57,15 @@ The point estimate is rho on the **across-seed mean curve**. Per-seed curves and
+ per-seed rho values are reported as diagnostics and do **not** enter the pass
+ rule; a "3 of 5 seeds show it" reading is exactly the unreliable-positive that
+ Gate 2 exists to refuse.
++
++D-154 amends timing, not mathematics: Experiment 1 saves its sole coefficient
++report in Week 7; Week 10 reviews that same artifact. ``bootstrap_values`` exposes
++the very resamples used below for support/mass reporting, without re-estimation.
+ """
+ 
+ from __future__ import annotations
+ 
+-from dataclasses import dataclass
++from dataclasses import dataclass, field
+ from itertools import product
+ from typing import Mapping
+ 
+@@ -123,6 +127,9 @@ class TrendResult:
+     #: Diagnostics. They do **not** enter the pass rule (D-068).
+     per_seed_rho: tuple[float, ...]
+     mean_curve: tuple[float, ...]
++    #: Same ordered bootstrap values used for the interval, including NaNs.
++    #: Additive diagnostics: legacy equality, repr and as_row stay unchanged.
++    bootstrap_values: tuple[float, ...] = field(default=(), repr=False, compare=False)
+ 
+     def as_row(self) -> dict:
+         return {
+@@ -316,6 +323,7 @@ def trend_test(
+         n_resamples=len(resampled),
+         per_seed_rho=per_seed_rho,
+         mean_curve=tuple(float(v) for v in mean_curve),
++        bootstrap_values=tuple(float(v) for v in resampled),
+     )
+ 
+ 
+diff --git a/tests/test_capacity_extension.py b/tests/test_capacity_extension.py
+new file mode 100644
+index 0000000..c87ee11
+--- /dev/null
++++ b/tests/test_capacity_extension.py
+@@ -0,0 +1,318 @@
++"""D-154's additive capacity arm: source invariants and synthetic evidence.
++
++No experimental payload is opened or confirmatory model trained. The model
++construction test calls the real ensemble builder but replaces optimization;
++persisted fits below are fabricated by the existing evidence-test helpers.
++Sweep pairing and historical production launchers are deliberately not changed.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import json
++from collections import Counter
++from dataclasses import asdict, replace
++from pathlib import Path
++
++import numpy as np
++import pytest
++import torch
++
++from bu import constants as K
++from bu.config import Arm, Config, UnitSpec
++from bu.env.collect import collect_pools
++from bu.experiments import fit_evidence as F, label_evidence as L
++from bu.experiments.enumerate_units import (
++    arms_for, comparison_groups, design_units, execution_plan,
++    repair_obligations, repair_validation_units, total_model_fits,
++)
++from bu.experiments.repair import REPAIR_STAGE, applicable_arms
++from bu.models import ensemble as E
++from bu.models.train import TrainResult
++from bu.models.world_model import N_HIDDEN_LAYERS, WorldModel
++from bu.streams import confirmatory_seeds, stream, stream_key
++
++from test_fit_evidence import (
++    _completed_run, _resign_physical_sources, _rewrite_unsealed_sources,
++)
++from test_label_evidence import _SyntheticFitStore, _conditions
++
++
++EXTENSION = "capacity_extension_repair"
++MODEL_ARMS = {"feature_repair", "capacity_repair", EXTENSION}
++OLD_PLAN_SHA256 = "dd05d299a8f159ceaf749dc89ae5480b2c9777695dfdae8bf3a90aa47d5f3642"
++
++
++def _extension_unit():
++    return next(
++        unit for unit in repair_validation_units()
++        if unit.family == "estimation" and unit.n_transitions == 100
++    )
++
++
++def test_d154_completes_exactly_the_missing_assignments_without_new_units():
++    units = design_units()
++    assert len(units) == 300
++    assert len(comparison_groups(units)) == 240
++    for unit in units:
++        registered = set(arms_for(unit)) & MODEL_ARMS
++        assert len(registered) == 1, unit
++        assert set(applicable_arms(unit)) == set(arms_for(unit)) - {"baseline"}
++    added = [unit for unit in units if EXTENSION in arms_for(unit)]
++    assert len(added) == 173
++    assert Counter(unit.family for unit in added) == {
++        "estimation": 150, "capacity": 23,
++    }
++    assert all(not unit.withheld_features and unit.hidden_size == 256 for unit in added)
++    ladder = repair_validation_units()
++    assert sum(unit in ladder for unit in added) == 7
++    assert sum(unit not in ladder for unit in added) == 166
++    assert all(len(set(arms_for(unit)) & MODEL_ARMS) == 1 for unit in ladder)
++
++
++def test_d154_adds_638_single_models_with_exact_registered_seed_obligations():
++    units = design_units()
++    obligations = [ob for ob in repair_obligations(units) if ob.arm == EXTENSION]
++    assert Counter((ob.stage, ob.seeds) for ob in obligations) == {
++        ("repair_validation", 20): 7, ("exp3_repairs", 3): 166,
++    }
++    assert sum(ob.seeds for ob in obligations) == 638
++    assert len(repair_obligations(units)) == 600
++    plan = execution_plan(units)
++    added = [fit for fit in plan if fit.arm == EXTENSION]
++    assert len(added) == 638
++    assert Counter(fit.roles for fit in added) == {
++        ("repair_validation",): 140, ("exp3_repairs",): 498,
++    }
++    assert all(fit.members == 1 for fit in added)
++    assert len(plan) == 3585
++    assert len({fit.fit_id for fit in plan}) == len(plan)
++    assert total_model_fits(units) == {
++        "baseline_ensembles": 6375, "repairs": 2310,
++        "ablations": 150, "total": 8835,
++    }
++
++
++def test_every_old_execution_row_retains_its_golden_identity_roles_and_config():
++    old = [fit for fit in execution_plan(design_units()) if fit.arm != EXTENSION]
++    assert len(old) == 2947
++    rows = [
++        {
++            "fit_id": fit.fit_id,
++            "roles": fit.roles,
++            "members": fit.members,
++            "config": Config(
++                unit=fit.unit, arm=Arm(fit.arm), seed=fit.seed,
++            ).to_dict(),
++        }
++        for fit in old
++    ]
++    encoded = json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()
++    assert hashlib.sha256(encoded).hexdigest() == OLD_PLAN_SHA256
++
++
++@pytest.mark.parametrize("hidden_size", [16, 64, 128, 255, 256, 257, 512, 1024])
++@pytest.mark.parametrize("withheld", [(), ("shape",), ("colour",), ("position",)])
++def test_extension_applicability_is_exact_not_a_general_larger_model_ladder(
++    hidden_size, withheld,
++):
++    unit = UnitSpec(hidden_size=hidden_size, withheld_features=withheld)
++    permitted = hidden_size == 256 and not withheld
++    assert (EXTENSION in arms_for(unit)) == permitted
++    assert (EXTENSION in applicable_arms(unit)) == permitted
++    if permitted:
++        effective = Arm(EXTENSION).resolve(unit)
++        assert effective == replace(unit, hidden_size=512)
++    else:
++        with pytest.raises(ValueError, match="full observation.*hidden_size=256"):
++            Arm(EXTENSION).resolve(unit)
++        with pytest.raises(ValueError, match="full observation.*hidden_size=256"):
++            Config(unit=unit, arm=Arm(EXTENSION))
++
++
++def test_existing_capacity_repair_and_other_interventions_are_not_redefined():
++    assert K.HIDDEN_SIZES == (16, 32, 64, 128, 256)
++    assert K.CAPACITY_EXTENSION_HIDDEN_SIZE == 512
++    assert N_HIDDEN_LAYERS == 2
++    for width in K.HIDDEN_SIZES[:-1]:
++        unit = UnitSpec(hidden_size=width)
++        assert Arm("capacity_repair").resolve(unit) == replace(unit, hidden_size=256)
++    for width in (256, 512):
++        with pytest.raises(ValueError, match="there is no capacity to add"):
++            Arm("capacity_repair").resolve(UnitSpec(hidden_size=width))
++    unit = _extension_unit()
++    assert Arm("baseline").resolve(unit) is unit
++    assert Arm("data_repair").resolve(unit) == replace(unit, n_transitions=1000)
++    missing = replace(unit, withheld_features=("shape",))
++    assert Arm("feature_repair").resolve(missing) == unit
++    # A non-design unit with two OLD model repairs remains ambiguous by
++    # construction; extension registration must not select one by priority.
++    multiple = replace(missing, hidden_size=64)
++    assert set(applicable_arms(multiple)) & MODEL_ARMS == {
++        "feature_repair", "capacity_repair",
++    }
++
++
++def test_extension_config_keeps_source_identity_and_changes_only_effective_width():
++    source = _extension_unit()
++    config = Config(unit=source, arm=Arm(EXTENSION), seed=1000, stage=REPAIR_STAGE)
++    baseline = replace(config, arm=Arm("baseline"))
++    assert config.unit is source
++    assert config.unit_id == baseline.unit_id
++    assert config.config_id != baseline.config_id
++    assert config.fit_id != baseline.fit_id
++    assert config.run_id != baseline.run_id
++    assert config.to_dict()["unit"]["hidden_size"] == 256
++    assert Config.from_dict(config.to_dict()) == config
++    changed = {
++        key: value for key, value in asdict(config.effective_unit).items()
++        if value != asdict(source)[key]
++    }
++    assert changed == {"hidden_size": 512}
++
++
++def test_real_ensemble_constructs_width512_using_only_source_unit_rng(monkeypatch):
++    source = _extension_unit()
++    stage, seed = "pilot", 17
++    baseline = collect_pools(source, stage=stage, seed=seed)
++    pools = collect_pools(source, stage=stage, seed=seed, arm=EXTENSION)
++    for name in ("train", "validation", "evaluation"):
++        base_pool, repaired_pool = getattr(baseline, name), getattr(pools, name)
++        assert repaired_pool.source_unit == source
++        assert repaired_pool.unit == replace(source, hidden_size=512)
++        for field in ("obs", "next_obs", "action", "episode", "step"):
++            np.testing.assert_array_equal(getattr(base_pool, field), getattr(repaired_pool, field))
++
++    stream_calls = []
++
++    def checked_stream(unit, requested_stage, purpose, requested_seed, *, member=None):
++        assert unit is source, "effective width must not enter stream identity"
++        stream_calls.append((purpose, member))
++        return stream(unit, requested_stage, purpose, requested_seed, member=member)
++
++    trained = []
++
++    def construction_only(model, train_data, validation, config, *, rng, train_index, logger):
++        # Exercise real initialization and ensemble wiring, never optimization.
++        reference = WorldModel(
++            replace(source, hidden_size=512), stream(source, stage, "init", seed, member=0),
++        )
++        assert model.trunk[0].in_features == 35
++        assert model.trunk[0].out_features == model.trunk[2].out_features == 512
++        assert model.position_head.out_features == 2
++        assert model.activation_head.out_features == 4
++        assert config == F.REPAIRED_TRAIN
++        for key, value in reference.state_dict().items():
++            assert torch.equal(model.state_dict()[key], value)
++        expected_batch = stream(source, stage, "batch", seed, member=0)
++        np.testing.assert_array_equal(rng.integers(2**31, size=8), expected_batch.integers(2**31, size=8))
++        trained.append(model)
++        return TrainResult(0, 0.0, 0, False, n_train=len(train_index), n_validation=len(validation))
++
++    monkeypatch.setattr(E, "stream", checked_stream)
++    monkeypatch.setattr(E, "train", construction_only)
++    ensemble = E.train_ensemble(
++        source, pools, F.REPAIRED_TRAIN, stage=stage, seed=seed, arm=EXTENSION,
++    )
++    assert stream_calls == [("bootstrap", 0), ("init", 0), ("batch", 0)]
++    assert ensemble.unit is source
++    assert ensemble.effective_unit == replace(source, hidden_size=512)
++    assert ensemble.members == tuple(trained)
++    assert len(ensemble.members) == 1
++    assert stream_key(source, stage, "init", member=0) != stream_key(
++        ensemble.effective_unit, stage, "init", member=0,
++    ), "source/effective RNG comparison must be non-vacuous"
++
++
++@pytest.fixture
++def extension_store(tmp_path, monkeypatch):
++    store = _SyntheticFitStore(tmp_path / "synthetic-extension-fits")
++    monkeypatch.setattr(L, "load_fit_evidence", store.load)
++    return store
++
++
++@pytest.mark.parametrize("data_works, model_works, expected", [
++    (True, False, 0), (False, True, 1),
++    (True, True, "ambiguous"), (False, False, "undiagnosed"),
++])
++def test_canonical_twenty_seed_extension_label_round_trip(
++    tmp_path, extension_store, data_works, model_works, expected,
++):
++    conditions = _conditions(
++        extension_store, _extension_unit(), data_works=data_works, model_works=model_works,
++    )
++    path = tmp_path / "synthetic-label.json"
++    record = L.build_label_evidence(conditions, path=path)
++    assert len(extension_store.calls) == 60
++    assert record["model_repair_arm"] == EXTENSION
++    assert record["label"]["observed_label"] == expected
++    assert record["seeds"] == list(confirmatory_seeds(20))
++    assert [row["failure_count"] for row in record["failure_masks"]] == [3] * 20
++    first_base = extension_store.entries[Path(conditions[0].baseline)]
++    assert first_base.roles == ("exp1", REPAIR_STAGE)
++    assert first_base.execution_stage == "exp1"
++    assert L.load_label_evidence(path) == record
++    assert len(extension_store.calls) == 120
++
++
++@pytest.mark.parametrize("on_reload", [False, True])
++def test_extension_requires_equal_encoded_pool_digest_at_creation_and_reload(
++    tmp_path, extension_store, on_reload,
++):
++    conditions = _conditions(
++        extension_store, _extension_unit(), data_works=False, model_works=True,
++    )
++    path = tmp_path / "synthetic-label.json"
++    if on_reload:
++        L.build_label_evidence(conditions, path=path)
++    model_path = Path(conditions[0].model_repair)
++    extension_store.entries[model_path] = replace(
++        extension_store.entries[model_path], evaluation_pool_digest="f" * 64,
++    )
++    with pytest.raises(ValueError, match="capacity_extension_repair evaluation_pool_digest"):
++        if on_reload:
++            L.load_label_evidence(path)
++        else:
++            L.build_label_evidence(conditions, path=path)
++
++
++def test_extension_fit_writer_reader_validates_real_persisted_synthetic_sources(tmp_path):
++    completed, spec = _completed_run(tmp_path, arm=EXTENSION)
++    F.write_fit_evidence(completed, fit_dir=tmp_path)
++    verified = F.load_fit_evidence(tmp_path, expected_git_commit="b" * 40)
++    assert verified.arm == EXTENSION
++    assert verified.unit.hidden_size == 256
++    assert verified.fit_id == spec.fit_id
++    assert verified.roles == (REPAIR_STAGE,)
++    assert verified.ensemble_size == 1
++    assert tuple(verified.diagnostics) == F._REPAIR_DIAGNOSTICS
++    assert "disagreement" not in verified.diagnostics
++    assert "predictive_variance" not in verified.diagnostics
++    run_record = json.loads((Path(completed.record_dir) / "run.json").read_text())
++    assert run_record["effective_unit"]["hidden_size"] == 512
++    assert run_record["arm_changed"] == {"hidden_size": 512}
++    projected = verified.for_role(REPAIR_STAGE)
++    assert projected.config_id == spec.config_id
++    assert projected.scale is verified.scale
++
++
++@pytest.mark.parametrize("boundary", ["writer", "reader"])
++@pytest.mark.parametrize("incorrect_width", [256, 1024])
++def test_extension_evidence_refuses_a_resigned_wrong_effective_width(
++    tmp_path, boundary, incorrect_width,
++):
++    completed, _ = _completed_run(tmp_path, arm=EXTENSION)
++
++    def mutate(run_record, confirmation):
++        run_record["effective_unit"]["hidden_size"] = incorrect_width
++        run_record["arm_changed"] = {"hidden_size": incorrect_width}
++
++    if boundary == "reader":
++        F.write_fit_evidence(completed, fit_dir=tmp_path)
++        _resign_physical_sources(tmp_path, mutate)
++        with pytest.raises(ValueError, match="effective_unit|arm_changed"):
++            F.load_fit_evidence(tmp_path)
++    else:
++        completed = _rewrite_unsealed_sources(completed, mutate)
++        with pytest.raises(ValueError, match="effective_unit|arm_changed"):
++            F.write_fit_evidence(completed, fit_dir=tmp_path)
+diff --git a/tests/test_confirmatory.py b/tests/test_confirmatory.py
+index 37fc5e5..96d68ac 100644
+--- a/tests/test_confirmatory.py
++++ b/tests/test_confirmatory.py
+@@ -416,7 +416,7 @@ def test_every_design_obligation_key_remains_registered():
+                 seed=CONF + fit.seed,
+             )
+     assert seen_arms == {"baseline", "data_repair", "feature_repair",
+-                         "capacity_repair"}
++                         "capacity_repair", "capacity_extension_repair"}
+     assert max(seen_seed_indices) > 0
+ 
+ 
+diff --git a/tests/test_enumerate_units.py b/tests/test_enumerate_units.py
+index 0122db3..d4915ad 100644
+--- a/tests/test_enumerate_units.py
++++ b/tests/test_enumerate_units.py
+@@ -55,6 +55,15 @@ def test_summary_prints_the_count_by_axis():
+     assert "distinct statistical units" in text
+ 
+ 
++def test_summary_discloses_extension_accounting_without_implying_launch_readiness():
++    text = summarise(design_units())
++    assert "8,835" in text
++    assert "D-154 capacity extension: 638 single-model fits included" in text
++    assert "original fit allowance by ~135" in text
++    assert "not architecture-aware runtime estimates" in text
++    assert "not evidence of paired-label launch readiness" in text
++
++
+ # --- counts must agree with Plan §14.2 ------------------------------------
+ 
+ 
+@@ -77,15 +86,17 @@ def test_design_hits_three_hundred_units():
+     assert len(design_units()) == 300
+ 
+ 
+-def test_compute_stays_within_the_planned_budget():
+-    """A design that does not fit the compute budget is not the planned design.
++def test_compute_reports_the_d154_amendment_not_a_budget_pass():
++    """D-154 adds 638 single models without changing baseline accounting.
+ 
+     Repairs cost one model fit, not an ensemble: the Plan §7.3 acceptance test
+     compares per-transition error and needs no member spread. Costing them as
+     ensembles inflates the estimate five-fold.
+     """
+     fits = total_model_fits(design_units())
+-    assert fits["total"] <= 8700, fits
++    assert fits["total"] == 8835, fits
++    assert fits["total"] - 8700 == 135
++    assert fits["repairs"] == 2310
+     # 6,375 rather than 6,750: a repair-validation unit's twenty baseline seeds
+     # contain the five its canonical stage needs, and are not run again (D-033).
+     assert fits["baseline_ensembles"] == 6375
+@@ -220,7 +231,9 @@ def test_missing_feature_units_never_use_zero_confound():
+ def test_arms_are_the_meaningful_ones_only():
+     """Each repair targets one mechanism, and only where there is one to fix."""
+     est = UnitSpec(family="estimation", hidden_size=256)
+-    assert arms_for(est) == ("baseline", "data_repair")
++    assert arms_for(est) == (
++        "baseline", "data_repair", "capacity_extension_repair",
++    )
+ 
+     miss = UnitSpec(family="missing_feature", withheld_features=("shape",))
+     assert set(arms_for(miss)) == {"baseline", "data_repair", "feature_repair"}
+@@ -385,4 +398,4 @@ def test_the_estimate_is_taken_over_the_plan_that_would_run():
+     fits = total_model_fits(units)
+     assert fits["baseline_ensembles"] == sum(f.members for f in plan if f.arm == "baseline")
+     assert fits["repairs"] == sum(f.members for f in plan if f.arm != "baseline")
+-    assert fits["total"] == 8197, fits
++    assert fits["total"] == 8835, fits
+diff --git a/tests/test_experiment_1_report.py b/tests/test_experiment_1_report.py
+new file mode 100644
+index 0000000..1b943b9
+--- /dev/null
++++ b/tests/test_experiment_1_report.py
+@@ -0,0 +1,472 @@
++"""D-154 report tests: fabricated sources only, CPU, no experimental results.
++
++Set TMP/TEMP/MPLCONFIGDIR and pytest --basetemp beneath the project. The final
++composition fixture reuses the existing fabricated physical-sidecar builder;
++neither it nor the report writer is permitted to train anything.
++"""
++
++from __future__ import annotations
++
++import copy
++import json
++import os
++from dataclasses import replace
++from itertools import product
++from pathlib import Path
++from types import MappingProxyType, SimpleNamespace
++
++import numpy as np
++import pytest
++
++import test_experiment_1_evidence as fixtures
++from bu import durable as D
++from bu.experiments import experiment_1_evidence as E
++from bu.experiments import experiment_1_report as R
++from bu.experiments import fit_evidence as F
++from bu.runrecord import GitState
++from bu.stats import trend as T
++from bu.streams import comparison_group_id
++
++
++FIT_COMMIT = fixtures.COMMIT
++ANALYSIS_COMMIT = "a" * 40
++
++
++def _forbidden(*args, **kwargs):
++    raise AssertionError("source/analysis/training access is forbidden on this path")
++
++
++@pytest.fixture(scope="module")
++def analyzed(tmp_path_factory):
++    root = tmp_path_factory.mktemp("fabricated-h1-report")
++    jobs = fixtures.experiment_1_jobs()
++    store = fixtures._StubStore(root / "sources", jobs)
++    groups = sorted({comparison_group_id(job.unit, "exp1") for job in jobs})
++    # Different levels/seed shapes, with a small-end peak retained. Error rises
++    # while disagreement falls: error cannot become an extra veto.
++    for path, fit in list(store.entries.items()):
++        group = comparison_group_id(fit.unit, "exp1")
++        i = R._SIZES.index(fit.unit.n_transitions)
++        seed = fit.seed - 1000
++        disagreement = [0.60, 0.82, 0.55, 0.42, 0.27, 0.21][i] * (1 + groups.index(group))
++        disagreement += seed * 0.001 * (i % 2)
++        error = 0.1 + i * 0.2 + seed * 0.001
++        diagnostics = dict(fit.diagnostics)
++        diagnostics["disagreement"] = np.full(fit.error.shape, disagreement)
++        store.entries[path] = replace(fit, error=np.full(fit.error.shape, error),
++                                      diagnostics=MappingProxyType(diagnostics))
++    calls = []
++    original = T.trend_test
++
++    def traced(curves, *, partition):
++        result = original(curves, partition=partition)
++        calls.append((copy.deepcopy(curves), partition, result))
++        return result
++
++    with pytest.MonkeyPatch.context() as patch:
++        patch.setattr(E, "load_fit_evidence", store.load)
++        patch.setattr(R, "git_state", lambda: GitState(ANALYSIS_COMMIT, False, "main"))
++        patch.setattr(R, "trend_test", traced)
++        patch.setattr(F, "run_confirmatory", _forbidden)
++        report = R.write_experiment_1_report(store.paths[::-1], expected_fit_commit=FIT_COMMIT,
++                                           analysis_commit=ANALYSIS_COMMIT, report_path=root / "report.json")
++    return SimpleNamespace(report=report, document=json.loads(report.read_bytes()), store=store,
++                           calls=calls, sha256=D.sha256_file(report))
++
++
++def _signed(document, path):
++    """Re-sign fabricated artifacts so tests exercise more than hash mismatch."""
++    doc = copy.deepcopy(document)
++    doc["provenance"]["source_inventory_sha256"] = R._hash(doc["rows"])
++    doc["payload_sha256"] = R._hash({k: v for k, v in doc.items() if k != "payload_sha256"})
++    path.write_bytes((json.dumps(doc, indent=2, sort_keys=True, allow_nan=False) + "\n").encode())
++    return D.sha256_file(path)
++
++
++def test_writer_binds_150_sources_and_calls_one_core_per_configuration_metric(analyzed):
++    doc = analyzed.document
++    assert len(analyzed.store.calls) == 150
++    assert set(analyzed.store.calls) == {(p, FIT_COMMIT) for p in analyzed.store.paths}
++    assert len(analyzed.calls) == 10
++    assert len(doc["rows"]) == len({r["fit_id"] for r in doc["rows"]}) == 150
++    assert sum(len(r["roles"]) == 2 for r in doc["rows"]) == 30
++    assert doc["provenance"]["expected_fit_commit"] == FIT_COMMIT
++    assert doc["provenance"]["analysis_commit"] == ANALYSIS_COMMIT
++    assert doc["provenance"]["amendment_document_sha256"] == D.sha256_file(R._AMENDMENT_PATH)
++    assert doc["overall"]["all_five_meet_disagreement_criterion"] is True
++    for config_index, config in enumerate(doc["configurations"]):
++        for metric_index, metric in enumerate(R._METRICS):
++            record = config["results"][metric]
++            curves, partition, original = analyzed.calls[config_index * 2 + metric_index]
++            assert partition == "confirmatory"
++            assert tuple(curves) == R._SEEDS
++            assert all(tuple(curve) == R._SIZES for curve in curves.values())
++            assert record["rho"] == original.rho
++            assert [record["ci_low"], record["ci_high"]] == [original.ci_low, original.ci_high]
++            assert record["mean_curve"] == list(original.mean_curve)
++            assert record["per_seed_rho"] == list(original.per_seed_rho)
++            assert record["support"] == R._support(original)
++            if metric == "error":
++                assert record["status"] == "reversed"
++                assert record["role"] == "diagnostic_only"
++                assert "criterion_met" not in record
++                assert "H1" not in json.dumps(record)
++    assert doc["amendment"]["registration_status"] == "post-collection, partially exposed amendment"
++    assert doc["amendment"]["fully_blinded_pre_data_registration"] is False
++    assert doc["amendment"]["external_sol_certification"] == "pending"
++    assert len(doc["amendment"]["known_exposed_fit_ids"]) == 2
++    assert "not zero sampling uncertainty" in doc["amendment"]["discreteness"]
++
++
++@pytest.mark.parametrize("flags", list(product((False, True), repeat=5)))
++def test_all_32_pass_patterns_use_only_disagreement(analyzed, flags):
++    configurations = copy.deepcopy(analyzed.document["configurations"])
++    for c, flag in zip(configurations, flags, strict=True):
++        c["results"]["disagreement"]["criterion_met"] = flag
++        c["results"]["error"]["status"] = "reversed" if flag else "negative"
++    result = R._overall(configurations)
++    assert result["all_five_meet_disagreement_criterion"] is all(flags)
++    assert result["n_meeting_criterion"] == sum(flags)
++    assert result["not_meeting_criterion"] == [c["comparison_group_id"] for c, f in zip(configurations, flags) if not f]
++    assert result["amendment_id"] == "D-154"
++    assert "not a pristine preregistered global test" in result["limitation"]
++
++
++def test_replay_reads_only_report_never_sources_git_or_analysis(analyzed, monkeypatch):
++    for module, name in ((R, "load_experiment_1_evidence"), (E, "load_fit_evidence"),
++                         (R, "trend_test"), (T, "trend_test"), (T, "spearman"),
++                         (R, "git_state"), (R, "_metric_record"), (R, "_build")):
++        monkeypatch.setattr(module, name, _forbidden)
++    read = Path.read_bytes
++    reads = []
++
++    def only_report(path):
++        assert path == analyzed.report
++        reads.append(path)
++        return read(path)
++
++    monkeypatch.setattr(Path, "read_bytes", only_report)
++    monkeypatch.setattr(Path, "resolve", _forbidden)
++    assert R.replay_experiment_1_report(analyzed.report, expected_sha256=analyzed.sha256) == analyzed.document
++    assert reads == [analyzed.report]
++
++
++@pytest.mark.parametrize("bad", [None, "", "A" * 64, "a" * 63, 1, True])
++def test_external_digest_is_required_and_strict(analyzed, bad):
++    with pytest.raises(ValueError, match="expected_sha256"):
++        R.replay_experiment_1_report(analyzed.report, expected_sha256=bad)
++
++
++def test_exact_byte_tamper_and_missing_external_digest_refused(analyzed, tmp_path):
++    target = tmp_path / "tampered.json"
++    target.write_bytes(analyzed.report.read_bytes() + b" ")
++    with pytest.raises(ValueError, match="externally supplied"):
++        R.replay_experiment_1_report(target, expected_sha256=analyzed.sha256)
++    with pytest.raises(TypeError):
++        R.replay_experiment_1_report(analyzed.report)
++    with pytest.raises(ValueError, match="handcrafted"):
++        R.replay_experiment_1_report(analyzed.document, expected_sha256=analyzed.sha256)
++
++
++def _mutate(doc, kind):
++    config = doc["configurations"][0]
++    record = config["results"]["disagreement"]
++    if kind == "version": doc["schema_version"] = 99
++    elif kind == "bool_version": doc["schema_version"] = True
++    elif kind == "extra": doc["global_p_value"] = 0.01
++    elif kind == "disclosure": doc["amendment"]["fully_blinded_pre_data_registration"] = True
++    elif kind == "timing": doc["timing"]["week10"] = "new analysis"
++    elif kind == "rule": doc["rule"]["strict_upper_bound_below"] = 0.1
++    elif kind == "fit_commit": doc["provenance"]["expected_fit_commit"] = "unknown"
++    elif kind == "analysis_dirty": doc["provenance"]["analysis_git_clean"] = False
++    elif kind == "missing_row": doc["rows"].pop()
++    elif kind == "duplicate": doc["rows"][1] = copy.deepcopy(doc["rows"][0])
++    elif kind == "seed": doc["rows"][0]["seed"] = 1005
++    elif kind == "bool_seed": doc["rows"][0]["seed"] = True
++    elif kind == "roles": doc["rows"][0]["roles"] = ["pilot"]
++    elif kind == "pairing": doc["rows"][0]["scale"]["vector"][0] += 1e-10
++    elif kind == "source_id": doc["rows"][0]["fit_id"] = "invented"
++    elif kind == "source_config": doc["rows"][0]["config"]["seed"] = 1005
++    elif kind == "source_mean": doc["rows"][0]["mean_disagreement"] += 0.1
++    elif kind == "source_digest": doc["rows"][0]["execution_digest"] = "bad"
++    elif kind == "missing_config": doc["configurations"].pop()
++    elif kind == "missing_error": del config["results"]["error"]
++    elif kind == "error_decision": config["results"]["error"]["criterion_met"] = True
++    elif kind == "error_title": config["results"]["error"]["title"] = "H1 PASS"
++    elif kind == "curves": record["seed_curves"][0][0] += 0.1
++    elif kind == "mean_curve": record["mean_curve"][0] += 0.1
++    elif kind == "rho_range": record["rho"] = 5.0
++    elif kind == "point_not_in_support": record["rho"] = 0.123456789
++    elif kind == "point_null_without_undefined": record["rho"] = None
++    elif kind == "interval": record["ci_high"] = 0.0
++    elif kind == "decision": record["criterion_met"] = False
++    elif kind == "int_decision": record["criterion_met"] = 1
++    elif kind == "reason": record["reason"] = "no relationship exists"
++    elif kind == "undefined_seed": record["per_seed_rho"][0] = None
++    elif kind == "mass": record["support"]["atoms"][0]["mass"] = 0.0
++    elif kind == "count": record["support"]["atoms"][0]["count"] -= 1
++    elif kind == "bool_count": record["support"]["atoms"][0]["count"] = True
++    elif kind == "undefined_count": record["support"]["undefined_count"] = 1
++    elif kind == "duplicate_atom": record["support"]["atoms"].append(copy.deepcopy(record["support"]["atoms"][0]))
++    elif kind == "overall": doc["overall"]["all_five_meet_disagreement_criterion"] = False
++    else: raise AssertionError(kind)
++
++
++@pytest.mark.parametrize("kind", [
++    "version", "bool_version", "extra", "disclosure", "timing", "rule", "fit_commit", "analysis_dirty",
++    "missing_row", "duplicate", "seed", "bool_seed", "roles", "pairing", "source_id", "source_config", "source_mean", "source_digest",
++    "missing_config", "missing_error", "error_decision", "error_title", "curves", "mean_curve", "rho_range",
++    "point_not_in_support", "point_null_without_undefined", "interval", "decision", "int_decision", "reason", "undefined_seed",
++    "mass", "count", "bool_count", "undefined_count", "duplicate_atom", "overall",
++])
++def test_resigned_internally_inconsistent_reports_fail_closed(analyzed, tmp_path, kind):
++    document = copy.deepcopy(analyzed.document)
++    _mutate(document, kind)
++    target = tmp_path / "resigned.json"
++    digest = _signed(document, target)
++    with pytest.raises(ValueError):
++        R.replay_experiment_1_report(target, expected_sha256=digest)
++
++
++@pytest.mark.parametrize("raw", [b'{"schema_version":1,"schema_version":1}', b'{"rho":NaN}', b'{"rho":Infinity}', b'{"rho":1e309}', b'\xff'])
++def test_strict_json_refusals_even_with_matching_external_hash(tmp_path, raw):
++    target = tmp_path / "not-strict.json"
++    target.write_bytes(raw)
++    with pytest.raises(ValueError):
++        R.replay_experiment_1_report(target, expected_sha256=D.sha256_bytes(raw))
++
++
++@pytest.mark.parametrize("kind", ["rows", "grid", "strings", "short", "duplicate", "generator"])
++def test_writer_public_api_cannot_accept_handcrafted_or_incomplete_input(analyzed, tmp_path, monkeypatch, kind):
++    bad = {"rows": analyzed.document["rows"], "grid": analyzed.document,
++           "strings": [str(p) for p in analyzed.store.paths], "short": analyzed.store.paths[:-1],
++           "duplicate": (analyzed.store.paths[0], *analyzed.store.paths[:-1]),
++           "generator": iter(analyzed.store.paths)}[kind]
++    monkeypatch.setattr(R, "load_experiment_1_evidence", _forbidden)
++    with pytest.raises(ValueError):
++        R.write_experiment_1_report(bad, expected_fit_commit=FIT_COMMIT, analysis_commit=ANALYSIS_COMMIT,
++                                   report_path=tmp_path / "report.json")
++
++
++@pytest.mark.parametrize("field", ["expected_fit_commit", "analysis_commit"])
++def test_writer_requires_exact_commits_before_source_access(analyzed, tmp_path, monkeypatch, field):
++    monkeypatch.setattr(R, "load_experiment_1_evidence", _forbidden)
++    kwargs = dict(expected_fit_commit=FIT_COMMIT, analysis_commit=ANALYSIS_COMMIT, report_path=tmp_path / "report.json")
++    kwargs[field] = "unknown"
++    with pytest.raises(ValueError, match=field):
++        R.write_experiment_1_report(analyzed.store.paths, **kwargs)
++    del kwargs[field]
++    with pytest.raises(TypeError):
++        R.write_experiment_1_report(analyzed.store.paths, **kwargs)
++
++
++@pytest.mark.parametrize("state", [GitState(ANALYSIS_COMMIT, True, "main"), GitState("c" * 40, False, "main"), GitState("UNCOMMITTED", False, "main")])
++def test_actual_analysis_provenance_not_a_caller_stamp(analyzed, tmp_path, monkeypatch, state):
++    monkeypatch.setattr(R, "git_state", lambda: state)
++    monkeypatch.setattr(R, "load_experiment_1_evidence", _forbidden)
++    with pytest.raises(ValueError, match="clean trustworthy"):
++        R.write_experiment_1_report(analyzed.store.paths, expected_fit_commit=FIT_COMMIT,
++                                   analysis_commit=ANALYSIS_COMMIT, report_path=tmp_path / "report.json")
++
++
++def test_dirty_even_with_lying_trustworthy_property_refused_before_loader(analyzed, tmp_path, monkeypatch):
++    state = GitState(ANALYSIS_COMMIT, True, "main")
++    monkeypatch.setattr(GitState, "trustworthy", property(lambda self: True))
++    assert state.trustworthy is True and state.dirty is True
++    monkeypatch.setattr(R, "git_state", lambda: state)
++    monkeypatch.setattr(R, "load_experiment_1_evidence", _forbidden)
++    with pytest.raises(ValueError, match="clean trustworthy"):
++        R.write_experiment_1_report(analyzed.store.paths, expected_fit_commit=FIT_COMMIT,
++                                   analysis_commit=ANALYSIS_COMMIT, report_path=tmp_path / "report.json")
++
++
++def test_roles_swapped_between_units_are_not_repaired_by_total_30(analyzed, tmp_path):
++    doc = copy.deepcopy(analyzed.document)
++    reference = next(row for row in doc["rows"] if len(row["roles"]) == 2)
++    other = next(row for row in doc["rows"] if len(row["roles"]) == 1)
++    reference["roles"], other["roles"] = other["roles"], reference["roles"]
++    assert sum(len(row["roles"]) == 2 for row in doc["rows"]) == 30
++    target = tmp_path / "role-swap.json"
++    digest = _signed(doc, target)
++    with pytest.raises(ValueError, match="exact registered Experiment-1 roles"):
++        R.replay_experiment_1_report(target, expected_sha256=digest)
++
++
++@pytest.mark.parametrize(("field", "value"), [
++    ("CONFIDENCE_LEVEL", 0.90), ("TREND_PASS_REQUIRES_UPPER_BOUND_BELOW", 0.1),
++    ("TREND_EXPECTED_DIRECTION", "positive"), ("TREND_BOOTSTRAP", "sampled"),
++    ("TREND_QUANTILE_METHOD", "nearest"), ("SEEDS_HYPOTHESIS", 4),
++    ("CONFIRMATORY_SEED_BASE", 2000), ("DATA_SIZES", (100, 250, 500, 1000, 2500)),
++    ("NORMALISATION_SCALE_DOMAIN", "other"), ("NORMALISATION_SCALE_SOURCE", "failure_set"),
++])
++def test_changed_live_rule_refused_before_loader(analyzed, tmp_path, monkeypatch, field, value):
++    monkeypatch.setattr(R.K, field, value)
++    monkeypatch.setattr(R, "git_state", lambda: GitState(ANALYSIS_COMMIT, False, "main"))
++    monkeypatch.setattr(R, "load_experiment_1_evidence", _forbidden)
++    with pytest.raises(ValueError, match="live constants"):
++        R.write_experiment_1_report(analyzed.store.paths, expected_fit_commit=FIT_COMMIT,
++                                   analysis_commit=ANALYSIS_COMMIT, report_path=tmp_path / "report.json")
++
++
++def test_replay_keeps_v1_rule_when_live_trend_constants_change(analyzed, monkeypatch):
++    monkeypatch.setattr(R.K, "CONFIDENCE_LEVEL", 0.90)
++    monkeypatch.setattr(R.K, "TREND_PASS_REQUIRES_UPPER_BOUND_BELOW", 0.2)
++    monkeypatch.setattr(R.K, "NORMALISATION_SCALE_DOMAIN", "future_domain")
++    monkeypatch.setattr(R, "_writer_contract", _forbidden)
++    assert R.replay_experiment_1_report(analyzed.report, expected_sha256=analyzed.sha256) == analyzed.document
++
++
++def test_changed_amendment_document_refused_before_loader(analyzed, tmp_path, monkeypatch):
++    fake = tmp_path / "different-amendment.md"
++    fake.write_text("different scientific choice", encoding="utf-8")
++    monkeypatch.setattr(R, "_AMENDMENT_PATH", fake)
++    monkeypatch.setattr(R, "git_state", lambda: GitState(ANALYSIS_COMMIT, False, "main"))
++    monkeypatch.setattr(R, "load_experiment_1_evidence", _forbidden)
++    with pytest.raises(ValueError, match="amendment document digest"):
++        R.write_experiment_1_report(analyzed.store.paths, expected_fit_commit=FIT_COMMIT,
++                                   analysis_commit=ANALYSIS_COMMIT, report_path=tmp_path / "report.json")
++
++
++def test_analysis_tree_change_before_publication_refuses(analyzed, tmp_path, monkeypatch):
++    states = iter([GitState(ANALYSIS_COMMIT, False, "main"), GitState(ANALYSIS_COMMIT, True, "main")])
++    monkeypatch.setattr(R, "git_state", lambda: next(states))
++    monkeypatch.setattr(R, "load_experiment_1_evidence", lambda *a, **k: None)
++    monkeypatch.setattr(R, "_build", lambda *a: copy.deepcopy(analyzed.document))
++    target = tmp_path / "report.json"
++    with pytest.raises(ValueError, match="clean trustworthy"):
++        R.write_experiment_1_report(analyzed.store.paths, expected_fit_commit=FIT_COMMIT,
++                                   analysis_commit=ANALYSIS_COMMIT, report_path=target)
++    assert not target.exists()
++
++
++@pytest.mark.parametrize("relation", ["inside", "equal", "outside_workspace"])
++def test_source_overlap_or_outside_output_refuses_before_access(analyzed, tmp_path, monkeypatch, relation):
++    source = analyzed.store.paths[0]
++    target = source / "report.json" if relation == "inside" else source
++    if relation == "outside_workspace":
++        monkeypatch.setattr(R, "WORKSPACE_ROOT", tmp_path / "different-workspace")
++        target = tmp_path / "report.json"
++    monkeypatch.setattr(R, "load_experiment_1_evidence", _forbidden)
++    with pytest.raises(ValueError, match="overlap|workspace"):
++        R.write_experiment_1_report(analyzed.store.paths, expected_fit_commit=FIT_COMMIT,
++                                   analysis_commit=ANALYSIS_COMMIT, report_path=target)
++
++
++def test_hardlinked_destination_and_replay_refused(analyzed, tmp_path, monkeypatch):
++    target, alias = tmp_path / "report.json", tmp_path / "alias.json"
++    target.write_bytes(analyzed.report.read_bytes())
++    os.link(target, alias)
++    monkeypatch.setattr(R, "load_experiment_1_evidence", _forbidden)
++    with pytest.raises(ValueError, match="independent regular"):
++        R.write_experiment_1_report(analyzed.store.paths, expected_fit_commit=FIT_COMMIT,
++                                   analysis_commit=ANALYSIS_COMMIT, report_path=target)
++    with pytest.raises(ValueError, match="independent regular"):
++        R.replay_experiment_1_report(target, expected_sha256=analyzed.sha256)
++
++
++def test_regeneration_is_byte_identical_reopens_sources_and_rejects_divergence(analyzed, tmp_path, monkeypatch):
++    monkeypatch.setattr(E, "load_fit_evidence", analyzed.store.load)
++    monkeypatch.setattr(R, "git_state", lambda: GitState(ANALYSIS_COMMIT, False, "main"))
++    target = tmp_path / "report.json"
++    target.write_bytes(analyzed.report.read_bytes())
++    before = (target.stat().st_mtime_ns, target.read_bytes())
++    count = len(analyzed.store.calls)
++    R.write_experiment_1_report(analyzed.store.paths, expected_fit_commit=FIT_COMMIT,
++                               analysis_commit=ANALYSIS_COMMIT, report_path=target)
++    assert len(analyzed.store.calls) == count + 150
++    assert (target.stat().st_mtime_ns, target.read_bytes()) == before
++    # Existing report is never a token permitting changed sources to pass.
++    def tampered(*args, **kwargs):
++        raise ValueError("synthetic source tampered")
++    monkeypatch.setattr(E, "load_fit_evidence", tampered)
++    with pytest.raises(ValueError, match="tampered"):
++        R.write_experiment_1_report(analyzed.store.paths, expected_fit_commit=FIT_COMMIT,
++                                   analysis_commit=ANALYSIS_COMMIT, report_path=target)
++    assert (target.stat().st_mtime_ns, target.read_bytes()) == before
++    monkeypatch.setattr(E, "load_fit_evidence", analyzed.store.load)
++    target.write_bytes(b"prior immutable unrelated bytes\n")
++    with pytest.raises(D.DivergentTargetError):
++        R.write_experiment_1_report(analyzed.store.paths, expected_fit_commit=FIT_COMMIT,
++                                   analysis_commit=ANALYSIS_COMMIT, report_path=target)
++    assert target.read_bytes() == b"prior immutable unrelated bytes\n"
++
++
++def test_report_zero_boundary_uses_core_and_is_not_a_pass(analyzed):
++    rows = copy.deepcopy(analyzed.document["rows"])
++    group = rows[0]["comparison_group_id"]
++    for row in rows:
++        if row["comparison_group_id"] == group:
++            row["mean_disagreement"] = [1., 2., 3., 3., 2., 1.][R._SIZES.index(row["n_transitions"])]
++    record = R._metric_record(group, "disagreement", rows)
++    assert record["rho"] == record["ci_low"] == record["ci_high"] == 0.0
++    assert record["criterion_met"] is False
++    R._validate_metric(record, group, "disagreement", rows)
++
++
++def test_report_undefined_replicates_remain_explicit_nulls_and_masses(analyzed):
++    rows = copy.deepcopy(analyzed.document["rows"])
++    group = rows[0]["comparison_group_id"]
++    for row in rows:
++        if row["comparison_group_id"] == group:
++            row["mean_disagreement"] = 0.5
++    record = R._metric_record(group, "disagreement", rows)
++    assert record["rho"] is record["ci_low"] is record["ci_high"] is None
++    assert record["per_seed_rho"] == [None] * 5
++    assert record["support"] == {"n_resamples": 3125, "undefined_count": 3125, "undefined_mass": 1.0, "atoms": []}
++    assert record["criterion_met"] is False
++    assert record["status"] == "undefined" and "fails closed" in record["reason"]
++    json.dumps(record, allow_nan=False)
++    R._validate_metric(record, group, "disagreement", rows)
++
++
++def test_no_mean_of_rhos_or_configuration_pooling(analyzed):
++    rows = copy.deepcopy(analyzed.document["rows"])
++    group = rows[0]["comparison_group_id"]
++    seed_values = [[9., 7., 5., 4., 3., 2.]] * 4 + [[1., 3., 6., 9., 14., 20.]]
++    for row in rows:
++        if row["comparison_group_id"] == group:
++            row["mean_disagreement"] = seed_values[row["seed"] - 1000][R._SIZES.index(row["n_transitions"])]
++        else:
++            row["mean_disagreement"] *= 1000  # must not enter this coefficient
++    result = R._metric_record(group, "disagreement", rows)
++    expected = T.trend_test({s: dict(zip(R._SIZES, v)) for s, v in zip(R._SEEDS, seed_values)}, partition="confirmatory")
++    assert result["rho"] == expected.rho
++    assert result["rho"] != pytest.approx(np.mean(expected.per_seed_rho))
++
++
++def test_full_fabricated_150_fit_source_to_report_to_offline_replay(tmp_path, monkeypatch):
++    """Unmodified physical reader + real statistic + writer, never training."""
++    monkeypatch.setattr(F, "run_confirmatory", _forbidden)
++    monkeypatch.setattr(R, "git_state", lambda: GitState(ANALYSIS_COMMIT, False, "main"))
++    jobs = fixtures.experiment_1_jobs()
++    paths = tuple(tmp_path / "sources" / f"fit-{i:03d}" for i in range(150))
++    for path, job in zip(paths, jobs, strict=True):
++        fixtures._make_sidecar(path, job)
++    before = fixtures._tree_fingerprint(paths)
++    calls = []
++    original = E.load_fit_evidence
++    assert original is F.load_fit_evidence
++    def traced(path, *, expected_git_commit):
++        calls.append((path, expected_git_commit))
++        return original(path, expected_git_commit=expected_git_commit)
++    monkeypatch.setattr(E, "load_fit_evidence", traced)
++    report = R.write_experiment_1_report(paths, expected_fit_commit=FIT_COMMIT,
++                                        analysis_commit=ANALYSIS_COMMIT, report_path=tmp_path / "report.json")
++    assert calls == [(path.resolve(), FIT_COMMIT) for path in paths]
++    assert fixtures._tree_fingerprint(paths) == before
++    digest = D.sha256_file(report)
++    monkeypatch.setattr(E, "load_fit_evidence", _forbidden)
++    monkeypatch.setattr(R, "load_experiment_1_evidence", _forbidden)
++    monkeypatch.setattr(R, "trend_test", _forbidden)
++    doc = R.replay_experiment_1_report(report, expected_sha256=digest)
++    assert len(doc["rows"]) == 150 and len(doc["configurations"]) == 5
++    # A real-byte source mutation is refused on re-generation even though the
++    # prior report still exists. Offline replay does not claim source auditing.
++    monkeypatch.setattr(R, "load_experiment_1_evidence", E.load_experiment_1_evidence)
++    monkeypatch.setattr(E, "load_fit_evidence", original)
++    target = paths[0] / "evaluation" / "error.npy"
++    target.write_bytes(target.read_bytes() + b"synthetic tamper")
++    with pytest.raises(ValueError, match="artifact 'error' bytes"):
++        R.write_experiment_1_report(paths, expected_fit_commit=FIT_COMMIT,
++                                   analysis_commit=ANALYSIS_COMMIT, report_path=report)
++    assert D.sha256_file(report) == digest
+diff --git a/tests/test_label_evidence.py b/tests/test_label_evidence.py
+index 04b608f..178ab48 100644
+--- a/tests/test_label_evidence.py
++++ b/tests/test_label_evidence.py
+@@ -54,7 +54,7 @@ def _units_with_one_model_repair():
+ 
+ def _model_repair_arm(unit) -> str:
+     applicable = []
+-    for arm in ("feature_repair", "capacity_repair"):
++    for arm in ("feature_repair", "capacity_repair", "capacity_extension_repair"):
+         try:
+             Arm(arm).resolve(unit)
+         except ValueError:
+diff --git a/tests/test_repair.py b/tests/test_repair.py
+index 20e743e..bbb35dd 100644
+--- a/tests/test_repair.py
++++ b/tests/test_repair.py
+@@ -32,7 +32,9 @@ REPAIRS = ("data_repair", "feature_repair", "capacity_repair")
+ def test_applicable_arms_reports_rather_than_raises():
+     assert applicable_arms(UNIT) == REPAIRS
+     assert "feature_repair" not in applicable_arms(UnitSpec(hidden_size=64))
+-    assert applicable_arms(UnitSpec(hidden_size=max((16, 32, 64, 128, 256)))) == ("data_repair",)
++    assert applicable_arms(UnitSpec(hidden_size=max((16, 32, 64, 128, 256)))) == (
++        "data_repair", "capacity_extension_repair",
++    )
+ 
+ 
+ # --- what makes the comparison paired, for EVERY arm ----------------------
+diff --git a/tests/test_streams.py b/tests/test_streams.py
+index 7d40140..2349d8d 100644
+--- a/tests/test_streams.py
++++ b/tests/test_streams.py
+@@ -112,7 +112,8 @@ def test_confound_levels_share_their_underlying_draws():
+ 
+ 
+ @pytest.mark.parametrize("purpose", sorted(PURPOSES))
+-def test_the_arm_never_enters_a_stream_key(purpose: str):
++@pytest.mark.parametrize("extension", [False, True])
++def test_the_arm_never_enters_a_stream_key(purpose: str, extension: bool):
+     """Baseline and repairs must share the recorded failure set (P§7.2 step 4).
+ 
+     Stated over the key rather than over one arm, so a future arm cannot slip
+@@ -120,19 +121,24 @@ def test_the_arm_never_enters_a_stream_key(purpose: str):
+     ``effective_unit`` would put the repair's enlarged dataset into the key and
+     silently unpair the acceptance test.
+     """
+-    # A unit every arm is meaningful on: something withheld to restore, and
+-    # capacity below the maximum to add to.
+-    unit = UnitSpec(
++    # D-154's extension is deliberately inapplicable where feature restoration
++    # or ordinary capacity repair applies. Cover both disjoint applicability
++    # sets rather than attempting to construct an impossible all-arm unit.
++    unit = UnitSpec() if extension else UnitSpec(
+         causal_attribute="shape", layout="uniform", confound_rate=0.5,
+         family="missing_feature", withheld_features=("shape",),
+         n_transitions=500, hidden_size=16,
+     )
+-    keys = {str(stream_key(Config(unit=unit, arm=Arm(a)).unit, "exp2a", purpose)) for a in ARMS}
++    arms = ("baseline", "data_repair", "capacity_extension_repair") if extension else (
++        "baseline", "data_repair", "feature_repair", "capacity_repair"
++    )
++    assert set(arms) <= set(ARMS)
++    keys = {str(stream_key(Config(unit=unit, arm=Arm(a)).unit, "exp2a", purpose)) for a in arms}
+     assert len(keys) == 1, "the arm reached the stream key"
+ 
+     # And the control that shows why the *unresolved* unit is the right input:
+     # keying on the repaired unit would give each arm its own stream.
+-    resolved = {str(stream_key(Arm(a).resolve(unit), "exp2a", purpose)) for a in ARMS}
++    resolved = {str(stream_key(Arm(a).resolve(unit), "exp2a", purpose)) for a in arms}
+     assert len(resolved) > 1, (
+         "resolving the arm no longer changes the unit, so this test would pass "
+         "even if the key were built from effective_unit"
+diff --git a/tests/test_sweep_repair_pairing.py b/tests/test_sweep_repair_pairing.py
+new file mode 100644
+index 0000000..de97db8
+--- /dev/null
++++ b/tests/test_sweep_repair_pairing.py
+@@ -0,0 +1,300 @@
++"""D-155: fail closed at execution, without rewriting the unpaired sweep design.
++
++Only source-defined units, identities and stream keys are inspected. Every
++execution test stops at a stub before any data collection, output or training.
++"""
++
++from __future__ import annotations
++
++import hashlib
++import json
++from collections import Counter, defaultdict
++from pathlib import Path
++from unittest.mock import Mock
++
++import pytest
++import torch
++
++from bu import constants as K
++from bu.config import Config
++from bu.experiments import confirmatory as C
++from bu.experiments.enumerate_units import (
++    canonical_units,
++    design_units,
++    execution_plan,
++    stage_of,
++)
++from bu.runrecord import GitState
++from bu.streams import DATA_PURPOSES, PURPOSES, STREAM_VERSION, stream_key
++
++
++DESIGN = design_units()
++CANONICAL = canonical_units()
++CANONICAL_IDS = {Config(unit=unit).unit_id for unit in CANONICAL}
++SWEEP = tuple(unit for unit in DESIGN if Config(unit=unit).unit_id not in CANONICAL_IDS)
++PLAN = execution_plan(DESIGN)
++REPAIRS_BY_UNIT = defaultdict(list)
++for _fit in PLAN:
++    if _fit.arm != "baseline":
++        REPAIRS_BY_UNIT[Config(unit=_fit.unit).unit_id].append(_fit)
++
++CONF = K.CONFIRMATORY_SEED_BASE
++SCALE = C.NormalisationScale(vector=torch.ones(1), n_reference=1)
++# Never created: even output-path construction is stubbed. No temp location
++# outside the project or experiment-payload directory is needed by these tests.
++OUT_DIR = Path(__file__).resolve().parents[1] / ".sweep-pairing-test-output"
++
++
++class _ReachedPools(RuntimeError):
++    """A valid preflight reached the pool boundary; no pool is actually drawn."""
++
++
++@pytest.fixture(autouse=True)
++def boundary_stubs(monkeypatch):
++    stubs = {}
++    for name in (
++        "git_state", "_pin_threading", "torch_threading", "collect_pools",
++        "assert_pools_match", "_digest_pool", "Path", "train_ensemble",
++        "_digest_file", "atomic_write_json",
++    ):
++        stubs[name] = Mock(side_effect=AssertionError(f"unexpected boundary: {name}"))
++        monkeypatch.setattr(C, name, stubs[name])
++    stubs["logger"] = Mock(side_effect=AssertionError("unexpected output logger"))
++    monkeypatch.setattr(C.RunLogger, "start", stubs["logger"])
++    yield stubs
++    for name in (
++        "assert_pools_match", "_digest_pool", "Path", "train_ensemble",
++        "_digest_file", "atomic_write_json", "logger",
++    ):
++        stubs[name].assert_not_called()
++
++
++def _allow_until_pools(stubs):
++    """Stub unrelated preconditions so a decorative/missing guard cannot hide."""
++    for name, result in (
++        ("git_state", GitState(commit="c" * 40, dirty=False, branch="main")),
++        ("_pin_threading", None),
++        ("torch_threading", {
++            "num_threads": C.CONFIRMATORY_THREADS,
++            "num_interop_threads": C.CONFIRMATORY_INTEROP_THREADS,
++        }),
++    ):
++        stubs[name].side_effect = None
++        stubs[name].return_value = result
++    stubs["collect_pools"].side_effect = _ReachedPools
++
++
++def _assert_wrong_pairing(error, unit, stage, purposes):
++    message = str(error.value)
++    assert "Wrong pairing" in message
++    assert Config(unit=unit).unit_id in message
++    assert repr(stage) in message
++    assert "authoritative baseline stage" in message
++    assert "mismatched data stream keys" in message
++    for purpose in purposes:
++        assert repr(purpose) in message
++    assert "explicit versioned procedure decision is needed" in message
++    assert "D-155" in message
++
++
++def test_design_counts_and_all_obligations_remain_inventory():
++    """Not executing a registered obligation must never remove it from the plan."""
++    assert len(DESIGN) == 300
++    assert len(CANONICAL) == 75
++    assert len(SWEEP) == 225
++    expected = set()
++    counts = Counter()
++    for fit in PLAN:
++        unit_id = Config(unit=fit.unit).unit_id
++        category = (
++            "baseline" if fit.arm == "baseline"
++            else "canonical_repair" if unit_id in CANONICAL_IDS else "sweep_repair"
++        )
++        for role in fit.roles:
++            C.assert_registered_obligation(
++                fit.unit, arm=fit.arm, stage=role, seed=CONF + fit.seed,
++            )
++            expected.add((unit_id, fit.arm, role, fit.seed))
++            counts[category] += 1
++    assert counts == {"baseline": 1350, "canonical_repair": 960, "sweep_repair": 1350}
++    assert len(PLAN) == 3585  # 1,275 baseline fits; 75 carry two roles.
++    assert len(expected) == 3660
++    assert C._registered_obligations() == frozenset(expected)
++    assert {fit.roles for fit in PLAN if fit.arm == "capacity_extension_repair"} == {
++        ("exp3_repairs",), ("repair_validation",),
++    }
++
++
++@pytest.mark.parametrize("unit", SWEEP, ids=lambda unit: Config(unit=unit).unit_id)
++def test_all_225_sweep_units_refused_at_execution_before_io_or_training(unit, boundary_stubs):
++    """All arms and all three seeds: 1,350 refusals, not just one example per unit."""
++    assert stage_of(unit) == "config_sweep"
++    assert {
++        purpose for purpose in DATA_PURPOSES
++        if stream_key(unit, "config_sweep", purpose) != stream_key(unit, "exp3_repairs", purpose)
++    } == DATA_PURPOSES
++    registered_before = C._registered_obligations()
++    fits = REPAIRS_BY_UNIT[Config(unit=unit).unit_id]
++    assert len(fits) == 6
++    for fit in fits:
++        assert fit.roles == ("exp3_repairs",)
++        # This is registered inventory, even though its execution is unsafe.
++        C.assert_registered_obligation(unit, arm=fit.arm, stage=fit.roles[0], seed=CONF + fit.seed)
++        with pytest.raises(ValueError) as error:
++            C.run_confirmatory(
++                unit, stage=fit.roles[0], seed=CONF + fit.seed, arm=fit.arm,
++                scale=SCALE, out_dir=OUT_DIR,
++            )
++        _assert_wrong_pairing(error, unit, "exp3_repairs", DATA_PURPOSES)
++        assert "'config_sweep'" in str(error.value)
++    for stub in boundary_stubs.values():
++        stub.assert_not_called()
++    assert C._registered_obligations() == registered_before
++
++
++@pytest.mark.parametrize("unit", CANONICAL, ids=lambda unit: Config(unit=unit).unit_id)
++def test_all_75_canonical_units_keep_valid_registered_repairs(unit, boundary_stubs):
++    """All 960 canonical repair fits, including both capacity-extension stages."""
++    _allow_until_pools(boundary_stubs)
++    fits = REPAIRS_BY_UNIT[Config(unit=unit).unit_id]
++    assert len(fits) in (6, 40)
++    for fit in fits:
++        stage = fit.roles[0]
++        assert all(
++            stream_key(unit, stage_of(unit), purpose) == stream_key(unit, stage, purpose)
++            for purpose in DATA_PURPOSES
++        )
++        C._assert_repair_pairing(unit, arm=fit.arm, stage=stage)
++        with pytest.raises(_ReachedPools):
++            C.run_confirmatory(
++                unit, stage=stage, seed=CONF + fit.seed, arm=fit.arm,
++                scale=SCALE, out_dir=OUT_DIR,
++            )
++        boundary_stubs["collect_pools"].assert_called_with(
++            unit, stage=stage, seed=CONF + fit.seed, arm=fit.arm,
++        )
++    assert boundary_stubs["collect_pools"].call_count == len(fits)
++
++
++def test_every_baseline_role_is_untouched(boundary_stubs, monkeypatch):
++    """All 1,350 role executions (1,275 fits), including sweep and shared roles."""
++    _allow_until_pools(boundary_stubs)
++    # Baselines must not even derive a repair-pairing stage or stream key.
++    forbidden = Mock(side_effect=AssertionError("baseline entered repair pairing"))
++    monkeypatch.setattr(C, "stage_of", forbidden)
++    monkeypatch.setattr(C, "stream_key", forbidden)
++    count = 0
++    for fit in PLAN:
++        if fit.arm != "baseline":
++            continue
++        for role in fit.roles:
++            C._assert_repair_pairing(fit.unit, arm="baseline", stage=role)
++            with pytest.raises(_ReachedPools):
++                C.run_confirmatory(
++                    fit.unit, stage=role, seed=CONF + fit.seed,
++                    out_dir=OUT_DIR, _fit_roles=fit.roles,
++                )
++            count += 1
++    assert count == boundary_stubs["collect_pools"].call_count == 1350
++    forbidden.assert_not_called()
++
++
++@pytest.mark.parametrize("purpose", sorted(DATA_PURPOSES))
++def test_each_data_purpose_independently_refuses_in_helper_and_execution(
++    purpose, boundary_stubs, monkeypatch,
++):
++    """Even one changed key field must bite; checking only env/group is insufficient."""
++    unit = CANONICAL[0]
++    stage = REPAIRS_BY_UNIT[Config(unit=unit).unit_id][0].roles[0]
++    baseline_stage = stage_of(unit)
++    calls = []
++
++    def changed_key(got_unit, got_stage, got_purpose):
++        assert got_unit is unit  # Not Arm.resolve(unit), including for data repair.
++        calls.append((got_stage, got_purpose))
++        key = stream_key(got_unit, got_stage, got_purpose)
++        if got_stage == stage and got_purpose == purpose:
++            key = dict(key, stream_version=key["stream_version"] + 1)
++        return key
++
++    monkeypatch.setattr(C, "stream_key", changed_key)
++    expected_calls = [(s, p) for p in sorted(DATA_PURPOSES) for s in (baseline_stage, stage)]
++    with pytest.raises(ValueError) as error:
++        C._assert_repair_pairing(unit, arm="data_repair", stage=stage)
++    _assert_wrong_pairing(error, unit, stage, [purpose])
++    assert calls == expected_calls
++    calls.clear()
++    with pytest.raises(ValueError) as error:
++        C.run_confirmatory(
++            unit, arm="data_repair", stage=stage, seed=CONF, scale=SCALE, out_dir=OUT_DIR,
++        )
++    _assert_wrong_pairing(error, unit, stage, [purpose])
++    assert calls == expected_calls
++    for stub in boundary_stubs.values():
++        stub.assert_not_called()
++
++
++def test_guard_uses_stage_of_not_a_family_inference(monkeypatch):
++    unit = CANONICAL[0]
++    authoritative_stage = Mock(return_value="config_sweep")
++    monkeypatch.setattr(C, "stage_of", authoritative_stage)
++    with pytest.raises(ValueError, match="authoritative baseline stage 'config_sweep'"):
++        C._assert_repair_pairing(unit, arm="data_repair", stage="repair_validation")
++    authoritative_stage.assert_called_once_with(unit)
++
++
++def test_registration_refuses_before_pairing_is_considered(monkeypatch):
++    unit = SWEEP[0]
++    forbidden = Mock(side_effect=AssertionError("pairing ran before registration"))
++    monkeypatch.setattr(C, "_assert_repair_pairing", forbidden)
++    with pytest.raises(ValueError, match="not a registered obligation"):
++        C.run_confirmatory(
++            unit, arm="data_repair", stage="exp3_repairs", seed=CONF + K.SEEDS_SWEEP,
++            scale=SCALE, out_dir=OUT_DIR,
++        )
++    forbidden.assert_not_called()
++
++
++def test_pairing_refusal_does_not_hide_behind_missing_scale():
++    with pytest.raises(ValueError, match="Wrong pairing"):
++        C.run_confirmatory(
++            SWEEP[0], arm="data_repair", stage="exp3_repairs", seed=CONF, out_dir=OUT_DIR,
++        )
++
++
++def test_disabling_guard_reaches_pools_for_the_same_wrong_pair(boundary_stubs, monkeypatch):
++    """Mutation control: an unused helper or a no-op check cannot pass this suite."""
++    _allow_until_pools(boundary_stubs)
++    kwargs = dict(
++        arm="data_repair", stage="exp3_repairs", seed=CONF, scale=SCALE, out_dir=OUT_DIR,
++    )
++    with pytest.raises(ValueError, match="Wrong pairing"):
++        C.run_confirmatory(SWEEP[0], **kwargs)
++    boundary_stubs["git_state"].assert_not_called()
++    boundary_stubs["collect_pools"].assert_not_called()
++    monkeypatch.setattr(C, "_assert_repair_pairing", lambda *args, **kw: None)
++    with pytest.raises(_ReachedPools):
++        C.run_confirmatory(SWEEP[0], **kwargs)
++    boundary_stubs["collect_pools"].assert_called_once_with(
++        SWEEP[0], stage="exp3_repairs", seed=CONF, arm="data_repair",
++    )
++
++
++def test_all_8100_legacy_stream_keys_remain_unchanged():
++    """Pre-guard fingerprint: 300 units x 3 stages x all 9 existing purposes.
++
++    Includes the mismatched sweep repair keys on purpose: a safety refusal is
++    not authorization to silently reinterpret historical streams or stages.
++    """
++    assert STREAM_VERSION == 3
++    rows = [
++        [Config(unit=unit).unit_id, stage, purpose, stream_key(unit, stage, purpose)]
++        for unit in sorted(DESIGN, key=lambda unit: Config(unit=unit).unit_id)
++        for stage in (stage_of(unit), "repair_validation", "exp3_repairs")
++        for purpose in PURPOSES
++    ]
++    assert len(rows) == 8100
++    digest = hashlib.sha256(
++        json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()
++    ).hexdigest()
++    assert digest == "fd97e6c4ca59db074c34f823dc90fd857a5122a97533e7b9a23dcd25878d6d9f"
+diff --git a/tests/test_trend.py b/tests/test_trend.py
+index 23a922e..887ce23 100644
+--- a/tests/test_trend.py
++++ b/tests/test_trend.py
+@@ -84,16 +84,11 @@ def test_a_reversed_trend_fails():
+ def test_an_interval_touching_zero_fails():
+     """Constructed so the upper bound is exactly 0.0 -- the boundary case.
+ 
+-    One seed falls perfectly, one rises perfectly, one is flat-with-a-kink, so
+-    resamples span the whole range and the 97.5th percentile sits at zero.
++    A symmetric, tied-rank curve has exactly zero rho. All five confirmatory
++    curves are identical, so BOTH endpoints equal zero, not merely >= zero.
+     """
+-    curves = {
+-        0: dict(zip(SIZES, [0.9, 0.7, 0.5, 0.4, 0.3, 0.2])),
+-        1: dict(zip(SIZES, [0.2, 0.3, 0.4, 0.5, 0.7, 0.9])),
+-        2: dict(zip(SIZES, [0.5, 0.5, 0.5, 0.5, 0.5, 0.6])),
+-    }
+-    result = trend_test(curves, partition="development")
+-    assert result.ci_high >= 0
++    result = trend_test(curve([1., 2., 3., 3., 2., 1.], seeds=CONF), partition="confirmatory")
++    assert result.rho == result.ci_low == result.ci_high == 0.0
+     assert not result.passed
+     assert "contains or touches zero" in result.reason
+ 
+@@ -237,6 +232,36 @@ def test_the_exact_bootstrap_is_deterministic_and_complete():
+     assert five.n_resamples == 5 ** 5 == 3125
+ 
+ 
++def test_exposed_support_is_the_original_ordered_bootstrap_and_not_a_second_estimator():
++    """D-154 only exposes the array already used by the original calculation."""
++    from itertools import product
++    from dataclasses import FrozenInstanceError
++
++    curves = curve([0.6, 0.82, 0.55, 0.42, 0.27, 0.21], jitter=0.02)
++    matrix = np.asarray([[curves[seed][n] for n in SIZES] for seed in sorted(curves)])
++    original = np.asarray([spearman(np.asarray(SIZES), matrix[list(pick)].mean(axis=0))
++                           for pick in product(range(3), repeat=3)])
++    result = trend_test(curves, partition="development")
++    assert type(result.bootstrap_values) is tuple
++    assert result.bootstrap_values == tuple(original)
++    assert result.rho == spearman(np.asarray(SIZES), matrix.mean(axis=0))
++    assert (result.ci_low, result.ci_high) == tuple(np.percentile(
++        original, [100 * (1 - K.CONFIDENCE_LEVEL) / 2, 100 * (1 + K.CONFIDENCE_LEVEL) / 2],
++        method="linear"))
++    assert "bootstrap_values" not in result.as_row()  # legacy evidence unchanged
++    assert "bootstrap_values" not in repr(result)
++    with pytest.raises(FrozenInstanceError):
++        result.bootstrap_values = ()
++
++
++def test_exposed_support_preserves_undefined_resamples():
++    result = trend_test(curve([0.5] * 6), partition="development")
++    assert len(result.bootstrap_values) == 27
++    assert all(np.isnan(value) for value in result.bootstrap_values)
++    assert np.isnan(result.ci_low) and np.isnan(result.ci_high)
++    assert not result.passed
++
++
+ # --- the partition boundary (D-034, D-040, D-068) --------------------------
+ 
+ 
+diff --git a/tests/test_w4_timing.py b/tests/test_w4_timing.py
+index 3a42514..132f38f 100644
+--- a/tests/test_w4_timing.py
++++ b/tests/test_w4_timing.py
+@@ -51,7 +51,7 @@ def test_the_accounting_includes_ablations_and_matches_the_design():
+     acct = design_accounting()
+     reference = total_model_fits(design_units())
+     assert acct["ablations_included"] is True
+-    assert acct["total_fits"] == reference["total"] == 8_197, (
++    assert acct["total_fits"] == reference["total"] == 8_835, (
+         f"{acct['total_fits']} fits against the design's {reference['total']} "
+         f"including {reference['ablations']} ablations. Off by 375 means the "
+         "accounting has re-acquired D-033's phantom fits"
+@@ -61,7 +61,7 @@ def test_the_accounting_includes_ablations_and_matches_the_design():
+ 
+ def test_collection_is_counted_per_condition_not_per_fit():
+     acct = design_accounting()
+-    assert acct["total_collections"] == 2_947
++    assert acct["total_collections"] == 3_585
+     assert acct["total_collections"] < acct["total_fits"]
+ 
+ 
+@@ -71,6 +71,21 @@ def test_data_repair_is_counted_at_its_ten_times_budget():
+     assert acct["fits_by_size"][50_000] > 0
+ 
+ 
++def test_extension_fits_cannot_be_priced_using_legacy_size_only_benchmarks():
++    acct = design_accounting()
++    assert acct["unbenchmarked_capacity_extension_fits"] == 638
++    for how in ("median", "max"):
++        with pytest.raises(ValueError, match="architecture-aware timing"):
++            extrapolate(_flat_bench(acct["fits_by_size"]), acct, how)
++
++
++def test_extension_reconciliation_cannot_use_the_old_width_rates():
++    unit = representative_condition()
++    observed = {"seeds_run": [0], "arms": ["capacity_extension_repair"], "measured_s": 1.0}
++    with pytest.raises(ValueError, match="architecture-aware timing"):
++        reconcile(observed, _flat_bench([5000]), "median", unit=unit)
++
++
+ # --- guards -----------------------------------------------------------------
+ 
+ 
+@@ -116,7 +131,9 @@ def test_the_max_summary_is_never_below_the_median():
+ def test_reconcile_filters_on_the_unit_not_on_its_size():
+     unit = representative_condition()
+     plan = execution_plan(design_units())
+-    mine = [f for f in plan if f.unit == unit]
++    # Keep the original width-priced arms for this unit-vs-size regression;
++    # extension pricing is separately refused above, never silently discounted.
++    mine = [f for f in plan if f.unit == unit and f.arm != "capacity_extension_repair"]
+     same_size = [f for f in plan if f.unit.n_transitions == unit.n_transitions]
+     assert len(same_size) > 10 * len(mine), "fixture cannot detect a size filter"
+ 
+-- 
+2.53.0.windows.1
+

@@ -1,0 +1,2577 @@
+From df84ee238f86354dcbdbeec0df81051058d54975 Mon Sep 17 00:00:00 2001
+From: Ramzi Alashmali <ai.research@sofa.ye>
+Date: Sun, 30 Aug 2026 11:24:55 +0300
+Subject: [PATCH 1/3] Harden provenance and evidence boundaries
+
+---
+ src/bu/critic/balance.py            |  12 +-
+ src/bu/critic/loading.py            | 178 +++++++++++++++--
+ src/bu/critic/split.py              |  20 +-
+ src/bu/experiments/w4_threshold.py  | 188 ++++++++++++++++--
+ src/bu/metrics.py                   | 285 ++++++++++++++++++++++------
+ src/bu/runrecord.py                 |  60 ++++--
+ src/bu/stats/gate.py                | 191 ++++++++++++++++++-
+ tests/test_confirmatory_boundary.py | 158 +++++++++++++++
+ tests/test_critic_balance.py        |   7 +
+ tests/test_critic_loading.py        |  84 +++++++-
+ tests/test_critic_split.py          |   8 +-
+ tests/test_gate.py                  |  29 ++-
+ tests/test_gate_evidence.py         | 135 ++++++++++++-
+ tests/test_infrastructure.py        | 160 +++++++++++++++-
+ tests/test_w4_threshold.py          | 268 ++++++++++++++++++++++++--
+ 15 files changed, 1643 insertions(+), 140 deletions(-)
+
+diff --git a/src/bu/critic/balance.py b/src/bu/critic/balance.py
+index 2e7e888..a43726e 100644
+--- a/src/bu/critic/balance.py
++++ b/src/bu/critic/balance.py
+@@ -167,7 +167,15 @@ def assert_canonical_splits(names: Iterable[str]) -> None:
+     the same name. A check that the caller can satisfy by agreeing with itself
+     is not a check.
+     """
+-    stray = sorted({n for n in names} - set(CANONICAL_SPLITS))
++    supplied = tuple(names)
++    malformed = [name for name in supplied if not isinstance(name, str)]
++    if malformed:
++        raise ValueError(
++            f"split names must be strings, got {malformed!r}. Type validation "
++            "precedes hashing and sorting so malformed input fails at this "
++            "boundary with ValueError rather than an incidental TypeError"
++        )
++    stray = sorted(set(supplied) - set(CANONICAL_SPLITS))
+     if stray:
+         raise ValueError(
+             f"split name(s) {stray} are not canonical. The only split names in "
+@@ -183,9 +191,9 @@ def validate_splits(units: Iterable[LabelledUnit], splits: Sequence[str]) -> Non
+     disappeared, because the requested splits balanced fine without it. Units
+     that are simply not looked at are the quietest possible data loss.
+     """
++    assert_canonical_splits(splits)
+     if len(set(splits)) != len(splits):
+         raise ValueError(f"duplicate split names requested: {list(splits)}")
+-    assert_canonical_splits(splits)
+     assert_canonical_splits([u.split for u in units])
+     requested = set(splits)
+     stray = sorted({u.split for u in units} - requested)
+diff --git a/src/bu/critic/loading.py b/src/bu/critic/loading.py
+index 67c8a01..4b0652f 100644
+--- a/src/bu/critic/loading.py
++++ b/src/bu/critic/loading.py
+@@ -32,7 +32,7 @@ import.
+ from __future__ import annotations
+ 
+ import importlib
+-from dataclasses import dataclass
++from dataclasses import dataclass, field
+ from numbers import Integral
+ from pathlib import Path
+ from typing import Iterable
+@@ -50,7 +50,7 @@ C007_INTEGRATION_STATUS = "loading_boundary_only"
+ 
+ 
+ def _check_stage(stage: object, *, where: str, allow_pilot: bool) -> None:
+-    if not isinstance(stage, str) or stage == "unknown" or stage not in STAGES:
++    if type(stage) is not str or stage == "unknown" or stage not in STAGES:
+         raise ValueError(
+             f"{where} carries stage {stage!r}, which is missing, 'unknown', or "
+             f"not a registered stage {list(STAGES)}. Stage metadata is refused, "
+@@ -89,7 +89,7 @@ def _validate_frame(frame: pd.DataFrame, *, root: object, allow_pilot: bool) ->
+             "DataFrame. The provenance boundary refuses unknown container "
+             "shapes rather than trusting duck-typed metadata (C-007; D-054)"
+         )
+-    required = {"run_id", "seed", "stage"}
++    required = {"run_id", "unit_id", "config_id", "fit_id", "seed", "stage"}
+     missing = sorted(required - set(frame.columns))
+     if missing:
+         raise ValueError(
+@@ -106,10 +106,49 @@ def _validate_frame(frame: pd.DataFrame, *, root: object, allow_pilot: bool) ->
+         )
+     for row in frame.itertuples(index=False):
+         where = f"run {row.run_id!r}"
++        _check_identity_string(row.run_id, field_name="run_id", where=where)
++        _check_identity_string(row.unit_id, field_name="unit_id", where=where)
++        _check_identity_string(row.config_id, field_name="config_id", where=where)
++        _check_identity_string(row.fit_id, field_name="fit_id", where=where)
+         _check_seed(row.seed, where=where)
+         _check_stage(row.stage, where=where, allow_pilot=allow_pilot)
+ 
+ 
++def _check_identity_string(value: object, *, field_name: str, where: str) -> str:
++    if type(value) is not str or not value.strip():
++        raise ValueError(
++            f"{where} carries {field_name}={value!r} of type "
++            f"{type(value).__name__}; every identity must be an exact nonblank "
++            "string and is refused rather than coerced (C-007)"
++        )
++    return value
++
++
++_BOUND_IDENTITY_COLUMNS = (
++    "run_id", "unit_id", "config_id", "fit_id", "seed", "stage"
++)
++
++
++def _identity_snapshot(frame: pd.DataFrame) -> tuple[tuple[object, ...], ...]:
++    """Immutable, type-tagged copy of the identity rows consumers receive."""
++    rows: list[tuple[object, ...]] = []
++    for values in frame.loc[:, list(_BOUND_IDENTITY_COLUMNS)].itertuples(
++        index=False, name=None
++    ):
++        tagged = []
++        for value in values:
++            if isinstance(value, bool):
++                tagged.append(("bool", value))
++            elif isinstance(value, Integral):
++                tagged.append(("int", int(value)))
++            elif type(value) is str:
++                tagged.append(("str", value))
++            else:
++                tagged.append((type(value).__name__, repr(value)))
++        rows.append(tuple(tagged))
++    return tuple(rows)
++
++
+ @dataclass(frozen=True)
+ class ConfirmatoryRuns:
+     """The confirmatory boundary's output type — the only type
+@@ -123,21 +162,38 @@ class ConfirmatoryRuns:
+     frame: pd.DataFrame
+     seeds: tuple[int, ...]
+     stages: tuple[str, ...]
++    run_ids: tuple[str, ...]
++    _bound_identity: tuple[tuple[object, ...], ...] = field(
++        init=False, repr=False, compare=False
++    )
+ 
+     def __post_init__(self) -> None:
+-        if not self.seeds or not self.stages:
++        if not self.seeds or not self.stages or not self.run_ids:
+             raise ValueError(
+-                "ConfirmatoryRuns with empty seeds or stages: a wrapper over "
+-                "nothing passes every downstream guard vacuously, and unknown "
+-                "provenance is refused, not defaulted (C-007; D-034)"
++                "ConfirmatoryRuns with empty seeds, stages, or run_ids: a "
++                "wrapper over nothing passes every downstream guard vacuously, "
++                "and unknown provenance is refused, not defaulted "
++                "(C-007; D-034)"
+             )
+         for s in self.seeds:
+             _check_seed(s, where="ConfirmatoryRuns")
+         assert_confirmatory(self.seeds, what="ConfirmatoryRuns")
+         for stage in self.stages:
+             _check_stage(stage, where="ConfirmatoryRuns", allow_pilot=False)
++        checked_run_ids = tuple(
++            _check_identity_string(
++                run_id, field_name="run_id", where="ConfirmatoryRuns"
++            )
++            for run_id in self.run_ids
++        )
++        if len(set(checked_run_ids)) != len(checked_run_ids):
++            raise ValueError(
++                f"ConfirmatoryRuns carries duplicate run_ids {self.run_ids!r}; "
++                "the wrapper inventory must identify each loaded run once"
++            )
+ 
+         self.validate()
++        object.__setattr__(self, "_bound_identity", _identity_snapshot(self.frame))
+ 
+     def validate(self) -> None:
+         """Re-verify the mutable frame and its duplicated metadata.
+@@ -150,7 +206,13 @@ class ConfirmatoryRuns:
+         _validate_frame(self.frame, root="ConfirmatoryRuns.frame", allow_pilot=False)
+         frame_seeds = tuple(sorted({_check_seed(s, where="ConfirmatoryRuns.frame")
+                                     for s in self.frame["seed"]}))
+-        frame_stages = tuple(sorted({str(s) for s in self.frame["stage"]}))
++        frame_stages = tuple(sorted(set(self.frame["stage"])))
++        frame_run_ids = tuple(sorted({
++            _check_identity_string(
++                run_id, field_name="run_id", where="ConfirmatoryRuns.frame"
++            )
++            for run_id in self.frame["run_id"]
++        }))
+         if frame_seeds != tuple(sorted(self.seeds)):
+             raise ValueError(
+                 f"ConfirmatoryRuns seeds {self.seeds!r} disagree with frame "
+@@ -164,6 +226,20 @@ class ConfirmatoryRuns:
+                 f"stages {frame_stages!r}. Wrapper metadata is cross-checked "
+                 "against the rows consumers receive (D-072; C-007)"
+             )
++        if frame_run_ids != tuple(sorted(self.run_ids)):
++            raise ValueError(
++                f"ConfirmatoryRuns run_ids {self.run_ids!r} disagree with frame "
++                f"run_ids {frame_run_ids!r}. The requested/loaded run inventory "
++                "is bound to the rows consumers receive (D-072; C-007)"
++            )
++        current_identity = _identity_snapshot(self.frame)
++        bound_identity = getattr(self, "_bound_identity", None)
++        if bound_identity is not None and current_identity != bound_identity:
++            raise ValueError(
++                "ConfirmatoryRuns identity columns changed after the boundary "
++                "created the wrapper. A mutable DataFrame cannot rewrite its "
++                "run/config/unit/fit identity in place (D-072; C-007)"
++            )
+ 
+ 
+ @dataclass(frozen=True)
+@@ -203,8 +279,11 @@ def load_critic_runs(
+         ) from exc
+     _validate_frame(frame, root=root, allow_pilot=False)
+     seeds = tuple(sorted({int(s) for s in frame["seed"]}))
+-    stages = tuple(sorted({str(s) for s in frame["stage"]}))
+-    return ConfirmatoryRuns(frame=frame, seeds=seeds, stages=stages)
++    stages = tuple(sorted(set(frame["stage"])))
++    run_ids = tuple(sorted(set(frame["run_id"])))
++    return ConfirmatoryRuns(
++        frame=frame, seeds=seeds, stages=stages, run_ids=run_ids
++    )
+ 
+ 
+ load_critic_runs.__critic_consumer__ = "critic.load_runs"
+@@ -329,9 +408,13 @@ def find_run_loading_tokens(source_text: str) -> list[str]:
+     and prove the scanner has teeth: a check that cannot fail is not a check
+     (D-055, D-057).
+ 
+-    The scan is over Python's AST, not raw text: comments and docstrings are
+-    excluded, while imported aliases, qualified calls, ``METRICS_FILE`` aliases
+-    and direct ``metrics.jsonl`` reads are recognised.  The certified
++    This is a static **hygiene guard**, not a proof against arbitrary dynamic
++    Python access: reflection, runtime-generated names and native extensions
++    cannot be established safe by a source scan. The scan nevertheless covers
++    ordinary imported aliases, assignment aliases, qualified calls,
++    ``METRICS_FILE`` aliases and constant-folded ``metrics.jsonl`` paths. The
++    scan is over Python's AST, not raw text, so comments and docstrings are
++    excluded. The certified
+     ``schema.py`` legitimately *mentions* ``load_runs`` in prose, which is not
+     a call site. Text that does not parse falls back to a plain substring scan
+     — failing open on a syntax error would let a malformed module dodge the
+@@ -348,6 +431,7 @@ def find_run_loading_tokens(source_text: str) -> list[str]:
+ 
+     call_aliases: dict[str, str] = {name: name for name in _RUN_LOADING_CALLS}
+     metrics_aliases: set[str] = {_METRICS_CONSTANT}
++    string_constants: dict[str, str] = {}
+     docstrings: set[int] = set()
+     for owner in ast.walk(tree):
+         body = getattr(owner, "body", None)
+@@ -367,6 +451,67 @@ def find_run_loading_tokens(source_text: str) -> list[str]:
+                 if item.name == _METRICS_CONSTANT:
+                     metrics_aliases.add(bound)
+ 
++    def static_string(node) -> str | None:
++        if isinstance(node, ast.Constant) and type(node.value) is str:
++            return node.value
++        if isinstance(node, ast.Name):
++            # This module deliberately constructs its scanner sentinel from
++            # pieces so the scanner source does not report itself as a bypass.
++            if node.id == "_METRICS_FILENAME":
++                return None
++            return string_constants.get(node.id)
++        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Div)):
++            left = static_string(node.left)
++            right = static_string(node.right)
++            if left is None or right is None:
++                return None
++            separator = "/" if isinstance(node.op, ast.Div) else ""
++            return left.rstrip("/\\") + separator + right.lstrip("/\\")
++        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
++                and node.func.id in {"Path", "PurePath"} and len(node.args) == 1):
++            return static_string(node.args[0])
++        return None
++
++    # Resolve ordinary assignment chains to a fixpoint: ``reader = load_runs``
++    # and ``reader2 = reader`` are both bypass shapes worth flagging. This is
++    # deliberately bounded to statically evident assignments; see the honesty
++    # statement above about Python's dynamic features.
++    assignments = [node for node in ast.walk(tree)
++                   if isinstance(node, (ast.Assign, ast.AnnAssign))]
++    sentinel_definition_values: set[int] = set()
++    for node in assignments:
++        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
++        if any(isinstance(target, ast.Name)
++               and target.id == "_METRICS_FILENAME" for target in targets):
++            sentinel_definition_values.add(id(node.value))
++    changed = True
++    while changed:
++        changed = False
++        for node in assignments:
++            value = node.value
++            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
++            names = [target.id for target in targets if isinstance(target, ast.Name)]
++            if not names or value is None:
++                continue
++            call_name = None
++            if isinstance(value, ast.Name) and value.id in call_aliases:
++                call_name = call_aliases[value.id]
++            elif (isinstance(value, ast.Attribute)
++                  and value.attr in _RUN_LOADING_CALLS):
++                call_name = value.attr
++            metric_alias = isinstance(value, ast.Name) and value.id in metrics_aliases
++            constant = static_string(value)
++            for name in names:
++                if call_name is not None and call_aliases.get(name) != call_name:
++                    call_aliases[name] = call_name
++                    changed = True
++                if metric_alias and name not in metrics_aliases:
++                    metrics_aliases.add(name)
++                    changed = True
++                if constant is not None and string_constants.get(name) != constant:
++                    string_constants[name] = constant
++                    changed = True
++
+     found: set[str] = set()
+     for node in ast.walk(tree):
+         if isinstance(node, ast.Call):
+@@ -378,9 +523,10 @@ def find_run_loading_tokens(source_text: str) -> list[str]:
+                 found.add(node.func.attr + "(")
+         elif isinstance(node, ast.Name) and node.id in metrics_aliases:
+             found.add(_METRICS_CONSTANT)
+-        elif (isinstance(node, ast.Constant) and id(node) not in docstrings
+-              and isinstance(node.value, str)
+-              and node.value.replace("\\", "/").split("/")[-1]
++        elif (id(node) not in docstrings
++              and id(node) not in sentinel_definition_values
++              and (static_value := static_string(node)) is not None
++              and static_value.replace("\\", "/").split("/")[-1]
+               == _METRICS_FILENAME):
+             # A direct read is still a loader even when it bypasses METRICS_FILE.
+             found.add(_METRICS_FILENAME)
+diff --git a/src/bu/critic/split.py b/src/bu/critic/split.py
+index d49b6a2..d8daf73 100644
+--- a/src/bu/critic/split.py
++++ b/src/bu/critic/split.py
+@@ -274,6 +274,13 @@ def validate_candidates(candidates: Sequence[SplitCandidate]) -> None:
+                 "Unknown input shapes are refused positively rather than dying "
+                 "in an AttributeError (D-054)"
+             )
++        if not isinstance(c.unit_id, str) or not c.unit_id.strip():
++            raise ValueError(
++                f"candidate unit_id {c.unit_id!r} is not a non-blank string. "
++                "The statistical-unit content hash must travel as an explicit "
++                "identifier; an empty or non-string id cannot be joined safely "
++                "(D-033, D-054)"
++            )
+         if c.unit_id in seen:
+             raise ValueError(
+                 f"duplicate unit_id {c.unit_id!r}. `unit_id` is a content hash, "
+@@ -282,13 +289,6 @@ def validate_candidates(candidates: Sequence[SplitCandidate]) -> None:
+                 "configuration (Sol, delta 54; D-033, D-039)"
+             )
+         seen.add(c.unit_id)
+-        if not isinstance(c.unit_id, str) or not c.unit_id.strip():
+-            raise ValueError(
+-                f"candidate unit_id {c.unit_id!r} is not a non-blank string. "
+-                "The statistical-unit content hash must travel as an explicit "
+-                "identifier; an empty or non-string id cannot be joined safely "
+-                "(D-033, D-054)"
+-            )
+         if isinstance(c.observed_label, bool):
+             raise ValueError(
+                 f"unit {c.unit_id!r} has boolean observed_label "
+@@ -416,6 +416,12 @@ def _split_seed() -> int:
+             "parameters'; D-115). Refusing to allocate without it — a defaulted "
+             "seed is a caller-invisible degree of freedom (Sol, delta 54)"
+         )
++    if int(seed) < 0:
++        raise ValueError(
++            f"bu.constants.CRITIC_SPLIT_SEED is negative ({int(seed)}). A "
++            "registered RNG seed must be a non-negative exact integer; refusing "
++            "to reinterpret it through hashing or platform-specific RNG behavior"
++        )
+     return int(seed)
+ 
+ 
+diff --git a/src/bu/experiments/w4_threshold.py b/src/bu/experiments/w4_threshold.py
+index d214115..77e0ef5 100644
+--- a/src/bu/experiments/w4_threshold.py
++++ b/src/bu/experiments/w4_threshold.py
+@@ -148,6 +148,7 @@ class ReferenceCell:
+     run_id: str
+     config_id: str
+     unit_id: str
++    fit_id: str
+     n_members: int
+ 
+     @property
+@@ -361,7 +362,8 @@ def score_reference_cell(unit: UnitSpec, *, seed: int, attempt: Path) -> Referen
+     return ReferenceCell(
+         layout=unit.layout, causal_attribute=unit.causal_attribute, seed=seed,
+         errors=errors, run_id=config.run_id, config_id=config.config_id,
+-        unit_id=config.unit_id, n_members=config.train.ensemble_size,
++        unit_id=config.unit_id, fit_id=config.fit_id,
++        n_members=config.train.ensemble_size,
+     )
+ 
+ 
+@@ -380,7 +382,7 @@ def calibrate(out_dir: str | Path, *, attempt: str = "attempt-001") -> Threshold
+     target = assert_may_attempt(Path(out_dir), attempt=attempt)
+ 
+     git = git_state()
+-    if not git.trustworthy:
++    if (git.dirty is not False or git.trustworthy is not True):
+         raise ValueError(
+             f"the working tree is not trustworthy at commit {git.commit!r} "
+             f"(dirty={git.dirty}). This threshold is frozen permanently and every "
+@@ -432,7 +434,8 @@ def calibrate(out_dir: str | Path, *, attempt: str = "attempt-001") -> Threshold
+             "layout": cell.layout, "causal_attribute": cell.causal_attribute,
+             "seed": cell.seed, "n_transitions": len(cell),
+             "run_id": cell.run_id, "config_id": cell.config_id,
+-            "unit_id": cell.unit_id, "n_members": cell.n_members,
++            "unit_id": cell.unit_id, "fit_id": cell.fit_id,
++            "n_members": cell.n_members,
+             "errors_file": f"arrays/{name}", "errors_digest": _sha256_file(path),
+             "run_record_digest": _sha256_file(target / "records" / cell.run_id / "run.json"),
+             "member_record_digest": _sha256_file(target / "records" / cell.run_id / "metrics.jsonl"),
+@@ -455,6 +458,166 @@ def calibrate(out_dir: str | Path, *, attempt: str = "attempt-001") -> Threshold
+     return calibration
+ 
+ 
++def _exact_commit(value) -> bool:
++    """Whether *value* is one exact lower-case SHA-1 object name."""
++    return (
++        isinstance(value, str)
++        and len(value) == 40
++        and all(ch in "0123456789abcdef" for ch in value)
++    )
++
++
++def _verify_cell_run_evidence(
++    attempt: Path,
++    cell: dict,
++    *,
++    record_commit: str,
++) -> None:
++    """Bind one threshold cell to its run config, members, and clean Git tree.
++
++    File digests establish byte identity, but do not establish that those bytes
++    describe the cell that cites them.  Reconstructing :class:`Config` closes
++    that second half of the evidence boundary.
++    """
++    run_id = cell.get("run_id")
++    records = attempt / "records" / str(run_id)
++    targets = (
++        ("run.json", "run_record_digest"),
++        ("metrics.jsonl", "member_record_digest"),
++    )
++    for name, field in targets:
++        target = records / name
++        if not target.exists():
++            raise ValueError(f"{run_id}/{name} is missing from the attempt")
++        if _sha256_file(target) != cell.get(field):
++            raise ValueError(f"{run_id}/{name} does not match its recorded digest")
++
++    run_path = records / "run.json"
++    try:
++        run_record = json.loads(run_path.read_text(encoding="utf-8"))
++    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
++        raise ValueError(f"{run_id}/run.json is not valid UTF-8 JSON") from exc
++    if not isinstance(run_record, dict):
++        raise ValueError(f"{run_id}/run.json must contain one JSON object")
++
++    config_row = run_record.get("config")
++    if not isinstance(config_row, dict):
++        raise ValueError(f"{run_id}/run.json has no reconstructable config object")
++    if type(config_row.get("seed")) is not int:
++        raise ValueError(f"{run_id}/run.json config seed must be one exact integer")
++    try:
++        config = Config.from_dict(config_row)
++    except (KeyError, TypeError, ValueError) as exc:
++        raise ValueError(f"{run_id}/run.json config cannot be reconstructed") from exc
++
++    layout = cell.get("layout")
++    attribute = cell.get("causal_attribute")
++    expected_unit = UnitSpec(
++        family=REFERENCE_FAMILY,
++        layout=layout,
++        causal_attribute=attribute,
++        confound_rate=REFERENCE_CONFOUND_RATE,
++        n_transitions=REFERENCE_SIZE,
++        withheld_features=(),
++    )
++    if config.unit != expected_unit:
++        raise ValueError(
++            f"{run_id}/run.json config unit is not the registered reference "
++            f"condition for cell {layout}/{attribute}"
++        )
++    if config.arm.kind != "baseline" or config.train != TrainConfig():
++        raise ValueError(
++            f"{run_id}/run.json does not use the registered baseline arm and "
++            "training configuration"
++        )
++
++    if type(cell.get("seed")) is not int:
++        raise ValueError(f"cell {layout}/{attribute} seed must be one exact integer")
++    if type(run_record.get("seed")) is not int:
++        raise ValueError(f"{run_id}/run.json top-level seed must be one exact integer")
++    if config.seed != cell["seed"] or run_record["seed"] != config.seed:
++        raise ValueError(
++            f"{run_id}/run.json seed does not match its reconstructed config and cell"
++        )
++    if config.stage != THRESHOLD_STAGE or run_record.get("stage") != config.stage:
++        raise ValueError(
++            f"{run_id}/run.json stage does not match the registered threshold stage"
++        )
++
++    for field, computed in (
++        ("unit_id", config.unit_id),
++        ("config_id", config.config_id),
++        ("run_id", config.run_id),
++    ):
++        if run_record.get(field) != computed or cell.get(field) != computed:
++            raise ValueError(
++                f"{run_id}/run.json {field} does not match the reconstructed "
++                "config and threshold cell"
++            )
++
++    if run_record.get("fit_id") not in (None, config.fit_id):
++        raise ValueError(
++            f"{run_id}/run.json fit_id does not match the reconstructed config"
++        )
++
++    # fit_id was not written into the historical frozen evidence, so its legacy
++    # row identity is reconstructed from the cell's config_id and seed.  New
++    # attempts record it explicitly; both forms must equal Config.fit_id.
++    row_fit_id = cell.get(
++        "fit_id", f"{cell.get('config_id')}-s{cell['seed']:03d}"
++    )
++    if row_fit_id != config.fit_id:
++        raise ValueError(
++            f"{run_id}/run.json fit_id does not match the reconstructed config "
++            "and threshold cell"
++        )
++
++    git = run_record.get("git")
++    if not isinstance(git, dict):
++        raise ValueError(f"{run_id}/run.json has no Git provenance object")
++    if git.get("commit") != record_commit:
++        raise ValueError(
++            f"{run_id}/run.json commit does not match the threshold record's "
++            "common commit"
++        )
++    if git.get("dirty") is not False or git.get("trustworthy") is not True:
++        raise ValueError(
++            f"{run_id}/run.json Git state is not exactly clean and trustworthy"
++        )
++    if not _exact_commit(git.get("commit")):
++        raise ValueError(f"{run_id}/run.json Git commit is not one exact object name")
++
++    metric_path = records / "metrics.jsonl"
++    metric_rows = []
++    for line_number, line in enumerate(
++        metric_path.read_text(encoding="utf-8").splitlines(), start=1
++    ):
++        if not line.strip():
++            continue
++        try:
++            metric = json.loads(line)
++        except json.JSONDecodeError as exc:
++            raise ValueError(
++                f"{run_id}/metrics.jsonl line {line_number} is not valid JSON"
++            ) from exc
++        if not isinstance(metric, dict) or type(metric.get("member")) is not int:
++            raise ValueError(
++                f"{run_id}/metrics.jsonl line {line_number} has no exact integer member"
++            )
++        metric_rows.append(metric["member"])
++
++    expected_roster = list(range(config.train.ensemble_size))
++    if sorted(metric_rows) != expected_roster or len(metric_rows) != len(expected_roster):
++        raise ValueError(
++            f"{run_id}/metrics.jsonl member roster is {metric_rows!r}, not exactly "
++            f"{expected_roster!r} once each"
++        )
++    if cell.get("n_members") != config.train.ensemble_size:
++        raise ValueError(
++            f"{run_id} cell member count does not match the reconstructed config"
++        )
++
++
+ def recompute_threshold(attempt_dir: str | Path) -> float:
+     """Reproduce the threshold from the stored artefacts, trusting almost nothing.
+ 
+@@ -486,6 +649,12 @@ def recompute_threshold(attempt_dir: str | Path) -> float:
+     expect("required_cells", REQUIRED_CELLS, "required cell count")
+     expect("seeds", list(THRESHOLD_SEEDS), "seed set")
+     expect("failure_rule", "error > threshold (strict)", "failure rule")
++    record_commit = row.get("commit")
++    if not _exact_commit(record_commit):
++        raise ValueError(
++            f"record-level commit {record_commit!r} is not one exact lower-case "
++            "Git object name"
++        )
+     balance = row.get("balance", {})
+     if balance.get("rng_seed") != BALANCE_RNG_SEED:
+         raise ValueError("the attempt records a different balancing RNG seed")
+@@ -547,16 +716,9 @@ def recompute_threshold(attempt_dir: str | Path) -> float:
+                 f"{cell['errors_file']} has a digest the attempt does not record. "
+                 "The stored errors are not the ones the threshold was taken over"
+             )
+-        records = attempt / "records" / cell["run_id"]
+-        for name, field in (("run.json", "run_record_digest"),
+-                            ("metrics.jsonl", "member_record_digest")):
+-            target = records / name
+-            if not target.exists():
+-                raise ValueError(f"{cell['run_id']}/{name} is missing from the attempt")
+-            if _sha256_file(target) != cell[field]:
+-                raise ValueError(
+-                    f"{cell['run_id']}/{name} does not match its recorded digest"
+-                )
++        _verify_cell_run_evidence(
++            attempt, cell, record_commit=record_commit,
++        )
+         errors = np.load(path)
+         if errors.shape != (cell["n_transitions"],):
+             raise ValueError(
+diff --git a/src/bu/metrics.py b/src/bu/metrics.py
+index e776304..25e9c81 100644
+--- a/src/bu/metrics.py
++++ b/src/bu/metrics.py
+@@ -84,7 +84,7 @@ class RunLogger:
+         config: Config,
+         root: str | Path = "runs",
+         *,
+-        repo: str | Path = ".",
++        repo: str | Path | None = None,
+         extra: dict[str, Any] | None = None,
+     ) -> RunLogger:
+         run_dir = Path(root) / config.run_id
+@@ -168,79 +168,71 @@ def load_runs(
+             debugging at low seeds still works, which is the whole point of
+             keeping a development range.
+     """
+-    wanted = set(run_ids) if run_ids is not None else None
++    if type(require_clean_git) is not bool:
++        raise TypeError(
++            "require_clean_git must be an exact bool; truthy strings are not "
++            "provenance policy"
++        )
++    if type(require_confirmatory) is not bool:
++        raise TypeError(
++            "require_confirmatory must be an exact bool; truthy strings are not "
++            "seed-partition policy"
++        )
++    wanted = _normalise_requested_run_ids(run_ids)
+     frames: list[pd.DataFrame] = []
+     seen: dict[str, Path] = {}
++    loaded: set[str] = set()
+ 
+     for run_dir in iter_run_dirs(root):
+         rec = read_run_record(run_dir)
+-        if wanted is not None and rec["run_id"] not in wanted:
++        if not isinstance(rec, Mapping):
++            raise RuntimeError(
++                f"run record in {run_dir} is a {type(rec).__name__}, not a "
++                "mapping; provenance cannot be reconstructed"
++            )
++        raw_run_id = _exact_nonblank_string(
++            rec.get("run_id"), field="run_id", where=str(run_dir)
++        )
++        if wanted is not None and raw_run_id not in wanted:
+             continue
+ 
++        config = _reconstruct_and_validate_identity(rec, run_dir=run_dir)
++
+         # Two directories carrying one run_id are two *executions* of the same
+         # identity -- most plainly, two attempt directories from the same pilot
+         # (D-062). Loading both silently doubles every one of that run's records
+         # and every interval taken over them. The run_id uniqueness guard in
+         # write_run_record only protects a single directory, so the merge is
+         # where this has to be caught.
+-        if rec["run_id"] in seen:
++        if raw_run_id in seen:
+             raise RuntimeError(
+-                f"run_id {rec['run_id']} appears in two directories:\n"
+-                f"  {seen[rec['run_id']]}\n  {run_dir}\n"
++                f"run_id {raw_run_id} appears in two directories:\n"
++                f"  {seen[raw_run_id]}\n  {run_dir}\n"
+                 "These are separate executions of one identity. Load a single "
+                 "attempt directory rather than a tree containing several."
+             )
+-        seen[rec["run_id"]] = run_dir
+-        if require_clean_git and not rec.get("git", {}).get("trustworthy", False):
+-            raise RuntimeError(
+-                f"run {rec['run_id']} was recorded from a dirty working tree; "
+-                "its commit hash does not identify the code that ran"
+-            )
+-
+-        # Stage is duplicated at the top level and inside Config because it is
+-        # both provenance and an identity component.  A fallback chooses one
+-        # side of a tampered record silently; require both and require equality
+-        # before flattening anything for a critic boundary (D-012, D-042).
+-        top_stage = rec.get("stage")
+-        config_payload = rec.get("config")
+-        if not isinstance(config_payload, Mapping):
+-            raise RuntimeError(
+-                f"run {rec['run_id']} has config metadata of type "
+-                f"{type(config_payload).__name__}, not a mapping; duplicated "
+-                "stage provenance cannot be cross-checked"
+-            )
+-        config_stage = config_payload.get("stage")
+-        if top_stage is None or config_stage is None:
+-            raise RuntimeError(
+-                f"run {rec['run_id']} is missing duplicated stage metadata "
+-                f"(top-level={top_stage!r}, config={config_stage!r}); stage is "
+-                "refused, not defaulted"
+-            )
+-        if top_stage != config_stage:
+-            raise RuntimeError(
+-                f"run {rec['run_id']} records top-level stage={top_stage!r} "
+-                f"but config.stage={config_stage!r}; something rewrote the run "
+-                "record and neither value is trusted"
+-            )
++        seen[raw_run_id] = run_dir
++        if require_clean_git:
++            _require_clean_git_record(rec, run_id=raw_run_id)
+ 
+         # The numerical seed is authoritative; the recorded fields are a
+         # convenience. If they disagree, something rewrote a run record and the
+         # analysis must not proceed on either value (D-042).
+-        seed = int(rec["seed"])
++        seed = config.seed
+         recorded = rec.get("seed_partition")
+         if recorded is not None:
+             # Type first, then value. `bool("false")` is True and `"false"` is a
+             # perfectly ordinary thing for a hand-edited or round-tripped JSON
+             # record to contain, so a truthiness check would wave through the
+             # exact corruption this exists to catch (D-045).
+-            if recorded not in SEED_PARTITIONS:
++            if type(recorded) is not str or recorded not in SEED_PARTITIONS:
+                 raise RuntimeError(
+-                    f"run {rec['run_id']} records seed_partition={recorded!r}, "
++                    f"run {raw_run_id} records seed_partition={recorded!r}, "
+                     f"which is not one of {sorted(SEED_PARTITIONS)}"
+                 )
+             if recorded != seed_partition(seed):
+                 raise RuntimeError(
+-                    f"run {rec['run_id']} records seed_partition={recorded!r} but "
++                    f"run {raw_run_id} records seed_partition={recorded!r} but "
+                     f"seed {seed} is {seed_partition(seed)!r}. The seed is "
+                     "authoritative; the record has been altered."
+                 )
+@@ -248,14 +240,14 @@ def load_runs(
+         if recorded_flag is not None:
+             if type(recorded_flag) is not bool:
+                 raise RuntimeError(
+-                    f"run {rec['run_id']} records confirmatory="
++                    f"run {raw_run_id} records confirmatory="
+                     f"{recorded_flag!r} of type {type(recorded_flag).__name__}; "
+                     "it must be a JSON boolean. A truthy string would pass a "
+                     "value check while meaning the opposite."
+                 )
+             if recorded_flag != is_confirmatory(seed):
+                 raise RuntimeError(
+-                    f"run {rec['run_id']} records confirmatory={recorded_flag!r} "
++                    f"run {raw_run_id} records confirmatory={recorded_flag!r} "
+                     f"but seed {seed} is {seed_partition(seed)!r}."
+                 )
+         if require_confirmatory:
+@@ -269,9 +261,25 @@ def load_runs(
+             continue
+ 
+         df = pd.DataFrame(rows)
+-        for col, val in _identity_columns(rec).items():
++        for col, val in _identity_columns(rec, config).items():
+             df[col] = val
+         frames.append(df)
++        loaded.add(raw_run_id)
++
++    if wanted is not None:
++        missing = sorted(wanted - set(seen))
++        metricless = sorted((wanted & set(seen)) - loaded)
++        if missing or metricless:
++            details = []
++            if missing:
++                details.append(f"missing run_id(s) {missing}")
++            if metricless:
++                details.append(f"run_id(s) with no metric rows {metricless}")
++            raise RuntimeError(
++                "requested run_ids were not fully accounted for: "
++                + "; ".join(details)
++                + ". A restricted load must not silently return a subset."
++            )
+ 
+     if not frames:
+         return pd.DataFrame(columns=list(_IDENTITY_COLS))
+@@ -286,6 +294,7 @@ _IDENTITY_COLS = (
+     "run_id",
+     "unit_id",
+     "config_id",
++    "fit_id",
+     "seed",
+     "stage",
+     "arm",
+@@ -294,21 +303,25 @@ _IDENTITY_COLS = (
+ )
+ 
+ 
+-def _identity_columns(rec: dict[str, Any]) -> dict[str, Any]:
++def _identity_columns(rec: Mapping[str, Any], config: Config) -> dict[str, Any]:
+     unit = rec["config"]["unit"]
+     cols: dict[str, Any] = {
+-        "run_id": rec["run_id"],
+-        "unit_id": rec["unit_id"],
+-        "config_id": rec["config_id"],
+-        "seed": rec["seed"],
++        "run_id": config.run_id,
++        "unit_id": config.unit_id,
++        "config_id": config.config_id,
++        # fit_id is reconstructed even for historical schema-v2 records whose
++        # writer did not duplicate it at the top level. If a copy is present,
++        # _reconstruct_and_validate_identity has already required equality.
++        "fit_id": config.fit_id,
++        "seed": config.seed,
+         # Without this, a unit's five H1/H2 seeds cannot be separated from the
+         # twenty behind its repair label -- they differ only by stage (D-012).
+-        "stage": rec["stage"],
+-        "arm": rec["config"]["arm"]["kind"],
++        "stage": config.stage,
++        "arm": config.arm.kind,
+         "family": unit["family"],
+         # Which side of the pilot boundary. Carried into the frame so an
+         # analysis can assert on it rather than reconstruct it from the seed.
+-        "seed_partition": rec.get("seed_partition", seed_partition(int(rec["seed"]))),
++        "seed_partition": rec.get("seed_partition", seed_partition(config.seed)),
+     }
+     for k, v in unit.items():
+         if k == "family":
+@@ -320,6 +333,172 @@ def _identity_columns(rec: dict[str, Any]) -> dict[str, Any]:
+     return cols
+ 
+ 
++def _normalise_requested_run_ids(
++    run_ids: Iterable[str] | None,
++) -> set[str] | None:
++    if run_ids is None:
++        return None
++    if isinstance(run_ids, (str, bytes)):
++        raise TypeError(
++            "run_ids must be an iterable of nonblank strings, not one string"
++        )
++    try:
++        values = list(run_ids)
++    except TypeError as exc:
++        raise TypeError("run_ids must be an iterable of nonblank strings") from exc
++    out: set[str] = set()
++    for index, value in enumerate(values):
++        out.add(_exact_nonblank_string(
++            value, field=f"run_ids[{index}]", where="load_runs request"
++        ))
++    return out
++
++
++def _exact_nonblank_string(value: object, *, field: str, where: str) -> str:
++    if type(value) is not str or not value.strip():
++        raise RuntimeError(
++            f"{where} carries {field}={value!r} of type "
++            f"{type(value).__name__}; an exact nonblank string is required"
++        )
++    return value
++
++
++def _exact_integer(value: object, *, field: str, where: str) -> int:
++    # JSON integers arrive as exact Python ints. In particular, bool is not an
++    # integer here even though bool subclasses int, and strings are never
++    # coerced with int(...).
++    if type(value) is not int:
++        raise RuntimeError(
++            f"{where} carries {field}={value!r} of type "
++            f"{type(value).__name__}; an exact JSON integer is required"
++        )
++    return value
++
++
++def _same_json_types_and_values(left: object, right: object) -> bool:
++    """Type-sensitive JSON equality used before trusting Config coercions."""
++    if type(left) is not type(right):
++        return False
++    if isinstance(left, Mapping):
++        return (
++            left.keys() == right.keys()
++            and all(_same_json_types_and_values(left[k], right[k]) for k in left)
++        )
++    if isinstance(left, list):
++        return len(left) == len(right) and all(
++            _same_json_types_and_values(a, b) for a, b in zip(left, right)
++        )
++    return left == right
++
++
++def _reconstruct_and_validate_identity(
++    rec: Mapping[str, Any], *, run_dir: Path
++) -> Config:
++    """Rebuild the authoritative Config and verify every duplicated identity."""
++    where = f"run record in {run_dir}"
++    run_id = _exact_nonblank_string(rec.get("run_id"), field="run_id", where=where)
++    payload = rec.get("config")
++    if type(payload) is not dict:
++        raise RuntimeError(
++            f"run {run_id} has config metadata of type "
++            f"{type(payload).__name__}, not a mapping of the exact JSON object "
++            "type; identity cannot be reconstructed"
++        )
++
++    # Config.from_dict intentionally canonicalises constructor inputs. At this
++    # trust boundary, canonicalisation must not launder JSON strings or bools
++    # into the identity, so inspect the duplicated fields first and compare the
++    # entire payload type-sensitively after reconstruction.
++    top_seed = _exact_integer(rec.get("seed"), field="seed", where=f"run {run_id}")
++    config_seed = _exact_integer(
++        payload.get("seed"), field="config.seed", where=f"run {run_id}"
++    )
++    top_stage = rec.get("stage")
++    config_stage = payload.get("stage")
++    if top_stage is None or config_stage is None:
++        raise RuntimeError(
++            f"run {run_id} is missing duplicated stage metadata "
++            f"(top-level={top_stage!r}, config={config_stage!r}); stage is "
++            "refused, not defaulted"
++        )
++    _exact_nonblank_string(top_stage, field="stage", where=f"run {run_id}")
++    _exact_nonblank_string(
++        config_stage, field="config.stage", where=f"run {run_id}"
++    )
++    if top_seed != config_seed:
++        raise RuntimeError(
++            f"run {run_id} records top-level seed={top_seed!r} but "
++            f"config.seed={config_seed!r}; something rewrote the run record "
++            "and neither value is trusted"
++        )
++    if top_stage != config_stage:
++        raise RuntimeError(
++            f"run {run_id} records top-level stage={top_stage!r} but "
++            f"config.stage={config_stage!r}; something rewrote the run record "
++            "and neither value is trusted"
++        )
++    try:
++        config = Config.from_dict(payload)
++    except (KeyError, TypeError, ValueError) as exc:
++        raise RuntimeError(
++            f"run {run_id} config cannot be reconstructed exactly: {exc}"
++        ) from exc
++    if not _same_json_types_and_values(payload, config.to_dict()):
++        raise RuntimeError(
++            f"run {run_id} config payload changes value or JSON type when "
++            "reconstructed; coercive identity laundering is refused"
++        )
++
++    expected: dict[str, object] = {
++        "unit_id": config.unit_id,
++        "config_id": config.config_id,
++        "run_id": config.run_id,
++        "seed": config.seed,
++        "stage": config.stage,
++    }
++    # Early schema-v2 records did not duplicate fit_id at the top level. Keep
++    # those historical records loadable, but validate a top-level copy whenever
++    # one exists and always expose the reconstructed fit_id in the DataFrame.
++    if "fit_id" in rec:
++        expected["fit_id"] = config.fit_id
++
++    for field, expected_value in expected.items():
++        actual = rec.get(field)
++        if isinstance(expected_value, str):
++            _exact_nonblank_string(actual, field=field, where=f"run {run_id}")
++        else:
++            _exact_integer(actual, field=field, where=f"run {run_id}")
++        if type(actual) is not type(expected_value) or actual != expected_value:
++            raise RuntimeError(
++                f"run {run_id} records top-level {field}={actual!r}, but the "
++                f"reconstructed Config requires {expected_value!r}; neither "
++                "duplicate is trusted"
++            )
++    return config
++
++
++def _require_clean_git_record(rec: Mapping[str, Any], *, run_id: str) -> None:
++    git = rec.get("git")
++    if type(git) is not dict:
++        raise RuntimeError(
++            f"run {run_id} has no exact git provenance mapping; clean Git "
++            "status cannot be established"
++        )
++    dirty = git.get("dirty")
++    trustworthy = git.get("trustworthy")
++    if type(dirty) is not bool or type(trustworthy) is not bool:
++        raise RuntimeError(
++            f"run {run_id} records git dirty={dirty!r} and "
++            f"trustworthy={trustworthy!r}; both must be exact JSON booleans, "
++            "not truthy values"
++        )
++    if dirty or not trustworthy:
++        raise RuntimeError(
++            f"run {run_id} was not recorded from a clean trustworthy Git "
++            "state; its commit hash does not identify the code that ran"
++        )
++
++
+ def _jsonable(obj: Any) -> Any:
+     """Encoder for values json does not handle natively.
+ 
+diff --git a/src/bu/runrecord.py b/src/bu/runrecord.py
+index 3114e10..7dc7cfb 100644
+--- a/src/bu/runrecord.py
++++ b/src/bu/runrecord.py
+@@ -38,6 +38,12 @@ TRACKED_PACKAGES = (
+     "PyYAML",
+ )
+ 
++#: Repository associated with this installed source tree.  Provenance must not
++#: depend on whichever directory happened to be current when a runner started.
++#: In an editable install this is the project checkout; in a built install it
++#: deliberately fails closed unless that installed tree is itself in Git.
++PROJECT_ROOT = Path(__file__).resolve().parents[2]
++
+ 
+ @dataclass(frozen=True)
+ class GitState:
+@@ -66,22 +72,45 @@ class GitState:
+         return self.identifies_commit and not self.dirty
+ 
+ 
+-def git_state(repo: str | Path = ".") -> GitState:
+-    def run(*args: str) -> str:
+-        raw = subprocess.run(
++def _provenance_repo(repo: str | Path | None) -> Path:
++    """Resolve the repository used for provenance.
++
++    ``None`` means the project containing this module. Any supplied path,
++    including ``"."``, is an explicit caller choice and is preserved. Keeping
++    those cases distinct prevents a caller that intentionally names another
++    checkout from being silently rebound to this installed source tree.
++    """
++    if repo is None:
++        return PROJECT_ROOT
++    return Path(repo)
++
++
++def git_state(repo: str | Path | None = None) -> GitState:
++    repo_path = _provenance_repo(repo)
++
++    def run(*args: str) -> tuple[str, bool]:
++        completed = subprocess.run(
+             ["git", *args],
+-            cwd=str(repo),
++            cwd=str(repo_path),
+             capture_output=True,
+             check=False,
+-        ).stdout
++        )
+         # Git emits bytes. Decoding through the Windows process locale made a
+         # UTF-8 source diff crash a provenance check under cp1252. Replacement
+         # is safe for these status/ref names; dirty.diff below keeps raw bytes.
+-        return raw.decode("utf-8", errors="replace").strip()
+-
+-    commit = run("rev-parse", "HEAD") or "UNCOMMITTED"
+-    branch = run("rev-parse", "--abbrev-ref", "HEAD") or "unknown"
+-    dirty = bool(run("status", "--porcelain"))
++        output = completed.stdout.decode("utf-8", errors="replace").strip()
++        return output, completed.returncode == 0
++
++    commit_output, commit_ok = run("rev-parse", "HEAD")
++    branch_output, branch_ok = run("rev-parse", "--abbrev-ref", "HEAD")
++    status_output, status_ok = run("status", "--porcelain")
++
++    # A command failure is evidence we do not know the state, never evidence
++    # of a clean tree.  Ignore even plausible-looking stdout from a failed Git
++    # invocation: wrappers and hooks can emit partial/stale output on failure.
++    commit = commit_output if commit_ok and commit_output else "UNCOMMITTED"
++    branch = branch_output if branch_ok and branch_output else "unknown"
++    dirty = bool(status_output) or not (commit_ok and branch_ok and status_ok)
+     return GitState(commit=commit, dirty=dirty, branch=branch)
+ 
+ 
+@@ -101,7 +130,7 @@ def write_run_record(
+     config: Config,
+     run_dir: str | Path,
+     *,
+-    repo: str | Path = ".",
++    repo: str | Path | None = None,
+     extra: dict[str, Any] | None = None,
+ ) -> Path:
+     """Write ``run.json`` for a run and return its path.
+@@ -118,11 +147,16 @@ def write_run_record(
+             f"{path} already exists; run_id {config.run_id} is not unique"
+         )
+ 
+-    git = git_state(repo)
++    repo_path = _provenance_repo(repo)
++    git = git_state(repo_path)
+     record: dict[str, Any] = {
+         "run_id": config.run_id,
+         "config_id": config.config_id,
+         "unit_id": config.unit_id,
++        # The identity of the computation, distinct from the obligation-specific
++        # run_id (D-033). Historical schema-v2 records may omit this duplicate;
++        # loaders reconstruct and validate it from Config.
++        "fit_id": config.fit_id,
+         "seed": config.seed,
+         # Promoted to the top level alongside the other identity parts: the
+         # stage says which experimental obligation this run discharges, and a
+@@ -164,7 +198,7 @@ def write_run_record(
+     # A dirty tree is recoverable only if we keep the diff.
+     if git.dirty:
+         diff = subprocess.run(
+-            ["git", "diff", "HEAD"], cwd=str(repo), capture_output=True,
++            ["git", "diff", "HEAD"], cwd=str(repo_path), capture_output=True,
+             check=False,
+         ).stdout
+         # Preserve the exact Git bytes. In particular, never ask the host's
+diff --git a/src/bu/stats/gate.py b/src/bu/stats/gate.py
+index 2b4b0e9..576a4db 100644
+--- a/src/bu/stats/gate.py
++++ b/src/bu/stats/gate.py
+@@ -414,6 +414,13 @@ MANIFEST_VERSION = 1
+ #: bump to either silently invalidate evidence about the other (D-073).
+ METRIC_SCHEMA_VERSION = 1
+ 
++#: Schema of the self-contained evidence embedded in ``GateResult.as_row()``.
++#: This is deliberately separate from the attempt-manifest contract above: an
++#: old attempt can still be checked against its files and emitted in the new
++#: serialised form, while an old verdict record that omitted its source rows is
++#: refused because its claimed disagreements cannot be verified in isolation.
++SERIALIZED_EVIDENCE_VERSION = 1
++
+ #: The experimental cell these runs discharge, attested in each run record so a
+ #: manifest cannot borrow an honest run from a different obligation.
+ CELL = "W4 Tue -- reliability gate"
+@@ -470,6 +477,11 @@ class EvidenceCell:
+     metric_schema_version: int
+     row_index: int
+     row_digest: str
++    #: The complete JSON row whose uncertainty summary supplied
++    #: ``disagreement``.  Carrying it closes the detached-float hole: a
++    #: serialised verdict can now recompute both this row's digest and the
++    #: claimed value without consulting ``rows.json``.
++    source_row: dict
+     attempt_id: str
+     attempt: str
+     commit: str
+@@ -496,8 +508,23 @@ class EvidenceCell:
+ 
+     @classmethod
+     def from_row(cls, row: Mapping) -> "EvidenceCell":
++        if not isinstance(row, Mapping):
++            raise ValueError(
++                "a serialised evidence cell must be a mapping, not "
++                f"{type(row).__name__}"
++            )
++        missing = [k for k in cls.__dataclass_fields__ if k not in row]
++        if missing:
++            raise ValueError(
++                f"a serialised evidence cell is missing {missing}; in particular, "
++                "source_row is required so its disagreement can be independently "
++                "verified"
++            )
+         fields = {k: row[k] for k in cls.__dataclass_fields__}
+         fields["member_indices"] = tuple(fields["member_indices"])
++        if not isinstance(fields["source_row"], Mapping):
++            raise ValueError("a serialised evidence cell's source_row must be a mapping")
++        fields["source_row"] = dict(fields["source_row"])
+         return cls(**fields)
+ 
+ 
+@@ -631,6 +658,8 @@ class GateEvidence:
+ 
+     @staticmethod
+     def _verify_cell(cell: EvidenceCell, spec: RungSpec) -> None:
++        GateEvidence._verify_serialised_source_row(cell)
++
+         # Everything below is derived from the canonical config. The flattened
+         # fields are then required to AGREE with it -- they are never the source.
+         config = cell.reconstruct()
+@@ -733,6 +762,82 @@ class GateEvidence:
+                 "artefact. An unbound number is a claim, not evidence (D-072)"
+             )
+ 
++    @staticmethod
++    def _verify_serialised_source_row(cell: EvidenceCell) -> None:
++        """Re-derive a cell's digest and value from its embedded source row.
++
++        ``row_digest`` used to travel beside a detached ``disagreement``.  Both
++        values had been checked against ``rows.json`` while loading an attempt,
++        but after serialisation there was no material from which either check
++        could be repeated.  Mutating only the float therefore changed a verdict
++        without changing any digest or the attempt id.  The source row is now
++        part of every cell and is the authority during every verification.
++        """
++        if not isinstance(cell.source_row, Mapping):
++            raise ValueError(
++                f"cell {cell.key} carries no canonical source row; a detached "
++                "disagreement cannot be verified"
++            )
++        try:
++            encoded = json.dumps(
++                cell.source_row, sort_keys=True, separators=(",", ":")
++            ).encode()
++        except (TypeError, ValueError) as exc:
++            raise ValueError(
++                f"cell {cell.key}'s source row is not canonical JSON: {exc}"
++            ) from exc
++        digest = hashlib.sha256(encoded).hexdigest()
++        if digest != cell.row_digest:
++            raise ValueError(
++                f"cell {cell.key} names source-row digest "
++                f"{cell.row_digest[:12]}..., but its embedded row hashes to "
++                f"{digest[:12]}.... The serialised source row or digest was mutated"
++            )
++
++        row_claims = {
++            "layout": cell.layout,
++            "n_transitions": cell.size,
++            "seed": cell.seed,
++        }
++        disagreements = {
++            field: (cell.source_row.get(field), expected)
++            for field, expected in row_claims.items()
++            if cell.source_row.get(field) != expected
++        }
++        if disagreements:
++            raise ValueError(
++                f"cell {cell.key}'s source row describes a different cell: "
++                f"{disagreements} (source row, evidence cell)"
++            )
++
++        uncertainty = cell.source_row.get("uncertainty")
++        if not isinstance(uncertainty, Mapping):
++            raise ValueError(
++                f"cell {cell.key}'s source row carries no uncertainty mapping from "
++                "which to reproduce mean_disagreement"
++            )
++        source = uncertainty.get("mean_disagreement")
++        if source is None:
++            raise ValueError(
++                f"cell {cell.key}'s source row carries no mean_disagreement"
++            )
++        if source != cell.disagreement:
++            raise ValueError(
++                f"cell {cell.key} claims mean_disagreement {cell.disagreement!r}, "
++                f"but its embedded source row holds {source!r}. The source row is "
++                "the recomputation authority"
++            )
++        row_scale = {
++            key: uncertainty[key]
++            for key in cell.normalisation
++            if key in uncertainty
++        }
++        if row_scale != cell.normalisation:
++            raise ValueError(
++                f"cell {cell.key} reports normalisation {cell.normalisation}, but "
++                f"its embedded source row was computed under {row_scale}"
++            )
++
+     @staticmethod
+     def _verify_evaluation_pools(seen: Mapping[tuple[str, int, int], EvidenceCell]) -> None:
+         """One fixed evaluation pool per curve, across all six sizes.
+@@ -775,6 +880,7 @@ class GateEvidence:
+     def as_row(self) -> dict:
+         """Every raw cell, so the verdict is recomputable without the run records."""
+         return {
++            "serialized_evidence_version": SERIALIZED_EVIDENCE_VERSION,
+             "evidence_contract_version": self.contract_version,
+             "attempt_id": self.attempt_id,
+             "attempt": self.attempt,
+@@ -786,10 +892,47 @@ class GateEvidence:
+     @classmethod
+     def from_record(cls, row: Mapping) -> "GateEvidence":
+         """Rebuild from :meth:`as_row`, so a serialised verdict can be recomputed."""
+-        return cls(
+-            cells=tuple(EvidenceCell.from_row(c) for c in row["cells"]),
++        if not isinstance(row, Mapping):
++            raise ValueError(
++                "serialised gate evidence must be a mapping, not "
++                f"{type(row).__name__}"
++            )
++        version = row.get("serialized_evidence_version")
++        if version != SERIALIZED_EVIDENCE_VERSION:
++            raise ValueError(
++                f"serialised gate evidence has version {version!r}; this reader "
++                f"requires {SERIALIZED_EVIDENCE_VERSION}. Older records omitted the "
++                "source rows needed to verify their disagreements and are refused"
++            )
++        cells = row.get("cells")
++        if not isinstance(cells, list):
++            raise ValueError("serialised gate evidence must carry a list of cells")
++        if type(row.get("n_cells")) is not int or row["n_cells"] != len(cells):
++            raise ValueError(
++                f"serialised gate evidence declares n_cells={row.get('n_cells')!r} "
++                f"but carries {len(cells)} cells"
++            )
++        evidence = cls(
++            cells=tuple(EvidenceCell.from_row(c) for c in cells),
+             contract_version=row.get("evidence_contract_version", -1),
+         )
++        if evidence.cells:
++            summaries = {
++                "attempt_id": evidence.attempt_id,
++                "attempt": evidence.attempt,
++                "commit": evidence.commit,
++            }
++            contradictions = {
++                key: (row.get(key), expected)
++                for key, expected in summaries.items()
++                if row.get(key) != expected
++            }
++            if contradictions:
++                raise ValueError(
++                    "serialised evidence summary contradicts its cells: "
++                    f"{contradictions} (summary, cells)"
++                )
++        return evidence
+ 
+     # -- filesystem verification, which only `from_attempt` can perform --------
+ 
+@@ -834,9 +977,11 @@ class GateEvidence:
+                 "40-character hexadecimal commit; a gate verdict must identify "
+                 "one reproducible code state"
+             )
+-        if manifest["dirty"]:
++        if manifest["dirty"] is not False:
+             raise ValueError(
+-                f"{attempt_dir} was produced from a dirty tree (commit "
++                f"{attempt_dir} was produced from a dirty tree or carries malformed "
++                f"cleanliness provenance: expected the exact clean-tree boolean "
++                f"dirty=false, got {manifest['dirty']!r} (commit "
+                 f"{manifest['commit'][:7]}); a verdict must name one reproducible code "
+                 "state"
+             )
+@@ -904,7 +1049,9 @@ class GateEvidence:
+                     "predates this and is correctly refused here (D-072)"
+                 )
+             cls._verify_bound_row(attempt_dir, run, rows)
+-            cls._verify_run_record(attempt_dir, run, spec)
++            cls._verify_run_record(
++                attempt_dir, run, spec, manifest_commit=manifest["commit"]
++            )
+             if version >= THREADING_CONTRACT_VERSION:
+                 cls._verify_threading_matches(attempt_dir, run, manifest["threading"])
+             cells.append(
+@@ -923,6 +1070,7 @@ class GateEvidence:
+                     normalisation=run["normalisation"],
+                     metric_schema_version=run["metric_schema_version"],
+                     row_index=run["row_index"], row_digest=run["row_digest"],
++                    source_row=rows[run["row_index"]],
+                     attempt_id=manifest["attempt_id"], attempt=manifest["attempt"],
+                     commit=manifest["commit"],
+                 )
+@@ -1050,7 +1198,13 @@ class GateEvidence:
+                 )
+ 
+     @staticmethod
+-    def _verify_run_record(attempt_dir: Path, run: Mapping, spec: "RungSpec") -> None:
++    def _verify_run_record(
++        attempt_dir: Path,
++        run: Mapping,
++        spec: "RungSpec",
++        *,
++        manifest_commit: str,
++    ) -> None:
+         """Cross-check the manifest against the record written at training time.
+ 
+         This is the actual trust boundary. A manifest is a summary the runner
+@@ -1081,6 +1235,31 @@ class GateEvidence:
+                 "config in its own run record. The record was written when the run "
+                 "started; the manifest is a later summary, so the record wins (D-072)"
+             )
++        git = record.get("git")
++        if not isinstance(git, Mapping):
++            raise ValueError(
++                f"{attempt_dir}: run {run['run_id']}'s record carries no git "
++                "provenance mapping. A manifest commit cannot attest a run that did "
++                "not record its own code state"
++            )
++        if git.get("commit") != manifest_commit:
++            raise ValueError(
++                f"{attempt_dir}: run {run['run_id']}'s record names git commit "
++                f"{git.get('commit')!r}, but the manifest names "
++                f"{manifest_commit!r}. Every bound run and the verdict must identify "
++                "one exact code state"
++            )
++        if git.get("dirty") is not False:
++            raise ValueError(
++                f"{attempt_dir}: run {run['run_id']}'s record does not carry the "
++                f"exact clean-tree boolean dirty=false (got {git.get('dirty')!r})"
++            )
++        if git.get("trustworthy") is not True:
++            raise ValueError(
++                f"{attempt_dir}: run {run['run_id']}'s record does not carry the "
++                "exact provenance boolean trustworthy=true (got "
++                f"{git.get('trustworthy')!r})"
++            )
+         # All five attestations, not only granularity. Otherwise a manifest can
+         # borrow an honest run record while changing the evaluation pool or the
+         # experimental obligation the run was discharging (Sol, D-073).
+diff --git a/tests/test_confirmatory_boundary.py b/tests/test_confirmatory_boundary.py
+index 2e7f09c..8ee35f6 100644
+--- a/tests/test_confirmatory_boundary.py
++++ b/tests/test_confirmatory_boundary.py
+@@ -132,6 +132,18 @@ def test_an_unrecognised_seed_partition_is_rejected(tmp_path):
+         load_runs(tmp_path)
+ 
+ 
++@pytest.mark.parametrize("bad_partition", [True, ["confirmatory"]])
++def test_seed_partition_must_be_an_exact_string(tmp_path, bad_partition):
++    cfg = _run(tmp_path, 0)
++    record = tmp_path / cfg.run_id / "run.json"
++    data = json.loads(record.read_text(encoding="utf-8"))
++    data["seed_partition"] = bad_partition
++    record.write_text(json.dumps(data), encoding="utf-8")
++
++    with pytest.raises(RuntimeError, match="not one of"):
++        load_runs(tmp_path)
++
++
+ def test_a_truthy_non_boolean_would_have_passed_the_old_check(tmp_path):
+     """Pins why the type check is separate from the value check.
+ 
+@@ -141,3 +153,149 @@ def test_a_truthy_non_boolean_would_have_passed_the_old_check(tmp_path):
+     """
+     assert bool("false") is True
+     assert type("false") is not bool
++
++
++def _rewrite_record(root, cfg: Config, change) -> None:
++    record = root / cfg.run_id / "run.json"
++    data = json.loads(record.read_text(encoding="utf-8"))
++    change(data)
++    record.write_text(json.dumps(data), encoding="utf-8")
++
++
++@pytest.mark.parametrize("field,bad_value", [
++    ("unit_id", "rewritten-unit"),
++    ("config_id", "rewritten-config"),
++    ("run_id", "rewritten-run"),
++    ("fit_id", "rewritten-fit"),
++    ("seed", 1001),
++    ("stage", "exp2a"),
++])
++def test_every_top_level_identity_is_checked_against_reconstructed_config(
++        tmp_path, field, bad_value):
++    cfg = _run(tmp_path, 1000)
++
++    def change(data):
++        data[field] = bad_value
++
++    _rewrite_record(tmp_path, cfg, change)
++    with pytest.raises(RuntimeError, match=field):
++        load_runs(tmp_path)
++
++
++def test_fit_id_is_reconstructed_for_schema_v2_records(tmp_path):
++    """Historical records without the duplicate remain loadable."""
++    cfg = _run(tmp_path, 1000)
++    _rewrite_record(tmp_path, cfg, lambda data: data.pop("fit_id"))
++    frame = load_runs(tmp_path)
++    assert frame.loc[0, "fit_id"] == cfg.fit_id
++
++
++def test_new_run_records_duplicate_the_computation_identity(tmp_path):
++    cfg = _run(tmp_path, 1000)
++    record = json.loads((tmp_path / cfg.run_id / "run.json").read_text())
++    assert record["fit_id"] == cfg.fit_id
++
++
++def test_seed_partition_fields_cannot_launder_a_changed_top_level_seed(tmp_path):
++    """This is the concrete C-007 bypass: rewriting only the convenient top
++    fields must not turn a development Config into a confirmatory run."""
++    cfg = _run(tmp_path, 999)
++
++    def change(data):
++        data["seed"] = 1000
++        data["seed_partition"] = "confirmatory"
++        data["confirmatory"] = True
++
++    _rewrite_record(tmp_path, cfg, change)
++    with pytest.raises(RuntimeError, match="top-level seed=1000.*config.seed=999"):
++        load_runs(tmp_path, require_confirmatory=True)
++
++
++@pytest.mark.parametrize("location,bad_value", [
++    ("top", True),
++    ("top", "1000"),
++    ("config", True),
++    ("config", "1000"),
++])
++def test_seed_identity_rejects_bool_and_string_coercion(
++        tmp_path, location, bad_value):
++    cfg = _run(tmp_path, 1000)
++
++    def change(data):
++        if location == "top":
++            data["seed"] = bad_value
++        else:
++            data["config"]["seed"] = bad_value
++
++    _rewrite_record(tmp_path, cfg, change)
++    with pytest.raises(RuntimeError, match="exact JSON integer"):
++        load_runs(tmp_path)
++
++
++def test_config_reconstruction_is_type_sensitive_beyond_seed(tmp_path):
++    cfg = _run(tmp_path, 1000)
++
++    def change(data):
++        # UnitSpec ordinarily canonicalises this float back to int 100, and
++        # Python equality alone would then treat the spellings as identical.
++        data["config"]["unit"]["n_transitions"] = 100.0
++
++    _rewrite_record(tmp_path, cfg, change)
++    with pytest.raises(RuntimeError, match="coercive identity laundering"):
++        load_runs(tmp_path)
++
++
++def test_requested_run_ids_refuse_missing_and_metricless_members(tmp_path):
++    good = _run(tmp_path, 1000)
++    metricless = Config(unit=UnitSpec(n_transitions=100), seed=1001, stage="exp1")
++    RunLogger.start(metricless, root=tmp_path).close()
++
++    with pytest.raises(RuntimeError, match="missing run_id.*does-not-exist"):
++        load_runs(tmp_path, run_ids=[good.run_id, "does-not-exist"])
++    with pytest.raises(RuntimeError, match="no metric rows.*s1001"):
++        load_runs(tmp_path, run_ids=[good.run_id, metricless.run_id])
++
++
++@pytest.mark.parametrize("requested", ["one-run-id", [""], [True]])
++def test_requested_run_id_inventory_requires_nonblank_strings(tmp_path, requested):
++    with pytest.raises((TypeError, RuntimeError), match="run_ids|nonblank"):
++        load_runs(tmp_path, run_ids=requested)
++
++
++@pytest.mark.parametrize("field,bad_value", [
++    ("trustworthy", "false"),
++    ("trustworthy", 1),
++    ("dirty", "false"),
++    ("dirty", 0),
++])
++def test_require_clean_git_rejects_truthy_or_equal_non_booleans(
++        tmp_path, field, bad_value):
++    cfg = _run(tmp_path, 1000)
++
++    def change(data):
++        data["git"]["dirty"] = False
++        data["git"]["trustworthy"] = True
++        data["git"][field] = bad_value
++
++    _rewrite_record(tmp_path, cfg, change)
++    with pytest.raises(RuntimeError, match="exact JSON booleans"):
++        load_runs(tmp_path, require_clean_git=True)
++
++
++def test_require_clean_git_accepts_exact_clean_booleans(tmp_path):
++    cfg = _run(tmp_path, 1000)
++
++    def change(data):
++        data["git"]["dirty"] = False
++        data["git"]["trustworthy"] = True
++
++    _rewrite_record(tmp_path, cfg, change)
++    assert len(load_runs(tmp_path, require_clean_git=True)) == 1
++
++
++@pytest.mark.parametrize("flag", [1, "true", None])
++def test_loader_policy_flags_are_exact_booleans(tmp_path, flag):
++    with pytest.raises(TypeError, match="exact bool"):
++        load_runs(tmp_path, require_clean_git=flag)
++    with pytest.raises(TypeError, match="exact bool"):
++        load_runs(tmp_path, require_confirmatory=flag)
+diff --git a/tests/test_critic_balance.py b/tests/test_critic_balance.py
+index 54817ad..7278071 100644
+--- a/tests/test_critic_balance.py
++++ b/tests/test_critic_balance.py
+@@ -320,6 +320,13 @@ def test_duplicate_split_names_are_refused():
+                 splits=("train", "train"))
+ 
+ 
++@pytest.mark.parametrize("bad", [(None, 7), ([], "train")])
++def test_malformed_split_names_raise_valueerror_not_incidental_typeerror(bad):
++    from bu.critic.balance import assert_canonical_splits
++    with pytest.raises(ValueError, match="must be strings"):
++        assert_canonical_splits(bad)
++
++
+ def test_balance_split_runs_the_cross_split_group_guard_itself():
+     """It is a public entry point; the guard used to run only from `balance()`."""
+     with pytest.raises(ValueError, match="spans splits"):
+diff --git a/tests/test_critic_loading.py b/tests/test_critic_loading.py
+index 322a962..e1be8fb 100644
+--- a/tests/test_critic_loading.py
++++ b/tests/test_critic_loading.py
+@@ -64,10 +64,14 @@ def _dev_runs() -> DevelopmentRuns:
+ def _confirmatory_wrapper() -> ConfirmatoryRuns:
+     return ConfirmatoryRuns(frame=pd.DataFrame({
+                                 "run_id": ["synthetic-exp1-s1000"],
++                                "unit_id": ["unit-a"],
++                                "config_id": ["config-a"],
++                                "fit_id": ["fit-a-s1000"],
+                                 "seed": [1000],
+                                 "stage": ["exp1"],
+                             }),
+-                            seeds=(1000,), stages=("exp1",))
++                            seeds=(1000,), stages=("exp1",),
++                            run_ids=("synthetic-exp1-s1000",))
+ 
+ 
+ def _targets():
+@@ -90,6 +94,7 @@ def test_confirmatory_runs_load_through_the_boundary(tmp_path):
+     assert type(runs) is ConfirmatoryRuns
+     assert len(runs.frame) == 2
+     assert runs.seeds == (1000, 1001)
++    assert runs.run_ids == tuple(sorted(runs.frame["run_id"].unique()))
+     assert_critic_input(runs, consumer="critic.split_units")  # must not raise
+ 
+ 
+@@ -188,6 +193,12 @@ def test_an_empty_load_is_refused_not_wrapped(tmp_path):
+         load_development_runs(tmp_path)
+ 
+ 
++def test_requested_critic_run_inventory_cannot_silently_shrink(tmp_path):
++    cfg = _run(tmp_path, 1000)
++    with pytest.raises(ValueError, match="not fully accounted.*missing run_id"):
++        load_critic_runs(tmp_path, run_ids=[cfg.run_id, "missing-run"])
++
++
+ def test_boundary_provenance_matches_its_frame(tmp_path):
+     """Wrapper metadata cross-checked against the CONTENT consumers actually
+     receive, not against itself (D-072)."""
+@@ -196,6 +207,7 @@ def test_boundary_provenance_matches_its_frame(tmp_path):
+     runs = load_critic_runs(tmp_path)
+     assert runs.seeds == tuple(sorted({int(s) for s in runs.frame["seed"]}))
+     assert runs.stages == tuple(sorted({str(s) for s in runs.frame["stage"]}))
++    assert runs.run_ids == tuple(sorted({str(s) for s in runs.frame["run_id"]}))
+     assert set(runs.stages) == {"exp1", "exp2a"}, "fixture must span stages"
+ 
+ 
+@@ -299,7 +311,7 @@ def test_a_confirmatory_runs_subclass_is_refused():
+ 
+     base = _confirmatory_wrapper()
+     mimic = Mimic(frame=base.frame.copy(), seeds=base.seeds,
+-                  stages=base.stages)
++                  stages=base.stages, run_ids=base.run_ids)
+     with pytest.raises(ValueError, match="provenance"):
+         assert_critic_input(mimic, consumer="critic.split_units")
+ 
+@@ -331,21 +343,28 @@ def test_confirmatory_wrapper_cannot_be_hand_built_around_development_data(
+     assert _confirmatory_wrapper() is not None  # the well-formed case builds
+     frame_seeds = list(seeds) or [1000]
+     frame_stages = list(stages) or ["exp1"]
++    run_ids = tuple(f"synthetic-{i}" for i in range(len(frame_seeds)))
+     with pytest.raises(ValueError, match=match):
+         ConfirmatoryRuns(frame=pd.DataFrame({
+-                             "run_id": [f"synthetic-{i}" for i in range(len(frame_seeds))],
++                             "run_id": list(run_ids),
++                             "unit_id": [f"unit-{i}" for i in range(len(frame_seeds))],
++                             "config_id": [f"config-{i}" for i in range(len(frame_seeds))],
++                             "fit_id": [f"fit-{i}" for i in range(len(frame_seeds))],
+                              "seed": frame_seeds,
+                              "stage": [frame_stages[0]] * len(frame_seeds),
+                          }),
+-                         seeds=seeds, stages=stages)
++                         seeds=seeds, stages=stages, run_ids=run_ids)
+ 
+ 
+ def test_wrapper_metadata_cannot_disagree_with_its_frame():
+     frame = pd.DataFrame({
+-        "run_id": ["planted"], "seed": [999], "stage": ["pilot"]
++        "run_id": ["planted"], "unit_id": ["unit-a"],
++        "config_id": ["config-a"], "fit_id": ["fit-a"],
++        "seed": [999], "stage": ["pilot"]
+     })
+     with pytest.raises(ValueError, match="development seeds|pilot|disagree"):
+-        ConfirmatoryRuns(frame=frame, seeds=(1000,), stages=("exp1",))
++        ConfirmatoryRuns(frame=frame, seeds=(1000,), stages=("exp1",),
++                         run_ids=("planted",))
+ 
+ 
+ def test_mutating_a_valid_wrapper_is_detected_at_the_consumer():
+@@ -356,6 +375,44 @@ def test_mutating_a_valid_wrapper_is_detected_at_the_consumer():
+         assert_critic_input(runs, consumer="critic.split_units")
+ 
+ 
++@pytest.mark.parametrize("column", [
++    "run_id", "unit_id", "config_id", "fit_id",
++])
++def test_mutating_any_bound_identity_is_detected_at_the_consumer(column):
++    runs = _confirmatory_wrapper()
++    runs.frame.loc[0, column] = "rewritten-identity"
++    with pytest.raises(ValueError, match="run_ids.*disagree|identity columns changed"):
++        assert_critic_input(runs, consumer="critic.split_units")
++
++
++def test_swapping_run_ids_is_detected_even_when_the_inventory_set_is_unchanged(
++        tmp_path):
++    _run(tmp_path, 1000)
++    _run(tmp_path, 1001)
++    runs = load_critic_runs(tmp_path)
++    before = runs.frame["run_id"].copy()
++    runs.frame.loc[:, "run_id"] = list(reversed(before.tolist()))
++    assert set(runs.frame["run_id"]) == set(runs.run_ids), (
++        "the set-only inventory check is deliberately insufficient here"
++    )
++    with pytest.raises(ValueError, match="identity columns changed"):
++        assert_critic_input(runs, consumer="critic.split_units")
++
++
++@pytest.mark.parametrize("run_ids,match", [
++    (("",), "nonblank"),
++    ((1000,), "nonblank"),
++    (("synthetic-exp1-s1000", "synthetic-exp1-s1000"), "duplicate"),
++])
++def test_wrapper_run_id_inventory_is_exact_and_unique(run_ids, match):
++    base = _confirmatory_wrapper()
++    with pytest.raises(ValueError, match=match):
++        ConfirmatoryRuns(
++            frame=base.frame.copy(), seeds=base.seeds, stages=base.stages,
++            run_ids=run_ids,
++        )
++
++
+ # --- the registry is authoritative, and its checker has teeth ----------------
+ 
+ 
+@@ -423,13 +480,14 @@ def test_an_unregistered_critic_loader_fails_the_coverage_invariant():
+             registered_spans.append(range(start, start + len(lines)))
+     assert registered_spans, "no registered loader functions in loading.py"
+ 
+-    package_dir = Path(bu.critic.__file__).parent
++    package_dir = Path(bu.critic.__file__).parent.resolve()
++    approved_boundary = Path(inspect.getsourcefile(load_critic_runs)).resolve()
+     scanned = 0
+     for path in sorted(package_dir.rglob("*.py")):
+         text = path.read_text(encoding="utf-8")
+         scanned += 1
+         hits = find_run_loading_tokens(text)
+-        if path.name != "loading.py":
++        if path.resolve() != approved_boundary:
+             assert hits == [], (
+                 f"{path.relative_to(package_dir)} contains run-loading call "
+                 f"site(s) {hits} outside "
+@@ -463,9 +521,19 @@ def test_an_unregistered_critic_loader_fails_the_coverage_invariant():
+     assert "load_runs(" in find_run_loading_tokens(aliased)
+     qualified_alias = "import bu.metrics as m\nm.load_runs(root)\n"
+     assert "load_runs(" in find_run_loading_tokens(qualified_alias)
++    assigned_alias = "from bu.metrics import load_runs\nreader = load_runs\nreader(root)\n"
++    assert "load_runs(" in find_run_loading_tokens(assigned_alias)
++    chained_alias = (
++        "from bu.metrics import load_runs\nreader = load_runs\n"
++        "reader_again = reader\nreader_again(root)\n"
++    )
++    assert "load_runs(" in find_run_loading_tokens(chained_alias)
+     assert "metrics.jsonl" in find_run_loading_tokens(
+         "payload = Path('metrics.jsonl').read_text()"
+     )
++    assert "metrics.jsonl" in find_run_loading_tokens(
++        "name = 'metrics' + '.jsonl'\npayload = Path(name).read_text()"
++    )
+     assert "METRICS" + "_FILE" in find_run_loading_tokens(
+         "path = run_dir / METRICS" + "_FILE")
+     assert find_run_loading_tokens("x = 1  # nothing loaded here") == []
+diff --git a/tests/test_critic_split.py b/tests/test_critic_split.py
+index 5b75e25..c884ab7 100644
+--- a/tests/test_critic_split.py
++++ b/tests/test_critic_split.py
+@@ -532,7 +532,7 @@ def test_duplicate_unit_ids_are_refused():
+         validate_candidates([cand("dup", "g1", 0), cand("dup", "g2", 1)])
+ 
+ 
+-@pytest.mark.parametrize("unit_id", ["", "   ", 7, None])
++@pytest.mark.parametrize("unit_id", ["", "   ", 7, None, [], {}])
+ def test_unit_ids_must_be_nonblank_strings(unit_id):
+     with pytest.raises(ValueError, match="unit_id.*non-blank string"):
+         validate_candidates([cand(unit_id, "g1", 0)])
+@@ -615,6 +615,12 @@ def test_the_split_seed_is_not_caller_overridable_and_absence_fails_closed(
+         split_units(basic_candidates(), targets=uniform_targets())
+ 
+ 
++def test_a_negative_registered_split_seed_is_refused(monkeypatch):
++    monkeypatch.setattr(K, "CRITIC_SPLIT_SEED", -1, raising=False)
++    with pytest.raises(ValueError, match="negative"):
++        split_units(basic_candidates(), targets=uniform_targets())
++
++
+ # --- determinism across processes (D-115) ------------------------------------
+ 
+ 
+diff --git a/tests/test_gate.py b/tests/test_gate.py
+index 71d3f9e..c726bf9 100644
+--- a/tests/test_gate.py
++++ b/tests/test_gate.py
+@@ -12,6 +12,7 @@ carrying all eighteen golden `config_id`s with no model ever fitted.
+ 
+ from __future__ import annotations
+ 
++import hashlib
+ import json
+ from dataclasses import replace as dataclass_replace
+ 
+@@ -64,12 +65,32 @@ def cell_fields(layout, seed, n, spec, *, attempt="attempt-001", commit=COMMIT):
+         evaluation_pool_id=f"{layout}-s{seed:03d}",
+         evaluation_pool_digest=f"pool-{layout}-{seed}",
+         normalisation={"scale": [1.0, 1.0], "n_reference": 800},
+-        metric_schema_version=1, row_index=0, row_digest="c" * 64,
++        metric_schema_version=1, row_index=0,
+         attempt_id=f"w4-gate-r{spec.rung:02d}-{spec.spec_hash}-{attempt}",
+         attempt=attempt, commit=commit,
+     )
+ 
+ 
++def bind_source_row(fields, disagreement):
++    """Attach the canonical row from which a synthetic cell's value derives."""
++    source_row = {
++        "layout": fields["layout"],
++        "n_transitions": fields["size"],
++        "seed": fields["seed"],
++        "uncertainty": {
++            "mean_disagreement": disagreement,
++            **fields["normalisation"],
++        },
++    }
++    fields.update(
++        disagreement=disagreement,
++        source_row=source_row,
++        row_digest=hashlib.sha256(
++            json.dumps(source_row, sort_keys=True, separators=(",", ":")).encode()
++        ).hexdigest(),
++    )
++
++
+ def evidence_with_config(spec=None, **config_kwargs):
+     """Evidence whose CONFIG is altered — the source of truth, not a flat claim."""
+     spec = spec or RungSpec.for_rung(0)
+@@ -91,8 +112,9 @@ def evidence_with_config(spec=None, **config_kwargs):
+                 fields.update(
+                     config=config.to_dict(), config_id=config.config_id,
+                     run_id=config.run_id, unit_id=config.unit_id,
+-                    stage=config.stage, disagreement=v + 0.01 * i,
++                    stage=config.stage,
+                 )
++                bind_source_row(fields, v + 0.01 * i)
+                 cells.append(EvidenceCell(**fields))
+     return GateEvidence(cells=_with_content_id(cells, spec))
+ 
+@@ -119,8 +141,9 @@ def evidence(
+                         layout=layout, size=n,
+                     )
+                 )
+-                fields["disagreement"] = v + jitter * i
++                disagreement = v + jitter * i
+                 fields.update(cell_overrides)
++                bind_source_row(fields, fields.get("disagreement", disagreement))
+                 cells.append(EvidenceCell(**fields))
+     return GateEvidence(cells=_with_content_id(cells, spec, cell_overrides))
+ 
+diff --git a/tests/test_gate_evidence.py b/tests/test_gate_evidence.py
+index b464aa4..8fc0293 100644
+--- a/tests/test_gate_evidence.py
++++ b/tests/test_gate_evidence.py
+@@ -68,6 +68,19 @@ def build_attempt(tmp_path, *, spec=None, name="attempt-001", layouts=GATE_LAYOU
+                                 granularity=spec.granularity)
+                 value = (disagreement or FALLING)[n]
+                 record_dir = attempt / "records" / config.run_id
++                # The manifest below deliberately uses a stable synthetic git
++                # identity.  Make the fixture's real run record attest that same
++                # identity so provenance-consistency tests do not depend on the
++                # checkout in which pytest happens to run.
++                record_path = record_dir / "run.json"
++                record = json.loads(record_path.read_text())
++                record["git"] = {
++                    "commit": CLEAN.commit,
++                    "branch": CLEAN.branch,
++                    "dirty": False,
++                    "trustworthy": True,
++                }
++                record_path.write_text(json.dumps(record, indent=2, sort_keys=True))
+                 scale = {"scale": [1.0, 1.0], "scale_n_reference": 800,
+                          "scale_domain": "movement", "scale_source": "evaluation_pool"}
+                 row = {"layout": layout, "n_transitions": n, "seed": seed,
+@@ -127,6 +140,20 @@ def edit_manifest(attempt, fn):
+     return attempt
+ 
+ 
++def edit_run_record(attempt, index, fn):
++    """Mutate one synthetic run record and keep the manifest's file digest current."""
++    manifest_path = attempt / "manifest.json"
++    manifest = json.loads(manifest_path.read_text())
++    run = manifest["runs"][index]
++    record_path = attempt / "records" / run["run_id"] / "run.json"
++    record = json.loads(record_path.read_text())
++    fn(record)
++    record_path.write_text(json.dumps(record, indent=2, sort_keys=True))
++    run["run_record_digest"] = _digest(record_path)
++    manifest_path.write_text(json.dumps(manifest, indent=2))
++    return attempt
++
++
+ # --- the well-formed case, so every refusal below refuses a real verdict -----
+ 
+ 
+@@ -145,6 +172,60 @@ def test_the_verdict_recomputes_from_its_own_record(attempt):
+     assert again.as_row() == original.as_row()
+ 
+ 
++def test_a_serialised_disagreement_cannot_drift_away_from_its_source_row(attempt):
++    """The raw row, not a detached float, is the recomputation authority.
++
++    Before the serialised evidence carried its source rows, changing the six
++    uniform-cell disagreements from falling to rising left every recorded
++    digest and the attempt id untouched.  ``recompute`` then changed PASS to
++    FAIL while still treating the record as verified evidence.
++    """
++    from bu.stats.gate import recompute
++
++    original = reliability_gate(GateEvidence.from_attempt(attempt), rung=0)
++    row = json.loads(json.dumps(original.as_row()))
++    identity_before = row["evidence"]["attempt_id"]
++    digests_before = [c["row_digest"] for c in row["evidence"]["cells"]]
++    for cell in row["evidence"]["cells"]:
++        if cell["layout"] == "uniform":
++            cell["disagreement"] = 0.2 + 0.1 * SIZES.index(cell["size"])
++
++    assert row["evidence"]["attempt_id"] == identity_before
++    assert [c["row_digest"] for c in row["evidence"]["cells"]] == digests_before
++    with pytest.raises(ValueError, match="source row|mean_disagreement"):
++        recompute(row)
++
++
++def test_a_mutated_serialised_source_row_fails_its_recomputed_digest(attempt):
++    from bu.stats.gate import recompute
++
++    result = reliability_gate(GateEvidence.from_attempt(attempt), rung=0)
++    row = json.loads(json.dumps(result.as_row()))
++    row["evidence"]["cells"][0]["source_row"]["uncertainty"][
++        "mean_disagreement"
++    ] = 0.123
++
++    with pytest.raises(ValueError, match="embedded row hashes|source row or digest was mutated"):
++        recompute(row)
++
++
++@pytest.mark.parametrize("missing", ["version", "source_row"])
++def test_old_serialised_records_without_verifiable_source_material_are_refused(
++    attempt, missing
++):
++    from bu.stats.gate import recompute
++
++    result = reliability_gate(GateEvidence.from_attempt(attempt), rung=0)
++    row = json.loads(json.dumps(result.as_row()))
++    if missing == "version":
++        row["evidence"].pop("serialized_evidence_version")
++    else:
++        row["evidence"]["cells"][0].pop("source_row")
++
++    with pytest.raises(ValueError, match="source row|source_row|Older records"):
++        recompute(row)
++
++
+ # --- Sol's required refusals ------------------------------------------------
+ 
+ 
+@@ -278,6 +359,39 @@ def test_a_dirty_tree_cannot_produce_a_verdict(attempt):
+         GateEvidence.from_attempt(attempt)
+ 
+ 
++@pytest.mark.parametrize("not_false", [0, None, "false"])
++def test_manifest_cleanliness_is_an_exact_boolean(attempt, not_false):
++    edit_manifest(attempt, lambda m: m.update(dirty=not_false))
++    with pytest.raises(ValueError, match="exact clean-tree boolean"):
++        GateEvidence.from_attempt(attempt)
++
++
++def test_every_run_record_must_name_the_manifest_commit(attempt):
++    edit_run_record(
++        attempt, 0, lambda record: record["git"].update(commit="b" * 40)
++    )
++    with pytest.raises(ValueError, match="record names git commit.*manifest names"):
++        GateEvidence.from_attempt(attempt)
++
++
++@pytest.mark.parametrize(
++    "field,value,match",
++    [
++        ("dirty", "false", "exact clean-tree boolean"),
++        ("dirty", 0, "exact clean-tree boolean"),
++        ("trustworthy", "true", "exact provenance boolean"),
++        ("trustworthy", 1, "exact provenance boolean"),
++        ("trustworthy", False, "exact provenance boolean"),
++    ],
++)
++def test_run_record_git_booleans_are_exact(attempt, field, value, match):
++    edit_run_record(
++        attempt, 0, lambda record: record["git"].update({field: value})
++    )
++    with pytest.raises(ValueError, match=match):
++        GateEvidence.from_attempt(attempt)
++
++
+ def test_a_missing_rows_file_is_a_refusal_not_a_crash(attempt):
+     """An incidental FileNotFoundError is an accident; this must be a refusal."""
+     (attempt / "rows.json").unlink()
+@@ -306,7 +420,9 @@ def test_the_w3_pilot_manifest_is_refused_as_gate_evidence():
+ # --- the runner itself, exercised for real ---------------------------------
+ 
+ 
+-def test_the_runner_reuses_one_scale_and_one_pool_across_dataset_sizes(tmp_path):
++def test_the_runner_reuses_one_scale_and_one_pool_across_dataset_sizes(
++    tmp_path, monkeypatch
++):
+     """C-010's invariant, on the real path rather than a fixture.
+ 
+     Every other test in this module builds evidence without training, which is
+@@ -317,9 +433,17 @@ def test_the_runner_reuses_one_scale_and_one_pool_across_dataset_sizes(tmp_path)
+     reuse that same object. So this one runs the machinery: two sizes, one seed,
+     ten fits, a few seconds on CPU.
+     """
+-    from bu.experiments.w4_gate import run
++    import bu.experiments.w4_gate as w4
++    import bu.runrecord as runrecord
++
++    # This integration test exercises numerical pooling, not the checkout in
++    # which pytest runs.  Give both the manifest writer and the per-run record
++    # writer the same exact clean synthetic code state.  Editing only the
++    # manifest's dirty flag after execution would now (correctly) be refused.
++    monkeypatch.setattr(w4, "git_state", lambda *a, **k: CLEAN)
++    monkeypatch.setattr(runrecord, "git_state", lambda *a, **k: CLEAN)
+ 
+-    attempt = run(
++    attempt = w4.run(
+         rung=0, layouts=("uniform",), seeds=(0,), sizes=(100, 250),
+         out_dir=tmp_path / "gate", verbose=False, allow_dirty=True,
+     )
+@@ -336,9 +460,8 @@ def test_the_runner_reuses_one_scale_and_one_pool_across_dataset_sizes(tmp_path)
+         "the evaluation pool differs between dataset sizes, so the trend would "
+         "compare disagreement measured on different data (D-052)"
+     )
+-    # And the artefacts it wrote are internally consistent: dirty flag aside,
+-    # this is exactly what the gate will read on Tuesday.
+-    edit_manifest(attempt, lambda m: m.update(dirty=False))
++    # And the artefacts it wrote are internally consistent: this is exactly
++    # what the gate will read on Tuesday.
+     evidence = GateEvidence.from_attempt(attempt)
+     assert len(evidence.cells) == 2
+     assert evidence.cells[0].member_indices == (0, 1, 2, 3, 4)
+diff --git a/tests/test_infrastructure.py b/tests/test_infrastructure.py
+index 2ba4f63..198c9e5 100644
+--- a/tests/test_infrastructure.py
++++ b/tests/test_infrastructure.py
+@@ -8,6 +8,8 @@ from __future__ import annotations
+ 
+ import dataclasses
+ import subprocess
++from pathlib import Path
++from types import SimpleNamespace
+ 
+ import pytest
+ 
+@@ -25,7 +27,7 @@ from bu.config import (
+     seeds_for,
+ )
+ from bu.metrics import RunLogger, load_runs
+-from bu.runrecord import GitState, git_state, read_run_record
++from bu.runrecord import PROJECT_ROOT, GitState, git_state, read_run_record
+ 
+ # --- identity semantics (Plan §10.7, §7.2) --------------------------------
+ 
+@@ -272,9 +274,165 @@ def test_git_state_outside_a_repository_fails_closed(tmp_path):
+     """The real subprocess path must preserve the same property."""
+     state = git_state(tmp_path)
+     assert state.commit == "UNCOMMITTED"
++    assert state.dirty is True
+     assert state.trustworthy is False
+ 
+ 
++@pytest.mark.parametrize(
++    "failed_command",
++    [
++        ("rev-parse", "HEAD"),
++        ("rev-parse", "--abbrev-ref", "HEAD"),
++        ("status", "--porcelain"),
++    ],
++)
++def test_git_state_command_failures_are_dirty_and_untrustworthy(
++    monkeypatch, tmp_path, failed_command
++):
++    """No failed Git probe may be mistaken for evidence of a clean tree."""
++    sha = b"a" * 40
++
++    def fake_run(command, *, cwd, capture_output, check):
++        assert Path(cwd) == tmp_path
++        args = tuple(command[1:])
++        outputs = {
++            ("rev-parse", "HEAD"): sha,
++            ("rev-parse", "--abbrev-ref", "HEAD"): (
++                "feature/na\N{LATIN SMALL LETTER I WITH DIAERESIS}ve".encode()
++            ),
++            ("status", "--porcelain"): b"",
++        }
++        return SimpleNamespace(
++            stdout=outputs[args],
++            returncode=128 if args == failed_command else 0,
++        )
++
++    monkeypatch.setattr("bu.runrecord.subprocess.run", fake_run)
++    state = git_state(tmp_path)
++
++    assert state.dirty is True
++    assert state.trustworthy is False
++    if failed_command == ("rev-parse", "HEAD"):
++        assert state.commit == "UNCOMMITTED"
++    if failed_command == ("rev-parse", "--abbrev-ref", "HEAD"):
++        assert state.branch == "unknown"
++    else:
++        assert state.branch == "feature/na\N{LATIN SMALL LETTER I WITH DIAERESIS}ve"
++
++
++def test_git_state_ignores_stdout_from_a_failed_command(monkeypatch, tmp_path):
++    """Plausible stdout does not rescue a nonzero Git return code."""
++
++    def fake_run(command, *, cwd, capture_output, check):
++        args = tuple(command[1:])
++        if args == ("rev-parse", "HEAD"):
++            return SimpleNamespace(stdout=b"b" * 40, returncode=7)
++        if args == ("rev-parse", "--abbrev-ref", "HEAD"):
++            return SimpleNamespace(stdout=b"main", returncode=0)
++        return SimpleNamespace(stdout=b"", returncode=0)
++
++    monkeypatch.setattr("bu.runrecord.subprocess.run", fake_run)
++    state = git_state(tmp_path)
++    assert state.commit == "UNCOMMITTED"
++    assert state.dirty is True
++    assert state.trustworthy is False
++
++
++def test_git_state_default_is_bound_to_the_installed_project(monkeypatch):
++    """Changing the caller's CWD cannot silently change provenance scope."""
++    working_directories = []
++
++    def fake_run(command, *, cwd, capture_output, check):
++        working_directories.append(Path(cwd))
++        args = tuple(command[1:])
++        if args == ("rev-parse", "HEAD"):
++            return SimpleNamespace(stdout=b"c" * 40, returncode=0)
++        if args == ("rev-parse", "--abbrev-ref", "HEAD"):
++            return SimpleNamespace(stdout=b"main", returncode=0)
++        return SimpleNamespace(stdout=b"", returncode=0)
++
++    monkeypatch.setattr("bu.runrecord.subprocess.run", fake_run)
++    state = git_state()
++
++    assert working_directories == [PROJECT_ROOT, PROJECT_ROOT, PROJECT_ROOT]
++    assert state.commit == "c" * 40
++    assert state.trustworthy is True
++
++
++def test_run_logger_default_uses_installed_project_root(
++    monkeypatch, tmp_path
++):
++    """RunLogger's historical ``repo='.'`` default is project-root bound."""
++    working_directories = []
++
++    def fake_run(command, *, cwd, capture_output, check):
++        working_directories.append(Path(cwd))
++        args = tuple(command[1:])
++        if args == ("rev-parse", "HEAD"):
++            return SimpleNamespace(stdout=b"d" * 40, returncode=0)
++        if args == ("rev-parse", "--abbrev-ref", "HEAD"):
++            return SimpleNamespace(stdout=b"main", returncode=0)
++        return SimpleNamespace(stdout=b"", returncode=0)
++
++    monkeypatch.setattr("bu.runrecord.subprocess.run", fake_run)
++    cfg = Config(unit=UnitSpec(), seed=0)
++    RunLogger.start(cfg, root=tmp_path).close()
++    rec = read_run_record(tmp_path / cfg.run_id)
++
++    assert working_directories == [PROJECT_ROOT, PROJECT_ROOT, PROJECT_ROOT]
++    assert rec["git"]["commit"] == "d" * 40
++    assert rec["git"]["trustworthy"] is True
++
++
++def test_an_explicit_dot_repository_is_not_reinterpreted(monkeypatch, tmp_path):
++    """Only the omitted default binds to PROJECT_ROOT; explicit paths survive."""
++    working_directories = []
++
++    def fake_run(command, *, cwd, capture_output, check):
++        working_directories.append(Path(cwd))
++        args = tuple(command[1:])
++        if args == ("rev-parse", "HEAD"):
++            return SimpleNamespace(stdout=b"e" * 40, returncode=0)
++        if args == ("rev-parse", "--abbrev-ref", "HEAD"):
++            return SimpleNamespace(stdout=b"main", returncode=0)
++        return SimpleNamespace(stdout=b"", returncode=0)
++
++    monkeypatch.chdir(tmp_path)
++    monkeypatch.setattr("bu.runrecord.subprocess.run", fake_run)
++    state = git_state(".")
++    assert state.trustworthy is True
++    assert working_directories == [Path("."), Path("."), Path(".")]
++
++
++def test_git_state_preserves_clean_real_repository_behavior(tmp_path):
++    """A successful probe of a clean checkout still identifies its commit."""
++    repo = tmp_path / "clean-repo"
++    repo.mkdir()
++    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
++    subprocess.run(
++        ["git", "config", "user.email", "test@example.invalid"],
++        cwd=repo,
++        check=True,
++    )
++    subprocess.run(
++        ["git", "config", "user.name", "Test"], cwd=repo, check=True
++    )
++    tracked = repo / "tracked.txt"
++    tracked.write_text("committed\n", encoding="utf-8")
++    subprocess.run(["git", "add", "tracked.txt"], cwd=repo, check=True)
++    subprocess.run(
++        ["git", "commit", "-m", "base"], cwd=repo, check=True,
++        capture_output=True,
++    )
++
++    state = git_state(repo)
++
++    assert state.identifies_commit is True
++    assert state.dirty is False
++    assert state.branch != "unknown"
++    assert state.trustworthy is True
++
++
+ def test_dirty_diff_preserves_utf8_bytes_on_windows(tmp_path):
+     """Provenance capture must not decode a Git patch through cp1252."""
+     repo = tmp_path / "repo"
+diff --git a/tests/test_w4_threshold.py b/tests/test_w4_threshold.py
+index f10d709..1fec918 100644
+--- a/tests/test_w4_threshold.py
++++ b/tests/test_w4_threshold.py
+@@ -18,10 +18,15 @@ import numpy as np
+ import pytest
+ 
+ from bu import constants as K
++from bu.config import Config, UnitSpec
++from bu.runrecord import GitState
+ from bu.stats.gate import EVIDENCE_CONTRACT_VERSION, METRIC_SCHEMA_VERSION
+ from bu.experiments import w4_threshold as T
+ 
+ 
++CLEAN_COMMIT = "a" * 40
++
++
+ # --- the API cannot change the number ---------------------------------------
+ 
+ 
+@@ -40,23 +45,60 @@ def test_calibrate_takes_no_result_changing_argument():
+         assert forbidden not in params
+ 
+ 
+-def test_calibration_refuses_a_gitless_tree_before_scoring(monkeypatch, tmp_path):
+-    """A permanent threshold must identify a real commit, not UNCOMMITTED."""
+-    from bu.runrecord import GitState
+-
++@pytest.mark.parametrize(
++    "git",
++    [
++        GitState(commit="UNCOMMITTED", dirty=False, branch="unknown"),
++        GitState(commit="a" * 39, dirty=False, branch="main"),
++        GitState(commit="A" * 40, dirty=False, branch="main"),
++        GitState(commit="g" * 40, dirty=False, branch="main"),
++        GitState(commit=CLEAN_COMMIT, dirty=True, branch="main"),
++        GitState(commit=CLEAN_COMMIT, dirty=0, branch="main"),
++    ],
++)
++def test_calibration_refuses_untrustworthy_git_before_scoring(
++    monkeypatch, tmp_path, git,
++):
++    """Malformed, dirty, and inexact Git states all stop before the first fit."""
+     monkeypatch.setattr(
+         T,
+         "git_state",
+-        lambda: GitState(commit="UNCOMMITTED", dirty=False, branch="unknown"),
++        lambda: git,
+     )
+     scored = []
+     monkeypatch.setattr(T, "score_reference_cell", lambda *a, **k: scored.append(1))
+ 
+-    with pytest.raises(ValueError, match="UNCOMMITTED"):
++    with pytest.raises(ValueError, match="not trustworthy"):
+         T.calibrate(tmp_path, attempt="attempt-001")
+     assert not scored, "a reference cell was scored without a repository"
+ 
+ 
++def test_calibration_clean_git_advances_to_the_first_score(monkeypatch, tmp_path):
++    """Positive sentinel: a genuinely clean exact commit passes the Git guard."""
++    class ReachedScoring(RuntimeError):
++        pass
++
++    monkeypatch.setattr(
++        T, "git_state",
++        lambda: GitState(commit=CLEAN_COMMIT, dirty=False, branch="main"),
++    )
++    monkeypatch.setattr(T, "_pin_threading", lambda *args: None)
++    monkeypatch.setattr(
++        T, "torch_threading",
++        lambda: {
++            "num_threads": T.THRESHOLD_THREADS,
++            "num_interop_threads": T.THRESHOLD_INTEROP_THREADS,
++        },
++    )
++
++    def reached(*args, **kwargs):
++        raise ReachedScoring
++
++    monkeypatch.setattr(T, "score_reference_cell", reached)
++    with pytest.raises(ReachedScoring):
++        T.calibrate(tmp_path, attempt="attempt-001")
++
++
+ def test_the_frozen_specification_is_what_sol_ruled():
+     assert T.THRESHOLD_PERCENTILE == 95.0
+     assert T.PERCENTILE_METHOD == "linear"
+@@ -251,7 +293,7 @@ def test_declaring_invalid_AFTER_reading_the_threshold_is_refused(tmp_path):
+ 
+ 
+ def fake_attempt(tmp_path, n=40):
+-    """An attempt directory built from arrays and stub records -- no fitting."""
++    """An attempt directory with real Config provenance but no fitting."""
+     attempt = tmp_path / "attempt-001"
+     (attempt / "arrays").mkdir(parents=True)
+     arrays, cells = {}, []
+@@ -263,15 +305,49 @@ def fake_attempt(tmp_path, n=40):
+             name = f"{layout}-{attr}-s{seed}.npy"
+             path = attempt / "arrays" / name
+             np.save(path, errs)
+-            run_id = f"r-{layout}-{attr}-{seed}"
++            config = Config(
++                unit=UnitSpec(
++                    family=T.REFERENCE_FAMILY,
++                    layout=layout,
++                    causal_attribute=attr,
++                    confound_rate=T.REFERENCE_CONFOUND_RATE,
++                    n_transitions=T.REFERENCE_SIZE,
++                    withheld_features=(),
++                ),
++                seed=seed,
++                stage=T.THRESHOLD_STAGE,
++            )
++            run_id = config.run_id
+             rec = attempt / "records" / run_id
+             rec.mkdir(parents=True)
+-            (rec / "run.json").write_text(f'{{"run_id": "{run_id}"}}', encoding="utf-8")
+-            (rec / "metrics.jsonl").write_text('{"member": 0}\n', encoding="utf-8")
++            (rec / "run.json").write_text(json.dumps({
++                "run_id": config.run_id,
++                "config_id": config.config_id,
++                "unit_id": config.unit_id,
++                "fit_id": config.fit_id,
++                "seed": config.seed,
++                "stage": config.stage,
++                "config": config.to_dict(),
++                "git": {
++                    "commit": CLEAN_COMMIT,
++                    "branch": "main",
++                    "dirty": False,
++                    "trustworthy": True,
++                },
++            }), encoding="utf-8")
++            (rec / "metrics.jsonl").write_text(
++                "".join(
++                    json.dumps({"i": member, "member": member}) + "\n"
++                    for member in range(config.train.ensemble_size)
++                ),
++                encoding="utf-8",
++            )
+             cells.append({
+                 "layout": layout, "causal_attribute": attr, "seed": seed,
+                 "n_transitions": n, "run_id": run_id,
+-                "config_id": "c", "unit_id": "u", "n_members": 5,
++                "config_id": config.config_id, "unit_id": config.unit_id,
++                "fit_id": config.fit_id,
++                "n_members": config.train.ensemble_size,
+                 "errors_file": f"arrays/{name}",
+                 "errors_digest": hashlib.sha256(path.read_bytes()).hexdigest(),
+                 "run_record_digest": hashlib.sha256((rec / "run.json").read_bytes()).hexdigest(),
+@@ -298,11 +374,44 @@ def fake_attempt(tmp_path, n=40):
+                       "statistic": "ensemble-mean normalised movement error"},
+         "threading": {"num_threads": T.THRESHOLD_THREADS,
+                       "num_interop_threads": T.THRESHOLD_INTEROP_THREADS},
++        "commit": CLEAN_COMMIT,
+         "cells": cells, "selected_indices": selected,
+     }, indent=2), encoding="utf-8")
+     return attempt
+ 
+ 
++def _rewrite_attempt_row(attempt, row):
++    (attempt / "threshold_calibration.json").write_text(
++        json.dumps(row), encoding="utf-8"
++    )
++
++
++def _mutate_run_record(attempt, mutate):
++    """Mutate semantics and refresh the digest so digest-only checks cannot win."""
++    row = json.loads((attempt / "threshold_calibration.json").read_text())
++    cell = row["cells"][0]
++    path = attempt / "records" / cell["run_id"] / "run.json"
++    record = json.loads(path.read_text())
++    mutate(record)
++    path.write_text(json.dumps(record), encoding="utf-8")
++    cell["run_record_digest"] = hashlib.sha256(path.read_bytes()).hexdigest()
++    _rewrite_attempt_row(attempt, row)
++
++
++def _replace_member_roster(attempt, roster):
++    """Replace a member stream and refresh its digest for a semantic test."""
++    row = json.loads((attempt / "threshold_calibration.json").read_text())
++    cell = row["cells"][0]
++    path = attempt / "records" / cell["run_id"] / "metrics.jsonl"
++    path.write_text(
++        "".join(json.dumps({"i": i, "member": member}) + "\n"
++                for i, member in enumerate(roster)),
++        encoding="utf-8",
++    )
++    cell["member_record_digest"] = hashlib.sha256(path.read_bytes()).hexdigest()
++    _rewrite_attempt_row(attempt, row)
++
++
+ def test_the_threshold_recomputes_from_stored_artefacts(tmp_path):
+     """A number that cannot be recomputed by someone who was not there is a claim."""
+     attempt = fake_attempt(tmp_path)
+@@ -413,6 +522,143 @@ def test_recompute_verifies_the_run_and_member_records(tmp_path):
+         T.recompute_threshold(attempt)
+ 
+ 
++@pytest.mark.parametrize(
++    ("field", "value"),
++    [
++        ("unit_id", "wrong-unit"),
++        ("config_id", "wrong-config"),
++        ("run_id", "wrong-run"),
++    ],
++)
++def test_recompute_reconstructs_and_checks_every_run_identity(
++    tmp_path, field, value,
++):
++    attempt = fake_attempt(tmp_path)
++    _mutate_run_record(attempt, lambda record: record.__setitem__(field, value))
++    with pytest.raises(ValueError, match=field):
++        T.recompute_threshold(attempt)
++
++
++def test_recompute_checks_the_explicit_cell_fit_identity(tmp_path):
++    attempt = fake_attempt(tmp_path)
++    row = json.loads((attempt / "threshold_calibration.json").read_text())
++    row["cells"][0]["fit_id"] = "wrong-fit"
++    _rewrite_attempt_row(attempt, row)
++    with pytest.raises(ValueError, match="fit_id"):
++        T.recompute_threshold(attempt)
++
++
++def test_recompute_checks_the_run_record_fit_identity(tmp_path):
++    attempt = fake_attempt(tmp_path)
++    _mutate_run_record(
++        attempt, lambda record: record.__setitem__("fit_id", "wrong-fit")
++    )
++    with pytest.raises(ValueError, match="fit_id"):
++        T.recompute_threshold(attempt)
++
++
++@pytest.mark.parametrize("field", ["unit_id", "config_id"])
++def test_recompute_binds_run_identity_to_the_citing_cell(tmp_path, field):
++    attempt = fake_attempt(tmp_path)
++    row = json.loads((attempt / "threshold_calibration.json").read_text())
++    row["cells"][0][field] = f"wrong-{field}"
++    _rewrite_attempt_row(attempt, row)
++    with pytest.raises(ValueError, match=field):
++        T.recompute_threshold(attempt)
++
++
++def test_recompute_refuses_two_cells_with_swapped_run_references(tmp_path):
++    """Valid digested records cannot be reassigned to different cells."""
++    attempt = fake_attempt(tmp_path)
++    row = json.loads((attempt / "threshold_calibration.json").read_text())
++    fields = ("run_id", "run_record_digest", "member_record_digest")
++    first, second = row["cells"][:2]
++    for field in fields:
++        first[field], second[field] = second[field], first[field]
++    _rewrite_attempt_row(attempt, row)
++    with pytest.raises(ValueError, match="seed does not match"):
++        T.recompute_threshold(attempt)
++
++
++@pytest.mark.parametrize(
++    ("mutate", "match"),
++    [
++        (lambda r: r.__setitem__("seed", 1001), "seed"),
++        (lambda r: r.__setitem__("seed", True), "exact integer"),
++        (lambda r: r.__setitem__("stage", "exp1"), "stage"),
++        (lambda r: r["config"].__setitem__("stage", "exp1"), "stage"),
++        (
++            lambda r: r["config"]["unit"].__setitem__("hidden_size", 128),
++            "registered reference condition",
++        ),
++        (
++            lambda r: r["config"]["train"].__setitem__("ensemble_size", 4),
++            "registered baseline arm and training configuration",
++        ),
++    ],
++)
++def test_recompute_checks_run_stage_seed_and_reconstructed_config(
++    tmp_path, mutate, match,
++):
++    attempt = fake_attempt(tmp_path)
++    _mutate_run_record(attempt, mutate)
++    with pytest.raises(ValueError, match=match):
++        T.recompute_threshold(attempt)
++
++
++@pytest.mark.parametrize(
++    "mutate",
++    [
++        lambda r: r["git"].__setitem__("dirty", True),
++        lambda r: r["git"].__setitem__("dirty", 0),
++        lambda r: r["git"].__setitem__("trustworthy", False),
++        lambda r: r["git"].__setitem__("trustworthy", 1),
++    ],
++)
++def test_recompute_requires_exact_clean_trustworthy_run_git(
++    tmp_path, mutate,
++):
++    attempt = fake_attempt(tmp_path)
++    _mutate_run_record(attempt, mutate)
++    with pytest.raises(ValueError, match="exactly clean and trustworthy"):
++        T.recompute_threshold(attempt)
++
++
++def test_recompute_requires_every_run_to_share_the_record_commit(tmp_path):
++    attempt = fake_attempt(tmp_path)
++    _mutate_run_record(
++        attempt,
++        lambda record: record["git"].__setitem__("commit", "b" * 40),
++    )
++    with pytest.raises(ValueError, match="common commit"):
++        T.recompute_threshold(attempt)
++
++
++@pytest.mark.parametrize(
++    "roster",
++    [
++        [0, 1, 2, 3],
++        [0, 1, 2, 3, 3],
++        [0, 1, 2, 3, 4, 5],
++        [0, 1, 2, 3, True],
++    ],
++)
++def test_recompute_requires_the_exact_member_roster_once_each(tmp_path, roster):
++    attempt = fake_attempt(tmp_path)
++    _replace_member_roster(attempt, roster)
++    with pytest.raises(ValueError, match="member roster|exact integer member"):
++        T.recompute_threshold(attempt)
++
++
++def test_recompute_refuses_a_malformed_record_level_commit(tmp_path):
++    attempt = fake_attempt(tmp_path)
++    row = json.loads((attempt / "threshold_calibration.json").read_text())
++    row["commit"] = "not-a-commit"
++    _rewrite_attempt_row(attempt, row)
++    with pytest.raises(ValueError, match="record-level commit"):
++        T.recompute_threshold(attempt)
++
++
+ def test_recompute_refuses_a_wrong_ensemble_size(tmp_path):
+     attempt = fake_attempt(tmp_path)
+     row = json.loads((attempt / "threshold_calibration.json").read_text())
+-- 
+2.53.0.windows.3
+
