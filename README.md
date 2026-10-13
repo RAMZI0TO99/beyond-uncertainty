@@ -2,7 +2,7 @@
 
 To continue this project on another device, start with [CONTINUE.md](CONTINUE.md).
 The repository includes the current source, saved scientific data and an indexed,
-byte-preserving workspace snapshot through **STEP079**, including the records
+byte-preserving workspace snapshot through **STEP080**, including the records
 needed by a new coding agent. The default clone is the continuation entry point.
 
 For Windows x64 with an installed general-host **CPython 3.13**, run from the
@@ -11,15 +11,16 @@ repository root:
 ```powershell
 git clone https://github.com/RAMZI0TO99/beyond-uncertainty.git
 cd beyond-uncertainty
-py -3.13 tools/continuation.py verify
-py -3.13 tools/continuation.py restore --destination .continuation/workspace
+py -3.13 -I -S -B tools/continuation.py verify
+py -3.13 -I -S -B tools/continuation.py restore --destination .continuation/workspace
+py -3.13 -I -S -B tools/continuation.py verify --workspace .continuation/workspace
 py -3.13 tools/setup_dev.py
 ```
 
 The setup creates a new development environment; it runs no project tests or
 training. Verification and restoration use only Python's standard library.
 The saved workspace has its original logical paths and file bytes. The current
-source family is still **31/45** with 14 roles pending; the project is unfinished.
+source family is still **35/45** with ten roles pending; the project is unfinished.
 Historical Windows/runtime identities and execution admissions require fresh
 device bindings. Read [the environment guide](requirements/README.md) and the
 continuation guide before invoking an archived helper or scientific command.
@@ -43,7 +44,7 @@ the learned critic and final hypothesis evaluations remain future work.
 The earlier GitHub snapshot dated **2026-08-23** reported completion of Weeks 4–5
 of the infrastructure phase. The [project ledger](PROJECT_STATE.md) now includes
 later Week 7/8 development. Read [CONTINUE.md](CONTINUE.md) for the completed
-STEP079 Source checkpoint and current continuation boundaries. The
+STEP080 Source checkpoint and current continuation boundaries. The
 [2026-10-03 closeout](docs/development/CLOSEOUT_2026-10-03.md) retains an earlier
 dated status, completed checks and unfinished validation.
 Recorded development milestones do not establish the scientific hypotheses.
