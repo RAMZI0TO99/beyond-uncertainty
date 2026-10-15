@@ -1,3 +1,7 @@
+**October15 I5 interface context Source accepted.** The [generic and phase-peer report](docs/development/native-interface-implementation/20261015-i5/I5_INTERFACE_IMPLEMENTATION.md) records held owner-context successors with the original strong21/39 and seven-link M3 checks preserved. Both Sources remain unrun; publication ABI adapters, Native8 support carrier, Parser result adapter and qualifying consumer bindings remain required. The dated Source inventory stays36/45 and frozen STEP08035/45. All prior guidance is preserved below.
+
+---
+
 **October15 I4 Parser Source port accepted.** The [Parser parent/child report](docs/development/native-parser-implementation/20261015-i4/I4_PARSER_IMPLEMENTATION.md) records owner-direct version2 authority checks with all47 I/O spans and both complete mains preserved. Both Sources remain unrun; accepted Native8 support, I5 interfaces and the version2 saved-result adapter remain explicitly unwired behind false entry guards. Next: separately scope I5 interface work and later reviewed dependency binding. The dated Source inventory stays36/45 and frozen STEP08035/45. All prior guidance is preserved below.
 
 ---
