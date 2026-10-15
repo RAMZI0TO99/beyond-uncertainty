@@ -1,0 +1,541 @@
+# New held entry, pure structural metadata and isolated synthetic IO controls.
+# The inherited IO functions above are preserved independently by their raw spans.
+
+class I7Error(ValueError):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
+def _require(condition, code):
+    if not condition:
+        raise I7Error(code)
+
+
+def publish_current_owner_finite8(*args, **kwargs):
+    if not CURRENT_OWNER_V2_CANONICAL_PUBLICATION_BINDINGS_QUALIFIED:
+        raise I7Error('E_REAL_PUBLICATION_HELD')
+    raise I7Error('E_REAL_PUBLICATION_ADMISSION_UNWIRED')
+
+
+def reconcile_current_owner_finite8(*args, **kwargs):
+    if not CURRENT_OWNER_V2_CANONICAL_PUBLICATION_BINDINGS_QUALIFIED:
+        raise I7Error('E_REAL_RECONCILIATION_HELD')
+    raise I7Error('E_REAL_RECONCILIATION_ADMISSION_UNWIRED')
+
+
+def _walk(value, depth=0, count=None):
+    if count is None:
+        count = [0]
+    count[0] += 1
+    _require(depth <= 48 and count[0] <= 50000, 'E_JSON_BOUNDS')
+    if type(value) is dict:
+        _require(all(type(k) is str for k in value), 'E_JSON_TYPES')
+        for item in value.values():
+            _walk(item, depth + 1, count)
+    elif type(value) is list:
+        for item in value:
+            _walk(item, depth + 1, count)
+    else:
+        _require(type(value) in (str, int, bool, type(None)), 'E_JSON_TYPES')
+
+
+def _wire(value):
+    _walk(value)
+    body = (json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True,
+                       separators=(',', ':')) + '\n').encode('utf-8')
+    _require(len(body) <= SOURCE_CAP, 'E_METADATA_CAP')
+    return body
+
+
+def _json(body):
+    _require(type(body) is bytes and 0 < len(body) <= SOURCE_CAP and
+             not body.startswith(b'\xef\xbb\xbf'), 'E_METADATA_CAP')
+    try:
+        value = strict_source_json(body)
+    except (ValueError, UnicodeError, RecursionError) as error:
+        raise I7Error('E_JSON') from error
+    _require(type(value) is dict, 'E_JSON_ROOT')
+    _walk(value)
+    return value
+
+
+def _copy(value):
+    _require(type(value) is dict, 'E_OBJECT')
+    return _json(_wire(value))
+
+
+def _closed(value, keys, code='E_SHAPE'):
+    _require(type(value) is dict and set(value) == set(keys), code)
+    return value
+
+
+def _path(value):
+    _require(type(value) is str and len(value) <= 512 and
+             re.fullmatch(r'[A-Z]:\\[^/]+', value) is not None, 'E_PATH')
+    pieces = value[3:].split('\\')
+    _require(all(x and x not in ('.', '..') and x[-1] not in '. ' and
+                 not any(ord(c) < 32 or c in '/:"<>|?*' for c in x) and
+                 x.split('.')[0].upper() not in
+                 {'CON', 'PRN', 'AUX', 'NUL', 'CLOCK$', *('COM' + str(n) for n in range(1, 10)),
+                  *('LPT' + str(n) for n in range(1, 10))} for x in pieces), 'E_PATH')
+    return value
+
+
+def _pin(value, cap=SOURCE_CAP):
+    _closed(value, ('path', 'bytes', 'sha256'), 'E_PIN')
+    _path(value['path'])
+    _require(type(cap) is int and 0 < cap <= SOURCE_CAP and
+             type(value['bytes']) is int and 0 < value['bytes'] <= cap and
+             type(value['sha256']) is str and re.fullmatch('[0-9a-f]{64}', value['sha256']) is not None,
+             'E_PIN')
+    return dict(value)
+
+
+def _register(registry, pin, cap=SOURCE_CAP):
+    pin = _pin(pin, cap)
+    key = pin['path'].casefold()
+    current = (pin['path'], pin['bytes'], pin['sha256'], cap)
+    _require(key not in registry or registry[key] == current, 'E_PIN_CONFLICT')
+    registry[key] = current
+    return pin
+
+
+def _same_typed(left, right):
+    if type(left) is not type(right):
+        return False
+    if type(left) is dict:
+        return set(left) == set(right) and all(_same_typed(left[k], right[k]) for k in left)
+    if type(left) is list:
+        return len(left) == len(right) and all(_same_typed(a, b) for a, b in zip(left, right))
+    return left == right
+
+
+def _support(value, keys, registry):
+    _closed(value, keys, 'E_SUPPORT')
+    return {k: _register(registry, value[k]) for k in keys}
+
+
+def _ticks6(value):
+    _require(type(value) is str and re.fullmatch(
+        '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}\\+00:00', value) is not None,
+        'E_UTC6')
+    try:
+        return moment(value, 6)
+    except ValueError as error:
+        raise I7Error('E_UTC6') from error
+
+
+def _birth_ticks(value):
+    _require(type(value) is str and re.fullmatch(
+        '[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6,7}(?:\\+00:00|Z)', value) is not None,
+        'E_BIRTH_UTC')
+    try:
+        # Arithmetic adapter only: the retained record string is never rewritten.
+        return moment(value[:-1] + '+00:00' if value.endswith('Z') else value)
+    except ValueError as error:
+        raise I7Error('E_BIRTH_UTC') from error
+
+
+def _validate_request_header(request):
+    _closed(request, SCHEMAS['batch_request21_v2']['keys'])
+    _require(type(request['schema_version']) is int and request['schema_version'] == 2 and
+             request['record_type'] == SCHEMAS['batch_request21_v2']['record_type'] and
+             request['author'] == '/root' and type(request['Root_thread']) is str and
+             re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', request['Root_thread']) is not None and
+             type(request['request_id']) is str and 0 < len(request['request_id']) <= 128 and
+             request['source_only'] is True and request['canonical_publication_selected'] is True and
+             request['operational_authority'] is False and request['target_execution'] is False, 'E_REQUEST')
+    _ticks6(request['created_utc'])
+    _path(request['publication_receipt_path'])
+    registry = {}
+    for name, keys in (('current_owner_support', OWNER_SUPPORT_KEYS),
+                       ('Root_future_path_selection_support', ('subject', 'different_review', 'Root_adoption')),
+                       ('new_lease_support', LEASE_SUPPORT_KEYS),
+                       ('predecessor_inventory_support', ('subject', 'different_review', 'Root_adoption'))):
+        _support(request[name], keys, registry)
+    _closed(request['producer_supports'], ('M3',), 'E_PRODUCER')
+    _support(request['producer_supports']['M3'], ('Source', 'API', 'different_review', 'Root_adoption'), registry)
+    for key in ('publisher_source', 'publisher_API', 'publisher_Source_review', 'publisher_Root_adoption'):
+        _register(registry, request[key])
+    rows = request['rows']
+    _require(type(rows) is list and 0 < len(rows) <= 8 and all(type(r) is dict for r in rows), 'E_ROWS')
+    roles = [r.get('role') for r in rows]
+    _require(all(type(r) is str and r in ROLE_ORDER for r in roles) and len(set(roles)) == len(roles) and
+             roles == [r for r in ROLE_ORDER if r in roles], 'E_ROLE_ORDER')
+    for row in rows:
+        _closed(row, SCHEMAS['batch_request_row10_v2']['keys'])
+        _require(type(row['source_cap']) is int and row['source_cap'] == PHASE_CAP and
+                 row['physical_Source_editor'] == '/root' and
+                 all(type(row[k]) is str and 0 < len(row[k]) <= 256 for k in
+                     ('metadata_Source_worker', 'retained_semantic_Source_author')), 'E_REQUEST_ROW')
+        _path(row['canonical_path'])
+        _register(registry, row['draft'], PHASE_CAP)
+        for key in ('author_receipt', 'source_review', 'Root_adoption'):
+            _register(registry, row[key])
+
+
+class MetadataView(tuple):
+    __slots__ = ()
+
+    def __new__(cls, value):
+        return tuple.__new__(cls, (_wire(value),))
+
+    @property
+    def metadata_only(self):
+        return True
+
+    @property
+    def actual_admission(self):
+        return False
+
+    def to_dict(self):
+        return _json(self[0])
+
+
+def build_finite8_prewrite_metadata_plan(*, request, selected_rows, draft_material, output_paths):
+    """Pure structural slice. No I0/lease/producer/proof admission or filesystem I/O."""
+    request = _copy(request)
+    _validate_request_header(request)
+    _closed(request, SCHEMAS['batch_request21_v2']['keys'])
+    _require(type(request['schema_version']) is int and request['schema_version'] == 2 and
+             request['record_type'] == SCHEMAS['batch_request21_v2']['record_type'] and
+             request['author'] == '/root' and type(request['Root_thread']) is str and
+             re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}', request['Root_thread']) is not None and
+             type(request['request_id']) is str and 0 < len(request['request_id']) <= 128 and
+             request['source_only'] is True and request['canonical_publication_selected'] is True and
+             request['operational_authority'] is False and request['target_execution'] is False, 'E_REQUEST')
+    _ticks6(request['created_utc'])
+    _path(request['publication_receipt_path'])
+    registry = {}
+    _support(request['current_owner_support'], OWNER_SUPPORT_KEYS, registry)
+    _support(request['Root_future_path_selection_support'], ('subject', 'different_review', 'Root_adoption'), registry)
+    _support(request['new_lease_support'], LEASE_SUPPORT_KEYS, registry)
+    _support(request['predecessor_inventory_support'], ('subject', 'different_review', 'Root_adoption'), registry)
+    _closed(request['producer_supports'], ('M3',), 'E_PRODUCER')
+    _support(request['producer_supports']['M3'], ('Source', 'API', 'different_review', 'Root_adoption'), registry)
+    for key in ('publisher_source', 'publisher_API', 'publisher_Source_review', 'publisher_Root_adoption'):
+        _register(registry, request[key])
+    rows = request['rows']
+    _require(type(rows) is list and 0 < len(rows) <= 8 and all(type(r) is dict for r in rows), 'E_ROWS')
+    roles = [r.get('role') for r in rows]
+    _require(all(type(r) is str and r in ROLE_ORDER for r in roles) and len(set(roles)) == len(roles) and
+             roles == [r for r in ROLE_ORDER if r in roles], 'E_ROLE_ORDER')
+    _require(type(selected_rows) is list and len(selected_rows) == len(rows) and
+             type(draft_material) is dict and set(draft_material) == set(roles), 'E_SELECTED')
+    selected_rows = _json(_wire({'rows': selected_rows}))['rows']
+    outputs = []
+    candidates = []
+    for item, selected in zip(rows, selected_rows):
+        _closed(item, SCHEMAS['batch_request_row10_v2']['keys'])
+        _closed(selected, SELECTED_ROW_KEYS, 'E_SELECTED')
+        _require(item['role'] == selected['role'] and item['canonical_path'] == selected['canonical_path'] and
+                 type(item['source_cap']) is int and item['source_cap'] == selected['source_cap'] == PHASE_CAP and
+                 type(selected['selected_ordinal']) is int and selected['selected_ordinal'] > 18 and
+                 selected['must_change_Source_bytes'] is True and
+                 item['metadata_Source_worker'] == selected['preparation_Source_author'] and
+                 item['retained_semantic_Source_author'] == selected['retained_semantic_Source_author'] and
+                 item['physical_Source_editor'] == '/root', 'E_SELECTED')
+        for actor in (item['metadata_Source_worker'], item['retained_semantic_Source_author']):
+            _require(type(actor) is str and 0 < len(actor) <= 256, 'E_ACTOR')
+        draft = _register(registry, item['draft'], PHASE_CAP)
+        _require(draft['path'] == selected['draft_path'], 'E_DRAFT')
+        predecessor = _register(registry, selected['predecessor'], PHASE_CAP)
+        for key in ('author_receipt', 'source_review', 'Root_adoption'):
+            _register(registry, item[key])
+        body = draft_material[item['role']]
+        _require(type(body) is bytes and 0 < len(body) <= PHASE_CAP and len(body) == draft['bytes'] and
+                 sha(body) == draft['sha256'] and sha(body) != predecessor['sha256'], 'E_DRAFT')
+        canonical = _path(item['canonical_path'])
+        outputs.extend([canonical, canonical + '.staging'])
+        candidates.append({'role': item['role'], 'declared_candidate': dict(path=canonical, bytes=len(body), sha256=sha(body)),
+                           'predecessor': predecessor, 'draft': draft})
+    outputs.extend([request['publication_receipt_path'], request['publication_receipt_path'] + '.staging'])
+    _require(type(output_paths) is list and all(type(x) is str for x in output_paths) and
+             output_paths == sorted(outputs) and len(set(x.casefold() for x in outputs)) == len(outputs) and
+             all(x.casefold() not in registry for x in outputs), 'E_OUTPUTS')
+    return MetadataView({'request': request, 'selected_rows': selected_rows, 'declared_candidates': candidates,
+                         'output_paths': outputs, 'unwired_semantics': list(UNWIRED_SEMANTICS)})
+
+
+def _observation(value, pin, cap):
+    _require(type(value) is dict and set(value) == OBSERVATION_KEYS, 'E_OBSERVATION')
+    _require(value['path'] == pin['path'] and type(value['bytes']) is int and value['bytes'] == pin['bytes'] and
+             value['sha256'] == pin['sha256'] and type(value['cap']) is int and value['cap'] == cap and
+             value['raw9'] == value['path9'] and value['shared_identity_indexes'] == SHARED7 and
+             value['both_full_API9_independently_stable'] is True and value['two_read_match'] is True,
+             'E_OBSERVATION')
+    for key in ('raw9', 'path9', 'descriptor9'):
+        _require(type(value[key]) is list and len(value[key]) == 9 and all(type(x) is int for x in value[key]),
+                 'E_RAW9')
+    _require(type(value['shared_identity_indexes']) is list and all(type(x) is int for x in value['shared_identity_indexes']) and
+             type(value['shared_descriptor7']) is list and len(value['shared_descriptor7']) == 7 and
+             all(type(x) is int for x in value['shared_descriptor7']), 'E_RAW9')
+    _require(value['path9'][2] == value['descriptor9'][2] == pin['bytes'] and
+             value['path9'][6] == value['descriptor9'][6] == 1 and
+             stat.S_ISREG(value['path9'][5]) and stat.S_ISREG(value['descriptor9'][5]) and
+             not (value['path9'][7] & 0x400 or value['descriptor9'][7] & 0x400) and
+             all(value['path9'][i] == value['descriptor9'][i] for i in SHARED7) and
+             value['shared_descriptor7'] == [value['descriptor9'][i] for i in SHARED7], 'E_RAW9')
+    _ticks6(value['observed_utc'])
+
+
+def _physical_pair(value, canonical, cap):
+    _closed(value, ('staging', 'canonical'), 'E_OBSERVATION')
+    staging = dict(canonical, path=canonical['path'] + '.staging')
+    _observation(value['staging'], staging, cap)
+    _observation(value['canonical'], canonical, cap)
+    for key in ('path9', 'descriptor9'):
+        _require(all(value['staging'][key][i] == value['canonical'][key][i] for i in RENAME8), 'E_RENAME9')
+
+
+def construct_publication43(*, record, request):
+    """Pure structural constructor over supplied existing evidence. No authority or IO."""
+    record = _copy(record)
+    request = _copy(request)
+    _validate_request_header(request)
+    _closed(record, SCHEMAS['batch_publication43_v2']['keys'])
+    _closed(request, SCHEMAS['batch_request21_v2']['keys'])
+    _require(type(record['schema_version']) is int and record['schema_version'] == 2 and
+             record['record_type'] == SCHEMAS['batch_publication43_v2']['record_type'] and
+             record['author'] == record['canonical_physical_actor'] == request['author'] == '/root' and
+             record['Root_thread'] == request['Root_thread'] and record['request_id'] == request['request_id'] and
+             record['verdict'] == PUB_VERDICT and record['canonical_publication'] is True and
+             type(record['publication_reserve_seconds']) is int and record['publication_reserve_seconds'] == 60 and
+             all(record[k] is False for k in PUBLICATION_FALSE_KEYS) and
+             record['partial_failure_preserved_no_rollback_no_automatic_retry'] is True and
+             record['canonical_delta_and_creation_review_pending'] is True, 'E_PUBLICATION')
+    _require(_ticks6(request['created_utc']) <= _ticks6(record['created_utc']), 'E_CHRONOLOGY')
+    registry = {}
+    for key in ('actual_Root_request', 'current_owner_scope', 'Root_future_path_selection', 'actual_new_lease',
+                'publisher_source', 'publisher_API', 'publisher_different_Source_review', 'publisher_Root_Source_adoption',
+                'inherited_Source022_publisher', 'composer_carried'):
+        _register(registry, record[key])
+    _require(record['actual_Root_request']['path'] != request['publication_receipt_path'], 'E_CYCLE')
+    for pubkey, reqkey in (('current_owner_support', 'current_owner_support'),
+                          ('Root_future_path_selection_acceptance', 'Root_future_path_selection_support'),
+                          ('actual_new_lease_support', 'new_lease_support'),
+                          ('predecessor_inventory_support', 'predecessor_inventory_support'),
+                          ('producer_supports', 'producer_supports')):
+        _require(record[pubkey] == request[reqkey], 'E_PUBLICATION_JOIN')
+    for pubkey, reqkey in (('publisher_source', 'publisher_source'), ('publisher_API', 'publisher_API'),
+                          ('publisher_different_Source_review', 'publisher_Source_review'),
+                          ('publisher_Root_Source_adoption', 'publisher_Root_adoption')):
+        _require(record[pubkey] == request[reqkey], 'E_PUBLICATION_JOIN')
+    _require(record['current_owner_scope'] == request['current_owner_support']['current_owner_scope'] and
+             record['Root_future_path_selection'] == request['Root_future_path_selection_support']['subject'] and
+             record['actual_new_lease'] == request['new_lease_support']['canonical'], 'E_PUBLICATION_JOIN')
+    _support(request['current_owner_support'], OWNER_SUPPORT_KEYS, registry)
+    _support(request['new_lease_support'], LEASE_SUPPORT_KEYS, registry)
+    _support(request['Root_future_path_selection_support'], ('subject', 'different_review', 'Root_adoption'), registry)
+    _support(request['predecessor_inventory_support'], ('subject', 'different_review', 'Root_adoption'), registry)
+    _closed(request['producer_supports'], ('M3',), 'E_PRODUCER')
+    _support(request['producer_supports']['M3'], ('Source', 'API', 'different_review', 'Root_adoption'), registry)
+    _require(_same_typed(record['topology'], TOPOLOGY) and _same_typed(record['original_numerical_guards'], ORIGINAL_GUARDS) and
+             _same_typed(record['immutable_historical_leases'], HISTORICAL_LEASES) and
+             _same_typed(record['inherited_Source022_publisher'], HISTORICAL_PUBLISHER) and
+             record['inherited_reader_Source_editor'] == '/root/runtime_audit' and
+             record['inherited_no_overwrite_writer_Source_editor'] == '/root/m3_source_editor' and
+             record['publication_helper_physical_Source_editor'] == SOURCE_EDITOR, 'E_RETAINED')
+    for pin in record['immutable_historical_leases']:
+        _register(registry, pin)
+    rows = record['published']
+    _require(type(rows) is list and 0 < len(rows) <= 8 and type(request['rows']) is list and
+             len(rows) == len(request['rows']) and type(record['published_count']) is int and
+             record['published_count'] == len(rows), 'E_ROWS')
+    roles = []
+    for row, req in zip(rows, request['rows']):
+        _closed(row, SCHEMAS['batch_published_row_v2']['keys'])
+        _closed(req, SCHEMAS['batch_request_row10_v2']['keys'])
+        roles.append(row['role'])
+        for a, b in (('role', 'role'), ('draft', 'draft'), ('author_receipt', 'author_receipt'),
+                     ('exact_Source_review', 'source_review'), ('Root_Source_review_adoption', 'Root_adoption'),
+                     ('physical_Source_editor', 'physical_Source_editor'), ('metadata_Source_worker', 'metadata_Source_worker'),
+                     ('retained_semantic_Source_author', 'retained_semantic_Source_author'), ('source_cap', 'source_cap')):
+            _require(row[a] == req[b] and type(row[a]) is type(req[b]), 'E_ROW_JOIN')
+        _require(row['canonical_physical_actor'] == '/root' and type(row['source_cap']) is int and
+                 row['source_cap'] == PHASE_CAP, 'E_ROW_JOIN')
+        canonical = _register(registry, row['canonical'], PHASE_CAP)
+        draft = _register(registry, row['draft'], PHASE_CAP)
+        predecessor = _register(registry, row['predecessor'], PHASE_CAP)
+        for key in ('author_receipt', 'exact_Source_review', 'Root_Source_review_adoption'):
+            _register(registry, row[key])
+        _require(canonical['path'] == req['canonical_path'] and canonical['bytes'] == draft['bytes'] and
+                 canonical['sha256'] == draft['sha256'] and canonical['sha256'] != predecessor['sha256'], 'E_ROW_JOIN')
+        _physical_pair(row['actual_publication_metadata_APIs'], canonical, PHASE_CAP)
+    _require(all(type(r) is str and r in ROLE_ORDER for r in roles) and len(set(roles)) == len(roles) and
+             roles == [r for r in ROLE_ORDER if r in roles], 'E_ROLE_ORDER')
+    _require(type(record['complete_input_postreads']) is list, 'E_OBSERVATION')
+    for obs in record['complete_input_postreads']:
+        _require(type(obs) is dict and 'cap' in obs and 'path' in obs and 'bytes' in obs and 'sha256' in obs,
+                 'E_OBSERVATION')
+        pin = _register(registry, {k: obs[k] for k in ('path', 'bytes', 'sha256')}, obs['cap'])
+        _observation(obs, pin, obs['cap'])
+    return MetadataView(record)
+
+
+def construct_reconciliation26(*, record, original_publication, request):
+    """No writer: typed postbirth data only. Delta/code/physical semantics remain UNWIRED."""
+    record = _copy(record)
+    _closed(record, SCHEMAS['reconciliation26_v2']['keys'])
+    publication = construct_publication43(record=original_publication, request=request).to_dict()
+    _require(type(record['schema_version']) is int and record['schema_version'] == 2 and
+             record['record_type'] == SCHEMAS['reconciliation26_v2']['record_type'] and
+             record['author'] == '/root' and record['verdict'] == RECON_VERDICT and
+             record['canonical_publication'] is True and record['canonical_publication_flag_scope'] == RECON_FLAG_SCOPE and
+             all(record[k] is False for k in RECON_FALSE_KEYS), 'E_RECONCILIATION')
+    registry = {}
+    for key in RECON_PIN_KEYS:
+        _register(registry, record[key], PHASE_CAP if key in ('canonical_Source', 'exact_draft_Source') else SOURCE_CAP)
+    _require(record['current_owner_scope'] == publication['current_owner_scope'] and
+             record['Root_future_path_selection'] == publication['Root_future_path_selection'] and
+             record['new_canonical_lease'] == publication['actual_new_lease'] and
+             record['prior_actual_publisher_Source'] == publication['publisher_source'] and
+             record['initial_actual_Root_request'] == publication['actual_Root_request'] and
+             record['prior_publication_created_utc'] == publication['created_utc'], 'E_RECON_JOIN')
+    rows = [r for r in publication['published'] if r['canonical'] == record['canonical_Source']]
+    _require(len(rows) == 1 and rows[0]['draft'] == record['exact_draft_Source'] and
+             _ticks6(request['created_utc']) <= _birth_ticks(record['canonical_Source_birth_utc']) <=
+             _ticks6(record['prior_publication_created_utc']) <= _ticks6(record['created_utc']) and
+             type(record['actual_input_observations']) is list, 'E_CHRONOLOGY')
+    for obs in record['actual_input_observations']:
+        _require(type(obs) is dict and all(k in obs for k in ('path', 'bytes', 'sha256', 'cap')), 'E_OBSERVATION')
+        p = _register(registry, {k: obs[k] for k in ('path', 'bytes', 'sha256')}, obs['cap'])
+        _observation(obs, p, obs['cap'])
+    return MetadataView(record)
+
+
+def _fixture_scope_check(fixture_scope):
+    wrapper = _copy(fixture_scope)
+    _closed(wrapper, ('scope', 'scope_pin'), 'E_FIXTURE_SCOPE')
+    scope = _closed(wrapper['scope'], FIXTURE_SCOPE_KEYS, 'E_FIXTURE_SCOPE')
+    _require(type(scope['schema_version']) is int and scope['schema_version'] == 1 and
+             scope['record_type'] == 'Root_I7_one_use_owned_temp_IO_fixture_scope' and
+             scope['author'] == '/root' and scope['Root_thread'] == ROOT_THREAD and
+             scope['owned_namespace'] == FIXTURE_NAMESPACE and scope['case_manifest'] == CASE_MANIFEST and
+             type(scope['hard_timeout_seconds']) is int and scope['hard_timeout_seconds'] == 60 and
+             type(scope['metadata_cap']) is int and scope['metadata_cap'] == SOURCE_CAP and
+             scope['operational_authority'] is False and scope['original_project_target_execution'] is False and
+             scope['owned_I7_synthetic_IO_execution'] is True, 'E_FIXTURE_SCOPE')
+    start, end, born = (_ticks6(scope[k]) for k in ('interval_start', 'interval_end', 'created_utc'))
+    now = current_ticks()
+    _require(born <= start <= now and now + 600000000 < end and end - start <= 36000000000,
+             'E_FIXTURE_TIME')
+    for key in ('publisher_source', 'fixture_source', 'API', 'Source_review_Root_adoption'):
+        p = _pin(scope[key])
+        _require(p['path'].startswith(P10_DIRECTORY + '\\'), 'E_FIXTURE_SCOPE')
+    _require(scope['publisher_source']['path'] == MODULE_PATH and scope['fixture_source']['path'] == FIXTURE_PATH and
+             scope['API']['path'] == API_PATH, 'E_FIXTURE_SOURCE')
+    pin = _pin(wrapper['scope_pin'])
+    _require(pin['path'].startswith(P10_DIRECTORY + '\\') and
+             not pin['path'].startswith(FIXTURE_NAMESPACE + '\\'), 'E_FIXTURE_SCOPE')
+    return wrapper
+
+
+def _fixture_begin(fixture_scope, case):
+    """Only trusted fresh Root test controls; never actual family admission."""
+    global _FIXTURE_CONTEXT, _FIXTURE_GUARD_COUNT, _PREPARED_OUTPUTS
+    _require(_FIXTURE_CONTEXT is None and not OBSERVATIONS and not _HELD_CAPS and not _PREPARED_OUTPUTS, 'E_FIXTURE_ACTIVE')
+    wrapper = _fixture_scope_check(fixture_scope)
+    matches = [r for r in CASE_MANIFEST if r['case'] == case]
+    _require(type(case) is str and len(matches) == 1, 'E_FIXTURE_CASE')
+    scope_body = read_pin(wrapper['scope_pin'], cap=SOURCE_CAP)
+    _require(_json(scope_body) == wrapper['scope'], 'E_FIXTURE_SCOPE_BYTES')
+    _check_observations()
+    namespace = ordinary_chain(FIXTURE_NAMESPACE)
+    _require(namespace.is_dir() and os.path.lexists(str(namespace / NAMESPACE_MARKER)), 'E_FIXTURE_NAMESPACE')
+    case_row = matches[0]
+    _FIXTURE_CONTEXT = (_wire(wrapper), _wire(case_row))
+    _FIXTURE_GUARD_COUNT = 0
+    _PREPARED_OUTPUTS = ()
+    return _json(_wire(case_row))
+
+
+def _fixture_end():
+    global _FIXTURE_CONTEXT, _FIXTURE_GUARD_COUNT, _PREPARED_OUTPUTS
+    _FIXTURE_CONTEXT = None
+    _FIXTURE_GUARD_COUNT = 0
+    _PREPARED_OUTPUTS = ()
+    OBSERVATIONS.clear()
+    _HELD_CAPS.clear()
+
+
+def _fixture_authorize(relative, cap, kind):
+    _require(_FIXTURE_CONTEXT is not None, 'E_FIXTURE_INACTIVE')
+    wrapper = _json(_FIXTURE_CONTEXT[0])
+    _fixture_scope_check(wrapper)
+    row = _json(_FIXTURE_CONTEXT[1])
+    leaves = [x for x in row['leaves'] if x['path'] == relative and x['kind'] == kind]
+    _require(type(relative) is str and len(leaves) == 1 and type(cap) is int and
+             leaves[0]['cap'] == cap and cap in (PHASE_CAP, SOURCE_CAP), 'E_FIXTURE_LEAF')
+    path = _path(FIXTURE_NAMESPACE + '\\' + relative)
+    _require(path.startswith(FIXTURE_NAMESPACE + '\\' + row['directory'] + '\\'), 'E_FIXTURE_LEAF')
+    key = path.casefold()
+    _require(key not in _HELD_CAPS or _HELD_CAPS[key] == (path, cap), 'E_CAP_CONFLICT')
+    _HELD_CAPS[key] = (path, cap)
+    return path
+
+
+def _check_observations():
+    for obs in OBSERVATIONS.values():
+        _observation(obs, {k: obs[k] for k in ('path', 'bytes', 'sha256')}, obs['cap'])
+
+
+def _current_owner_publication_guard():
+    global _FIXTURE_GUARD_COUNT
+    _require(_FIXTURE_CONTEXT is not None, 'E_FIXTURE_INACTIVE_REAL_ADMISSION_UNWIRED')
+    wrapper = _fixture_scope_check(_json(_FIXTURE_CONTEXT[0]))
+    _require(_json(read_pin(wrapper['scope_pin'], cap=SOURCE_CAP)) == wrapper['scope'], 'E_FIXTURE_SCOPE_BYTES')
+    _check_observations()
+    _FIXTURE_GUARD_COUNT += 1
+
+
+def _fixture_read(relative, pin, cap=PHASE_CAP):
+    path = _fixture_authorize(relative, cap, 'input')
+    pin = _pin(pin, cap)
+    _require(pin['path'] == path, 'E_FIXTURE_LEAF')
+    data = tracked_pin(pin, cap=cap)
+    _check_observations()
+    return data
+
+
+def _fixture_publish(relative, data, cap=PHASE_CAP):
+    path = _fixture_authorize(relative, cap, 'output')
+    _require(type(data) is bytes and 0 < len(data) <= cap, 'E_OUTPUT_CAP')
+    _fixture_authorize(relative + '.staging', cap, 'staging')
+    _require((path, cap) in _PREPARED_OUTPUTS, 'E_OUTPUT_PREFLIGHT_REQUIRED')
+    _check_observations()
+    result = root_publish_once(path, data, cap, path)
+    _physical_pair(result[1], result[0], cap)
+    return result
+
+
+def _fixture_preflight(outputs):
+    global _PREPARED_OUTPUTS
+    _require(type(outputs) is list and 0 < len(outputs) <= 8, 'E_FIXTURE_OUTPUTS')
+    paths = []
+    for relative, cap in outputs:
+        path = _fixture_authorize(relative, cap, 'output')
+        _fixture_authorize(relative + '.staging', cap, 'staging')
+        paths.append(path)
+    _require(len(set(x.casefold() for x in paths)) == len(paths), 'E_FIXTURE_OUTPUTS')
+    row = _json(_FIXTURE_CONTEXT[1])
+    for leaf in row['leaves']:
+        if leaf['kind'] == 'input':
+            path = FIXTURE_NAMESPACE + '\\' + leaf['path']
+            _require(path in OBSERVATIONS and OBSERVATIONS[path]['cap'] == leaf['cap'], 'E_ALL_INPUTS_PAIRED_READ')
+    for path in paths:
+        absent_output(path)
+    postread()
+    _check_observations()
+    _PREPARED_OUTPUTS = tuple((path, cap) for path, (relative, cap) in zip(paths, outputs))
+    return paths
+
+
+def _fixture_partial_witness(error, prefix, reached):
+    value = {'synthetic_fixture': True, 'success': False, 'error_type': type(error).__name__,
+             'error': str(error)[:512], 'reached': reached, 'published_prefix': prefix,
+             'available_observations': list(OBSERVATIONS.values()),
+             'no_rollback_no_automatic_retry': True, 'actual_family_admission': False}
+    _wire(value)
+    return value

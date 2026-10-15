@@ -1,0 +1,149 @@
+"""Finite author self-inspection. Parses/compiles new Source; never executes it."""
+import ast
+import builtins
+import datetime as dt
+import hashlib
+import json
+import symtable
+from pathlib import Path
+
+OWN=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_publisher_implementation_010\i7')
+MODULE=OWN/'publish_current_owner_M3_finite8_002.py'
+FIXTURE=OWN/'test_current_owner_M3_finite8_owned_io_002.py'
+API=OWN/'CURRENT_OWNER_M3_FINITE8_PUBLISHER_INERT_API_002.json'
+INVERSE=OWN/'I7_COMPLETE_PREDECESSOR_SOURCE_API_INVERSE_AND_EXACT_KERNEL_INVENTORY_002.json'
+RECEIPT=OWN/'CURRENT_OWNER_M3_FINITE8_PUBLISHER_ACTUAL_SOURCE_AUTHOR_RECEIPT_002.json'
+OUT=OWN/'I7_AUTHOR_ACTUAL_FINITE_SOURCE_SELF_INSPECTION_002.json'
+checks=[]
+
+
+def pin(path):
+    data=path.read_bytes()
+    return dict(path=str(path),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+
+
+def check(name,condition,detail=None):
+    checks.append(dict(name=name,passed=bool(condition),detail=detail))
+    assert condition,name
+
+
+module_data=MODULE.read_bytes();fixture_data=FIXTURE.read_bytes()
+api=json.loads(API.read_bytes());inverse=json.loads(INVERSE.read_bytes());receipt=json.loads(RECEIPT.read_bytes())
+check('actual API publisher whole pin',api['publisher_Source']==pin(MODULE))
+check('actual API fixture whole pin',api['fixture_Source']==pin(FIXTURE))
+check('actual inverse whole pin',api['inverse']==pin(INVERSE))
+check('four actual authorreceipt output pins',receipt['actual_outputs']==[pin(MODULE),pin(FIXTURE),pin(API),pin(INVERSE)])
+check('actual author program pin',pin(Path(receipt['actual_author_program']['path']))==receipt['actual_author_program'])
+for p in receipt['actual_Source_basis']+receipt['actual_new_fragments']:
+    check('actual input wholepin '+p['path'],pin(Path(p['path']))==p)
+for name,key in (('Source','whole_original_Source_utf8'),('API','whole_original_API_utf8')):
+    raw=inverse[key].encode()
+    p=inverse['original_'+name]
+    check('full immutable original '+name+' inverse',len(raw)==p['bytes'] and hashlib.sha256(raw).hexdigest()==p['sha256'])
+old=inverse['whole_original_Source_utf8'].encode()
+for row in inverse['copied_and_ported_functions']:
+    source=row['before'];raw=old[source['start_byte']:source['end_byte']]
+    if row['name']=='root_publish_once':
+        token=b'gate(SOURCE022["path"], SOURCE022["sha256"])'
+        changed=raw.replace(token,b'_current_owner_publication_guard()')
+        check('writer exact three old call occurrences',raw.count(token)==3)
+        check('writer exact three inverse',changed.replace(b'_current_owner_publication_guard()',token)==raw)
+    else:changed=raw
+    check('whole raw function presence '+row['name'],module_data.count(changed)==1)
+    check('whole raw function digest '+row['name'],len(changed)==row['after_bytes'] and hashlib.sha256(changed).hexdigest()==row['after_sha256'])
+check('twentyfour exact helpers',sum(x['whole_bytes_exact'] for x in inverse['copied_and_ported_functions'])==24)
+check('one three-span writer',sum(x['only_three_context_calls_changed'] for x in inverse['copied_and_ported_functions'])==1)
+audit_rows=[]
+for path,data in ((MODULE,module_data),(FIXTURE,fixture_data)):
+    tree=ast.parse(data);compile(data,str(path),'exec')
+    globals_defined=set(dir(builtins))|{'__name__','__file__','__builtins__'}
+    functions={}
+    for node in tree.body:
+        if isinstance(node,(ast.Import,ast.ImportFrom)):
+            globals_defined.update(x.asname or x.name.split('.')[0] for x in node.names)
+        elif isinstance(node,(ast.FunctionDef,ast.ClassDef)):
+            globals_defined.add(node.name)
+            if isinstance(node,ast.FunctionDef):functions[node.name]=node
+        elif isinstance(node,ast.Assign):
+            for target in node.targets:
+                if isinstance(target,ast.Name):globals_defined.add(target.id)
+    table=symtable.symtable(data.decode(),str(path),'exec')
+    def scopes(t):
+        yield t
+        for child in t.get_children():yield from scopes(child)
+    unresolved=sorted({symbol.get_name() for scope in scopes(table) for symbol in scope.get_symbols()
+        if symbol.is_referenced() and symbol.is_global() and symbol.get_name() not in globals_defined})
+    check('new Source global reference closure '+path.name,not unresolved,unresolved)
+    assigned=set(dir(builtins))|{'__name__','__file__','__builtins__'}
+    for node in tree.body:
+        if isinstance(node,(ast.Import,ast.ImportFrom)):
+            assigned.update(x.asname or x.name.split('.')[0] for x in node.names)
+        elif isinstance(node,ast.Assign):
+            refs={x.id for x in ast.walk(node.value) if isinstance(x,ast.Name) and isinstance(x.ctx,ast.Load)}
+            check('top assignment order '+path.name+':'+str(node.lineno),refs<=assigned,sorted(refs-assigned))
+            assigned.update(x.id for target in node.targets for x in ast.walk(target) if isinstance(x,ast.Name))
+        elif isinstance(node,(ast.FunctionDef,ast.ClassDef)):
+            expressions=list(node.decorator_list)
+            if isinstance(node,ast.FunctionDef):expressions+=list(node.args.defaults)+[x for x in node.args.kw_defaults if x is not None]
+            else:expressions+=list(node.bases)+[x.value for x in node.keywords]
+            refs={x.id for expression in expressions for x in ast.walk(expression) if isinstance(x,ast.Name) and isinstance(x.ctx,ast.Load)}
+            check('definition dependency order '+path.name+':'+node.name,refs<=assigned,sorted(refs-assigned))
+            assigned.add(node.name)
+        else:check('no import-time target side effect '+path.name+':'+str(node.lineno),isinstance(node,ast.Expr) and isinstance(node.value,ast.Constant) and type(node.value.value) is str)
+    calls=[]
+    for node in ast.walk(tree):
+        if not isinstance(node,ast.Call) or not isinstance(node.func,ast.Name) or node.func.id not in functions:continue
+        if any(isinstance(arg,ast.Starred) for arg in node.args) or any(k.arg is None for k in node.keywords):continue
+        target=functions[node.func.id];args=target.args;pos=args.posonlyargs+args.args
+        keywords=[k.arg for k in node.keywords]
+        supplied={a.arg for a in pos[:len(node.args)]}|set(keywords)
+        required={a.arg for a in pos[:len(pos)-len(args.defaults)]}|{a.arg for a,d in zip(args.kwonlyargs,args.kw_defaults) if d is None}
+        allowed={a.arg for a in args.args+args.kwonlyargs}
+        valid=(args.vararg is not None or len(node.args)<=len(pos)) and (args.kwarg is not None or set(keywords)<=allowed) and not({a.arg for a in pos[:len(node.args)]}&set(keywords)) and required<=supplied
+        calls.append(dict(line=node.lineno,function=node.func.id,passed=valid))
+        check('direct local call signature '+path.name+':'+str(node.lineno)+':'+node.func.id,valid)
+    imports=[x.name for n in ast.walk(tree) if isinstance(n,ast.Import) for x in n.names]
+    check('no original/helper imports '+path.name,set(imports)<={'os','stat','hashlib','datetime','json','re'})
+    audit_rows.append(dict(Source=pin(path),direct_unexpanded_local_calls=calls,unresolved_global_names=unresolved,executed=False))
+mt=ast.parse(module_data);ft=ast.parse(fixture_data)
+constants={target.id:ast.literal_eval(node.value) for node in mt.body if isinstance(node,ast.Assign) for target in node.targets if isinstance(target,ast.Name)}
+fc={target.id:ast.literal_eval(node.value) for node in ft.body if isinstance(node,ast.Assign) for target in node.targets if isinstance(target,ast.Name)}
+check('literal real entry hold false',constants['CURRENT_OWNER_V2_CANONICAL_PUBLICATION_BINDINGS_QUALIFIED'] is False)
+for name in ('publish_current_owner_finite8','reconcile_current_owner_finite8'):
+    node=next(n for n in mt.body if isinstance(n,ast.FunctionDef) and n.name==name)
+    check('first literal hold branch '+name,isinstance(node.body[0],ast.If) and isinstance(node.body[0].body[0],ast.Raise))
+    check('second unconditional unwired '+name,isinstance(node.body[1],ast.Raise) and 'UNWIRED' in ast.unparse(node.body[1]))
+check('exact private18 keys',len(constants['FIXTURE_SCOPE_KEYS'])==18 and api['fixture_interface']['scope_closed_keys']==list(constants['FIXTURE_SCOPE_KEYS']))
+check('exact manifest Source/API equality',api['fixture_interface']['case_manifest']==constants['CASE_MANIFEST'])
+check('exact planned54 count',type(fc['EXPECTED_CASE_COUNT']) is int and fc['EXPECTED_CASE_COUNT']==54)
+check('exact planned names and order',tuple(x['case'] for x in constants['CASE_MANIFEST'])==fc['PLANNED_CASE_NAMES'] and list(fc['PLANNED_CASE_NAMES'])==api['fixture_interface']['planned_case_names'])
+check('manifest54 unique dirs',len(set(x['directory'] for x in constants['CASE_MANIFEST']))==54)
+for row in constants['CASE_MANIFEST']:
+    check('case exact descendant leaves '+row['case'],all(leaf['path'].startswith(row['directory']+'\\') and type(leaf['cap']) is int and leaf['cap'] in (65536,2097152) for leaf in row['leaves']))
+for name,spec in constants['SCHEMAS'].items():
+    check('closed schema cardinality '+name,len(spec['keys'])=={'batch_publication43_v2':43,'batch_published_row_v2':13,'batch_request21_v2':21,'batch_request_row10_v2':10,'external_M3_stage_support3':3,'reconciliation26_v2':26}[name])
+check('metadata schema copies do not add authority fields',all('metadata_only' not in spec['keys'] and 'actual_admission' not in spec['keys'] for spec in constants['SCHEMAS'].values()))
+check('no actual future authority outputs',all(v is None for v in api['future_actual_cells'].values()))
+old_inverse=json.loads((OWN/'I7_COMPLETE_PREDECESSOR_SOURCE_API_INVERSE_AND_EXACT_KERNEL_INVENTORY_001.json').read_bytes())
+check('all publisher function bodies unchanged001to002',{x['name']:x['sha256'] for x in old_inverse['new_Source_function_inventory']}=={x['name']:x['sha256'] for x in inverse['new_Source_function_inventory']})
+for prior in inverse['preserved_unrun_Source001_chain']:
+    check('preserved immutable001 actual pin '+prior['path'],pin(Path(prior['path']))==prior)
+for name,text in inverse['whole_prior001_quartet_utf8'].items():
+    check('complete001 quartet inverse '+name,(OWN/name).read_bytes()==text.encode('utf-8'))
+run=next(n for n in ft.body if isinstance(n,ast.FunctionDef) and n.name=='run_owned_io_suite')
+rolebranch=next(n for n in ast.walk(run) if isinstance(n,ast.If) and isinstance(n.test,ast.Compare) and isinstance(n.test.left,ast.Name) and n.test.left.id=='case' and any(isinstance(x,ast.Constant) and x.value=='plan_role_order' for x in n.test.comparators))
+branch=ast.unparse(ast.Module(body=rolebranch.body,type_ignores=[]))
+check('unique role pair positive then reversed specific refusal','second_row' in branch and 'second_selected' in branch and 'positive distinct ordered pair' in branch and 'E_ROLE_ORDER' in branch and 'valid_ordered_unique_pair_control' in branch)
+check('duplicate role separately planned','plan_duplicate_role' in fc['PLANNED_CASE_NAMES'] and fc['PLANNED_CASE_NAMES'].index('plan_duplicate_role')!=fc['PLANNED_CASE_NAMES'].index('plan_role_order'))
+result={'schema_version':1,'record_type':'I7_author_actual_finite_Source_self_inspection_not_independent_review_or_runtime_test',
+    'author':'/root/phase_frontier','created_utc':dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'),
+    'actual_inputs':[pin(p) for p in (MODULE,FIXTURE,API,INVERSE,RECEIPT)],'actual_static_inspection_program':pin(Path(__file__)),'checks':checks,
+    'checks_passed':sum(x['passed'] for x in checks),'checks_failed':sum(not x['passed'] for x in checks),
+    'new_Source_AST_compile_only':True,'static_call_and_binding_audits':audit_rows,
+    'actual_module_fixture_calls_tests':0,'all_planned_fixture_names':list(fc['PLANNED_CASE_NAMES']),
+    'planned_case_count':54,'original_module_import_compile_call_test':False,'operational_authority':False,'canonical_publication':False}
+raw=(json.dumps(result,ensure_ascii=False,allow_nan=False,sort_keys=True,indent=2)+'\n').encode()
+assert len(raw)<=2097152
+with OUT.open('xb') as stream:stream.write(raw)
+assert OUT.read_bytes()==raw
+print(json.dumps({'output':pin(OUT),'checks_passed':result['checks_passed'],'checks_failed':result['checks_failed'],'target_calls_tests':0},sort_keys=True))

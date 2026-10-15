@@ -1,0 +1,269 @@
+"""Independent saved-evidence audit only. No target import, call, compilation or rerun."""
+import ast
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+import stat
+from pathlib import Path
+
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_publisher_implementation_010')
+O=P/'independent_review_001'
+CAP=2097152
+INPUTS={}
+CHECKS=[]
+
+def check(name,value,evidence=None):
+    assert name not in {q['name'] for q in CHECKS}
+    CHECKS.append(dict(name=name,passed=bool(value),evidence=evidence))
+
+def raw(p):
+    p=Path(p);b=p.read_bytes();assert len(b)<=CAP
+    q=dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+    assert str(p) not in INPUTS or INPUTS[str(p)]==q
+    INPUTS[str(p)]=q;return b
+
+def fact(p):
+    raw(p);return INPUTS[str(Path(p))]
+
+def pairs(rows):
+    d={}
+    for k,v in rows:assert k not in d;d[k]=v
+    return d
+
+def bad(v):raise ValueError(v)
+def obj(p):return json.loads(raw(p),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+
+def pin(q):
+    return type(q) is dict and set(q)=={'path','bytes','sha256'} and type(q['bytes']) is int and 0<=q['bytes']<=CAP and q==fact(q['path'])
+
+def ticks(v):
+    assert type(v) is str and re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6,7}\+00:00',v)
+    base=dt.datetime.fromisoformat(v[:19]+'+00:00');delta=base-dt.datetime(1970,1,1,tzinfo=dt.timezone.utc)
+    return (delta.days*86400+delta.seconds)*10000000+int(v[20:-6].ljust(7,'0'))
+
+def literals(p):
+    d={}
+    for n in ast.parse(raw(p),filename=str(p)).body:
+        if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+            try:d[n.targets[0].id]=ast.literal_eval(n.value)
+            except (ValueError,TypeError):pass
+    return d
+
+def valid_obs(q):
+    keys={'path','sha256','bytes','cap','raw9','path9','descriptor9','shared_identity_indexes','shared_descriptor7','both_full_API9_independently_stable','two_read_match','observed_utc'}
+    if type(q) is not dict or set(q)!=keys:return False
+    if not all(type(q[k]) is list and len(q[k])==9 and all(type(x) is int for x in q[k]) for k in ('raw9','path9','descriptor9')):return False
+    seven=[0,1,2,3,6,7,8]
+    return q['raw9']==q['path9'] and q['shared_identity_indexes']==seven and q['shared_descriptor7']==[q['descriptor9'][i] for i in seven] and all(q['path9'][i]==q['descriptor9'][i] for i in seven) and q['both_full_API9_independently_stable'] is True and q['two_read_match'] is True and type(q['bytes']) is int and 0<q['bytes']<=q['cap'] and q['path9'][2]==q['descriptor9'][2]==q['bytes'] and q['path9'][6]==q['descriptor9'][6]==1 and stat.S_ISREG(q['path9'][5]) and stat.S_ISREG(q['descriptor9'][5]) and not(q['path9'][7]&1024 or q['descriptor9'][7]&1024) and ticks(q['observed_utc'])>0
+
+def valid_pair(pair):
+    if type(pair) is not dict or set(pair)!={'staging','canonical'}:return False
+    a,b=pair['staging'],pair['canonical']
+    return valid_obs(a) and valid_obs(b) and a['path']==b['path']+'.staging' and a['sha256']==b['sha256'] and a['bytes']==b['bytes'] and all(a[k][i]==b[k][i] for k in ('path9','descriptor9') for i in (0,1,2,3,5,6,7,8))
+
+def save(p,x):
+    b=(json.dumps(x,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(b)<=CAP
+    with Path(p).open('xb') as h:h.write(b)
+    return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+
+def main():
+    rp=P/'ROOT_I7_ACTUAL_ONCE_OWNED_SYNTHETIC_IO_RESULTS_001.json'
+    vp=P/'ROOT_I7_ACTUAL_ONCE_OWNED_IO_SUPERVISOR_RESULT_001.json'
+    cp=P/'ROOT_I7_ACTUAL_OWNED_IO_STREAMS_CAPTURE_001.json'
+    sp=P/'ROOT_I7_ONCE_OWNED_SYNTHETIC_IO_EXECUTION_SCOPE_001.json'
+    privatep=P/'ROOT_I7_PRIVATE_OWNED_TEMP_IO_SCOPE_001.json'
+    r,v,c,s,private=[obj(p) for p in (rp,vp,cp,sp,privatep)]
+    for label,p,sha in (
+        ('actual_result',rp,'9a575d02d732d5128af24de1723d96fa3e25c2fbe2beab2a681033ea0b2352ba'),
+        ('actual_supervisor',vp,'5d269cfa144646690121b6ca6a254cb3c317ee776426d77e762492a8b9b58015'),
+        ('actual_capture',cp,'bec64df57c9e505f0b61919b552ab2f6b43dc464d4f8f79f0596ffd134e788ef')):
+        check(label+'_announced_exact_hash',fact(p)['sha256']==sha)
+    api=obj(s['API']['path']);mc=literals(s['publisher_Source']['path']);tc=literals(s['fixture_Source']['path'])
+    check('Source002_Code_API_and_fixture_unchanged',all(pin(s[k]) for k in ('publisher_Source','fixture_Source','API','exact_child_runner','exact_supervisor_Source','actual_final_Source_adoption')))
+    sourceadop=obj(s['actual_final_Source_adoption']['path'])
+    preadopp=P/'ROOT_I7_FRESH_OWNED_IO_SCOPE_PREINVOCATION_REVIEW_ADOPTION_001.json';preadop=obj(preadopp)
+    for label,adop in (('Source',sourceadop),('preinvocation',preadop)):
+        check(label+'_actual_Root_adoption',adop['author']=='/root' and adop['verdict'].startswith('ACCEPT_'))
+        for key in ('different_Source_review','full_proof','reviewer_Source'):
+            check(label+'_adoption_current_'+key,pin(adop[key]))
+    check('preinvocation_actual148_and16',preadop['actual_named_checks']==148 and preadop['all16_actual_review_inputs_rehashed'] is True and preadop['scope']==fact(sp))
+    check('saved_scopes_exact_crossjoins',r['scope']==v['scope']==preadop['scope']==fact(sp) and r['private_fixture_scope']==v['private_fixture_scope']==s['private_fixture_scope']==fact(privatep))
+    check('saved_result_exact_code_adoption_joins',r['publisher_Source']==s['publisher_Source'] and r['fixture_Source']==s['fixture_Source'] and r['API']==s['API'] and r['actual_Source_adoption']==s['actual_final_Source_adoption'])
+    check('actual_result_identity_and_typed_one_run',r['author']=='/root' and r['record_type']=='Root_actual_once_I7_owned_synthetic_IO_saved_result' and r['all_cases_passed'] is True and r['error'] is None and r['fixture_entry_invoked'] is True and r['tests_executed'] is True and type(r['I7_owned_IO_test_runs']) is int and r['I7_owned_IO_test_runs']==1)
+    check('no_failure_prefix_fabrication_on_success',r['partial_completed_cases_at_failure'] is None and r['failed_or_last_case_at_failure'] is None and r['partial_capture_issue'] is None)
+    check('only_owned_synthetic_evidence_not_real_admission',r['synthetic_owned_IO_only'] is True and r['original_publisher_I0_I1_I2_I3_I4_I5_I6_module_execution'] is False and r['original_project_native_Parser_runtime_scientific_execution'] is False and r['actual_selected45_Source_publication'] is False and r['actual_lease_family_grants_Native8_Parser_results'] is None)
+    check('actual_narrow_flags_not_operational_or_scientific',r['operational_authority'] is False and r['scientific_authority'] is False and v['operational_authority'] is False and v['scientific_authority'] is False)
+    outcome=r['outcome'];cases=outcome['cases'];names=[q['name'] for q in cases]
+    planned=list(tc['PLANNED_CASE_NAMES'])
+    check('all54_exact_Source_API_scope_names',names==planned==api['fixture_interface']['planned_case_names'] and len(names)==len(set(names))==tc['EXPECTED_CASE_COUNT']==s['expected_planned_case_count']==54)
+    check('typed54_counts_and_zero_failed',all(type(q) is int for q in (r['actual_test_case_count'],outcome['case_count'],outcome['checks_passed'],outcome['checks_failed'])) and r['actual_test_case_count']==outcome['case_count']==outcome['checks_passed']==54 and outcome['checks_failed']==0)
+    check('fixture_context_and_patches_restored',outcome['fixture_context_restored'] is True and outcome['original_project_or_native_Parser_tests'] is False and outcome['real_family_publication'] is False and outcome['rollback_cleanup_or_retry'] is False)
+    root=Path(s['owned_namespace_root']);manifest={q['case']:q for q in private['case_manifest']};byname={q['name']:q for q in cases}
+    expected_dirs={str(root/q['directory']) for q in private['case_manifest']}
+    check('all54_case_directories_saved_exact_order',outcome['created_case_directories']==[str(root/q['directory']) for q in private['case_manifest']])
+    retained={}
+    for case in cases:
+        name=case['name'];row=manifest[name];allowed={str(root/q['path']):q for q in row['leaves']}
+        check('actual_case_typed_pass_and_label_'+name,case['passed'] is True and type(case['passed']) is bool and case['synthetic_fixture'] is True and type(case['evidence_kind']) is str and bool(case['evidence_kind']))
+        good=True
+        for q in case['retained_actual_files']:
+            p={k:q[k] for k in ('path','bytes','sha256')}
+            good=good and set(q)=={'path','bytes','sha256','retained'} and q['retained'] is True and p['path'] in allowed and p['bytes']<=allowed[p['path']]['cap'] and pin(p) and p['path'] not in retained
+            retained[p['path']]=p
+        check('retained_actual_owned_leaf_pins_'+name,good)
+    expected_errors={
+        'canonical_preexists':('ValueError','never overwrite or replay'), 'staging_preexists':('ValueError','never overwrite or replay'),
+        'phase_cap_refusal':('I7Error','E_OUTPUT_CAP'),'metadata_cap_refusal':('I7Error','E_OUTPUT_CAP'),'bool_cap_refusal':('I7Error','E_FIXTURE_LEAF'),
+        'zero_pin_refusal':('I7Error','E_PIN'),'bool_pin_refusal':('I7Error','E_PIN'),'cap_conflict_refusal':('I7Error','E_PIN_CONFLICT'),
+        'outside_namespace_refusal':('I7Error','E_FIXTURE_LEAF'),'hardlink_refusal':('ValueError','single-link'),
+        'injected_reparse_refusal':('ValueError','no symlink/reparse'),'input_mutation_refusal':('ValueError','Source digest/length'),
+        'missing_raw9_refusal':('I7Error','E_RAW9'),'shared7_mismatch_refusal':('ValueError','shared-seven identity'),
+        'path9_mismatch_refusal':('ValueError','stable full Source bytes/path9'),'descriptor9_mismatch_refusal':('ValueError','full descriptor9 independently unchanged'),
+        'guard1_refusal':('I7Error','E_INJECTED_GUARD'),'guard2_refusal':('I7Error','E_INJECTED_GUARD'),'guard3_refusal':('I7Error','E_INJECTED_GUARD'),'later_row_refusal':('I7Error','E_INJECTED_GUARD'),
+        'staging_fsync_failure':('OSError','injected fixture fsync failure'),'postrename_readback_failure':('OSError','injected fixture canonical readback failure'),
+        'receipt_collision_after_rows':('ValueError','never overwrite or replay'),'receipt_overflow_after_rows':('I7Error','E_METADATA_CAP'),'all_outputs_preflight':('ValueError','never overwrite or replay'),
+        'plan_unknown_field':('I7Error','E_SHAPE'),'plan_extra_producer':('I7Error','E_PRODUCER'),'plan_bad_support_leaf':('I7Error','E_PIN'),'plan_bad_ordinal':('I7Error','E_SELECTED'),
+        'plan_case_pin_conflict':('I7Error','E_PIN_CONFLICT'),'plan_zero_pin':('I7Error','E_PIN'),'plan_wrong_draft_hash':('I7Error','E_DRAFT'),'plan_float':('I7Error','E_JSON_TYPES'),
+        'plan_unknown_role':('I7Error','E_ROLE_ORDER'),'plan_role_order':('I7Error','E_ROLE_ORDER'),'plan_duplicate_role':('I7Error','E_ROLE_ORDER'),
+        'envelope_wrong_count':('I7Error','E_ROWS'),'envelope_missing_native9':('I7Error','E_RAW9'),'envelope_bad_request_version':('I7Error','E_REQUEST'),'envelope_bad_request_flag':('I7Error','E_REQUEST'),
+        'envelope_same_predecessor_hash':('I7Error','E_ROW_JOIN'),'envelope_reconciliation_rewrite':('I7Error','E_RECONCILIATION'),'envelope_reconciliation_chronology':('I7Error','E_CHRONOLOGY'),
+        'json_duplicate':('I7Error','E_JSON'),'json_float':('I7Error','E_JSON'),'json_root_array':('I7Error','E_JSON'),'json_deep':('I7Error','E_JSON_BOUNDS'),
+    }
+    for name,(kind,text) in expected_errors.items():
+        d=byname[name]['detail'];check('specific_expected_refusal_'+name,d['error_type']==kind and text in d['error'])
+    public=byname['public_entry_zero_io']['detail']
+    for state in ('without_context','with_fixture_context'):
+        d=public[state]
+        check('actual_held_public_zero_IO_'+state,type(d['public_IO_calls']) is int and d['public_IO_calls']==0 and d['publication']['error']=='E_REAL_PUBLICATION_HELD' and d['reconciliation']['error']=='E_REAL_RECONCILIATION_HELD')
+    check('actual_distinct_order_positive_and_reverse_negative',byname['plan_role_order']['detail']['valid_ordered_unique_pair_control'] is True and byname['plan_role_order']['detail']['reversed_unique_roles']==list(reversed(mc['ROLE_ORDER'][:2])) and byname['plan_duplicate_role']['detail']['error']=='E_ROLE_ORDER')
+    check('immutable_plan_actual_metadata_only',byname['plan_valid_immutable']['detail']['metadata_only'] is True and byname['plan_valid_immutable']['detail']['actual_admission'] is False)
+    neutral=b'I7 neutral output bytes\n';neutralhash=hashlib.sha256(neutral).hexdigest();physical_pairs=[]
+    for name in ('single_write_readback','ordered_multirow_subset'):
+        d=byname[name]['detail'];expected=1 if name=='single_write_readback' else 2
+        check('actual_successful_pair_count_'+name,len(d['physical_pairs'])==len(d['published_prefix'])==expected)
+        for index,pair in enumerate(d['physical_pairs']):
+            check('actual_full_PATH9_descriptor9_and_rename8_'+name+'_'+str(index),valid_pair(pair) and pair['canonical']['sha256']==neutralhash and pin(d['published_prefix'][index]))
+            physical_pairs.append(pair)
+    publication=byname['envelope_publication43']['detail']['nested_synthetic_publication43']
+    check('nested_synthetic_exact43_and13_only_metadata',len(publication)==43 and set(publication)==set(mc['SCHEMAS']['batch_publication43_v2']['keys']) and len(publication['published'])==1 and len(publication['published'][0])==13 and byname['envelope_publication43']['detail']['actual_admission'] is False)
+    pair=publication['published'][0]['actual_publication_metadata_APIs'];physical_pairs.append(pair)
+    check('nested43_contains_actual_owned_writer_full_pair',valid_pair(pair))
+    for name in ('envelope_reconciliation26','envelope_reconciliation_birth7'):
+        d=byname[name]['detail'];recon=d['nested_synthetic_reconciliation26']
+        check('nested_exact26_no_rewrite_'+name,len(recon)==26 and set(recon)==set(mc['SCHEMAS']['reconciliation26_v2']['keys']) and recon['new_canonical_Source_write_by_reconciliation'] is False and d['metadata_only'] is True and d['actual_admission'] is False)
+    check('exact_birth7_string_retained_in_nested_synthetic_data',re.fullmatch(r'.*\.\d{7}\+00:00',byname['envelope_reconciliation_birth7']['detail']['nested_synthetic_reconciliation26']['canonical_Source_birth_utc']) is not None)
+    for name,canonical,staging in (('guard1_refusal',False,False),('guard2_refusal',False,True),('guard3_refusal',True,False),('staging_fsync_failure',False,True),('postrename_readback_failure',True,False)):
+        base=root/manifest[name]['directory'];paths={q['path'] for q in byname[name]['retained_actual_files']}
+        check('exact_retained_partial_boundary_'+name,(str(base/'o.dat') in paths)==canonical and (str(base/'o.dat.staging') in paths)==staging)
+    for name in ('later_row_refusal','receipt_collision_after_rows','receipt_overflow_after_rows'):
+        base=root/manifest[name]['directory'];d=byname[name]['detail']
+        check('earlier_prefix_retained_no_retry_'+name,len(d['published_prefix'])==1 and pin(d['published_prefix'][0]) and d['published_prefix'][0]['path']==str(base/'o.dat') and not os.path.lexists(base/'o2.dat') and not os.path.lexists(base/'o2.dat.staging'))
+    for name in ('receipt_collision_after_rows','receipt_overflow_after_rows'):
+        check('no_success43_on_receipt_partial_'+name,byname[name]['detail']['publication43_success'] is False)
+    check('hardlink_refusal_is_actual_owned_link_not_injection',type(byname['hardlink_refusal']['detail']['actual_link_count']) is int and byname['hardlink_refusal']['detail']['actual_link_count']==2 and (root/r'c13\a.in').lstat().st_nlink==(root/r'c13\l.in').lstat().st_nlink==2)
+    check('reparse_and_raw_mismatches_honestly_injected',byname['injected_reparse_refusal']['evidence_kind']=='INJECTED_REPARSE_PREDICATE_NOT_PHYSICAL_REPARSE_PROOF' and all(byname[n]['evidence_kind']=='INJECTED_RAW9_CONTROL_FLOW_NOT_PHYSICAL_METADATA_PROOF' for n in ('missing_raw9_refusal','shared7_mismatch_refusal','path9_mismatch_refusal','descriptor9_mismatch_refusal')))
+    check('saved_inventory_no_unexpected_artifacts_or_forbidden_events',r['unexpected_owned_artifacts']==[] and r['blocked_forbidden_events']==[])
+    inventory={q['path']:q for q in r['actual_owned_inventory']}
+    check('saved_owned_inventory66_unique',len(inventory)==len(r['actual_owned_inventory'])==66)
+    for index,q in enumerate(r['actual_owned_inventory']):check('actual_retained_inventory_pin_'+str(index).zfill(2),pin(q))
+    namespace=obj(r['namespace_marker']['path'])
+    check('namespace_marker_exact_crosslink',r['namespace_marker']==v['namespace_marker'] and pin(r['namespace_marker']) and namespace['execution_scope']==fact(sp) and namespace['private_fixture_scope']==fact(privatep) and namespace['actual_selected45_or_owner_policy_or_lease_scope'] is False)
+    check('case_inventory_plus_namespace_complete',inventory==dict(retained,**{r['namespace_marker']['path']:r['namespace_marker']}))
+    actual_files=set();actual_dirs={str(root)};pending=[root];ordinary=True
+    while pending:
+        here=pending.pop()
+        for path in here.iterdir():
+            info=path.lstat()
+            if stat.S_ISLNK(info.st_mode) or getattr(info,'st_file_attributes',0)&1024:ordinary=False;continue
+            if stat.S_ISDIR(info.st_mode):actual_dirs.add(str(path));pending.append(path)
+            elif stat.S_ISREG(info.st_mode):actual_files.add(str(path))
+            else:ordinary=False
+    check('actual_current_owned_tree_exact66files55dirs_and_ordinary',ordinary and actual_files==set(inventory) and actual_dirs==expected_dirs|{str(root)})
+    trace=r['actual_filesystem_audit_trace'];allowed={q['path'] for q in s['exact_owned_leaf_manifest']};readonly={str(privatep),r['namespace_marker']['path']};dirs=set(s['exact_owned_directories'])
+    badtrace=[];event_counts={}
+    for n,q in enumerate(trace):
+        event_counts[q['event']]=event_counts.get(q['event'],0)+1;d=q['detail'];ok=q['permitted'] is True
+        if q['event']=='open':ok=ok and d['path'] in (allowed if d['write'] else allowed|readonly)
+        elif q['event'] in ('os.mkdir','os.scandir','os.listdir'):ok=ok and d['path'] in dirs
+        elif q['event']=='os.rename':ok=ok and d['source'] in allowed and d['destination'] in allowed and d['source']==d['destination']+'.staging'
+        elif q['event']=='os.link':ok=ok and d['source']==str(root/r'c13\a.in') and d['destination']==str(root/r'c13\l.in')
+        else:ok=False
+        if not ok:badtrace.append(n)
+    check('all643_saved_audit_IO_events_exact_owned_whitelist',not badtrace and len(trace)==643 and r['audit_trace_omitted_event_count']==0,badtrace)
+    check('saved_trace_event_counts_match_full_counters',all(r['audit_event_counts'][k]==value for k,value in event_counts.items()) and event_counts=={'open':516,'os.mkdir':54,'os.rename':18,'os.link':1,'os.scandir':54})
+    check('only_two_new_Source_compile_exec_events',r['audit_event_counts']['compile']==r['audit_event_counts']['exec']==2 and not any(k.startswith(('subprocess.','socket.','ctypes.','winreg.')) for k in r['audit_event_counts']))
+    check('audit_physical_boundary_explicit_not_exhaustive', 'not exhaustive stat/native interception' in r['audit_boundary'])
+    check('actual_profiles_two_exact_Source_filenames',set(r['profile_call_counts'])=={s['publisher_Source']['path'],s['fixture_Source']['path']} and all(type(q) is int and q>0 for q in r['profile_call_counts'].values()))
+    check('actual_profiled24_writer370_reader_entries',type(r['copied_writer_entry_count']) is int and r['copied_writer_entry_count']==r['new_module_function_call_counts']['root_publish_once']==24 and type(r['copied_reader_entry_count']) is int and r['copied_reader_entry_count']==r['new_module_function_call_counts']['read']==370 and r['copied_inherited_IO_algorithms_exercised_in_new_module'] is True)
+    check('profile_entries_not_claimed_completed_all_IO', 'completed actual IO is evidenced separately' in r['copied_IO_count_boundary'])
+    check('owned_child_exit0_and_reaped_PID',v['passed'] is True and v['refusal'] is None and type(v['owned_child_exit_code']) is int and v['owned_child_exit_code']==0 and v['owned_child_wait_reaped'] is True and type(v['owned_child_PID']) is int and v['owned_child_PID']==18116 and v['child_saved_result']==fact(rp))
+    check('wall60_exact_monotonic_difference_and_single5reap',type(v['owned_child_wall_integer_nanoseconds']) is int and v['owned_child_wall_integer_nanoseconds']==v['child_exit_observed_monotonic_ns']-v['child_launch_monotonic_ns']==11878922000 and 0<v['owned_child_wall_integer_nanoseconds']<=60000000000 and v['wall_cap_seconds']==60 and v['cleanup_reap_seconds']==5)
+    check('child_and_supervisor_durations_within_bound',type(r['elapsed_integer_nanoseconds']) is int and 0<r['elapsed_integer_nanoseconds']<=v['owned_child_wall_integer_nanoseconds']<=v['elapsed_integer_nanoseconds']<65000000000)
+    check('actual_exact_isolated_argv_and_cwd',v['argv']==[r'C:\Users\aladdin-alyanai\AppData\Local\Programs\Python\Python313\python.exe','-I','-S','-B',s['exact_child_runner']['path'],sp.name,fact(sp)['sha256']] and v['cwd']==str(P) and v['child_runner']==s['exact_child_runner'])
+    markers=[]
+    for label,q in (('supervisor',v['supervisor_marker']),('child',r['consumption_marker'])):
+        marker=obj(q['path']);markers.append(marker)
+        check('actual_once_marker_'+label,pin(q) and marker['scope']==fact(sp) and marker['author']=='/root' and marker['automatic_retry_authorized'] is False)
+    check('acyclic_adoption_markers_namespace_execution_chronology',ticks(sourceadop['created_utc'])<=ticks(private['created_utc'])<=ticks(preadop['created_utc'])<ticks(markers[0]['created_utc'])<=ticks(namespace['created_utc'])<=ticks(markers[1]['created_utc'])<=ticks(r['started_utc'])<ticks(r['created_utc'])<=ticks(v['created_utc'])<=ticks(c['created_utc']))
+    check('supervisor_start_and_child_markers_inside_scope',all(ticks(s['interval_start'])<=ticks(x)<ticks(s['interval_end']) for x in (v['started_utc'],v['created_utc'],r['started_utc'],r['created_utc'],markers[0]['created_utc'],markers[1]['created_utc'])))
+    check('strict60_scope_reserve_at_actual_launch',ticks(v['resource_prelaunch']['observed_utc'])+600000000<ticks(s['interval_end']))
+    for label in ('resource_before_namespace','resource_prelaunch'):
+        q=v[label]
+        check('actual_fresh_RAM_disk_floors_'+label,all(type(q[k]) is int for k in ('available_RAM_bytes','disk_free_bytes','observed_monotonic_ns','age_limit_seconds')) and q['available_RAM_bytes']>=1073741824 and q['disk_free_bytes']>=10737418240 and q['age_limit_seconds']==60 and q['FileTime_or_Native8_collection'] is False)
+    check('resource_prelaunch_age_actual_monotonic_under60',0<=v['child_launch_monotonic_ns']-v['resource_prelaunch']['observed_monotonic_ns']<60000000000 and ticks(v['resource_before_namespace']['observed_utc'])<=ticks(namespace['created_utc'])<=ticks(v['resource_prelaunch']['observed_utc']))
+    check('scope_creation_resource_historical_not_reused_as_fresh',v['scope_creation_resource_observation_is_historical'] is True and s['scope_creation_resource_observation_is_historical'] is True)
+    for label in ('stdout','stderr'):
+        stream=r[label];b=stream['text'].encode()
+        check('inner_fixture_'+label+'_actual_empty',type(stream['bytes']) is int and stream['bytes']==len(b)==0 and stream['sha256']==hashlib.sha256(b).hexdigest())
+    check('capture_envelope_exact_supervisor_and_no_rerun',c['supervisor_result']==fact(vp) and c['no_child_or_fixture_rerun'] is True and c['empty_capture_is_actual_observation_not_positive_authority_schema_pin'] is True)
+    for index,q in enumerate(c['streams']):
+        b=raw(q['actual_capture']['path'])
+        check('outer_raw_stream_capture_'+str(index),q['actual_capture'] in v['streams'] and pin(q['actual_capture']) and q['UTF8_text'].encode()==b and len(b)<=CAP)
+    check('outer_stdout_exact_saved_result_pin_only',json.loads(c['streams'][0]['UTF8_text'])==fact(rp))
+    check('outer_stderr_actual_zero_capture',c['streams'][1]['actual_capture']['bytes']==0 and c['streams'][1]['UTF8_text']=='')
+    pin(c['serializer_Source'])
+    history=obj(P/'ROOT_I7_ACTUAL_METADATA_ADOPTION_TOOLING_HISTORY_001.json')
+    raw(P/'ROOT_ADOPT_I7_FRESH_OWNED_IO_SCOPE_REVIEW_001.py');raw(P/'ROOT_ADOPT_I7_FRESH_OWNED_IO_SCOPE_REVIEW_002.py')
+    check('metadata_adopter_failure_preserved_not_fixture_failure_or_rerun',history['I7_owned_IO_test_runs']==1 and history['fixture_reruns']==0 and history['automatic_retry'] is False and history['all_prior_tooling_versions_retained'] is True and '168' in history['initial_adopter_outcome'] and '148' in history['corrected_adopter_outcome'])
+    preservation=obj(P/'ROOT_I7_ACTUAL_START_READ_ONLY_PRESERVATION_CHECK_001.json')
+    baseline=obj(preservation['current_Source_baseline']['path']);current=0;pending_count=0
+    check('current_Source_baseline_pin_exact',pin(preservation['current_Source_baseline']))
+    for row in baseline['current_45_identity_rows']:
+        if row['canonical'] is None:
+            pending_count+=1;check('actual_real_pending_path_still_absent_'+row['role'],not os.path.lexists(row['canonical_path']))
+        else:
+            current+=1;check('actual_real_current_Source_unchanged_'+row['role'],pin(row['canonical']))
+    check('real_current36_pending9_unchanged_by_synthetic_IO',current==36 and pending_count==9)
+    raw(P/'ROOT_ADOPT_I7_SAVED_OWNED_IO_RESULTS_001.py');raw(O/'inspect_I7_saved_results_static_001.py');raw(Path(__file__))
+    for index,q in enumerate(list(INPUTS.values())):check('final_rehash_actual_input_'+str(index).zfill(3),pin(q),q)
+    failed=[q for q in CHECKS if q['passed'] is not True]
+    common=dict(reviewer='/root/owner_source_review',source_author='/root',created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+                target_execution=False,tests_executed=False,I7_fixture_reruns=0,target_imports=0,target_function_calls=0,target_Source_compilations=0,
+                original_I0_I6_Native_Parser_calls=0,checks_passed=len(CHECKS)-len(failed),checks_failed=len(failed),subjects=[fact(rp),fact(vp),fact(cp)])
+    verdict='PASS_I7_ACTUAL_SAVED_OWNED_SYNTHETIC_IO_RESULTS_ONLY' if not failed else 'REFUSE_I7_SAVED_RESULT_EVIDENCE'
+    full=dict(schema_version=1,record_type='Independent_I7_actual_saved_owned_IO_result_full_review',verdict=verdict,
+              all_actual_inputs=list(INPUTS.values()),checks=CHECKS,reviewer_Source=fact(Path(__file__)),
+              actual_saved_test_runs=1,actual_saved_passed_cases=54,actual_saved_writer_entries=24,actual_saved_reader_entries=370,
+              actual_saved_audit_IO_trace_events=643,actual_saved_audit_omitted_events=0,actual_retained_files=66,actual_retained_directories=55,
+              current_real_Source_present=36,current_real_pending_absent=9,actual_saved_child_PID=18116,actual_saved_child_exit=0,actual_saved_child_reaped=True,
+              actual_saved_child_wall_nanoseconds=v['owned_child_wall_integer_nanoseconds'],
+              evidence_boundary='Actual new copied IO on owned neutral synthetic files only. Full I0/I1/I2/producer/lease/proof/resource/caller actual-family admission is UNWIRED; real entries stay double held. No original/I0-I6/Native8/Parser/runtime/scientific qualification.',
+              evidence_limits=['24/370 are profiled function entries, not claims that every call completed IO.',
+                               'Actual retained full PATH9/descriptor9 pairs and rename8 are validated where saved. Negative injected paths retain their specific failure and actual physical prefix; injection is not physical reparse/native proof.',
+                               'Pure metadata labels describe the tested predicate. Scope read and case-directory setup also occurred around those cases.',
+                               'Nested synthetic21/43/26 examples are data-only and were not written as standalone authority records.',
+                               'Audit covers observed CPython events plus reviewed Source wrappers, not exhaustive stat/native interception.',
+                               'Zero-byte raw stderr is a valid external capture, not a positive authority-schema pin.',
+                               'This reviewer read saved records/retained files and original Source bytes only; no module/fixture import, compilation, call or rerun.'],**common)
+    fp=save(O/'INDEPENDENT_I7_ACTUAL_SAVED_RESULTS_FULL_PROOF_001.json',full)
+    capsule=dict(schema_version=1,record_type='Independent_I7_actual_saved_owned_synthetic_IO_results_capsule',verdict=verdict,
+                 full_proof=fp,reviewer_Source=fact(Path(__file__)),actual_input_count=len(INPUTS),actual_saved_test_runs=1,actual_saved_passed_cases=54,
+                 actual_saved_writer_entries=24,actual_saved_reader_entries=370,actual_saved_child_PID=18116,actual_saved_child_exit=0,actual_saved_child_reaped=True,
+                 actual_saved_child_wall_nanoseconds=v['owned_child_wall_integer_nanoseconds'],actual_retained_files=66,actual_retained_directories=55,
+                 current_real_Source_present=36,current_real_pending_absent=9,real_family_admission_qualified=False,operational_authority=False,scientific_authority=False,**common)
+    cap=save(O/'INDEPENDENT_I7_ACTUAL_SAVED_RESULTS_SOURCE_CAPSULE_001.json',capsule)
+    print(json.dumps(dict(capsule=cap,full_proof=fp,reviewer_Source=fact(Path(__file__)),checks=len(CHECKS),inputs=len(INPUTS),failed=failed)))
+
+if __name__=='__main__':main()

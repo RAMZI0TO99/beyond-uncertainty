@@ -1,0 +1,125 @@
+"""Root one-use new-I7 loader; filesystem writes limited to declared owned leaves."""
+import ast,datetime,hashlib,io,json,os,stat,sys,time,types,_strptime
+from pathlib import Path
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_publisher_implementation_010');CAP=2097152
+def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()
+def raw(p):
+ p=Path(p);assert p.is_file() and not p.is_symlink() and p.stat().st_size<=CAP
+ with p.open('rb') as f:b=f.read(CAP+1)
+ assert len(b)<=CAP;return b
+def fact(p):
+ b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pinned(q):
+ b=raw(q['path']);assert type(q['bytes']) is int and len(b)==q['bytes'] and hashlib.sha256(b).hexdigest()==q['sha256'];return b
+def pairs(rows):
+ d={}
+ for k,v in rows:assert k not in d;d[k]=v
+ return d
+def bad(v):raise AssertionError(v)
+def decode(b):return json.loads(b,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def save(name,x):
+ p=P/name;b=(json.dumps(x,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(b)<=CAP
+ with p.open('xb') as f:f.write(b);f.flush();os.fsync(f.fileno())
+ return fact(p)
+def key(p):
+ assert type(p) is str
+ q=Path(p);assert q.is_absolute() and '..' not in q.parts
+ return str(q).casefold()
+def main():
+ assert os.name=='nt' and sys.flags.isolated and sys.flags.no_site and sys.flags.dont_write_bytecode
+ sp=fact(P/sys.argv[1]);assert sp['sha256']==sys.argv[2];s=decode(pinned(sp))
+ assert s['author']=='/root' and type(s['maximum_invocations']) is int and s['maximum_invocations']==1 and s['new_I7_owned_synthetic_IO_invocation_authorized'] is True
+ assert s['original_publisher_I0_I1_I2_I3_I4_I5_I6_native_Parser_project_invocations_authorized'] is False
+ assert datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=60)<datetime.datetime.fromisoformat(s['interval_end'])
+ adoption=decode(pinned(s['actual_final_Source_adoption']));assert adoption['verdict']=='ACCEPT_I7_HELD_PUBLISHER_IO_AND_FIXTURE_SOURCE_ONLY'
+ modulepin=s['publisher_Source'];fixturepin=s['fixture_Source'];assert modulepin in adoption['subjects'] and fixturepin in adoption['subjects'] and s['API'] in adoption['subjects']
+ modraw=pinned(modulepin);fixraw=pinned(fixturepin);api=decode(pinned(s['API']));privatepin=s['private_fixture_scope'];private=decode(pinned(privatepin))
+ assert private['publisher_source']==modulepin and private['fixture_source']==fixturepin and private['API']==s['API'] and private['Source_review_Root_adoption']==s['actual_final_Source_adoption']
+ assert private['owned_namespace']==s['owned_namespace_root'] and private['owned_I7_synthetic_IO_execution'] is True and private['original_project_target_execution'] is False
+ root=Path(s['owned_namespace_root']);assert root==Path(r'D:\Aenv\pro2\WORK\I7F010\n1') and root.is_dir() and not root.is_symlink()
+ namespace_marker=fact(root/s['namespace_marker_name']);binding=decode(pinned(namespace_marker));assert binding['execution_scope']==sp and binding['private_fixture_scope']==privatepin
+ leaves=s['exact_owned_leaf_manifest'];directories=s['exact_owned_directories'];assert leaves and len({key(q['path']) for q in leaves})==len(leaves)
+ writable={key(q['path']) for q in leaves};dirs={key(q) for q in directories};assert key(str(root)) in dirs
+ for q in leaves:
+  assert Path(q['path']).is_relative_to(root) and type(q['cap']) is int and 0<q['cap']<=CAP
+  assert key(str(Path(q['path']).parent)) in dirs
+ readonly={key(privatepin['path']),key(namespace_marker['path'])};assert not writable.intersection(readonly)
+ allowed_imports={'os','stat','hashlib','datetime','json','re','pathlib','sys','time','copy','types','collections','base64','dataclasses','io','contextlib'}
+ for data in (modraw,fixraw):
+  for n in ast.walk(ast.parse(data)):
+   if isinstance(n,(ast.Import,ast.ImportFrom)):
+    names=[a.name for a in n.names] if isinstance(n,ast.Import) else [n.module]
+    for name in names:
+     assert name and name.split('.')[0] in allowed_imports
+     __import__(name.split('.')[0])
+ consumed=save(s['consumption_marker_name'],dict(schema_version=1,record_type='Root_I7_execution_scope_consumed_before_new_module_execution',author='/root',created_utc=now(),scope=sp,private_fixture_scope=privatepin,automatic_retry_authorized=False))
+ active=[True];blocked=[];events={};trace=[];omitted=[0];profiles={modulepin['path']:0,fixturepin['path']:0};functions={}
+ def owned(p,allowed):
+  try:return key(os.fsdecode(p)) in allowed
+  except Exception:return False
+ def audit(event,args):
+  if not active[0]:return
+  events[event]=events.get(event,0)+1;permit=True;detail=None
+  if event=='open':
+   path,mode,flags=args;write=bool(flags & (os.O_WRONLY|os.O_RDWR|os.O_CREAT|os.O_TRUNC|os.O_APPEND));permit=owned(path,writable if write else writable|readonly);detail=dict(path=os.fsdecode(path) if isinstance(path,(str,bytes)) else repr(path),mode=mode,write=write)
+  elif event=='os.mkdir':permit=owned(args[0],dirs);detail=dict(path=os.fsdecode(args[0]))
+  elif event=='os.rename':permit=owned(args[0],writable) and owned(args[1],writable);detail=dict(source=os.fsdecode(args[0]),destination=os.fsdecode(args[1]))
+  elif event=='os.link':permit=s['actual_owned_hardlink_setup_authorized'] is True and owned(args[0],writable) and owned(args[1],writable);detail=dict(source=os.fsdecode(args[0]),destination=os.fsdecode(args[1]))
+  elif event in ('os.listdir','os.scandir'):permit=owned(args[0],dirs);detail=dict(path=os.fsdecode(args[0]))
+  elif event.startswith(('os.','subprocess.','socket.','ctypes.','winreg.')):permit=False
+  elif event=='import':permit=type(args[0]) is str and args[0].split('.')[0] in allowed_imports|{'_strptime','locale','calendar'}
+  if detail is not None:
+   if len(trace)<4096:trace.append(dict(event=event,permitted=permit,detail=detail))
+   else:omitted[0]+=1
+  if not permit:blocked.append(event);raise RuntimeError('I7 owned IO scope refuses '+event)
+ def profile(frame,event,arg):
+  if event=='call' and frame.f_code.co_filename in profiles:
+   profiles[frame.f_code.co_filename]+=1
+   if frame.f_code.co_filename==modulepin['path']:functions[frame.f_code.co_name]=functions.get(frame.f_code.co_name,0)+1
+ sys.addaudithook(audit);out=io.StringIO();err=io.StringIO();oldout=sys.stdout;olderr=sys.stderr;result=None;error=None;fixture_invoked=False;partial_cases=None;failed_case=None;partial_capture_issue=None;started=now();start=time.monotonic_ns()
+ try:
+  sys.stdout=out;sys.stderr=err;sys.setprofile(profile)
+  module=types.ModuleType('_i7_writer_'+modulepin['sha256']);module.__file__=modulepin['path'];sys.modules[module.__name__]=module;exec(compile(modraw,modulepin['path'],'exec'),module.__dict__)
+  fixture=types.ModuleType('_i7_fixture_'+fixturepin['sha256']);fixture.__file__=fixturepin['path'];sys.modules[fixture.__name__]=fixture;exec(compile(fixraw,fixturepin['path'],'exec'),fixture.__dict__)
+  fixture_invoked=True
+  result=fixture.run_owned_io_suite(module,dict(scope=private,scope_pin=privatepin))
+  assert type(result) is dict and result['synthetic_fixture'] is True and result['original_project_or_native_Parser_tests'] is False
+  cases=result['cases'];assert type(cases) is list and type(fixture.EXPECTED_CASE_COUNT) is int and 1<=len(cases)==fixture.EXPECTED_CASE_COUNT==s['expected_planned_case_count']<=256
+  assert [q['name'] for q in cases]==list(fixture.PLANNED_CASE_NAMES) and len({q['name'] for q in cases})==len(cases)
+  assert all(type(q['passed']) is bool and q['passed'] is True for q in cases) and not blocked and all(v>0 for v in profiles.values())
+  assert time.monotonic_ns()-start<=60000000000
+ except BaseException as exc:
+  error=dict(type=type(exc).__name__,message=str(exc))
+  try:
+   tb=exc.__traceback__
+   while tb is not None:
+    frame=tb.tb_frame
+    if frame.f_code.co_filename==fixturepin['path'] and frame.f_code.co_name=='run_owned_io_suite':
+     local=frame.f_locals;candidate=local.get('cases');current=local.get('case')
+     if type(candidate) is list:
+      encoded=json.dumps(candidate,allow_nan=False).encode();assert len(encoded)<=CAP
+      partial_cases=decode(encoded)
+     if type(current) is str:failed_case=current
+    tb=tb.tb_next
+  except BaseException as capture_error:partial_capture_issue=type(capture_error).__name__+': '+str(capture_error)
+ finally:sys.setprofile(None);active[0]=False;sys.stdout=oldout;sys.stderr=olderr
+ elapsed=time.monotonic_ns()-start;stdout=out.getvalue().encode();stderr=err.getvalue().encode();assert len(stdout)<=CAP and len(stderr)<=CAP
+ inventory=[];unexpected=[];pending=[root]
+ while pending:
+  here=pending.pop()
+  for path in sorted(here.iterdir()):
+   info=path.lstat()
+   if path.is_symlink() or getattr(info,'st_file_attributes',0)&1024:
+    unexpected.append(str(path)+' [reparse: not traversed]');continue
+   if stat.S_ISDIR(info.st_mode):
+    if key(str(path)) not in dirs:unexpected.append(str(path))
+    else:pending.append(path)
+   elif stat.S_ISREG(info.st_mode):
+    if key(str(path)) not in writable|readonly:unexpected.append(str(path))
+    inventory.append(fact(path))
+   else:unexpected.append(str(path)+' [not ordinary]')
+ if unexpected and error is None:error=dict(type='UnexpectedOwnedArtifact',message=str(unexpected))
+ x=dict(schema_version=1,record_type='Root_actual_once_I7_owned_synthetic_IO_saved_result',author='/root',started_utc=started,created_utc=now(),scope=sp,private_fixture_scope=privatepin,consumption_marker=consumed,publisher_Source=modulepin,fixture_Source=fixturepin,API=s['API'],actual_Source_adoption=s['actual_final_Source_adoption'],namespace_marker=namespace_marker,owned_namespace=str(root),actual_owned_inventory=inventory,unexpected_owned_artifacts=unexpected,tests_executed=fixture_invoked,I7_owned_IO_test_runs=1 if fixture_invoked else 0,synthetic_owned_IO_only=True,fixture_entry_invoked=fixture_invoked,partial_completed_cases_at_failure=partial_cases,failed_or_last_case_at_failure=failed_case,partial_capture_issue=partial_capture_issue,actual_test_case_count=len(result['cases']) if type(result) is dict and type(result.get('cases')) is list else (len(partial_cases) if type(partial_cases) is list else None),all_cases_passed=error is None,error=error,outcome=result,case_count_boundary='Count means complete saved outcome rows. On interrupted fixture, captured completed-prefix rows are retained; current/failed case is separate and unknown is null, never fabricated zero execution.',elapsed_integer_nanoseconds=elapsed,profile_call_counts=profiles,new_module_function_call_counts=functions,audit_event_counts=events,actual_filesystem_audit_trace=trace,audit_trace_omitted_event_count=omitted[0],blocked_forbidden_events=blocked,audit_boundary='Observed CPython audit events and independently reviewed scope wrappers; audit is not exhaustive stat/native interception. Retained filesystem trace capped4096 with exact omitted count; event counters and forbidden-event list are complete. Actual filesystem IO is on owned neutral payloads only.',stdout=dict(bytes=len(stdout),sha256=hashlib.sha256(stdout).hexdigest(),text=stdout.decode()),stderr=dict(bytes=len(stderr),sha256=hashlib.sha256(stderr).hexdigest(),text=stderr.decode()),copied_inherited_IO_algorithms_exercised_in_new_module=True,original_publisher_I0_I1_I2_I3_I4_I5_I6_module_execution=False,original_project_native_Parser_runtime_scientific_execution=False,actual_selected45_Source_publication=False,actual_lease_family_grants_Native8_Parser_results=None,operational_authority=False,scientific_authority=False)
+ print(json.dumps(save(s['saved_result_name'],x)))
+ if error is not None:raise SystemExit(1)
+if __name__=='__main__':main()

@@ -1,0 +1,56 @@
+"""Read/hash/AST only; no target imports, compilation or calls."""
+import ast
+import hashlib
+import json
+from pathlib import Path
+
+P = Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_publisher_implementation_010')
+I = P / 'i7'
+CAP = 2097152
+
+def load(p):
+    b = Path(p).read_bytes()
+    assert 0 < len(b) <= CAP
+    return b
+
+def obj(p):
+    def pairs(rows):
+        d = {}
+        for k, v in rows:
+            assert k not in d
+            d[k] = v
+        return d
+    def bad(x):
+        raise ValueError(x)
+    return json.loads(load(p), object_pairs_hook=pairs, parse_float=bad, parse_constant=bad)
+
+def main():
+    module = I / 'publish_current_owner_M3_finite8_001.py'
+    fixture = I / 'test_current_owner_M3_finite8_owned_io_001.py'
+    api = obj(I / 'CURRENT_OWNER_M3_FINITE8_PUBLISHER_INERT_API_001.json')
+    inverse = obj(I / 'I7_COMPLETE_PREDECESSOR_SOURCE_API_INVERSE_AND_EXACT_KERNEL_INVENTORY_001.json')
+    trees = [ast.parse(load(p), filename=str(p)) for p in (module, fixture)]
+    constants = []
+    for tree in trees:
+        d = {}
+        for n in tree.body:
+            if isinstance(n, ast.Assign) and len(n.targets) == 1 and isinstance(n.targets[0], ast.Name):
+                try:
+                    d[n.targets[0].id] = ast.literal_eval(n.value)
+                except (ValueError, TypeError):
+                    pass
+        constants.append(d)
+    report = dict(
+        target_pins=[dict(path=str(p), bytes=len(load(p)), sha256=hashlib.sha256(load(p)).hexdigest()) for p in (module, fixture)],
+        API_keys=list(api), inverse_keys=list(inverse),
+        inverse_descriptors={k: (list(v) if type(v) is dict else dict(type=type(v).__name__, count=len(v) if hasattr(v, '__len__') else None)) for k, v in inverse.items()},
+        API_selected={k: v for k, v in api.items() if k not in ('case_manifest', 'schemas', 'preservation')},
+        constants={k: v for k, v in constants[0].items() if k not in ('SCHEMAS', 'CASE_MANIFEST')},
+        functions=[[dict(name=n.name, line=n.lineno, end=n.end_lineno) for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))] for tree in trees],
+        module_manifest=constants[0]['CASE_MANIFEST'], fixture_planned_names=constants[1]['PLANNED_CASE_NAMES'],
+        target_execution=False, tests_executed=False, target_Source_compilations=0,
+    )
+    print(json.dumps(report, sort_keys=True, indent=2, default=lambda value: sorted(value) if type(value) is set else str(type(value))))
+
+if __name__ == '__main__':
+    main()

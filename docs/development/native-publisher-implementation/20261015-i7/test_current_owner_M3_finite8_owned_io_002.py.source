@@ -1,0 +1,451 @@
+EXPECTED_CASE_COUNT = 54
+PLANNED_CASE_NAMES = ('public_entry_zero_io', 'single_write_readback', 'ordered_multirow_subset', 'canonical_preexists', 'staging_preexists', 'phase_cap_refusal', 'metadata_cap_refusal', 'bool_cap_refusal', 'zero_pin_refusal', 'bool_pin_refusal', 'cap_conflict_refusal', 'outside_namespace_refusal', 'hardlink_refusal', 'injected_reparse_refusal', 'input_mutation_refusal', 'missing_raw9_refusal', 'shared7_mismatch_refusal', 'path9_mismatch_refusal', 'descriptor9_mismatch_refusal', 'guard1_refusal', 'guard2_refusal', 'guard3_refusal', 'later_row_refusal', 'staging_fsync_failure', 'postrename_readback_failure', 'receipt_collision_after_rows', 'receipt_overflow_after_rows', 'all_outputs_preflight', 'plan_valid_immutable', 'plan_unknown_field', 'plan_extra_producer', 'plan_bad_support_leaf', 'plan_bad_ordinal', 'plan_case_pin_conflict', 'plan_zero_pin', 'plan_wrong_draft_hash', 'plan_float', 'plan_unknown_role', 'plan_role_order', 'plan_duplicate_role', 'envelope_publication43', 'envelope_wrong_count', 'envelope_missing_native9', 'envelope_bad_request_version', 'envelope_bad_request_flag', 'envelope_same_predecessor_hash', 'envelope_reconciliation26', 'envelope_reconciliation_birth7', 'envelope_reconciliation_rewrite', 'envelope_reconciliation_chronology', 'json_duplicate', 'json_float', 'json_root_array', 'json_deep')
+
+"""New I7 owned-temp tests only. No import or invocation of original/I0-I6 code.
+
+Every physical payload is neutral. Authority-shaped examples exist only nested in
+memory and are explicitly synthetic. Root must separately admit this suite once.
+"""
+import os
+import json
+import hashlib
+from pathlib import Path
+
+
+def _check(value, message):
+    if not value:
+        raise AssertionError(message)
+
+
+def _pin(path, data):
+    return {'path': str(path), 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
+
+
+def _expect(call, message=None):
+    try:
+        call()
+    except (ValueError, OSError) as error:
+        if message is not None:
+            _check(message in str(error), 'wrong bounded refusal: ' + str(error))
+        return {'error_type': type(error).__name__, 'error': str(error)[:256]}
+    raise AssertionError('required refusal did not occur')
+
+
+def _paths(module, case):
+    row = next(x for x in module.CASE_MANIFEST if x['case'] == case)
+    base = Path(module.FIXTURE_NAMESPACE) / row['directory']
+    return row, base
+
+
+def _seed(module, case, leaf, body):
+    row, base = _paths(module, case)
+    relative = row['directory'] + '\\' + leaf
+    found = [x for x in row['leaves'] if x['path'] == relative]
+    _check(len(found) == 1 and type(body) is bytes and 0 < len(body) <= found[0]['cap'], 'exact fixture setup leaf')
+    module._fixture_authorize(relative, found[0]['cap'], found[0]['kind'])
+    path = base / leaf
+    with path.open('xb') as stream:
+        _check(stream.write(body) == len(body), 'complete neutral setup bytes')
+        stream.flush()
+    return path, _pin(path, body)
+
+
+def _input(module, case, leaf='a.in', body=b'I7 neutral input\n'):
+    path, pin = _seed(module, case, leaf, body)
+    row, unused = _paths(module, case)
+    module._fixture_read(row['directory'] + '\\' + leaf, pin)
+    return path, pin
+
+
+def _state(base):
+    rows = []
+    for path in sorted(base.iterdir(), key=lambda p: p.name):
+        if path.is_file():
+            body = path.read_bytes()
+            rows.append(dict(_pin(path, body), retained=True))
+    return rows
+
+
+def _zero_io_public(module):
+    def denied(*args, **kwargs):
+        raise AssertionError('public held entry attempted IO')
+    names = ('read', 'ordinary_chain', 'root_publish_once', 'postread', '_current_owner_publication_guard')
+    old = {name: getattr(module, name) for name in names}
+    try:
+        for name in names:
+            setattr(module, name, denied)
+        a = _expect(lambda: module.publish_current_owner_finite8(), 'E_REAL_PUBLICATION_HELD')
+        b = _expect(lambda: module.reconcile_current_owner_finite8(), 'E_REAL_RECONCILIATION_HELD')
+        return {'public_IO_calls': 0, 'publication': a, 'reconciliation': b}
+    finally:
+        for name, value in old.items():
+            setattr(module, name, value)
+
+
+def _example(module, base, body, draft_path, canonical_path, created):
+    def f(name, payload=b'synthetic metadata leaf'):
+        return _pin(base / name, payload)
+    owner = dict(zip(module.OWNER_SUPPORT_KEYS, [f('e.owner'), f('e.owner.review'), f('e.owner.adoption')]))
+    selected = {'role': module.ROLE_ORDER[0], 'canonical_path': canonical_path, 'draft_path': draft_path,
+                'source_cap': module.PHASE_CAP, 'selected_ordinal': 19, 'must_change_Source_bytes': True,
+                'predecessor': f('p.in', b'I7 predecessor\n'), 'preparation_Source_author': '/synthetic/helper',
+                'retained_semantic_Source_author': '/synthetic/semantic'}
+    row = {'role': selected['role'], 'canonical_path': canonical_path, 'draft': _pin(draft_path, body),
+           'author_receipt': f('e.receipt'), 'source_review': f('e.draft.review'), 'Root_adoption': f('e.draft.adoption'),
+           'physical_Source_editor': '/root', 'metadata_Source_worker': '/synthetic/helper',
+           'retained_semantic_Source_author': '/synthetic/semantic', 'source_cap': module.PHASE_CAP}
+    request = {'schema_version': 2, 'record_type': module.SCHEMAS['batch_request21_v2']['record_type'],
+               'author': '/root', 'Root_thread': module.ROOT_THREAD, 'created_utc': created, 'request_id': 'synthetic-I7',
+               'rows': [row], 'current_owner_support': owner,
+               'Root_future_path_selection_support': dict(subject=f('e.selection'), different_review=f('e.selection.review'), Root_adoption=f('e.selection.adoption')),
+               'new_lease_support': {k:f('e.lease.' + k) for k in module.LEASE_SUPPORT_KEYS},
+               'predecessor_inventory_support': dict(subject=f('e.catalogue45'), different_review=f('e.catalogue.review'), Root_adoption=f('e.catalogue.adoption')),
+               'producer_supports': {'M3': {k:f('e.M3.' + k) for k in ('Source', 'API', 'different_review', 'Root_adoption')}},
+               'publisher_source': f('e.publisher'), 'publisher_API': f('e.publisher.API'),
+               'publisher_Source_review': f('e.publisher.review'), 'publisher_Root_adoption': f('e.publisher.adoption'),
+               'publication_receipt_path': str(base / 'r.meta'), 'source_only': True,
+               'canonical_publication_selected': True, 'target_execution': False, 'operational_authority': False}
+    return request, selected
+
+
+def _plan(module, request, selected, body):
+    outputs = sorted([request['rows'][0]['canonical_path'], request['rows'][0]['canonical_path'] + '.staging',
+                      request['publication_receipt_path'], request['publication_receipt_path'] + '.staging'])
+    return module.build_finite8_prewrite_metadata_plan(request=request, selected_rows=[selected],
+        draft_material={selected['role']: body}, output_paths=outputs)
+
+
+def _publication_example(module, request, selected, result, created):
+    canonical, pair = result
+    row = dict(role=request['rows'][0]['role'], predecessor=selected['predecessor'], draft=request['rows'][0]['draft'],
+               canonical=canonical, author_receipt=request['rows'][0]['author_receipt'],
+               exact_Source_review=request['rows'][0]['source_review'], Root_Source_review_adoption=request['rows'][0]['Root_adoption'],
+               physical_Source_editor='/root', metadata_Source_worker='/synthetic/helper', retained_semantic_Source_author='/synthetic/semantic',
+               canonical_physical_actor='/root', source_cap=module.PHASE_CAP, actual_publication_metadata_APIs=pair)
+    value = dict(schema_version=2, record_type=module.SCHEMAS['batch_publication43_v2']['record_type'], author='/root',
+        Root_thread=module.ROOT_THREAD, created_utc=created, request_id=request['request_id'], verdict=module.PUB_VERDICT,
+        actual_Root_request=_pin(Path(canonical['path']).parent/'e.request', module._wire(request)),
+        current_owner_scope=request['current_owner_support']['current_owner_scope'], current_owner_support=request['current_owner_support'],
+        Root_future_path_selection=request['Root_future_path_selection_support']['subject'],
+        Root_future_path_selection_acceptance=request['Root_future_path_selection_support'], actual_new_lease=request['new_lease_support']['canonical'],
+        actual_new_lease_support=request['new_lease_support'], predecessor_inventory_support=request['predecessor_inventory_support'],
+        producer_supports=request['producer_supports'], publisher_source=request['publisher_source'], publisher_API=request['publisher_API'],
+        publisher_different_Source_review=request['publisher_Source_review'], publisher_Root_Source_adoption=request['publisher_Root_adoption'],
+        publication_helper_physical_Source_editor=module.SOURCE_EDITOR, inherited_Source022_publisher=module.HISTORICAL_PUBLISHER,
+        inherited_reader_Source_editor='/root/runtime_audit', inherited_no_overwrite_writer_Source_editor='/root/m3_source_editor',
+        canonical_physical_actor='/root', published=[row], published_count=1, composer_carried=_pin(Path(canonical['path']).parent/'e.composer',b'carried'),
+        topology=module.TOPOLOGY, complete_input_postreads=list(module.OBSERVATIONS.values()), canonical_publication=True,
+        publication_reserve_seconds=60, original_numerical_guards=module.ORIGINAL_GUARDS, immutable_historical_leases=module.HISTORICAL_LEASES,
+        partial_failure_preserved_no_rollback_no_automatic_retry=True, canonical_delta_and_creation_review_pending=True)
+    value.update({k:False for k in module.PUBLICATION_FALSE_KEYS})
+    return value
+
+
+def _reconciliation_example(module, publication, created):
+    row = publication['published'][0]
+    base = Path(row['canonical']['path']).parent
+    value = dict(schema_version=2, record_type=module.SCHEMAS['reconciliation26_v2']['record_type'], author='/root',
+        verdict=module.RECON_VERDICT, created_utc=created, canonical_publication=True,
+        canonical_publication_flag_scope=module.RECON_FLAG_SCOPE, canonical_Source=row['canonical'], exact_draft_Source=row['draft'],
+        current_owner_scope=publication['current_owner_scope'], Root_future_path_selection=publication['Root_future_path_selection'],
+        new_canonical_lease=publication['actual_new_lease'], prior_actual_publisher_Source=publication['publisher_source'],
+        initial_actual_Root_request=publication['actual_Root_request'],
+        initial_actual_canonical_publication_receipt=_pin(base/'e.prior.publication', module._wire(publication)),
+        initial_actual_execution_witness=_pin(base/'e.witness', b'synthetic witness'),
+        actual_canonical_delta_Source_review=_pin(base/'e.delta.review', b'synthetic delta review'),
+        canonical_delta_Root_adoption=_pin(base/'e.delta.adoption', b'synthetic delta adoption'),
+        canonical_Source_birth_utc=publication['published'][0]['actual_publication_metadata_APIs']['canonical']['observed_utc'],
+        prior_publication_created_utc=publication['created_utc'], actual_input_observations=publication['complete_input_postreads'])
+    value.update({k:False for k in module.RECON_FALSE_KEYS})
+    return value
+
+
+def run_owned_io_suite(publisher_module, fixture_scope):
+    module = publisher_module
+    _check(os.name == 'nt', 'native Windows fixture host')
+    scope = module._fixture_scope_check(fixture_scope)['scope']
+    _check(tuple(r['case'] for r in module.CASE_MANIFEST) == PLANNED_CASE_NAMES, 'exact Source/API case manifest')
+    cases = []
+    created = []
+    first_zero = _zero_io_public(module)
+    for case in PLANNED_CASE_NAMES:
+        label = 'ACTUAL_OWNED_WINDOWS_IO'
+        detail = {}
+        patches = []
+        prefix = []
+        module._fixture_begin(fixture_scope, case)
+        row, base = _paths(module, case)
+        try:
+            _check(not os.path.lexists(base), 'fresh exact case directory')
+            base.mkdir()
+            created.append(str(base))
+            rel = lambda leaf: row['directory'] + '\\' + leaf
+            output = str(base / 'o.dat')
+            neutral = b'I7 neutral output bytes\n'
+
+            def patch(owner, name, replacement):
+                patches.append((owner, name, getattr(owner, name)))
+                setattr(owner, name, replacement)
+
+            if case == 'public_entry_zero_io':
+                label = 'INSTRUMENTED_ZERO_IO_BOUNDARY'
+                detail = {'without_context': first_zero, 'with_fixture_context': _zero_io_public(module)}
+            elif case in ('single_write_readback', 'ordered_multirow_subset'):
+                _input(module, case)
+                _input(module, case, 'p.in', b'I7 predecessor\n')
+                targets = [(rel('o.dat'), module.PHASE_CAP)]
+                if case == 'ordered_multirow_subset':
+                    targets.append((rel('o2.dat'), module.PHASE_CAP))
+                module._fixture_preflight(targets)
+                for path, cap in targets:
+                    result = module._fixture_publish(path, neutral, cap)
+                    prefix.append(result[0])
+                    _check(Path(result[0]['path']).read_bytes() == neutral and not os.path.lexists(result[0]['path']+'.staging'), 'actual canonical bytes/no staging alias')
+                    detail.setdefault('physical_pairs', []).append(result[1])
+                detail['published_prefix'] = prefix
+                _check(module._FIXTURE_GUARD_COUNT == 3*len(targets), 'three guard positions each row')
+            elif case in ('canonical_preexists', 'staging_preexists'):
+                leaf = 'o.dat' if case == 'canonical_preexists' else 'o.dat.staging'
+                target, pin = _seed(module, case, leaf, b'existing neutral bytes\n')
+                detail = _expect(lambda: module._fixture_preflight([(rel('o.dat'), module.PHASE_CAP)]), 'never overwrite or replay')
+                _check(target.read_bytes() == b'existing neutral bytes\n', 'existing identity preserved')
+                detail['preserved'] = pin
+            elif case in ('phase_cap_refusal', 'metadata_cap_refusal', 'bool_cap_refusal'):
+                label = 'PURE_CAP_BOUNDARY'
+                cap = module.SOURCE_CAP if case == 'metadata_cap_refusal' else module.PHASE_CAP
+                body = b'x'*(cap+1) if case != 'bool_cap_refusal' else neutral
+                detail = _expect(lambda: module._fixture_publish(rel('o.dat'), body, True if case == 'bool_cap_refusal' else cap))
+                _check(not os.path.lexists(output) and not os.path.lexists(output+'.staging'), 'cap refusal no output')
+            elif case in ('zero_pin_refusal', 'bool_pin_refusal', 'cap_conflict_refusal'):
+                label = 'PURE_PIN_BOUNDARY'
+                pin = _pin(base/'a.in', b'x')
+                if case == 'zero_pin_refusal':
+                    pin['bytes'] = 0
+                    detail = _expect(lambda: module._pin(pin), 'E_PIN')
+                elif case == 'bool_pin_refusal':
+                    pin['bytes'] = True
+                    detail = _expect(lambda: module._pin(pin), 'E_PIN')
+                else:
+                    registry = {}
+                    module._register(registry, pin, module.PHASE_CAP)
+                    detail = _expect(lambda: module._register(registry, pin, module.SOURCE_CAP), 'E_PIN_CONFLICT')
+            elif case == 'outside_namespace_refusal':
+                label = 'PURE_PATH_BOUNDARY'
+                detail = _expect(lambda: module._fixture_publish('..\\outside.dat', neutral), 'E_FIXTURE_LEAF')
+            elif case == 'hardlink_refusal':
+                source, pin = _seed(module, case, 'a.in', neutral)
+                module._fixture_authorize(rel('l.in'), module.PHASE_CAP, 'input')
+                os.link(source, base/'l.in')
+                detail = _expect(lambda: module._fixture_read(rel('a.in'), pin), 'single-link')
+                detail['actual_link_count'] = source.lstat().st_nlink
+                _check(detail['actual_link_count'] == 2, 'actual owned hardlink setup')
+            elif case == 'injected_reparse_refusal':
+                label = 'INJECTED_REPARSE_PREDICATE_NOT_PHYSICAL_REPARSE_PROOF'
+                source, pin = _seed(module, case, 'a.in', neutral)
+                patch(module.stat, 'S_ISLNK', lambda mode: True)
+                detail = _expect(lambda: module._fixture_read(rel('a.in'), pin), 'no symlink/reparse')
+            elif case == 'input_mutation_refusal':
+                source, pin = _input(module, case)
+                module._fixture_preflight([(rel('o.dat'), module.PHASE_CAP)])
+                with source.open('wb') as handle:
+                    handle.write(b'changed owned fixture input\n')
+                detail = _expect(lambda: module._fixture_publish(rel('o.dat'), neutral), 'Source digest/length')
+                _check(not os.path.lexists(output) and not os.path.lexists(output+'.staging'), 'mutated input stops before write')
+            elif case in ('missing_raw9_refusal', 'shared7_mismatch_refusal', 'path9_mismatch_refusal', 'descriptor9_mismatch_refusal'):
+                label = 'INJECTED_RAW9_CONTROL_FLOW_NOT_PHYSICAL_METADATA_PROOF'
+                source, pin = _seed(module, case, 'a.in', neutral)
+                oldraw = module.raw9
+                calls = [0]
+                def altered(info):
+                    values = oldraw(info)
+                    calls[0] += 1
+                    if case == 'missing_raw9_refusal': values[8] = None
+                    elif case == 'shared7_mismatch_refusal' and calls[0] == 2: values[1] += 1
+                    elif case == 'path9_mismatch_refusal' and calls[0] == 4: values[3] += 1
+                    elif case == 'descriptor9_mismatch_refusal' and calls[0] == 3: values[8] += 1
+                    return values
+                patch(module, 'raw9', altered)
+                detail = _expect(lambda: module._fixture_read(rel('a.in'), pin))
+                detail['injected_raw9_calls'] = calls[0]
+            elif case in ('guard1_refusal', 'guard2_refusal', 'guard3_refusal', 'later_row_refusal'):
+                label = 'ACTUAL_OWNED_IO_WITH_INJECTED_GUARD_REFUSAL'
+                _input(module, case)
+                targets = [(rel('o.dat'), module.PHASE_CAP)]
+                if case == 'later_row_refusal': targets.append((rel('o2.dat'), module.PHASE_CAP))
+                module._fixture_preflight(targets)
+                oldguard = module._current_owner_publication_guard
+                calls = [0]
+                refusal = 4 if case == 'later_row_refusal' else int(case[5])
+                def refusing():
+                    calls[0] += 1
+                    if calls[0] == refusal: raise module.I7Error('E_INJECTED_GUARD')
+                    return oldguard()
+                patch(module, '_current_owner_publication_guard', refusing)
+                if case == 'later_row_refusal': prefix.append(module._fixture_publish(rel('o.dat'), neutral)[0])
+                target = 'o2.dat' if case == 'later_row_refusal' else 'o.dat'
+                try:
+                    module._fixture_publish(rel(target), neutral)
+                except ValueError as error:
+                    detail = module._fixture_partial_witness(error, prefix, case)
+                else: raise AssertionError('guard refusal required')
+                canonical = base/target
+                _check(os.path.lexists(canonical) == (case == 'guard3_refusal') and
+                       os.path.lexists(str(canonical)+'.staging') == (case == 'guard2_refusal'), 'exact partial boundary')
+                if prefix: _check((base/'o.dat').read_bytes() == neutral, 'earlier canonical prefix survives')
+                detail['injected_guard_call'] = refusal
+            elif case in ('staging_fsync_failure', 'postrename_readback_failure'):
+                label = 'ACTUAL_OWNED_IO_WITH_INJECTED_EXCEPTION'
+                _input(module, case)
+                module._fixture_preflight([(rel('o.dat'), module.PHASE_CAP)])
+                if case == 'staging_fsync_failure':
+                    def broken(fd): raise OSError('injected fixture fsync failure')
+                    patch(module.os, 'fsync', broken)
+                else:
+                    oldread = module.read
+                    def broken(path, expected=None, cap=2097152):
+                        if str(path) == output: raise OSError('injected fixture canonical readback failure')
+                        return oldread(path, expected, cap)
+                    patch(module, 'read', broken)
+                try: module._fixture_publish(rel('o.dat'), neutral)
+                except (ValueError, OSError) as error: detail = module._fixture_partial_witness(error, [], case)
+                else: raise AssertionError('injected failure required')
+                _check(os.path.lexists(output) == (case == 'postrename_readback_failure') and
+                       os.path.lexists(output+'.staging') == (case == 'staging_fsync_failure'), 'exact exception partial prefix')
+            elif case in ('receipt_collision_after_rows', 'receipt_overflow_after_rows', 'all_outputs_preflight'):
+                _input(module, case)
+                targets = [(rel('o.dat'), module.PHASE_CAP), (rel('r.meta'), module.SOURCE_CAP)]
+                if case == 'all_outputs_preflight':
+                    _seed(module, case, 'r.meta', b'existing receipt neutral bytes\n')
+                    detail = _expect(lambda: module._fixture_preflight(targets))
+                    _check(not os.path.lexists(output), 'all outputs absent before first mutation')
+                else:
+                    module._fixture_preflight(targets)
+                    prefix.append(module._fixture_publish(rel('o.dat'), neutral)[0])
+                    if case == 'receipt_collision_after_rows':
+                        _seed(module, case, 'r.meta', b'late collision neutral bytes\n')
+                        detail = _expect(lambda: module._fixture_publish(rel('r.meta'), b'neutral receipt bytes\n', module.SOURCE_CAP))
+                    else:
+                        label = 'ACTUAL_SOURCE_PREFIX_WITH_PURE_SERIALIZATION_CAP_REFUSAL'
+                        detail = _expect(lambda: module._wire({'synthetic': 'x'*module.SOURCE_CAP}), 'E_METADATA_CAP')
+                    _check((base/'o.dat').read_bytes() == neutral and not os.path.lexists(str(base/'r.meta')+'.staging'), 'no rollback or receipt success')
+                    detail['published_prefix'] = prefix
+                    detail['publication43_success'] = False
+            elif case.startswith('plan_'):
+                label = 'PURE_NESTED_SYNTHETIC_METADATA'
+                request, selected = _example(module, base, neutral, str(base/'a.in'), output, scope['created_utc'])
+                if case == 'plan_valid_immutable':
+                    view = _plan(module, request, selected, neutral)
+                    first = view.to_dict()
+                    _check(view.metadata_only is True and view.actual_admission is False and
+                           first['declared_candidates'][0]['declared_candidate']['sha256'] == hashlib.sha256(neutral).hexdigest(), 'metadata-only candidate not birth')
+                    first['request']['rows'].clear()
+                    _check(len(view.to_dict()['request']['rows']) == 1, 'detached immutable plan')
+                    detail = {'role_order': [selected['role']], 'metadata_only': True, 'actual_admission': False}
+                else:
+                    if case == 'plan_unknown_field': request['unknown'] = None
+                    elif case == 'plan_extra_producer': request['producer_supports']['OTHER'] = {}
+                    elif case == 'plan_bad_support_leaf': request['new_lease_support']['canonical'] = None
+                    elif case == 'plan_bad_ordinal': selected['selected_ordinal'] = 18
+                    elif case == 'plan_case_pin_conflict':
+                        request['publisher_API'] = dict(request['publisher_source'], path=request['publisher_source']['path'].replace('e.publisher', 'E.PUBLISHER'))
+                    elif case == 'plan_zero_pin': request['rows'][0]['draft']['bytes'] = 0
+                    elif case == 'plan_wrong_draft_hash': request['rows'][0]['draft']['sha256'] = '0'*64
+                    elif case == 'plan_float': request['new_lease_support']['canonical']['bytes'] = 1.0
+                    elif case == 'plan_unknown_role': request['rows'][0]['role'] = 'not_finite8'
+                    elif case == 'plan_duplicate_role': request['rows'].append(dict(request['rows'][0]))
+                    elif case == 'plan_role_order':
+                        # A fully valid distinct pair is accepted first. The only
+                        # changed property in the negative arm is paired order.
+                        second_body = neutral + b'second distinct neutral draft\n'
+                        second_row = dict(request['rows'][0], role=module.ROLE_ORDER[1],
+                            canonical_path=str(base/'o2.dat'), draft=_pin(base/'b.in', second_body),
+                            author_receipt=_pin(base/'e.receipt2', b'metadata2'),
+                            source_review=_pin(base/'e.draft.review2', b'metadata2'),
+                            Root_adoption=_pin(base/'e.draft.adoption2', b'metadata2'))
+                        second_selected = dict(selected, role=module.ROLE_ORDER[1], canonical_path=second_row['canonical_path'],
+                            draft_path=second_row['draft']['path'], selected_ordinal=20,
+                            predecessor=_pin(base/'p2.in', b'distinct predecessor2\n'))
+                        first_row = request['rows'][0]
+                        request['rows'] = [first_row, second_row]
+                        material = {selected['role']:neutral, second_selected['role']:second_body}
+                        outputs = sorted([first_row['canonical_path'], first_row['canonical_path']+'.staging',
+                                          second_row['canonical_path'], second_row['canonical_path']+'.staging',
+                                          request['publication_receipt_path'], request['publication_receipt_path']+'.staging'])
+                        ordered = module.build_finite8_prewrite_metadata_plan(request=request,
+                            selected_rows=[selected,second_selected], draft_material=material, output_paths=outputs).to_dict()
+                        _check([x['role'] for x in ordered['declared_candidates']] == list(module.ROLE_ORDER[:2]),
+                               'positive distinct ordered pair')
+                        request['rows'] = [second_row, first_row]
+                        detail = _expect(lambda: module.build_finite8_prewrite_metadata_plan(request=request,
+                            selected_rows=[second_selected,selected], draft_material=material, output_paths=outputs), 'E_ROLE_ORDER')
+                        detail['valid_ordered_unique_pair_control'] = True
+                        detail['reversed_unique_roles'] = [second_row['role'],first_row['role']]
+                    if case != 'plan_role_order':
+                        detail = _expect(lambda: _plan(module, request, selected, neutral))
+            elif case.startswith('envelope_'):
+                label = 'NESTED_SYNTHETIC_METADATA_WITH_ACTUAL_OWNED_WRITER_PAIRS'
+                source, draftpin = _input(module, case, body=neutral)
+                _input(module, case, 'p.in', b'I7 predecessor\n')
+                request, selected = _example(module, base, neutral, str(source), output, scope['created_utc'])
+                _plan(module, request, selected, neutral)
+                module._fixture_preflight([(rel('o.dat'), module.PHASE_CAP), (rel('r.meta'), module.SOURCE_CAP)])
+                result = module._fixture_publish(rel('o.dat'), neutral)
+                publication = _publication_example(module, request, selected, result, module.utc())
+                if case == 'envelope_publication43':
+                    view = module.construct_publication43(record=publication, request=request)
+                    _check(len(view.to_dict()) == 43 and len(view.to_dict()['published'][0]) == 13 and
+                           view.metadata_only and not view.actual_admission, 'exact43/13 view')
+                    detail = {'nested_synthetic_publication43': view.to_dict(), 'metadata_only': True, 'actual_admission': False}
+                elif case == 'envelope_wrong_count':
+                    publication['published_count'] = 2
+                    detail = _expect(lambda: module.construct_publication43(record=publication, request=request), 'E_ROWS')
+                elif case == 'envelope_missing_native9':
+                    publication['published'][0]['actual_publication_metadata_APIs']['canonical']['descriptor9'][8] = None
+                    detail = _expect(lambda: module.construct_publication43(record=publication, request=request), 'E_RAW9')
+                elif case in ('envelope_bad_request_version', 'envelope_bad_request_flag'):
+                    if case == 'envelope_bad_request_version': request['schema_version'] = 1
+                    else: request['target_execution'] = True
+                    detail = _expect(lambda: module.construct_publication43(record=publication, request=request), 'E_REQUEST')
+                elif case == 'envelope_same_predecessor_hash':
+                    publication['published'][0]['predecessor'] = dict(result[0], path=str(base/'e.fake.unchanged.predecessor'))
+                    detail = _expect(lambda: module.construct_publication43(record=publication, request=request), 'E_ROW_JOIN')
+                else:
+                    recon = _reconciliation_example(module, publication, module.utc())
+                    if case in ('envelope_reconciliation26', 'envelope_reconciliation_birth7'):
+                        if case == 'envelope_reconciliation_birth7':
+                            recon['canonical_Source_birth_utc'] = recon['canonical_Source_birth_utc'].replace('+00:00', '0+00:00')
+                        view = module.construct_reconciliation26(record=recon, original_publication=publication, request=request)
+                        _check(len(view.to_dict()) == 26 and view.to_dict()['new_canonical_Source_write_by_reconciliation'] is False,
+                               'exact26 no canonical writer')
+                        _check(view.to_dict()['canonical_Source_birth_utc'] == recon['canonical_Source_birth_utc'], 'exact retained birth digits')
+                        detail = {'nested_synthetic_reconciliation26': view.to_dict(), 'metadata_only': True, 'actual_admission': False}
+                    elif case == 'envelope_reconciliation_rewrite':
+                        recon['new_canonical_Source_write_by_reconciliation'] = True
+                        detail = _expect(lambda: module.construct_reconciliation26(record=recon, original_publication=publication, request=request), 'E_RECONCILIATION')
+                    elif case == 'envelope_reconciliation_chronology':
+                        recon['canonical_Source_birth_utc'] = '2099-01-01T00:00:00.000000+00:00'
+                        detail = _expect(lambda: module.construct_reconciliation26(record=recon, original_publication=publication, request=request), 'E_CHRONOLOGY')
+                _check((base/'o.dat').read_bytes() == neutral and not os.path.lexists(base/'r.meta'), 'constructors no IO and no canonical rewrite')
+            elif case in ('json_duplicate', 'json_float', 'json_root_array', 'json_deep'):
+                label = 'PURE_STRICT_METADATA_CODEC'
+                if case == 'json_duplicate': body = b'{"x":1,"x":2}'
+                elif case == 'json_float': body = b'{"x":1.0}'
+                elif case == 'json_root_array': body = b'[{"x":1}]'
+                else: body = ('{"x":'*50+'0'+'}'*50).encode()
+                detail = _expect(lambda: module._json(body))
+            else:
+                raise AssertionError('unimplemented planned case: ' + case)
+            cases.append({'name': case, 'passed': True, 'synthetic_fixture': True, 'evidence_kind': label,
+                          'detail': detail, 'retained_actual_files': _state(base)})
+        finally:
+            for owner, name, old in reversed(patches):
+                setattr(owner, name, old)
+            module._fixture_end()
+    _check(len(cases) == EXPECTED_CASE_COUNT and tuple(x['name'] for x in cases) == PLANNED_CASE_NAMES and
+           all(type(x['passed']) is bool for x in cases), 'complete exactcase actual suite result')
+    result = {'synthetic_fixture': True, 'cases': cases, 'case_count': len(cases), 'checks_passed': len(cases), 'checks_failed': 0,
+              'created_case_directories': created, 'original_project_or_native_Parser_tests': False,
+              'real_family_publication': False, 'rollback_cleanup_or_retry': False,
+              'fixture_context_restored': module._FIXTURE_CONTEXT is None and not module.OBSERVATIONS and not module._HELD_CAPS}
+    module._wire(result)
+    return result
