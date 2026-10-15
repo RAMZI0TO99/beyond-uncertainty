@@ -1,0 +1,130 @@
+"""Own independent text scanner. This is NOT a PowerShell parser/compiler."""
+import re
+
+def scan(text):
+    """Mask comments/quoted text; retain indexes and pair ordinary delimiters.
+
+    Double-quoted interpolation is deliberately masked too: callers must inspect
+    any executable interpolation manually. No syntax/runtime correctness claim.
+    """
+    out=list(text);pairs={};stack=[];issues=[];i=0;n=len(text)
+    state='code';quote=None;blockdepth=0
+    def blank(a,b):
+        for j in range(a,b):
+            if text[j]not in'\r\n':out[j]=' '
+    while i<n:
+        c=text[i]
+        if state=='line':
+            if c in'\r\n':state='code'
+            else:out[i]=' '
+            i+=1;continue
+        if state=='block':
+            if text.startswith('<#',i):blank(i,i+2);blockdepth+=1;i+=2
+            elif text.startswith('#>',i):blank(i,i+2);blockdepth-=1;i+=2;state='code'if blockdepth==0 else'block'
+            else:blank(i,i+1);i+=1
+            continue
+        if state=='here':
+            if(i==0 or text[i-1]=='\n')and text.startswith(quote+'@',i):blank(i,i+2);i+=2;state='code'
+            else:blank(i,i+1);i+=1
+            continue
+        if state=='quoted':
+            blank(i,i+1)
+            if quote=='"'and c=='`'and i+1<n:blank(i+1,i+2);i+=2;continue
+            if c==quote:
+                if i+1<n and text[i+1]==quote:blank(i+1,i+2);i+=2;continue
+                state='code'
+            i+=1;continue
+        if text.startswith('<#',i):blank(i,i+2);blockdepth=1;state='block';i+=2;continue
+        if c=='#':blank(i,i+1);state='line';i+=1;continue
+        if c=='@'and i+2<n and text[i+1]in"'\""and text[i+2]in'\r\n':quote=text[i+1];blank(i,i+2);state='here';i+=2;continue
+        if c in"'\"":quote=c;blank(i,i+1);state='quoted';i+=1;continue
+        if c=='`'and i+1<n:blank(i,i+2);i+=2;continue
+        if c in'([{':stack.append((c,i))
+        elif c in')]}':
+            if not stack or'([{'.index(stack[-1][0])!=')]}'.index(c):issues.append(dict(index=i,token=c,reason='delimiter mismatch'))
+            else:_,start=stack.pop();pairs[start]=i
+        i+=1
+    if stack:issues.append(dict(reason='unclosed ordinary delimiter',stack=stack))
+    if state not in('code','line'):issues.append(dict(reason='unclosed quote/comment',state=state))
+    return ''.join(out),pairs,issues
+
+def functions(text):
+    mask,pairs,issues=scan(text);rows={};decls=[]
+    for m in re.finditer(r'(?mi)^\s*function\s+([A-Za-z_][A-Za-z0-9_-]*)\b',mask):
+        name=m[1];cursor=m.end()
+        while cursor<len(mask)and mask[cursor].isspace():cursor+=1
+        signature='';param_start=None;param_end=None
+        if cursor<len(mask)and mask[cursor]=='(':
+            param_start=cursor;param_end=pairs.get(cursor)
+            if param_end is None:issues.append(dict(function=name,reason='unpaired signature'));continue
+            signature=text[cursor+1:param_end];cursor=param_end+1
+        while cursor<len(mask)and mask[cursor].isspace():cursor+=1
+        if cursor>=len(mask)or mask[cursor]!='{'or cursor not in pairs:issues.append(dict(function=name,reason='missing matched body'));continue
+        end=pairs[cursor]+1
+        if text[end:end+2]=='\r\n':end+=2
+        elif text[end:end+1]=='\n':end+=1
+        start=mask.rfind('\n',0,m.start())+1
+        # Leading whitespace regex may include prior newlines; actual function
+        # starts at its keyword line, not an unrelated blank predecessor line.
+        keyword=re.search(r'(?i)function\s+',mask[m.start():m.end()])
+        start=mask.rfind('\n',0,m.start()+keyword.start())+1
+        key=name.casefold()
+        if key in rows:issues.append(dict(function=name,reason='duplicate case-insensitive function'))
+        row=dict(name=name,start=start,end=end,body_start=cursor,signature=signature,param_start=param_start,param_end=param_end,text=text[start:end])
+        rows[key]=row;decls.append((m.start(),m.end()))
+    return rows,mask,pairs,issues
+
+def split_params(signature):
+    mask,pairs,issues=scan(signature);chunks=[];start=0;i=0
+    while i<len(mask):
+        if i in pairs:i=pairs[i]+1;continue
+        if mask[i]==',':chunks.append(signature[start:i]);start=i+1
+        i+=1
+    if signature.strip():chunks.append(signature[start:])
+    result=[]
+    for chunk in chunks:
+        cm,_,_=scan(chunk);m=re.search(r'\$([A-Za-z_][A-Za-z0-9_]*)',cm)
+        if m:result.append(dict(name=m[1].casefold(),optional='='in cm[m.end():],raw=chunk))
+    return result,issues
+
+def obvious_calls(text):
+    """Finite conservative command-style local-call inventory, not PS grammar.
+
+    Only inspect tokens equal to declared local function names. Split bounded
+    simple positional arguments and skip complex pipelines/named/splat constructs.
+    Any skipped case is recorded for manual reading, never silently called PASS.
+    """
+    fs,mask,pairs,issues=functions(text);calls=[]
+    signatures={k:split_params(v['signature'])[0]for k,v in fs.items()}
+    token=re.compile(r'(?<![$\w:.-])([A-Za-z_][A-Za-z0-9_-]*)(?![\w-])')
+    for m in token.finditer(mask):
+        key=m[1].casefold()
+        if key not in fs:continue
+        before=mask[max(0,m.start()-15):m.start()]
+        if re.search(r'(?i)function\s*$',before):continue
+        pos=m.end();args=[];skip=None
+        while pos<len(text):
+            while pos<len(text)and text[pos]in' \t':pos+=1
+            if pos>=len(text)or text[pos]in'\r\n;)}|':break
+            begin=pos
+            if text[pos]in"'\"":
+                q=text[pos];pos+=1
+                while pos<len(text):
+                    if q=='"'and text[pos]=='`':pos+=2;continue
+                    if text[pos]==q:
+                        if text[pos:pos+2]==q+q:pos+=2;continue
+                        pos+=1;break
+                    pos+=1
+            elif pos in pairs:pos=pairs[pos]+1
+            else:
+                while pos<len(text)and text[pos]not in' \t\r\n;)}|':
+                    if pos in pairs:pos=pairs[pos]+1
+                    else:pos+=1
+            part=text[begin:pos]
+            if not part:break
+            if part.startswith('-')or part.startswith('@')and not part.startswith('@('):skip='named/splat parameter requires manual binding read'
+            args.append(part)
+        params=signatures[key]
+        required=sum(not p['optional']for p in params)
+        calls.append(dict(function=fs[key]['name'],line=text.count('\n',0,m.start())+1,argument_count=len(args),minimum=required,maximum=len(params),arguments=args,manual_reason=skip,obvious_arity_valid=(required<=len(args)<=len(params))if skip is None else None))
+    return calls,issues

@@ -1,3 +1,7 @@
+**October15 I4 Parser Source port accepted.** The [Parser parent/child report](docs/development/native-parser-implementation/20261015-i4/I4_PARSER_IMPLEMENTATION.md) records owner-direct version2 authority checks with all47 I/O spans and both complete mains preserved. Both Sources remain unrun; accepted Native8 support, I5 interfaces and the version2 saved-result adapter remain explicitly unwired behind false entry guards. Next: separately scope I5 interface work and later reviewed dependency binding. The dated Source inventory stays36/45 and frozen STEP08035/45. All prior guidance is preserved below.
+
+---
+
 **October15 I3 Native8 Source port accepted.** The [native helper/wrapper report](docs/development/native-measurement-implementation/20261015-i3/I3_NATIVE_IMPLEMENTATION.md) records reviewed owner-context/purpose and typed-result Source changes with all15 protected functions and exact8 loop preserved. Both modules remain unrun; dependency interfaces stay held for later I5/I2/I4 qualification and a reviewed I3 successor. Next: separately scope I4 Parser context. The dated Source inventory stays36/45 and frozen STEP08035/45. All prior guidance is preserved below.
 
 ---

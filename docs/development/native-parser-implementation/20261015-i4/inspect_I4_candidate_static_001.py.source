@@ -1,0 +1,131 @@
+"""Own lexical/bytes/JSON Source inspection only. Never invoke PowerShell, parser, compiler, or project code."""
+import base64
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+import re
+import sys
+D=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_parser_implementation_007\i4')
+VERSION=sys.argv[1] if len(sys.argv)==2 else '002'
+assert VERSION in ('001','002','003','004')
+def pin(p):
+ b=p.read_bytes();assert 0<len(b)<=2097152
+ return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def read(p):return json.loads(p.read_bytes())
+def save(p,v):
+ b=(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(b)<=2097152
+ with p.open('xb') as f:assert f.write(b)==len(b)
+ assert p.read_bytes()==b
+ return pin(p)
+checks=[]
+def check(name,passed,detail=None):checks.append(dict(name=name,passed=bool(passed),detail=detail))
+def lexical(source):
+ """Generic quote/comment/here-string aware delimiter scan; not a PS parser."""
+ masked=list(source);stack=[];pairs={};i=0;state='code';quote=None
+ while i<len(source):
+  c=source[i]
+  if state=='comment':
+   if c=='\n':state='code'
+   else:masked[i]=' '
+  elif state=='block':
+   if source.startswith('#>',i):masked[i:i+2]=[' ',' '];i+=1;state='code'
+   elif c!='\n':masked[i]=' '
+  elif state=='here':
+   if (i==0 or source[i-1]=='\n') and source.startswith(quote+'@',i):
+    masked[i:i+2]=[' ',' '];i+=1;state='code'
+   elif c!='\n':masked[i]=' '
+  elif state=='quote':
+   masked[i]=' ' if c!='\n' else '\n'
+   if quote=='"' and c=='`' and i+1<len(source):masked[i+1]=' ';i+=1
+   elif c==quote:
+    if i+1<len(source) and source[i+1]==quote:masked[i+1]=' ';i+=1
+    else:state='code'
+  else:
+   if source.startswith('<#',i):masked[i:i+2]=[' ',' '];i+=1;state='block'
+   elif c=='#':masked[i]=' ';state='comment'
+   elif c=='@' and i+2<len(source) and source[i+1] in "'\"" and source[i+2] in '\r\n':
+    quote=source[i+1];masked[i:i+2]=[' ',' '];i+=1;state='here'
+   elif c in "'\"":quote=c;masked[i]=' ';state='quote'
+   elif c=='`' and i+1<len(source):masked[i:i+2]=[' ',' '];i+=1
+   elif c in '([{':stack.append((c,i))
+   elif c in ')]}':
+    assert stack and '([{'.index(stack[-1][0])==')]}'.index(c),(i,c,stack[-1:] )
+    _,begin=stack.pop();pairs[begin]=i
+  i+=1
+ assert not stack and state in ('code','comment'),(stack,state)
+ return ''.join(masked),pairs
+def funcs(source):
+ mask,pairs=lexical(source);result={}
+ for m in re.finditer(r'(?m)^function ([A-Za-z0-9_-]+)\(',mask):
+  start=m.start();opening=mask.index('{',m.end());end=pairs[opening]+1
+  if source[end:end+2]=='\r\n':end+=2
+  elif source[end:end+1]=='\n':end+=1
+  assert m[1] not in result
+  result[m[1]]=(start,end,source[start:end])
+ return result
+
+files=[D/('Invoke-CurrentCohortNativeParserOnlyParent_CurrentOwner_'+VERSION+'.ps1'),D/('Measure-CurrentCohortNativeParserOnlyChild_CurrentOwner_'+VERSION+'.ps1')]
+api_path=D/('CURRENT_OWNER_NATIVE_PARSER_PARENT_CHILD_INERT_API_'+VERSION+'.json')
+inverse=D/('I4_COMPLETE_THREE_PREDECESSOR_SOURCE_API_INVERSE_FUNCTION_REGION_AND_PREDICATE_INVENTORY_'+VERSION+'.json')
+receipt=D/('I4_ACTUAL_INERT_PARENT_CHILD_API_SOURCE_AUTHOR_RECEIPT_'+VERSION+'.json')
+api=read(api_path);inv=read(inverse);author=read(receipt)
+texts=[p.read_bytes().decode('utf8') for p in files]
+old=[Path(p['pin']['path']).read_bytes().decode('utf8') for p in inv['whole_original_predecessors'][:2]]
+function_inventories=[];global_inventories=[]
+for which,s in enumerate(texts):
+ label='parent' if which==0 else 'child';mask,pairs=lexical(s);fs=funcs(s)
+ check(label+': generic lexical quotes comments here-strings delimiters balanced',True,'This is not PowerShell ParseInput/ParseFile/AST/compilation or runtime qualification.')
+ declared=set(re.findall(r'\$script:([A-Za-z0-9_]+)\s*=',mask));refs=set(re.findall(r'\$script:([A-Za-z0-9_]+)',mask));unbound=sorted(refs-declared)
+ check(label+': all script-scope references have explicit bindings',not unbound,unbound)
+ global_inventories.append(dict(module=label,declared=sorted(declared),referenced=sorted(refs),unbound=unbound))
+ firstdef=min(x[0] for x in fs.values());prefix=mask[:firstdef];known=set();forward=[]
+ for line_no,line in enumerate(prefix.splitlines(),1):
+  m=re.match(r'\s*\$script:([A-Za-z0-9_]+)\s*=(.*)',line)
+  if m:
+   uses=set(re.findall(r'\$script:([A-Za-z0-9_]+)',m[2]));forward.extend([line_no,m[1],x] for x in sorted(uses-known));known.add(m[1])
+ check(label+': top-level script constant assignments have no forward script dependency',not forward,forward)
+ original=funcs(old[which])
+ for name,(_,_,text) in fs.items():
+  declaration=text[:text.index('{')];params=[]
+  for v in re.finditer(r'\$([A-Za-z0-9_]+)(?:\s*=\s*([^,)]*))?',declaration):params.append(dict(name=v[1],default=v[2]))
+  function_inventories.append(dict(module=label,name=name,parameters=params,formal_parameter_count=len(params),source_sha256=hashlib.sha256(text.encode()).hexdigest()))
+  if name in original:check(label+': original '+name+' signature unchanged',declaration==original[name][2][:original[name][2].index('{')])
+ check(label+': top-level False hold before original side effects',s.index('CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED = $false')<firstdef and (which==1 or s.index('if (-not $script:CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED)')<s.index('$script:Watch=')))
+ check(label+': first hold calls no forward local function',"if (-not $script:CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED) { throw '" in s)
+ check(label+': second stronger always-throw unwired interface present','throw ' in fs['Require-QualifiedParserInterfaces'][2] and 'Require-QualifiedParserInterfaces' in fs['Validate-Admission'][2])
+ for n in ('Require','Require-Keys','Integer','Same-Bytes','Same-Vector','Native-Now','Moment','Ordinary-Parents','Init-NativeMetadata','Native-Handle10','Native-Path9','Read-Whole','Read-Fact','Postread-All','Input-Observations','Close-Inputs','Check-Raw9Preflight','Absent','Own-OutputPath','Write-NewBytes','Fact-OwnOutput'):
+  check(label+': original full I/O '+n+' bytes retained',fs[n][2]==original[n][2])
+ for r in inv['protected_regions']:
+  if r['Source']['path']!=inv['whole_original_predecessors'][which]['pin']['path']:continue
+  raw=''.join(old[which].splitlines(keepends=True)[r['line_start']-1:r['line_end']]).encode()
+  check(label+': accepted region '+r['label'],len(raw)==r['whole_utf8_span_bytes'] and hashlib.sha256(raw).hexdigest()==r['whole_utf8_span_sha256'] and s.encode().count(raw)==1)
+ check(label+': original Active-Window whole function retained',fs['Active-Window'][2]==original['Active-Window'][2])
+ check(label+': no peer authority fields in active admission',all(x not in fs['Validate-Admission'][2] for x in ('$Admission.peer_thread','$Admission.response','$response.author_thread','$response.peer_thread','$request.peer_thread')))
+ check(label+': owner raw-root-object adapter precedes strict decoder',fs['Decode-OwnerObject'][2].index('$Bytes[$at] -eq 123')<fs['Decode-OwnerObject'][2].index('Decode-Strict $Bytes'))
+ check(label+': owner reader forbids exact path replay','$Held.Add([string]$Pin.path)' in fs['Owner-Record'][2])
+ check(label+': scope fixed map is actual IDictionary','$script:OwnerScopeFixed = [ordered]@{' in s)
+ check(label+': owner integer FILETIME1601 UTC6or7 preserved',all(x in fs['Owner-Ticks'][2] for x in ('[0-9]{6,7}','ToFileTimeUtc','1601','ParseExact')) and 'TotalSeconds' not in fs['Owner-Ticks'][2])
+ check(label+': scope strictly retains Source60','600000000' in fs['Validate-OwnerSupportPure'][2] and '$end-$now -gt' in fs['Validate-OwnerSupportPure'][2])
+ check(label+': four required named scope checks and exact coverage',all(x in fs['Validate-OwnerSupportPure'][2] for x in ('owner_scope_whole_bytes_and_closed28','instruction_retained_witness_binding_and_provenance','policy_retained_witness_binding_and_provenance','scope_resource_time_and_authority_bounds','subject_reviews.Count -eq 3')))
+ check(label+': Source compatibility13/9 keep schema1 types and Source marker',all(x in fs['Different-Review'][2] for x in ('Integer $r.schema_version 1 1','different_native_Parser_only_Source_review',"Contains('SOURCE')")) and 'ACCEPT_NATIVE_PARSER_ONLY_DIFFERENT_SOURCE_REVIEW' in fs['Root-Adoption'][2])
+ check(label+': closure exact sorted path and narrow runtime INTENT exclusion','$paths.Sort([StringComparer]::Ordinal)' in fs['Parser-PurposeInputs'][2] and '$Facts.outputs.parent_INTENT' in fs['Parser-PurposeInputs'][2])
+ check(label+': I0 policy is not fresh resources or actual Parser grant',api['held_interfaces']['literal_Source_flag'] is False and 'UNWIRED' in api['held_interfaces']['actual_resources'] and 'not fresh observations' in api['held_interfaces']['actual_resources'])
+ for var,count in (('FactsKeys27',27),('AdmissionKeys30',30),('RequestKeys32',32),('ResponseKeys16',16),('PathSelectionKeys13',13),('LeaseProducerFactsKeys14',14),('LeaseCandidateKeys32',32),('LeasePublicationKeys36',36),('LeaseDecisionKeys20',20)):
+  m=re.search(r'(?m)^\$script:'+var+r' = @\(([^\r\n]+)\)',s);keys=re.findall(r"'([^']+)'",m[1]) if m else []
+  check(label+': '+var+' exact closed field count',len(keys)==count and len(set(keys))==count)
+ for name,count in {'Owner-Text':3,'Owner-Pin':1,'Owner-Ticks':1,'Owner-Actor':1,'Owner-Exact':2,'Owner-Record':2,'Owner-Subjects':2,'Owner-Witness':4,'Validate-OwnerSupportPure':4,'Validate-CurrentOwnerSupport':2,'Decode-OwnerObject':1,'Read-OwnerObjectFact':2,'Require-QualifiedParserInterfaces':0,'Read-ContextPin':3,'Validate-ImplementationAPI':1,'Parser-PurposeInputs':3,'Validate-KnownM3ReceiptProvenance':5,'Require-ActualToolCodeAcceptance':6}.items():
+  formal=next(x for x in function_inventories if x['module']==label and x['name']==name)
+  check(label+': new '+name+' formal call interface count',formal['formal_parameter_count']==count)
+for x in inv['whole_original_predecessors']:
+ raw=base64.b64decode(x['complete_base64'],validate=True)
+ check('complete original inverse '+Path(x['pin']['path']).name,raw==Path(x['pin']['path']).read_bytes() and pin(Path(x['pin']['path']))==x['pin'])
+check('actual API Sources crossjoin exact current files',api['parent_Source']==pin(files[0]) and api['child_Source']==pin(files[1]))
+check('all actual future authority fields remain null',all(v is None for v in api['actual_future_cells'].values()))
+check('API truthfully no PowerShell compilation parser tests or runtime eligibility',all(api[k] is False for k in ('PowerShell_compiled_or_parsed','tests_executed','actual_project_import_function_main_native_Parser_execution','new_actual_authority_created','runtime_eligibility','target_execution','operational_authority','scientific_authority')))
+failed=sum(not c['passed'] for c in checks)
+created=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds')
+history=[pin(p) for p in sorted(D.iterdir()) if p.is_file() and (p.name.startswith('author_inert_I4_') or p.name.endswith('_001.ps1') or p.name.endswith('_001.json'))]
+tooling=save(D/('I4_OWN_AUTHOR_TOOLING_FAILURE_AND_IMMUTABLE_SOURCE_HISTORY_'+VERSION+'.json'),dict(schema_version=1,record_type='I4_actual_own_stdlib_author_tooling_failure_and_immutable_Source_history',author='/root/phase_frontier',created_utc=created,author001_failure=dict(exception='KeyError: Source',line=301,reason='Actual I1API key is tool_source, corrected in own author002; before any target Source birth',target_or_PS_invoked=False),historical_actual_pins=history,current_candidate=VERSION,all_original_bytes_preserved=True,all_candidate_PS_Source_uninvoked=True,PowerShell_compiled_or_parsed=False,tests_executed=False))
+report=save(D/('I4_AUTHOR_CANDIDATE'+VERSION+'_FINITE_LEXICAL_SOURCE_SELF_INSPECTION_001.json'),dict(schema_version=1,record_type='I4_author_finite_lexical_bytes_JSON_Source_only_self_inspection',author='/root/phase_frontier',created_utc=created,verdict='PASS_AUTHOR_I4_STATIC_SOURCE_ONLY' if failed==0 else 'FAIL_AUTHOR_I4_STATIC_SOURCE_INSPECTION',checks_passed=len(checks)-failed,checks_failed=failed,checks=checks,actual_inputs=[pin(p) for p in files+[api_path,inverse,receipt]],tooling_history=tooling,actual_inspector_Source=pin(Path(__file__)),function_formal_signature_inventory=function_inventories,script_constant_reference_inventory=global_inventories,limitations=['Author inspection only, not independent Source approval, PS compiler/Parser qualification or runtime proof.','Generic lexical delimiters/signature inventory are not PowerShell syntax/overload/parameter-binding execution. Actual peer Source review required.','Original legacy call signatures unchanged; all new formal interfaces enumerated. I0 fixed resource policy is not an actual resource observation.','LiteralFalse plus always-throw blocks current entry. Real I3/I5/result/resource bindings require later reviewed successor.'],PowerShell_compiled_or_parsed=False,project_import_function_main_native_Parser_executed=False,tests_executed=False,target_execution=False,operational_authority=False))
+print(json.dumps(dict(report=report,tooling=tooling,checks=len(checks),failed=failed,failures=[c for c in checks if not c['passed']]),sort_keys=True))
