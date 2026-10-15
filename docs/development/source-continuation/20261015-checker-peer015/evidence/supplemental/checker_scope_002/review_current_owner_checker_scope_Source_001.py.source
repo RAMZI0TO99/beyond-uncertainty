@@ -1,0 +1,167 @@
+import base64
+import datetime as dt
+import hashlib
+import json
+import os
+import stat
+import sys
+from pathlib import Path
+
+ROOT = Path(r'D:\Aenv\pro2')
+OUT = ROOT / r'WORK\resume-20261015-001\reviews\checker_scope_002'
+SCOPE = ROOT / r'WORK\resume-20261015-001\source_continuation_002\ROOT_CURRENT_OWNER_STATIC_CHECKER_PEER015_SCOPE_001.json'
+CONTRACT = ROOT / r'WORK\resume-20261007-001\generation\post_STEP077_Source022_genuine_static_checker15_pipeline26_peer_schema_prep_001\SOURCE022_CHECKER015_GENUINE_STATIC_ORIGINAL_PEER_SCHEMA_CONTRACT_001.json'
+SELECTION = ROOT / r'WORK\resume-20261007-001\generation\observer010_lease009_root_001\ROOT_SOURCE022_LEASE010_SEPARATE_FUTURE45_SOURCE_PATH_SELECTION_001.json'
+CAP = 2097152
+checks = []
+inputs = []
+
+def check(condition, name):
+    checks.append({'name': name, 'passed': bool(condition)})
+
+def raw9(info):
+    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns,
+            info.st_ctime_ns, info.st_mode, info.st_nlink,
+            getattr(info, 'st_file_attributes', None), getattr(info, 'st_birthtime_ns', None)]
+
+def pin(path, body):
+    return {'path': str(path), 'sha256': hashlib.sha256(body).hexdigest(), 'bytes': len(body)}
+
+def read(path):
+    before = path.lstat()
+    p9 = raw9(before)
+    check(stat.S_ISREG(before.st_mode) and not path.is_symlink() and before.st_nlink == 1,
+          str(path) + ': ordinary single-link regular file')
+    check(0 < before.st_size <= CAP, str(path) + ': unchanged 2MiB input cap')
+    with path.open('rb', buffering=0) as stream:
+        f9 = raw9(os.fstat(stream.fileno()))
+        a = stream.read(CAP + 1)
+        stream.seek(0)
+        b = stream.read(CAP + 1)
+        f_after = raw9(os.fstat(stream.fileno()))
+    after = raw9(path.lstat())
+    check(a == b and len(a) == before.st_size, str(path) + ': two complete byte reads match')
+    check(p9 == after, str(path) + ': complete Python path vector unchanged')
+    check(f9 == f_after, str(path) + ': complete Python descriptor vector unchanged')
+    check(all(p9[i] == f9[i] for i in (0,1,2,3,6,7,8)),
+          str(path) + ': original shared Python identity indexes agree')
+    record = dict(pin(path,a), Python_PATH9_before=p9, Python_PATH9_after=after,
+                  Python_fd9_before=f9, Python_fd9_after=f_after,
+                  two_complete_reads_equal=(a==b), complete_first_bytes_base64=base64.b64encode(a).decode('ascii'),
+                  complete_second_bytes_base64=base64.b64encode(b).decode('ascii'))
+    inputs.append(record)
+    return a
+
+def decode(body):
+    def pairs(items):
+        value = {}
+        for key, item in items:
+            if key in value:
+                raise ValueError('Duplicate JSON key: ' + key)
+            value[key] = item
+        return value
+    def reject(value):
+        raise ValueError('Forbidden float or nonfinite JSON token: ' + value)
+    return json.loads(body.decode('utf-8'), object_pairs_hook=pairs, parse_float=reject, parse_constant=reject)
+
+def emit(path, value):
+    body = (json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\n').encode('utf-8')
+    if len(body) > CAP:
+        raise ValueError('Original output cap exceeded')
+    with path.open('xb') as stream:
+        stream.write(body)
+    actual = path.read_bytes()
+    if actual != body:
+        raise ValueError('Saved output differs from written bytes')
+    return pin(path, body)
+
+check(sys.flags.isolated == 1 and sys.flags.no_site == 1 and sys.dont_write_bytecode,
+      'Own general-host reviewer uses -I -S -B')
+scope_body = read(SCOPE)
+scope_pin = pin(SCOPE, scope_body)
+check(scope_pin['bytes'] == 3334 and scope_pin['sha256'] == '5aebd65e2729be91fa7c2cc5163226654b5242a14a682f992e02307795bc34de',
+      'Exact Root-assigned scope SHA256 and byte length')
+scope = decode(scope_body)
+contract_body = read(CONTRACT)
+contract = decode(contract_body)
+selection_body = read(SELECTION)
+selection = decode(selection_body)
+check(pin(SELECTION, selection_body) == scope['selected_family'], 'Scope binds actual immutable selected45 Source selection')
+check(selection['record_type'] == 'Root_separate_future45_Source_path_selection' or selection['record_type'].startswith('Root_'),
+      'Selected45 is a Root Source record; operational gate is not inferred')
+check(len(selection['rows']) == 45 and len({r['role'] for r in selection['rows']}) == 45,
+      'Original selected45 cardinality and role uniqueness preserved')
+selected = [r for r in selection['rows'] if r['role'] == 'checker_peer']
+check(len(selected) == 1, 'Exactly one selected checker_peer role')
+check(selected[0] == scope['selected_exact_role'] == contract['selected_row'],
+      'Scope selected checker_peer015 row exactly equals actual selection and dormant contract')
+check(selected[0]['source_cap'] == scope['selected_role_source_cap_bytes'] == 65536,
+      'Original selected peer 65536 byte cap preserved')
+check(selected[0]['selected_ordinal'] == 15 and selected[0]['must_change_Source_bytes'] is True,
+      'Exact successor015 ordinal and must-change identity retained')
+predecessor_body = read(Path(selected[0]['predecessor']['path']))
+predecessor = decode(predecessor_body)
+check(pin(Path(selected[0]['predecessor']['path']), predecessor_body) == selected[0]['predecessor'],
+      'Actual predecessor014 whole bytes match retained selected pin')
+check(set(predecessor) == set(contract['original_closed_keys_in_order']) and len(predecessor) == 15,
+      'Original checker peer closed15 schema retained')
+for key, value in contract['immutable_original_fields'].items():
+    check(type(predecessor[key]) is type(value) and predecessor[key] == value,
+          'Actual predecessor retains original immutable field ' + key)
+check(contract['required_original_verdict'] == 'PASS_STATIC_METADATA3_CHECKER_SOURCE_ONLY',
+      'Checker peer verdict is static Source-only')
+check(set(contract['required_current_Source_dependencies']) == {'checker','checker_dependency_audit','checker_manifest','checker_protocol'},
+      'Dormant checker contract requires exact canonical checker/audit/protocol/manifest frontier')
+check(scope['record_type'] == 'Root_current_owner_directed_static_checker_peer015_scope' and scope['author'] == '/root' and scope['schema_version'] == 1,
+      'Current scope has truthful Root author/schema/record type')
+check(scope['owner_current_instruction_exact'] == 'resume working.' and scope['standing_direct_owner_override_exact'] == 'work and tell me if you need pauses or anything no need to keep workin with pro3.',
+      'Current and standing owner directions match direct trusted conversation')
+start = dt.datetime.fromisoformat(scope['interval_start'])
+end = dt.datetime.fromisoformat(scope['interval_end'])
+now = dt.datetime.now(dt.timezone.utc)
+check(start.utcoffset() is not None and end.utcoffset() is not None and end-start == dt.timedelta(hours=2),
+      'Scope is a finite actual two-hour interval')
+check(scope['created_utc'] == scope['interval_start'] and start <= now and now + dt.timedelta(seconds=60) < end,
+      'Actual review is current and retains full original 60-second reserve')
+check(scope['original_publication_reserve_seconds'] == 60 and scope['ordinary_metadata_output_cap_bytes'] == CAP,
+      'Original Source reserve60 and metadata output cap2MiB retained')
+check(scope['maximum_local_agents_including_Root'] == 3 and scope['historical_shared_maximum_including_both_roots_and_overlap'] == 5 and scope['two_slots_reserved_for_other_root_overlap'] is True,
+      'Local3 plus reserved2 fits one historical shared5 ceiling; actual host occupancy not inferred')
+check(scope['Pro3_coordination_required'] is False and scope['Pro3_pause_requested'] is False and scope['notify_owner_if_actual_resource_pause_needed'] is True,
+      'Owner directs local work with actual resource-pause notification; no Pro3 message fabricated')
+check(scope['canonical_publication_role_allowlist'] == ['checker_peer'], 'Canonical role scope is finite checker_peer only')
+check(scope['future_lease_family_duration_paths_INIT_or_clocks'] is None and scope['expired_Source030_and_previous_local_docs_scope_not_extended'] is True,
+      'Future lease/family/duration/paths/INIT/clocks remain unset and historical scopes unextended')
+for key in ('target_execution','tests_executed','operational_authority','scientific_authority','scientific_totals_recounted'):
+    check(scope[key] is False, 'Current scope excludes ' + key)
+for key in ('actual_binding_remains_null','genuine_Root_Source_details_and_decision_required','different_actual_Source_review_before_draft_and_canonical_acceptance_required','Native10_PATH9_fd9_guards_original_spent75_Unit006_and_all_caps_reserves_preserved'):
+    check(scope[key] is True, 'Current scope preserves ' + key)
+check('No original target imports or functions, no fixtures, Native/Parser/C8/actual6/runtime/science or new lease/family.' in scope['scope'],
+      'Explicit scope excludes every requested execution frontier')
+check(contract['immutable_original_fields']['actual_binding'] is None and contract['immutable_original_fields']['runtime_acceptance'] is False,
+      'Future selected peer must preserve null actual_binding and false runtime acceptance')
+check(not Path(selected[0]['canonical_path']).exists(), 'Selected canonical checker_peer015 remains absent at scope review')
+self_body = read(Path(__file__))
+failed = sum(not row['passed'] for row in checks)
+created = dt.datetime.now(dt.timezone.utc).isoformat()
+verdict = 'PASS_CURRENT_OWNER_STATIC_CHECKER_PEER015_SCOPE_SOURCE_ONLY' if failed == 0 else 'REFUSED_CURRENT_OWNER_STATIC_CHECKER_PEER015_SCOPE_SOURCE'
+proof = {'schema_version':1,'record_type':'independent_current_owner_checker_peer015_scope_full_Source_proof',
+         'reviewer':'/root/phase_frontier','source_author':'/root','created_utc':created,'verdict':verdict,
+         'subject':scope_pin,'reviewer_Source':pin(Path(__file__),self_body),'actual_inputs':inputs,
+         'checks':checks,'serialized_check_count':len(checks),'checks_failed':failed,
+         'target_execution':False,'tests_executed':False,'native_or_Parser_or_project_code_invoked':False,
+         'canonical_or_Root_adoption_written':False,'operational_authority':False,'scientific_authority':False,
+         'scope':'Exact current owner static checker_peer015 scope only; does not review future peer content or grant execution.'}
+proof_pin = emit(OUT/'INDEPENDENT_CURRENT_OWNER_CHECKER_PEER015_SCOPE_FULL_SOURCE_PROOF_001.json', proof)
+capsule = {'schema_version':1,'record_type':'independent_current_owner_checker_peer015_scope_float_free_Source_review',
+           'reviewer':'/root/phase_frontier','reviewer_agent':'/root/phase_frontier','source_author':'/root','created_utc':created,
+           'subject':scope_pin,'subjects':[dict(path=r['path'],sha256=r['sha256'],bytes=r['bytes']) for r in inputs],
+           'full_proof':proof_pin,'reviewer_Source':pin(Path(__file__),self_body),'serialized_check_count':len(checks),
+           'actual_input_count':len(inputs),'checks_failed':failed,'verdict':verdict,'target_execution':False,
+           'tests_executed':False,'operational_authority':False,'scientific_authority':False,
+           'scope':'Exact owner-authorized finite2h static checker_peer015 scope; reserve60/local3 plus reserved2/shared5. Native/Parser/targets/cases unentered. No Root adoption or canonical publication.'}
+capsule_pin = emit(OUT/'INDEPENDENT_CURRENT_OWNER_CHECKER_PEER015_SCOPE_FLOAT_FREE_SOURCE_CAPSULE_001.json',capsule)
+print(json.dumps({'verdict':verdict,'checks':len(checks),'checks_failed':failed,'actual_inputs':len(inputs),'full_proof':proof_pin,'capsule':capsule_pin},sort_keys=True))
+if failed:
+    print(json.dumps([c for c in checks if not c['passed']],sort_keys=True))
+    raise SystemExit(1)

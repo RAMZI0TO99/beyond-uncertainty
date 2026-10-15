@@ -1,0 +1,164 @@
+import base64
+import datetime as dt
+import hashlib
+import json
+import os
+import re
+import stat
+import sys
+from pathlib import Path
+
+ROOT=Path(r'D:\Aenv\pro2')
+BASE=ROOT/r'WORK\resume-20261015-001\source_continuation_002'
+OUT=ROOT/r'WORK\resume-20261015-001\reviews\checker_peer015_draft_002'
+CAP=2097152
+checks=[]
+inputs={}
+buffers={}
+
+def check(value,label):
+    checks.append({'name':label,'passed':bool(value)})
+
+def raw9(s):
+    return [s.st_dev,s.st_ino,s.st_size,s.st_mtime_ns,s.st_ctime_ns,s.st_mode,s.st_nlink,getattr(s,'st_file_attributes',None),getattr(s,'st_birthtime_ns',None)]
+
+def pin(path,body):
+    return {'path':str(path),'sha256':hashlib.sha256(body).hexdigest(),'bytes':len(body)}
+
+def read(path,expected=None):
+    path=Path(path)
+    if str(path) not in buffers:
+        before=path.lstat();p9=raw9(before)
+        check(stat.S_ISREG(before.st_mode) and not path.is_symlink() and before.st_nlink==1,str(path)+': ordinary single-link file')
+        check(0<before.st_size<=CAP,str(path)+': original2MiB read cap')
+        with path.open('rb',buffering=0) as f:
+            d9=raw9(os.fstat(f.fileno()));a=f.read(CAP+1);f.seek(0);b=f.read(CAP+1);da=raw9(os.fstat(f.fileno()))
+        pa=raw9(path.lstat())
+        check(a==b and len(a)==before.st_size,str(path)+': actual two entire byte reads match')
+        check(p9==pa,str(path)+': full independent PythonPATH9 stable')
+        check(d9==da,str(path)+': full independent Pythonfd9 stable')
+        check(all(p9[i]==d9[i] for i in (0,1,2,3,6,7,8)),str(path)+': original shared7 Python identity indexes')
+        buffers[str(path)]=a
+        inputs[str(path)]=dict(pin(path,a),path9_before=p9,path9_after=pa,descriptor9_before=d9,descriptor9_after=da,two_complete_reads_equal=a==b,cap=CAP)
+    a=buffers[str(path)]
+    if expected is not None:
+        check(pin(path,a)==expected,str(path)+': exact requested SHA256/bytes/path')
+    return a
+
+def decode(body):
+    def pairs(items):
+        out={}
+        for k,v in items:
+            if k in out:raise ValueError('Duplicate JSON key '+k)
+            out[k]=v
+        return out
+    def reject(s):raise ValueError('Forbidden float/nonfinite JSON '+s)
+    return json.loads(body.decode('utf-8'),object_pairs_hook=pairs,parse_float=reject,parse_constant=reject)
+
+def value(p):
+    if isinstance(p,dict):return decode(read(p['path'],p))
+    return decode(read(p))
+
+def contains(tree,needle):
+    if tree==needle:return True
+    if isinstance(tree,dict):return any(contains(v,needle) for v in tree.values())
+    if isinstance(tree,list):return any(contains(v,needle) for v in tree)
+    return False
+
+def stamp(s):
+    match=re.fullmatch(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?([+-]\d{2}:\d{2})',s)
+    if match is None:raise ValueError('Actual ISO timestamp grammar unsupported: '+s)
+    whole=dt.datetime.fromisoformat(match.group(1)+match.group(3)).astimezone(dt.timezone.utc)-dt.datetime(1970,1,1,tzinfo=dt.timezone.utc)
+    return (whole.days*86400+whole.seconds)*1000000000+int((match.group(2) or '').ljust(9,'0'))
+
+def emit(path,data):
+    body=(json.dumps(data,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)+'\n').encode('utf-8')
+    if len(body)>CAP:raise ValueError('Original output2MiB cap')
+    with path.open('xb') as f:f.write(body)
+    if path.read_bytes()!=body:raise ValueError('Own saved output mismatch')
+    return pin(path,body)
+
+check(sys.flags.isolated==1 and sys.flags.no_site==1 and sys.dont_write_bytecode,'Own reviewer executes only host stdlib under -I-S-B')
+receipt_pin={'path':str(BASE/'ROOT_GENUINE_CHECKER_PEER015_DRAFT_AUTHOR_SERIALIZATION_INVERSE_RECEIPT_001.json'),'bytes':6374,'sha256':'f09ba6f02d9054a57d98a8df001e96d560857470feed01dc9222a4f997d6229b'}
+receipt=value(receipt_pin)
+draft_pin={'path':str(ROOT/r'WORK\resume-20261007-001\generation\post_STEP077_parametric_cohort_prep_001\drafts\INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_015.json'),'bytes':795,'sha256':'09d25f6defae6da0198b91b57ca3bfca3e0d743d705b62fa5226741525f0c613'}
+draft_body=read(draft_pin['path'],draft_pin);draft=decode(draft_body)
+check(receipt['draft']==draft_pin,'Actual receipt authenticates exact assigned draft795 bytes')
+content_adoption=value(receipt['Root_content_adoption'])
+check(receipt['Root_content_adoption']['bytes']==2689 and receipt['Root_content_adoption']['sha256']=='8e4437ac601233da430bbaaa61617036b9b4db251db3bade3c681a130de9c946','Exact assigned prior Root content adoption')
+scope=value(receipt['current_owner_directed_scope']);scope_adoption=value(receipt['current_scope_adoption'])
+scope_review=value(scope_adoption['different_review']);scope_proof=value(scope_adoption['full_proof'])
+check(scope_review['reviewer']=='/root/phase_frontier' and scope_review['checks_failed']==0 and scope_review['verdict'].startswith('PASS_'),'Actual genuine earlier different scope review remains accepted Source evidence')
+check(scope_review['full_proof']==scope_adoption['full_proof'] and scope_adoption['subject']==receipt['current_owner_directed_scope'] and scope_adoption['author']=='/root','Current Root scope adoption covers exact subject/review/proof')
+check(scope_proof['checks_failed']==0 and len(scope_proof['checks'])==scope_proof['serialized_check_count']==73 and all(c['passed'] for c in scope_proof['checks']),'Earlier scope73 checks verified as saved evidence; not rerun or added')
+now=dt.datetime.now(dt.timezone.utc)
+check(stamp(scope['interval_start'])<=stamp(now.isoformat()) and stamp(now.isoformat())+60000000000<stamp(scope['interval_end']) and stamp(scope['interval_end'])-stamp(scope['interval_start'])==7200000000000,'Current finite2h scope with reserve60 remains live')
+check(scope['maximum_local_agents_including_Root']==3 and scope['historical_shared_maximum_including_both_roots_and_overlap']==5 and scope['two_slots_reserved_for_other_root_overlap'] is True,'Original local3 plus reserved2/shared5 scheduling unchanged')
+check(scope['Pro3_coordination_required'] is False and scope['future_lease_family_duration_paths_INIT_or_clocks'] is None,'Direct owner no-Pro3 scope; no prospective lease/family facts created')
+selection=value(receipt['Root_future_path_selection'])
+row=next(r for r in selection['rows'] if r['role']=='checker_peer')
+check(row==scope['selected_exact_role'] and row['draft_path']==draft_pin['path'] and row['source_cap']==receipt['source_cap']==65536,'Exact selected row/role/cap and draft namespace')
+check(row['predecessor']==receipt['predecessor'] and row['preparation_Source_author']=='/root' and row['retained_semantic_Source_author']=='/root/actual_record_checker','Selected physical Root and retained semantic author remain separate')
+pre_body=read(receipt['predecessor']['path'],receipt['predecessor']);pre=decode(pre_body)
+source022=value(receipt['Source022']);lease=value(receipt['new_canonical_lease'])
+check(receipt['Root_future_path_selection']==scope['selected_family'] and receipt['Source022']==selection['Source022'] and receipt['new_canonical_lease']==selection['new_canonical_lease'],'Exact historical selected45/Source022/lease010 wire pins preserved')
+check(stamp(lease['lease_end_utc'])<stamp(now.isoformat()) and receipt['dated_Source022_and_expired_lease010_are_wire_data_only'] is True and lease['operational_authority'] is False,'Expired immutable lease010 is explicitly wire evidence only')
+details=value(receipt['genuine_Root_full_details']);decision=value(receipt['genuine_Root_content_decision']);clarification=value(receipt['genuine_Root_selector_clarification'])
+review=value(receipt['different_actual_full_details_review']);review_proof=value(review['full_proof'])
+contract=value(review['checker_peer_schema_contract']);contract_review=value(review['checker_peer_schema_genuine_review']);contract_adoption=value(review['checker_peer_schema_Root_adoption'])
+schema=contract['original_peer_schemas']['checker_peer']
+check(contains(contract_review,review['checker_peer_schema_contract']) and contract_review.get('checks_failed')==0 and str(contract_review.get('verdict','')).startswith('PASS_'),'Genuine original Source024 schema review covers actual contract')
+check(contract_adoption.get('author')=='/root' and contains(contract_adoption,review['checker_peer_schema_contract']) and contains(contract_adoption,review['checker_peer_schema_genuine_review']),'Original Source024 schema has genuine Root adoption')
+check(list(draft)==list(pre)==schema['original_closed_keys_in_order']==receipt['original_closed_keys_in_order'] and len(draft)==receipt['original_closed_key_count']==15,'Exact original closed15 key order preserved')
+check(schema['peer_Source_cap']==row['source_cap']==65536 and 0<len(draft_body)<=65536,'Original selected peer65536 cap preserved')
+for key,expected in schema['immutable_original_fields'].items():
+    check(type(draft[key]) is type(expected) and draft[key]==expected==pre[key],'Unchanged immutable original field '+key)
+check(draft['reviewer']==pre['reviewer']==decision['genuine_content_reviewer']==schema['genuine_content_author']=='/root','Genuine Root checker content reviewer and original nominal are truthful')
+check(draft['verdict']==pre['verdict']==decision['verdict_to_serialize']==schema['required_original_verdict'],'Exact original static-only PASS verdict')
+changed=[k for k in draft if draft[k]!=pre[k]]
+check(changed==receipt['changed_actual_fields']==['checker_template_sha256','created_utc','full_source_details_sha256','source_manifest_sha256'],'Only four actual declared fields changed')
+check(set(changed)<=set(schema['mutable_original_fields']) and receipt['only_original_mutable_fields_used'] is True,'Actual changes are within original six mutable fields')
+check(base64.b64decode(receipt['whole_predecessor_bytes_base64'],validate=True)==pre_body and receipt['complete_predecessor_inverse_matches'] is True and receipt['complete_predecessor_inverse_sha256']==hashlib.sha256(pre_body).hexdigest(),'Complete saved predecessor inverse equals actual predecessor014 bytes')
+inverse=dict(draft)
+for key in changed:inverse[key]=pre[key]
+inverse_body=(json.dumps(inverse,indent=2)+'\n').encode('utf-8')
+check(inverse_body==pre_body,'Independent original serialization inverse reconstructs all795 predecessor bytes')
+check(receipt['physical_selected_byte_editor']==receipt['selected_metadata_Source_worker']==receipt['author']=='/root' and receipt['retained_semantic_Source_author']==draft['source_author'],'Actual receipt physical/semantic Source attribution is truthful')
+check(content_adoption['author']=='/root' and content_adoption['verdict']=='ACCEPT_GENUINE_ROOT_CHECKER022_FULL_STATIC_SOURCE_DETAILS_AND_PEER015_CONTENT' and content_adoption['checks_failed']==0,'Genuine Root prior content adoption is static-only ACCEPT')
+for key in ('genuine_Root_full_details','genuine_Root_content_decision','genuine_Root_selector_clarification'):
+    check(content_adoption[key]==receipt[key] and review[key]==receipt[key] and contains(review_proof,receipt[key]),'Root content adoption and actual independent review cover '+key)
+check(content_adoption['different_review']==receipt['different_actual_full_details_review'] and content_adoption['full_proof']==review['full_proof'],'Prior content adoption covers exact different review and full proof')
+check(review['reviewer']==review_proof['reviewer']=='/root/checker_frontier' and review['reviewer'] not in {'/root','/root/phase_frontier'},'Full Source/content review is genuinely different from Root author and this draft reviewer')
+check(review['serialized_check_count']==review_proof['serialized_check_count']==content_adoption['serialized_check_count']==4814 and review['actual_input_count']==len(review_proof['actual_input_observations'])==content_adoption['actual_input_count']==60,'Actual prior Source4814 checks/60 inputs are separate saved evidence')
+check(len(review_proof['checks'])==4814 and review['checks_failed']==review_proof['checks_failed']==0 and all(c['passed'] for c in review_proof['checks']),'All4814 saved independent Source checks remain passed, without rerun/summing')
+check(review['verdict']==review_proof['verdict']=='PASS_CURRENT_CANONICAL_CHECKER022_COMPLETE_STATIC_SOURCE_ONLY','Prior independent verdict accepts complete current static Source only')
+check(details['author']==details['reviewer']=='/root' and details['source_author']=='/root/actual_record_checker' and details['checks_failed']==0 and details['serialized_check_count']==len(details['checks'])==209 and all(c['passed'] for c in details['checks']),'Genuine Root full details209 checks are actual saved source evidence')
+check(details['actual_canonical_Source']==decision['required_current_Source_dependencies'] and set(details['actual_canonical_Source'])==set(schema['required_Source_roles']),'Genuine Root review and decision bind exact four current canonical Source dependencies')
+for role,p in details['actual_canonical_Source'].items():
+    read(p['path'],p)
+    check(p in review['subjects'] and contains(review_proof,p),'Prior independent review covers actual canonical '+role)
+check(draft['checker_template_sha256']==details['actual_canonical_Source']['checker']['sha256'] and draft['source_manifest_sha256']==details['actual_canonical_Source']['checker_manifest']['sha256'] and draft['full_source_details_sha256']==receipt['genuine_Root_full_details']['sha256'],'All three draft Source hashes are exact current checker022/manifest022/genuine full details')
+check(decision['fresh_full_checker022_Source_details']==receipt['genuine_Root_full_details'] and decision['selected_checker_peer_row']==row and decision['peer_actual_binding'] is None and decision['future_draft_or_canonical_pin'] is None,'Content decision genuinely precedes draft without invented future pins')
+check(clarification['subject']==receipt['genuine_Root_full_details'] and clarification['subject_original_bytes_unchanged'] is True and clarification['Native_or_Parser_measurement'] is False,'Genuine Root selector clarification preserves existing details and claims no Native/Parser result')
+for obj,label in ((receipt,'receipt'),(details,'details'),(decision,'decision'),(review,'different Source review'),(review_proof,'different Source proof'),(content_adoption,'Root prior content adoption')):
+    for key in ('target_execution','tests_executed','operational_authority','scientific_authority'):
+        check(obj.get(key) is False,label+' preserves false '+key)
+check(receipt['actual_binding'] is None and receipt['full_configure_source_closure_ready'] is False and content_adoption['full_configure_source_closure_ready'] is False and details['full_configure_source_closure_ready'] is False,'Null actual_binding and unready full configure closure remain explicit')
+check(receipt['canonical_publication'] is False and receipt['different_actual_draft_and_receipt_review_pending'] is True,'Dated author receipt truthfully records unpublished draft and then-pending different review')
+created=stamp(draft['created_utc']);before=stamp(receipt['actual_source_write_interval_utc']['before']);after=stamp(receipt['actual_source_write_interval_utc']['after'])
+check(stamp(scope_adoption['created_utc'])<=stamp(details['created_utc'])<=stamp(decision['created_utc'])<=stamp(clarification['created_utc'])<=stamp(review['created_utc'])<=stamp(content_adoption['created_utc'])<=created<=before<=after<=stamp(receipt['created_utc'])<=stamp(now.isoformat()),'Actual scope/details/decision/clarification/different review/Root adoption/draft/write/receipt chronology')
+check(receipt['native_creation_timestamp_or_Native10_identity_claimed'] is False,'Author receipt explicitly disclaims native creation/Native10 identity')
+check(type(receipt['python_stat_birthtime_ns']) is int and type(receipt['python_stat_mtime_ns']) is int and receipt['python_stat_mtime_ns']==inputs[draft_pin['path']]['path9_before'][3],'Saved Python stat fields have integer provenance and actual current mtime matches')
+check(receipt['python_stat_birthtime_ns']<=after,'Saved Python file birth precedes end of actual Source write interval; not relabeled native birth')
+check(not Path(row['canonical_path']).exists(),'Canonical peer015 remains absent at actual draft review')
+self_body=read(Path(__file__))
+failed=sum(not c['passed'] for c in checks)
+verdict='PASS_ACTUAL_CHECKER_PEER015_DRAFT_RECEIPT_AND_COMPLETE_PREDECESSOR_INVERSE_SOURCE_ONLY' if failed==0 else 'REFUSED_ACTUAL_CHECKER_PEER015_DRAFT_SOURCE'
+created_review=dt.datetime.now(dt.timezone.utc).isoformat()
+proof={'schema_version':1,'record_type':'independent_actual_checker_peer015_draft_receipt_whole_inverse_full_Source_proof','reviewer':'/root/phase_frontier','source_author':'/root','created_utc':created_review,'subject':draft_pin,'author_receipt':receipt_pin,'prior_Root_content_adoption':receipt['Root_content_adoption'],'actual_inputs':list(inputs.values()),'checks':checks,'serialized_check_count':len(checks),'actual_input_count':len(inputs),'checks_failed':failed,'verdict':verdict,'actual_draft':draft,'actual_author_receipt':receipt,'complete_actual_draft_bytes_base64':base64.b64encode(draft_body).decode('ascii'),'complete_actual_predecessor_bytes_base64':base64.b64encode(pre_body).decode('ascii'),'complete_independently_reconstructed_predecessor_bytes_base64':base64.b64encode(inverse_body).decode('ascii'),'changed_fields':changed,'earlier_Source_review_counts_not_summed_or_rerun':True,'actual_python_birthtime_ns_available_in_reviewer':inputs[draft_pin['path']]['path9_before'][8] is not None,'Python_birth_disclosure':'Author receipt saved Python stat birth is separate from native creation evidence. This reviewer retains its own full Python vectors, including null st_birthtime_ns when unavailable; write interval labels byte serialization, not file-open/native-creation time.','reviewer_Source':pin(Path(__file__),self_body),'target_execution':False,'tests_executed':False,'operational_authority':False,'scientific_authority':False,'Native_Parser_or_project_code_invoked':False,'Root_adoption_or_canonical_publication_written':False}
+proof_pin=emit(OUT/'INDEPENDENT_ACTUAL_CHECKER_PEER015_DRAFT_RECEIPT_FULL_SOURCE_PROOF_001.json',proof)
+capsule={'schema_version':1,'record_type':'independent_actual_checker_peer015_draft_receipt_float_free_Source_review','reviewer':'/root/phase_frontier','reviewer_agent':'/root/phase_frontier','source_author':'/root','created_utc':created_review,'subject':draft_pin,'subjects':[draft_pin,receipt_pin,receipt['Root_content_adoption'],receipt['genuine_Root_full_details'],receipt['genuine_Root_content_decision'],receipt['genuine_Root_selector_clarification'],receipt['different_actual_full_details_review']],'full_proof':proof_pin,'reviewer_Source':pin(Path(__file__),self_body),'serialized_check_count':len(checks),'actual_input_count':len(inputs),'checks_failed':failed,'verdict':verdict,'original_closed_key_count':15,'original_Source_cap':65536,'changed_actual_fields':changed,'whole_predecessor_inverse_verified':True,'canonical_peer015_absent_at_review':True,'actual_binding':None,'full_configure_source_closure_ready':False,'target_execution':False,'tests_executed':False,'operational_authority':False,'scientific_authority':False,'scope':'Actual checker_peer015 draft bytes, truthful Root author/serialization receipt, whole795byte predecessor inverse and accepted current Source/content provenance only. Original wire Source022/expiredlease010 are not current authority; no Native/Parser/target/case execution or canonical publication.'}
+capsule_pin=emit(OUT/'INDEPENDENT_ACTUAL_CHECKER_PEER015_DRAFT_RECEIPT_FLOAT_FREE_SOURCE_CAPSULE_001.json',capsule)
+print(json.dumps({'verdict':verdict,'serialized_check_count':len(checks),'actual_input_count':len(inputs),'checks_failed':failed,'capsule':capsule_pin,'full_proof':proof_pin},sort_keys=True))
+if failed:
+    print(json.dumps([c for c in checks if not c['passed']],sort_keys=True));raise SystemExit(1)

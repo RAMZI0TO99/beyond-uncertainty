@@ -1,0 +1,149 @@
+"""Different saved canonical Source review; stdlib data reads only."""
+import base64,copy,datetime as dt,hashlib,json,os,re,stat,sys
+from pathlib import Path
+ROOT=Path(r'D:\Aenv\pro2');HERE=ROOT/'WORK/resume-20261015-001/reviews/checker_peer015_canonical_002';WORK=ROOT/'WORK/resume-20261015-001';D=WORK/'source_continuation_002'
+FIELDS=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns');SHARED=(0,1,2,3,6,7,8)
+CHECKS=[];OBS={};BODIES={}
+def ck(v,label,context=None):
+    CHECKS.append(dict(label=label,context=context,passed=v is True))
+    if v is not True:raise ValueError(str(label)+' '+str(context))
+def sha(b):return hashlib.sha256(b).hexdigest()
+def utc():return dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds')
+def fact(p,b):return dict(path=str(p),sha256=sha(b),bytes=len(b))
+def vec(s):return [getattr(s,k,None) for k in FIELDS]
+def ordinary(p):
+    p=Path(p);ck(p.is_absolute() and '..' not in p.parts,'absolute Source path',str(p))
+    for x in [*reversed(p.parents),p]:
+        q=x.lstat();ck(not stat.S_ISLNK(q.st_mode) and not(getattr(q,'st_file_attributes',0)&1024),'non-reparse Source path chain',str(x))
+        if x!=p:ck(stat.S_ISDIR(q.st_mode),'ordinary Source ancestor',str(x))
+    q=p.lstat();ck(stat.S_ISREG(q.st_mode) and q.st_nlink==1,'single-link regular Source input',str(p));return p
+
+def read(p,expected=None,cap=2097152):
+    p=ordinary(p);a=vec(p.lstat());ck(a[2]<=cap,'actual finite Source input cap',str(p))
+    with p.open('rb') as h:
+        f=vec(os.fstat(h.fileno()));ck(all(a[i]==f[i] for i in SHARED),'separate PATH9/fd9 with only original shared7 equality',str(p))
+        one=h.read(cap+1);h.seek(0);two=h.read(cap+1);ck(one==two and f==vec(os.fstat(h.fileno())),'two exact complete reads and independent fd9 stability',str(p))
+    ck(a==vec(p.lstat()) and len(one)==a[2]<=cap,'independent full PATH9 stability and byte length',str(p))
+    if expected is not None:ck(sha(one)==expected,'exact actual saved SHA pin',str(p))
+    if str(p) in OBS:ck(OBS[str(p)]['path9']==a and OBS[str(p)]['descriptor9']==f and BODIES[str(p)]==one,'retained complete first bytes and raw observations',str(p))
+    else:OBS[str(p)]={**fact(p,one),'path9':a,'descriptor9':f,'read_cap':cap};BODIES[str(p)]=one
+    return one
+
+def pairs(items):
+    out={}
+    for k,v in items:
+        if k in out:raise ValueError('duplicate JSON key '+k)
+        out[k]=v
+    return out
+
+def decode(b):
+    ck(not b.startswith(b'\xef\xbb\xbf'),'strict UTF8 JSON without BOM')
+    def refuse(t):raise ValueError('float/nonfinite token '+t)
+    return json.loads(b.decode('utf8','strict'),object_pairs_hook=pairs,parse_float=refuse,parse_constant=refuse)
+def rec(p,expected=None,cap=2097152):return decode(read(p,expected,cap))
+def pread(p,cap=2097152):
+    ck(type(p) is dict and set(p)=={'path','sha256','bytes'} and type(p['bytes']) is int and 0<p['bytes']<=cap and re.fullmatch('[a-f0-9]{64}',p['sha256']) is not None,'closed typed bounded actual fact3')
+    b=read(p['path'],p['sha256'],cap);ck(len(b)==p['bytes'],'exact saved byte pin count',p['path']);return b
+
+def prec(p):return decode(pread(p))
+def contains(v,p):
+    if type(v) is dict:return v==p or any(contains(x,p) for x in v.values())
+    if type(v) is list:return any(contains(x,p) for x in v)
+    return False
+
+def wire(v):return (json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+def moment(t):return dt.datetime.fromisoformat(t)
+def exact_record(p,kind,expected_author='/root'):
+    v=prec(p);ck(v['record_type']==kind and v.get('author',v.get('reviewer'))==expected_author,'exact genuine saved record nominal',kind);return v
+
+def saved_count(review,proof,expected_checks,expected_inputs):
+    ck(review['serialized_check_count']==proof['serialized_check_count']==len(proof['checks'])==expected_checks,'saved serialized check count exact without rerun',review['record_type'])
+    ck(review['checks_failed']==proof['checks_failed']==0 and all(x['passed'] is True for x in proof['checks']),'all genuinely saved result rows passed',review['record_type'])
+    ck(review['actual_input_count']==expected_inputs,'saved input count explicit and separate',review['record_type'])
+
+def run():
+    ck(Path(__file__).absolute().parent==HERE and sys.flags.isolated==1 and sys.flags.no_site==1 and sys.dont_write_bytecode and not Path(sys.executable).is_relative_to(ROOT),'only own general-host isolated stdlib reviewer')
+    publication_path=D/'ROOT_CHECKER_PEER015_ACTUAL_CANONICAL_PUBLICATION_RECEIPT_001.json';pub=rec(publication_path,'c9568307686d86c683d43841079d2fd76dcc2e390e38d02659713daf4d784a30');pubpin=fact(publication_path,BODIES[str(publication_path)])
+    scope=prec(pub['current_scope']);scope_adopt=prec(pub['current_scope_adoption']);scope_review=prec(scope_adopt['different_review']);pread(scope_adopt['full_proof'])
+    ck(scope_adopt['author']=='/root' and scope_adopt['subject']==pub['current_scope'] and scope_review['reviewer']!='/root' and scope_review['checks_failed']==0,'actual reviewed Root owner static scope adopted')
+    now=dt.datetime.now(dt.timezone.utc);ck(moment(scope['interval_start'])<=now<moment(scope['interval_end'])-dt.timedelta(seconds=60),'current owner scope and original60 publication reserve')
+    ck(scope['Pro3_coordination_required'] is False and scope['canonical_publication_role_allowlist']==['checker_peer'] and scope['target_execution'] is False and scope['operational_authority'] is False,'noPro3 lightweight Source-only current scope retained')
+    selected=prec(pub['selected_family']);rows={x['role']:x for x in selected['rows']};row=rows['checker_peer']
+    item=pub['publication_item_closed10'];closed10={'role','draft','canonical_path','source_review','Root_adoption','physical_Source_editor','retained_semantic_Source_author','source_cap','author_receipt','metadata_Source_worker'}
+    ck(type(item) is dict and set(item)==closed10 and len(item)==10,'original closed10 publication item schema')
+    ck(item['role']=='checker_peer' and item['canonical_path']==row['canonical_path'] and item['draft']['path']==row['draft_path'] and item['source_cap']==row['source_cap']==pub['source_cap']==65536,'exact selected canonical/draft role and original65536 cap')
+    ck(item['physical_Source_editor']==item['metadata_Source_worker']=='/root' and item['retained_semantic_Source_author']=='/root/actual_record_checker','physical Root and retained semantic Source author attribution exact')
+    actual=pread(pub['canonical'],65536);draft=pread(item['draft'],65536)
+    ck(actual==draft and len(actual)==795 and pub['canonical']['path']==row['canonical_path'],'whole actual795 draft and canonical bytes identical')
+    peer=decode(actual);author=prec(item['author_receipt']);draft_review=prec(item['source_review']);draft_proof=prec(draft_review['full_proof']);draft_adopt=prec(item['Root_adoption'])
+    saved_count(draft_review,draft_proof,263,26)
+    ck(draft_review['reviewer']=='/root/phase_frontier' and draft_review['target_execution'] is False and draft_review['operational_authority'] is False and draft_review['canonical_peer015_absent_at_review'] is True,'genuinely different saved prepublication draft review and historical absence')
+    ck(draft_review['subject']==item['draft'] and contains(draft_review,item['author_receipt']) and draft_adopt['different_review']==item['source_review'] and draft_adopt['draft']==item['draft'] and draft_adopt['actual_author_receipt']==item['author_receipt'] and draft_adopt['author']=='/root','Root adoption binds exact saved draft/receipt review before publication')
+    ck(draft_adopt['serialized_check_count']==263 and draft_adopt['actual_input_count']==26 and draft_adopt['canonical_publication_at_this_adoption'] is False,'saved draft-adoption counts and stage exact')
+    content_adopt=prec(author['Root_content_adoption']);source_review=prec(content_adopt['different_review']);source_proof=prec(source_review['full_proof']);saved_count(source_review,source_proof,4814,60)
+    ck(content_adopt['author']=='/root' and content_adopt['different_review']==author['different_actual_full_details_review'] and source_review['reviewer']=='/root/checker_frontier' and content_adopt['target_execution'] is False and content_adopt['operational_authority'] is False,'actual genuine Root content accepted saved4814-check different review')
+    details=prec(author['genuine_Root_full_details']);decision=prec(author['genuine_Root_content_decision']);clarification=prec(author['genuine_Root_selector_clarification'])
+    for key,ref in [('genuine_Root_full_details','genuine_Root_full_details'),('genuine_Root_content_decision','genuine_Root_content_decision'),('genuine_Root_selector_clarification','genuine_Root_selector_clarification')]:
+        ck(content_adopt[key]==author[ref] and contains(source_review,author[ref]),'actual Root content subject was reviewed before draft',key)
+    ck(details['author']==details['reviewer']=='/root' and details['source_author']=='/root/actual_record_checker' and details['actual_binding'] is None and details['full_configure_source_closure_ready'] is False,'fresh genuine Root own full details preserve current static-only scope')
+    ck(decision['fresh_full_checker022_Source_details']==author['genuine_Root_full_details'] and decision['selected_checker_peer_row']==row and decision['genuine_content_reviewer']=='/root' and clarification['subject']==author['genuine_Root_full_details'],'genuine Root decision and clarification bind exact Source and selected role')
+    schema=prec(source_review['checker_peer_schema_contract'])['original_peer_schemas']['checker_peer'];pread(source_review['checker_peer_schema_genuine_review']);pread(source_review['checker_peer_schema_Root_adoption'])
+    ck(list(peer)==schema['original_closed_keys_in_order'] and len(peer)==15 and schema['peer_Source_cap']==65536,'canonical original closed15 ordered peer schema and65536 cap')
+    for key,value in schema['immutable_original_fields'].items():ck(type(peer[key]) is type(value) and peer[key]==value,'canonical immutable original Source-only field',key)
+    ck(peer['reviewer']=='/root' and peer['verdict']=='PASS_STATIC_METADATA3_CHECKER_SOURCE_ONLY' and peer['checker_template_sha256']==details['actual_canonical_Source']['checker']['sha256'] and peer['source_manifest_sha256']==details['actual_canonical_Source']['checker_manifest']['sha256'] and peer['full_source_details_sha256']==author['genuine_Root_full_details']['sha256'],'canonical real Root peer actual Source and full-details pins')
+    predecessor=pread(row['predecessor'],65536);old=decode(predecessor);restored=copy.deepcopy(peer)
+    changed=[key for key in peer if peer[key]!=old[key]]
+    ck(changed==author['changed_actual_fields']==draft_review['changed_actual_fields']==['checker_template_sha256','created_utc','full_source_details_sha256','source_manifest_sha256'],'all and only four genuine original mutable fields differ')
+    for key in schema['mutable_original_fields']:restored[key]=copy.deepcopy(old[key])
+    restored_bytes=wire(restored)
+    ck(restored_bytes==predecessor==base64.b64decode(author['whole_predecessor_bytes_base64'],validate=True) and sha(restored_bytes)==author['complete_predecessor_inverse_sha256']==row['predecessor']['sha256'] and len(restored_bytes)==795,'complete actual795 predecessor inverse and saved entire predecessor exact')
+    ck(author['draft']==item['draft'] and author['predecessor']==row['predecessor'] and author['current_owner_directed_scope']==pub['current_scope'] and author['Root_future_path_selection']==pub['selected_family'],'actual author receipt binds selected exact current Source draft and dated family')
+    ck(author['dated_Source022_and_expired_lease010_are_wire_data_only'] is True and author['actual_binding'] is None and author['full_configure_source_closure_ready'] is False and author['canonical_publication'] is False,'author receipt historical Source022/lease010 data grants no current execution authority')
+    pread(author['Source022']);lease=prec(author['new_canonical_lease']);ck(moment(lease['lease_end_utc'])<now and lease['operational_authority'] is False,'lease010 stays expired and no runtime authority')
+    for value,label in [(pub,'publication'),(author,'author receipt'),(details,'Root full details'),(decision,'Root content decision')]:ck(all(value.get(k) is False for k in ('target_execution','tests_executed','operational_authority','scientific_authority')),'all saved content stage target/test/runtime/science flags false',label)
+    ck(pub['author']=='/root' and pub['canonical_publication'] is True and pub['actual_draft_and_canonical_whole_bytes_equal'] is True and pub['create_once_staging_and_no_overwrite_rename'] is True and pub['staging_absent_after_publication'] is True,'actual Root create-once canonical publication receipt with exact saved assertions')
+    ck(pub['different_saved_canonical_Source_review_and_Root_adoption_pending'] is True and pub['Native10_birth_or_Job_custody_claimed'] is False and author['native_creation_timestamp_or_Native10_identity_claimed'] is False and pub['new_execution_lease_or_family'] is False,'Root saved canonical acceptance pending; no Native10/Job/newfamily claims')
+    canonical=Path(row['canonical_path']);draftpath=Path(row['draft_path']);cs=canonical.stat();ds=draftpath.stat()
+    ck(cs.st_birthtime_ns==pub['actual_python_stat_birthtime_ns'] and cs.st_mtime_ns==pub['actual_python_stat_mtime_ns'],'actual general-host Python canonical birth/mtime equal publication receipt')
+    ck(ds.st_birthtime_ns==author['python_stat_birthtime_ns'] and ds.st_mtime_ns==author['python_stat_mtime_ns'],'actual general-host Python draft birth/mtime equal author receipt')
+    ck(cs.st_birthtime_ns!=ds.st_birthtime_ns and cs.st_ino!=ds.st_ino,'distinct ordinary draft and canonical physical creations')
+    ck(not os.path.lexists(str(canonical)+'.staging') and not os.path.lexists(str(draftpath)+'.staging'),'actual draft and canonical staging identities absent')
+    times=[moment(source_review['created_utc']),moment(content_adopt['created_utc']),moment(author['actual_source_write_interval_utc']['before']),moment(author['actual_source_write_interval_utc']['after']),moment(author['created_utc']),moment(draft_review['created_utc']),moment(draft_adopt['created_utc']),moment(pub['actual_publication_interval_utc']['before']),moment(pub['actual_publication_interval_utc']['after']),moment(pub['created_utc'])]
+    ck(times==sorted(times),'real fullSource review/content adoption precedes draft and draft review/adoption precede publication')
+    ck(moment(scope['interval_start'])<=times[0] and times[-1]<moment(scope['interval_end'])-dt.timedelta(seconds=60),'entire actual staged chronology stays in current scope with60 reserve')
+    ck(moment(peer['created_utc'])<=moment(author['actual_source_write_interval_utc']['before']),'peer actual UTC timestamp precedes physical draft write interval')
+    ledger_adopt_path=ROOT/'WORK/resume-20261013-001/generation/ROOT_SOURCE030_STEP080_ACTUAL_OUTCOME_AND_PENDING_SCOPE_LEDGER_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json';ledger_adopt=rec(ledger_adopt_path);ledger=prec(ledger_adopt['outcome_ledger']);ledger_review=prec(ledger_adopt['different_review']);pread(ledger_adopt['full_proof'])
+    ck(ledger_adopt['author']=='/root' and ledger_adopt['selected_canonical_path_count']==ledger['selected_canonical_path_count']==35 and ledger_review['reviewer']!='/root' and ledger_review['checks_failed']==0,'accepted original35 Source inventory exact prior ledger')
+    ck(ledger['selected_family']==pub['selected_family'] and len(ledger['selected_inventory'])==45 and ledger['selected_role_count']==45,'same historical selected45 family, no newfamily')
+    before_roles=[];after_roles=[];retained=[];pending=[]
+    for entry in ledger['selected_inventory']:
+        name=entry['role'];ck(entry['canonical_path']==rows[name]['canonical_path'],'selected inventory canonical path unchanged',name)
+        if entry['canonical'] is not None:
+            b=pread(entry['canonical'],rows[name]['source_cap']);before_roles.append(name);after_roles.append(name);retained.append(dict(role=name,canonical=entry['canonical'],actual_byte_pin_exact=True))
+        elif name=='checker_peer':ck(entry['canonical_path']==pub['canonical']['path'],'only newly present role is peer015');after_roles.append(name)
+        else:ck(not os.path.lexists(entry['canonical_path']) and not os.path.lexists(entry['canonical_path']+'.staging'),'other nine selected role identities still absent',name);pending.append(name)
+    ck(len(before_roles)==35 and len(after_roles)==36 and len(pending)==9 and set(after_roles)-set(before_roles)=={'checker_peer'},'all35 accepted byte pins retained; only checker_peer added to36of45')
+    ck(pending==[x for x in ledger['pending_roles'] if x!='checker_peer'],'nine pending roles retain exact prior ordering')
+    refusals=[]
+    for group in [D,WORK/'reviews/checker022_current_source_002',WORK/'reviews/checker_peer015_draft_002']:
+        for p in sorted(group.glob('*.json')):
+            if any(k in p.name for k in ('REFUSAL','STOP','CORRECTION')):refusals.append(fact(p,read(p)))
+    for pin in source_review['historical_native_refusals']:pread(pin);refusals.append(pin)
+    for p,b in list(BODIES.items()):ck(read(p,OBS[p]['sha256'],OBS[p]['read_cap'])==b,'all actual saved subjects and original35 bytes/raw metadata stable on final read',p)
+    return dict(publication=pubpin,canonical=pub['canonical'],draft=item['draft'],author_receipt=item['author_receipt'],draft_review=item['source_review'],draft_Root_adoption=item['Root_adoption'],current_scope=pub['current_scope'],current_scope_adoption=pub['current_scope_adoption'],Root_full_details=author['genuine_Root_full_details'],Root_content_decision=author['genuine_Root_content_decision'],Root_selector_clarification=author['genuine_Root_selector_clarification'],prior_full_Source_review=content_adopt['different_review'],prior_full_Source_Root_adoption=author['Root_content_adoption'],original15_fields=list(peer),changed_actual_fields=changed,full_predecessor_inverse=base64.b64encode(restored_bytes).decode(),predecessor=row['predecessor'],actual_canonical_Python_PATH9=OBS[str(canonical)]['path9'],actual_canonical_Python_descriptor9=OBS[str(canonical)]['descriptor9'],saved_accepted35_ledger=ledger_adopt['outcome_ledger'],all_prior35_exact=retained,selected_canonical_path_count=36,previous_selected_canonical_path_count=35,selected_role_count=45,pending_roles=pending,exact_preserved_refusals=refusals,historical_saved_counts_authenticated_not_rerun_or_summed=[dict(stage='full Source/content',checks=4814,inputs=60),dict(stage='draft/receipt',checks=263,inputs=26)],limitations=['Saved canonical publication review only. Original Source predicates, prior helpers and Source audits were not rerun.','Saved prior absence review, original Root receipt and actual distinct Python birth/mtime support create-once publication. No retrospective system-wide handle, process or whole-host absence proof is claimed.','Python PATH9 and descriptor9 remain independent actual host observations with original shared7 comparison; no Native10 identity/birth/LastAccess measurement or cross-API9 normalization.','Canonical peer015 has actual_binding null and target/test/runtime/operational flags false; complete45/configure closure, fixtures, Native/Parser/C8/actual6, newlease/family and science remain unready.','Current review performs no Root adoption, publication, primary documentation, Git mutation or scientific total recount.'])
+
+def write(name,v):
+    p=HERE/name;ck(not os.path.lexists(p),'own create-once output absent',name);b=(json.dumps(v,sort_keys=True,separators=(',',':'),allow_nan=False)+'\n').encode();ck(len(b)<=2097152,'original2097152 own metadata output cap',name)
+    with p.open('xb') as h:h.write(b);h.flush();os.fsync(h.fileno())
+    if p.read_bytes()!=b:raise ValueError('own complete output readback mismatch')
+    return fact(p,b)
+
+if __name__=='__main__':
+    result=run()
+    if '--probe' in sys.argv:print(json.dumps(dict(status='PROBE_PASS_NO_OUTPUT',checks=len(CHECKS),inputs=len(OBS),present=result['selected_canonical_path_count'])));raise SystemExit(0)
+    common=dict(schema_version=1,reviewer='/root/checker_frontier',author='/root/checker_frontier',created_utc=utc(),target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False,original_or_project_or_helper_imported_or_called=False,original_Source_audits_rerun=False,Native_Parser_execution=False,Root_adoption_written=False,canonical_publication_written=False,Root_canonical_acceptance_pending=True,full_configure_source_closure_ready=False)
+    proof={**common,'record_type':'independent_actual_checker_peer015_saved_canonical_Source_publication_full_proof','verdict':'PASS_ACTUAL_CHECKER_PEER015_SAVED_CANONICAL_SOURCE_PUBLICATION_ONLY',**result,'own_reviewer_Source':fact(Path(__file__),Path(__file__).read_bytes()),'actual_input_observations':list(OBS.values()),'PATH9_descriptor9_fields':list(FIELDS),'original_shared7_field_indexes':list(SHARED),'checks':CHECKS.copy(),'serialized_check_count':len(CHECKS),'checks_failed':sum(x['passed'] is not True for x in CHECKS)}
+    full=write('INDEPENDENT_ACTUAL_CHECKER_PEER015_SAVED_CANONICAL_FULL_SOURCE_PROOF_001.json',proof)
+    capsule={**common,'record_type':'independent_actual_checker_peer015_saved_canonical_float_free_Source_capsule','verdict':proof['verdict'],'full_proof':full,'subject':result['canonical'],'publication':result['publication'],'draft':result['draft'],'author_receipt':result['author_receipt'],'prior_draft_review':result['draft_review'],'prior_draft_Root_adoption':result['draft_Root_adoption'],'prior_full_Source_review':result['prior_full_Source_review'],'prior_full_Source_Root_adoption':result['prior_full_Source_Root_adoption'],'current_scope':result['current_scope'],'current_scope_adoption':result['current_scope_adoption'],'original_key_count':15,'original_Source_cap':65536,'actual_complete_predecessor_inverse_verified':True,'staging_absent':True,'all35_prior_canonical_byte_pins_unchanged':True,'previous_selected_canonical_path_count':35,'selected_canonical_path_count':36,'selected_role_count':45,'pending_roles':result['pending_roles'],'actual_input_count':len(OBS),'serialized_check_count':proof['serialized_check_count'],'checks_failed':proof['checks_failed'],'prior_counts_not_rerun_or_summed':True,'limitations':result['limitations']}
+    cap=write('INDEPENDENT_ACTUAL_CHECKER_PEER015_SAVED_CANONICAL_FLOAT_FREE_SOURCE_CAPSULE_001.json',capsule)
+    print(json.dumps(dict(status='PASS',full_proof=full,capsule=cap,actual_checks=proof['serialized_check_count'],actual_inputs=len(OBS))))

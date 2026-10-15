@@ -1,0 +1,263 @@
+"""Independent stdlib Source-byte audit. Never imports or invokes project Sources."""
+import ast,base64,copy,datetime as dt,hashlib,json,os,re,stat,sys
+from pathlib import Path
+ROOT=Path(r'D:\Aenv\pro2')
+HERE=ROOT/'WORK/resume-20261015-001/reviews/checker022_current_source_002'
+BASE=ROOT/'resume-2026-10-03-continuation001/metadata3-actual-checker-prep001'
+GEN=ROOT/'WORK/resume-20261007-001/generation/observer010_lease009_root_001'
+NEW=ROOT/'WORK/resume-20261013-001'
+SCOPE=ROOT/'WORK/resume-20261015-001/source_continuation_002/ROOT_CURRENT_OWNER_STATIC_CHECKER_PEER015_SCOPE_001.json'
+FIELDS=('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_mode','st_nlink','st_file_attributes','st_birthtime_ns')
+SHARED=(0,1,2,3,6,7,8)
+OBS={};BODIES={};CHECKS=[];HISTORY=[];PIN_ALIASES=[]
+def check(value,label,context=None):
+    CHECKS.append(dict(label=label,context=context,passed=value is True))
+    if value is not True: raise ValueError(str(label)+' '+str(context))
+def digest(b):return hashlib.sha256(b).hexdigest()
+def utc():return dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds')
+def fact(p,b):return dict(path=str(p),sha256=digest(b),bytes=len(b))
+def raw(s):return [getattr(s,n,None) for n in FIELDS]
+def ordinary(p):
+    p=Path(p);check(p.is_absolute() and '..' not in p.parts,'absolute ordinary Source path',str(p))
+    for x in [*reversed(p.parents),p]:
+        s=x.lstat();check(not stat.S_ISLNK(s.st_mode) and not(getattr(s,'st_file_attributes',0)&1024),'Source chain non-reparse',str(x))
+        if x!=p:check(stat.S_ISDIR(s.st_mode),'Source ancestor directory',str(x))
+    s=p.lstat();check(stat.S_ISREG(s.st_mode) and s.st_nlink==1,'single-link regular Source',str(p));return p
+
+def read(p,expected=None,cap=2097152):
+    p=ordinary(p);a=raw(p.lstat());check(a[2]<=cap,'finite input cap',str(p))
+    with p.open('rb') as h:
+        f=raw(os.fstat(h.fileno()));check(all(a[i]==f[i] for i in SHARED),'PATH9/fd9 shared7 only',str(p))
+        one=h.read(cap+1);h.seek(0);two=h.read(cap+1);end=raw(os.fstat(h.fileno()))
+        check(one==two and f==end,'two complete reads and independent fd9 stable',str(p))
+    check(a==raw(p.lstat()) and len(one)==a[2]<=cap,'full independent PATH9 stable and exact byte length',str(p))
+    if expected is not None:check(digest(one)==expected,'actual SHA matches accepted pin',str(p))
+    if str(p) in OBS:check(OBS[str(p)]['path9']==a and OBS[str(p)]['descriptor9']==f and BODIES[str(p)]==one,'same actual Source and raw metadata across audit',str(p))
+    else:OBS[str(p)]={**fact(p,one), 'path9':a,'descriptor9':f,'read_cap':cap};BODIES[str(p)]=one
+    return one
+
+def pairs(items):
+    out={}
+    for k,v in items:
+        if k in out:raise ValueError('duplicate JSON key '+k)
+        out[k]=v
+    return out
+
+def decode(b):
+    check(not b.startswith(b'\xef\xbb\xbf'),'strict JSON without BOM')
+    def refuse(v):raise ValueError('float/nonfinite Source JSON '+v)
+    return json.loads(b.decode('utf8','strict'),object_pairs_hook=pairs,parse_float=refuse,parse_constant=refuse)
+def record(p,expected=None,cap=2097152):return decode(read(p,expected,cap))
+def pin_read(pin,cap=2097152):
+    check(type(pin) is dict and all(k in pin for k in ('path','sha256','bytes')),'actual fact3 required')
+    check(type(pin['bytes']) is int and 0<=pin['bytes']<=cap and re.fullmatch('[a-f0-9]{64}',pin['sha256']) is not None,'typed finite SHA/byte pin')
+    b=read(pin['path'],pin['sha256'],cap);check(len(b)==pin['bytes'],'accepted fact3 byte count',pin['path']);return b
+
+def pin_record(pin):return decode(pin_read(pin))
+def contains(value,pin):
+    if type(value) is dict:return value==pin or any(contains(x,pin) for x in value.values())
+    if type(value) is list:return any(contains(x,pin) for x in value)
+    return False
+
+def at(value,path):
+    for part in path:value=value[part]
+    return value
+
+def replace_field(value,path,new):
+    if not path:return copy.deepcopy(new)
+    parent=value
+    for part in path[:-1]:parent=parent[part]
+    parent[path[-1]]=copy.deepcopy(new);return value
+
+def wire(v,compact=False):return (json.dumps(v,sort_keys=True,ensure_ascii=True,allow_nan=False,**({'separators':(',',':')} if compact else {'indent':2}))+'\n').encode()
+def ast_dump(v):return ast.dump(v,include_attributes=False)
+class StringEraser(ast.NodeTransformer):
+    def visit_Constant(self,node):
+        return ast.copy_location(ast.Constant(value='SOURCE_STRING_LITERAL'),node) if type(node.value) is str else node
+
+def literal_packet(label,protocol,old,new):
+    check(len(protocol['transformations'])==protocol['transformation_count'],'exact transformation packet size',label)
+    cursor=old;steps=[]
+    for i,t in enumerate(protocol['transformations']):
+        if 'before_sha256' in t:check(digest(cursor)==t['before_sha256'],'actual literal step before SHA',[label,i])
+        else:check(label=='checker020_to_checker021' and i==31,'only documented historical last-step hash absent',[label,i])
+        a=t['old'].encode();b=t['new'].encode();n=t['exact_count']
+        check(type(n) is int and n>0 and cursor.count(a)>=n,'retained bounded literal replacement count',[label,i])
+        positions=[];start=0
+        for k in range(n):
+            pos=cursor.find(a,start);check(pos>=0,'actual selected replacement offset',[label,i,k]);positions.append(pos);start=pos+len(a)
+        replacement=cursor.replace(a,b,n)
+        if 'after_sha256' in t:check(digest(replacement)==t['after_sha256'],'actual literal step after SHA',[label,i])
+        steps.append(dict(index=i,old=t['old'],new=t['new'],exact_count=n,old_offsets=positions,before_sha256=digest(cursor),after_sha256=digest(replacement)))
+        cursor=replacement
+    check(cursor==new,'entire forward packet yields canonical Source bytes',label)
+    reverse=cursor
+    for step in reversed(steps):
+        check(digest(reverse)==step['after_sha256'],'inverse starts from exact step bytes',[label,step['index']])
+        a=step['old'].encode();b=step['new'].encode();positions=step['old_offsets']
+        for k in range(len(positions)-1,-1,-1):
+            pos=positions[k]+k*(len(b)-len(a));check(reverse[pos:pos+len(b)]==b,'exact actual reverse byte slice',[label,step['index'],k]);reverse=reverse[:pos]+a+reverse[pos+len(b):]
+        check(digest(reverse)==step['before_sha256'],'whole inverse step SHA',[label,step['index']])
+    check(reverse==old,'whole actual predecessor bytes reconstructed',label)
+    ta=ast.parse(old.decode('utf8'));tb=ast.parse(new.decode('utf8'));tr=ast.parse(reverse.decode('utf8'))
+    check(ast_dump(ta)==ast_dump(tr),'whole predecessor AST reconstructed',label)
+    check(ast_dump(StringEraser().visit(copy.deepcopy(ta)))==ast_dump(StringEraser().visit(copy.deepcopy(tb))),'whole control-flow/operators/guards/numeric/None AST exact excluding declared string literals',label)
+    fa=[x for x in ta.body if isinstance(x,(ast.FunctionDef,ast.AsyncFunctionDef))];fb=[x for x in tb.body if isinstance(x,(ast.FunctionDef,ast.AsyncFunctionDef))]
+    check(len(fa)==len(fb)==69 and [x.name for x in fa]==[x.name for x in fb],'all original69 top-level functions in exact order',label)
+    functions=[];changed=[]
+    for a,b in zip(fa,fb):
+        signature=lambda n:ast_dump(ast.FunctionDef(name=n.name,args=copy.deepcopy(n.args),body=[],decorator_list=copy.deepcopy(n.decorator_list),returns=copy.deepcopy(n.returns),type_comment=n.type_comment))
+        check(signature(a)==signature(b),'function signature/default/annotation/decorator exact',[label,a.name])
+        guards=lambda n:[ast_dump(x.func) for x in ast.walk(n) if isinstance(x,ast.Call)]
+        check(guards(a)==guards(b),'all function calls and guard call order exact',[label,a.name])
+        same=ast_dump(a)==ast_dump(b)
+        if not same:changed.append(a.name)
+        functions.append(dict(name=a.name,predecessor_AST_sha256=digest(ast_dump(a).encode()),current_AST_sha256=digest(ast_dump(b).encode()),AST_exact_without_literal_changes=same,call_count=len(guards(a)),signature_sha256=digest(signature(a).encode())))
+    check(changed==protocol['changed_functions'],'declared changed function list exact',[label,changed])
+    check(protocol['functions_total']==69 and protocol['functions_AST_exact']==69-len(changed),'protocol function counts match actual AST',label)
+    numbers=lambda t:[dict(kind=type(n.value).__name__,value_repr=repr(n.value)) for n in ast.walk(t) if isinstance(n,ast.Constant) and not isinstance(n.value,str)]
+    check(numbers(ta)==numbers(tb),'all non-string constants including caps/reserves/bools/None exact',label)
+    timecalls=lambda t:[ast_dump(n) for n in ast.walk(t) if isinstance(n,ast.Call) and (isinstance(n.func,ast.Name) and n.func.id in ('now_exact','now','stamp','moment','moment_exact') or isinstance(n.func,ast.Attribute) and n.func.attr in ('now','utcnow','time','monotonic','perf_counter'))]
+    check(timecalls(ta)==timecalls(tb),'all timestamp/clock call ASTs exact',label)
+    return dict(label=label,step_count=len(steps),steps=steps,old_sha256=digest(old),current_sha256=digest(new),reconstructed_predecessor_sha256=digest(reverse),whole_predecessor_AST_sha256=digest(ast_dump(ta).encode()),current_AST_sha256=digest(ast_dump(tb).encode()),string_erased_AST_sha256=digest(ast_dump(StringEraser().visit(copy.deepcopy(tb))).encode()),functions=functions,changed_functions=changed,unchanged_function_count=69-len(changed),all_nonstring_constants=numbers(tb),clock_call_count=len(timecalls(tb)))
+
+def metadata_inverse(label,current,receipt):
+    inv=receipt['complete_predecessor_inverse'];old=pin_read(receipt['predecessor'])
+    saved=base64.b64decode(inv['complete_predecessor_bytes_base64'],validate=True)
+    check(saved==old and inv['predecessor']==receipt['predecessor'],'saved entire metadata predecessor bytes exact',label)
+    restored=copy.deepcopy(current);rows=[]
+    for row in inv['field_reversal_rows']:
+        check(at(current,row['JSON_path'])==row['new_value'],'declared whole-field new value exact',[label,row['JSON_path']])
+        check(row['actual_assertion'] is True,'retained actual metadata field assertion',[label,row['JSON_path']])
+        restored=replace_field(restored,row['JSON_path'],row['old_value']);rows.append(dict(JSON_path=row['JSON_path'],old_value_sha256=digest(json.dumps(row['old_value'],sort_keys=True,separators=(',',':')).encode()),new_value_sha256=digest(json.dumps(row['new_value'],sort_keys=True,separators=(',',':')).encode())))
+    check(restored==decode(old),'all and only disclosed metadata whole-field reversals reconstruct predecessor JSON',label)
+    check(wire(restored)==old,'complete canonical metadata predecessor wire bytes exact after field reversals',label)
+    return dict(role=label,predecessor=receipt['predecessor'],complete_predecessor_inverse_sha256=digest(saved),field_reversals=rows,whole_predecessor_wire_sha256=digest(wire(restored)))
+
+def historical_review(pin,subjects):
+    v=pin_record(pin);check(v.get('reviewer') not in (None,'/root') and v.get('checks_failed',0)==0,'historical genuinely different saved review',pin['path'])
+    check(all(contains(v,p) for p in subjects),'saved review binds actual subjects',pin['path'])
+    if 'full_proof' in v:pin_read(v['full_proof'])
+    HISTORY.append(dict(review=pin,reviewer=v['reviewer'],verdict=v.get('verdict'),historical_serialized_checks=v.get('serialized_check_count'),historical_count_not_rerun_or_summed=True))
+    return v
+
+def audit():
+    check(Path(__file__).absolute().parent==HERE and sys.flags.isolated==1 and sys.flags.no_site==1 and sys.dont_write_bytecode,'own host isolated stdlib Source audit only')
+    scope=record(SCOPE);scope_adoption=record(SCOPE.parent/'ROOT_CURRENT_CHECKER_PEER015_SCOPE_DIFFERENT_REVIEW_ADOPTION_001.json');scope_review=pin_record(scope_adoption['different_review']);pin_read(scope_adoption['full_proof']);check(scope_adoption['author']=='/root' and scope_adoption['subject']==fact(SCOPE,BODIES[str(SCOPE)]) and scope_review['checks_failed']==0 and scope_review['reviewer']!='/root','current scope genuinely different review and Root adoption');check(scope['author']=='/root' and scope['canonical_publication_role_allowlist']==['checker_peer'] and scope['target_execution'] is False and scope['operational_authority'] is False and scope['Pro3_coordination_required'] is False,'current direct owner Source-only scope')
+    now=dt.datetime.now(dt.timezone.utc);check(dt.datetime.fromisoformat(scope['interval_start'])<=now<dt.datetime.fromisoformat(scope['interval_end'])-dt.timedelta(seconds=60),'current scope and original60 publication reserve')
+    selection=pin_record(scope['selected_family']);rows={x['role']:x for x in selection['rows']}
+    check(rows['checker_peer']==scope['selected_exact_role'],'Root exact selected checker015 row unchanged')
+    peer_old=pin_record(rows['checker_peer']['predecessor'])
+    for name in ('draft_path','canonical_path'):
+        p=Path(rows['checker_peer'][name]);check(not os.path.lexists(p) and not os.path.lexists(str(p)+'.staging'),'fresh selected peer path absent at content audit',name)
+    roles={n:rows[n] for n in ('checker','checker_protocol','checker_dependency_audit','checker_manifest')}
+    actual={};objects={}
+    for name,row in roles.items():
+        b=read(row['canonical_path'],cap=row['source_cap']);actual[name]=fact(Path(row['canonical_path']),b)
+        if name!='checker':objects[name]=decode(b)
+    protocol=objects['checker_protocol'];current=BODIES[actual['checker']['path']];old=pin_read(protocol['predecessor'],262144)
+    check(protocol['transformation_count']==57 and protocol['occurrence_count']==57,'checker022 exact57 Source literal steps')
+    lineage=[literal_packet('checker021_to_checker022',protocol,old,current)]
+    prior_protocol=record(BASE/'SOURCE_PROTOCOL_AND_REVIEW_CONTRACT_021.json');prior=pin_read(prior_protocol['predecessor'],262144)
+    lineage.append(literal_packet('checker020_to_checker021',prior_protocol,prior,old))
+    check(protocol['source_only'] is True and protocol['operational_authority'] is False and protocol['actual_tests'] is None and protocol['actual_READY'] is None,'protocol static only null actual results')
+    manifest=objects['checker_manifest'];check(manifest['payload_count']==len(manifest['payloads'])==3,'manifest exact3 payloads')
+    for role,payload in zip(('checker','checker_protocol','checker_dependency_audit'),manifest['payloads']):
+        check(payload['canonical_path']==rows[role]['canonical_path'] and payload['path']==rows[role]['draft_path'],'manifest exact selected draft/canonical pair',role)
+        b=pin_read(payload,rows[role]['source_cap']);check(b==BODIES[actual[role]['path']],'all actual manifest payload bytes equal canonical',role)
+    check(manifest['actual_execution'] is None and manifest['operational_authority'] is False,'manifest no actual execution authority')
+    auditdata=objects['checker_dependency_audit'];check(auditdata['full_configure_source_closure_ready'] is False and auditdata['target_import_or_execution'] is False and auditdata['operational_authority'] is False,'audit coherent configure closure remains false and Source only')
+    inverse=[];triplet=record(NEW/'generation/ROOT_SOURCE030_CHECKER022_TRIPLET_ACTUAL_STATIC_PUBLICATION_OUTCOME_001.json')
+    for entry in triplet['canonical_acceptance_support']:
+        role=entry['role'];check(entry['canonical']==actual[role],'actual accepted Source030 canonical subject exact',role)
+        receipt=pin_record(entry['author_receipt']);check(receipt['target_execution'] is False and receipt['operational_authority'] is False,'historical author receipt Source-only',role)
+        check(receipt['draft']['path']==rows[role]['draft_path'] and pin_read(receipt['draft'])==BODIES[actual[role]['path']],'Source030 draft receipt binds current complete bytes',role)
+        inverse.append(metadata_inverse(role,objects[role],receipt))
+        pub=pin_record(entry['publication']);review=historical_review(entry['different_review'],[actual[role]])
+        adopt=pin_record(entry['Root_adoption'])
+        check(pub['canonical']==entry['canonical'] and pub['author']=='/root','actual Root triplet canonical publication',role)
+        check(adopt['author']=='/root' and adopt['different_review']==entry['different_review'] and adopt['canonical']==actual[role] and adopt['canonical_publication'] is True and adopt['target_execution'] is False and adopt['operational_authority'] is False,'Root accepts exact genuinely different canonical Source030 review',role)
+        check(review['author_receipt']==entry['author_receipt'] and review['original_publication']==entry['publication'],'different canonical review binds actual original publication and author receipt',role)
+    check(len(inverse)==3,'all three complete metadata predecessor inverses retained')
+    recon=record(GEN/'ROOT_SOURCE022_CHECKER022_ACTUAL_CANONICAL_SOURCE_VERIFIED_PRIOR_PUBLICATION_RECONCILIATION_001.json')
+    check(recon['canonical_Source']==actual['checker'] and recon['new_canonical_Source_write_by_reconciliation'] is False and recon['canonical_publication'] is True,'checker022 actual separate canonical publication reconciliation')
+    publication=pin_record(recon['initial_actual_canonical_publication_receipt']);pin_read(recon['initial_actual_Root_request']);pin_read(recon['initial_actual_execution_witness'])
+    check(publication['published_count']==1 and publication['canonical_publication'] is True and contains(publication,actual['checker']),'actual Root checker022 single publication exact')
+    rv=historical_review(recon['actual_canonical_delta_Source_review'],[actual['checker']]);ad=pin_record(recon['canonical_delta_Root_adoption'])
+    check(ad['author']=='/root' and ad['different_review']==recon['actual_canonical_delta_Source_review'],'Root adoption binds actual different checker022 canonical review')
+    draftrv=historical_review(pin_record(rv['Root_draft_Source_adoption'])['different_review'],[actual['checker']|{'path':rows['checker']['draft_path']}])
+    check(draftrv['literal_steps']==57 and draftrv['complete_whole_predecessor_byte_inverse'] is True and draftrv['whole_AST_complement_exact'] is True and draftrv['original_top_level_functions']==69,'inherited checker022 draft review semantics authenticated history')
+    rreview=record(ROOT/'WORK/resume-20261007-001/reviews/source022_actual_checker022_prior_publication_reconciliation_001/INDEPENDENT_SOURCE022_ACTUAL_CHECKER022_PRIOR_PUBLICATION_RECONCILIATION_FLOAT_FREE_SOURCE_CAPSULE_001.json')
+    radopt=record(GEN/'ROOT_SOURCE022_CHECKER022_VERIFIED_PRIOR_PUBLICATION_RECONCILIATION_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json')
+    check(rreview['checks_failed']==0 and rreview['reviewer']!='/root' and contains(rreview,fact(GEN/'ROOT_SOURCE022_CHECKER022_ACTUAL_CANONICAL_SOURCE_VERIFIED_PRIOR_PUBLICATION_RECONCILIATION_001.json',BODIES[str(GEN/'ROOT_SOURCE022_CHECKER022_ACTUAL_CANONICAL_SOURCE_VERIFIED_PRIOR_PUBLICATION_RECONCILIATION_001.json')])),'separate reconciliation genuine saved review exact')
+    check(radopt['author']=='/root' and contains(radopt,fact(ROOT/'WORK/resume-20261007-001/reviews/source022_actual_checker022_prior_publication_reconciliation_001/INDEPENDENT_SOURCE022_ACTUAL_CHECKER022_PRIOR_PUBLICATION_RECONCILIATION_FLOAT_FREE_SOURCE_CAPSULE_001.json',BODIES[str(ROOT/'WORK/resume-20261007-001/reviews/source022_actual_checker022_prior_publication_reconciliation_001/INDEPENDENT_SOURCE022_ACTUAL_CHECKER022_PRIOR_PUBLICATION_RECONCILIATION_FLOAT_FREE_SOURCE_CAPSULE_001.json')])),'Root separately adopts reconciliation review')
+    api=record(NEW/'generation/source030_checker_metadata_triplet_001/SOURCE030_CHECKER022_METADATA_TRIPLET_STATIC_TOOLS_INERT_API_003.json')
+    check(len(api['exact17_design_sites'])==17,'exact original17 Source path coordinates')
+    sites=[]
+    for site in api['exact17_design_sites']:
+        ref=site['reference'];expected=selection['new_canonical_lease']['path'] if ref['source']=='lease' else rows[ref['source']][ref['field']]
+        value=at(objects[site['role']],site['JSON_path']);check(value==expected,'preserved exact original17 selected path coordinate',[site['role'],site['JSON_path']]);sites.append(dict(role=site['role'],JSON_path=site['JSON_path'],exact_current_value=value,reference=ref))
+    check(protocol['dependency_audit']['path']==actual['checker_dependency_audit']['path'] and protocol['dependency_audit']['sha256']==actual['checker_dependency_audit']['sha256'] and protocol['dependency_audit']['bytes']==actual['checker_dependency_audit']['bytes'],'protocol audit actual pin exact while draft coordinate retained')
+    contract_path=ROOT/'WORK/resume-20261007-001/generation/step079_three_external_peer_deferred_Source024_preparation_001/SOURCE024_THREE_EXTERNAL_PEER_DEFERRED_ORIGINAL_SCHEMAS_AND_LATE_INPUT_CONTRACT_003.json'
+    contract=record(contract_path);contract_pin=fact(contract_path,BODIES[str(contract_path)])
+    extreview_path=ROOT/'WORK/resume-20261007-001/reviews/source024_STEP079_external_three_peer003_implementation001/INDEPENDENT_SOURCE024_EXTERNAL003_FLOAT_FREE_SOURCE_REVIEW_CAPSULE_001.json'
+    extreview_pin=fact(extreview_path,read(extreview_path));extreview=historical_review(extreview_pin,[contract_pin])
+    extadopt=record(GEN/'ROOT_SOURCE024_STEP079_EXTERNAL003_PAIR_API_DIFFERENT_DORMANT_WHOLE_SOURCE_REVIEW_ADOPTION_001.json')
+    check(extadopt['author']=='/root' and extadopt['different_review']==extreview_pin,'genuine later Source024 original peer schema review Root adoption')
+    schema=contract['original_peer_schemas']['checker_peer'];keys=schema['original_closed_keys_in_order']
+    check(len(keys)==15 and list(peer_old)==keys and schema['peer_Source_cap']==rows['checker_peer']['source_cap']==65536,'exact original15 schema order and65536 cap')
+    check(schema['required_Source_roles']==['checker','checker_dependency_audit','checker_manifest','checker_protocol'] and schema['required_carried_Source_roles']==[],'independent checker Source peer requires only four canonical Source roles')
+    check(schema['genuine_content_author']=='/root' and schema['required_original_verdict']=='PASS_STATIC_METADATA3_CHECKER_SOURCE_ONLY','genuine Root fresh content authority and original verdict')
+    for key,value in schema['immutable_original_fields'].items():check(type(peer_old[key]) is type(value) and peer_old[key]==value,'predecessor original immutable field retained',key)
+    details_path=SCOPE.parent/'ROOT_GENUINE_CHECKER022_FULL_STATIC_SOURCE_REVIEW_DETAILS_001.json'
+    decision_path=SCOPE.parent/'ROOT_GENUINE_CHECKER_PEER015_CONTENT_DECISION_001.json'
+    details=record(details_path,'63d2d59203c36174c99db9414ea8e66fcb878f7e28e8370b67e7e2bee1f7791e');details_pin=fact(details_path,BODIES[str(details_path)])
+    decision=record(decision_path,'76d7a089f58111a23a36696fcf427cfba07fbe860c333257cfdf48543d2c0a13');decision_pin=fact(decision_path,BODIES[str(decision_path)])
+    for pin in details['actual_input_pins']:pin_read(pin)
+    check(details['author']==details['reviewer']=='/root' and details['source_author']=='/root/actual_record_checker' and details['verdict']=='PASS_STATIC_METADATA3_CHECKER_SOURCE_ONLY','fresh genuine Root own full Source details nominal')
+    check(details['actual_canonical_Source']==actual and details['selection']==scope['selected_family'],'Root full details binds exact four actual canonical Sources and selection')
+    check(details['actual_binding'] is None and details['independent_current_full_details_Source_review'] is None and details['new_native_vectors_or_Parser_results'] is None and all(details[k] is False for k in ('target_execution','tests_executed','operational_authority','runtime_acceptance','scientific_authority','scientific_totals_recounted','spent_identity_replay','full_configure_source_closure_ready')),'Root full details keeps null/false result and authority boundaries')
+    check(details['literal_step_count']==57 and details['original_function_count']==69 and details['unchanged_original_function_count']==56 and details['changed_functions_with_only_declared_literal_bindings']==lineage[0]['changed_functions'] and details['whole_predecessor_inverse_sha256']==digest(old) and details['whole_predecessor_inverse_exact'] is True and details['whole_inverse_AST_exact'] is True,'fresh Root complete Source lineage claims match actual independent reconstruction')
+    check(details['serialized_check_count']==len(details['checks'])==209 and details['checks_failed']==0 and all(x['passed'] is True for x in details['checks']),'Root own209 saved checks are internally exact, not counted as this reviewer checks')
+    a=ast.parse(old.decode());b=ast.parse(current.decode())
+    shas=lambda t:[(x.lineno,x.col_offset,x.value) for x in ast.walk(t) if isinstance(x,ast.Constant) and type(x.value) is str and re.fullmatch('[a-f0-9]{64}',x.value)]
+    x=shas(a);y=shas(b);check(len(x)==len(y) and [z[:2] for z in x]==[z[:2] for z in y],'all SHA literal AST positions retained')
+    hash_changes=[(aa,bb) for aa,bb in zip(x,y) if aa!=bb];check(len(hash_changes)==1,'one exact declared literal SHA change only')
+    change=details['literal_SHA_changes_are_exact_declared_actual_Source_repin'];check(len(change)==1 and change[0]['old_sha256']==hash_changes[0][0][2] and change[0]['new_sha256']==hash_changes[0][1][2],'Root SHA change matches independent AST literal value change')
+    manifest_source=pin_read(change[0]['actual_referenced_Source']);check(digest(manifest_source)==change[0]['new_sha256'] and change[0]['reference']=={'field':'sha256','source':'metadata_manifest'},'one Root SHA edit binds actual selected M3manifest012')
+    offset=change[0]['start_utf8'];check(old[offset:offset+66].decode()==repr(change[0]['old_sha256']) and current[offset:offset+66].decode()==repr(change[0]['new_sha256']),'Root SHA whole quoted literal span start90432 and first hex90433 exact')
+    initial_none=lambda t:[n.id for st in t.body if isinstance(st,ast.Assign) and isinstance(st.value,ast.Constant) and st.value.value is None for n in st.targets if isinstance(n,ast.Name)]
+    check(initial_none(a)==initial_none(b)==details['initial_None_global_names'] and len(initial_none(b))==details['initial_None_global_count']==24,'all24 simple initial None globals exact')
+    check(decision['author']==decision['genuine_content_reviewer']==decision['physical_selected_byte_editor']=='/root' and decision['retained_peer_semantic_Source_author']=='/root/actual_record_checker' and decision['fresh_full_checker022_Source_details']==details_pin,'Root content decision binds actual genuine full details and distinct physical/semantic attribution')
+    check(decision['selected_checker_peer_row']==rows['checker_peer'] and decision['required_current_Source_dependencies']==actual and decision['current_scope_adoption']==details['current_scope_adoption'],'Root decision selected exact peer015 row and four actual current dependencies')
+    check(decision['future_draft_or_canonical_pin'] is None and decision['peer_created_utc'] is None and decision['peer_actual_binding'] is None and decision['different_review_required_before_draft_serialization'] is True and decision['canonical_publication'] is False and all(decision[k] is False for k in ('target_execution','tests_executed','operational_authority','scientific_authority')),'Root decision grants only later reviewed Source serialization, no existing or future results invented')
+    clarification_path=SCOPE.parent/'ROOT_GENUINE_CHECKER022_SOURCE_DETAILS_AST_SELECTOR_CLARIFICATION_001.json'
+    clarification=record(clarification_path,'1f9061f67ebb6630418e53f69e4d047cc4751808072e1ee0dd12f4de95b55f3d');clarification_pin=fact(clarification_path,BODIES[str(clarification_path)])
+    check(clarification['subject']==details_pin and clarification['author']=='/root' and clarification['subject_original_bytes_unchanged'] is True and all(clarification[k] is False for k in ('target_execution','tests_executed','operational_authority','scientific_authority','Native_or_Parser_measurement','original_project_code_imported_or_called')),'Root selector clarification binds immutable full details, Source only')
+    names=set(clarification['original_timestamp_call_count63_definition']['func_id_exact_set']);check(names=={'moment','moment_exact','moment_ticks','stamp','stamp_exact'},'Root exact named timestamp-call selector set')
+    selected_timestamps=lambda t:[ast_dump(x) for x in ast.walk(t) if isinstance(x,ast.Call) and isinstance(x.func,ast.Name) and x.func.id in names]
+    check(selected_timestamps(a)==selected_timestamps(b) and len(selected_timestamps(b))==details['original_timestamp_call_count']==clarification['original_timestamp_call_count63_definition']['count']==63,'all63 explicitly selected Root named timestamp-call ASTs exact')
+    check(clarification['initial_None_global_count24_definition']['count']==24 and clarification['initial_None_global_count24_definition']['broader_context_None28_or_tuple_unpacking_count_claimed'] is False,'Root initial None24 definition does not claim broader28 context count')
+    stdlib_imports=[n for st in b.body if isinstance(st,(ast.Import,ast.ImportFrom)) for n in ([x.name.split('.')[0] for x in st.names] if isinstance(st,ast.Import) else [st.module.split('.')[0]])]
+    check(all(n in sys.stdlib_module_names for n in stdlib_imports),'current checker top-level Source imports are stdlib by host catalogue')
+    refusal_files=[GEN/'ROOT_SOURCE022_ACTUAL_READONLY_NATIVE_CREATION_COLLECTOR_ATTEMPT001_SAVED_ORIGINAL_STABILITY_GUARD_REFUSAL_001.json',GEN/'ROOT_SOURCE023_ACTUAL_ONCE_NATIVE_CREATION_DIAGNOSTIC_ATTEMPT002_SAVED_RESULT_001.json']
+    refusals=[fact(p,read(p)) for p in refusal_files]
+    for p,b in list(BODIES.items()):check(read(p,OBS[p]['sha256'],OBS[p]['read_cap'])==b,'final actual content/raw metadata stability',p)
+    return dict(genuine_Root_full_details=details_pin,genuine_Root_content_decision=decision_pin,genuine_Root_selector_clarification=clarification_pin,Root_details_actual209_checks_not_summed=True,one_actual_M3_manifest_SHA_change=change,scope=fact(SCOPE,BODIES[str(SCOPE)]),selected_family=scope['selected_family'],subjects=list(actual.values())+[details_pin,decision_pin,clarification_pin],source_lineage=lineage,metadata_whole_predecessor_inverses=inverse,preserved_original17_coordinate_sites=sites,checker_peer_original_schema=schema,checker_peer_schema_current_contract=contract_pin,checker_peer_schema_genuine_review=extreview_pin,checker_peer_schema_Root_adoption=fact(GEN/'ROOT_SOURCE024_STEP079_EXTERNAL003_PAIR_API_DIFFERENT_DORMANT_WHOLE_SOURCE_REVIEW_ADOPTION_001.json',BODIES[str(GEN/'ROOT_SOURCE024_STEP079_EXTERNAL003_PAIR_API_DIFFERENT_DORMANT_WHOLE_SOURCE_REVIEW_ADOPTION_001.json')]),historical_saved_native_refusals_exact=refusals,historical_reviews=HISTORY,limitations=['Current audit is host stdlib Source-byte/AST inspection only; no target, helper, original-function, fixture, native metadata, Parser, C8, lease or scientific execution.','Prior Source022/Source024/Source030 review counts are historical authenticated evidence; never rerun or summed into actual checks.','full_configure_source_closure_ready remains false; phase_peer/binding/pipeline_peer/config032/coherent45 remain separately pending.','Original17 selected draft/canonical coordinate design and all historical metadata spellings are preserved.','Python PATH9 and descriptor9 are independent actual host observations; missing host st_birthtime_ns is explicitly null; no Native10 evidence or cross-API9 normalization is claimed.'])
+
+def write(name,value):
+    p=HERE/name;check(p.parent==HERE and not os.path.lexists(p),'fresh own output path',str(p));b=wire(value,compact=True);check(len(b)<=2097152,'ordinary output2097152 cap',name)
+    with p.open('xb') as h:h.write(b);h.flush();os.fsync(h.fileno())
+    if p.read_bytes()!=b:raise ValueError('write readback mismatch')
+    return fact(p,b)
+
+if __name__=='__main__':
+    result=audit()
+    if '--probe' in sys.argv:
+        print(json.dumps(dict(status='PROBE_PASS_NO_PROOF_OUTPUT',checks=len(CHECKS),inputs=len(OBS),function_counts=[len(x['functions']) for x in result['source_lineage']])));raise SystemExit(0)
+    common=dict(schema_version=1,author='/root/checker_frontier',reviewer='/root/checker_frontier',created_utc=utc(),target_execution=False,operational_authority=False,scientific_authority=False,original_code_or_helpers_imported_or_called=False,tests_executed=False,Native_Parser_execution=False,canonical_publication=False,source_only=True,full_configure_source_closure_ready=False)
+    proof={**common,'record_type':'independent_current_canonical_checker022_complete_static_Source_proof','verdict':'PASS_CURRENT_CANONICAL_CHECKER022_COMPLETE_STATIC_SOURCE_ONLY',**result,'own_audit_Source':fact(Path(__file__),Path(__file__).read_bytes()),'actual_input_observations':list(OBS.values()),'observation_fields':list(FIELDS),'shared7_field_indexes':list(SHARED),'checks':CHECKS.copy(),'serialized_check_count':len(CHECKS),'checks_failed':sum(x['passed'] is not True for x in CHECKS)}
+    full=write('INDEPENDENT_CURRENT_CHECKER022_FULL_STATIC_SOURCE_PROOF_001.json',proof)
+    capsule={**common,'record_type':'independent_current_canonical_checker022_float_free_static_Source_capsule','verdict':proof['verdict'],'full_proof':full,'current_scope':result['scope'],'subjects':result['subjects'],'serialized_check_count':proof['serialized_check_count'],'checks_failed':proof['checks_failed'],'actual_input_count':len(OBS),'original_top_level_functions':69,'actual_literal_steps':57,'all_three_metadata_whole_predecessor_inverses':True,'exact_original17_path_sites_preserved':True,'whole_checker021_predecessor_bytes_and_AST_restored':True,'numeric_operators_control_flow_and_guards_retained':True,'genuine_Root_full_details':result['genuine_Root_full_details'],'genuine_Root_content_decision':result['genuine_Root_content_decision'],'genuine_Root_selector_clarification':result['genuine_Root_selector_clarification'],'checker_peer_original_key_count':15,'checker_peer_original_cap':65536,'checker_peer_schema_contract':result['checker_peer_schema_current_contract'],'checker_peer_schema_genuine_review':result['checker_peer_schema_genuine_review'],'checker_peer_schema_Root_adoption':result['checker_peer_schema_Root_adoption'],'historical_counts_not_rerun_or_summed':True,'historical_native_refusals':result['historical_saved_native_refusals_exact'],'future_Root_details_peer_draft_publication_and_adoptions_pending':True,'limitations':result['limitations']}
+    cap=write('INDEPENDENT_CURRENT_CHECKER022_FLOAT_FREE_STATIC_SOURCE_CAPSULE_001.json',capsule)
+    print(json.dumps(dict(status='PASS',full_proof=full,capsule=cap,actual_checks=proof['serialized_check_count'],actual_inputs=len(OBS))))
