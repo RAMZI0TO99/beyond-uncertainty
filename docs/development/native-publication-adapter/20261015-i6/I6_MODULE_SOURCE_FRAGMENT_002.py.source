@@ -1,0 +1,504 @@
+"""Pure declared-metadata graph checks. No filesystem, process, native or helper calls.
+
+Expected context is trusted caller data, never action authority. Source bodies at
+the eight canonical and eight draft paths are protected before the first callback.
+"""
+import hashlib
+import json
+import re
+import datetime as dt
+
+SCHEMAS = __SCHEMAS__
+ROLE_ORDER = __ROLE_ORDER__
+SELECTION_KEYS = __SELECTION_KEYS__
+ROW_KEYS = __ROW_KEYS__
+RECEIPT_KEYS = __RECEIPT_KEYS__
+FACT_KEYS = __FACT_KEYS__
+ORIGINAL_GUARDS = __ORIGINAL_GUARDS__
+HISTORICAL_LEASES = __HISTORICAL_LEASES__
+HISTORICAL_PUBLISHER = __HISTORICAL_PUBLISHER__
+SCOPE_KEYS = ('current_owner_scope','different_current_owner_scope_Source_review','current_owner_scope_Root_adoption')
+PURPOSE_KEYS = ('schema_version','stage','role','facts','inputs','output_paths')
+STAGE_VERDICT = 'ACCEPT_ROOT_OWNER_V2_EXACT_M3_SOURCE_STAGE_PURPOSE_AND_FACTS_ONLY'
+PUB_VERDICT = 'PUBLISH_EXACT_DIFFERENTLY_REVIEWED_CURRENT_OWNER_FINITE8_M3_SOURCE_ROLES_ONLY'
+RECON_VERDICT = 'ACCEPT_CURRENT_CANONICAL_SOURCE_DELTA_AND_VERIFIED_PRIOR_ROOT_PUBLICATION_ONLY'
+RECON_FLAG_SCOPE = 'Fresh verification of the precisely named prior real Root publication; this reconciliation performs only its own metadata create-once write.'
+CONTEXT_KEYS = ('root_thread','owner_support','owner_support_manifest','selection','lease','subjects','producer','publisher',
+                'stage_supports','request','publication','namespace','request_id','now_utc','execution_witness',
+                'reconciliation_review','reconciliation_Root_adoption','actual_content_authors')
+SUBJECT_KEYS = ('role','canonical','draft_path','predecessor','selected_ordinal','retained_semantic_Source_author','source_cap')
+CODE_KEYS = ('Source','API','editor','different_review','Root_adoption')
+PROOF4_KEYS = ('Source','different_Source_review','Root_adoption','Root_publication')
+PROOF6_KEYS = ('subject','actual_Source_author_receipt','different_Source_review','Root_adoption','canonical_publication','actual_Source_birth_utc')
+
+class MetadataError(ValueError):
+    __slots__=('code',)
+    def __init__(self, code):
+        self.code=code
+        super().__init__(code)
+
+def _need(condition, code):
+    if condition is not True:
+        raise MetadataError(code)
+
+def _closed(value,keys,code):
+    _need(type(value) is dict and set(value)==set(keys),code)
+    return value
+
+def _same(a,b):
+    if type(a) is not type(b):return False
+    if type(a) is dict:return set(a)==set(b) and all(_same(a[k],b[k]) for k in a)
+    if type(a) is list:return len(a)==len(b) and all(_same(x,y) for x,y in zip(a,b))
+    return a==b
+
+def _snapshot(value,depth=0,counter=None):
+    if counter is None:counter=[0]
+    counter[0]+=1
+    _need(depth<=48 and counter[0]<=50000,'E_DEPTH')
+    kind=type(value)
+    if kind is dict:
+        _need(all(type(k) is str for k in value),'E_PAYLOAD')
+        return {k:_snapshot(v,depth+1,counter) for k,v in value.items()}
+    if kind is list:return [_snapshot(v,depth+1,counter) for v in value]
+    _need(kind in (str,int,bool,type(None)),'E_PAYLOAD')
+    if kind is str:
+        try:value.encode('utf8','strict')
+        except UnicodeError:raise MetadataError('E_UTF8')
+    if kind is int:_need(len(str(abs(value)))<=40,'E_INTEGER')
+    return value
+
+def _path(value):
+    _need(type(value) is str and len(value)<=32767 and re.fullmatch(r'[A-Za-z]:\\[^\\]+(?:\\[^\\]+)*',value) is not None,'E_PATH')
+    for part in value[3:].split('\\'):
+        _need(part not in ('.','..') and part[-1:] not in ('.',' ') and
+              not any(ord(c)<32 or c in '/:*?"<>|' for c in part),'E_PATH')
+        stem=part.split('.')[0].upper()
+        _need(stem not in ('CON','PRN','AUX','NUL') and not re.fullmatch(r'(COM|LPT)[1-9]',stem),'E_PATH')
+    return value
+
+def _parent(path):return _path(path).rsplit('\\',1)[0]
+def _leaf(path):return _path(path).rsplit('\\',1)[1]
+def _join(parent,leaf):return _path(parent+'\\'+leaf)
+
+class Pin(tuple):
+    __slots__=()
+    def __new__(cls,value,cap=2097152):
+        if type(value) is cls:value=value.to_dict()
+        _closed(value,('path','bytes','sha256'),'E_PIN')
+        _need(type(cap) is int and 0<cap<=2097152 and type(value['bytes']) is int and
+              0<value['bytes']<=cap and type(value['sha256']) is str and
+              re.fullmatch('[a-f0-9]{64}',value['sha256']) is not None,'E_PIN')
+        return tuple.__new__(cls,(_path(value['path']),value['bytes'],value['sha256']))
+    path=property(lambda self:self[0])
+    bytes=property(lambda self:self[1])
+    sha256=property(lambda self:self[2])
+    def to_dict(self):return dict(path=self.path,bytes=self.bytes,sha256=self.sha256)
+
+class MetadataView(tuple):
+    __slots__=()
+    def __new__(cls,role,subject,draft,request,publication,receipt,facts,representation,reconciliation=None,declared_birth=None):
+        return tuple.__new__(cls,(role,Pin(subject),Pin(draft),Pin(request),Pin(publication),Pin(receipt),Pin(facts),
+                                  representation,None if reconciliation is None else Pin(reconciliation),declared_birth))
+    role=property(lambda s:s[0]);subject=property(lambda s:s[1]);draft=property(lambda s:s[2])
+    request=property(lambda s:s[3]);original_publication=property(lambda s:s[4]);author_receipt=property(lambda s:s[5])
+    facts=property(lambda s:s[6]);representation=property(lambda s:s[7]);reconciliation=property(lambda s:s[8])
+    declared_birth=property(lambda s:s[9])
+    metadata_only=property(lambda s:True)
+    operational_authority=property(lambda s:False)
+    scientific_authority=property(lambda s:False)
+    physical_observation_validated=property(lambda s:False)
+    native_authority=property(lambda s:False)
+    producer_or_caller_qualification_established=property(lambda s:False)
+    canonical_write_performed=property(lambda s:False)
+
+def _pairs(rows):
+    value={}
+    for k,v in rows:
+        _need(k not in value,'E_DUPLICATE')
+        value[k]=v
+    return value
+
+def _integer(value):
+    _need(len(value.lstrip('-'))<=40,'E_INTEGER')
+    return int(value)
+
+def _no_float(value):raise MetadataError('E_FLOAT')
+
+def _decode(raw):
+    _need(type(raw) is bytes and 0<len(raw)<=2097152,'E_CAP')
+    try:text=raw.decode('utf8','strict')
+    except UnicodeError:raise MetadataError('E_UTF8')
+    _need(not text.startswith('\ufeff'),'E_UTF8')
+    depth=0;quoted=False;escaped=False
+    for c in text:
+        if quoted:
+            if escaped:escaped=False
+            elif c=='\\':escaped=True
+            elif c=='"':quoted=False
+        elif c=='"':quoted=True
+        elif c in '[{':
+            depth+=1;_need(depth<=48,'E_DEPTH')
+        elif c in ']}':depth-=1
+    try:value=json.loads(text,object_pairs_hook=_pairs,parse_int=_integer,parse_float=_no_float,parse_constant=_no_float)
+    except MetadataError:raise
+    except (ValueError,RecursionError):raise MetadataError('E_JSON')
+    _need(type(value) is dict,'E_ROOT')
+    return _snapshot(value)
+
+def _ticks(value):
+    _need(type(value) is str,'E_TIME')
+    m=re.fullmatch(r'([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})\.([0-9]{6,7})(Z|\+00:00)',value)
+    _need(m is not None,'E_TIME')
+    text=m[1]
+    try:base=dt.datetime(int(text[:4]),int(text[5:7]),int(text[8:10]),int(text[11:13]),int(text[14:16]),int(text[17:19]),tzinfo=dt.timezone.utc)
+    except ValueError:raise MetadataError('E_TIME')
+    delta=base-dt.datetime(1970,1,1,tzinfo=dt.timezone.utc)
+    return (delta.days*86400+delta.seconds)*10000000+int(m[2].ljust(7,'0'))
+
+def _actor(value):
+    _need(type(value) is str and 5<=len(value)<=256 and (value=='/root' or value.startswith('/root/')) and
+          all(ord(c)>=33 and ord(c)!=127 for c in value),'E_ACTOR')
+    return value
+
+def _different(who,excluded):
+    _actor(who)
+    _need(who!='/root' and all(who!=x and (x=='/root' or not who.startswith(x+'/')) for x in excluded),'E_SELF_REVIEW')
+
+def _occurs(value,pin):
+    pin=Pin(pin).to_dict()
+    if type(value) is dict:return _same(value,pin) or any(_occurs(v,pin) for v in value.values())
+    if type(value) is list:return any(_occurs(v,pin) for v in value)
+    return False
+
+def _pins(value):
+    if type(value) is dict:
+        if set(value)=={'path','bytes','sha256'}:return [Pin(value)]
+        result=[]
+        for v in value.values():result.extend(_pins(v))
+        return result
+    if type(value) is list:
+        result=[]
+        for v in value:result.extend(_pins(v))
+        return result
+    return []
+
+def _shape(value,name):
+    spec=SCHEMAS[name];_closed(value,spec['keys'],'E_SCHEMA')
+    if 'record_type' in spec:
+        _need(type(value['schema_version']) is int and value['schema_version']==2 and value['record_type']==spec['record_type'],'E_VERSION')
+    return value
+
+class _Reader:
+    def __init__(self,expected,read_record):
+        self.e=_snapshot(expected);_closed(self.e,CONTEXT_KEYS,'E_EXPECTED')
+        self.callback=read_record;self.cache={};self.pins={};self.count=0;self.total_bytes=0;self.protected={};self.subjects={}
+        _need(callable(read_record),'E_CALLBACK')
+        entries=self.e['subjects']
+        _need(type(entries) is list and len(entries)==8 and all(type(s) is dict for s in entries) and [s.get('role') for s in entries]==list(ROLE_ORDER),'E_SUBJECT_SET')
+        for item in entries:
+            _closed(item,SUBJECT_KEYS,'E_SUBJECT_SET');p=Pin(item['canonical'],65536)
+            draft=Pin(dict(path=_path(item['draft_path']),bytes=p.bytes,sha256=p.sha256),65536)
+            Pin(item['predecessor'],65536)
+            _need(type(item['selected_ordinal']) is int and 18<item['selected_ordinal']<1000 and
+                  type(item['source_cap']) is int and item['source_cap']==65536 and
+                  p.path!=draft.path,'E_SUBJECT_SET')
+            for q in (p,draft):
+                key=q.path.casefold();_need(key not in self.protected,'E_SUBJECT_SET');self.protected[key]=q
+            self.subjects[item['role']]=(item,p,draft)
+        _need(len(self.protected)==16,'E_SUBJECT_SET')
+        for i in range(4):_need(entries[i]['selected_ordinal']==entries[i+4]['selected_ordinal'],'E_PAIR_ORDINAL')
+        for item in entries:self.declare(item['predecessor'])
+        # No callback has happened before the complete protected16 map above exists.
+        _closed(self.e['owner_support'],SCOPE_KEYS,'E_SCOPE')
+        _need(type(self.e['root_thread']) is str and re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',self.e['root_thread']) is not None,'E_ROOT_THREAD')
+        self.now=_ticks(self.e['now_utc']);_path(self.e['namespace'])
+        _need(type(self.e['request_id']) is str and re.fullmatch('[A-Z0-9_]{1,48}',self.e['request_id']) is not None,'E_REQUEST_ID')
+        _need(type(self.e['actual_content_authors']) is list,'E_ACTOR')
+        for x in self.e['actual_content_authors']:_actor(x)
+        for name in ('producer','publisher'):
+            code=_closed(self.e[name],CODE_KEYS,'E_CODE');_actor(code['editor']);_need(code['editor']!='/root','E_CODE')
+            for k in ('Source','API','different_review','Root_adoption'):self.declare(code[k])
+        for name in ('request','publication','selection','lease','owner_support_manifest','execution_witness'):
+            self.declare(self.e[name])
+        for p in self.e['owner_support'].values():self.declare(p)
+        _need(type(self.e['stage_supports']) is dict and set(self.e['stage_supports'])<=set(ROLE_ORDER),'E_STAGE_SUPPORT')
+    def declare(self,pin):
+        pin=Pin(pin);key=pin.path.casefold();old=self.pins.get(key)
+        _need(old is None or old==pin,'E_PIN_CONFLICT')
+        if key in self.protected:_need(self.protected[key]==pin,'E_SUBJECT_PIN')
+        self.pins[key]=pin
+        return pin
+    def raw(self,pin):
+        pin=self.declare(pin)
+        _need(pin.path.casefold() not in self.protected,'E_PROTECTED_SUBJECT')
+        if pin.path not in self.cache:
+            _need(self.count<256 and self.total_bytes+pin.bytes<=33554432,'E_READ_BOUND');self.count+=1;self.total_bytes+=pin.bytes
+            raw=self.callback(pin.to_dict())
+            _need(type(raw) is bytes and len(raw)==pin.bytes and hashlib.sha256(raw).hexdigest()==pin.sha256,'E_HASH')
+            self.cache[pin.path]=raw
+        return self.cache[pin.path]
+    def record(self,pin):return _decode(self.raw(pin))
+
+def _review(reader,pin,subjects,excluded):
+    for p in subjects:reader.declare(p)
+    value=reader.record(pin);who=value.get('reviewer');_different(who,excluded)
+    _need(type(value.get('verdict')) is str and value['verdict'].startswith('PASS_') and
+          type(value.get('checks_failed')) is int and value['checks_failed']==0 and
+          value.get('target_execution') is False and value.get('operational_authority') is False and
+          all(_occurs(value,p) for p in subjects),'E_REVIEW')
+    full_pin=reader.declare(value['full_proof']);full=reader.record(full_pin);checks=full.get('checks')
+    _need(full.get('reviewer')==who and full.get('verdict')==value['verdict'] and
+          type(full.get('checks_failed')) is int and full['checks_failed']==0 and
+          full.get('target_execution') is False and full.get('operational_authority') is False and
+          type(checks) is list and 0<len(checks)<=10000 and
+          all(type(c) is dict and type(c.get('name')) is str and c['name'] and c.get('passed') is True for c in checks) and
+          len({c['name'] for c in checks})==len(checks) and all(_occurs(full,p) for p in subjects),'E_FULL_PROOF')
+    _need(_ticks(full['created_utc'])<=_ticks(value['created_utc'])<=reader.now,'E_CHRONOLOGY')
+    return value,full
+
+def _adopt(reader,pin,subjects,review_pin,review,verdict=None):
+    value=reader.record(pin);required=[*subjects,Pin(review_pin),Pin(review['full_proof'])]
+    _need(value.get('author')=='/root' and type(value.get('verdict')) is str and value['verdict'].startswith('ACCEPT_') and
+          (verdict is None or value['verdict']==verdict) and value.get('target_execution') is False and
+          value.get('operational_authority') is False and all(_occurs(value,p) for p in required),'E_ADOPTION')
+    _need(_ticks(review['created_utc'])<=_ticks(value['created_utc'])<=reader.now,'E_CHRONOLOGY')
+    return value
+
+def _code(reader,which):
+    code=reader.e[which];source=Pin(code['Source']);api_pin=Pin(code['API'])
+    if which=='producer':
+        _need(source.sha256!='600ab5bf46faceee88b7b5a99eb32b71a7ebfc763151e2f4e3453a6cccd281c2' and
+              api_pin.sha256!='610da99ddc537d4ad8087fe895d5cf3f8de92be1e9b67edd50913801fe908af2','E_HELD_PRODUCER')
+    reader.raw(source);api=reader.record(api_pin)
+    if which=='producer':
+        _need(type(api.get('schema_version')) is int and api['schema_version']==2 and
+              api.get('record_type')=='Root_owner_v2_M3_deferred_metadata_inert_API' and
+              _same(api.get('Source'),source.to_dict()) and api.get('author')==api.get('actual_binding_Source_editor')==code['editor'] and
+              api.get('external_canonical_receipt_ABI_qualified') is True,'E_PRODUCER_API')
+    # Publisher API is an explicitly expected opaque JSON leaf, not an invented ABI.
+    excluded=['/root',code['editor'],*reader.e['actual_content_authors']]
+    review,full=_review(reader,code['different_review'],[source,api_pin],excluded)
+    _need('SOURCE' in review['verdict'].upper(),'E_CODE_REVIEW')
+    adoption=_adopt(reader,code['Root_adoption'],[source,api_pin],code['different_review'],review)
+    return adoption
+
+def _selection(reader):
+    e=reader.e;value=reader.record(e['selection']);_closed(value,SELECTION_KEYS,'E_SELECTION')
+    _need(type(value['schema_version']) is int and value['schema_version']==2 and
+          value['record_type']=='Root_owner_v2_actual_separate_future45_Source_path_selection' and value['author']=='/root' and
+          _same(value['current_owner_scope'],e['owner_support']['current_owner_scope']) and
+          _same(value['new_canonical_lease'],e['lease']) and value['target_execution'] is False and value['operational_authority'] is False and
+          type(value['rows']) is list and len(value['rows'])==45,'E_SELECTION')
+    rows={}
+    for row in value['rows']:
+        _closed(row,ROW_KEYS,'E_SELECTION_ROW');_need(type(row['role']) is str and row['role'] not in rows,'E_SELECTION_ROW');rows[row['role']]=row
+        reader.declare(row['predecessor'])
+    reader.declare(value['current_complete45_inventory']);reader.declare(value['current_selection'])
+    for role,(item,canonical,draft) in reader.subjects.items():
+        row=rows.get(role);_need(row is not None,'E_SELECTION_ROW')
+        _need(row['canonical_path']==canonical.path and row['draft_path']==draft.path and
+              type(row['source_cap']) is int and row['source_cap']==65536 and row['must_change_Source_bytes'] is True and
+              type(row['selected_ordinal']) is int and row['selected_ordinal']==item['selected_ordinal'] and
+              _same(row['predecessor'],item['predecessor']) and row['retained_semantic_Source_author']==item['retained_semantic_Source_author'] and
+              row['preparation_Source_author']==e['producer']['editor'],'E_SELECTION_JOIN')
+    manifest=reader.record(e['owner_support_manifest']);_closed(manifest,SCOPE_KEYS,'E_SCOPE')
+    _need(_same(manifest,e['owner_support']),'E_SCOPE')
+    return value,rows
+
+def _receipt(reader,role,row,selected,request,request_time,producer_code_adopted):
+    e=reader.e;item,canonical,draft=reader.subjects[role]
+    receipt_pin=Pin(row['author_receipt']);receipt=reader.record(receipt_pin);_closed(receipt,RECEIPT_KEYS,'E_RECEIPT')
+    support=_shape(e['stage_supports'][role],'external_M3_stage_support3')
+    facts_pin=Pin(support['facts']);_need(_same(receipt['actual_Source_packet'],facts_pin.to_dict()),'E_STAGE_SUPPORT')
+    facts=reader.record(facts_pin);_closed(facts,FACT_KEYS,'E_FACTS')
+    _need(type(receipt['schema_version']) is int and receipt['schema_version']==2 and
+          receipt['record_type']=='Root_owner_v2_actual_deferred_M3_Source_draft_author_receipt' and
+          receipt['author']==receipt['actual_physical_Source_editor']=='/root' and receipt['role']==role and
+          _same(receipt['draft'],draft.to_dict()) and _same(receipt['predecessor'],item['predecessor']) and
+          _same(receipt['Root_future_path_selection'],e['selection']) and _same(receipt['current_owner_scope'],e['owner_support']['current_owner_scope']) and
+          _same(receipt['new_canonical_lease'],e['lease']) and receipt['retained_semantic_Source_author']==item['retained_semantic_Source_author'],
+          'E_RECEIPT_JOIN')
+    _need(all(receipt[k] is False for k in ('target_execution','canonical_publication','operational_authority','original_fixtures_and_runtime_admission')) and
+          receipt['complete_current_predecessor_byte_inverse'] is True and receipt['different_actual_generated_Source_review_pending'] is True and
+          type(receipt['finite_actual_Source_observations']) is list,'E_RECEIPT_FLAGS')
+    _need(type(facts['schema_version']) is int and facts['schema_version']==2 and
+          facts['record_type']=='Root_owner_v2_exact_M3_Source_stage_purpose_and_facts' and facts['author']=='/root' and
+          facts['Root_thread']==e['root_thread'] and _same(facts['current_owner_scope'],e['owner_support']['current_owner_scope']) and
+          facts['source_only'] is True and all(facts[k] is False for k in ('target_execution','operational_authority','canonical_publication','native_Parser_authority')),
+          'E_FACTS')
+    _need(type(facts['dependencies']) is list and all(type(facts[k]) is dict for k in ('operational_choices','binding_supports','role_selections')),'E_FACTS_CONTAINER')
+    reader.declare(facts['predecessor_inventory'])  # M3 fixed17 data; distinct from full45 publisher catalogue.
+    tool=_closed(facts['tool_support'],('Source','API','different_review','Root_adoption'),'E_CODE')
+    _need(_same(tool,{k:e['producer'][k] for k in tool}),'E_CODE')
+    lease=_closed(facts['lease_support'],('canonical','separate_Root_decision','different_review','Root_adoption','original_publication'),'E_LEASE_JOIN')
+    selection=_closed(facts['selection_support'],('selection','different_review','Root_adoption'),'E_SELECTION_JOIN')
+    for p in [*lease.values(),*selection.values(),*tool.values()]:reader.declare(p)
+    _need(_same(lease['canonical'],e['lease']) and _same(selection['selection'],e['selection']),'E_SELECTION_JOIN')
+    _need(_same(lease,request['new_lease_support']) and _same(tool,request['producer_supports']['M3']) and
+          _same(selection['different_review'],request['Root_future_path_selection_support']['different_review']) and
+          _same(selection['Root_adoption'],request['Root_future_path_selection_support']['Root_adoption']),'E_BATCH_SUPPORT')
+    steps=_closed(receipt['steps'],('complete_inverse','actual_diff_removed_byte_basis','actual_check_codec','metadata_Source_provenance'),'E_PROVENANCE')
+    provenance=_closed(steps['metadata_Source_provenance'],('Source','API','actual_implementation_Source_editor','historical_implementation_Source_editor','stage_purpose','resource_observation'),'E_PROVENANCE')
+    _need(_same(provenance['Source'],e['producer']['Source']) and _same(provenance['API'],e['producer']['API']) and
+          provenance['actual_implementation_Source_editor']==e['producer']['editor']==row['metadata_Source_worker'] and
+          provenance['historical_implementation_Source_editor']=='/root/pipeline_source_editor','E_PROVENANCE')
+    stage=facts['stage']
+    if stage=='templates':
+        _need(facts['role'] is None and role in ROLE_ORDER[:4],'E_STAGE_ROLE');roles=['capture_template',*ROLE_ORDER[:4]]
+    else:
+        _need(stage=='phase_bound' and facts['role']==role and role in ROLE_ORDER[4:],'E_STAGE_ROLE');roles=[role]
+    purpose=_closed(provenance['stage_purpose'],PURPOSE_KEYS,'E_PURPOSE')
+    _need(type(purpose['schema_version']) is int and purpose['schema_version']==2 and purpose['stage']==stage and purpose['role']==facts['role'] and
+          _same(purpose['facts'],facts_pin.to_dict()) and type(purpose['inputs']) is list and type(purpose['output_paths']) is list,'E_PURPOSE')
+    home=_parent(e['producer']['Source']['path']);outputs=[]
+    for r in roles:
+        _need(r in selected,'E_OUTPUTS');dp=_path(selected[r]['draft_path']);leaf=_leaf(dp)
+        outputs.extend((dp,_join(home,'source_diffs\\'+leaf+'.diff'),_join(home,'stage_receipts\\ROOT_CURRENT_OWNER_'+r.upper()+'_ACTUAL_M3_SOURCE_DRAFT_AUTHOR_RECEIPT_001.json')))
+    diff_pin=reader.declare(receipt['diff'])
+    _need(len(outputs)==len(set(outputs)) and purpose['output_paths']==sorted(outputs) and
+          receipt_pin.path==_join(home,'stage_receipts\\ROOT_CURRENT_OWNER_'+role.upper()+'_ACTUAL_M3_SOURCE_DRAFT_AUTHOR_RECEIPT_001.json') and
+          diff_pin.path==_join(home,'source_diffs\\'+_leaf(draft.path)+'.diff'),'E_OUTPUTS')
+    inputs=[reader.declare(p) for p in purpose['inputs']]
+    _need(len(inputs)<=2000 and len({p.path.casefold() for p in inputs})==len(inputs) and [p.path for p in inputs]==sorted(p.path for p in inputs),'E_PURPOSE_INPUTS')
+    required=[facts_pin,Pin(e['selection']),Pin(e['lease']),Pin(e['owner_support_manifest']),*map(Pin,e['owner_support'].values()),*_pins(facts)]
+    _need(all(p in inputs for p in required),'E_PURPOSE_INPUTS')
+    excluded={p.casefold() for p in outputs}|{Pin(support['different_review']).path.casefold(),Pin(support['Root_adoption']).path.casefold()}
+    _need(not any(p.path.casefold() in excluded for p in inputs),'E_PURPOSE_SELF')
+    review,full=_review(reader,support['different_review'],[facts_pin,*inputs],['/root',e['producer']['editor'],*e['actual_content_authors']])
+    _need(Pin(review['full_proof']).path.casefold() not in {p.path.casefold() for p in inputs},'E_PURPOSE_SELF')
+    adoption=_adopt(reader,support['Root_adoption'],[facts_pin,*inputs],support['different_review'],review,STAGE_VERDICT)
+    _need(all(_same(v.get('exact_M3_Source_stage_purpose'),purpose) for v in (review,full,adoption)),'E_PURPOSE_LITERAL')
+    resource=_closed(provenance['resource_observation'],('observed_utc','available_RAM_bytes','free_disk_bytes'),'E_RESOURCE')
+    _need(type(resource['available_RAM_bytes']) is int and resource['available_RAM_bytes']>=1073741824 and
+          type(resource['free_disk_bytes']) is int and resource['free_disk_bytes']>=10737418240,'E_RESOURCE')
+    facts_time=_ticks(facts['created_utc']);obs=_ticks(resource['observed_utc']);born=_ticks(receipt['created_utc'])
+    _need(facts_time<=obs<=born and born-obs<=600000000,'E_RESOURCE_TIME')
+    _need(_ticks(selected['_selection_created_utc'])<=facts_time<=_ticks(full['created_utc']) and
+          _ticks(producer_code_adopted['created_utc'])<=facts_time and
+          _ticks(adoption['created_utc'])<=born<=request_time,'E_CHRONOLOGY')
+    return receipt_pin,facts_pin,receipt
+
+def _batch(reader):
+    e=reader.e;selection,selected=_selection(reader);selected['_selection_created_utc']=selection['created_utc']
+    producer_adoption=_code(reader,'producer');publisher_adoption=_code(reader,'publisher')
+    request=reader.record(e['request']);pub=reader.record(e['publication'])
+    _need(request.get('record_type')!='Root_Source024_selected_role_exact_reviewed_Source_publication_request' and
+          not (len(pub)==29 and pub.get('stage')=='publish'),'E_UNSUPPORTED_SINGLE')
+    _shape(request,'batch_request21_v2');_shape(pub,'batch_publication43_v2')
+    _need(request['author']==pub['author']==pub['canonical_physical_actor']=='/root' and
+          request['Root_thread']==pub['Root_thread']==e['root_thread'] and
+          _same(request['current_owner_support'],e['owner_support']) and _same(pub['current_owner_support'],e['owner_support']) and
+          _same(pub['current_owner_scope'],e['owner_support']['current_owner_scope']) and
+          _same(pub['actual_Root_request'],e['request']) and _same(pub['Root_future_path_selection'],e['selection']) and
+          _same(pub['actual_new_lease'],e['lease']),'E_BATCH_CONTEXT')
+    _need(request['request_id']==pub['request_id']==e['request_id'] and
+          request['publication_receipt_path']==e['publication']['path'] and
+          _parent(e['request']['path'])==_parent(e['publication']['path'])==e['namespace'],'E_ROUTE')
+    _need(request['source_only'] is True and request['canonical_publication_selected'] is True and
+          request['target_execution'] is False and request['operational_authority'] is False and pub['canonical_publication'] is True and
+          pub['verdict']==PUB_VERDICT and type(pub['publication_reserve_seconds']) is int and pub['publication_reserve_seconds']==60 and
+          all(pub[k] is False for k in ('operational_authority','target_execution','actual_entry006','whole_cohort_or_runtime_acceptance',
+                  'original_import_function_main_oracle_fixture_C8_test_actor_Job_native_science','Git_mutation_push_unrelated_stop_or_host_quiet','old_leases_extended')) and
+          pub['partial_failure_preserved_no_rollback_no_automatic_retry'] is True and pub['canonical_delta_and_creation_review_pending'] is True,'E_BATCH_FLAGS')
+    for a,b in (('Root_future_path_selection_acceptance','Root_future_path_selection_support'),('actual_new_lease_support','new_lease_support'),
+                ('predecessor_inventory_support','predecessor_inventory_support'),('producer_supports','producer_supports')):
+        _need(_same(pub[a],request[b]),'E_BATCH_SUPPORT')
+    support=_closed(request['Root_future_path_selection_support'],('subject','different_review','Root_adoption'),'E_SELECTION_JOIN')
+    _need(_same(support['subject'],e['selection']),'E_SELECTION_JOIN')
+    lease_support=_closed(request['new_lease_support'],('canonical','separate_Root_decision','different_review','Root_adoption','original_publication'),'E_LEASE_JOIN')
+    _need(_same(lease_support['canonical'],e['lease']),'E_LEASE_JOIN')
+    inventory=_closed(request['predecessor_inventory_support'],('subject','different_review','Root_adoption'),'E_INVENTORY')
+    _need(_same(inventory['subject'],selection['current_complete45_inventory']),'E_INVENTORY')
+    _need(type(request['producer_supports']) is dict and set(request['producer_supports'])=={'M3'},'E_CODE')
+    producer_support=_closed(request['producer_supports']['M3'],('Source','API','different_review','Root_adoption'),'E_CODE')
+    _need(_same(producer_support,{k:e['producer'][k] for k in producer_support}),'E_CODE')
+    for p in [*lease_support.values(),*inventory.values(),*producer_support.values()]:reader.declare(p)
+    sel_review,sel_full=_review(reader,support['different_review'],[Pin(e['selection']),Pin(e['lease'])],['/root',*e['actual_content_authors']])
+    sel_adopt=_adopt(reader,support['Root_adoption'],[Pin(e['selection']),Pin(e['lease'])],support['different_review'],sel_review)
+    for a,b in (('publisher_source','Source'),('publisher_API','API'),('publisher_different_Source_review','different_review'),('publisher_Root_Source_adoption','Root_adoption')):
+        _need(_same(pub[a],e['publisher'][b]),'E_CODE')
+    _need(_same(request['publisher_source'],e['publisher']['Source']) and _same(request['publisher_API'],e['publisher']['API']) and
+          _same(request['publisher_Source_review'],e['publisher']['different_review']) and _same(request['publisher_Root_adoption'],e['publisher']['Root_adoption']) and
+          pub['publication_helper_physical_Source_editor']==e['publisher']['editor'],'E_CODE')
+    topology=dict(selected45=45,successor44=44,composer_carry1=1,model_replace41=41,model_carry26=26,table_replace20=20,table_carry26=26)
+    _need(_same(pub['topology'],topology) and _same(pub['original_numerical_guards'],ORIGINAL_GUARDS) and
+          _same(pub['immutable_historical_leases'],HISTORICAL_LEASES) and _same(pub['inherited_Source022_publisher'],HISTORICAL_PUBLISHER) and
+          pub['inherited_reader_Source_editor']=='/root/runtime_audit' and pub['inherited_no_overwrite_writer_Source_editor']=='/root/m3_source_editor' and
+          'composer' in selected and _same(pub['composer_carried'],selected['composer']['predecessor']) and
+          type(pub['complete_input_postreads']) is list,'E_RETAINED_METADATA')
+    for p in [*pub['immutable_historical_leases'],pub['inherited_Source022_publisher'],pub['composer_carried']]:reader.declare(p)
+    rows=request['rows'];published=pub['published']
+    _need(type(rows) is list and 0<len(rows)<=8 and type(published) is list and len(rows)==len(published) and
+          type(pub['published_count']) is int and pub['published_count']==len(rows),'E_BATCH_ROWS')
+    _need(all(type(r) is dict for r in rows+published),'E_BATCH_ROWS')
+    names=[r.get('role') for r in rows]
+    _need(all(r in ROLE_ORDER for r in names) and len(set(names))==len(names) and
+          names==[r for r in ROLE_ORDER if r in names] and names==[r.get('role') for r in published],'E_BATCH_ROWS')
+    request_time=_ticks(request['created_utc']);pub_time=_ticks(pub['created_utc'])
+    _need(max(_ticks(producer_adoption['created_utc']),_ticks(publisher_adoption['created_utc']),_ticks(sel_adopt['created_utc']))<=request_time<=pub_time<=reader.now,'E_CHRONOLOGY')
+    result={}
+    for wanted,actual in zip(rows,published):
+        _shape(wanted,'batch_request_row10_v2');_shape(actual,'batch_published_row_v2');role=wanted['role'];item,canonical,draft=reader.subjects[role]
+        _need(_same(wanted['draft'],draft.to_dict()) and wanted['canonical_path']==canonical.path and
+              wanted['physical_Source_editor']==actual['physical_Source_editor']==actual['canonical_physical_actor']=='/root' and
+              wanted['metadata_Source_worker']==actual['metadata_Source_worker']==e['producer']['editor'] and
+              wanted['retained_semantic_Source_author']==actual['retained_semantic_Source_author']==item['retained_semantic_Source_author'] and
+              type(wanted['source_cap']) is int and wanted['source_cap']==65536 and type(actual['source_cap']) is int and actual['source_cap']==65536 and
+              _same(actual['canonical'],canonical.to_dict()) and _same(actual['draft'],draft.to_dict()) and
+              _same(actual['predecessor'],item['predecessor']) and _same(actual['author_receipt'],wanted['author_receipt']) and
+              _same(actual['exact_Source_review'],wanted['source_review']) and _same(actual['Root_Source_review_adoption'],wanted['Root_adoption']) and
+              type(actual['actual_publication_metadata_APIs']) is dict,'E_ROW_JOIN')
+        _need(role in e['stage_supports'],'E_STAGE_SUPPORT')
+        receipt,facts,body=_receipt(reader,role,actual,selected,request,request_time,producer_adoption)
+        review,full=_review(reader,wanted['source_review'],[draft,receipt],['/root',e['producer']['editor'],*e['actual_content_authors']])
+        adoption=_adopt(reader,wanted['Root_adoption'],[draft,receipt],wanted['source_review'],review)
+        _need(_ticks(body['created_utc'])<=_ticks(full['created_utc']) and _ticks(adoption['created_utc'])<=request_time,'E_CHRONOLOGY')
+        result[role]=MetadataView(role,canonical,draft,e['request'],e['publication'],receipt,facts,'ORIGINAL_BATCH_METADATA')
+    return result,request,pub
+
+def _delta(reader,view,review_pin,adoption_pin,birth,request,pub):
+    e=reader.e;witness=Pin(e['execution_witness']);reader.record(witness)  # explicitly expected opaque metadata only
+    subjects=[view.subject,view.draft,view.author_receipt,view.request,view.original_publication,witness]
+    review,full=_review(reader,review_pin,subjects,['/root',e['producer']['editor'],e['publisher']['editor'],*e['actual_content_authors']])
+    adoption=_adopt(reader,adoption_pin,subjects,review_pin,review)
+    _need(_ticks(request['created_utc'])<=_ticks(birth)<=_ticks(pub['created_utc'])<=_ticks(full['created_utc']),'E_CHRONOLOGY')
+    return adoption
+
+def validate_batch_metadata(*,expected,read_record):
+    """Return immutable views of declared batch metadata; no Source/body or authority proof."""
+    reader=_Reader(expected,read_record);views,request,pub=_batch(reader)
+    return tuple(views.values())
+
+def validate_proof6_metadata(*,proof6,expected,read_record):
+    reader=_Reader(expected,read_record);proof=_snapshot(proof6);_closed(proof,PROOF6_KEYS,'E_PROOF6')
+    views,request,pub=_batch(reader);subject=Pin(proof['subject'],65536)
+    matches=[v for v in views.values() if v.subject==subject];_need(len(matches)==1,'E_PROOF6');view=matches[0]
+    _need(_same(proof['canonical_publication'],view.original_publication.to_dict()) and
+          _same(proof['actual_Source_author_receipt'],view.author_receipt.to_dict()),'E_PROOF6')
+    _delta(reader,view,proof['different_Source_review'],proof['Root_adoption'],proof['actual_Source_birth_utc'],request,pub)
+    return MetadataView(view.role,view.subject,view.draft,view.request,view.original_publication,view.author_receipt,view.facts,'DIRECT_PROOF6_METADATA',declared_birth=proof['actual_Source_birth_utc'])
+
+def validate_proof4_metadata(*,proof4,expected,read_record):
+    reader=_Reader(expected,read_record);proof=_snapshot(proof4);_closed(proof,PROOF4_KEYS,'E_PROOF4')
+    views,request,pub=_batch(reader);subject=Pin(proof['Source'],65536)
+    matches=[v for v in views.values() if v.subject==subject];_need(len(matches)==1,'E_PROOF4');view=matches[0]
+    recon_pin=Pin(proof['Root_publication']);recon=_shape(reader.record(recon_pin),'reconciliation26_v2')
+    e=reader.e
+    _need(recon['author']=='/root' and recon['verdict']==RECON_VERDICT and recon['canonical_publication'] is True and
+          recon['canonical_publication_flag_scope']==RECON_FLAG_SCOPE and
+          all(recon[k] is False for k in ('new_canonical_Source_write_by_reconciliation','Git_mutation','target_execution','operational_authority','whole_cohort_or_runtime_or_fixture_acceptance')),
+          'E_RECONCILIATION')
+    for key,value in (('canonical_Source',view.subject),('exact_draft_Source',view.draft),('initial_actual_Root_request',view.request),
+                      ('initial_actual_canonical_publication_receipt',view.original_publication),('current_owner_scope',e['owner_support']['current_owner_scope']),
+                      ('Root_future_path_selection',e['selection']),('new_canonical_lease',e['lease']),('prior_actual_publisher_Source',e['publisher']['Source']),
+                      ('initial_actual_execution_witness',e['execution_witness'])):
+        _need(_same(recon[key],Pin(value).to_dict()),'E_RECONCILIATION_JOIN')
+    _need(recon['prior_publication_created_utc']==pub['created_utc'] and
+          _same(recon['actual_canonical_delta_Source_review'],proof['different_Source_review']) and
+          _same(recon['canonical_delta_Root_adoption'],proof['Root_adoption']) and type(recon['actual_input_observations']) is list,'E_RECONCILIATION_JOIN')
+    delta=_delta(reader,view,proof['different_Source_review'],proof['Root_adoption'],recon['canonical_Source_birth_utc'],request,pub)
+    _need(_ticks(delta['created_utc'])<=_ticks(recon['created_utc']),'E_CHRONOLOGY')
+    review,full=_review(reader,e['reconciliation_review'],[recon_pin,view.subject,view.original_publication],['/root',e['producer']['editor'],e['publisher']['editor'],*e['actual_content_authors']])
+    _adopt(reader,e['reconciliation_Root_adoption'],[recon_pin,view.subject,view.original_publication],e['reconciliation_review'],review)
+    _need(_ticks(recon['created_utc'])<=_ticks(full['created_utc']),'E_CHRONOLOGY')
+    return MetadataView(view.role,view.subject,view.draft,view.request,view.original_publication,view.author_receipt,view.facts,'VERIFIED_PRIOR_RECONCILIATION_PROOF4_METADATA',recon_pin,recon['canonical_Source_birth_utc'])

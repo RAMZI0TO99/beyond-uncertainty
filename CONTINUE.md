@@ -1,3 +1,7 @@
+**October15 I6 pure publication adapter tested.** The [finite-eight metadata report](docs/development/native-publication-adapter/20261015-i6/I6_PUBLICATION_METADATA_ADAPTER.md) records a reviewed batch/reconciliation adapter and separately scoped synthetic memory tests. It reads no measured Source bodies and grants no real publisher, family, lease, Native8, Parser or runtime authority. Existing caller/producer holds stay in place; actual writer/consumer binding is next. Source inventory stays36/45 and frozen STEP08035/45. All prior guidance is preserved below.
+
+---
+
 **October15 I5 interface context Source accepted.** The [generic and phase-peer report](docs/development/native-interface-implementation/20261015-i5/I5_INTERFACE_IMPLEMENTATION.md) records held owner-context successors with the original strong21/39 and seven-link M3 checks preserved. Both Sources remain unrun; publication ABI adapters, Native8 support carrier, Parser result adapter and qualifying consumer bindings remain required. The dated Source inventory stays36/45 and frozen STEP08035/45. All prior guidance is preserved below.
 
 ---

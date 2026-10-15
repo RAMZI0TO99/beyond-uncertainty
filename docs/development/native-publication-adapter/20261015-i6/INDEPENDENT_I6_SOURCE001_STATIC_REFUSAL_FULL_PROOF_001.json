@@ -1,0 +1,213 @@
+{
+  "actual_reading": {
+    "Reader": "class _Reader:\n    def __init__(self,expected,read_record):\n        self.e=_snapshot(expected);_closed(self.e,CONTEXT_KEYS,'E_EXPECTED')\n        self.callback=read_record;self.cache={};self.pins={};self.count=0;self.total_bytes=0;self.protected={};self.subjects={}\n        _need(callable(read_record),'E_CALLBACK')\n        entries=self.e['subjects']\n        _need(type(entries) is list and len(entries)==8 and all(type(s) is dict for s in entries) and [s.get('role') for s in entries]==list(ROLE_ORDER),'E_SUBJECT_SET')\n        for item in entries:\n            _closed(item,SUBJECT_KEYS,'E_SUBJECT_SET');p=Pin(item['canonical'],65536)\n            draft=Pin(dict(path=_path(item['draft_path']),bytes=p.bytes,sha256=p.sha256),65536)\n            Pin(item['predecessor'],65536)\n            _need(type(item['selected_ordinal']) is int and 18<item['selected_ordinal']<1000 and\n                  type(item['source_cap']) is int and item['source_cap']==65536 and\n                  p.path!=draft.path,'E_SUBJECT_SET')\n            for q in (p,draft):\n                key=q.path.casefold();_need(key not in self.protected,'E_SUBJECT_SET');self.protected[key]=q\n            self.subjects[item['role']]=(item,p,draft)\n        _need(len(self.protected)==16,'E_SUBJECT_SET')\n        for i in range(4):_need(entries[i]['selected_ordinal']==entries[i+4]['selected_ordinal'],'E_PAIR_ORDINAL')\n        # No callback has happened before the complete protected16 map above exists.\n        _closed(self.e['owner_support'],SCOPE_KEYS,'E_SCOPE')\n        _need(type(self.e['root_thread']) is str and re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',self.e['root_thread']) is not None,'E_ROOT_THREAD')\n        self.now=_ticks(self.e['now_utc']);_path(self.e['namespace'])\n        _need(type(self.e['request_id']) is str and re.fullmatch('[A-Z0-9_]{1,48}',self.e['request_id']) is not None,'E_REQUEST_ID')\n        _need(type(self.e['actual_content_authors']) is list,'E_ACTOR')\n        for x in self.e['actual_content_authors']:_actor(x)\n        for name in ('producer','publisher'):\n            code=_closed(self.e[name],CODE_KEYS,'E_CODE');_actor(code['editor']);_need(code['editor']!='/root','E_CODE')\n            for k in ('Source','API','different_review','Root_adoption'):self.declare(code[k])\n        for name in ('request','publication','selection','lease','owner_support_manifest','execution_witness'):\n            self.declare(self.e[name])\n        for p in self.e['owner_support'].values():self.declare(p)\n        _need(type(self.e['stage_supports']) is dict and set(self.e['stage_supports'])<=set(ROLE_ORDER),'E_STAGE_SUPPORT')\n    def declare(self,pin):\n        pin=Pin(pin);key=pin.path.casefold();old=self.pins.get(key)\n        _need(old is None or old==pin,'E_PIN_CONFLICT')\n        if key in self.protected:_need(self.protected[key]==pin,'E_SUBJECT_PIN')\n        self.pins[key]=pin\n        return pin\n    def raw(self,pin):\n        pin=self.declare(pin)\n        _need(pin.path.casefold() not in self.protected,'E_PROTECTED_SUBJECT')\n        if pin.path not in self.cache:\n            _need(self.count<256 and self.total_bytes+pin.bytes<=33554432,'E_READ_BOUND');self.count+=1;self.total_bytes+=pin.bytes\n            raw=self.callback(pin.to_dict())\n            _need(type(raw) is bytes and len(raw)==pin.bytes and hashlib.sha256(raw).hexdigest()==pin.sha256,'E_HASH')\n            self.cache[pin.path]=raw\n        return self.cache[pin.path]\n    def record(self,pin):return _decode(self.raw(pin))",
+    "batch": "def _batch(reader):\n    e=reader.e;selection,selected=_selection(reader);selected['_selection_created_utc']=selection['created_utc']\n    producer_adoption=_code(reader,'producer');publisher_adoption=_code(reader,'publisher')\n    request=reader.record(e['request']);pub=reader.record(e['publication'])\n    _need(request.get('record_type')!='Root_Source024_selected_role_exact_reviewed_Source_publication_request' and\n          not (len(pub)==29 and pub.get('stage')=='publish'),'E_UNSUPPORTED_SINGLE')\n    _shape(request,'batch_request21_v2');_shape(pub,'batch_publication43_v2')\n    _need(request['author']==pub['author']==pub['canonical_physical_actor']=='/root' and\n          request['Root_thread']==pub['Root_thread']==e['root_thread'] and\n          _same(request['current_owner_support'],e['owner_support']) and _same(pub['current_owner_support'],e['owner_support']) and\n          _same(pub['current_owner_scope'],e['owner_support']['current_owner_scope']) and\n          _same(pub['actual_Root_request'],e['request']) and _same(pub['Root_future_path_selection'],e['selection']) and\n          _same(pub['actual_new_lease'],e['lease']),'E_BATCH_CONTEXT')\n    _need(request['request_id']==pub['request_id']==e['request_id'] and\n          request['publication_receipt_path']==e['publication']['path'] and\n          _parent(e['request']['path'])==_parent(e['publication']['path'])==e['namespace'],'E_ROUTE')\n    _need(request['source_only'] is True and request['canonical_publication_selected'] is True and\n          request['target_execution'] is False and request['operational_authority'] is False and pub['canonical_publication'] is True and\n          pub['verdict']==PUB_VERDICT and type(pub['publication_reserve_seconds']) is int and pub['publication_reserve_seconds']==60 and\n          all(pub[k] is False for k in ('operational_authority','target_execution','actual_entry006','whole_cohort_or_runtime_acceptance',\n                  'original_import_function_main_oracle_fixture_C8_test_actor_Job_native_science','Git_mutation_push_unrelated_stop_or_host_quiet','old_leases_extended')) and\n          pub['partial_failure_preserved_no_rollback_no_automatic_retry'] is True and pub['canonical_delta_and_creation_review_pending'] is True,'E_BATCH_FLAGS')\n    for a,b in (('Root_future_path_selection_acceptance','Root_future_path_selection_support'),('actual_new_lease_support','new_lease_support'),\n                ('predecessor_inventory_support','predecessor_inventory_support'),('producer_supports','producer_supports')):\n        _need(_same(pub[a],request[b]),'E_BATCH_SUPPORT')\n    support=_closed(request['Root_future_path_selection_support'],('subject','different_review','Root_adoption'),'E_SELECTION_JOIN')\n    _need(_same(support['subject'],e['selection']),'E_SELECTION_JOIN')\n    lease_support=_closed(request['new_lease_support'],('canonical','separate_Root_decision','different_review','Root_adoption','original_publication'),'E_LEASE_JOIN')\n    _need(_same(lease_support['canonical'],e['lease']),'E_LEASE_JOIN')\n    inventory=_closed(request['predecessor_inventory_support'],('subject','different_review','Root_adoption'),'E_INVENTORY')\n    _need(_same(inventory['subject'],selection['current_complete45_inventory']),'E_INVENTORY')\n    _need(type(request['producer_supports']) is dict and 'M3' in request['producer_supports'],'E_CODE')\n    producer_support=_closed(request['producer_supports']['M3'],('Source','API','different_review','Root_adoption'),'E_CODE')\n    _need(_same(producer_support,{k:e['producer'][k] for k in producer_support}),'E_CODE')\n    for p in [*_pins(lease_support),*_pins(inventory),*_pins(producer_support)]:reader.declare(p)\n    sel_review,sel_full=_review(reader,support['different_review'],[Pin(e['selection']),Pin(e['lease'])],['/root',*e['actual_content_authors']])\n    sel_adopt=_adopt(reader,support['Root_adoption'],[Pin(e['selection']),Pin(e['lease'])],support['different_review'],sel_review)\n    for a,b in (('publisher_source','Source'),('publisher_API','API'),('publisher_different_Source_review','different_review'),('publisher_Root_Source_adoption','Root_adoption')):\n        _need(_same(pub[a],e['publisher'][b]),'E_CODE')\n    _need(_same(request['publisher_source'],e['publisher']['Source']) and _same(request['publisher_API'],e['publisher']['API']) and\n          _same(request['publisher_Source_review'],e['publisher']['different_review']) and _same(request['publisher_Root_adoption'],e['publisher']['Root_adoption']) and\n          pub['publication_helper_physical_Source_editor']==e['publisher']['editor'],'E_CODE')\n    topology=dict(selected45=45,successor44=44,composer_carry1=1,model_replace41=41,model_carry26=26,table_replace20=20,table_carry26=26)\n    _need(_same(pub['topology'],topology) and _same(pub['original_numerical_guards'],ORIGINAL_GUARDS) and\n          _same(pub['immutable_historical_leases'],HISTORICAL_LEASES) and _same(pub['inherited_Source022_publisher'],HISTORICAL_PUBLISHER) and\n          pub['inherited_reader_Source_editor']=='/root/runtime_audit' and pub['inherited_no_overwrite_writer_Source_editor']=='/root/m3_source_editor' and\n          'composer' in selected and _same(pub['composer_carried'],selected['composer']['predecessor']) and\n          type(pub['complete_input_postreads']) is list,'E_RETAINED_METADATA')\n    rows=request['rows'];published=pub['published']\n    _need(type(rows) is list and 0<len(rows)<=8 and type(published) is list and len(rows)==len(published) and\n          type(pub['published_count']) is int and pub['published_count']==len(rows),'E_BATCH_ROWS')\n    _need(all(type(r) is dict for r in rows+published),'E_BATCH_ROWS')\n    names=[r.get('role') for r in rows]\n    _need(all(r in ROLE_ORDER for r in names) and len(set(names))==len(names) and\n          names==[r for r in ROLE_ORDER if r in names] and names==[r.get('role') for r in published],'E_BATCH_ROWS')\n    request_time=_ticks(request['created_utc']);pub_time=_ticks(pub['created_utc'])\n    _need(max(_ticks(producer_adoption['created_utc']),_ticks(publisher_adoption['created_utc']),_ticks(sel_adopt['created_utc']))<=request_time<=pub_time<=reader.now,'E_CHRONOLOGY')\n    result={}\n    for wanted,actual in zip(rows,published):\n        _shape(wanted,'batch_request_row10_v2');_shape(actual,'batch_published_row_v2');role=wanted['role'];item,canonical,draft=reader.subjects[role]\n        _need(_same(wanted['draft'],draft.to_dict()) and wanted['canonical_path']==canonical.path and\n              wanted['physical_Source_editor']==actual['physical_Source_editor']==actual['canonical_physical_actor']=='/root' and\n              wanted['metadata_Source_worker']==actual['metadata_Source_worker']==e['producer']['editor'] and\n              wanted['retained_semantic_Source_author']==actual['retained_semantic_Source_author']==item['retained_semantic_Source_author'] and\n              type(wanted['source_cap']) is int and wanted['source_cap']==65536 and type(actual['source_cap']) is int and actual['source_cap']==65536 and\n              _same(actual['canonical'],canonical.to_dict()) and _same(actual['draft'],draft.to_dict()) and\n              _same(actual['predecessor'],item['predecessor']) and _same(actual['author_receipt'],wanted['author_receipt']) and\n              _same(actual['exact_Source_review'],wanted['source_review']) and _same(actual['Root_Source_review_adoption'],wanted['Root_adoption']) and\n              type(actual['actual_publication_metadata_APIs']) is dict,'E_ROW_JOIN')\n        _need(role in e['stage_supports'],'E_STAGE_SUPPORT')\n        receipt,facts,body=_receipt(reader,role,actual,selected,request,request_time,producer_adoption)\n        review,full=_review(reader,wanted['source_review'],[draft,receipt],['/root',e['producer']['editor'],*e['actual_content_authors']])\n        adoption=_adopt(reader,wanted['Root_adoption'],[draft,receipt],wanted['source_review'],review)\n        _need(_ticks(body['created_utc'])<=_ticks(full['created_utc']) and _ticks(adoption['created_utc'])<=request_time,'E_CHRONOLOGY')\n        result[role]=MetadataView(role,canonical,draft,e['request'],e['publication'],receipt,facts,'ORIGINAL_BATCH_METADATA')\n    return result,request,pub",
+    "receipt": "def _receipt(reader,role,row,selected,request,request_time,producer_code_adopted):\n    e=reader.e;item,canonical,draft=reader.subjects[role]\n    receipt_pin=Pin(row['author_receipt']);receipt=reader.record(receipt_pin);_closed(receipt,RECEIPT_KEYS,'E_RECEIPT')\n    support=_shape(e['stage_supports'][role],'external_M3_stage_support3')\n    facts_pin=Pin(support['facts']);_need(_same(receipt['actual_Source_packet'],facts_pin.to_dict()),'E_STAGE_SUPPORT')\n    facts=reader.record(facts_pin);_closed(facts,FACT_KEYS,'E_FACTS')\n    _need(type(receipt['schema_version']) is int and receipt['schema_version']==2 and\n          receipt['record_type']=='Root_owner_v2_actual_deferred_M3_Source_draft_author_receipt' and\n          receipt['author']==receipt['actual_physical_Source_editor']=='/root' and receipt['role']==role and\n          _same(receipt['draft'],draft.to_dict()) and _same(receipt['predecessor'],item['predecessor']) and\n          _same(receipt['Root_future_path_selection'],e['selection']) and _same(receipt['current_owner_scope'],e['owner_support']['current_owner_scope']) and\n          _same(receipt['new_canonical_lease'],e['lease']) and receipt['retained_semantic_Source_author']==item['retained_semantic_Source_author'],\n          'E_RECEIPT_JOIN')\n    _need(all(receipt[k] is False for k in ('target_execution','canonical_publication','operational_authority','original_fixtures_and_runtime_admission')) and\n          receipt['complete_current_predecessor_byte_inverse'] is True and receipt['different_actual_generated_Source_review_pending'] is True and\n          type(receipt['finite_actual_Source_observations']) is list,'E_RECEIPT_FLAGS')\n    _need(type(facts['schema_version']) is int and facts['schema_version']==2 and\n          facts['record_type']=='Root_owner_v2_exact_M3_Source_stage_purpose_and_facts' and facts['author']=='/root' and\n          facts['Root_thread']==e['root_thread'] and _same(facts['current_owner_scope'],e['owner_support']['current_owner_scope']) and\n          facts['source_only'] is True and all(facts[k] is False for k in ('target_execution','operational_authority','canonical_publication','native_Parser_authority')),\n          'E_FACTS')\n    _need(type(facts['dependencies']) is list and all(type(facts[k]) is dict for k in ('operational_choices','binding_supports','role_selections')),'E_FACTS_CONTAINER')\n    tool=_closed(facts['tool_support'],('Source','API','different_review','Root_adoption'),'E_CODE')\n    _need(_same(tool,{k:e['producer'][k] for k in tool}),'E_CODE')\n    lease=_closed(facts['lease_support'],('canonical','separate_Root_decision','different_review','Root_adoption','original_publication'),'E_LEASE_JOIN')\n    selection=_closed(facts['selection_support'],('selection','different_review','Root_adoption'),'E_SELECTION_JOIN')\n    _need(_same(lease['canonical'],e['lease']) and _same(selection['selection'],e['selection']),'E_SELECTION_JOIN')\n    _need(_same(lease,request['new_lease_support']) and _same(tool,request['producer_supports']['M3']) and\n          _same(selection['different_review'],request['Root_future_path_selection_support']['different_review']) and\n          _same(selection['Root_adoption'],request['Root_future_path_selection_support']['Root_adoption']),'E_BATCH_SUPPORT')\n    steps=_closed(receipt['steps'],('complete_inverse','actual_diff_removed_byte_basis','actual_check_codec','metadata_Source_provenance'),'E_PROVENANCE')\n    provenance=_closed(steps['metadata_Source_provenance'],('Source','API','actual_implementation_Source_editor','historical_implementation_Source_editor','stage_purpose','resource_observation'),'E_PROVENANCE')\n    _need(_same(provenance['Source'],e['producer']['Source']) and _same(provenance['API'],e['producer']['API']) and\n          provenance['actual_implementation_Source_editor']==e['producer']['editor']==row['metadata_Source_worker'] and\n          provenance['historical_implementation_Source_editor']=='/root/pipeline_source_editor','E_PROVENANCE')\n    stage=facts['stage']\n    if stage=='templates':\n        _need(facts['role'] is None and role in ROLE_ORDER[:4],'E_STAGE_ROLE');roles=['capture_template',*ROLE_ORDER[:4]]\n    else:\n        _need(stage=='phase_bound' and facts['role']==role and role in ROLE_ORDER[4:],'E_STAGE_ROLE');roles=[role]\n    purpose=_closed(provenance['stage_purpose'],PURPOSE_KEYS,'E_PURPOSE')\n    _need(type(purpose['schema_version']) is int and purpose['schema_version']==2 and purpose['stage']==stage and purpose['role']==facts['role'] and\n          _same(purpose['facts'],facts_pin.to_dict()) and type(purpose['inputs']) is list and type(purpose['output_paths']) is list,'E_PURPOSE')\n    home=_parent(e['producer']['Source']['path']);outputs=[]\n    for r in roles:\n        _need(r in selected,'E_OUTPUTS');dp=_path(selected[r]['draft_path']);leaf=_leaf(dp)\n        outputs.extend((dp,_join(home,'source_diffs\\\\'+leaf+'.diff'),_join(home,'stage_receipts\\\\ROOT_CURRENT_OWNER_'+r.upper()+'_ACTUAL_M3_SOURCE_DRAFT_AUTHOR_RECEIPT_001.json')))\n    diff_pin=Pin(receipt['diff'])\n    _need(len(outputs)==len(set(outputs)) and purpose['output_paths']==sorted(outputs) and\n          receipt_pin.path==_join(home,'stage_receipts\\\\ROOT_CURRENT_OWNER_'+role.upper()+'_ACTUAL_M3_SOURCE_DRAFT_AUTHOR_RECEIPT_001.json') and\n          diff_pin.path==_join(home,'source_diffs\\\\'+_leaf(draft.path)+'.diff'),'E_OUTPUTS')\n    inputs=[reader.declare(p) for p in purpose['inputs']]\n    _need(len(inputs)<=2000 and len({p.path.casefold() for p in inputs})==len(inputs) and [p.path for p in inputs]==sorted(p.path for p in inputs),'E_PURPOSE_INPUTS')\n    required=[facts_pin,Pin(e['selection']),Pin(e['lease']),Pin(e['owner_support_manifest']),*map(Pin,e['owner_support'].values()),*_pins(facts)]\n    _need(all(p in inputs for p in required),'E_PURPOSE_INPUTS')\n    excluded={p.casefold() for p in outputs}|{Pin(support['different_review']).path.casefold(),Pin(support['Root_adoption']).path.casefold()}\n    _need(not any(p.path.casefold() in excluded for p in inputs),'E_PURPOSE_SELF')\n    review,full=_review(reader,support['different_review'],[facts_pin,*inputs],['/root',e['producer']['editor'],*e['actual_content_authors']])\n    _need(Pin(review['full_proof']).path.casefold() not in {p.path.casefold() for p in inputs},'E_PURPOSE_SELF')\n    adoption=_adopt(reader,support['Root_adoption'],[facts_pin,*inputs],support['different_review'],review,STAGE_VERDICT)\n    _need(all(_same(v.get('exact_M3_Source_stage_purpose'),purpose) for v in (review,full,adoption)),'E_PURPOSE_LITERAL')\n    resource=_closed(provenance['resource_observation'],('observed_utc','available_RAM_bytes','free_disk_bytes'),'E_RESOURCE')\n    _need(type(resource['available_RAM_bytes']) is int and resource['available_RAM_bytes']>=1073741824 and\n          type(resource['free_disk_bytes']) is int and resource['free_disk_bytes']>=10737418240,'E_RESOURCE')\n    facts_time=_ticks(facts['created_utc']);obs=_ticks(resource['observed_utc']);born=_ticks(receipt['created_utc'])\n    _need(facts_time<=obs<=born and born-obs<=600000000,'E_RESOURCE_TIME')\n    _need(_ticks(selected['_selection_created_utc'])<=facts_time<=_ticks(full['created_utc']) and\n          _ticks(producer_code_adopted['created_utc'])<=facts_time and\n          _ticks(adoption['created_utc'])<=born<=request_time,'E_CHRONOLOGY')\n    return receipt_pin,facts_pin,receipt"
+  },
+  "all_actual_inputs": [
+    {
+      "bytes": 6785,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\independent_review_001\\review_I6_Source001_refusal_001.py",
+      "sha256": "0799213197c8a3f0c8acc32b4ce7cc8fc982be16cd3f3a925e5de8a811c04a62"
+    },
+    {
+      "bytes": 43521,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\validate_current_owner_M3_publication_metadata_001.py",
+      "sha256": "cb10580966d59046a9fbe44e3ca1efb40c4f12df6cd65e824e4e2238222ba5d2"
+    },
+    {
+      "bytes": 29087,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\test_current_owner_M3_publication_metadata_memory_only_001.py",
+      "sha256": "5b0c47b6646d2a8a9cc737e2b0bedd5c0a66ab1d614f70a4af2169d4f672b776"
+    },
+    {
+      "bytes": 28004,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\CURRENT_OWNER_M3_PUBLICATION_METADATA_INERT_API_001.json",
+      "sha256": "ac0b005e53c60667d5aeed51e4ac365ab01d507a0b765d964d77cb703ebb7421"
+    },
+    {
+      "bytes": 6078,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\CURRENT_OWNER_M3_PUBLICATION_METADATA_ACTUAL_SOURCE_AUTHOR_RECEIPT_001.json",
+      "sha256": "3d720623f8072b910082ddc28acac886e43272b2472ee7ca3de37fb6dcdf0c65"
+    },
+    {
+      "bytes": 2981,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\ROOT_CURRENT_I6_PUBLICATION_METADATA_ADAPTER_SOURCE_SCOPE_001.json",
+      "sha256": "270773fd6dec2d81b517eaf04315fc2b55646103dbf701aa3416b0b8e02c297f"
+    },
+    {
+      "bytes": 43895,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\ROOT_I6_FINITE8_BATCH_RECONCILIATION_METADATA_ADAPTER_SOURCE_CONTRACT_005.json",
+      "sha256": "a747ccb467be4113e6d950541157777a4a7855fe89a381c3984135549b783cea"
+    },
+    {
+      "bytes": 2931,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\ROOT_I6_PROTOCOL005_ACTUAL_SOURCE_REVIEW_ADOPTION_001.json",
+      "sha256": "fe810cf3af3789f8be23883396a1e265ef100f96e9883b466aa47abc8194b42f"
+    },
+    {
+      "bytes": 1941,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\ROOT_I6_OPAQUE_EXPECTED_API_AND_EXECUTION_WITNESS_METADATA_BOUNDARY_001.json",
+      "sha256": "a26c79caed78322c2aefbe9d0d171af6b511237f302eb33048dbf71174b7bbf5"
+    },
+    {
+      "bytes": 1347,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\ROOT_I6_EXACT_RECORDED_RESOURCE60_METADATA_PREDICATE_001.json",
+      "sha256": "6ade8626a77e20c7a1479f59c5021442fa73d53bde3eed2b14f893af412b2699"
+    },
+    {
+      "bytes": 223719,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\step079_role_publication_deferred_Source024_preparation_001\\root_Source024_role_publication_deferred_005.py",
+      "sha256": "3a96d40d5f3a1c8947565a8042a0c648699edf6058c89d48a3c45dd6adb13a41"
+    }
+  ],
+  "checks": [
+    {
+      "evidence": {
+        "bytes": 43521,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\validate_current_owner_M3_publication_metadata_001.py",
+        "sha256": "cb10580966d59046a9fbe44e3ca1efb40c4f12df6cd65e824e4e2238222ba5d2"
+      },
+      "name": "actual_frozen001_pin:validate_current_owner_M3_publication_metadata_001.py",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 29087,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\test_current_owner_M3_publication_metadata_memory_only_001.py",
+        "sha256": "5b0c47b6646d2a8a9cc737e2b0bedd5c0a66ab1d614f70a4af2169d4f672b776"
+      },
+      "name": "actual_frozen001_pin:test_current_owner_M3_publication_metadata_memory_only_001.py",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 28004,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\CURRENT_OWNER_M3_PUBLICATION_METADATA_INERT_API_001.json",
+        "sha256": "ac0b005e53c60667d5aeed51e4ac365ab01d507a0b765d964d77cb703ebb7421"
+      },
+      "name": "actual_frozen001_pin:CURRENT_OWNER_M3_PUBLICATION_METADATA_INERT_API_001.json",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 6078,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\CURRENT_OWNER_M3_PUBLICATION_METADATA_ACTUAL_SOURCE_AUTHOR_RECEIPT_001.json",
+        "sha256": "3d720623f8072b910082ddc28acac886e43272b2472ee7ca3de37fb6dcdf0c65"
+      },
+      "name": "actual_frozen001_pin:CURRENT_OWNER_M3_PUBLICATION_METADATA_ACTUAL_SOURCE_AUTHOR_RECEIPT_001.json",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual_Source": "for p in [*_pins(lease_support),*_pins(inventory),*_pins(producer_support)]:reader.declare(p)",
+        "actual_relevant_function_Source": "def _pins(value):\n    if type(value) is dict:\n        if set(value)=={'path','bytes','sha256'}:return [Pin(value)]\n        result=[]\n        for v in value.values():result.extend(_pins(v))\n        return result\n    if type(value) is list:\n        result=[]\n        for v in value:result.extend(_pins(v))\n        return result\n    return []",
+        "bounded_metadata_counterexample_only": {
+          "inventory_review_adoption_values": [
+            null,
+            false
+          ],
+          "lease_support_other_values": [
+            null,
+            false,
+            [],
+            "scalar"
+          ]
+        },
+        "reason": "_pins filters recursive exact fact3 dictionaries and silently ignores scalar/None/non-fact3 values. Closed5/3 only closes keys; four lease values and two inventory values can be malformed while identical copies satisfy facts/request/publication joins. Explicit each-value positive fact3 declaration is required."
+      },
+      "name": "known5_and3_support_values_all_explicit_positive_fact3",
+      "passed": false
+    },
+    {
+      "evidence": {
+        "actual_diff_validation": "diff_pin=Pin(receipt['diff'])",
+        "actual_predecessor_validation": "Pin(item['predecessor'],65536)",
+        "reason": "Both validate positive shape but bypass Reader.declare global same-path conflict registry. Register all consumed known pins after complete protected16 installation, without body dereference."
+      },
+      "name": "all_consumed_predecessor_and_diff_fact3_registered_for_samepath_conflicts",
+      "passed": false
+    },
+    {
+      "evidence": {
+        "actual_Source": "type(request['producer_supports']) is dict and 'M3' in request['producer_supports']",
+        "reason": "Ignored additional producer keys remain accepted. Root confirmed exact finite8 map {M3}; no other producer ABI is qualified."
+      },
+      "name": "finite8_producer_support_map_exact_M3_no_ignored_fields",
+      "passed": false
+    },
+    {
+      "evidence": null,
+      "name": "protected16_is_complete_before_callback",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "callback_protected_guard_before_call",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "Source001_imports_only_pure_stdlib",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "Source001_no_module_main_or_importtime_action",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "prebirth_batched_fixes_already_present",
+      "passed": true
+    }
+  ],
+  "checks_failed": 3,
+  "created_utc": "2026-10-15T14:55:53.584532+00:00",
+  "execution_boundary": "No target imported, called, compiled or tested. Counterexample is a bounded metadata mutation description, not an actual authority record. Source001 remains immutable and uninvoked; proposed corrections require actual successor Source review. Future one-use tests have not been admitted.",
+  "native_or_PSParser_calls": 0,
+  "operational_authority": false,
+  "project_calls": 0,
+  "project_imports": 0,
+  "record_type": "actual_independent_I6_Source001_static_refusal_full_proof",
+  "retracted_recommendation": {
+    "reason": "Actual I2 fixed17 M3 inventory differs from publisher full45 catalogue. Strictly validate both independent known pins; retain batch catalogue-to-selection45 join only. No cross-domain equality is required.",
+    "recommendation": "facts.predecessor_inventory == batch inventory.subject",
+    "retracted": true
+  },
+  "reviewer": "/root/owner_source_review",
+  "reviewer_Source": {
+    "bytes": 6785,
+    "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\independent_review_001\\review_I6_Source001_refusal_001.py",
+    "sha256": "0799213197c8a3f0c8acc32b4ce7cc8fc982be16cd3f3a925e5de8a811c04a62"
+  },
+  "schema_version": 1,
+  "scientific_authority": false,
+  "source_author": "/root/phase_frontier",
+  "subjects": [
+    {
+      "bytes": 43521,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\validate_current_owner_M3_publication_metadata_001.py",
+      "sha256": "cb10580966d59046a9fbe44e3ca1efb40c4f12df6cd65e824e4e2238222ba5d2"
+    },
+    {
+      "bytes": 29087,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\test_current_owner_M3_publication_metadata_memory_only_001.py",
+      "sha256": "5b0c47b6646d2a8a9cc737e2b0bedd5c0a66ab1d614f70a4af2169d4f672b776"
+    },
+    {
+      "bytes": 28004,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\CURRENT_OWNER_M3_PUBLICATION_METADATA_INERT_API_001.json",
+      "sha256": "ac0b005e53c60667d5aeed51e4ac365ab01d507a0b765d964d77cb703ebb7421"
+    },
+    {
+      "bytes": 6078,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\CURRENT_OWNER_M3_PUBLICATION_METADATA_ACTUAL_SOURCE_AUTHOR_RECEIPT_001.json",
+      "sha256": "3d720623f8072b910082ddc28acac886e43272b2472ee7ca3de37fb6dcdf0c65"
+    }
+  ],
+  "target_Source_compilations": 0,
+  "target_execution": false,
+  "test_runs": 0,
+  "verdict": "REFUSE_I6_SOURCE001_INCOMPLETE_TYPED_PIN_CONFLICT_AND_FINITE_MAP_GUARDS"
+}

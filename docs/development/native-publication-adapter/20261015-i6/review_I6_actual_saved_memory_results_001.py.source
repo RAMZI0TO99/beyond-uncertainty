@@ -1,0 +1,118 @@
+"""Independent saved I6 memory evidence review; never imports/reruns targets."""
+import ast,hashlib,json
+from pathlib import Path
+from datetime import datetime,timezone,timedelta
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_publication_implementation_009');O=P/'independent_review_001'
+inputs={};checks=[]
+def pairs(rows):
+ d={}
+ for k,v in rows:
+  if k in d:raise ValueError('duplicate JSON')
+  d[k]=v
+ return d
+def bad(v):raise ValueError(v)
+def read(p,external_empty_capture=False):
+ p=Path(p);b=p.read_bytes();assert len(b)<=2097152 and (len(b)>0 or external_empty_capture)
+ q=dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+ assert str(p) not in inputs or inputs[str(p)]==q
+ inputs[str(p)]=q;return q,b
+def obj(p):
+ q,b=read(p);return q,json.loads(b,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def ck(name,passed,evidence=None):
+ assert type(passed) is bool and name not in {r['name'] for r in checks}
+ checks.append(dict(name=name,passed=passed,evidence=evidence))
+def exact(q,label,external=False):
+ actual,b=read(q['path'],external)
+ ck('pin:'+label,type(q) is dict and set(q)=={'path','bytes','sha256'} and type(q['bytes']) is int and q==actual,actual)
+ return b
+def save(n,v):
+ b=(json.dumps(v,indent=2,sort_keys=True,allow_nan=False)+'\n').encode();assert len(b)<=2097152;p=O/n
+ with p.open('xb') as h:h.write(b)
+ return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+rp,_=read(__file__)
+sp,s=obj(P/'ROOT_I6_ONCE_SYNTHETIC_MEMORY_TEST_SCOPE_001.json')
+resultpin,r=obj(P/s['saved_result_name']);superpin,su=obj(P/s['supervisor_result_name']);capturepin,cap=obj(P/'ROOT_I6_ACTUAL_OWNED_MEMORY_STREAMS_CAPTURE_001.json')
+ck('actual_result_exact_pin',resultpin['bytes']==19545 and resultpin['sha256']=='62af1d9ea73f9ed4522db3f93d1e1bcf60a9684abf2ff5a8cb53ec08fe4935b1',resultpin)
+ck('actual_supervisor_exact_pin',superpin['bytes']==2823 and superpin['sha256']=='a92e5432a2c8c36794158e6b026c6b45d08165987f3bb650e6a364625081430f',superpin)
+ck('actual_capture_exact_pin',capturepin['bytes']==1889 and capturepin['sha256']=='835a9c98b0b50cf98fc826d4da880545e35c671a9947ec4d059a757dafc625a4',capturepin)
+ap,a=obj(s['actual_final_Source_adoption']['path']);exact(s['actual_final_Source_adoption'],'Source_adoption')
+freshpin,fresh=obj(P/'ROOT_I6_FRESH_MEMORY_SCOPE_PREINVOCATION_REVIEW_ADOPTION_001.json')
+ck('fresh_scope_review_Root_adoption_exact',freshpin['bytes']==2439 and freshpin['sha256']=='619310c593349293bd264072265f81fdf5d01d82dec76d3b12fc0159452b62ca',freshpin)
+# Authenticate the previously accepted Source and pre-invocation proofs. These
+# files are read as saved bytes; none of their Python Sources is evaluated.
+for name in ('INDEPENDENT_I6_FRESH_MEMORY_SCOPE_PREINVOCATION_SOURCE_CAPSULE_001.json','INDEPENDENT_I6_FRESH_MEMORY_SCOPE_PREINVOCATION_FULL_PROOF_001.json','INDEPENDENT_I6_SOURCE002_SOURCE_CAPSULE_001.json','INDEPENDENT_I6_SOURCE002_FULL_SOURCE_PROOF_001.json'):
+ obj(O/name)
+for key in ('different_Source_review','full_proof','reviewer_Source'):exact(a[key],'actual_Source_adoption:'+key)
+for q in a['subjects']:exact(q,'actual_adopted_subject:'+Path(q['path']).name)
+module_raw=exact(s['adapter_Source'],'actual_adapter_Source');fixture_raw=exact(s['fixture_Source'],'actual_fixture_Source')
+child_raw=exact(s['exact_child_runner'],'actual_child002_Source');supervisor_raw=exact(s['exact_supervisor_Source'],'actual_supervisor002_Source')
+fixture_tree=ast.parse(fixture_raw);planned={}
+for n in fixture_tree.body:
+ if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in ('PLANNED_CASE_NAMES','EXPECTED_CASE_COUNT'):planned[n.targets[0].id]=ast.literal_eval(n.value)
+suite=next(n for n in fixture_tree.body if isinstance(n,ast.FunctionDef) and n.name=='run_memory_suite');positives=[];negatives=[]
+for n in suite.body:
+ if isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Name) and n.value.func.id=='case':positives.append(ast.literal_eval(n.value.args[0]))
+ if isinstance(n,ast.For) and isinstance(n.iter,(ast.List,ast.Tuple)):negatives=ast.literal_eval(n.iter)
+expected_refusals={row[0]:row[2] for row in negatives};expected_refusals.update({name:None for name in positives})
+ck('actual_sources_equal_scope_and_adopted_four',r['adapter_Source']==s['adapter_Source'] and r['fixture_Source']==s['fixture_Source'] and r['actual_Source_adoption']==ap and s['adapter_Source'] in a['subjects'] and s['fixture_Source'] in a['subjects'],None)
+ck('actual_scope_all_crossjoins',r['scope']==su['scope']==sp and su['child_runner']==s['exact_child_runner'] and su['child_saved_result']==resultpin and cap['supervisor_result']==superpin,None)
+ck('actual_exact_one_run',r['tests_executed'] is True and type(r['I6_memory_test_runs']) is int and r['I6_memory_test_runs']==1 and r['synthetic_memory_only'] is True and su['tests_executed'] is True,None)
+ck('actual_all_cases_passed_no_error',r['all_cases_passed'] is True and r['error'] is None and su['passed'] is True and su['refusal'] is None,None)
+o=r['outcome'];cases=o['cases'];names=[c['name'] for c in cases]
+ck('exact55_planned_actual_order_and_unique_names',type(planned['EXPECTED_CASE_COUNT']) is int and planned['EXPECTED_CASE_COUNT']==55==s['expected_planned_case_count'] and type(r['actual_test_case_count']) is int and r['actual_test_case_count']==55 and type(cases) is list and len(cases)==len(set(names))==55 and names==list(planned['PLANNED_CASE_NAMES']),dict(expected=list(planned['PLANNED_CASE_NAMES']),actual=names))
+ck('Source_case_table7positive48negative',len(positives)==7 and len(negatives)==48 and list(expected_refusals)==[row[0] for row in negatives]+positives and set(expected_refusals)==set(names),None)
+for c in cases:
+ name=c['name']
+ ck('actual_case_typed_PASS_and_synthetic:'+name,type(name) is str and type(c['passed']) is bool and c['passed'] is True and c['synthetic_fixture'] is True,c)
+ ck('actual_case_exact_Source_refusal_or_positive:'+name,c['expected_refusal_code']==expected_refusals[name] and c['actual_refusal_code']==expected_refusals[name] and (expected_refusals[name] is None or type(c['actual_refusal_code']) is str),dict(expected=expected_refusals[name],actual=c['actual_refusal_code']))
+ ck('actual_case_zero_subject_and_bounded_metadata_callback:'+name,type(c['subject_body_reader_calls']) is int and c['subject_body_reader_calls']==0 and type(c['metadata_reader_calls']) is int and 0<=c['metadata_reader_calls']<=256,None)
+guard_names=['protected_selection_before_first_callback','case_variant_protected_selection','dot_path_before_callback','ADS_path_before_callback','paired_ordinal_mismatch_before_callback','bool_actual_pin','zero_actual_pin','overcap_metadata_pin','subject65537_refused_before_callback','predecessor_pin_conflict_before_callback']
+for name in guard_names:ck('actual_guard_before_first_callback:'+name,next(c for c in cases if c['name']==name)['metadata_reader_calls']==0,None)
+for key,value in [('checks_failed',0),('checks_passed',55),('case_count',55),('expected_case_count',55),('subject_body_reader_calls',0)]:ck('actual_summary_builtin_int:'+key,type(o[key]) is int and o[key]==value,o[key])
+ck('actual_summary_unique_synthetic_not_project',o['unique_case_names'] is True and o['synthetic_fixture'] is True and o['project_or_native_tests'] is False and o['filesystem_process_network_native_observation']=='EXTERNAL_ROOT_AUDIT_REQUIRED',None)
+ck('actual_child_elapsed_strict_integer_under60',type(r['elapsed_integer_nanoseconds']) is int and 0<r['elapsed_integer_nanoseconds']<=60000000000,r['elapsed_integer_nanoseconds'])
+ck('actual_supervisor_elapsed_under65_including_wait5',type(su['elapsed_integer_nanoseconds']) is int and 0<su['elapsed_integer_nanoseconds']<=65000000000,su['elapsed_integer_nanoseconds'])
+ck('actual_child_PID_positive_exit0_reaped',type(su['owned_child_PID']) is int and su['owned_child_PID']>0 and type(su['owned_child_exit_code']) is int and su['owned_child_exit_code']==0 and su['owned_child_wait_reaped'] is True,dict(PID=su['owned_child_PID'],exit=su['owned_child_exit_code'],reaped=su['owned_child_wait_reaped']))
+ck('actual_original60wall5cleanup_policy',type(su['wall_cap_seconds']) is int and su['wall_cap_seconds']==60 and type(su['cleanup_reap_seconds']) is int and su['cleanup_reap_seconds']==5,None)
+argv=[r'C:\Users\aladdin-alyanai\AppData\Local\Programs\Python\Python313\python.exe','-I','-S','-B',s['exact_child_runner']['path'],Path(sp['path']).name,sp['sha256']]
+ck('actual_argv_exact_isolated_pinned002_scope_and_cwd',su['argv']==argv and su['cwd']==str(P),su['argv'])
+ck('actual_profile_only_exact_two_Source_filenames_positive_builtin_counts',set(r['profile_call_counts'])=={s['adapter_Source']['path'],s['fixture_Source']['path']} and all(type(v) is int and v>0 for v in r['profile_call_counts'].values()),r['profile_call_counts'])
+events=r['audit_event_counts'];forbidden=lambda name:name=='open' or name.startswith(('os.','subprocess.','socket.','ctypes.','winreg.'))
+ck('actual_no_forbidden_audit_event_or_block',r['blocked_forbidden_event_names']==[] and type(events) is dict and all(type(n) is str and type(v) is int and v>0 and not forbidden(n) for n,v in events.items()),events)
+ck('actual_exact_two_compile_exec_new_module_and_fixture',events.get('compile')==2 and events.get('exec')==2 and events.get('sys.setprofile')==2 and 'import' not in events,None)
+ck('actual_audit_limit_not_physical_interception_proof','not exhaustive filesystem/stat/native interception' in r['audit_evidence_boundary'],r['audit_evidence_boundary'])
+for k in ('original_project_native_Parser_runtime_scientific_execution','actual_publisher_filesystem_action','operational_authority','scientific_authority'):ck('actual_result_false:'+k,r[k] is False,None)
+for k in ('original_project_native_Parser_runtime_scientific_execution','operational_authority','scientific_authority'):ck('actual_supervisor_false:'+k,su[k] is False,None)
+ck('actual_all_future_lease_family_grants_native_Parser_still_null',r['actual_lease_family_Source_grant_native_Parser_results'] is None and su['actual_new_lease_family_purpose_publisher_Native8_Parser_results'] is None,None)
+markers=[]
+for label,pin in [('child',r['consumption_marker']),('supervisor',su['supervisor_marker'])]:
+ value=json.loads(exact(pin,'actual_once_marker:'+label));markers.append(value)
+ ck('actual_marker_Root_exactscope_no_retry:'+label,value['author']=='/root' and value['scope']==sp and value['automatic_retry_authorized'] is False,value)
+ck('actual_child_marker_exact_Sourcepair',markers[0]['adapter_Source']==s['adapter_Source'] and markers[0]['fixture_Source']==s['fixture_Source'],None)
+ck('actual_supervisor_marker_exact_child',markers[1]['child_runner']==s['exact_child_runner'],None)
+def time(v):return datetime.fromisoformat(v)
+ck('actual_review_adoption_scope_then_markers_then_run_chronology',time(a['created_utc'])<=time(s['created_utc'])<=time(fresh['created_utc'])<=time(markers[1]['created_utc'])<=time(su['started_utc'])<=time(markers[0]['created_utc'])<=time(r['started_utc'])<=time(r['created_utc'])<=time(su['created_utc'])<=time(cap['created_utc']),None)
+for label,record in [('child',r),('supervisor',su)]:
+ ck('actual_started_and_finished_inside_freshscope:'+label,time(s['interval_start'])<=time(record['started_utc'])<=time(record['created_utc'])<time(s['interval_end']),dict(start=record['started_utc'],end=record['created_utc']))
+ck('actual_child_start_with_original60reserve',time(r['started_utc'])+timedelta(seconds=60)<time(s['interval_end']),None)
+ck('actual_capture_no_rerun_positive_metadata_envelope',cap['author']=='/root' and cap['no_child_or_test_rerun'] is True and cap['empty_captured_stderr_bytes_are_actual_observation_not_a_positive_metadata_schema_pin'] is True and cap['target_execution'] is False,None)
+exact(cap['serializer_Source'],'actual_capture_serializer_Source')
+stream_bytes=[]
+for index,pin in enumerate(su['streams']):
+ b=exact(pin,'actual_external_stream:'+str(index),external=True);stream_bytes.append(b)
+ ck('actual_external_stream_capture_exact_utf8:'+str(index),cap['streams'][index]['actual_capture']==pin and cap['streams'][index]['UTF8_text'].encode('utf8')==b and len(b)<=s['stream_cap_bytes'],dict(bytes=len(b),sha256=hashlib.sha256(b).hexdigest()))
+ck('actual_external_stdout_is_exact_saved_result_pin',json.loads(stream_bytes[0])==resultpin,None)
+ck('actual_external_stderr_empty_valid_capture_not_schema_pin',stream_bytes[1]==b'' and su['streams'][1]['bytes']==0,None)
+for key in ('stdout','stderr'):
+ block=r[key];b=block['text'].encode('utf8');ck('actual_inside_test_window_stream_capture:'+key,type(block['bytes']) is int and block['bytes']==len(b)<=2097152 and block['sha256']==hashlib.sha256(b).hexdigest(),block)
+adopter_pin,adopter_raw=read(P/'ROOT_ADOPT_I6_SAVED_MEMORY_RESULTS_001.py');adopter=adopter_raw.decode();ast.parse(adopter)
+ck('Root_saved_adopter_requires_actual_caseAST_profiles_exit_and_no_reviewrerun',all(t in adopter for t in ("type(f['I6_fixture_reruns']) is int and f['I6_fixture_reruns']==0","names==list(literals['PLANNED_CASE_NAMES'])","supervisor['owned_child_wait_reaped'] is True","r['blocked_forbidden_event_names']==[]","r['actual_test_case_count']==len(cases)==55")),None)
+ck('all_actual_inputs_unique_and_bounded',len(inputs)==len({q['path'] for q in inputs.values()}) and all(0<=q['bytes']<=2097152 for q in inputs.values()),len(inputs))
+failed=sum(q['passed'] is False for q in checks)
+if failed:print(json.dumps(dict(failed=[q for q in checks if not q['passed']]),indent=2));raise SystemExit(1)
+now=datetime.now(timezone.utc).isoformat()
+full=dict(schema_version=1,record_type='actual_independent_I6_saved_once_memory_results_full_proof',reviewer='/root/owner_source_review',source_author='/root',created_utc=now,verdict='PASS_I6_ACTUAL_SAVED_55_ONCE_SYNTHETIC_MEMORY_RESULTS_ONLY',subjects=[resultpin,superpin,capturepin,sp],reviewer_Source=rp,all_actual_inputs=list(inputs.values()),checks_failed=0,checks=checks,actual_saved_test_evidence=dict(tests_executed=True,I6_memory_test_runs=1,cases=55,positive_cases=7,exact_expected_negative_cases=48,passed=55,failed=0,subject_body_reader_calls=0,forbidden_observed_audit_events=0,child_elapsed_integer_nanoseconds=r['elapsed_integer_nanoseconds'],supervisor_elapsed_integer_nanoseconds=su['elapsed_integer_nanoseconds'],owned_child_PID=su['owned_child_PID'],owned_child_exit_code=0,owned_child_wait_reaped=True),actual_case_outcomes=cases,tests_executed=False,target_execution=False,I6_fixture_reruns=0,reviewer_new_I6_imports_calls=0,old_project_imports_calls_tests=0,native_PSParser_calls=0,operational_authority=False,scientific_authority=False,boundary='Read/hash/strictJSON and pinned fixture Source AST only; this reviewer did not import, call, compile or rerun any target. Saved Root evidence establishes one55-case synthetic metadata suite with exact positive/refusal outcomes, guarded callback counters, observed audit/profile capture and exit0/reaped child within60/5 limits. Raw external stderr0bytes is valid capture, not a positive authority-schema pin. No actual physical/native/human/current-resource/writer/I0/caller qualification, original project/native/Parser tests, Source publication, lease/family/grant/purpose/Native8/Parser results or operational/scientific authority follows. Current36/9 and frozen35/10 plus75spent/all prior holds remain unchanged.')
+fp=save('INDEPENDENT_I6_ACTUAL_SAVED_MEMORY_RESULTS_FULL_PROOF_001.json',full)
+c={k:full[k] for k in ('schema_version','reviewer','source_author','created_utc','verdict','subjects','reviewer_Source','checks_failed','tests_executed','target_execution','I6_fixture_reruns','operational_authority','scientific_authority','boundary')};c.update(record_type='actual_independent_I6_saved_memory_results_capsule',full_proof=fp,actual_independent_checks=len(checks),actual_input_count=len(inputs),actual_saved_memory_cases=55,actual_saved_memory_cases_passed=55)
+cp=save('INDEPENDENT_I6_ACTUAL_SAVED_MEMORY_RESULTS_SOURCE_CAPSULE_001.json',c)
+print(json.dumps(dict(capsule=cp,full_proof=fp,reviewer_Source=rp,checks=len(checks),checks_failed=0,all_actual_inputs=len(inputs),I6_fixture_reruns=0)))

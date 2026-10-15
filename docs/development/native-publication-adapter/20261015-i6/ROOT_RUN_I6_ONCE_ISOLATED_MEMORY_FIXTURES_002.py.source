@@ -1,0 +1,99 @@
+"""Run one Root-admitted new-I6 memory suite; never invoke an original project helper."""
+import ast
+import copy
+import datetime
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import re
+import sys
+import time
+import types
+import _strptime
+
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_publication_implementation_009')
+CAP=2097152
+
+def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()
+def raw(p):
+    p=Path(p);assert p.is_file() and not p.is_symlink() and p.stat().st_size<=CAP
+    with p.open('rb') as h:b=h.read(CAP+1)
+    assert len(b)<=CAP;return b
+def fact(p):
+    b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pinned(p):
+    b=raw(p['path']);assert len(b)==p['bytes'] and hashlib.sha256(b).hexdigest()==p['sha256'];return b
+def pairs(v):
+    d={}
+    for k,x in v:assert k not in d;d[k]=x
+    return d
+def bad(v):raise AssertionError(v)
+def decode(b):return json.loads(b,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def save(name,x):
+    b=(json.dumps(x,indent=2,sort_keys=True,allow_nan=False)+'\n').encode();assert len(b)<=CAP
+    p=P/name
+    with p.open('xb') as h:h.write(b);h.flush();os.fsync(h.fileno())
+    return fact(p)
+
+def main():
+    assert sys.flags.isolated==1 and sys.flags.no_site==1 and sys.flags.dont_write_bytecode==1
+    scope_path=P/sys.argv[1];scope_pin=fact(scope_path);assert scope_pin['sha256']==sys.argv[2]
+    scope=decode(pinned(scope_pin));assert scope['author']=='/root' and scope['maximum_invocations']==1
+    assert scope['new_I6_pure_memory_fixture_invocation_authorized'] is True
+    assert scope['original_I0_I1_I2_I3_I4_I5_native_Parser_project_invocations_authorized'] is False
+    assert datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=60)<datetime.datetime.fromisoformat(scope['interval_end'])
+    adoption=decode(pinned(scope['actual_final_Source_adoption']))
+    assert adoption['verdict']=='ACCEPT_I6_PURE_METADATA_ADAPTER_AND_FIXTURE_SOURCE_ONLY'
+    module_pin=scope['adapter_Source'];fixture_pin=scope['fixture_Source']
+    assert module_pin in adoption['subjects'] and fixture_pin in adoption['subjects']
+    module_raw=pinned(module_pin);fixture_raw=pinned(fixture_pin)
+    for data in (module_raw,fixture_raw):
+        tree=ast.parse(data)
+        for n in ast.walk(tree):
+            if isinstance(n,(ast.Import,ast.ImportFrom)):
+                names=[a.name for a in n.names] if isinstance(n,ast.Import) else [n.module]
+                assert all(name and name.split('.')[0] in {'hashlib','json','re','datetime','copy','types','collections'} for name in names)
+    used=save(scope['consumption_marker_name'],dict(schema_version=1,record_type='Root_I6_one_use_memory_scope_consumed_before_module_execution',author='/root',created_utc=now(),scope=scope_pin,adapter_Source=module_pin,fixture_Source=fixture_pin,automatic_retry_authorized=False))
+    event_counts={};blocked=[];profile_counts={module_pin['path']:0,fixture_pin['path']:0};active=[True]
+    std_imports={'hashlib','json','re','datetime','copy','types','collections','_strptime','locale','calendar'}
+    def audit(event,args):
+        if not active[0]:return
+        event_counts[event]=event_counts.get(event,0)+1
+        forbidden=event=='open' or event.startswith(('os.','subprocess.','socket.','ctypes.','winreg.'))
+        if event=='import':forbidden=not (type(args[0]) is str and args[0].split('.')[0] in std_imports)
+        if forbidden:
+            blocked.append(event)
+            raise RuntimeError('I6 isolated memory scope forbids event '+event)
+    def profile(frame,event,arg):
+        if event=='call' and frame.f_code.co_filename in profile_counts:profile_counts[frame.f_code.co_filename]+=1
+    sys.addaudithook(audit)
+    capture_out=io.StringIO();capture_err=io.StringIO();old_out=sys.stdout;old_err=sys.stderr
+    outcome=None;error=None;start=now();started=time.monotonic_ns()
+    try:
+        sys.stdout=capture_out;sys.stderr=capture_err;sys.setprofile(profile)
+        module=types.ModuleType('_i6_adapter_scoped_'+module_pin['sha256']);module.__file__=module_pin['path'];sys.modules[module.__name__]=module
+        exec(compile(module_raw,module_pin['path'],'exec'),module.__dict__)
+        fixtures=types.ModuleType('_i6_fixtures_scoped_'+fixture_pin['sha256']);fixtures.__file__=fixture_pin['path'];sys.modules[fixtures.__name__]=fixtures
+        exec(compile(fixture_raw,fixture_pin['path'],'exec'),fixtures.__dict__)
+        outcome=fixtures.run_memory_suite(module)
+        assert type(outcome) is dict and outcome['synthetic_fixture'] is True and type(outcome['subject_body_reader_calls']) is int and outcome['subject_body_reader_calls']==0
+        cases=outcome['cases'];assert type(cases) is list and cases and len(cases)==fixtures.EXPECTED_CASE_COUNT
+        assert type(fixtures.EXPECTED_CASE_COUNT) is int and 1<=len(cases)<=256
+        assert len({c['name'] for c in cases})==len(cases)
+        assert all(type(c) is dict and type(c['name']) is str and type(c['passed']) is bool for c in cases)
+        assert all(c['passed'] is True for c in cases)
+        assert not blocked and all(v>0 for v in profile_counts.values())
+        assert time.monotonic_ns()-started<=60000000000
+    except BaseException as exc:
+        error=dict(type=type(exc).__name__,message=str(exc))
+    finally:
+        sys.setprofile(None);active[0]=False;sys.stdout=old_out;sys.stderr=old_err
+    elapsed=time.monotonic_ns()-started;out=capture_out.getvalue().encode();err=capture_err.getvalue().encode()
+    assert len(out)<=CAP and len(err)<=CAP
+    result=dict(schema_version=1,record_type='Root_actual_once_I6_synthetic_memory_suite_saved_result',author='/root',started_utc=start,created_utc=now(),scope=scope_pin,consumption_marker=used,adapter_Source=module_pin,fixture_Source=fixture_pin,actual_Source_adoption=scope['actual_final_Source_adoption'],tests_executed=True,I6_memory_test_runs=1,synthetic_memory_only=True,actual_test_case_count=len(outcome['cases']) if type(outcome) is dict and type(outcome.get('cases')) is list else 0,all_cases_passed=error is None,error=error,outcome=outcome,elapsed_integer_nanoseconds=elapsed,profile_call_counts=profile_counts,audit_event_counts=event_counts,audit_evidence_boundary='Observed forbidden audit events only plus independently reviewed Source; CPython audit is not exhaustive filesystem/stat/native interception.',blocked_forbidden_event_names=blocked,stdout=dict(bytes=len(out),sha256=hashlib.sha256(out).hexdigest(),text=out.decode()),stderr=dict(bytes=len(err),sha256=hashlib.sha256(err).hexdigest(),text=err.decode()),original_project_native_Parser_runtime_scientific_execution=False,actual_publisher_filesystem_action=False,actual_lease_family_Source_grant_native_Parser_results=None,operational_authority=False,scientific_authority=False)
+    print(json.dumps(save(scope['saved_result_name'],result)))
+    if error is not None:raise SystemExit(1)
+
+if __name__=='__main__':main()
