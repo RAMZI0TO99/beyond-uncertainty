@@ -1,3 +1,7 @@
+**October15 current owner native/Parser design accepted.** Read the [admission design](docs/development/native-admission-design/20261015-owner-v2/NATIVE_ADMISSION_DESIGN.md) before the next implementation. I0 owner-support validation and I1 lease-producer Source context come next; the design creates no helper, lease, family, Native/Parser permission or result. The dated Source inventory stays36/45 and frozen STEP08035/45. All prior guidance is preserved below.
+
+---
+
 **Later Source continuation — October 15, 2026.** Read the [accepted checker peer015 report](docs/development/source-continuation/20261015-checker-peer015/SOURCE_CONTINUATION.md). Later local Source progress is **36/45, nine pending**; the frozen STEP080 snapshot retains **35/10**. Preserve the complete earlier instructions below, original bytes/caps/guards, all75 spent identities and every null/false execution boundary. Source publication supplies no fresh Native/Parser, fixture, lease, runtime or science admission.
 
 ---
