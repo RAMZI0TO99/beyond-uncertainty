@@ -1,3 +1,7 @@
+**October15 I0/I1 implementation accepted.** The [owner-support and lease Source report](docs/development/native-owner-implementation/20261015-i0-i1/I0_I1_IMPLEMENTATION.md) records the new I0 validator's **17 passing memory-only test methods** and independently reviewed I1 Source. I1/native/Parser/original/runtime/scientific entry remains unrun; no real owner grant, lease or new family was issued. Next: separately scope I2 coherent-family Source context. The dated Source inventory stays36/45 and frozen STEP08035/45. All prior guidance is preserved below.
+
+---
+
 **October15 current owner native/Parser design accepted.** Read the [admission design](docs/development/native-admission-design/20261015-owner-v2/NATIVE_ADMISSION_DESIGN.md) before the next implementation. I0 owner-support validation and I1 lease-producer Source context come next; the design creates no helper, lease, family, Native/Parser permission or result. The dated Source inventory stays36/45 and frozen STEP08035/45. All prior guidance is preserved below.
 
 ---
