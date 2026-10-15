@@ -1,0 +1,773 @@
+# Appended I8 names only. The complete copied I0 prefix above is not rebound.
+
+class I8MetadataError(ValueError):
+    def __init__(self, code):
+        self.code = code
+        super().__init__(code)
+
+
+def _i8_need(condition, code):
+    if not condition:
+        raise I8MetadataError(code)
+
+
+def require_actual_finite8_publication_admission(*args, **kwargs):
+    if not I8_REAL_PUBLICATION_BINDINGS_QUALIFIED:
+        raise I8MetadataError('E_ACTUAL_PUBLICATION_HELD')
+    raise I8MetadataError('E_ACTUAL_PUBLICATION_ADMISSION_UNWIRED')
+
+
+def _i8_walk(value, depth=0, count=None):
+    if count is None:
+        count = [0]
+    count[0] += 1
+    _i8_need(depth <= 48 and count[0] <= 50000, 'E_JSON_BOUNDS')
+    if type(value) is dict:
+        _i8_need(all(type(k) is str for k in value), 'E_JSON_TYPE')
+        for child in value.values():
+            _i8_walk(child, depth+1, count)
+    elif type(value) is list:
+        for child in value:
+            _i8_walk(child, depth+1, count)
+    else:
+        _i8_need(type(value) in (str, int, bool, type(None)), 'E_JSON_TYPE')
+
+
+def _i8_wire(value):
+    _i8_walk(value)
+    raw = (json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True,
+                      separators=(',', ':'))+'\n').encode('utf-8')
+    _i8_need(0 < len(raw) <= METADATA_CAP_BYTES, 'E_METADATA_CAP')
+    return raw
+
+
+def _i8_json(raw):
+    _i8_need(type(raw) is bytes and 0 < len(raw) <= METADATA_CAP_BYTES and
+              not raw.startswith(b'\xef\xbb\xbf'), 'E_METADATA_CAP')
+    def pairs(items):
+        result = {}
+        for key, child in items:
+            _i8_need(key not in result, 'E_JSON_DUPLICATE')
+            result[key] = child
+        return result
+    def reject(token):
+        raise I8MetadataError('E_JSON_NUMBER')
+    try:
+        value = json.loads(raw.decode('utf-8', errors='strict'), object_pairs_hook=pairs,
+                           parse_float=reject, parse_constant=reject)
+    except (UnicodeError, RecursionError) as error:
+        raise I8MetadataError('E_JSON') from error
+    _i8_need(type(value) is dict, 'E_JSON_ROOT')
+    _i8_walk(value)
+    return value
+
+
+def _i8_copy(value):
+    _i8_need(type(value) is dict, 'E_OBJECT')
+    return _i8_json(_i8_wire(value))
+
+
+def _i8_closed(value, keys, code='E_SHAPE'):
+    _i8_need(type(value) is dict and set(value) == set(keys), code)
+    return value
+
+
+def _i8_same(a, b):
+    if type(a) is not type(b):
+        return False
+    if type(a) is dict:
+        return set(a) == set(b) and all(_i8_same(a[k], b[k]) for k in a)
+    if type(a) is list:
+        return len(a) == len(b) and all(_i8_same(x,y) for x,y in zip(a,b))
+    return a == b
+
+
+def _i8_path(path):
+    _i8_need(type(path) is str and len(path) <= 512 and
+              re.fullmatch(r'[A-Z]:\\[^/]+', path) is not None, 'E_PATH')
+    reserved = {'CON','PRN','AUX','NUL','CLOCK$', *('COM'+str(i) for i in range(1,10)),
+                *('LPT'+str(i) for i in range(1,10))}
+    _i8_need(all(part and part not in ('.','..') and part[-1] not in '. ' and
+                 not any(ord(c)<32 or c in '/:"<>|?*' for c in part) and
+                 part.split('.')[0].upper() not in reserved for part in path[3:].split('\\')), 'E_PATH')
+    return path
+
+
+def _i8_parent(path):
+    return _i8_path(path).rsplit('\\',1)[0]
+
+
+def _i8_leaf(path):
+    return _i8_path(path).rsplit('\\',1)[1]
+
+
+def _i8_pin(value, cap=METADATA_CAP_BYTES):
+    _i8_closed(value, ('path','bytes','sha256'), 'E_PIN')
+    _i8_path(value['path'])
+    _i8_need(type(cap) is int and 0 < cap <= METADATA_CAP_BYTES and
+              type(value['bytes']) is int and 0 < value['bytes'] <= cap and
+              type(value['sha256']) is str and re.fullmatch('[0-9a-f]{64}', value['sha256']) is not None, 'E_PIN')
+    return dict(value)
+
+
+def _i8_time(value, mode='current'):
+    _i8_need(type(value) is str, 'E_TIME')
+    if mode == 'native7':
+        _i8_need(re.fullmatch('[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{7}\\+00:00', value) is not None, 'E_NATIVE7')
+        return _ticks(value, 'I8 native7')
+    if mode == 'current':
+        return _ticks(value, 'I8 current UTC6/7')
+    # I1 open proofs retain +00:00 optional fraction; I2 Source lineage also
+    # permits exact retained offsets. Arithmetic never rewrites wire strings.
+    pattern = ('([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})'
+               '(?:\\.([0-9]{6,7}))?(Z|[+-][0-9]{2}:[0-9]{2})')
+    match = re.fullmatch(pattern, value)
+    _i8_need(match is not None and (mode != 'I1' or match[3] == '+00:00'), 'E_TIME')
+    base = _ticks(match[1]+'.'+(match[2] or '').ljust(7,'0')+'+00:00', 'I8 retained arithmetic')
+    offset = 0
+    if match[3] != 'Z':
+        hours, minutes = int(match[3][1:3]), int(match[3][4:6])
+        _i8_need(hours <= 23 and minutes <= 59, 'E_TIME')
+        offset = (1 if match[3][0] == '+' else -1)*(hours*3600+minutes*60)*TICKS_PER_SECOND
+    return base-offset
+
+
+def _i8_occurs(value, pin):
+    if type(value) is dict:
+        if all(k in value and type(value[k]) is type(pin[k]) and value[k] == pin[k] for k in pin):
+            return True
+        return any(_i8_occurs(v,pin) for v in value.values())
+    return type(value) is list and any(_i8_occurs(v,pin) for v in value)
+
+
+class I8Reader:
+    def __init__(self, trusted, purpose_support, read_record):
+        self.bindings = _i8_copy(trusted)
+        self.purpose_support = _i8_copy(purpose_support)
+        b = _i8_closed(self.bindings, I8_TRUSTED_KEYS, 'E_BINDINGS')
+        _i8_closed(self.purpose_support, ('subject','different_review','Root_adoption'), 'E_PURPOSE_SUPPORT')
+        _i8_need(callable(read_record), 'E_READER')
+        outputs = b['expected_output_paths']
+        _i8_need(type(outputs) is list and 0 < len(outputs) <= 18 and all(type(p) is str for p in outputs) and
+                  outputs == sorted(outputs) and len({p.casefold() for p in outputs}) == len(outputs), 'E_OUTPUTS')
+        self.outputs = frozenset(_i8_path(p).casefold() for p in outputs)
+        expected = b['expected_inputs']
+        _i8_need(type(expected) is list and 0 < len(expected) <= 252 and all(type(p) is dict for p in expected), 'E_READER_LIMIT')
+        self.pins = {}
+        self.cap = {}
+        self.cache = {}
+        self.external = read_record
+        self.calls = 0
+        self.returned = 0
+        for p in expected:
+            self._install(p)
+        _i8_need([p['path'] for p in expected] == sorted(p['path'] for p in expected) and len(self.pins) == len(expected), 'E_INPUT_ORDER')
+        aux = list(self.purpose_support.values())+[b['purpose_full_proof']]
+        for p in aux:
+            _i8_need(_i8_pin(p)['path'].casefold() not in self.pins, 'E_PURPOSE_CYCLE')
+            self._install(p)
+        _i8_need(len(self.pins) <= 256 and sum(p['bytes'] for p in self.pins.values()) <= 33554432, 'E_READER_LIMIT')
+        births = b['recorded_births_ns']
+        _i8_need(type(births) is dict and set(births) == {p['path'] for p in self.pins.values()} and
+                  all(type(n) is int and n > 0 for n in births.values()), 'E_BIRTHS')
+        self.input_keys = frozenset(p['path'].casefold() for p in expected)
+        for name, keys in (('owner_support', I8_OWNER_SUPPORT_KEYS),
+                           ('lease_producer_support', I8_CODE_SUPPORT_KEYS), ('publisher_support', I8_CODE_SUPPORT_KEYS)):
+            self.support(b[name], keys)
+        self.declare(b['continuing_owner']); self.declare(b['owner_review'])
+        _i8_need(_i8_same(b['historical_leases'], I8_HISTORICAL_LEASES), 'E_HISTORY')
+        for p in b['historical_leases']:
+            self.declare(p, 65536)
+
+    def _install(self, value):
+        p = _i8_pin(value)
+        key = p['path'].casefold()
+        _i8_need(key not in self.outputs, 'E_FUTURE_OUTPUT_INPUT')
+        _i8_need(key not in self.pins, 'E_INPUT_ALIAS')
+        self.pins[key] = p
+        self.cap[key] = None
+
+    def declare(self, value, cap=None):
+        p = _i8_pin(value, cap or METADATA_CAP_BYTES)
+        key = p['path'].casefold()
+        _i8_need(key not in self.outputs, 'E_FUTURE_OUTPUT_INPUT')
+        _i8_need(key in self.pins and _i8_same(self.pins[key],p), 'E_UNDECLARED_INPUT')
+        if cap is not None:
+            _i8_need(self.cap[key] is None or self.cap[key] == cap, 'E_CAP_CONFLICT')
+            self.cap[key] = cap
+        return p
+
+    def support(self, value, keys):
+        _i8_closed(value, keys, 'E_SUPPORT')
+        return {k:self.declare(p) for k,p in value.items()}
+
+    def body(self, value, cap=METADATA_CAP_BYTES):
+        p = self.declare(value,cap)
+        key = p['path'].casefold()
+        if key not in self.cache:
+            self.calls += 1
+            _i8_need(self.calls <= 1024, 'E_CALLBACK_LIMIT')
+            try:
+                raw = self.external(dict(p))
+            except Exception as error:
+                raise I8MetadataError('E_READER_REFUSAL') from error
+            _i8_need(type(raw) is bytes, 'E_READER_BYTES')
+            self.returned += len(raw)
+            _i8_need(self.returned <= 67108864, 'E_CALLBACK_LIMIT')
+            _i8_need(len(raw) == p['bytes'] and len(raw) <= cap and hashlib.sha256(raw).hexdigest() == p['sha256'], 'E_HASH')
+            self.cache[key] = raw
+        return self.cache[key]
+
+    def record(self, value, cap=METADATA_CAP_BYTES):
+        return _i8_json(self.body(value,cap))
+
+    def callback(self, value):
+        return self.body(value)
+
+    def birth(self, value):
+        p = self.declare(value)
+        return self.bindings['recorded_births_ns'][p['path']]
+
+    def birth_ticks(self, value):
+        return self.birth(value)//100 + I8_FILETIME_UNIX_BRIDGE
+
+
+def _i8_review(reader, pin, subjects, rejected, now, *, mode='I2'):
+    value = reader.record(pin)
+    who = value.get('reviewer')
+    _i8_need(type(who) is str and re.fullmatch(r'/root(?:/[A-Za-z0-9_-]+)+',who) is not None and
+              all(who != x and (x == '/root' or not who.startswith(x+'/')) for x in rejected), 'E_REVIEWER')
+    _i8_need(type(value.get('checks_failed')) is int and value['checks_failed'] == 0 and
+              type(value.get('verdict')) is str and value['verdict'].startswith('PASS_') and
+              value.get('target_execution') is False and value.get('operational_authority') is False and
+              all(_i8_occurs(value,p) for p in subjects), 'E_REVIEW')
+    full_pin = reader.declare(value.get('full_proof'))
+    full = reader.record(full_pin)
+    checks = full.get('checks')
+    _i8_need(type(full.get('checks_failed')) is int and full['checks_failed'] == 0 and
+              full.get('reviewer') == who and full.get('verdict') == value['verdict'] and
+              full.get('target_execution') is False and full.get('operational_authority') is False and
+              type(checks) is list and 0 < len(checks) <= 10000 and
+              all(type(c) is dict and type(c.get('name')) is str and c.get('passed') is True for c in checks) and
+              all(_i8_occurs(full,p) for p in subjects), 'E_FULL_PROOF')
+    capsule_time = _i8_time(value['created_utc'],mode)
+    full_time = _i8_time(full['created_utc'],mode)
+    _i8_need(full_time <= capsule_time <= now and (mode != 'I1' or full_time == capsule_time) and
+              all(reader.birth_ticks(p) <= capsule_time for p in subjects), 'E_REVIEW_TIME')
+    return value,full_pin,capsule_time
+
+
+def _i8_adopt(reader, pin, subjects, review_pin, review, now, *, scope=None, selection=None):
+    value = reader.record(pin)
+    required = list(subjects)+[review_pin,review[1]]
+    if scope is not None: required.append(scope)
+    if selection is not None: required.append(selection)
+    _i8_need(value.get('author') == '/root' and type(value.get('verdict')) is str and
+              value['verdict'].startswith('ACCEPT_') and value.get('target_execution') is False and
+              value.get('operational_authority') is False and all(_i8_occurs(value,p) for p in required), 'E_ADOPTION')
+    adopted = _i8_time(value['created_utc'],'I2')
+    _i8_need(review[2] <= adopted <= now and reader.birth_ticks(review_pin) <= adopted, 'E_ADOPTION_TIME')
+    return value,adopted
+
+
+def _i8_code(reader, support, subjects, editor, now, *, mode='I2'):
+    reader.support(support,I8_CODE_SUPPORT_KEYS)
+    reader.body(support['Source']); reader.record(support['API'])
+    review = _i8_review(reader,support['different_review'],subjects,[editor],now,mode=mode)
+    adoption = _i8_adopt(reader,support['Root_adoption'],subjects,support['different_review'],review,now)
+    return review,adoption
+
+
+
+def _i8_vector9(value, pin, links, code):
+    _i8_need(type(value) is list and len(value) == 9 and all(type(n) is int for n in value) and
+              all(n >= 0 for n in value) and value[2] == pin['bytes'] and value[6] == links and
+              (value[5] & 0o170000) == 0o100000 and not (value[7] & 0x400) and value[8] > 0,code)
+    return value
+
+
+def _i8_read12(value, pin, cap, reader, envelope_time, *, ledger=False):
+    keys = ('path','sha256','bytes','cap','raw9','path9','descriptor9','shared_identity_indexes',
+            'shared_descriptor7','both_full_API9_independently_stable','two_read_match','observed_utc')
+    _i8_closed(value,keys,'E_RECORDED_READ12')
+    _i8_need(_i8_same({k:value[k] for k in ('path','bytes','sha256')},pin) and
+              type(value['cap']) is int and value['cap'] == cap and pin['bytes'] <= cap and
+              value['both_full_API9_independently_stable'] is True and value['two_read_match'] is True,
+              'E_RECORDED_READ12')
+    path = _i8_vector9(value['path9'],pin,1,'E_RECORDED_VECTOR9')
+    descriptor = _i8_vector9(value['descriptor9'],pin,1,'E_RECORDED_VECTOR9')
+    indexes = [0,1,2,3,6,7,8]
+    _i8_need(_i8_same(value['raw9'],path) and _i8_same(value['shared_identity_indexes'],indexes) and
+              _i8_same(value['shared_descriptor7'],[descriptor[i] for i in indexes]) and
+              all(path[i] == descriptor[i] for i in indexes),'E_RECORDED_SHARED7')
+    observed = _i8_time(value['observed_utc'],'I1')
+    _i8_need(observed <= envelope_time,'E_RECORDED_OBSERVATION_TIME')
+    if ledger:
+        _i8_need(path[8] == reader.birth(pin) and descriptor[8] == reader.birth(pin),'E_RECORDED_BIRTH_LEDGER')
+    return value,observed
+
+
+def _i8_creation2(value, pin, reader, envelope_time):
+    _i8_closed(value,('staging','canonical'),'E_RECORDED_STAGE2')
+    staging_pin = dict(pin,path=pin['path']+'.staging')
+    staging,staging_time = _i8_read12(value['staging'],staging_pin,65536,reader,envelope_time)
+    canonical,canonical_time = _i8_read12(value['canonical'],pin,65536,reader,envelope_time,ledger=True)
+    kept = (0,1,2,3,5,6,7,8)
+    _i8_need(staging_time <= canonical_time and
+              all(staging[api][i] == canonical[api][i] for api in ('path9','descriptor9') for i in kept),
+              'E_RECORDED_RENAME_IDENTITY')
+    # ctime (index4) remains disclosed and is deliberately not required equal.
+    return value
+
+
+def _i8_image7(value, pin, reader):
+    keys = ('Source','path9','descriptor9','cap','actual_link_count','shared_identity_indexes',
+            'ordinary_Source_single_link_reader_unchanged')
+    _i8_closed(value,keys,'E_RECORDED_IMAGE7')
+    _i8_need(_i8_same(reader.declare(value['Source']),pin) and
+              pin['path'] == r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' and
+              type(value['cap']) is int and value['cap'] == 2097152 and
+              type(value['actual_link_count']) is int and value['actual_link_count'] == 2 and
+              value['ordinary_Source_single_link_reader_unchanged'] is True,'E_RECORDED_IMAGE7')
+    path = _i8_vector9(value['path9'],pin,2,'E_RECORDED_IMAGE9')
+    descriptor = _i8_vector9(value['descriptor9'],pin,2,'E_RECORDED_IMAGE9')
+    indexes = [0,1,2,3,6,7,8]
+    _i8_need(_i8_same(value['shared_identity_indexes'],indexes) and
+              all(path[i] == descriptor[i] for i in indexes) and
+              path[8] == reader.birth(pin) and descriptor[8] == reader.birth(pin),'E_RECORDED_IMAGE_SHARED7')
+    return value
+
+
+def _i8_lease(reader, support, context, now, root_thread, editor):
+    b = reader.bindings
+    scope = context.scope_pin.to_dict()
+    reader.support(support,I8_LEASE_SUPPORT_KEYS)
+    lease_pin = reader.declare(support['canonical'],65536)
+    lease_raw = reader.body(lease_pin,65536)
+    lease = _i8_json(lease_raw)
+    _i8_closed(lease,I8_LEASE12,'E_LEASE12')
+    fixed = dict(schema_version=1,record_type='root_local_private_execution_lease',author='/root',
+        decision='authorize_bounded_selected_unit_metadata_and_copied_tests_once',
+        scope='COPIED_CONSUMER_GUARD_UNIT006_STDLIB_ONLY_NO_OPERATIONAL_AUTHORITY',
+        lease_is_owner_deadline=False,operational_authority=False,maximum_lease_seconds=43200)
+    _i8_need(all(_i8_same(lease[k],v) for k,v in fixed.items()),'E_LEASE12')
+    start,end = _i8_time(lease['created_utc'],'native7'),_i8_time(lease['lease_end_utc'],'native7')
+    _i8_need(end-start == 43200*TICKS_PER_SECOND and start <= now and end-now > 1200*TICKS_PER_SECOND,'E_LEASE_TIME')
+    history = []
+    for p in I8_HISTORICAL_LEASES:
+        record = reader.record(p,65536)
+        _i8_need(_i8_time(record['lease_end_utc'],'I2') < now,'E_HISTORY_EXPIRED')
+        history.append(record)
+    _i8_closed(history[-1],I8_LEASE12,'E_HISTORY')
+    _i8_need(all(_i8_same(lease[k],history[-1][k]) for k in I8_LEASE12 if k not in ('created_utc','lease_end_utc')),
+              'E_CARRIED_LEASE_LEAVES')
+    owner = reader.record(b['continuing_owner']); owner_review = reader.record(b['owner_review'])
+    _i8_need(owner.get('work_end_utc') is None and owner.get('fixed_deadline_invented') is False and
+              owner.get('phase_lease_policy') == I8_OWNER_LEASE_POLICY and
+              owner_review.get('verdict') == 'PASS_OWNER_DIRECTIVE_AND_LINEAGE_SOURCE_ONLY' and
+              owner_review.get('source_owner_sha256') == b['continuing_owner']['sha256'] and
+              owner_review.get('owner_end_utc') is None and owner_review.get('old_artifacts_renewed') is False and
+              lease['owner_master_sha256'] == b['continuing_owner']['sha256'] and
+              lease['owner_review_sha256'] == b['owner_review']['sha256'],'E_CONTINUING_OWNER')
+    decision = reader.record(support['separate_Root_decision'])
+    _i8_closed(decision,I8_DECISION20,'E_DECISION20')
+    ordinal = decision['selected_ordinal']
+    _i8_need(type(ordinal) is int and 11 <= ordinal <= 999 and
+              _i8_leaf(lease_pin['path']) == 'EXECUTION_LEASE_GG6_M3_'+str(ordinal).zfill(3)+'.json' and
+              _i8_parent(lease_pin['path']) == _i8_parent(I8_HISTORICAL_LEASES[-1]['path']) and
+              all(lease_pin['path'].casefold() != p['path'].casefold() for p in I8_HISTORICAL_LEASES),'E_LEASE_ROUTE')
+    decision_fixed = dict(schema_version=2,record_type='Root_owner_v2_prospective_lease_issuance_decision',author='/root',
+        Root_thread=root_thread,current_owner_scope=scope,owner_master=b['continuing_owner'],owner_review=b['owner_review'],
+        predecessor_lease=I8_HISTORICAL_LEASES[-1],future_canonical_path=lease_pin['path'],selected_duration_seconds=43200,
+        lease_is_owner_deadline=False,operational_authority=False,target_execution=False,old_leases_extended=False,
+        source_family_selected=False,decision='SELECT_NEW_PROSPECTIVE_CLOSED12_LEASE_SOURCE_ONLY')
+    _i8_need(all(_i8_same(decision[k],v) for k,v in decision_fixed.items()),'E_DECISION20')
+    decision_time = _i8_time(decision['created_utc'],'I1')
+    owner_adoption = reader.record(context.adoption_pin.to_dict())
+    _i8_need(_i8_time(owner_adoption['created_utc']) <= decision_time <= start,'E_DECISION_TIME')
+    producer = b['lease_producer_support']
+    api = reader.record(producer['API'])
+    _i8_need(type(api.get('schema_version')) is int and api['schema_version'] == 2 and
+              api.get('record_type') == 'Root_owner_v2_prospective_lease_inert_API' and
+              _i8_same(api.get('tool_source'),producer['Source']) and
+              _i8_same(api.get('native_timestamp_entry'),decision['native_timestamp_entry']),'E_LEASE_CODE_API')
+    code_editor = _nonroot_actor(api.get('actual_binding_Source_editor'),'I8 lease code editor')
+    entry = reader.declare(decision['native_timestamp_entry'])
+    reader.body(entry)
+    code_subjects = [producer['Source'],producer['API'],entry]
+    code_review,code_adopt = _i8_code(reader,producer,code_subjects,code_editor,now,mode='I1')
+    _i8_need(code_adopt[1] <= decision_time,'E_CODE_TIME')
+    home = _i8_parent(producer['Source']['path'])
+    publication_pin = reader.declare(support['original_publication'])
+    _i8_need(publication_pin['path'] == home+'\\ROOT_CURRENT_OWNER_PROSPECTIVE_LEASE_CANONICAL_PUBLICATION_RECEIPT_003.json','E_PUBLICATION_ROUTE')
+    publication = reader.record(publication_pin)
+    _i8_closed(publication,I8_PUBLICATION36,'E_PUBLICATION36')
+    common = dict(schema_version=2,author='/root',physical_Source_editor='/root',metadata_tool_Source_author=code_editor,
+        current_owner_scope=scope,issuance_decision=support['separate_Root_decision'],predecessor_lease=I8_HISTORICAL_LEASES[-1],
+        immutable_historical_leases=I8_HISTORICAL_LEASES,selected_duration_seconds=43200,
+        operational_authority=False,lease_is_owner_deadline=False,target_execution=False,
+        source_family_selected=False,old_leases_extended=False,publication_reserve_seconds=60)
+    pub_fixed = dict(common,record_type='Root_owner_v2_prospective_lease_original_publication',canonical=lease_pin,
+        continuing_owner=b['continuing_owner'],owner_review=b['owner_review'],original_closed12_schema_preserved=True,
+        complete_candidate_bytes_exact=True,original_owner_and_timestamp_contracts_preserved=True,
+        actual_entry006=False,original_fixture_or_case_grant=False,host_quiet=False,actor_Job_or_science_authority=False,
+        verdict='ROOT_EXACT_REVIEWED_NEW_CLOSED12_LEASE_SOURCE_PUBLICATION_ONLY')
+    _i8_need(all(_i8_same(publication[k],v) for k,v in pub_fixed.items()),'E_PUBLICATION36')
+    candidate = reader.declare(publication['candidate'],65536)
+    _i8_need(candidate['path'] == home+'\\lease_drafts\\'+_i8_leaf(lease_pin['path']) and
+              candidate['bytes'] == lease_pin['bytes'] and candidate['sha256'] == lease_pin['sha256'] and
+              reader.body(candidate,65536) == lease_raw,'E_CANDIDATE_BYTES')
+    expected_wire = (json.dumps(lease,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('utf-8')
+    _i8_need(lease_raw == expected_wire,'E_I1_WIRE')
+    receipt_pin = reader.declare(publication['candidate_author_receipt'])
+    _i8_need(receipt_pin['path'] == home+'\\ROOT_CURRENT_OWNER_PROSPECTIVE_LEASE_CANDIDATE_RECEIPT_003.json','E_CANDIDATE_ROUTE')
+    receipt = reader.record(receipt_pin)
+    _i8_closed(receipt,I8_CANDIDATE32,'E_CANDIDATE32')
+    receipt_fixed = dict(common,record_type='Root_owner_v2_prospective_lease_candidate_author_receipt',
+        candidate=candidate,native_timestamp_entry=entry,native_timestamp_image=publication['native_timestamp_image'],
+        native_created_utc=lease['created_utc'],native_end_utc=lease['lease_end_utc'],future_canonical_path=lease_pin['path'],
+        owner_master=b['continuing_owner'],owner_review=b['owner_review'],canonical_publication=False,
+        different_candidate_Source_review_pending=True,original_functions_or_fixtures_called=False,source_cap=65536)
+    _i8_need(all(_i8_same(receipt[k],v) for k,v in receipt_fixed.items()) and
+              type(receipt['native_image_metadata']) is dict and type(publication['native_image_metadata']) is dict and
+              type(receipt['actual_creation_metadata']) is dict and type(publication['actual_publication_metadata']) is dict,'E_CANDIDATE32')
+    image_pin = reader.declare(publication['native_timestamp_image'])
+    _i8_need(_i8_same(reader.declare(receipt['native_timestamp_image']),image_pin),'E_RECORDED_IMAGE7')
+    _i8_image7(receipt['native_image_metadata'],image_pin,reader)
+    _i8_image7(publication['native_image_metadata'],image_pin,reader)
+    _i8_need(_i8_same(receipt['native_image_metadata'],publication['native_image_metadata']),'E_RECORDED_IMAGE_CHANGED')
+    _i8_creation2(receipt['actual_creation_metadata'],candidate,reader,_i8_time(receipt['created_utc'],'I1'))
+    _i8_creation2(publication['actual_publication_metadata'],lease_pin,reader,_i8_time(publication['created_utc'],'I1'))
+    facts_pair = []
+    facts_times = []
+    for envelope,leaf in ((receipt,'ROOT_CURRENT_OWNER_PROSPECTIVE_LEASE_AUTHOR_FACTS_001.json'),
+                          (publication,'ROOT_CURRENT_OWNER_PROSPECTIVE_LEASE_PUBLICATION_FACTS_001.json')):
+        facts_pin = reader.declare(envelope['Root_facts'])
+        _i8_need(facts_pin['path'] == home+'\\'+leaf,'E_FACTS_ROUTE')
+        facts = reader.record(facts_pin)
+        _i8_closed(facts,I8_FACTS14,'E_FACTS14')
+        fixed_facts = dict(schema_version=2,record_type='Root_owner_v2_prospective_lease_metadata_facts',author='/root',
+            current_owner_support=b['owner_support'],owner_master=b['continuing_owner'],owner_review=b['owner_review'],
+            historical_leases=I8_HISTORICAL_LEASES,issuance_decision=support['separate_Root_decision'],
+            tool_source=producer['Source'],tool_review=producer['different_review'],tool_Root_adoption=producer['Root_adoption'])
+        _i8_need(all(_i8_same(facts[k],v) for k,v in fixed_facts.items()),'E_FACTS14')
+        design = _i8_closed(facts['design_support'],I8_DESIGN8,'E_DESIGN8')
+        _i8_need(design['design'] == decision['design'] and api.get('accepted_design') == design['design'] and
+                  api.get('I0_Source') == design['I0_Source'] and api.get('I0_API') == design['I0_API'],'E_DESIGN8')
+        for name in ('design','I0_Source','I0_API'):
+            reader.body(design[name])
+        design_review = _i8_review(reader,design['design_Source_review'],[design['design']],['/root'],now,mode='I1')
+        design_adopt = _i8_adopt(reader,design['design_Root_adoption'],[design['design']],design['design_Source_review'],design_review,now)
+        _i8_need(design_adopt[0].get('implementation_scope_or_purpose_admission_granted') is False,'E_DESIGN_GRANT')
+        i0_review = _i8_review(reader,design['I0_Source_review'],[design['I0_Source'],design['I0_API']],['/root/checker_frontier'],now,mode='I1')
+        i0_adopt = _i8_adopt(reader,design['I0_Root_adoption'],[design['I0_Source'],design['I0_API']],design['I0_Source_review'],i0_review,now)
+        historical = _i8_closed(design['historical_feasibility_support'],I8_HISTORICAL_SUPPORT6,'E_DESIGN8')
+        for p in historical.values(): reader.body(p)
+        _i8_need(max(design_adopt[1],i0_adopt[1],code_adopt[1]) <= decision_time,'E_DECISION_TIME')
+        ftime = _i8_time(facts['created_utc'],'I1')
+        _i8_need(decision_time <= ftime <= now,'E_FACTS_TIME')
+        facts_pair.append(facts);facts_times.append(ftime)
+    candidate_support = dict(candidate=candidate,author_receipt=receipt_pin,different_review=publication['different_lease_Source_review'],
+                             Root_adoption=publication['candidate_Root_adoption'])
+    _i8_need(facts_pair[0]['candidate_support'] is None and _i8_same(facts_pair[1]['candidate_support'],candidate_support),'E_FACTS_GENERATION')
+    candidate_review = _i8_review(reader,candidate_support['different_review'],[candidate,receipt_pin],['/root'],now,mode='I1')
+    candidate_adoption = _i8_adopt(reader,candidate_support['Root_adoption'],[candidate],candidate_support['different_review'],candidate_review,now,scope=scope)
+    c_born, l_born, p_born = (reader.birth_ticks(p) for p in (candidate,lease_pin,publication_pin))
+    pub_time = _i8_time(publication['created_utc'],'I1')
+    receipt_time = _i8_time(receipt['created_utc'],'I1')
+    _i8_need(start <= c_born <= l_born and facts_times[0] <= receipt_time <= candidate_review[2] <= candidate_adoption[1] <= l_born and
+              reader.birth_ticks(candidate_support['Root_adoption']) <= l_born and l_born <= pub_time <= p_born and
+              candidate_adoption[1] <= facts_times[1] <= pub_time,'E_LEASE_CHRONOLOGY')
+    canonical_review = _i8_review(reader,support['different_review'],[lease_pin,publication_pin],['/root'],now)
+    canonical_adoption = _i8_adopt(reader,support['Root_adoption'],[lease_pin,publication_pin],support['different_review'],canonical_review,now,scope=scope)
+    _i8_need(pub_time <= canonical_review[2],'E_CANONICAL_REVIEW_TIME')
+    return lease_pin,lease,canonical_adoption[1]
+
+
+def _i8_selection(reader, support, lease_pin, scope, now):
+    reader.support(support,('subject','different_review','Root_adoption'))
+    pin = support['subject']
+    selected = reader.record(pin)
+    _i8_closed(selected,I8_SELECTION13,'E_SELECTION13')
+    _i8_need(type(selected['schema_version']) is int and selected['schema_version'] == 2 and
+              selected['record_type'] == 'Root_owner_v2_actual_separate_future45_Source_path_selection' and
+              selected['author'] == '/root' and selected['current_owner_scope'] == scope and
+              selected['new_canonical_lease'] == lease_pin and selected['target_execution'] is False and
+              selected['operational_authority'] is False and type(selected['selected_Source_nonce']) is str and
+              re.fullmatch('[0-9a-f]{32}',selected['selected_Source_nonce']) is not None,'E_SELECTION13')
+    current = reader.record(selected['current_selection'])
+    reader.record(selected['current_complete45_inventory'])
+    _i8_need(selected['current_selection'] == I8_CURRENT_SELECTION_PIN and
+              selected['current_complete45_inventory'] == I8_HISTORICAL45_PIN,'E_HISTORICAL_LINEAGE')
+    _i8_path(selected['derived_launcher_runtime_path'])
+    for name in ('current_owner_scope','new_canonical_lease','current_selection','current_complete45_inventory'):
+        reader.declare(selected[name])
+    _i8_need(selected['selected_Source_nonce'] == current.get('selected_Source_nonce'),'E_SELECTION_NONCE')
+    _i8_need(type(current.get('rows')) is list and len(current['rows']) == 45 and
+              all(type(r) is dict and type(r.get('role')) is str for r in current['rows']),'E_CURRENT_SELECTION')
+    old = {r['role']:r for r in current['rows']}
+    _i8_need(set(old) == set(I8_ROLE_CAPS)|{'composer'},'E_CURRENT_SELECTION')
+    rows = selected['rows']
+    _i8_need(type(rows) is list and len(rows) == 45,'E_SELECTION_ROWS')
+    found = {}; canonical_keys = set(); draft_keys = set()
+    for row in rows:
+        _i8_closed(row,I8_SELECTED_ROW9,'E_SELECTED_ROW9')
+        role = row['role']
+        _i8_need(type(role) is str and role in old and role not in found,'E_SELECTION_ROWS')
+        canonical = _i8_path(row['canonical_path'])
+        _i8_need(canonical.casefold() not in canonical_keys,'E_SELECTION_ALIAS')
+        canonical_keys.add(canonical.casefold())
+        cap = 65536 if role == 'composer' else I8_ROLE_CAPS[role]
+        _i8_need(type(row['source_cap']) is int and row['source_cap'] == cap,'E_SELECTED_CAP')
+        pred = _i8_pin(row['predecessor'],cap)
+        _i8_need(pred['path'].casefold() not in reader.outputs,'E_FUTURE_OUTPUT_INPUT')
+        if role == 'composer':
+            _i8_need(_i8_same(row,old[role]) and row['draft_path'] is None and row['selected_ordinal'] is None and
+                      row['preparation_Source_author'] is None and row['retained_semantic_Source_author'] is None and
+                      row['must_change_Source_bytes'] is False and canonical == pred['path'],'E_COMPOSER')
+            reader.body(pred,65536)
+        else:
+            draft = _i8_path(row['draft_path'])
+            previous = old[role]['selected_ordinal']
+            ordinal = row['selected_ordinal']
+            _i8_need(type(previous) is int and type(ordinal) is int and previous < ordinal < 1000,'E_SELECTION_SUCCESSOR')
+            old_leaf = _i8_leaf(old[role]['canonical_path'])
+            matches = [m for m in re.finditer(r'[0-9]{3}(?![0-9])',old_leaf) if int(m.group()) == previous]
+            _i8_need(len(matches) == 1,'E_SELECTION_BASENAME')
+            match = matches[0]
+            expected_leaf = old_leaf[:match.start()]+str(ordinal).zfill(3)+old_leaf[match.end():]
+            _i8_need(_i8_leaf(canonical) == expected_leaf and
+                      _i8_parent(canonical) == _i8_parent(pred['path']),'E_SELECTION_BASENAME')
+            _i8_need(draft.casefold() not in draft_keys and type(row['selected_ordinal']) is int and
+                      row['selected_ordinal'] > 0 and row['must_change_Source_bytes'] is True and
+                      _i8_parent(canonical) == _i8_parent(old[role]['canonical_path']) and
+                      _i8_leaf(draft) == _i8_leaf(canonical) and _i8_leaf(_i8_parent(draft)) == 'drafts' and
+                      draft.startswith(I8_SESSION_PATH+'\\generation\\') and canonical.startswith(I8_BASE_PATH+'\\') and
+                      canonical.casefold() != pred['path'].casefold() and
+                      row['retained_semantic_Source_author'] == old[role]['retained_semantic_Source_author'] and
+                      type(row['preparation_Source_author']) is str and row['preparation_Source_author'].startswith('/root/'),'E_SELECTED_ROUTE')
+            draft_keys.add(draft.casefold())
+            if role in I8_ROLE_ORDER:
+                suffix = re.fullmatch(r'.*_([0-9]{3})\.ps1',_i8_leaf(canonical))
+                _i8_need(row['selected_ordinal'] > 18 and suffix is not None and int(suffix[1]) == row['selected_ordinal'], 'E_PHASE_ORDINAL')
+        found[role] = row
+    _i8_need(set(found) == set(I8_ROLE_CAPS)|{'composer'} and len(draft_keys) == 44,'E_SELECTION_ROWS')
+    for group in I8_ORDINAL_COUPLING_GROUPS:
+        _i8_need(len({found[role]['selected_ordinal'] for role in group}) == 1,'E_ORDINAL_COUPLING')
+    launcher = found['launcher_template']['canonical_path']
+    _i8_need(selected['derived_launcher_runtime_path'] ==
+              _i8_parent(launcher)+'\\'+_i8_leaf(launcher).replace('.TEMPLATE.ps1','.BOUND.ps1'),'E_LAUNCHER_RUNTIME')
+    review = _i8_review(reader,support['different_review'],[pin,lease_pin],['/root'],now)
+    adoption = _i8_adopt(reader,support['Root_adoption'],[pin,lease_pin],support['different_review'],review,now,scope=scope)
+    _i8_need(_i8_time(selected['created_utc']) <= review[2],'E_SELECTION_TIME')
+    return selected,found,adoption[1]
+
+
+def _i8_catalogue(reader, support, selection, selected, scope, now):
+    reader.support(support,('subject','different_review','Root_adoption'))
+    catalogue = reader.record(support['subject'])
+    _i8_closed(catalogue,I8_CATALOGUE11,'E_CATALOGUE45')
+    _i8_need(type(catalogue['schema_version']) is int and catalogue['schema_version'] == 1 and
+              catalogue['record_type'] == 'Root_Source024_actual45_predecessor_Source_pin_inventory' and
+              catalogue['author'] == '/root' and catalogue['Source024'] == I8_SOURCE024_PROVENANCE_PIN and
+              catalogue['current_selection'] == selection['current_selection'] and
+              _i8_same(catalogue['exact_original_guard_constants'],I8_ORIGINAL_GUARDS) and
+              catalogue['target_execution'] is False and catalogue['operational_authority'] is False and
+              catalogue['whole_cohort_or_runtime_acceptance'] is False,'E_CATALOGUE45')
+    # Source024 is an exact historical ABI/provenance leaf. It is not Scope28.
+    reader.body(catalogue['Source024'])
+    rows = catalogue['roles']
+    _i8_need(type(rows) is list and len(rows) == 45,'E_CATALOGUE45')
+    found = {}
+    for row in rows:
+        _i8_closed(row,('role','source','source_cap'),'E_CATALOGUE45')
+        role = row['role']
+        _i8_need(type(role) is str and role in selected and role not in found and
+                  type(row['source_cap']) is int and row['source_cap'] == selected[role]['source_cap'] and
+                  _i8_same(row['source'],selected[role]['predecessor']),'E_CATALOGUE_PREDECESSOR')
+        p = reader.declare(row['source'],row['source_cap'])
+        _i8_need(p['path'].startswith(I8_BASE_PATH+'\\'),'E_CATALOGUE_NAMESPACE')
+        reader.body(p,row['source_cap'])
+        found[role] = row
+    _i8_need(set(found) == set(I8_ROLE_CAPS)|{'composer'},'E_CATALOGUE45')
+    review = _i8_review(reader,support['different_review'],[support['subject']],['/root'],now)
+    adoption = _i8_adopt(reader,support['Root_adoption'],[support['subject']],support['different_review'],review,now,scope=scope)
+    _i8_need(_i8_time(catalogue['created_utc'],'I2') <= review[2],'E_CATALOGUE_TIME')
+    return adoption[1]
+
+
+def _i8_request(reader, request_pin, context, now, root_thread, source_editor):
+    request = reader.record(request_pin)
+    _i8_closed(request,I8_REQUEST21,'E_REQUEST21')
+    b = reader.bindings
+    _i8_need(type(request['schema_version']) is int and request['schema_version'] == 2 and
+              request['record_type'] == 'Root_owner_v2_finite8_M3_Source_canonical_publication_request' and
+              request['author'] == '/root' and request['Root_thread'] == root_thread and
+              type(request['request_id']) is str and 0 < len(request['request_id']) <= 128 and
+              request['source_only'] is True and request['canonical_publication_selected'] is True and
+              request['operational_authority'] is False and request['target_execution'] is False and
+              _i8_same(request['current_owner_support'],b['owner_support']),'E_REQUEST21')
+    _i8_need(re.fullmatch('[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',root_thread) is not None,'E_ROOT_THREAD')
+    request_time = _i8_time(request['created_utc'])
+    _i8_need(context.created_ticks <= request_time <= now,'E_REQUEST_TIME')
+    lease_pin,lease,lease_adopted = _i8_lease(reader,request['new_lease_support'],context,now,root_thread,source_editor)
+    selection,selected,selection_adopted = _i8_selection(reader,request['Root_future_path_selection_support'],lease_pin,context.scope_pin.to_dict(),now)
+    _i8_need(lease_adopted <= _i8_time(selection['created_utc']) <= selection_adopted <= request_time,'E_REQUEST_TIME')
+    inventory_adopted = _i8_catalogue(reader,request['predecessor_inventory_support'],selection,selected,context.scope_pin.to_dict(),now)
+    _i8_need(inventory_adopted <= request_time,'E_REQUEST_TIME')
+    _i8_closed(request['producer_supports'],('M3',),'E_M3_SUPPORT')
+    reader.support(request['producer_supports']['M3'],I8_CODE_SUPPORT_KEYS)
+    for p in request['producer_supports']['M3'].values(): reader.body(p)
+    publisher = b['publisher_support']
+    for field,key in (('publisher_source','Source'),('publisher_API','API'),('publisher_Source_review','different_review'),('publisher_Root_adoption','Root_adoption')):
+        _i8_need(_i8_same(request[field],publisher[key]),'E_PUBLISHER_JOIN')
+    publisher_api = reader.record(publisher['API'])
+    _i8_need(_i8_same(reader.declare(publisher_api.get('publisher_Source')),publisher['Source']),'E_PUBLISHER_API')
+    publisher_editor = _nonroot_actor(publisher_api.get('Source_editor'),'I8 publisher editor')
+    pub_review,pub_adoption = _i8_code(reader,publisher,[publisher['Source'],publisher['API']],publisher_editor,now)
+    _i8_need(pub_adoption[1] <= request_time,'E_CODE_TIME')
+    rows = request['rows']
+    _i8_need(type(rows) is list and 0 < len(rows) <= 8 and all(type(r) is dict for r in rows),'E_REQUEST_ROWS')
+    roles = [r.get('role') for r in rows]
+    _i8_need(all(type(role) is str and role in I8_ROLE_ORDER for role in roles) and len(set(roles)) == len(roles) and
+              roles == [role for role in I8_ROLE_ORDER if role in roles],'E_ROLE_ORDER')
+    outputs = []
+    for row in rows:
+        _i8_closed(row,I8_REQUEST_ROW10,'E_REQUEST_ROW10')
+        selected_row = selected[row['role']]
+        _i8_need(type(row['source_cap']) is int and row['source_cap'] == 65536 and
+                  row['canonical_path'] == selected_row['canonical_path'] and row['physical_Source_editor'] == '/root' and
+                  row['metadata_Source_worker'] == selected_row['preparation_Source_author'] and
+                  row['retained_semantic_Source_author'] == selected_row['retained_semantic_Source_author'],'E_DRAFT_JOIN')
+        draft = reader.declare(row['draft'],65536)
+        _i8_need(draft['path'] == selected_row['draft_path'],'E_DRAFT_JOIN')
+        raw = reader.body(draft,65536)
+        predecessor = reader.declare(selected_row['predecessor'],65536)
+        prior = reader.body(predecessor,65536)
+        _i8_need(raw != prior and draft['sha256'] != predecessor['sha256'],'E_SOURCE_UNCHANGED')
+        receipt = reader.declare(row['author_receipt'])
+        reader.record(receipt)  # M3 generation/render/inverse semantics deliberately opaque.
+        review = _i8_review(reader,row['source_review'],[draft,receipt],['/root',row['metadata_Source_worker']],now)
+        adoption = _i8_adopt(reader,row['Root_adoption'],[draft,receipt],row['source_review'],review,now,
+                             scope=context.scope_pin.to_dict(),selection=request['Root_future_path_selection_support']['subject'])
+        _i8_need(adoption[1] <= request_time,'E_DRAFT_TIME')
+        outputs.extend([row['canonical_path'],row['canonical_path']+'.staging'])
+    receipt_path = _i8_path(request['publication_receipt_path'])
+    outputs.extend([receipt_path,receipt_path+'.staging'])
+    _i8_need(sorted(outputs) == b['expected_output_paths'] and len(set(p.casefold() for p in outputs)) == len(outputs),'E_OUTPUTS')
+    return request,roles,lease_pin,lease,request_time
+
+
+def _i8_purpose(reader, request_pin, request, roles, scope, now):
+    support = reader.purpose_support
+    subject = support['subject']
+    value = reader.record(subject)
+    _i8_closed(value,I8_PURPOSE12,'E_PURPOSE12')
+    fixed = dict(schema_version=2,record_type='Root_owner_v2_exact_finite8_M3_canonical_Source_publication_purpose',
+        author='/root',Root_thread=request['Root_thread'],operation='PUBLISH_EXACT_REVIEWED_FINITE8_M3_SOURCE_ONLY',
+        actual_Root_request=request_pin,current_owner_scope=scope,selected_roles=roles,
+        inputs=reader.bindings['expected_inputs'],output_paths=reader.bindings['expected_output_paths'],
+        resource_policy=dict(resource_age_seconds=60,minimum_available_RAM_bytes=1073741824,minimum_free_disk_bytes=10737418240))
+    _i8_need(all(_i8_same(value[k],v) for k,v in fixed.items()),'E_PURPOSE12')
+    purpose_ticks = _i8_time(value['created_utc'])
+    purpose_ns = (purpose_ticks-I8_FILETIME_UNIX_BRIDGE)*100
+    now_ns = (now-I8_FILETIME_UNIX_BRIDGE)*100
+    _i8_need(_i8_time(request['created_utc']) <= purpose_ticks and
+              all(reader.birth(p) <= purpose_ns for p in reader.bindings['expected_inputs']) and
+              purpose_ns <= reader.birth(subject),'E_PURPOSE_BIRTH')
+    subjects = [subject]+reader.bindings['expected_inputs']
+    review = reader.record(support['different_review'])
+    full_pin = reader.bindings['purpose_full_proof']
+    full = reader.record(full_pin)
+    adoption = reader.record(support['Root_adoption'])
+    proof_contract = I8_PURPOSE_PROOF
+    for record,keys,kind,verdict in ((review,proof_contract['capsule14'],proof_contract['capsule_record_type'],proof_contract['review_verdict']),
+                                    (full,proof_contract['full16'],proof_contract['full_record_type'],proof_contract['review_verdict']),
+                                    (adoption,proof_contract['Root_adoption11'],proof_contract['adoption_record_type'],proof_contract['adoption_verdict'])):
+        _i8_closed(record,keys,'E_PURPOSE_PROOF_SHAPE')
+        _i8_need(type(record['schema_version']) is int and record['schema_version'] == 2 and record['record_type'] == kind and
+                  record['verdict'] == verdict and _i8_same(record['subjects'],subjects) and _i8_same(record['purpose'],value) and
+                  record['target_execution'] is False and record['operational_authority'] is False,'E_PURPOSE_PROOF')
+    who = _nonroot_actor(review['reviewer'],'I8 purpose reviewer')
+    _i8_need(who != reader.source_editor and not who.startswith(reader.source_editor+'/'),'E_PURPOSE_REVIEWER')
+    for record in (review,full):
+        _i8_need(record['reviewer'] == who and record['source_author'] == '/root' and record['scope'] == subject and
+                  type(record['checks_failed']) is int and record['checks_failed'] == 0 and record['native_Parser_executed'] is False,'E_PURPOSE_PROOF')
+    _i8_need(review['full_proof'] == full_pin and adoption['author'] == '/root' and
+              adoption['different_review'] == support['different_review'] and adoption['full_proof'] == full_pin and
+              full['owner_provenance_boundary'] == proof_contract['provenance_boundary'],'E_PURPOSE_PROOF')
+    checks = full['checks']
+    _i8_need(type(checks) is list and 4 <= len(checks) <= 10000,'E_PURPOSE_CHECKS')
+    names = set(); union = set(); subject_map = {p['path']:p for p in subjects}
+    for check in checks:
+        _i8_closed(check,proof_contract['check_keys'],'E_PURPOSE_CHECKS')
+        _i8_need(type(check['name']) is str and check['name'] and check['name'] not in names and
+                  check['passed'] is True and type(check['evidence']) is list and bool(check['evidence']),'E_PURPOSE_CHECKS')
+        names.add(check['name']); seen = set()
+        for p in check['evidence']:
+            p = reader.declare(p)
+            _i8_need(p['path'] in subject_map and p == subject_map[p['path']] and p['path'] not in seen,'E_PURPOSE_EVIDENCE')
+            seen.add(p['path']);union.add(p['path'])
+    _i8_need(set(proof_contract['required_check_names']) <= names and union == set(subject_map),'E_PURPOSE_CHECKS')
+    coverage = full['subject_reviews']
+    _i8_need(type(coverage) is list and len(coverage) == len(subjects),'E_PURPOSE_COVERAGE')
+    for index,(row,p) in enumerate(zip(coverage,subjects)):
+        _i8_closed(row,proof_contract['subject_review_keys'],'E_PURPOSE_COVERAGE')
+        _i8_need(row['subject'] == p and row['subject_kind'] == ('publication_purpose' if index == 0 else 'actual_input') and
+                  row['whole_bytes_reviewed'] is True and row['provenance_reviewed'] is True,'E_PURPOSE_COVERAGE')
+    times = {label:_i8_time(record['created_utc']) for label,record in (('purpose',value),('review',review),('full',full),('adoption',adoption))}
+    ns = {label:(t-I8_FILETIME_UNIX_BRIDGE)*100 for label,t in times.items()}
+    _i8_need(times['full'] == times['review'] and purpose_ns <= reader.birth(subject) <= ns['full'] <= ns['adoption'] <= now_ns and
+              ns['review'] <= reader.birth(support['different_review']) <= ns['adoption'] and
+              ns['full'] <= reader.birth(full_pin) <= ns['adoption'] and
+              ns['adoption'] <= reader.birth(support['Root_adoption']) <= now_ns,'E_PURPOSE_CHRONOLOGY')
+    return value
+
+
+class I8PrewriteMetadataView(tuple):
+    __slots__ = ()
+    def __new__(cls,value):
+        return tuple.__new__(cls,(_i8_wire(value),))
+    @property
+    def metadata_only(self): return True
+    @property
+    def actual_admission(self): return False
+    @property
+    def producer_qualified(self): return False
+    @property
+    def caller_qualified(self): return False
+    def to_dict(self): return _i8_json(self[0])
+
+
+def validate_current_owner_M3_prewrite_metadata(*,request_pin,purpose_support,trusted_bindings,read_record,
+                                               expected_root_thread,source_editor,now_utc,resource_observation):
+    request_pin = _i8_pin(request_pin)
+    purpose_support = _i8_copy(purpose_support)
+    resource = _i8_copy(resource_observation)
+    reader = I8Reader(trusted_bindings,purpose_support,read_record)
+    reader.declare(request_pin)
+    root_thread = _text(expected_root_thread,'I8 expected Root',512)
+    editor = _nonroot_actor(source_editor,'I8 Source editor')
+    reader.source_editor = editor
+    now = _i8_time(now_utc)
+    _i8_closed(resource,('observed_utc','available_RAM_bytes','disk_free_bytes'),'E_RESOURCE')
+    observed = _i8_time(resource['observed_utc'])
+    _i8_need(type(resource['available_RAM_bytes']) is int and resource['available_RAM_bytes'] >= 1073741824 and
+              type(resource['disk_free_bytes']) is int and resource['disk_free_bytes'] >= 10737418240 and
+              0 <= now-observed <= 60*TICKS_PER_SECOND,'E_RESOURCE')
+    context = validate_current_owner_support(support=reader.bindings['owner_support'],read_record=reader.callback,
+        expected_root_thread=root_thread,source_editor=editor,now_utc=now_utc)
+    request,roles,lease_pin,lease,request_time = _i8_request(reader,request_pin,context,now,root_thread,editor)
+    # Every declared raw input is hash checked, after semantic per-role caps have
+    # been established; immutable caching makes no physical-stability assertion.
+    for p in reader.bindings['expected_inputs']:
+        cap = reader.cap[p['path'].casefold()] or METADATA_CAP_BYTES
+        reader.body(p,cap)
+    purpose = _i8_purpose(reader,request_pin,request,roles,context.scope_pin.to_dict(),now)
+    value = dict(I8_RESULT_FLAGS)
+    value.update(request=request_pin,purpose=purpose_support['subject'],owner_support=context.support_dict(),
+        canonical_lease=lease_pin,lease_created_utc=lease['created_utc'],lease_end_utc=lease['lease_end_utc'],
+        selected_roles=roles,output_paths=reader.bindings['expected_output_paths'],validated_now_utc=now_utc,
+        verified_input_pins=reader.bindings['expected_inputs'],actual_external_reader_calls=reader.calls,
+        actual_external_returned_bytes=reader.returned,unwired_obligations=list(I8_UNWIRED_OBLIGATIONS))
+    return I8PrewriteMetadataView(value)

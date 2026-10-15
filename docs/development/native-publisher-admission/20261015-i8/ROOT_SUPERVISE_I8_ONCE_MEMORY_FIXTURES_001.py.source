@@ -1,0 +1,70 @@
+"""Root exact one-child supervisor; launches one hidden child for pure memory tests only."""
+import ctypes,datetime,hashlib,json,os,shutil,subprocess,sys,time
+from pathlib import Path
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_publisher_admission_011');CAP=2097152
+PYTHON=r'C:\Users\aladdin-alyanai\AppData\Local\Programs\Python\Python313\python.exe'
+def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()
+def raw(p):
+ p=Path(p);assert p.is_file() and not p.is_symlink() and p.stat().st_size<=CAP
+ with p.open('rb') as f:b=f.read(CAP+1)
+ assert len(b)<=CAP;return b
+def fact(p):
+ b=raw(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pin(q):
+ b=raw(q['path']);assert type(q['bytes']) is int and len(b)==q['bytes'] and hashlib.sha256(b).hexdigest()==q['sha256'];return b
+def save_at(p,x):
+ p=Path(p);b=(json.dumps(x,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(b)<=CAP
+ with p.open('xb') as h:h.write(b);h.flush();os.fsync(h.fileno())
+ return fact(p)
+def fresh_resources():
+ class M(ctypes.Structure):_fields_=[('length',ctypes.c_ulong),('load',ctypes.c_ulong),('total',ctypes.c_ulonglong),('available',ctypes.c_ulonglong),('page_total',ctypes.c_ulonglong),('page_available',ctypes.c_ulonglong),('virtual_total',ctypes.c_ulonglong),('virtual_available',ctypes.c_ulonglong),('extended',ctypes.c_ulonglong)]
+ m=M();m.length=ctypes.sizeof(m);assert ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m));disk=shutil.disk_usage(P).free
+ assert m.available>=1073741824 and disk>=10737418240
+ return dict(observed_utc=now(),observed_monotonic_ns=time.monotonic_ns(),available_RAM_bytes=m.available,disk_free_bytes=disk,RAM_floor_bytes=1073741824,disk_floor_bytes=10737418240,age_limit_seconds=60,FileTime_or_Native8_collection=False)
+def main():
+ assert os.name=='nt' and sys.flags.isolated and sys.flags.no_site and sys.flags.dont_write_bytecode
+ sp=fact(P/sys.argv[1]);assert sp['sha256']==sys.argv[2];s=json.loads(pin(sp))
+ assert s['author']=='/root' and type(s['maximum_invocations']) is int and s['maximum_invocations']==1 and s['new_I8_pure_memory_fixture_invocation_authorized'] is True
+ assert s['original_I0_I1_I2_I3_I4_I5_I6_I7_native_Parser_project_invocations_authorized'] is False
+ assert datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=60)<datetime.datetime.fromisoformat(s['interval_end'])
+ runner=s['exact_child_runner'];pin(runner);assert runner==fact(P/'ROOT_RUN_I8_ONCE_ISOLATED_MEMORY_FIXTURES_001.py')
+ marker=save_at(P/s['supervisor_marker_name'],dict(schema_version=1,record_type='Root_I8_memory_supervisor_once_consumed_before_child',author='/root',created_utc=now(),scope=sp,child_runner=runner,automatic_retry_authorized=False))
+ reason=None;resource_prelaunch=None;proc=None;code=None;reaped=False;childpin=None;child=None;streams=[];launched=None;exit_observed=None;started=now();start=time.monotonic_ns()
+ argv=[PYTHON,'-I','-S','-B',runner['path'],sys.argv[1],sys.argv[2]];outpath=P/s['child_stdout_name'];errpath=P/s['child_stderr_name']
+ try:
+  with outpath.open('xb') as out,errpath.open('xb') as err:
+   resource_prelaunch=fresh_resources()
+   assert time.monotonic_ns()-resource_prelaunch['observed_monotonic_ns']<60000000000
+   launched=time.monotonic_ns()
+   proc=subprocess.Popen(argv,cwd=P,stdin=subprocess.DEVNULL,stdout=out,stderr=err,creationflags=subprocess.CREATE_NO_WINDOW)
+   while True:
+    polled=proc.poll();observed=time.monotonic_ns()
+    if polled is not None:exit_observed=observed;break
+    if observed-launched>60000000000:reason='owned new-I8 memory child exceeded60second wall cap';break
+    if outpath.stat().st_size>CAP or errpath.stat().st_size>CAP:reason='owned new-I8 memory child exceeded2MiB stream cap';break
+    time.sleep(0.05)
+ except BaseException as exc:
+  reason=reason or type(exc).__name__+': '+str(exc)
+ if proc is not None:
+  if reason and proc.poll() is None:
+   try:proc.kill()
+   except BaseException as exc:reason+='; owned kill failed: '+type(exc).__name__
+  try:code=proc.wait(timeout=5);reaped=True
+  except subprocess.TimeoutExpired:reason=reason or 'owned child not reaped within5seconds; cleanup unverified'
+  if reaped and exit_observed is None:exit_observed=time.monotonic_ns()
+ child_wall=exit_observed-launched if exit_observed is not None and launched is not None else None
+ if child_wall is not None and child_wall>60000000000:reason=reason or 'owned child observed wall exceeded60seconds at terminal poll'
+ for path in (outpath,errpath):
+  if path.is_file():
+   size=path.stat().st_size
+   if size>CAP:reason=reason or 'terminal stream cap exceeded';streams.append(dict(path=str(path),observed_bytes=size,overcap=True))
+   else:streams.append(fact(path))
+ resultpath=P/s['saved_result_name']
+ if resultpath.is_file():
+  childpin=fact(resultpath);child=json.loads(pin(childpin));assert child['scope']==sp
+  if child['all_cases_passed'] is not True:reason=reason or 'actual memory suite refused'
+ else:reason=reason or 'owned child saved result missing'
+ x=dict(schema_version=1,record_type='Root_actual_I8_once_synthetic_memory_supervisor_result',author='/root',started_utc=started,created_utc=now(),scope=sp,supervisor_marker=marker,resource_prelaunch=resource_prelaunch,scope_creation_resource_observation_is_historical=True,child_runner=runner,argv=argv,cwd=str(P),owned_child_PID=proc.pid if proc else None,owned_child_exit_code=code,owned_child_wait_reaped=reaped,wall_cap_seconds=60,cleanup_reap_seconds=5,child_launch_monotonic_ns=launched,child_exit_observed_monotonic_ns=exit_observed,owned_child_wall_integer_nanoseconds=child_wall,elapsed_integer_nanoseconds=time.monotonic_ns()-start,streams=streams,child_saved_result=childpin,passed=reason is None and code==0 and reaped,refusal=reason,owned_child_invocations=1 if proc is not None else 0,tests_executed=child.get("tests_executed") if type(child) is dict else None,I8_memory_test_runs=child.get("I8_memory_test_runs") if type(child) is dict else None,original_project_native_Parser_runtime_scientific_execution=False,actual_selected45_Source_publication=False,actual_new_lease_family_grants_Native8_Parser_results=None,operational_authority=False,scientific_authority=False)
+ print(json.dumps(save_at(P/s['supervisor_result_name'],x)))
+ if not x['passed']:raise SystemExit(1)
+if __name__=='__main__':main()
