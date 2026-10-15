@@ -1,0 +1,23 @@
+# Source continuation: checker peer015
+
+Root accepted genuine canonical checker peer015 on October 15, 2026. The dated lease010 selection now has **36 of 45 canonical Source paths**: 35 successors and one carried composer. The [actual outcome and pending-scope ledger](evidence/ROOT_CHECKER_PEER015_ACTUAL_SOURCE_OUTCOME_PENDING_SCOPE_LEDGER.json) and [final Root acceptance](evidence/ROOT_CHECKER_PEER015_FINAL_CANONICAL_SOURCE_REVIEW_ADOPTION.json) record the completed Source role and its limits.
+
+The [canonical peer](evidence/INDEPENDENT_METADATA3_CHECKER_SOURCE_REVIEW_015.json) is 795 bytes, SHA256 `09d25f6defae6da0198b91b57ca3bfca3e0d743d705b62fa5226741525f0c613`. Root authored a real current review of checker022 and its accepted audit, protocol and manifest. The peer retains the original 15-field schema, `actual_binding: null`, false execution/runtime/authority fields and original 65,536-byte Source cap. Only the timestamp and three hashes differ from peer014; restoring those four values reconstructs all 795 predecessor bytes exactly.
+
+| Separate actual Source review | Checks | Inputs | Failures |
+| --- | ---: | ---: | ---: |
+| Full checker Source and genuine Root content | 4,814 | 60 | 0 |
+| Selected draft, author receipt and predecessor inverse | 263 | 26 | 0 |
+| Saved canonical creation and prior Source preservation | 3,117 | 70 | 0 |
+
+These counts are separate reviews, not an aggregate test total. The audits establish exact Source bytes and provenance. They did not run original project functions, helpers, fixtures, Native/Parser, C8 or scientific cases. All 35 prior canonical byte pins remain exact. Checker022's 57 declared literal changes reconstruct its entire predecessor and preserve all 69 functions and original guards; the 17 retained metadata coordinates remain unchanged.
+
+The [evidence index](evidence-index.json) maps the completed publication, genuine Root details, independent proofs and actual adoptions to exact byte copies. Supplemental current review programs are inert `.py.source` evidence. Own reviewer alignment/schema stops and Root's [initial overbroad SHA check](evidence/supplemental/Root/ROOT_CHECKER022_OWN_STATIC_REVIEW_ATTEMPT001_REFUSAL_001.json) remain preserved as review history. The corrected Source review permits only the one declared manifest SHA replacement and verifies it against the actual manifest bytes; no subject guard was relaxed.
+
+Nine roles remain: phase_peer, binding, pipeline_peer, checker_config, table, constructor, constructor_manifest, constructor_review and selector. Full45 coherence, checker configuration closure and ten-tool readiness remain unproved. Phase peer020 still needs genuine fresh native metadata and Parser results. The accepted pipeline-binding assembler also authenticates that phase peer; its stronger prerequisite remains in force. Existing deferred tools retain expired Source024 admission bindings and cannot be invoked as current admission. The next preparation is a separately reviewed owner-directed compatibility/admission design preserving every native algorithm, timestamp, LastAccess, independent PATH9/fd9 comparison, cap and reserve. It must leave unissued lease011, new family/paths/duration, INIT, purpose/ACK/admission and results unset until their real decisions and evidence exist. No Pro3 reply is fabricated.
+
+**The frozen STEP080 restore snapshot remains its dated 35-present/10-pending state.** Its archive, manifest, canonical-source index and all six primary copies are unchanged. This later evidence update does not rebuild or automatically apply an overlay to that snapshot and does not claim STEP081 or a new six-document primary checkpoint. Use this report for later local Source progress, and the frozen manifest for its original complete restore qualification. The three managed navigation prefixes retain every complete previous navigation byte.
+
+Fresh original fixtures, C8 success, actual6, runtime/recovery and science remain unentered or unproved for the current family. FIT is Source/data byte assembly, not training or accuracy. The dated 150 fits/270 models and 111 untouched cases were not recounted. All 75 spent identities remain unreplayed; Unit006, original output caps and every reserve/freshness guard remain unchanged. This work follows current owner-directed local Source scope; no Pro3 contact, pause or whole-host/custody acceptance is implied.
+
+This report and index describe accepted Source evidence. Their own later documentation commit and push outcome belong in Git history and the external execution handoff, outside the files being reviewed.

@@ -1,3 +1,7 @@
+**October 15 Source continuation:** [genuine checker peer015 is accepted](docs/development/source-continuation/20261015-checker-peer015/SOURCE_CONTINUATION.md), bringing later local Source progress to **36/45 paths with nine pending**. The frozen STEP080 archive and its complete restore qualification remain at the dated **35/10** state described below. This update publishes Source evidence and continuation guidance.
+
+---
+
 # Beyond Uncertainty
 
 To continue this project on another device, start with [CONTINUE.md](CONTINUE.md).

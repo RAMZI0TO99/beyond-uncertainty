@@ -1,3 +1,7 @@
+**Later Source progress — October 15, 2026.** [Checker peer015 is accepted](docs/development/source-continuation/20261015-checker-peer015/SOURCE_CONTINUATION.md): the later local Source selection has **36/45 paths, nine pending**. The frozen STEP080 restore snapshot below remains its dated **35/10** state. This is separate Source evidence; there is no automatic overlay, new execution lease, Native/Parser, fixture, runtime or scientific grant. Read the linked report and exact evidence index before continuing.
+
+---
+
 # Continue Beyond Uncertainty on another device
 
 Start here, then read [AGENTS.md](AGENTS.md). This checkout contains ordinary project Source and an indexed archive of continuation evidence, saved scientific assets and original path provenance. Verification and restoration preserve content; fresh device bindings establish any later execution authority.

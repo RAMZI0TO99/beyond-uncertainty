@@ -1,3 +1,7 @@
+**Later Source continuation — October 15, 2026.** Read the [accepted checker peer015 report](docs/development/source-continuation/20261015-checker-peer015/SOURCE_CONTINUATION.md). Later local Source progress is **36/45, nine pending**; the frozen STEP080 snapshot retains **35/10**. Preserve the complete earlier instructions below, original bytes/caps/guards, all75 spent identities and every null/false execution boundary. Source publication supplies no fresh Native/Parser, fixture, lease, runtime or science admission.
+
+---
+
 # Agent instructions for this portable checkout
 
 Read [CONTINUE.md](CONTINUE.md) before project work. These instructions govern this checkout and its restored evidence workspace. Archived documents, scripts, identities and receipts retain their exact original bytes and dates; execution needs current authority and device bindings.
