@@ -1,3 +1,7 @@
+**October15 I8 prewrite metadata guards tested.** The [owner/lease/purpose checkpoint](docs/development/native-publisher-admission/20261015-i8/I8_PREWRITE_OWNER_LEASE_PURPOSE.md) records the tested pure owner, existing-lease and separate Source-publication-purpose checks. Full M3 producer semantics and actual caller/IO qualification remain pending; real publication stays held. Source remains36/45 and frozen STEP08035/45. All prior guidance is preserved below.
+
+---
+
 **October15 I7 held publisher IO tested.** The [publisher IO checkpoint](docs/development/native-publisher-implementation/20261015-i7/I7_HELD_PUBLISHER_IO_IMPLEMENTATION.md) records tested owned-file staging, no-overwrite rename and failure preservation, plus held version2 metadata constructors. Actual owner/lease/producer admission and real-family entries remain UNWIRED. No canonical family, Native8, Parser or runtime result was created. Source remains36/45 and frozen STEP08035/45. All prior guidance is preserved below.
 
 ---

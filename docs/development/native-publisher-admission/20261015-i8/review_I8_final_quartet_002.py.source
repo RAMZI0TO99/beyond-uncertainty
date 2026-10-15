@@ -1,0 +1,278 @@
+"""Independent final I8 Source review. Never import, compile or invoke targets."""
+import ast
+import base64
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_publisher_admission_011')
+OWN=P/'independent_review_001'; D=P/'i8'; CAP=2097152
+REVIEWER='/root/owner_source_review'
+inputs={};raws={};checks=[]
+def fact(path):
+    path=Path(path);raw=path.read_bytes();assert 0<len(raw)<=CAP
+    q=dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+    if q['path'] in inputs:assert inputs[q['path']]==q and raws[q['path']]==raw
+    inputs[q['path']]=q;raws[q['path']]=raw;return q
+def pin(q):
+    assert type(q) is dict and set(q)=={'path','bytes','sha256'} and type(q['bytes']) is int
+    assert fact(q['path'])==q;return raws[q['path']]
+def pairs(rows):
+    d={}
+    for k,v in rows:assert k not in d;d[k]=v
+    return d
+def bad(value):raise ValueError('noninteger JSON number')
+def decode(raw):return json.loads(raw,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def doc(path):
+    q=fact(path);return decode(raws[q['path']])
+def ck(name,passed,evidence):
+    assert type(passed) is bool and name not in {c['name'] for c in checks}
+    checks.append(dict(name=name,passed=passed,evidence=evidence))
+def literals(tree):
+    d={}
+    for n in tree.body:
+        if isinstance(n,ast.Assign):
+            v=n.value
+            if isinstance(v,ast.Call) and isinstance(v.func,ast.Name) and v.func.id in ('set','frozenset') and len(v.args)==1:v=v.args[0]
+            try:x=ast.literal_eval(v)
+            except (ValueError,TypeError,SyntaxError):continue
+            for a in n.targets:
+                if isinstance(a,ast.Name):d[a.id]=x
+    return d
+def defs(tree):return {n.name:n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+def source(raw,node):
+    start=min([node.lineno]+[d.lineno for d in node.decorator_list]);return b''.join(raw.splitlines(keepends=True)[start-1:node.end_lineno])
+def region_inventory(rows,raw,label,evidence):
+    tree=ast.parse(raw);nodes=defs(tree)
+    for r in rows:
+        n=nodes[r['name']];body=source(raw,n)
+        ck(label+'_'+r['name'],len(body)==r['bytes'] and hashlib.sha256(body).hexdigest()==r['sha256'] and min([n.lineno]+[d.lineno for d in n.decorator_list])==r['first_line'] and n.end_lineno==r['last_line'] and type(n).__name__==r['kind'],evidence)
+def local_calls(raw,label,p):
+    tree=ast.parse(raw);fs={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)};count=0
+    for n in ast.walk(tree):
+        if not(isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id in fs):continue
+        if any(isinstance(a,ast.Starred) for a in n.args) or any(k.arg is None for k in n.keywords):continue
+        a=fs[n.func.id].args;pos=a.posonlyargs+a.args;names=[x.arg for x in pos];got={k.arg for k in n.keywords};assigned=set(names[:len(n.args)])
+        missing=set(names[:len(pos)-len(a.defaults)])-assigned-got;missing_kw={x.arg for x,d in zip(a.kwonlyargs,a.kw_defaults) if d is None}-got
+        unknown=got-set(names)-{x.arg for x in a.kwonlyargs}
+        good=not missing and not missing_kw and not(assigned&got) and (len(n.args)<=len(pos) or a.vararg is not None) and (not unknown or a.kwarg is not None)
+        ck(label+'_call_%04d_%03d_%s'%(n.lineno,n.col_offset,n.func.id),bool(good),[p]);count+=1
+    return count
+
+announced={
+'validate_current_owner_M3_prewrite_admission_003.py':(81691,'5dd35842ab5de75dcb225d62ebb1d5dea9f401bb777ea0ef0e067da80c380192'),
+'test_current_owner_M3_prewrite_admission_memory_only_004.py':(190984,'2469bcf6a7f32fcd5c57f68813292befa3e4cd84d4949f88ff519f21029546c6'),
+'CURRENT_OWNER_M3_PREWRITE_ADMISSION_INERT_API_004.json':(29732,'83a417fcce9bcc208dd6362a01ff1afdf824c8f5cd7bcf126e716c4afc94fbf3'),
+'CURRENT_OWNER_M3_PREWRITE_ADMISSION_ACTUAL_SOURCE_AUTHOR_RECEIPT_004.json':(15935,'ad30d54e5246b13801399acf593cbaf23eb04b2c6453677faad0db580f74da6e')}
+subjects=[]
+for name,(size,digest) in announced.items():
+    q=fact(D/name);ck('frozen_subject_pin_'+name,(q['bytes'],q['sha256'])==(size,digest),[q]);subjects.append(q)
+mp,tp,ap,rp=subjects;module=raws[mp['path']];fixture=raws[tp['path']];mt=ast.parse(module);ft=ast.parse(fixture)
+mc=literals(mt);fc=literals(ft);md=defs(mt);fd=defs(ft);api=decode(raws[ap['path']]);receipt=decode(raws[rp['path']])
+protocol_pin=fact(P/'ROOT_I8_EXACT_PREWRITE_OWNER_LEASE_PURPOSE_IMPLEMENTATION_PROTOCOL_001.json');protocol=decode(raws[protocol_pin['path']])
+for q in receipt['Source_bases']:pin(q)
+scope=decode(pin(protocol['scope']))
+birth=doc(P/'ROOT_I8_PROTOCOL001_BIRTH_FIELD_AND_PURPOSE_PROOF_CLOSURE_CLARIFICATION_001.json')
+limits=doc(P/'ROOT_I8_PROTOCOL001_FINITE_READER_LIMITS_AND_CHRONOLOGY_CLARIFICATION_001.json')
+lineage_pin=fact(P/'ROOT_I8_PINNED_LINEAGE_DOMAINS_AND_HISTORICAL_TIME_INTERPRETATION_001.json')
+namespace_pin=fact(P/'ROOT_I8_PROTOCOL001_EXACT_DISJOINT_CLASS_NAMESPACE_CLARIFICATION_001.json');namespace=decode(raws[namespace_pin['path']])
+ck('exact_Root_namespace_clarifier_pin',namespace_pin['bytes']==1422 and namespace_pin['sha256']=='1813ac57cd7067168b5fefda24a90bdc160d2296dbc028c1cd98eec8eea23db3',[namespace_pin])
+i0p=protocol['I0_whole_verbatim_prefix'];i0=pin(i0p);i0t=ast.parse(i0);i0d=defs(i0t)
+i1p=protocol['I1_semantic_reference'];i1=pin(i1p);i1t=ast.parse(i1);i1d=defs(i1t)
+pin(protocol['I1_API_reference']);supp=decode(pin(protocol['I1_proof_compatibility_supplement']))
+discovery=decode(pin(protocol['discovery_reports'][0]));i2p=discovery['actual_pinned_inputs']['I2_Source002'];i2=pin(i2p)
+oldp=fact(Path(r'D:\Aenv\pro2\WORK\resume-20261007-001\generation\step079_role_publication_deferred_Source024_preparation_001\root_Source024_role_publication_deferred_005.py'));old=raws[oldp['path']];oldc=literals(ast.parse(old))
+pin(protocol['unchanged_I7_API'])
+for q in receipt['author_programs']+receipt['Source_fragments']:pin(q)
+invp=receipt['inverse'];inv=decode(pin(invp))
+ck('final_inverse_announced_pin',invp['bytes']==476837 and invp['sha256']=='4d5dc0cd94cedb50816a0a78057bbb8c3f65af5a263d7b29c7f8b99e86454f60',[invp])
+inverse_records={}
+seen_inverse_paths=set()
+def inverse(value,label):
+    inverse_records[label]=value
+    for index,e in enumerate(value['entries']):
+        b=base64.b64decode(e['whole_original_bytes'],validate=True);q=e['pin'];actual=pin(q)
+        ck(label+'_entry_'+str(index),e['encoding']=='base64' and b==actual and len(b)==q['bytes'] and hashlib.sha256(b).hexdigest()==q['sha256'],[q,invp])
+        if q['path'].endswith('COMPLETE_PREDECESSOR_INVERSE_002.json') and q['path'] not in seen_inverse_paths:
+            seen_inverse_paths.add(q['path']);inverse(decode(b),label+'_nested002')
+    link=value.get('prior_inverse')
+    if type(link) is dict:
+        prior=link.get('pin') if 'pin' in link else link if set(link)=={'path','bytes','sha256'} else None
+        if prior is not None and prior['path'] not in seen_inverse_paths:
+            seen_inverse_paths.add(prior['path']);inverse(decode(pin(prior)),label+'_prior')
+inverse(inv,'inverse004')
+ck('inverse_points_actual_final_module_fixture_API',inv['new_module']==mp and inv['new_fixture']==tp and inv['API']==ap,[invp,*subjects])
+ck('prior001_refusal_retained',any(v.get('prior001_uninvoked_refused') is True for v in inverse_records.values()) and any(v.get('refusal_report',{}).get('sha256')=='dfd04e0cc08c1cf998d02baaaf42f36fa898b9d90e52a3e950dd6b27e40d71df' for v in inverse_records.values()),[invp])
+ck('complete_I0_prefix_byte_exact',module[:17920]==i0 and len(i0)==17920 and inv['all_I0_bytes_exact'] is True,[mp,i0p,invp])
+ck('I0_before_after_region_inventory_identical',inv['I0_regions_before']==inv['I0_regions_after'] and len(inv['I0_regions_before'])==12,[invp])
+region_inventory(inv['I0_regions_before'],i0,'I0_original_region',[invp,i0p])
+region_inventory(inv['I0_regions_after'],module,'I0_final_region',[invp,mp])
+region_inventory(inv['new_module_regions'],module,'new_I8_region',[invp,mp])
+for name in i0d:ck('whole_copied_definition_exact_'+name,source(i0,i0d[name])==source(module,md[name]),[i0p,mp])
+new_names=set(md)-set(i0d);allowed_classes={'I8MetadataError','I8Reader','I8PrewriteMetadataView'};public={'validate_current_owner_M3_prewrite_metadata','require_actual_finite8_publication_admission'}
+ck('namespace_exceptions_exactly_Root_named_three',set(namespace['exact_appended_class_identifier_exceptions'])==allowed_classes and namespace['Source_revision_required'] is False and namespace['new_invocation_authority'] is False,[namespace_pin])
+for name in new_names:ck('exact_new_namespace_'+name,name.startswith(('I8_','_i8_')) or name in public or name in allowed_classes,[mp,namespace_pin])
+ck('three_disjoint_class_exceptions_only',{n.name for n in mt.body if isinstance(n,ast.ClassDef)}-set(i0d)==allowed_classes,[mp,namespace_pin])
+for n in mt.body:
+    if n.lineno<=len(i0.decode().splitlines()):continue
+    if isinstance(n,ast.Assign):
+        ck('new_global_assignment_namespace_line'+str(n.lineno),all(isinstance(a,ast.Name) and a.id.startswith(('I8_','_i8_')) for a in n.targets),[mp])
+    ck('no_appended_import_or_main_'+str(n.lineno),not isinstance(n,(ast.Import,ast.ImportFrom,ast.If,ast.Expr)) or (isinstance(n,ast.Expr) and isinstance(n.value,ast.Constant)),[mp])
+for q,raw,tree,label in [(mp,module,mt,'module'),(tp,fixture,ft,'fixture')]:
+    imports=[n for n in tree.body if isinstance(n,(ast.Import,ast.ImportFrom))]
+    for n in imports:
+        names=[a.name for a in n.names] if isinstance(n,ast.Import) else [n.module]
+        ck(label+'_only_pure_stdlib_import_'+str(n.lineno),all(x in {'dataclasses','datetime','hashlib','json','re','copy','types','collections'} for x in names),[q])
+    for n in ast.walk(tree):
+        if isinstance(n,ast.Call) and isinstance(n.func,ast.Name):
+            ck(label+'_no_forbidden_direct_dispatch_%d_%d'%(n.lineno,n.col_offset),n.func.id not in {'open','exec','eval','compile','__import__','input','breakpoint'},[q])
+module_call_count=local_calls(module,'module_arity',mp);fixture_call_count=local_calls(fixture,'fixture_arity',tp)
+
+def text(name):return ast.get_source_segment(module.decode(),md[name])
+def tokens(name,values):
+    body=text(name)
+    for label,needle in values:ck(name+'_'+label,needle in body,[mp])
+ck('unchanged_role_caps_and_coupling_groups',mc['I8_ROLE_CAPS']==oldc['ROLE_PUBLICATION_CAPS'] and mc['I8_ORDINAL_COUPLING_GROUPS']==oldc['ORDINAL_COUPLING_GROUPS'],[mp,oldp])
+ck('historical4_literal_fixed',mc['I8_HISTORICAL_LEASES']==protocol['fixed_historical_leases'],[mp,protocol_pin])
+for q in protocol['fixed_historical_leases']:pin(q)
+for key,proto_key in [('I8_LEASE12','LEASE12'),('I8_FACTS14','FACT_KEYS'),('I8_DECISION20','DECISION_KEYS'),('I8_PUBLICATION36','PUBLICATION_KEYS')]:
+    ck('I1_declared_schema_'+key,set(mc[key])==set(protocol['upstream_closed_contracts']['I1_source_declarations'][proto_key]),[mp,protocol_pin,i1p])
+tokens('I8Reader',[('deep_detach','self.bindings = _i8_copy(trusted)'),('output_guard','key not in self.outputs'),('distinct_count','len(self.pins) <= 256'),('declared_32MiB','33554432'),('callback1024','self.calls <= 1024'),('returned64MiB','67108864'),('only_declared','E_UNDECLARED_INPUT'),('exact_pin_reuse','_i8_same(self.pins[key],p)'),('cap_conflict','self.cap[key] == cap'),('immutable_byte_cache','self.cache[key] = raw'),('exact_bytes','type(raw) is bytes'),('whole_hash','hashlib.sha256(raw).hexdigest() == p[\'sha256\']'),('all_births_positive_int','all(type(n) is int and n > 0 for n in births.values())')])
+rt=text('I8Reader');ck('output_and_declared_bound_setup_precedes_callback',rt.index('self.outputs =')<rt.index('self._install(p)')<rt.index('sum(p[\'bytes\']')<rt.index('self.external(dict(p))'),[mp])
+tokens('_i8_walk',[('depth48','depth <= 48'),('nodes50000','count[0] <= 50000'),('builtin_json_only','type(value) in (str, int, bool, type(None))')])
+tokens('_i8_json',[('duplicate_key','key not in result'),('float_refusal','parse_float=reject'),('nonfinite_refusal','parse_constant=reject'),('dict_root','type(value) is dict'),('node_bounds','_i8_walk(value)')])
+tokens('_i8_pin',[('builtin_int_positive','type(value[\'bytes\']) is int and 0 < value[\'bytes\'] <= cap'),('lowercase_digest',"'[0-9a-f]{64}'")])
+tokens('_i8_lease',[('exact_wire','lease_raw == expected_wire'),('canonical_equals_candidate','reader.body(candidate,65536) == lease_raw'),('duration43200','end-start == 43200*TICKS_PER_SECOND'),('reserve1200','end-now > 1200*TICKS_PER_SECOND'),('carried10',"k not in ('created_utc','lease_end_utc')"),('author_no_candidate',"facts_pair[0]['candidate_support'] is None"),('publication_candidate4',"_i8_same(facts_pair[1]['candidate_support'],candidate_support)"),('candidate_receipt_coverage',"[candidate,receipt_pin],['/root'],now,mode='I1'"),('canonical_both_subjects',"[lease_pin,publication_pin],['/root'],now"),('recorded_image_equality',"_i8_same(receipt['native_image_metadata'],publication['native_image_metadata'])"),('recorded_candidate_stage',"_i8_creation2(receipt['actual_creation_metadata'],candidate"),('recorded_canonical_stage',"_i8_creation2(publication['actual_publication_metadata'],lease_pin")])
+tokens('_i8_review',[('open_semantic_not_closed','value = reader.record(pin)'),('builtin_zero',"type(value.get('checks_failed')) is int"),('every_capsule_subject','all(_i8_occurs(value,p) for p in subjects)'),('every_full_subject','all(_i8_occurs(full,p) for p in subjects)'),('I1_equal_I2_leq',"(mode != 'I1' or full_time == capsule_time)"),('recorded_birth_before_review','reader.birth_ticks(p) <= capsule_time')])
+tokens('_i8_adopt',[('fullproof_direct','[review_pin,review[1]]'),('context_optional','if scope is not None'),('selection_optional','if selection is not None'),('actual_review_birth','reader.birth_ticks(review_pin) <= adopted')])
+ck('immutable_code_adoption_without_future_context','scope=' not in text('_i8_code') and 'selection=' not in text('_i8_code'),[mp])
+tokens('_i8_vector9',[('nine_builtin_integers','len(value) == 9 and all(type(n) is int for n in value)'),('size_links',"value[2] == pin['bytes'] and value[6] == links"),('regular_mode','0o170000'),('nonreparse','not (value[7] & 0x400)'),('birth_positive','value[8] > 0')])
+tokens('_i8_read12',[('closed12',"_i8_closed(value,keys,'E_RECORDED_READ12')"),('shared7','indexes = [0,1,2,3,6,7,8]'),('raw_equals_path',"_i8_same(value['raw9'],path)"),('stable_both_flags',"value['both_full_API9_independently_stable'] is True and value['two_read_match'] is True"),('exact_ledger','path[8] == reader.birth(pin) and descriptor[8] == reader.birth(pin)')])
+tokens('_i8_creation2',[('closed_stage2',"('staging','canonical')"),('staging_exact_suffix',"pin['path']+'.staging'"),('eight_kept_ctime_excluded','kept = (0,1,2,3,5,6,7,8)'),('each_API_move_equality',"for api in ('path9','descriptor9') for i in kept")])
+tokens('_i8_image7',[('fixed_native_path',r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'),('two_link_exact',"value['actual_link_count'] == 2"),('exact2MiB',"value['cap'] == 2097152"),('shared7','indexes = [0,1,2,3,6,7,8]'),('same_ledger','path[8] == reader.birth(pin) and descriptor[8] == reader.birth(pin)')])
+tokens('_i8_selection',[('newer_ordinal','previous < ordinal < 1000'),('inherited_leaf','_i8_leaf(canonical) == expected_leaf'),('predecessor_parent',"_i8_parent(canonical) == _i8_parent(pred['path'])"),('nonce_inherited',"selected['selected_Source_nonce'] == current.get('selected_Source_nonce')"),('all_coupling','for group in I8_ORDINAL_COUPLING_GROUPS'),('launcher_runtime','E_LAUNCHER_RUNTIME'),('historical45_domain',"selected['current_complete45_inventory'] == I8_HISTORICAL45_PIN"),('selection_and_lease_fullcoverage','[pin,lease_pin]'),('phase_gt18','ordinal > 18')])
+tokens('_i8_catalogue',[('actual45_domain','I8_CATALOGUE11'),('historical_provenance_only',"catalogue['Source024'] == I8_SOURCE024_PROVENANCE_PIN"),('actual_predecessor_join',"_i8_same(row['source'],selected[role]['predecessor'])"),('every_role_body_read',"reader.body(p,row['source_cap'])")])
+tokens('_i8_request',[('M3_exact_map',"_i8_closed(request['producer_supports'],('M3',)"),('ordered_subset','roles == [role for role in I8_ROLE_ORDER if role in roles]'),('typed_publisher_API_pin',"_i8_same(reader.declare(publisher_api.get('publisher_Source')),publisher['Source'])"),('draft_receipt_review','[draft,receipt]'),('Root_current_scope_selection',"scope=context.scope_pin.to_dict(),selection=request['Root_future_path_selection_support']['subject']"),('request_after_draft_adop','adoption[1] <= request_time'),('derive_outputs',"row['canonical_path']+'.staging'"),('exact_output_binding',"sorted(outputs) == b['expected_output_paths']")])
+tokens('_i8_purpose',[('new_closed12','I8_PURPOSE12'),('distinct_exact_operation','PUBLISH_EXACT_REVIEWED_FINITE8_M3_SOURCE_ONLY'),('finite_expected_closure',"inputs=reader.bindings['expected_inputs']"),('every_input_exact_birth',"all(reader.birth(p) <= purpose_ns"),('fullproof_prebound',"full_pin = reader.bindings['purpose_full_proof']"),('new_closed14','proof_contract[\'capsule14\']'),('new_closed16','proof_contract[\'full16\']'),('new_closed11','proof_contract[\'Root_adoption11\']'),('literal_purpose',"_i8_same(record['purpose'],value)"),('evidence_allowed_subset',"p['path'] in subject_map"),('evidence_union_all','union == set(subject_map)'),('all_subject_rows','len(coverage) == len(subjects)'),('created_birth_review_order',"purpose_ns <= reader.birth(subject) <= ns['full']"),('full_capsule_equal',"times['full'] == times['review']"),('adoption_birth_exact_ns',"ns['adoption'] <= reader.birth(support['Root_adoption']) <= now_ns")])
+ck('I1_floor_and_new_exact_ns_are_separate','self.birth(value)//100 + I8_FILETIME_UNIX_BRIDGE' in module.decode() and '(purpose_ticks-I8_FILETIME_UNIX_BRIDGE)*100' in text('_i8_purpose'),[mp])
+ck('actual_entry_has_two_independent_raises',mc['I8_REAL_PUBLICATION_BINDINGS_QUALIFIED'] is False and isinstance(md['require_actual_finite8_publication_admission'].body[-1],ast.Raise),[mp])
+ck('result_frozen_bytes_fresh_decode','tuple.__new__(cls,(_i8_wire(value),))' in text('I8PrewriteMetadataView') and 'def to_dict(self): return _i8_json(self[0])' in text('I8PrewriteMetadataView'),[mp])
+for k in ('actual_admission','caller_qualified','producer_qualified','physical_origin_authenticated','human_origin_authenticated','lease_native_provenance_authenticated','new_grants_issued','operational_authority','scientific_authority'):ck('result_never_claims_'+k,mc['I8_RESULT_FLAGS'][k] is False,[mp])
+
+ck('API_exact_module_and_fixture',api['module']==mp and api['fixture_Source']==tp,[ap,mp,tp])
+ck('API_exact_protocol_purpose_schemas',api['purpose12']==protocol['new_purpose12'] and api['purpose_proof_14_16_11']==protocol['purpose_proof_contract'],[ap,protocol_pin])
+ck('API_trusted10_and_result_flags',api['trusted_bindings_keys']==mc['I8_TRUSTED_KEYS'] and api['result_flags']==mc['I8_RESULT_FLAGS'],[ap,mp])
+ck('API_no_original_runtime_or_physical_qualification',all(api[k] is False for k in ('actual_admission','caller_qualified','producer_qualified','runtime_eligibility','native_Parser_execution','original_modules_changed','original_modules_imported_or_called','operational_authority','scientific_authority')),[ap])
+ck('receipt_truthful_actual_author',receipt['author']==receipt['actual_physical_Source_editor']=='/root/phase_frontier' and receipt['future_canonical_physical_actor']=='/root',[rp])
+ck('receipt_exact_four_subject_joins',receipt['module']==mp and receipt['fixture']==tp and receipt['API']==ap and receipt['inverse']==invp,[rp,*subjects])
+ck('receipt_no_executed_cases_or_actual_grant',receipt['actual_memory_test_scope_pending'] is True and receipt['own_static_checks']['actual_fixture_cases_executed']==0 and all(v is None for v in receipt['actual_future'].values()),[rp])
+
+planned=fc['PLANNED_CASE_NAMES'];positive=('positive_template','positive_multirow','positive_detached_immutable','positive_ctime_rename','callback_mutates_bindings','resource_exact60')
+ck('fixture_literal96_unique',type(fc['EXPECTED_CASE_COUNT']) is int and fc['EXPECTED_CASE_COUNT']==len(planned)==len(set(planned))==96,[tp])
+ck('fixture_API_literal_names_and_count',api['fixture_interface']['expected_case_count']==96 and api['fixture_interface']['planned_case_names']==list(planned),[tp,ap])
+ck('fixture_previous94_retained_exact_order',planned[-2:]==('json_depth_before_callback','reader_cap_reuse_conflict') and list(planned[:94])==doc(D/'CURRENT_OWNER_M3_PREWRITE_ADMISSION_INERT_API_002.json')['fixture_interface']['planned_case_names'],[tp,ap])
+ck('fixture_exact_entry_one_positional_arg',len(fd['run_memory_suite'].args.args)==1 and not fd['run_memory_suite'].args.kwonlyargs,[tp])
+case_conditions=set()
+for n in ast.walk(ft):
+    if isinstance(n,ast.Compare) and any(isinstance(x,ast.Name) and x.id in ('case','variant') for x in [n.left,*n.comparators]):
+        for x in ast.walk(n):
+            if isinstance(x,ast.Constant) and type(x.value) is str:case_conditions.add(x.value)
+for name in planned:ck('fixture_reachable_case_variant_'+name,name in positive or name=='actual_entry_held_zero_callbacks' or name in case_conditions,[tp])
+for name,code in fc['I8F_EXPECTED_CODES'].items():ck('fixture_specific_refusal_code_'+name,name in planned and code.startswith('E_') and code in module.decode(),[tp,mp])
+fixture_text=fixture.decode();suite=ast.get_source_segment(fixture_text,fd['run_memory_suite']);invoke=ast.get_source_segment(fixture_text,fd['_f_invoke']);make=ast.get_source_segment(fixture_text,fd['_f_make'])
+for label,needle in [('public_positive_route','module.validate_current_owner_M3_prewrite_metadata('),('purpose_component_route','result = module._i8_purpose('),('corrupt_hash_poison','reader_corrupt_hash'),('caller_mutation','callback_mutates_bindings'),('cap_conflict65536',"r.body(data['request_pin'],65536)"),('cap_conflict2MiB',"r.body(data['request_pin'],2097152)")]:ck('fixture_invoke_'+label,needle in invoke,[tp])
+ck('fixture_new_depth_hits_bound_before_closed_resource_check','range(55)' in make and "resource['depth_probe'] = nested" in make and fc['I8F_EXPECTED_CODES']['json_depth_before_callback']=='E_JSON_BOUNDS' and 'json_depth_before_callback' in fc['I8F_ZERO_CALLBACK_CASES'],[tp])
+ck('fixture_cap_conflict_asserts_exact_one_callback',fc['I8F_EXPECTED_CODES']['reader_cap_reuse_conflict']=='E_CAP_CONFLICT' and "if case == 'reader_cap_reuse_conflict':_f_check(calls == 1" in suite,[tp])
+ck('fixture_all3_regression_groups_branch_specific',all(n in fc['I8F_EXPECTED_CODES'] for n in ('selection_successor','selection_basename','selection_predecessor_parent','selection_cross_group','selection_nonce','selection_launcher_runtime','recorded_read12_shape','recorded_raw9_bool','recorded_birth_ledger','recorded_image_cap','recorded_image_changed','recorded_rename_identity','publisher_pin_bool')),[tp])
+ck('fixture_onebyte_publisher_bool_is_real_regression',"raw=b'x' if variant == 'publisher_pin_bool'" in make and "dict(publisher_source,bytes=True)" in make,[tp])
+ck('fixture_ctime_positive_differs_in_baseline',"staging['raw9'][4] -= 100" in ast.get_source_segment(fixture_text,fd['_f_creation2']) and 'positive_ctime_rename' in positive,[tp])
+ck('fixture_public_actual_hold_poison_zero',all(s in suite for s in ('qualified=True,fixture=True','counter[0] == 0','E_ACTUAL_PUBLICATION_HELD')),[tp])
+ck('fixture_results_are_detached_and_qualifications_false',all(s in suite for s in ("record['selected_roles'].clear()",'view.actual_admission is False','view.producer_qualified is False','view.caller_qualified is False')),[tp])
+ck('fixture_partial_prefix_locals_honest','cases = []' in suite and 'case = None' in suite and 'for case in PLANNED_CASE_NAMES' in suite,[tp])
+ck('fixture_no_standalone_authority_files_or_main_dispatch',not any(isinstance(n,ast.If) for n in ft.body) and not any(isinstance(n,ast.Call) for n in ft.body),[tp])
+for q in protocol['fixed_historical_leases']:
+    raw=fc['I8F_HISTORY_BYTES'][q['path']];ck('fixture_inert_history_'+Path(q['path']).name,len(raw)==q['bytes'] and hashlib.sha256(raw).hexdigest()==q['sha256'],[tp,q])
+for k,p in [('I8F_CURRENT_SELECTION_RAW',mc['I8_CURRENT_SELECTION_PIN']),('I8F_HISTORICAL45_RAW',mc['I8_HISTORICAL45_PIN']),('I8F_SOURCE024_RAW',mc['I8_SOURCE024_PROVENANCE_PIN'])]:
+    raw=fc[k];pin(p);ck('fixture_inert_fixed_lineage_'+k,len(raw)==p['bytes'] and hashlib.sha256(raw).hexdigest()==p['sha256'],[tp,p])
+for k,p in [('I8F_OWNER_BYTES',fc['I8F_OWNER_PIN']),('I8F_OWNER_REVIEW_BYTES',fc['I8F_OWNER_REVIEW_PIN'])]:
+    raw=fc[k];pin(p);ck('fixture_inert_owner_'+k,len(raw)==p['bytes'] and hashlib.sha256(raw).hexdigest()==p['sha256'],[tp,p])
+ck('purpose_negative_graph_has_reachable_positive_control',all(s in make for s in ("_f_stamp(38)","born=39,aux=True","_f_stamp(40)","born=41,aux=True","born=42,aux=True","_f_stamp(43)","born=44,aux=True")) and 'positive_template' in planned,[tp])
+ck('defensive_reader_limits_Source_only_documented','Source-only' in json.dumps(api) or 'Source only' in json.dumps(api),[ap])
+coverage_boundary=dict(public_valid_state_maximum_distinct_cached_reads=256,public_valid_state_maximum_declared_bytes=33554432,defensive_callback1024_and_returned64MiB='Source-verified only; valid public immutable caching makes these larger defensive limits unreachable.',planned_cases=96,executed_cases=0,purpose_negative_control='Same coherent graph is reached by public positive_template; direct purpose negatives vary one purpose/ledger property.',copied_I0='Complete prefix/protected definitions verified; valid graphs exercise positive owner predicates with scope/witness/review/adoption/type/time negative families. No exhaustive per-expression branch-coverage claim.')
+
+runner=fact(P/'ROOT_RUN_I8_ONCE_ISOLATED_MEMORY_FIXTURES_002.py');supervisor=fact(P/'ROOT_SUPERVISE_I8_ONCE_MEMORY_FIXTURES_002.py')
+rr=raws[runner['path']].decode();ss=raws[supervisor['path']].decode();ast.parse(rr);ast.parse(ss)
+ck('Root_runner_dataclass_preload_and_registration',"'dataclasses'" in rr and 'sys.modules[module.__name__]=module' in rr and rr.index('sys.modules[module.__name__]=module')<rr.index('exec(compile(module_raw'),[runner])
+ck('Root_runner_oneuse_before_execution',rr.index("used=save(scope['consumption_marker_name']")<rr.index('exec(compile(module_raw'),[runner])
+ck('Root_runner_exact_cases_and_counter_types',"[q['name'] for q in cases]==list(fixtures.PLANNED_CASE_NAMES)" in rr and "type(c['memory_record_reader_calls']) is int" in rr,[runner])
+ck('Root_runner_honest_partial_cases_and_audit_limit',"local.get('cases')" in rr and 'not exhaustive filesystem/stat/native interception' in rr,[runner])
+ck('Root_supervisor_owned_hidden_child_and_one_reap',ss.count('subprocess.Popen(')==1 and 'subprocess.CREATE_NO_WINDOW' in ss and ss.count('proc.wait(timeout=5)')==1 and 'proc.kill()' in ss,[supervisor])
+ck('Root_supervisor_launch_based_wall_and_final_check','observed-launched>60000000000' in ss and 'child_wall>60000000000' in ss,[supervisor])
+ck('Root_supervisor_actual_prelaunch_resource_probe','resource_prelaunch=fresh_resources()' in ss and 'm.available>=1073741824 and disk>=10737418240' in ss,[supervisor])
+for n in ('I8_AUTHOR_STATIC_SOURCE_INSPECTION_004.json','I8_FINITE_SOURCE_AUTHOR_HANDOFF_AND_TOOLING_HISTORY_004.json'):
+    if (D/n).exists():fact(D/n)
+adopter=fact(P/'ROOT_ADOPT_I8_DIFFERENT_SOURCE_REVIEW_004.py');ast.parse(raws[adopter['path']])
+
+correctionp=fact(P/'ROOT_I8_SAVED_ATTEMPT001_AND_INHERITED_PHASE_PATH_CORRECTION_PROTOCOL_001.json');correction=decode(raws[correctionp['path']])
+refusalcp=fact(OWN/'INDEPENDENT_I8_SAVED_ATTEMPT001_REFUSAL_CAPSULE_001.json');refusalc=decode(raws[refusalcp['path']]);refusalf=decode(pin(refusalc['full_proof']))
+rootrefusalp=fact(P/'ROOT_I8_ATTEMPT001_SAVED_REFUSAL_AND_CORRECTION_ADOPTION_001.json');rootrefusal=decode(raws[rootrefusalp['path']])
+for q in rootrefusal['prior_failed_attempt'].values():pin(q)
+ck('actual_separate_failure_review84_zero_accepted',refusalc['verdict'].startswith('PASS_') and refusalf['actual_suite_pass'] is False and refusalf['actual_completed_cases']==0 and refusalf['accepted_complete_runs']==0 and refusalf['I8_fixture_reruns']==0 and refusalf['checks_failed']==0 and len(refusalf['checks'])==84,[refusalcp,refusalc['full_proof']])
+ck('Root_separately_adopted_actual_refusal',rootrefusal['different_review']==refusalcp and rootrefusal['full_proof']==refusalc['full_proof'] and rootrefusal['refusal_is_not_a_pass'] is True and rootrefusal['consumed_scope_replay_authorized'] is False,[rootrefusalp])
+ck('Root_bounded_corrective_contract',correction['target_execution'] is False and 'strictly greater than 18' in correction['bounded_new_I8_only_correction'] and 'all five coupling groups' in correction['bounded_new_I8_only_correction'],[correctionp])
+oldmodulep=fact(D/'validate_current_owner_M3_prewrite_admission_002.py');oldmodule=raws[oldmodulep['path']];olddefs=defs(ast.parse(oldmodule))
+changed=[]
+for name,node in olddefs.items():
+    same=source(oldmodule,node)==source(module,md[name])
+    if not same:changed.append(name)
+    ck('bounded_successor_definition_'+name,same or name=='_i8_selection',[oldmodulep,mp])
+ck('only_selection_function_changes',changed==['_i8_selection'],[oldmodulep,mp])
+ck('incompatible_bare_regex_removed_without_ordinal_waiver',".*_([0-9]{3})\\.ps1" not in text('_i8_selection') and 'ordinal > 18' in text('_i8_selection') and 'previous < ordinal < 1000' in text('_i8_selection'),[mp,correctionp])
+ck('new_phase_suffix_exact_to_role',"'.TEMPLATE.ps1' if role.endswith('_template') else '.BOUND.ps1'" in text('_i8_selection') and 'expected_leaf.endswith(phase_suffix)' in text('_i8_selection') and '_i8_leaf(canonical) == expected_leaf' in text('_i8_selection'),[mp])
+# Own stdlib string analysis of inert literal lineage; no fixture builder or callback runs.
+import re
+oldselection=decode(fc['I8F_CURRENT_SELECTION_RAW']);phase_evidence=[]
+for row in oldselection['rows']:
+    if row['role'] not in mc['I8_ROLE_ORDER']:continue
+    oldleaf=row['canonical_path'].rsplit('\\',1)[1]
+    matches=[m for m in re.finditer(r'[0-9]{3}(?![0-9])',oldleaf) if int(m.group())==row['selected_ordinal']]
+    assert len(matches)==1;m=matches[0]
+    expectedleaf=oldleaf[:m.start()]+'900'+oldleaf[m.end():]
+    suffix='.TEMPLATE.ps1' if row['role'].endswith('_template') else '.BOUND.ps1'
+    ck('corrected_real_inherited_positive_leaf_'+row['role'],expectedleaf.endswith(suffix) and 900>18 and row['selected_ordinal']<900<1000,[tp,mp,correctionp])
+    phase_evidence.append(dict(role=row['role'],old_leaf=oldleaf,exact_new_leaf=expectedleaf,required_suffix=suffix))
+    if row['role']==mc['I8_ROLE_ORDER'][4]:
+        mutated=expectedleaf.replace('_900.BOUND.ps1','_901.BOUND.ps1')
+        expected901=oldleaf[:m.start()]+'901'+oldleaf[m.end():]
+        ck('coupled_bound_mutation_reaches_coupling_not_basename',mutated!=expectedleaf and mutated==expected901 and mutated.endswith('.BOUND.ps1') and row['selected_ordinal']<901<1000,[tp,mp])
+ck('fixture_fixed_bound_mutation_and_assertion',"replace('_900.BOUND.ps1','_901.BOUND.ps1')" in fixture_text and "r['canonical_path'] != old_canonical and r['draft_path'] != old_draft" in fixture_text and ".replace('_900.ps1','_901.ps1')" not in fixture_text,[tp])
+priorfixturep={'path':str(D/'test_current_owner_M3_prewrite_admission_memory_only_003.py'),'bytes':190707,'sha256':'2118b2404c706662e7b8672f5f540042cdd490b4de5ffa04be945b1c2e954318'}
+priorfixtureconstants=literals(ast.parse(pin(priorfixturep)))
+ck('fixture_all96_names_unchanged_from_consumed_003',planned==priorfixtureconstants['PLANNED_CASE_NAMES'],[tp,priorfixturep])
+if 'finite_change_inventory' in receipt:pin(receipt['finite_change_inventory'])
+for n in ('ROOT_I8_ATTEMPT002_TOOLING_ACTUAL_AUTHOR_RECEIPT_001.json','ROOT_PREPARE_I8_FRESH_MEMORY_SCOPE_003.py','ROOT_ADOPT_I8_FRESH_MEMORY_SCOPE_REVIEW_002.py','ROOT_ADOPT_I8_ATTEMPT001_SAVED_REFUSAL_002.py','ROOT_CAPTURE_I8_ACTUAL_MEMORY_STREAMS_002.py','ROOT_ADOPT_I8_SAVED_MEMORY_RESULTS_003.py'):
+    q=fact(P/n)
+    if n.endswith('.py'):ast.parse(raws[q['path']])
+issuertext=raws[str(P/'ROOT_PREPARE_I8_FRESH_MEMORY_SCOPE_003.py')].decode()
+ck('Root_new_scope_distinct002_names_and_retained_failure',all(v in issuertext for v in ('ROOT_I8_MEMORY_TEST_SCOPE_CONSUMED_002.json','ROOT_I8_MEMORY_TEST_SUPERVISOR_CONSUMED_002.json','ROOT_I8_ACTUAL_ONCE_SYNTHETIC_MEMORY_RESULTS_002.json','ROOT_I8_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_002.json','ROOT_I8_OWNED_MEMORY_CHILD_STDOUT_002.txt','ROOT_I8_OWNED_MEMORY_CHILD_STDERR_002.txt','prior_failed_attempt=prior','total_suite_invocations_if_success=2')),[fact(P/'ROOT_PREPARE_I8_FRESH_MEMORY_SCOPE_003.py')])
+ck('Root_new_scope_helper_preserves_exact_runner_supervisor',"ROOT_RUN_I8_ONCE_ISOLATED_MEMORY_FIXTURES_002.py" in issuertext and "ROOT_SUPERVISE_I8_ONCE_MEMORY_FIXTURES_002.py" in issuertext,[fact(P/'ROOT_PREPARE_I8_FRESH_MEMORY_SCOPE_003.py')])
+coverage_boundary.update(actual_prior_suite_invocations=1,actual_prior_completed_cases=0,accepted_complete_runs_so_far=0,actual_corrected_quartet_executions=0,prior_scope_consumed=True,corrective_Source_not_rerun_authority=True,static_exact_phase_naming_evidence=phase_evidence,prior_static_review_correction='Earlier review missed incompatible held-I2 terminal regex and ineffective BOUND mutation; the saved refusal and separate Root adoption are retained. New Source checks real inherited leaves; no valid path renamed or ordinal/coupling guard waived.')
+
+self_pin=fact(Path(__file__))
+now=datetime.datetime.now(datetime.timezone.utc)
+ck('Source_scope_still_current_with_reserve',now+datetime.timedelta(seconds=60)<datetime.datetime.fromisoformat(scope['interval_end']),[protocol['scope']])
+held=list(inputs.values())
+for index,q in enumerate(held):
+    b=Path(q['path']).read_bytes();ck('final_rehash_'+str(index)+'_'+Path(q['path']).name,len(b)==q['bytes'] and hashlib.sha256(b).hexdigest()==q['sha256'],[q])
+failed=[c['name'] for c in checks if not c['passed']]
+verdict='PASS_I8_PURE_PREWRITE_OWNER_LEASE_PURPOSE_FINAL_SOURCE_ONLY' if not failed else 'REFUSE_I8_FINAL_SOURCE_REVIEW'
+common=dict(schema_version=1,reviewer=REVIEWER,source_author='/root/phase_frontier',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),verdict=verdict,subjects=subjects,checks_failed=len(failed),tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False,reviewer_Source=self_pin)
+full=dict(**common,record_type='Independent_I8_final_implementation_and_fixture_full_Source_review',checks=checks,checks_passed=len(checks)-len(failed),all_actual_inputs=held,failures=failed,fixture_Source_coverage=coverage_boundary,module_static_local_calls_checked=module_call_count,fixture_static_local_calls_checked=fixture_call_count,target_imports=0,target_function_calls=0,target_Source_compilations=0,I8_fixture_reruns=0,native_or_Parser_calls=0,Git_mutations=0,Pro3_messages=0,actual_future_execution_scope=None,qualification_boundary='No producer/caller/human/physical/native/publication qualification. I7 unchanged; only fresh separately reviewed exact Root scope may admit new-I8 memory fixtures.',author_self_inspection='Read as authorship/static evidence only; not independent checks or fixture execution.')
+def save(name,value):
+    path=OWN/name;b=(json.dumps(value,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert 0<len(b)<=CAP
+    with path.open('xb') as h:h.write(b)
+    return dict(path=str(path),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+fp=save('INDEPENDENT_I8_FINAL_QUARTET_FULL_SOURCE_PROOF_002.json',full)
+cp=save('INDEPENDENT_I8_FINAL_QUARTET_SOURCE_CAPSULE_002.json',dict(**common,record_type='Independent_I8_final_implementation_and_fixture_Source_capsule',full_proof=fp,checks_passed=len(checks)-len(failed),actual_input_count=len(held),planned_memory_cases=96,actual_executed_memory_cases=0,actual_grants_or_publisher_IO_authorized=False))
+print(json.dumps(dict(capsule=cp,full_proof=fp,reviewer_Source=self_pin,checks=len(checks),checks_failed=len(failed),failures=failed,actual_inputs=len(held)),indent=2))

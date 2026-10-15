@@ -1,0 +1,145 @@
+"""Actual preliminary I8 Source audit; no imports or invocation of target code."""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+P = Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_publisher_admission_011')
+OWN = P/'independent_review_001'
+CAP = 2097152
+inputs = {}
+raws = {}
+checks = []
+def read(path):
+    path = Path(path); raw = path.read_bytes()
+    assert 0 < len(raw) <= CAP
+    q = dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+    if q['path'] in inputs:
+        assert inputs[q['path']] == q
+    inputs[q['path']] = q; raws[q['path']] = raw
+    return q
+def check(name, passed, evidence):
+    assert type(passed) is bool and name not in {c['name'] for c in checks}
+    checks.append(dict(name=name,passed=passed,evidence=evidence))
+def pin(q):
+    actual = read(q['path']); assert actual == q
+    return raws[q['path']]
+def obj(q):
+    return json.loads(pin(q))
+def decls(tree):
+    out = {}
+    for n in tree.body:
+        if isinstance(n,ast.Assign):
+            v = n.value
+            if isinstance(v,ast.Call) and isinstance(v.func,ast.Name) and v.func.id in ('set','frozenset') and len(v.args)==1:
+                v = v.args[0]
+            try: value = ast.literal_eval(v)
+            except (ValueError,TypeError,SyntaxError): continue
+            for a in n.targets:
+                if isinstance(a,ast.Name): out[a.id] = value
+    return out
+
+proto_pin = read(P/'ROOT_I8_EXACT_PREWRITE_OWNER_LEASE_PURPOSE_IMPLEMENTATION_PROTOCOL_001.json')
+proto = obj(proto_pin)
+for n in ('ROOT_I8_PROTOCOL001_BIRTH_FIELD_AND_PURPOSE_PROOF_CLOSURE_CLARIFICATION_001.json',
+          'ROOT_I8_PROTOCOL001_FINITE_READER_LIMITS_AND_CHRONOLOGY_CLARIFICATION_001.json',
+          'ROOT_I8_PINNED_LINEAGE_DOMAINS_AND_HISTORICAL_TIME_INTERPRETATION_001.json',
+          'ROOT_I8_PROTOCOL001_ACTUAL_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json'):
+    read(P/n)
+pin(proto['scope'])
+module_pin = read(P/'i8'/'validate_current_owner_M3_prewrite_admission_001.py')
+check('preliminary_module_exact_author_pin',module_pin['bytes']==75646 and module_pin['sha256']=='e1edb75d67f9534facd4dbcd6587b8b96e6648688708a7c61978387ee62e6ad4',[module_pin])
+module = raws[module_pin['path']]; text = module.decode(); tree = ast.parse(module)
+i0 = pin(proto['I0_whole_verbatim_prefix'])
+i1_pin = proto['I1_semantic_reference']; i1 = pin(i1_pin); i1tree = ast.parse(i1)
+discovery = obj(proto['discovery_reports'][0])
+i2_pin = discovery['actual_pinned_inputs']['I2_Source002']; i2 = pin(i2_pin)
+old_pin = read(Path(r'D:\Aenv\pro2\WORK\resume-20261007-001\generation\step079_role_publication_deferred_Source024_preparation_001\root_Source024_role_publication_deferred_005.py'))
+old = raws[old_pin['path']]; oldtree = ast.parse(old)
+self_pin = read(Path(__file__))
+read(OWN/'I8_PRELIMINARY_REVIEWER_OWN_TOOLING_CORRECTION_HISTORY_001.json')
+read(OWN/'review_I8_preliminary_module001_001.py')
+functions = {n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)}
+new = {n.name:n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef)) and n.lineno>350}
+olddefs = {n.name:n for n in ast.parse(i0).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+check('complete_I0_prefix_exact17920',len(i0)==17920 and module[:17920]==i0,[module_pin,proto['I0_whole_verbatim_prefix']])
+check('new_definitions_do_not_override_copied_I0',not(set(new)&set(olddefs)),[module_pin])
+check('new_definition_namespace_exact',all(n.startswith(('I8','_i8_')) or n in ('validate_current_owner_M3_prewrite_metadata','require_actual_finite8_publication_admission') for n in new),[module_pin])
+check('no_additional_import_statements',len([n for n in tree.body if isinstance(n,(ast.Import,ast.ImportFrom))])==len([n for n in ast.parse(i0).body if isinstance(n,(ast.Import,ast.ImportFrom))]),[module_pin])
+constants = decls(tree); oldconst = decls(oldtree)
+check('literal_actual_binding_hold_false',constants['I8_REAL_PUBLICATION_BINDINGS_QUALIFIED'] is False,[module_pin])
+hold = functions['require_actual_finite8_publication_admission']
+check('actual_entry_second_unconditional_raise',isinstance(hold.body[-1],ast.Raise) and not any(isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id not in {'I8MetadataError'} for n in ast.walk(hold)),[module_pin])
+check('whole_role_cap_table_matches_pinned_publisher',constants['I8_ROLE_CAPS']==oldconst['ROLE_PUBLICATION_CAPS'],[module_pin,old_pin])
+check('exact_epoch_bridge_constant',constants['I8_FILETIME_UNIX_BRIDGE']==116444736000000000,[module_pin])
+check('historical4_literal_identities_unchanged',constants['I8_HISTORICAL_LEASES']==proto['fixed_historical_leases'],[module_pin,proto_pin])
+for label,p in [('lease12','I8_LEASE12'),('decision20','I8_DECISION20'),('candidate32','I8_CANDIDATE32'),('facts14','I8_FACTS14'),('publication36','I8_PUBLICATION36'),('selection13','I8_SELECTION13'),('row9','I8_SELECTED_ROW9'),('purpose12','I8_PURPOSE12')]:
+    count = int(''.join(c for c in label if c.isdigit()))
+    check('closed_literal_'+label,len(constants[p])==len(set(constants[p]))==count,[module_pin])
+
+calls=[]
+for node in ast.walk(tree):
+    if not(isinstance(node,ast.Call) and isinstance(node.func,ast.Name) and node.func.id in functions):continue
+    if any(isinstance(a,ast.Starred) for a in node.args) or any(k.arg is None for k in node.keywords):continue
+    f=functions[node.func.id]; args=f.args; pos=args.posonlyargs+args.args; names=[a.arg for a in pos]
+    got={k.arg for k in node.keywords}; assigned=set(names[:len(node.args)])
+    missing=set(names[:len(pos)-len(args.defaults)])-assigned-got
+    bad_kw=got-set(names)-{a.arg for a in args.kwonlyargs}
+    missing_kw={a.arg for a,d in zip(args.kwonlyargs,args.kw_defaults) if d is None}-got
+    okay=not missing and not missing_kw and not(assigned&got) and (len(node.args)<=len(pos) or args.vararg is not None) and (not bad_kw or args.kwarg is not None)
+    check('direct_local_call_%04d_%03d_%s'%(node.lineno,node.col_offset,node.func.id),bool(okay),[module_pin])
+    calls.append(dict(line=node.lineno,callee=node.func.id,static_signature_compatible=bool(okay)))
+
+reader=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='I8Reader')
+reader_text=ast.get_source_segment(text,reader)
+entry_text=ast.get_source_segment(text,functions['validate_current_owner_M3_prewrite_metadata'])
+check('trusted_inputs_deep_detached_before_any_callback','self.bindings = _i8_copy(trusted)' in reader_text and reader_text.index('self.bindings = _i8_copy(trusted)')<reader_text.index('self.external(dict(p))'),[module_pin])
+for label,token in [('record_count_256','len(self.pins) <= 256'),('declared_bytes_32MiB','33554432'),('callback_count1024','self.calls <= 1024'),('callback_bytes64MiB','67108864'),('casefold_guard','key not in self.outputs'),('no_unknown_callback','E_UNDECLARED_INPUT'),('cap_conflicts','E_CAP_CONFLICT')]:
+    check('reader_static_'+label,token in reader_text,[module_pin])
+check('resource_check_precedes_first_I0_reader_use',entry_text.index('E_RESOURCE')<entry_text.index('context = validate_current_owner_support'),[module_pin])
+check('recorded_lineage_domains_are_separate',"selected['current_complete45_inventory'] == I8_HISTORICAL45_PIN" in text and "catalogue['current_selection'] == selection['current_selection']" in text,[module_pin])
+
+selection_text=ast.get_source_segment(text,functions['_i8_selection'])
+lease_text=ast.get_source_segment(text,functions['_i8_lease'])
+request_text=ast.get_source_segment(text,functions['_i8_request'])
+purpose_text=ast.get_source_segment(text,functions['_i8_purpose'])
+for label,token in [('support3','reader.purpose_support'),('new_exact_schemas','proof_contract[\'capsule14\']'),('literal_purpose','_i8_same(record[\'purpose\'],value)'),('fullproof_direct','adoption[\'full_proof\'] == full_pin'),('subject_coverage','len(coverage) == len(subjects)'),('evidence_coverage','union == set(subject_map)'),('purpose_exact_ns','purpose_ns <= reader.birth(subject) <= ns[\'full\']'),('adoption_birth','reader.birth(support[\'Root_adoption\']) <= now_ns')]:
+    check('purpose_static_'+label,token in purpose_text,[module_pin])
+check('new_view_contains_immutable_bytes_and_fresh_decode',"tuple.__new__(cls,(_i8_wire(value),))" in text and 'def to_dict(self): return _i8_json(self[0])' in text,[module_pin])
+check('metadata_result_never_actual_producer_caller',all(constants['I8_RESULT_FLAGS'][k] is False for k in ('actual_admission','producer_qualified','caller_qualified','physical_origin_authenticated','lease_native_provenance_authenticated')),[module_pin])
+
+findings = [
+ dict(id='I8_MODULE001_SELECTION_LINEAGE_GUARDS',status='CONFIRMED_SOURCE_CORRECTION_REQUIRED',lines=[811,871],
+      basis=dict(Source=old_pin,function='validate_future_paths',lines=[1522,1557]),
+      missing=['previous ordinal < new ordinal <1000 for every44 successor','exact previous basename single-ordinal substitution','canonical/predecessor/old parent equality','all five original ORDINAL_COUPLING_GROUPS including capture_template with all eight phases','derived_launcher_runtime_path exact TEMPLATE-to-BOUND derivation','selected_Source_nonce exactly retained from current_selection'],
+      no_new_rule='These are actual pinned publisher guards, not a nonce-in-filename constraint.'),
+ dict(id='I8_MODULE001_RECORDED_METADATA_ONLY_DICTS',status='CONFIRMED_SOURCE_CORRECTION_REQUIRED',lines=[761,764],
+      basis=dict(Source=i1_pin,functions={'read':[110,137],'read_native_timestamp_image':[235,270],'write_root_once':[559,585]}),
+      missing=['native_image_metadata closed7 shape and Source/cap/link2/shared7/regular/nonreparse vector predicates','receipt/publication native image observations exact equality','actual_creation_metadata and actual_publication_metadata closed2 moved pair','each moved ordinary observation closed12 shape/pin/cap/raw9/PATH9/fd9/shared7/flags','exact recorded move indexes0,1,2,3,5,6,7,8; preserve ctime4 exemption','candidate/canonical recorded birth vectors joined to caller ledger'],
+      current_source='Only type(...metadata) is dict is checked. Empty dictionaries can satisfy this clause.',
+      boundary='Recorded declaration validation only. No native/PE/OS collection or physical provenance is established.'),
+ dict(id='I8_MODULE001_PUBLISHER_API_NESTED_PIN_EQUALITY',status='CONFIRMED_SOURCE_CORRECTION_REQUIRED',lines=[932,936],
+      current_source="publisher_api.get('publisher_Source') == publisher['Source']",
+      consequence='Nested bytes=True can equal a trusted one-byte synthetic Source pin under Python equality.',
+      remedy='Validate/declaration of the nested actual fact3, then exact typed _i8_same join; do not alter copied I0.'),
+]
+check('confirmed_selection_guard_gap',"selected['selected_Source_nonce'] == current['selected_Source_nonce']" not in selection_text and 'ORDINAL_COUPLING_GROUPS' not in text,[module_pin,old_pin])
+check('confirmed_recorded_metadata_shape_gap',"type(receipt['native_image_metadata']) is dict" in lease_text and 'shared_identity_indexes' not in lease_text,[module_pin,i1_pin])
+check('confirmed_publisher_API_strict_pin_gap',"publisher_api.get('publisher_Source') == publisher['Source']" in request_text,[module_pin])
+for q in list(inputs.values()):
+    body=Path(q['path']).read_bytes()
+    assert len(body)==q['bytes'] and hashlib.sha256(body).hexdigest()==q['sha256']
+failed=[c['name'] for c in checks if not c['passed']]
+out=dict(schema_version=1,record_type='Independent_actual_I8_module001_preliminary_Source_correction_report',
+ reviewer='/root/owner_source_review',source_author='/root/phase_frontier',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+ verdict='SOURCE_CORRECTIONS_REQUIRED_BEFORE_FINAL_QUARTET_REVIEW',subjects=[module_pin],reviewer_Source=self_pin,
+ all_actual_inputs=list(inputs.values()),checks=checks,checks_failed=len(failed),checks_passed=len(checks)-len(failed),
+ static_check_failures=failed,semantic_findings=findings,semantic_findings_count=3,direct_local_calls_checked=len(calls),
+ old_helpers_imported=0,target_function_calls=0,target_Source_compilations=0,fixture_invocations=0,native_or_Parser_calls=0,
+ Git_mutations=0,tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False,
+ final_quartet_adoption=False,scope_note='Preliminary static review only. Source/API/fixture/receipt quartet not yet final. Root and author received the complete correction batch.')
+path=OWN/'INDEPENDENT_I8_PRELIMINARY_MODULE001_SOURCE_CORRECTION_REPORT_001.json'
+raw=(json.dumps(out,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(raw)<=CAP
+with path.open('xb') as f:f.write(raw)
+print(json.dumps(dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest(),checks=len(checks),checks_failed=len(failed),semantic_findings=3,inputs=len(inputs),reviewer_Source=self_pin),indent=2))

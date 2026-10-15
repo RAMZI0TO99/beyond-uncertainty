@@ -1,0 +1,260 @@
+"""Independent I8 protocol review. Stdlib read/hash/JSON/AST only; no target calls."""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+P = Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_publisher_admission_011')
+OWN = P / 'independent_review_001'
+CAP = 2097152
+REVIEWER = '/root/owner_source_review'
+PROTO = 'ROOT_I8_EXACT_PREWRITE_OWNER_LEASE_PURPOSE_IMPLEMENTATION_PROTOCOL_001.json'
+BIRTH = 'ROOT_I8_PROTOCOL001_BIRTH_FIELD_AND_PURPOSE_PROOF_CLOSURE_CLARIFICATION_001.json'
+LIMITS = 'ROOT_I8_PROTOCOL001_FINITE_READER_LIMITS_AND_CHRONOLOGY_CLARIFICATION_001.json'
+EXPECTED = {
+    PROTO: (58128, '0171e81f315adfced2c8e783eb272aae04f924227a5c2a367a343fdf8d3b388b'),
+    BIRTH: (1931, '81f36f5417d07083ac783f53bf7d70906a7851c77d0cffc4c6aa980d9d9250de'),
+    LIMITS: (1641, '155f8e51d9594b59b9c28fbe240a502ad4d2152dbcd2abacb91fcb5a4c188380'),
+}
+inputs = {}
+raws = {}
+checks = []
+
+def fact(path):
+    path = Path(path)
+    raw = path.read_bytes()
+    assert 0 < len(raw) <= CAP
+    q = dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+    if str(path) in inputs:
+        assert inputs[str(path)] == q and raws[str(path)] == raw
+    inputs[str(path)] = q
+    raws[str(path)] = raw
+    return q
+
+def chk(name, passed, evidence):
+    assert type(passed) is bool and name not in {c['name'] for c in checks}
+    checks.append(dict(name=name, passed=passed, evidence=evidence))
+
+def read_pin(q):
+    assert type(q) is dict and set(q) == {'path', 'bytes', 'sha256'}
+    actual = fact(q['path'])
+    chk('whole_actual_input_' + str(len(inputs)) + '_' + Path(q['path']).name,
+        actual == q, [q])
+    return raws[q['path']]
+
+def pairs(rows):
+    out = {}
+    for k, v in rows:
+        if k in out:
+            raise ValueError('duplicate JSON key')
+        out[k] = v
+    return out
+
+def bad(value):
+    raise ValueError('noninteger JSON number')
+
+def obj(raw):
+    return json.loads(raw, object_pairs_hook=pairs, parse_float=bad, parse_constant=bad)
+
+def doc(path):
+    return obj(raws[str(path)])
+
+def literal_assignments(raw):
+    tree = ast.parse(raw)
+    result = {}
+    for n in tree.body:
+        if isinstance(n, ast.Assign):
+            value = n.value
+            if isinstance(value, ast.Call) and isinstance(value.func, ast.Name) and value.func.id in ('frozenset', 'set') and len(value.args) == 1:
+                value = value.args[0]
+            try:
+                value = ast.literal_eval(value)
+            except (ValueError, TypeError, SyntaxError):
+                continue
+            for target in n.targets:
+                if isinstance(target, ast.Name):
+                    result[target.id] = value
+    return tree, result
+
+subjects = []
+for name, (size, digest) in EXPECTED.items():
+    q = fact(P / name)
+    chk('Root_announced_pin_' + name, (q['bytes'], q['sha256']) == (size, digest), [q])
+    subjects.append(q)
+protocol, birth, limits = (doc(q['path']) for q in subjects)
+scope = obj(read_pin(protocol['scope']))
+preservation = obj(read_pin(protocol['preservation']))
+for q in protocol['discovery_reports']:
+    if q['path'] not in inputs:
+        read_pin(q)
+discovery = doc(protocol['discovery_reports'][0]['path'])
+supplement = obj(read_pin(protocol['I1_proof_compatibility_supplement']))
+for key in ('I0_API001', 'I0_Source002', 'I1_API003', 'I1_Source003', 'I2_API002', 'I2_Source002'):
+    q = discovery['actual_pinned_inputs'][key]
+    if q['path'] not in inputs:
+        read_pin(q)
+read_pin(protocol['unchanged_I7_API'])
+adopter_pin = fact(P / 'ROOT_ADOPT_I8_DIFFERENT_SOURCE_REVIEW_003.py')
+adopter_raw = raws[adopter_pin['path']]
+adopter_tree = ast.parse(adopter_raw)
+agents_pin = fact(Path(r'D:\Aenv\pro2\AGENTS.md'))
+reviewer_pin = fact(Path(__file__))
+prefix_pin = protocol['I0_whole_verbatim_prefix']
+i0raw = raws[prefix_pin['path']]
+i0tree, i0 = literal_assignments(i0raw)
+i1pin = protocol['I1_semantic_reference']
+i1raw = raws[i1pin['path']]
+i1tree, i1 = literal_assignments(i1raw)
+i2pin = discovery['actual_pinned_inputs']['I2_Source002']
+i2raw = raws[i2pin['path']]
+i2tree, i2 = literal_assignments(i2raw)
+
+for label, value in [('protocol', protocol), ('birth_clarification', birth), ('limits_clarification', limits)]:
+    for flag in ('tests_executed', 'target_execution', 'operational_authority', 'scientific_authority'):
+        chk(label + '_false_' + flag, value.get(flag) is False, subjects)
+    chk(label + '_actual_Root_author', value['author'] == '/root', subjects)
+future = protocol['actual_new_lease_family_grants_paths_ordinals_purpose_Native8_Parser_results']
+chk('protocol_future_cells_all_null', future is None or (type(future) is dict and all(v is None for v in future.values())), subjects)
+chk('protocol_family_canonical_publication_false', protocol['actual_family_canonical_publication'] is False, subjects)
+chk('protocol_old_code_changes_or_invocations_false', protocol['old_I0_I1_I2_I3_I4_I5_I6_I7_changes_or_invocations'] is False, subjects)
+chk('Source_editor_truthful_distinct_from_Root_and_reviewer', protocol['Source_editor'] == '/root/phase_frontier' and protocol['Source_editor'] != REVIEWER and protocol['canonical_physical_actor'] == '/root', subjects)
+now = datetime.datetime.now(datetime.timezone.utc)
+chk('Source_scope_current_with_Source60_reserve', now + datetime.timedelta(seconds=60) < datetime.datetime.fromisoformat(scope['interval_end']), [protocol['scope']])
+chk('Source_scope_prohibits_target_and_new_grants', scope['target_execution'] is False and scope['operational_authority'] is False, [protocol['scope']])
+for k, path in protocol['source_files'].items():
+    chk('target_' + k + '_still_absent_before_protocol_adoption', not Path(path).exists(), subjects)
+
+chk('whole_I0_prefix_exact17920_pinned_reference', prefix_pin == discovery['actual_pinned_inputs']['I0_Source002'] and len(i0raw) == 17920, [prefix_pin])
+copy_rule = protocol['copied_I0_rule']
+for label, needle in [('whole_prefix', 'exact prefix'), ('new_namespace', 'I8_/_i8_'), ('no_global_override', 'do not overwrite'), ('no_old_import', 'neither imported nor called'), ('frozen_dataclasses', 'frozen')]:
+    chk('copied_I0_contract_' + label, needle in copy_rule, [subjects[0], prefix_pin])
+chk('I0_imports_limited_to_pure_stdlib', all((isinstance(n, ast.Import) and all(a.name in {'hashlib', 'json', 're'} for a in n.names)) or (isinstance(n, ast.ImportFrom) and n.module in {'dataclasses', 'datetime'}) for n in i0tree.body if isinstance(n, (ast.Import, ast.ImportFrom))), [prefix_pin])
+chk('I0_no_module_main_call', not any(isinstance(n, ast.If) for n in i0tree.body), [prefix_pin])
+for decl, key in [('_SUPPORT_KEYS','support3'),('_SCOPE_KEYS','owner_scope28_v2'),('_WITNESS_KEYS','retained_witness9_v2'),('_REVIEW_KEYS','different_Source_review13_v2'),('_PROOF_KEYS','full_Source_proof15_v2'),('_ADOPTION_KEYS','Root_adoption9_v2')]:
+    chk('I0_exact_closed_contract_' + key, set(protocol['upstream_closed_contracts']['I0'][key]) == set(i0[decl]), [subjects[0], prefix_pin])
+chk('I0_scope_not_promoted_to_Source_permission', 'no Source publication permission' in ' '.join(protocol['owner_rules']) and b'EXACT8_NATIVE_SOURCE_METADATA_AND_SEPARATELY_ADMITTED_PARSER4_ONLY' in i0raw, [subjects[0], prefix_pin])
+chk('I0_Source60_strict_remaining_preserved', b'end - now > PUBLICATION_RESERVE_TICKS' in i0raw and 'strictly>60sec' in ' '.join(protocol['owner_rules']), [subjects[0], prefix_pin])
+chk('integer_1601_epoch_and_exact_bridge_required', '116444736000000000' in ' '.join(protocol['owner_rules']) and b'date(1601, 1, 1)' in i0raw, [subjects[0], prefix_pin])
+
+u = protocol['upstream_closed_contracts']
+for key, actual in u['I1_source_declarations'].items():
+    chk('I1_actual_AST_closed_declaration_' + key, key in i1 and set(actual) == set(i1[key]), [subjects[0], i1pin])
+for key in ('SELECTION_KEYS','ROW_KEYS','LEASE_SUPPORT_KEYS','SELECTION_SUPPORT_KEYS','OWNER_SUPPORT_KEYS','FACT_KEYS','RECEIPT_KEYS'):
+    chk('I2_actual_AST_closed_declaration_' + key, key in i2 and set(u['I2_source_declarations'][key]) == set(i2[key]), [subjects[0], i2pin])
+for schema, count in [('lease_candidate_receipt32_v2',32),('lease_issuance_decision20_v2',20),('lease_producer_facts14_v2',14),('lease_publication36_v2',36)]:
+    v = u['I1_future_record_schemas'][schema]
+    chk('I1_future_shape_' + schema, len(v['keys']) == count == v['field_count'] and len(set(v['keys'])) == count and v['schema_version'] == 2, [subjects[0], protocol['I1_API_reference']])
+abi = supplement['actual_I1_source_review_ABI']
+for key in ('exact_closed_keyset_exists','record_type_enforced','schema_version_enforced','subjects_array_shape_enforced'):
+    chk('I1_open_proof_ABI_preserved_' + key, abi[key] is False, [protocol['I1_proof_compatibility_supplement']])
+chk('I1_not_forced_into_I0_review_shape', 'do not impose I0 review13/full15/Root9' in ' '.join(protocol['lease_rules']), subjects)
+chk('I1_fullproof_exact_capsule_time_preserved', 'EXACT same' in abi['full_proof_semantics']['created_utc'] and 'timestamp equals capsule' in ' '.join(protocol['lease_rules']), [subjects[0], protocol['I1_proof_compatibility_supplement']])
+chk('I2_later_consumer_fullproof_and_context_coverage_preserved', 'full<=capsule' in ' '.join(protocol['lease_rules']) and 'receipt/context/fullproof direct coverage' in ' '.join(protocol['lease_rules']), subjects)
+chk('immutable_code_proofs_context_required_false', 'context_required=False' in ' '.join(protocol['lease_rules']), subjects)
+chk('candidate_and_publication_facts_not_conflated', 'candidate_support is None' in ' '.join(protocol['lease_rules']) and 'exact4' in ' '.join(protocol['lease_rules']), subjects)
+chk('canonical_candidate_wire_and_carried_leaves_preserved', 'exact wire bytes' in ' '.join(protocol['lease_rules']) and 'ten predecessor leaves' in ' '.join(protocol['lease_rules']), subjects)
+chk('M3_lease_exact43200_native7_and_1200_reserve', all(s in ' '.join(protocol['lease_rules']) for s in ('exactly43200','native7','strictly>1200')), subjects)
+chk('lease_not_cast_to_owner_deadline_or_owner_end', 'do not require equal ends or lease end within owner end' in ' '.join(protocol['lease_rules']), subjects)
+chk('reviewer_actual_editor_subtree_and_Root_exact_exclusion', 'all descendants not indiscriminately excluded' in ' '.join(protocol['lease_rules']), subjects)
+chk('I1_birth_floor_and_exact_epoch_bridge_preserved', 'birth_ns//100' in birth['I1_birth_precision'] and '116444736000000000' in birth['I1_birth_precision'], subjects)
+
+for item in supplement['exact_Source_pointers']:
+    lines = i1raw.splitlines(keepends=True)
+    body = b''.join(lines[item['line_start']-1:item['line_end']])
+    chk('actual_I1_reference_function_span_' + item['name'], len(body) == item['bytes'] and hashlib.sha256(body).hexdigest() == item['sha256'], [i1pin, protocol['I1_proof_compatibility_supplement']])
+for q in protocol['fixed_historical_leases']:
+    read_pin(q)
+chk('four_fixed_historical_lease_identities_preserved', len(protocol['fixed_historical_leases']) == 4 and all('EXECUTION_LEASE_GG6_M3_0' in q['path'] for q in protocol['fixed_historical_leases']), subjects)
+
+t = protocol['trusted_bindings_closed10']
+chk('trusted_binding_closed10_exact_unique', len(t) == 10 and len(set(t)) == 10 and set(t) == {'owner_support','lease_producer_support','continuing_owner','owner_review','historical_leases','publisher_support','expected_inputs','expected_output_paths','recorded_births_ns','purpose_full_proof'}, subjects)
+for label, needle in [('snapshot_all10_before_reader','Snapshot/deep-detach all ten fields before any callback'),('independent_Root_anchors','not reconstructed from request'),('protect_outputs_before_reader','protected before first callback'),('fullproof_allowlisted_before_reader','supplied before callback'),('casefold_identity_conflict','unique also casefold'),('recorded_births_closed_exact','every expected input plus purpose/review/fullproof/Root-adoption')]:
+    chk('trusted_boundary_' + label, needle in ' '.join(protocol['trusted_binding_contract']), subjects)
+chk('recorded_births_field_alias_rejected', birth['exact_closed10_field'] == 'recorded_births_ns' and 'No alias' in birth['birth_field_rule'], subjects)
+chk('new_purpose_births_keep_full_nanosecond_precision', 'Do not floor sub100ns' in birth['new_purpose_birth_precision'], subjects)
+for label, expected in [('maximum_distinct_records_including_four_purpose_auxiliary_records',256),('maximum_unique_declared_raw_bytes',33554432),('maximum_actual_external_reader_callback_invocations',1024),('maximum_actual_external_reader_returned_raw_bytes',67108864)]:
+    chk('finite_reader_' + label, type(limits[label]) is int and limits[label] == expected, subjects)
+chk('declared_reader_totals_checked_before_first_callback', 'before first callback' in limits['reader_limits'], subjects)
+chk('cache_allowed_without_physical_stability_claim', 'without implying physical stability' in limits['reader_limits'], subjects)
+for label, needle in [('fresh_pin_exact_bytes','fresh builtin exact pin3'),('expected_input_plus_only4aux','Only expected_inputs and four named purpose auxiliary'),('protected_output_no_callback','forbidden before the first callback'),('not_I6_no_body_promise','no protected16 no-body promise'),('strict_json','strict JSON duplicate/float/nonfinite/unknown-key rejection'),('case_path_cap_conflicts','inconsistent typed-role caps'),('closure_exact_order','expected_inputs==purpose.inputs exact typed equality/order'),('only_schema_required_refs','only schema-required references'),('no_45_canonical_body_requirement','No future45 canonical existence/body requirement'),('physical_native_external','remain caller obligations')]:
+    chk('reader_contract_' + label, needle in ' '.join(protocol['reader_contract']), subjects)
+
+pur = protocol['new_purpose12']; pc = protocol['purpose_proof_contract']
+chk('distinct_purpose12_closed_exact', len(pur['keys']) == len(set(pur['keys'])) == 12 and pur['schema_version'] == 2 and pur['record_type'] == 'Root_owner_v2_exact_finite8_M3_canonical_Source_publication_purpose', subjects)
+chk('purpose_publication_operation_exact', pur['operation'] == 'PUBLISH_EXACT_REVIEWED_FINITE8_M3_SOURCE_ONLY' and pur['author'] == '/root', subjects)
+chk('purpose_support3_exact_not_I0_alias', set(pur['support3_keys']) == {'subject','different_review','Root_adoption'}, subjects)
+chk('purpose_resource_policy_closed3_exact', len(pur['resource_policy_keys']) == 3 and pur['resource_policy_values'] == [60,1073741824,10737418240], subjects)
+for key, count in [('capsule14',14),('full16',16),('Root_adoption11',11)]:
+    chk('new_purpose_proof_closed_' + key, len(pc[key]) == len(set(pc[key])) == count and 'purpose' in pc[key], subjects)
+for key, value in [('capsule_record_type','Independent_Root_owner_v2_finite8_Source_publication_purpose_Source_review'),('full_record_type','Independent_Root_owner_v2_finite8_Source_publication_purpose_full_Source_proof'),('adoption_record_type','Root_owner_v2_finite8_Source_publication_purpose_Root_adoption'),('review_verdict','PASS_ROOT_OWNER_V2_FINITE8_SOURCE_PUBLICATION_PURPOSE_ONLY'),('adoption_verdict','ACCEPT_ROOT_OWNER_V2_FINITE8_SOURCE_PUBLICATION_PURPOSE_ONLY')]:
+    chk('purpose_exact_literal_' + key, pc[key] == value, subjects)
+chk('purpose_proof_requires_distinct_four_unique_named_checks', len(pc['required_check_names']) == len(set(pc['required_check_names'])) == 4 and len(pc['check_keys']) == 3, subjects)
+chk('purpose_each_subject_whole_and_provenance_coverage', set(pc['subject_review_keys']) == {'subject','subject_kind','whole_bytes_reviewed','provenance_reviewed'} and 'covers each exact subject' in ' '.join(pc['rules']), subjects)
+chk('purpose_all3_literal_equal_direct_pin_coverage', 'All proof records carry exact literal equal purpose12' in ' '.join(pc['rules']) and 'full_proof=actualFullPin' in ' '.join(pc['rules']), subjects)
+chk('purpose_evidence_nonempty_unique_allowed_subset_and_union_all', all(s in birth['purpose_check_evidence'] for s in ('nonempty','unique','[purpose_subject]+expected_inputs','union covers all subjects','unknown pins are excluded')), subjects)
+chk('purpose_no_self_hash_or_output_cycle', 'Purpose auxiliary pins and all future outputs excluded' in ' '.join(pc['rules']), subjects)
+for label, needle in [('purpose_created_then_birth_then_review','purpose.created <= recorded_birth(purpose) <= full.created == capsule.created'),('review_then_adoption_then_now','<= Root_adoption.created <= now'),('proof_births_before_adoption','recorded capsule/full births <= Root_adoption.created'),('adoption_birth_before_now','recorded Root_adoption birth <= now'),('own_creation_before_own_birth','Every auxiliary record own created timestamp <= own recorded birth'),('prior_input_birth_before_purpose','All prior input/request births <= purpose.created')]:
+    chk('complete_purpose_chronology_' + label, needle in limits['purpose_time_order'], subjects)
+
+sr = ' '.join(protocol['selection_and_request_rules'])
+for label, needle in [('strict_request21_row10','each closed row10'),('producer_map_only_M3','producer map exactly M3'),('finite_ordered_subset','fixed role subset/order/1..8'),('selection13_full45','selection13/row9'),('ordinals_template_bound','TEMPLATE/BOUND paired ordinals'),('distinct_inventory17_45','predecessor inventory17 and full45 catalogue'),('draft_predecessor_bytes','draft and predecessor whole bytes under65536'),('M3_full_semantics_deferred','full M3 qualification is deliberately deferred'),('request_after_prior_adoptions','Request must follow'),('no_request_forward_purpose','Request has no purpose back-reference'),('no_future_postbirth_inputs','no future publication43/witness/delta/recon/Native8/Parser input'),('derive_output_names','Rederive exact protected output strings')]:
+    chk('request_selection_contract_' + label, needle in sr, subjects)
+for shape, count in [('batch_request21_v2',21),('batch_request_row10_v2',10),('batch_publication43_v2',43),('batch_published_row_v2',13),('reconciliation26_v2',26),('external_M3_stage_support3',3)]:
+    keys = protocol['request21_and_row10'][shape]['keys']
+    chk('existing_interface_shape_' + shape, len(keys) == len(set(keys)) == count, subjects)
+chk('fixed_role_order8_unique_template_then_bound', len(protocol['fixed_role_order']) == len(set(protocol['fixed_role_order'])) == 8 and all(r.endswith('_template') for r in protocol['fixed_role_order'][:4]) and all(r.endswith('_bound') for r in protocol['fixed_role_order'][4:]), subjects)
+chk('resource_observation_closed3_strict_floors_age60', protocol['resource_observation3'] == ['observed_utc','available_RAM_bytes','disk_free_bytes'] and 'strict int floors1GiB/10GiB' in protocol['resource_rules'] and '0<=now-observed<=60' in protocol['resource_rules'], subjects)
+result = protocol['result_contract']
+for key in ('actual_admission','caller_qualified','producer_qualified','physical_origin_authenticated','human_origin_authenticated','lease_native_provenance_authenticated','new_grants_issued'):
+    chk('result_never_claims_' + key, result[key] is False, subjects)
+chk('result_frozen_detached_metadata_only', result['frozen_detached'] is True and result['metadata_only'] is True and 'fresh detached copy' in result['contents'], subjects)
+actual = protocol['public_actual_entry']
+chk('real_entry_unconditional_ValueError_before_any_reader_IO', actual['name'] == 'require_actual_finite8_publication_admission' and 'Unconditional ValueError-derived refusal before any reader/IO' in actual['behavior'], subjects)
+chk('no_flag_or_fixture_route_enables_actual_entry', 'No CLI/env/JSON/fixture path can enable it' in actual['behavior'], subjects)
+chk('public_metadata_signature_exact_keywords', protocol['public_metadata_entry'] == dict(name='validate_current_owner_M3_prewrite_metadata',keyword_only=['request_pin','purpose_support','trusted_bindings','read_record','expected_root_thread','source_editor','now_utc','resource_observation']), subjects)
+fc = protocol['fixture_contract']
+chk('fixture_entry_is_separate_future_memory_only_suite', fc['entry'] == 'run_memory_suite(module)' and fc['maximum_cases'] == 256, subjects)
+chk('fixture_API_literals_pinned_exactly', 'expected_case_count equal fixture literal' in birth['fixture_API_binding'] and 'planned_case_names equal fixture literal' in birth['fixture_API_binding'], subjects)
+for index, category in enumerate(protocol['required_test_categories'], 1):
+    chk('required_fixture_category_%02d' % index, type(category) is str and len(category) > 12, [subjects[0]])
+chk('separate_future_Source_review_and_oneuse_scope_required', any('one-use' in s and 'independent' in s for s in protocol['review_and_execution_order']), subjects)
+chk('Root_adopter003_requires_all3_subjects_before_author_birth', all(n.encode() in adopter_raw for n in (PROTO,BIRTH,LIMITS)) and b'q in inputs and q in subjects' in adopter_raw and b'assert not (P/' in adopter_raw, [adopter_pin])
+chk('Root_adopter003_builtin_int0_and_testsFalse', b"type(x['checks_failed']) is int" in adopter_raw and b"x['tests_executed'] is False" in adopter_raw, [adopter_pin])
+
+# Final current rehash is an observation of the exact finite review inputs.
+held = list(inputs.values())
+for q in held:
+    body = Path(q['path']).read_bytes()
+    chk('final_rehash_' + str(len(checks)) + '_' + Path(q['path']).name,
+        len(body) == q['bytes'] and hashlib.sha256(body).hexdigest() == q['sha256'], [q])
+failed = [c['name'] for c in checks if not c['passed']]
+created = datetime.datetime.now(datetime.timezone.utc).isoformat()
+verdict = 'PASS_I8_EXACT_OWNER_LEASE_SOURCE_PURPOSE_PROTOCOL_SOURCE_ONLY' if not failed else 'REFUSE_I8_PROTOCOL_SOURCE_REVIEW'
+common = dict(schema_version=1, reviewer=REVIEWER, source_author='/root', created_utc=created,
+              verdict=verdict, subjects=subjects, checks_failed=len(failed), tests_executed=False,
+              target_execution=False, operational_authority=False, scientific_authority=False,
+              reviewer_Source=reviewer_pin)
+full = dict(**common, record_type='Independent_I8_protocol_and_exact_clarifications_full_Source_review',
+            checks=checks, checks_passed=len(checks)-len(failed), all_actual_inputs=held,
+            findings=failed, target_Source_compilations=0, target_imports=0, target_function_calls=0,
+            fixture_invocations=0, native_or_Parser_calls=0, Git_mutations=0, Pro3_messages=0,
+            subject_kind='Root normative protocol and two prebirth Source clarifications',
+            scope_boundary='Static contract acceptance only; no target Source or runtime qualification.',
+            preserved_I0_definitions=[n.name for n in i0tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))],
+            I1_compatibility='Open semantic Source proofs preserved; candidate producer equality versus later canonical consumer coverage distinguished.',
+            actual_component='Owner/existing lease/request/body-hash/distinct Source-purpose metadata semantics only; M3 producer/caller/physical/human/native/IO qualifications remain False.')
+def save(name, value):
+    path = OWN/name
+    body = (json.dumps(value,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+    assert 0 < len(body) <= CAP
+    with path.open('xb') as f:
+        f.write(body)
+    return dict(path=str(path),bytes=len(body),sha256=hashlib.sha256(body).hexdigest())
+fp = save('INDEPENDENT_I8_PROTOCOL001_AND_CLARIFIERS_FULL_PROOF_001.json',full)
+capsule = dict(**common, record_type='Independent_I8_protocol_and_exact_clarifications_Source_capsule',
+               full_proof=fp, checks_passed=len(checks)-len(failed), actual_input_count=len(held),
+               actual_target_and_fixture_execution=False,
+               boundary='Protocol Source PASS alone authorizes no module/test/physical/canonical action.')
+cp = save('INDEPENDENT_I8_PROTOCOL001_AND_CLARIFIERS_SOURCE_CAPSULE_001.json',capsule)
+print(json.dumps(dict(capsule=cp,full_proof=fp,reviewer_Source=reviewer_pin,checks=len(checks),checks_failed=len(failed),failures=failed,actual_inputs=len(held)),indent=2))
