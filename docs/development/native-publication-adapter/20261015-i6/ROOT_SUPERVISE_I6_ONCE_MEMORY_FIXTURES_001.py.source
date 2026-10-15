@@ -1,0 +1,54 @@
+"""Root-only one-child supervisor for the separately admitted new-I6 memory suite."""
+import datetime,hashlib,json,os,subprocess,sys,time
+from pathlib import Path
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_publication_implementation_009');CAP=2097152
+PYTHON=r'C:\Users\aladdin-alyanai\AppData\Local\Programs\Python\Python313\python.exe'
+def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()
+def read(p):
+ p=Path(p);assert p.is_file() and not p.is_symlink() and p.stat().st_size<=CAP
+ with p.open('rb') as h:b=h.read(CAP+1)
+ assert len(b)<=CAP;return b
+def fact(p):
+ b=read(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pin(q):
+ b=read(q['path']);assert len(b)==q['bytes'] and hashlib.sha256(b).hexdigest()==q['sha256'];return b
+def save(n,x):
+ p=P/n;b=(json.dumps(x,indent=2,sort_keys=True,allow_nan=False)+'\n').encode();assert len(b)<=CAP
+ with p.open('xb') as h:h.write(b);h.flush();os.fsync(h.fileno())
+ return fact(p)
+def main():
+ assert sys.flags.isolated==1 and sys.flags.no_site==1 and sys.flags.dont_write_bytecode==1
+ scopepin=fact(P/sys.argv[1]);assert scopepin['sha256']==sys.argv[2];s=json.loads(pin(scopepin))
+ assert s['author']=='/root' and s['maximum_invocations']==1 and s['new_I6_pure_memory_fixture_invocation_authorized'] is True
+ assert s['original_I0_I1_I2_I3_I4_I5_native_Parser_project_invocations_authorized'] is False
+ assert datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=60)<datetime.datetime.fromisoformat(s['interval_end'])
+ runner=s['exact_child_runner'];pin(runner);assert runner==fact(P/'ROOT_RUN_I6_ONCE_ISOLATED_MEMORY_FIXTURES_002.py')
+ marker=save(s['supervisor_marker_name'],dict(schema_version=1,record_type='Root_I6_once_memory_supervisor_consumed_before_child_launch',author='/root',created_utc=now(),scope=scopepin,child_runner=runner,automatic_retry_authorized=False))
+ outpath=P/s['child_stdout_name'];errpath=P/s['child_stderr_name'];argv=[PYTHON,'-I','-S','-B',runner['path'],sys.argv[1],sys.argv[2]]
+ started=now();start=time.monotonic_ns();reason=None;proc=None
+ with outpath.open('xb') as out,errpath.open('xb') as err:
+  proc=subprocess.Popen(argv,cwd=P,stdin=subprocess.DEVNULL,stdout=out,stderr=err,creationflags=subprocess.CREATE_NO_WINDOW)
+  while proc.poll() is None:
+   if time.monotonic_ns()-start>60000000000:reason='owned memory child exceeded60second wall cap';break
+   if outpath.stat().st_size>CAP or errpath.stat().st_size>CAP:reason='owned memory child exceeded2MiB stream cap';break
+   time.sleep(0.05)
+  if reason:
+   proc.kill()
+  try:code=proc.wait(timeout=5)
+  except subprocess.TimeoutExpired:
+   proc.kill();code=proc.wait(timeout=5);reason=reason or 'owned memory child did not reap in cleanup5'
+ assert proc is not None
+ streamfacts=[]
+ for path in (outpath,errpath):
+  size=path.stat().st_size
+  if size>CAP:reason=reason or 'stream overcap at terminal';streamfacts.append(dict(path=str(path),observed_bytes=size,overcap=True))
+  else:streamfacts.append(fact(path))
+ child_result_path=P/s['saved_result_name'];resultpin=None
+ if child_result_path.is_file():
+  resultpin=fact(child_result_path);r=json.loads(pin(resultpin));assert r['scope']==scopepin
+  if r['all_cases_passed'] is not True:reason=reason or 'actual memory cases refused'
+ else:reason=reason or 'child saved result missing'
+ record=dict(schema_version=1,record_type='Root_actual_I6_once_memory_owned_child_supervisor_result',author='/root',started_utc=started,created_utc=now(),scope=scopepin,supervisor_marker=marker,child_runner=runner,argv=argv,cwd=str(P),owned_child_PID=proc.pid,owned_child_exit_code=code,owned_child_wait_reaped=True,wall_cap_seconds=60,cleanup_reap_seconds=5,elapsed_integer_nanoseconds=time.monotonic_ns()-start,streams=streamfacts,child_saved_result=resultpin,passed=reason is None and code==0,refusal=reason,tests_executed=True,original_project_native_Parser_runtime_scientific_execution=False,actual_new_lease_family_purpose_publisher_Native8_Parser_results=None,operational_authority=False,scientific_authority=False)
+ print(json.dumps(save(s['supervisor_result_name'],record)))
+ if reason is not None or code!=0:raise SystemExit(1)
+if __name__=='__main__':main()

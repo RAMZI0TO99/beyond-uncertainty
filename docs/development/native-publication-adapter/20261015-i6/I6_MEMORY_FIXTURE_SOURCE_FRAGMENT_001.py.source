@@ -1,0 +1,264 @@
+"""Synthetic new-I6 memory fixtures. No import, main, filesystem or old project calls.
+
+Source only until separate independent adoption and a fresh Root one-use scope.
+Root supplies the new adapter_module to run_memory_suite(adapter_module).
+"""
+import hashlib
+import json
+import copy
+
+PLANNED_CASE_NAMES = __PLANNED_CASE_NAMES__
+EXPECTED_CASE_COUNT = len(PLANNED_CASE_NAMES)
+
+def _wire(value):return json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False).encode('utf8')
+def _t(seconds):return '2026-10-15T00:'+str(seconds//60).zfill(2)+':'+str(seconds%60).zfill(2)+'.000000+00:00'
+
+def _make(m,fault=None):
+    store={};prefix='D:\\SYNTHETIC_I6_METADATA_ONLY';calls=[];subject_calls=[]
+    def put(name,value,raw=False):
+        data=value if raw else _wire(value);path=prefix+'\\'+name
+        pin=dict(path=path,bytes=len(data),sha256=hashlib.sha256(data).hexdigest());store[path]=data
+        return pin
+    def stub(name):return put(name,dict(synthetic_fixture=True))
+    def proofs(name,subjects,second,reviewer='/root/synthetic_reviewer',purpose=None,drop_api=False):
+        full=dict(author=reviewer,reviewer=reviewer,created_utc=_t(second),verdict='PASS_SYNTHETIC_SOURCE_METADATA_ONLY',checks_failed=0,
+                  checks=[dict(name='synthetic_metadata_predicate',passed=True)],subjects=copy.deepcopy(subjects),target_execution=False,operational_authority=False)
+        if name=='producer_code' and fault=='code_marker':full['verdict']='PASS_SYNTHETIC_METADATA_ONLY'
+        if name=='producer_code' and fault=='fullproof_bool':full['checks_failed']=False
+        if purpose is not None:full['exact_M3_Source_stage_purpose']=copy.deepcopy(purpose)
+        fp=put(name+'_full.json',full)
+        capsule=dict(reviewer=reviewer,created_utc=_t(second+1),verdict=full['verdict'],checks_failed=0,
+                     subjects=copy.deepcopy(subjects),full_proof=fp,target_execution=False,operational_authority=False)
+        if purpose is not None:capsule['exact_M3_Source_stage_purpose']=copy.deepcopy(purpose)
+        rp=put(name+'_review.json',capsule)
+        covered=copy.deepcopy(subjects)
+        if drop_api:covered=covered[:1]
+        root=dict(author='/root',created_utc=_t(second+2),verdict='ACCEPT_SYNTHETIC_SOURCE_METADATA_ONLY',
+                  subjects=covered+[rp,fp],target_execution=False,operational_authority=False)
+        if purpose is not None:
+            root['verdict']=m.STAGE_VERDICT;root['exact_M3_Source_stage_purpose']=copy.deepcopy(purpose)
+            if fault=='purpose_literal':root['exact_M3_Source_stage_purpose']['role']='wrong_bound_role'
+        ap=put(name+'_adoption.json',root)
+        return rp,ap
+    scope=stub('scope.json');scope_review=stub('scope_review.json');scope_root=stub('scope_adoption.json')
+    owner=dict(zip(m.SCOPE_KEYS,(scope,scope_review,scope_root)));manifest=put('owner_manifest.json',owner)
+    lease=stub('lease.json');decision=stub('lease_decision.json');lease_review=stub('lease_review.json');lease_root=stub('lease_root.json');lease_pub=stub('lease_publication.json')
+    lease_support=dict(canonical=lease,separate_Root_decision=decision,different_review=lease_review,Root_adoption=lease_root,original_publication=lease_pub)
+    inventory=stub('inventory.json');inventory_review=stub('inventory_review.json');inventory_root=stub('inventory_root.json')
+    catalogue=dict(subject=inventory,different_review=inventory_review,Root_adoption=inventory_root)
+    prior=stub('prior_selection.json')
+    producer_editor='/root/synthetic_current_M3_Source_editor';publisher_editor='/root/synthetic_current_publisher_Source_editor'
+    producer_source=put('producer\\qualified_producer.py',b"raise AssertionError('SYNTHETIC CODE MUST NEVER EXECUTE')\n",True)
+    producer_api=put('producer\\API.json',dict(schema_version=2,record_type='Root_owner_v2_M3_deferred_metadata_inert_API',Source=producer_source,
+        author=producer_editor,actual_binding_Source_editor=producer_editor,external_canonical_receipt_ABI_qualified=True,synthetic_fixture=True))
+    reviewer=producer_editor if fault=='self_review' else producer_editor+'/child' if fault=='subtree_review' else '/root/synthetic_code_reviewer'
+    pr,pa=proofs('producer_code',[producer_source,producer_api],1,reviewer,drop_api=fault=='code_adoption_API')
+    producer=dict(Source=producer_source,API=producer_api,editor=producer_editor,different_review=pr,Root_adoption=pa)
+    tool={k:producer[k] for k in ('Source','API','different_review','Root_adoption')}
+    publisher_source=put('publisher\\qualified_publisher.py',b"raise AssertionError('NO PUBLISHER CALL ALLOWED')\n",True)
+    publisher_api=put('publisher\\API.json',dict(synthetic_fixture=True,opaque_expected_API='no invented future publisher schema'))
+    ur,ua=proofs('publisher_code',[publisher_source,publisher_api],1)
+    publisher=dict(Source=publisher_source,API=publisher_api,editor=publisher_editor,different_review=ur,Root_adoption=ua)
+    subjects=[];selected=[]
+    for index,role in enumerate(m.ROLE_ORDER):
+        raw=('SYNTHETIC DECLARED PHASE '+role).encode();cp=dict(path=prefix+'\\canonical\\'+role+'.ps1',bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+        predecessor=stub('old_'+role+'.json');draft=prefix+'\\drafts\\'+role+'.ps1'
+        item=dict(role=role,canonical=cp,draft_path=draft,predecessor=predecessor,selected_ordinal=19,retained_semantic_Source_author='/root/historical_nominal',source_cap=65536)
+        subjects.append(item)
+        selected.append(dict(role=role,canonical_path=cp['path'],draft_path=draft,predecessor=predecessor,selected_ordinal=19,source_cap=65536,
+            must_change_Source_bytes=True,preparation_Source_author=producer_editor,retained_semantic_Source_author=item['retained_semantic_Source_author']))
+    capture=dict(role='capture_template',canonical_path=prefix+'\\canonical\\capture.py',draft_path=prefix+'\\drafts\\capture.py',predecessor=stub('old_capture.json'),
+        selected_ordinal=19,source_cap=65536,must_change_Source_bytes=True,preparation_Source_author=producer_editor,retained_semantic_Source_author='/root/historical_nominal')
+    selected.append(capture)
+    composer=stub('composer.json');selected.append(dict(role='composer',canonical_path=composer['path'],draft_path=None,predecessor=composer,selected_ordinal=None,
+        source_cap=65536,must_change_Source_bytes=False,preparation_Source_author=None,retained_semantic_Source_author=None))
+    for i in range(35):selected.append(dict(role='synthetic_carried_identity_'+str(i),canonical_path=prefix+'\\other\\'+str(i)+'.json',draft_path=None,predecessor=stub('other_old_'+str(i)+'.json'),
+        selected_ordinal=None,source_cap=65536,must_change_Source_bytes=False,preparation_Source_author=None,retained_semantic_Source_author=None))
+    selection=put('selection.json',dict(schema_version=2,record_type='Root_owner_v2_actual_separate_future45_Source_path_selection',author='/root',created_utc=_t(4),
+        current_owner_scope=scope,new_canonical_lease=lease,target_execution=False,operational_authority=False,rows=selected,
+        current_complete45_inventory=inventory,current_selection=prior,derived_launcher_runtime_path=prefix+'\\runtime\\launcher.ps1',selected_Source_nonce='a'*32))
+    sr,sa=proofs('selection',[selection,lease],5);selection_support=dict(selection=selection,different_review=sr,Root_adoption=sa)
+    batch_selection=dict(subject=selection,different_review=sr,Root_adoption=sa)
+    by_role={r['role']:r for r in selected};stage_supports={};requests=[];published=[];receipts={}
+    stage_cache={}
+    for index,item in enumerate(subjects):
+        role=item['role'];stage='templates' if index<4 else 'phase_bound';stage_role=None if index<4 else role;cache_key=stage if index<4 else role
+        if cache_key not in stage_cache:
+            facts={k:None for k in m.FACT_KEYS}
+            facts.update(schema_version=2,record_type='Root_owner_v2_exact_M3_Source_stage_purpose_and_facts',author='/root',Root_thread='01a13e5d-171f-77b2-bd9c-a6cfae4f5a68',
+                created_utc=_t(8),stage=stage,role=stage_role,current_owner_scope=scope,tool_support=tool,lease_support=lease_support,selection_support=selection_support,
+                predecessor_inventory=inventory,dependencies=[],operational_choices={},binding_supports={},role_selections={},source_only=True,target_execution=False,
+                operational_authority=False,canonical_publication=False,native_Parser_authority=False)
+            facts_pin=put('facts_'+cache_key+'.json',facts)
+            def pins_in(value):
+                if type(value) is dict:
+                    if set(value)=={'path','bytes','sha256'}:return [value]
+                    result=[]
+                    for v in value.values():result+=pins_in(v)
+                    return result
+                if type(value) is list:
+                    result=[]
+                    for v in value:result+=pins_in(v)
+                    return result
+                return []
+            inputs={p['path']:p for p in [facts_pin,manifest,*owner.values(),*pins_in(facts)]}
+            purpose_inputs=[inputs[k] for k in sorted(inputs)]
+            if fault=='purpose_missing_facts':purpose_inputs=[p for p in purpose_inputs if p!=facts_pin]
+            stage_roles=['capture_template',*m.ROLE_ORDER[:4]] if index<4 else [role]
+            outputs=[]
+            for output_role in stage_roles:
+                dp=by_role[output_role]['draft_path'];leaf=dp.rsplit('\\',1)[1]
+                outputs.extend((dp,prefix+'\\producer\\source_diffs\\'+leaf+'.diff',prefix+'\\producer\\stage_receipts\\ROOT_CURRENT_OWNER_'+output_role.upper()+'_ACTUAL_M3_SOURCE_DRAFT_AUTHOR_RECEIPT_001.json'))
+            if fault=='output_capture' and index<4:outputs=[p for p in outputs if 'capture' not in p]
+            if fault=='purpose_output_input':
+                purpose_inputs.append(dict(path=item['draft_path'],bytes=item['canonical']['bytes'],sha256=item['canonical']['sha256']))
+                purpose_inputs.sort(key=lambda p:p['path'])
+            purpose=dict(schema_version=2,stage=stage,role=stage_role,facts=facts_pin,inputs=purpose_inputs,output_paths=sorted(outputs))
+            fr,fa=proofs('stage_'+cache_key,[facts_pin,*purpose_inputs],9,purpose=purpose)
+            stage_cache[cache_key]=(facts_pin,purpose,dict(facts=facts_pin,different_review=fr,Root_adoption=fa))
+        facts_pin,purpose,support=stage_cache[cache_key];stage_supports[role]=support
+        draft=dict(path=item['draft_path'],bytes=item['canonical']['bytes'],sha256=item['canonical']['sha256'])
+        leaf=draft['path'].rsplit('\\',1)[1];diff=stub('producer\\source_diffs\\'+leaf+'.diff')
+        receipt_second=74 if fault=='resource60' else 75 if fault=='resource61' else 15
+        resource=dict(observed_utc=_t(14),available_RAM_bytes=1073741824,free_disk_bytes=10737418240)
+        if fault=='resource_bool':resource['available_RAM_bytes']=True
+        if fault=='resource_float':resource['available_RAM_bytes']=1073741824.5
+        receipt={k:None for k in m.RECEIPT_KEYS}
+        provenance=dict(Source=producer_source,API=producer_api,actual_implementation_Source_editor=producer_editor,
+            historical_implementation_Source_editor='/root/pipeline_source_editor',stage_purpose=purpose,resource_observation=resource)
+        if fault=='worker_Root':provenance['actual_implementation_Source_editor']='/root'
+        receipt.update(schema_version=2,record_type='Root_owner_v2_actual_deferred_M3_Source_draft_author_receipt',author='/root',actual_physical_Source_editor='/root',
+            created_utc=_t(receipt_second),role=role,draft=draft,predecessor=item['predecessor'],Root_future_path_selection=selection,current_owner_scope=scope,
+            new_canonical_lease=lease,actual_Source_packet=facts_pin,retained_semantic_Source_author=item['retained_semantic_Source_author'],target_execution=False,
+            canonical_publication=False,operational_authority=False,original_fixtures_and_runtime_admission=False,complete_current_predecessor_byte_inverse=True,
+            different_actual_generated_Source_review_pending=True,finite_actual_Source_observations=[],diff=diff,
+            steps=dict(complete_inverse=dict(synthetic_fixture=True),actual_diff_removed_byte_basis=dict(synthetic_fixture=True),actual_check_codec=dict(synthetic_fixture=True),metadata_Source_provenance=provenance))
+        rp=put('producer\\stage_receipts\\ROOT_CURRENT_OWNER_'+role.upper()+'_ACTUAL_M3_SOURCE_DRAFT_AUTHOR_RECEIPT_001.json',receipt)
+        dr,da=proofs('draft_'+role,[draft,rp],receipt_second+1)
+        wanted=dict(role=role,draft=draft,canonical_path=item['canonical']['path'],source_review=dr,Root_adoption=da,physical_Source_editor='/root',
+            metadata_Source_worker=producer_editor,retained_semantic_Source_author=item['retained_semantic_Source_author'],source_cap=65536,author_receipt=rp)
+        actual=dict(role=role,predecessor=item['predecessor'],draft=copy.deepcopy(draft),canonical=item['canonical'],author_receipt=rp,exact_Source_review=dr,Root_Source_review_adoption=da,
+            physical_Source_editor='/root',metadata_Source_worker=producer_editor,retained_semantic_Source_author=item['retained_semantic_Source_author'],canonical_physical_actor='/root',
+            source_cap=65536,actual_publication_metadata_APIs=dict(synthetic_declared_only=True))
+        if fault=='draft_hash':actual['draft']['sha256']='0'*64
+        requests.append(wanted);published.append(actual);receipts[role]=rp
+    request={k:None for k in m.SCHEMAS['batch_request21_v2']['keys']}
+    request.update(schema_version=2,record_type=m.SCHEMAS['batch_request21_v2']['record_type'],author='/root',Root_thread='01a13e5d-171f-77b2-bd9c-a6cfae4f5a68',created_utc=_t(90),request_id='SYNTHETIC_ONLY',
+        current_owner_support=owner,source_only=True,target_execution=False,operational_authority=False,canonical_publication_selected=True,
+        Root_future_path_selection_support=batch_selection,new_lease_support=lease_support,predecessor_inventory_support=catalogue,producer_supports=dict(M3=tool),
+        publisher_source=publisher_source,publisher_API=publisher_api,publisher_Source_review=ur,publisher_Root_adoption=ua,
+        publication_receipt_path=prefix+'\\publication.json',rows=requests)
+    if fault=='unknown_key':request['unknown']='refuse'
+    if fault=='single_route':request['record_type']='Root_Source024_selected_role_exact_reviewed_Source_publication_request'
+    if fault=='duplicate_rows':request['rows'][1]=copy.deepcopy(request['rows'][0])
+    if fault=='nested_lease':request['new_lease_support']={}
+    request_pin=put('request.json',request)
+    publication={k:None for k in m.SCHEMAS['batch_publication43_v2']['keys']}
+    publication.update(schema_version=2,record_type=m.SCHEMAS['batch_publication43_v2']['record_type'],author='/root',Root_thread=request['Root_thread'],created_utc=_t(100),request_id='SYNTHETIC_ONLY',
+        verdict=m.PUB_VERDICT,actual_Root_request=request_pin,current_owner_scope=scope,current_owner_support=owner,Root_future_path_selection=selection,
+        Root_future_path_selection_acceptance=batch_selection,actual_new_lease=lease,actual_new_lease_support=request['new_lease_support'],predecessor_inventory_support=catalogue,producer_supports=dict(M3=tool),
+        publisher_source=publisher_source,publisher_API=publisher_api,publisher_different_Source_review=ur,publisher_Root_Source_adoption=ua,
+        publication_helper_physical_Source_editor=publisher_editor,inherited_Source022_publisher=m.HISTORICAL_PUBLISHER,inherited_reader_Source_editor='/root/runtime_audit',
+        inherited_no_overwrite_writer_Source_editor='/root/m3_source_editor',canonical_physical_actor='/root',published=published,published_count=len(published),composer_carried=composer,
+        topology=dict(selected45=45,successor44=44,composer_carry1=1,model_replace41=41,model_carry26=26,table_replace20=20,table_carry26=26),complete_input_postreads=[],
+        canonical_publication=True,publication_reserve_seconds=60,original_numerical_guards=m.ORIGINAL_GUARDS,immutable_historical_leases=m.HISTORICAL_LEASES,
+        operational_authority=False,target_execution=False,actual_entry006=False,whole_cohort_or_runtime_acceptance=False,
+        original_import_function_main_oracle_fixture_C8_test_actor_Job_native_science=False,Git_mutation_push_unrelated_stop_or_host_quiet=False,old_leases_extended=False,
+        partial_failure_preserved_no_rollback_no_automatic_retry=True,canonical_delta_and_creation_review_pending=True)
+    if fault=='bool_count':publication['published_count']=True
+    if fault=='schema1':publication['schema_version']=1
+    publication_pin=put('publication.json',publication)
+    witness=put('opaque_witness.json',dict(synthetic_fixture=True,opaque='No actual process assertion'))
+    role=m.ROLE_ORDER[0];canonical=subjects[0]['canonical'];draft=dict(path=subjects[0]['draft_path'],bytes=canonical['bytes'],sha256=canonical['sha256'])
+    delta_subjects=[canonical,draft,receipts[role],request_pin,publication_pin,witness]
+    delta_review,delta_root=proofs('canonical_delta',delta_subjects,99 if fault=='delta_before_publication' else 110)
+    proof6=dict(subject=canonical,actual_Source_author_receipt=receipts[role],different_Source_review=delta_review,Root_adoption=delta_root,
+                canonical_publication=publication_pin,actual_Source_birth_utc=_t(95))
+    recon={k:None for k in m.SCHEMAS['reconciliation26_v2']['keys']}
+    recon.update(schema_version=2,record_type=m.SCHEMAS['reconciliation26_v2']['record_type'],author='/root',created_utc=_t(113),verdict=m.RECON_VERDICT,
+        canonical_publication=True,canonical_publication_flag_scope=m.RECON_FLAG_SCOPE,new_canonical_Source_write_by_reconciliation=False,
+        Git_mutation=False,target_execution=False,operational_authority=False,whole_cohort_or_runtime_or_fixture_acceptance=False,canonical_Source=canonical,
+        exact_draft_Source=draft,initial_actual_Root_request=request_pin,initial_actual_canonical_publication_receipt=publication_pin,initial_actual_execution_witness=witness,
+        current_owner_scope=scope,Root_future_path_selection=selection,new_canonical_lease=lease,prior_actual_publisher_Source=publisher_source,
+        prior_publication_created_utc=publication['created_utc'],actual_canonical_delta_Source_review=delta_review,canonical_delta_Root_adoption=delta_root,
+        canonical_Source_birth_utc=_t(95),actual_input_observations=[])
+    if fault=='recon_write':recon['new_canonical_Source_write_by_reconciliation']=True
+    recon_pin=put('reconciliation.json',recon)
+    rr,ra=proofs('reconciliation',[recon_pin,canonical,publication_pin],114)
+    proof4=dict(Source=canonical,different_Source_review=delta_review,Root_adoption=delta_root,Root_publication=recon_pin)
+    if fault=='proof4_direct':proof4['Root_publication']=publication_pin
+    if fault=='proof6_recon':proof6['canonical_publication']=recon_pin
+    expected=dict(root_thread=request['Root_thread'],owner_support=owner,owner_support_manifest=manifest,selection=selection,lease=lease,subjects=subjects,
+        producer=producer,publisher=publisher,stage_supports=stage_supports,request=request_pin,publication=publication_pin,namespace=prefix,request_id='SYNTHETIC_ONLY',
+        now_utc=_t(120),execution_witness=witness,reconciliation_review=rr,reconciliation_Root_adoption=ra,actual_content_authors=[])
+    if fault=='stage_support_pin':expected['stage_supports'][role]=dict(stage_supports[role],facts=scope)
+    if fault=='protected_selection':expected['selection']=copy.deepcopy(canonical)
+    if fault=='case_protected_selection':expected['selection']=dict(canonical,path=canonical['path'].swapcase())
+    if fault=='path_dot':expected['subjects'][0]['draft_path']=prefix+'\\drafts\\.\\bad.ps1'
+    if fault=='path_ADS':expected['subjects'][0]['draft_path']+=':stream'
+    if fault=='pair_ordinal':expected['subjects'][4]['selected_ordinal']=20
+    if fault=='held_producer':expected['producer']['Source']=dict(path=prefix+'\\held_source.py',bytes=127014,sha256='600ab5bf46faceee88b7b5a99eb32b71a7ebfc763151e2f4e3453a6cccd281c2')
+    if fault in ('root_array','duplicate_JSON','float_JSON','deep_JSON','invalid_UTF8'):
+        raw={'root_array':b'[]','duplicate_JSON':b'{"x":1,"x":2}','float_JSON':b'{"x":1.5}',
+             'deep_JSON':b'{"x":'+b'['*49+b'0'+b']'*49+b'}','invalid_UTF8':b'\xff'}[fault]
+        expected['request']=put('request_poison.json',raw,True)
+    forbidden={p['canonical']['path'].casefold() for p in subjects}|{p['draft_path'].casefold() for p in subjects}
+    def reader(pin):
+        path=pin['path'];calls.append(path)
+        if path.casefold() in forbidden:
+            subject_calls.append(path);raise AssertionError('CANONICAL/DRAFT BODY CALLBACK FORBIDDEN')
+        raw=store[path]
+        if fault=='callback_mutates_pin':pin.clear()
+        if fault=='callback_mutates_expected':expected['subjects'][0]['canonical'].clear()
+        return raw
+    oracle={item['role']:dict(subject=copy.deepcopy(item['canonical']),author_receipt=receipts[item['role']],facts=stage_supports[item['role']]['facts']) for item in subjects}
+    return expected,proof4,proof6,reader,calls,subject_calls,oracle
+
+def run_memory_suite(adapter_module):
+    """Called once by separately admitted Root loader; all evidence here is synthetic."""
+    m=adapter_module;outcomes=[];body_reads=[]
+    def case(name,kind='batch',fault=None,refusal=None):
+        expected,p4,p6,reader,calls,subjects,oracle=_make(m,fault)
+        passed=False;actual=None
+        try:
+            if kind=='proof4':result=m.validate_proof4_metadata(proof4=p4,expected=expected,read_record=reader)
+            elif kind=='proof6':result=m.validate_proof6_metadata(proof6=p6,expected=expected,read_record=reader)
+            else:result=m.validate_batch_metadata(expected=expected,read_record=reader)
+            if refusal is None:
+                views=result if type(result) is tuple else (result,)
+                wanted_roles=list(m.ROLE_ORDER) if kind=='batch' else [m.ROLE_ORDER[0]]
+                representation={'batch':'ORIGINAL_BATCH_METADATA','proof6':'DIRECT_PROOF6_METADATA','proof4':'VERIFIED_PRIOR_RECONCILIATION_PROOF4_METADATA'}[kind]
+                passed=[v.role for v in views]==wanted_roles and all(v.representation==representation and v.subject.to_dict()==oracle[v.role]['subject'] and
+                    v.author_receipt.to_dict()==oracle[v.role]['author_receipt'] and v.facts.to_dict()==oracle[v.role]['facts'] and
+                    v.metadata_only is True and v.operational_authority is False and v.scientific_authority is False and
+                    v.native_authority is False and v.physical_observation_validated is False and v.canonical_write_performed is False and
+                    v.producer_or_caller_qualification_established is False for v in views)
+                if name=='immutable_detached_view':
+                    view=views[0];before=view.subject.path;copy_pin=view.subject.to_dict();copy_pin['path']='MUTATED'
+                    expected['subjects'][0]['canonical']['path']='MUTATED'
+                    try:view[0]='MUTATED'
+                    except TypeError:passed=passed and view.subject.path==before
+                    else:passed=False
+        except m.MetadataError as exc:
+            actual=exc.code;passed=refusal==actual
+        except BaseException as exc:actual=type(exc).__name__
+        if fault in ('protected_selection','case_protected_selection','path_dot','path_ADS','pair_ordinal'):
+            passed=passed and not calls
+        passed=passed and not subjects;body_reads.extend(subjects)
+        outcomes.append(dict(name=name,passed=bool(passed),expected_refusal_code=refusal,actual_refusal_code=actual,
+                             metadata_reader_calls=len(calls),subject_body_reader_calls=len(subjects),synthetic_fixture=True))
+    case('positive_original_batch')
+    case('positive_direct_proof6','proof6')
+    case('positive_reconciliation_proof4','proof4')
+    case('immutable_detached_view')
+    case('callback_pin_mutation_detached',fault='callback_mutates_pin')
+    case('callback_expected_mutation_snapshot',fault='callback_mutates_expected')
+    case('recorded_resource60_inclusive',fault='resource60')
+    for name,fault,code,kind in __NEGATIVE_CASES__:
+        case(name,kind,fault,code)
+    passed=sum(c['passed'] for c in outcomes)
+    return dict(synthetic_fixture=True,project_or_native_tests=False,cases=outcomes,case_count=len(outcomes),
+                expected_case_count=EXPECTED_CASE_COUNT,checks_passed=passed,checks_failed=len(outcomes)-passed,
+                unique_case_names=len({c['name'] for c in outcomes})==len(outcomes),
+                subject_body_reader_calls=len(body_reads),filesystem_process_network_native_observation='EXTERNAL_ROOT_AUDIT_REQUIRED',
+                note='Synthetic metadata predicates only; no actual publication, resource measurement, owner grant, Source body read, native or Parser qualification.')

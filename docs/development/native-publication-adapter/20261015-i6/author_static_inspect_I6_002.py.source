@@ -1,0 +1,127 @@
+"""Own AST/byte/JSON inspection only, never imports/calls adapter or fixtures."""
+import ast
+import builtins
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+import symtable
+
+O=Path(__file__).parent
+M=O/'validate_current_owner_M3_publication_metadata_002.py'
+T=O/'test_current_owner_M3_publication_metadata_memory_only_002.py'
+A=O/'CURRENT_OWNER_M3_PUBLICATION_METADATA_INERT_API_002.json'
+R=O/'CURRENT_OWNER_M3_PUBLICATION_METADATA_ACTUAL_SOURCE_AUTHOR_RECEIPT_002.json'
+OUT=O/'I6_AUTHOR_ACTUAL_FINITE_SOURCE_SELF_INSPECTION_002.json'
+
+def pin(p):
+    raw=p.read_bytes();return dict(path=str(p),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+
+checks=[]
+def check(name,condition,detail=None):checks.append(dict(name=name,passed=bool(condition),detail=detail))
+
+def pairs(rows):
+    d={}
+    for k,v in rows:
+        assert k not in d
+        d[k]=v
+    return d
+
+def nofloat(value):raise ValueError(value)
+
+def load(p):return json.loads(p.read_bytes(),object_pairs_hook=pairs,parse_float=nofloat,parse_constant=nofloat)
+
+api=load(A);receipt=load(R);sources={};trees={};literals={}
+for p in (M,T):
+    raw=p.read_bytes();s=raw.decode('utf8');tree=ast.parse(s);compile(tree,str(p),'exec',dont_inherit=True)
+    sources[p]=s;trees[p]=tree;lv={}
+    for n in tree.body:
+        if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+            try:lv[n.targets[0].id]=ast.literal_eval(n.value)
+            except (ValueError,TypeError,SyntaxError):pass
+    literals[p]=lv
+    check(p.name+':AST_compile_string_only',True)
+    imports=[x.name.split('.')[0] for n in ast.walk(tree) if isinstance(n,(ast.Import,ast.ImportFrom)) for x in n.names]
+    check(p.name+':only_pure_stdlib_imports',set(imports)<=({'hashlib','json','re','datetime'} if p==M else {'hashlib','json','copy'}),imports)
+    check(p.name+':no_IO_or_dynamic_dispatch',not any(isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id in ('open','eval','exec','compile','__import__','input','print') for n in ast.walk(tree)))
+    check(p.name+':no_main_or_CLI',not any(isinstance(n,ast.If) and '__name__' in ast.unparse(n.test) for n in tree.body))
+    check(p.name+':metadata_cap',len(raw)<=2097152)
+    table=symtable.symtable(s,str(p),'exec');module_names={x.get_name() for x in table.get_symbols()}|set(dir(builtins))|{'__file__','__name__'};missing=[]
+    def visit(scope):
+        for symbol in scope.get_symbols():
+            if symbol.is_global() and symbol.is_referenced() and symbol.get_name() not in module_names:missing.append((scope.get_name(),symbol.get_name()))
+        for child in scope.get_children():visit(child)
+    visit(table)
+    check(p.name+':lexical_globals_resolve',not missing,missing)
+    bound=set(dir(builtins))|{'__name__','__file__','__doc__','__annotations__'};order=[]
+    for n in tree.body:
+        loads=set();new=set()
+        if isinstance(n,(ast.Import,ast.ImportFrom)):new={x.asname or x.name.split('.')[0] for x in n.names}
+        elif isinstance(n,ast.Assign):
+            loads={x.id for x in ast.walk(n.value) if isinstance(x,ast.Name) and isinstance(x.ctx,ast.Load)}
+            new={x.id for t in n.targets for x in ast.walk(t) if isinstance(x,ast.Name) and isinstance(x.ctx,ast.Store)}
+        elif isinstance(n,(ast.FunctionDef,ast.ClassDef)):
+            exprs=n.decorator_list+(n.bases if isinstance(n,ast.ClassDef) else n.args.defaults+[x for x in n.args.kw_defaults if x is not None])
+            loads={x.id for e in exprs for x in ast.walk(e) if isinstance(x,ast.Name) and isinstance(x.ctx,ast.Load)};new={n.name}
+        order.extend((n.lineno,x) for x in loads-bound);bound|=new
+    check(p.name+':sequential_top_level_binding_order',not order,order)
+    global_functions={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)};issues=[];count=0
+    for call in ast.walk(tree):
+        if not isinstance(call,ast.Call) or not isinstance(call.func,ast.Name) or call.func.id not in global_functions:continue
+        if any(isinstance(x,ast.Starred) for x in call.args) or any(x.arg is None for x in call.keywords):continue
+        a=global_functions[call.func.id].args;pos=[x.arg for x in a.posonlyargs+a.args];kw=[x.arg for x in a.kwonlyargs];given={x.arg for x in call.keywords};covered=set(pos[:len(call.args)])|given
+        required=set(pos[:len(pos)-len(a.defaults)])|{k for k,d in zip(kw,a.kw_defaults) if d is None}
+        good=(a.vararg is not None or len(call.args)<=len(pos)) and (a.kwarg is not None or given<=set(pos+kw)) and required<=covered and not (given&set(pos[:len(call.args)]))
+        count+=1
+        if not good:issues.append((call.lineno,call.func.id))
+    check(p.name+':known_direct_call_signatures',not issues,dict(calls=count,issues=issues))
+
+module=sources[M];fixture=sources[T];lv=literals[M];tv=literals[T]
+protocol=load(Path(api['exact_protocol']['path']))
+for name,spec in protocol['new_closed_schemas'].items():
+    check('exact_Root_closed_schema:'+name,lv['SCHEMAS'][name]['keys']==spec['keys'] and len(spec['keys'])==spec['field_count'])
+for name in ('SELECTION_KEYS','ROW_KEYS','RECEIPT_KEYS','FACT_KEYS'):
+    check('known_shape_count:'+name,len(lv[name])=={'SELECTION_KEYS':13,'ROW_KEYS':9,'RECEIPT_KEYS':22,'FACT_KEYS':21}[name])
+check('protected16_complete_before_callbacks','len(self.protected)==16' in module and module.index('len(self.protected)==16')<module.index('self.declare(item[\'predecessor\'])'))
+check('every_callback_guarded_by_casefold','pin.path.casefold() not in self.protected' in module and module.index('pin.path.casefold() not in self.protected')<module.index('raw=self.callback'))
+check('original_path_strings_not_rewritten','return value\n\ndef _parent' in module and '.resolve(' not in module and '.replace(' not in module)
+check('exact_scalar_UUID','[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}' in module)
+check('ASCII_integer_UTC_no_lazy_strptime','[0-9]{6,7}' in module and '\\d{' not in module and 'strptime' not in module and '.timestamp(' not in module and '.now(' not in module)
+check('pin_bytes_positive_typed','type(value[\'bytes\']) is int' in module and "0<value['bytes']<=cap" in module)
+check('strict_each_support_leaf','[*lease_support.values(),*inventory.values(),*producer_support.values()]' in module)
+check('M3_inventory_separate_domain',"reader.declare(facts['predecessor_inventory'])" in module and "facts['predecessor_inventory'],inventory['subject']" not in module and 'distinct_M3_fixed17_inventory.json' in fixture)
+check('exact_finite8_M3_producer_map',"set(request['producer_supports'])=={'M3'}" in module)
+check('diff_pin_registered',"diff_pin=reader.declare(receipt['diff'])" in module)
+check('historical_pins_registered',"[*pub['immutable_historical_leases'],pub['inherited_Source022_publisher'],pub['composer_carried']]" in module)
+check('purpose_no_recursive_input_deref','inputs=[reader.declare(p) for p in purpose[\'inputs\']]' in module and 'reader.raw(p)' not in module)
+check('purpose_self_output_exclusions',"'E_PURPOSE_SELF'" in module and "Pin(review['full_proof']).path.casefold()" in module)
+check('purpose_literal_all_three',"for v in (review,full,adoption)" in module)
+check('stage_exact_Root_verdict',lv['STAGE_VERDICT']=='ACCEPT_ROOT_OWNER_V2_EXACT_M3_SOURCE_STAGE_PURPOSE_AND_FACTS_ONLY')
+check('recorded_resource60_inclusive','born-obs<=600000000' in module)
+check('retired_held_Source002_rejected','600ab5bf46faceee88b7b5a99eb32b71a7ebfc763151e2f4e3453a6cccd281c2' in module)
+check('code_SOURCE_marker',"'SOURCE' in review['verdict'].upper()" in module)
+check('root_code_direct4pin',"required=[*subjects,Pin(review_pin),Pin(review['full_proof'])]" in module)
+check('metadata_only_view_false_flags',all(name+'=property(lambda s:False)' in module for name in ('operational_authority','scientific_authority','physical_observation_validated','native_authority','producer_or_caller_qualification_established','canonical_write_performed')))
+check('tuple_views_without_dict',all("__slots__=()" in ast.get_source_segment(module,n) for n in trees[M].body if isinstance(n,ast.ClassDef) and n.name in ('Pin','MetadataView')))
+check('opaque_witness_metadata_only',"reader.record(witness)" in module and 'PID' not in module and 'exit_code' not in module)
+check('distinct_proof4_vs6','DIRECT_PROOF6_METADATA' in module and 'VERIFIED_PRIOR_RECONCILIATION_PROOF4_METADATA' in module)
+check('case_count55_literal',tv['EXPECTED_CASE_COUNT']==55 and len(tv['PLANNED_CASE_NAMES'])==55 and len(set(tv['PLANNED_CASE_NAMES']))==55)
+check('API_fixture_count_matches',api['fixtures']['EXPECTED_CASE_COUNT']==55 and api['fixtures']['planned_case_names']==list(tv['PLANNED_CASE_NAMES']))
+check('fixture_positive_exact_role_and_proof_join',"[v.role for v in views]==wanted_roles" in fixture and "v.author_receipt.to_dict()==oracle[v.role]['author_receipt']" in fixture and "v.facts.to_dict()==oracle[v.role]['facts']" in fixture)
+check('fixture_callback_counter_observed','subject_body_reader_calls=len(body_reads)' in fixture and "filesystem_process_network_native_observation='EXTERNAL_ROOT_AUDIT_REQUIRED'" in fixture)
+for name in tv['PLANNED_CASE_NAMES']:check('planned_unique_case:'+name,tv['PLANNED_CASE_NAMES'].count(name)==1)
+for p in (M,T,A):check('actual_author_receipt_pin:'+p.name,pin(p) in receipt['actual_outputs'])
+for p in api['preserved_uninvoked_Source001']:check('Source001_byte_preserved:'+Path(p['path']).name,pin(Path(p['path']))==p)
+check('zero_fixture_execution',api['actual_fixture_cases_run']==0 and api['tests_executed'] is False and receipt['new_fixture_called'] is False)
+check('all_future_actuals_null',all(v is None for v in api['all_actual_future'].values()))
+result=dict(schema_version=1,record_type='I6_author_actual_finite_AST_byte_Source_self_inspection',author='/root/phase_frontier',
+            created_utc=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds'),
+            verdict='PASS_I6_AUTHOR_STATIC_SOURCE_ONLY' if all(x['passed'] for x in checks) else 'REFUSE_I6_AUTHOR_STATIC_SOURCE_ONLY',
+            checks_passed=sum(x['passed'] for x in checks),checks_failed=sum(not x['passed'] for x in checks),checks=checks,
+            actual_inputs=[pin(p) for p in (M,T,A,R,Path(__file__))],tests_executed=False,target_execution=False,
+            adapter_or_fixture_imported_or_called=False,operational_authority=False,scientific_authority=False,independent_review=False,
+            limitations='AST/symtable/compile-string/hash/JSON/lexical checks only; no adapter predicates or fixture cases executed, no physical/native/authority qualification.')
+raw=(json.dumps(result,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('utf8');assert len(raw)<=2097152 and not OUT.exists()
+with OUT.open('xb') as f:f.write(raw)
+assert OUT.read_bytes()==raw
+print(json.dumps(dict(report=pin(OUT),checks_passed=result['checks_passed'],checks_failed=result['checks_failed'],failures=[x for x in checks if not x['passed']]),sort_keys=True))
