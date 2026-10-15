@@ -1,0 +1,543 @@
+"""Own stdlib PS Source construction/lexical/bytes only; never invoke PS or targets."""
+import base64
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+import re
+
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_parser_implementation_007')
+D=P/'i4'
+OLD=Path(r'D:\Aenv\pro2\WORK\resume-20261007-001\generation\step079_native_parser_deferred_Source024_preparation_001')
+DES=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_admission_design_003')
+AUTHOR='/root/phase_frontier'
+CURRENT_ROOT='01a13e5d-171f-77b2-bd9c-a6cfae4f5a68'
+def sha(b):return hashlib.sha256(b).hexdigest()
+def pin(p):
+ b=p.read_bytes();assert 0<len(b)<=2097152
+ return dict(path=str(p),bytes=len(b),sha256=sha(b))
+def exact(p,n,s):
+ x=pin(p);assert (x['bytes'],x['sha256'])==(n,s),(p,x);return x
+def read(p):return json.loads(p.read_bytes())
+def save(p,value):
+ b=value if type(value)is bytes else (json.dumps(value,indent=2,sort_keys=True,allow_nan=False)+'\n').encode()
+ assert 0<len(b)<=2097152
+ with p.open('xb') as f:assert f.write(b)==len(b)
+ assert p.read_bytes()==b
+ return pin(p)
+SCOPE=exact(P/'ROOT_CURRENT_I4_STATIC_PARSER_PARENT_CHILD_API_IMPLEMENTATION_SCOPE_001.json',3279,'97ff82f261d1bcf91b40c5ffc26fa95ccb4e248574d266b98ed6570ec6377fa7')
+PROTOCOL=exact(P/'ROOT_I4_OWNER_DIRECT_PURPOSE_AND_HELD_INTERFACE_SOURCE_CONTRACT_001.json',41509,'1d3c94a4be1c2d40b7c7401cf56c7e233520df418a350d81b4081fedb8c7b458')
+protocol=read(Path(PROTOCOL['path']))
+protected_pin=exact(Path(protocol['protected_contract']['path']),48013,'f520f5dc53dc1fb3d7c6ede1acd84ccdd3c32b8e209f3d3e12705fcbeec9692c')
+protected=read(Path(protected_pin['path']))
+original=[exact(OLD/'Invoke-CurrentCohortNativeParserOnlyParent_Source024_002.ps1',134368,'2df69228a65eb9fc89c0b7b30efd12277e87bd289502a798742c80d07c3d4b99'),exact(OLD/'Measure-CurrentCohortNativeParserOnlyChild_Source024_002.ps1',125113,'583c666d7eaa5bbc0fbe7d521dd48ebeec7f6184e474d30ad0217c9b6e22342f'),exact(OLD/'STEP079_SOURCE024_CURRENT_COHORT_NATIVE_PARSER_DORMANT_INERT_API_002.json',37031,'44eadb9bce1296ba4acf0232c788248f116a3a8d6a9f18b72dae13241f9d0f4e')]
+texts=[Path(p['path']).read_bytes().decode('utf8') for p in original[:2]]
+schemas=protocol['new_authority_closed_schemas']
+I0=read(Path(protocol['fixed_I0_API']['path']))
+for key in ('fixed_I0_Source','fixed_I0_API','fixed_I1_API','fixed_I3_helper_API_provenance','fixed_I3_wrapper_API_provenance'):
+ assert pin(Path(protocol[key]['path']))==protocol[key]
+
+def ps(value):
+ if value is None:return '$null'
+ if type(value)is bool:return '$true' if value else '$false'
+ if type(value)is int:return str(value)
+ if type(value)is str:return "'"+value.replace("'","''")+"'"
+ if type(value)is list:return '@('+','.join(ps(x) for x in value)+')'
+ if type(value)is dict:return '[pscustomobject]@{'+(';'.join(str(k)+'='+ps(v) for k,v in value.items()))+'}'
+ raise TypeError(type(value))
+
+def lexical(source):
+ """Generic quote/comment/here-string aware delimiter scan; not a PS parser."""
+ masked=list(source);stack=[];pairs={};i=0;state='code';quote=None
+ while i<len(source):
+  c=source[i]
+  if state=='comment':
+   if c=='\n':state='code'
+   else:masked[i]=' '
+  elif state=='block':
+   if source.startswith('#>',i):masked[i:i+2]=[' ',' '];i+=1;state='code'
+   elif c!='\n':masked[i]=' '
+  elif state=='here':
+   if (i==0 or source[i-1]=='\n') and source.startswith(quote+'@',i):
+    masked[i:i+2]=[' ',' '];i+=1;state='code'
+   elif c!='\n':masked[i]=' '
+  elif state=='quote':
+   masked[i]=' ' if c!='\n' else '\n'
+   if quote=='"' and c=='`' and i+1<len(source):masked[i+1]=' ';i+=1
+   elif c==quote:
+    if i+1<len(source) and source[i+1]==quote:masked[i+1]=' ';i+=1
+    else:state='code'
+  else:
+   if source.startswith('<#',i):masked[i:i+2]=[' ',' '];i+=1;state='block'
+   elif c=='#':masked[i]=' ';state='comment'
+   elif c=='@' and i+2<len(source) and source[i+1] in "'\"" and source[i+2] in '\r\n':
+    quote=source[i+1];masked[i:i+2]=[' ',' '];i+=1;state='here'
+   elif c in "'\"":quote=c;masked[i]=' ';state='quote'
+   elif c=='`' and i+1<len(source):masked[i:i+2]=[' ',' '];i+=1
+   elif c in '([{':stack.append((c,i))
+   elif c in ')]}':
+    assert stack and '([{'.index(stack[-1][0])==')]}'.index(c),(i,c,stack[-1:] )
+    _,begin=stack.pop();pairs[begin]=i
+  i+=1
+ assert not stack and state in ('code','comment'),(stack,state)
+ return ''.join(masked),pairs
+def funcs(source):
+ mask,pairs=lexical(source);result={}
+ for m in re.finditer(r'(?m)^function ([A-Za-z0-9_-]+)\(',mask):
+  start=m.start();opening=mask.index('{',m.end());end=pairs[opening]+1
+  if source[end:end+2]=='\r\n':end+=2
+  elif source[end:end+1]=='\n':end+=1
+  assert m[1] not in result
+  result[m[1]]=(start,end,source[start:end])
+ return result
+original_functions=[funcs(s) for s in texts]
+assert [len(x) for x in original_functions]==[46,41]
+
+OWNER_PS=r'''
+# Pure owner context predicates mirror accepted I0 Source/API; they do not invoke Python.
+function Owner-Text([object]$Value,[long]$Maximum=4096,[bool]$MessageWhitespace=$false) {
+    Require ($Value -is [string] -and $Value.Length -gt 0) 'Nonempty exact owner text'
+    foreach($c in $Value.ToCharArray()){
+        $number=[int]$c
+        Require (-not (($number -lt 32 -and -not ($MessageWhitespace -and $number -in @(9,10,13))) -or $number -eq 127)) 'Only declared retained-message whitespace allowed'
+    }
+    $encoding=[Text.UTF8Encoding]::new($false,$true)
+    Require ($encoding.GetByteCount($Value) -le $Maximum) 'Exact owner text UTF8 cap, no surrogate replacement'
+}
+function Owner-Pin([object]$Pin) {
+    Require-Keys $Pin @('path','bytes','sha256')
+    Owner-Text $Pin.path 4096;Integer $Pin.bytes 1 2097152
+    Require ($Pin.sha256 -is [string] -and $Pin.sha256 -cmatch '\A[0-9a-f]{64}\z') 'Exact lowercase Source SHA256'
+}
+function Owner-Ticks([object]$Value) {
+    Require ($Value -is [string] -and $Value -cmatch '\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6,7}(Z|\+00:00)\z') 'Exact UTC6or7 Z/+00 integer timestamp'
+    $formats=[string[]]@("yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'","yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'","yyyy-MM-dd'T'HH:mm:ss.ffffffzzz","yyyy-MM-dd'T'HH:mm:ss.fffffffzzz")
+    $valueTime=[DateTimeOffset]::ParseExact($Value,$formats,[Globalization.CultureInfo]::InvariantCulture,([Globalization.DateTimeStyles]::AssumeUniversal -bor [Globalization.DateTimeStyles]::AdjustToUniversal))
+    Require ($valueTime.Year -ge 1601) 'FILETIME1601 supported calendar range'
+    return $valueTime.UtcDateTime.ToFileTimeUtc()
+}
+function Owner-Actor([object]$Value) {
+    Require ($Value -is [string] -and $Value.Length -le 4096 -and $Value -cmatch '\A/root(?:/[A-Za-z0-9_-]+)+\z') 'Actual nonRoot actor subtree'
+}
+function Owner-Exact([object]$Actual,[object]$Expected) {
+    if($Expected -is [bool]){Require ($Actual -is [bool] -and $Actual -eq $Expected) 'Exact owner boolean'}
+    elseif($Expected -is [int] -or $Expected -is [long]){Integer $Actual ([long]$Expected) ([long]$Expected)}
+    elseif($Expected -is [string]){Require ($Actual -is [string] -and $Actual -ceq $Expected) 'Exact case-sensitive owner string'}
+    else{throw 'Undeclared owner exact type'}
+}
+function Owner-Record([object]$Pin,[object]$Held) {
+    Owner-Pin $Pin;Require ($Held.Add([string]$Pin.path)) 'Distinct owner records cannot replay or alias exact held path'
+    $value=Decode-OwnerObject (Read-Fact $Pin)
+    Require ($null -ne $value -and $value -is [pscustomobject]) 'Strict float-free unique-key owner JSON object'
+    return $value
+}
+function Owner-Subjects([object]$Actual,[object[]]$Expected) {
+    Require ($Actual -is [Array] -and $Actual.Count -eq $Expected.Count) 'Exact ordered owner subject list'
+    for($i=0;$i -lt $Expected.Count;$i++){Owner-Pin $Actual[$i];Require (Same-Fact $Actual[$i] $Expected[$i]) 'Exact ordered scope/instruction/policy subject'}
+}
+function Owner-Witness([object]$Value,[string]$Kind,[string]$RootThread,[long]$ScopeCreated) {
+    Require-Keys $Value $script:OwnerWitnessKeys9
+    Owner-Exact $Value.schema_version 2;Owner-Exact $Value.record_type ('Root_retained_owner_'+$Kind+'_witness_v2')
+    Owner-Exact $Value.author '/root';Owner-Exact $Value.Root_thread $RootThread
+    Owner-Exact $Value.attribution 'DIRECT_USER_MESSAGE_RETAINED_BY_ROOT'
+    Owner-Text $Value.human_message_reference 4096;Owner-Text $Value.exact_text 65536 $true
+    $observed=Owner-Ticks $Value.human_message_observed_utc;$created=Owner-Ticks $Value.created_utc
+    Require ($observed -le $created -and $created -le $ScopeCreated) 'Actual retained witness chronology; human origin remains external Root obligation'
+}
+function Validate-OwnerSupportPure([object]$Support,[object]$ExpectedRootThread,[object]$SourceEditor,[object]$NowUtc) {
+    Require-Keys $Support $script:OwnerSupportKeys3
+    Owner-Text $ExpectedRootThread 512;Owner-Actor $SourceEditor
+    $now=Owner-Ticks $NowUtc
+    $held=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $scopePin=$Support.current_owner_scope;$reviewPin=$Support.different_current_owner_scope_Source_review;$adoptionPin=$Support.current_owner_scope_Root_adoption
+    foreach($p in @($scopePin,$reviewPin,$adoptionPin)){Owner-Pin $p}
+    $scope=Owner-Record $scopePin $held;Require-Keys $scope $script:OwnerScopeKeys28
+    foreach($name in $script:OwnerScopeFixed.Keys){Owner-Exact $scope.$name $script:OwnerScopeFixed[$name]}
+    Owner-Exact $scope.Root_thread $ExpectedRootThread
+    $created=Owner-Ticks $scope.created_utc;$start=Owner-Ticks $scope.interval_start;$end=Owner-Ticks $scope.interval_end
+    Require ($start -le $created -and $created -le $now -and $end-$now -gt 600000000) 'Finite current owner scope with strictly more than Source60'
+    $instructionPin=$scope.owner_instruction_record;$policyPin=$scope.owner_policy_record
+    Owner-Pin $instructionPin;Owner-Pin $policyPin
+    $instruction=Owner-Record $instructionPin $held;$policy=Owner-Record $policyPin $held
+    Owner-Witness $instruction 'instruction' $ExpectedRootThread $created;Owner-Witness $policy 'resource_policy' $ExpectedRootThread $created
+    $subjects=@($scopePin,$instructionPin,$policyPin)
+    $review=Owner-Record $reviewPin $held;Require-Keys $review $script:ReviewKeys13
+    Owner-Exact $review.schema_version 2;Owner-Exact $review.record_type 'independent_Root_owner_v2_metadata_scope_Source_review'
+    Owner-Exact $review.source_author '/root';Owner-Exact $review.verdict 'PASS_ROOT_OWNER_V2_METADATA_SCOPE_SOURCE_ONLY'
+    Integer $review.checks_failed 0 0
+    foreach($flag in @('target_execution','operational_authority','native_Parser_executed')){Owner-Exact $review.$flag $false}
+    Owner-Actor $review.reviewer
+    Require ($review.reviewer -cne $SourceEditor -and -not $review.reviewer.StartsWith($SourceEditor+'/',[StringComparison]::Ordinal)) 'Genuinely different owner reviewer excludes actual editor and subtree, Root exactly'
+    Owner-Subjects $review.subjects $subjects;Owner-Pin $review.scope;Require (Same-Fact $review.scope $scopePin) 'Scope review exact pin'
+    $reviewed=Owner-Ticks $review.created_utc;$fullPin=$review.full_proof;Owner-Pin $fullPin
+    $full=Owner-Record $fullPin $held;Require-Keys $full $script:OwnerFullProofKeys15
+    Owner-Exact $full.schema_version 2;Owner-Exact $full.record_type 'independent_Root_owner_v2_metadata_scope_full_Source_proof'
+    Owner-Exact $full.reviewer $review.reviewer;Owner-Exact $full.source_author '/root';Owner-Exact $full.verdict $review.verdict
+    Owner-Exact $full.owner_provenance_boundary 'ROOT_RETAINED_WITNESSES_REQUIRE_CALLER_PROVENANCE_VERIFICATION'
+    Integer $full.checks_failed 0 0
+    foreach($flag in @('target_execution','operational_authority','native_Parser_executed')){Owner-Exact $full.$flag $false}
+    Owner-Subjects $full.subjects $subjects;Owner-Pin $full.scope;Require (Same-Fact $full.scope $scopePin) 'Full proof exact scope'
+    Require ($full.checks -is [Array]) 'Actual named owner Source check array';Integer $full.checks.Count 4 10000
+    $names=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach($row in $full.checks){Require-Keys $row @('name','passed');Owner-Text $row.name 4096;Owner-Exact $row.passed $true;Require ($names.Add([string]$row.name)) 'Unique actual fullproof check name'}
+    foreach($required in @('owner_scope_whole_bytes_and_closed28','instruction_retained_witness_binding_and_provenance','policy_retained_witness_binding_and_provenance','scope_resource_time_and_authority_bounds')){Require ($names.Contains($required)) 'Required owner context Source predicate covered'}
+    Require ($full.subject_reviews -is [Array] -and $full.subject_reviews.Count -eq 3) 'Exact three whole-subject coverage rows'
+    $kinds=@('OWNER_SCOPE','RETAINED_INSTRUCTION','RETAINED_POLICY')
+    for($i=0;$i -lt 3;$i++){
+        $row=$full.subject_reviews[$i];Require-Keys $row @('subject','subject_kind','whole_bytes_reviewed','provenance_reviewed')
+        Owner-Pin $row.subject;Require (Same-Fact $row.subject $subjects[$i]) 'Whole-source proof ordered subject coverage'
+        Owner-Exact $row.subject_kind $kinds[$i];Owner-Exact $row.whole_bytes_reviewed $true;Owner-Exact $row.provenance_reviewed $true
+    }
+    $proofCreated=Owner-Ticks $full.created_utc
+    $adoption=Owner-Record $adoptionPin $held;Require-Keys $adoption $script:AdoptionKeys9
+    Owner-Exact $adoption.schema_version 2;Owner-Exact $adoption.record_type 'Root_owner_v2_metadata_scope_Source_review_adoption'
+    Owner-Exact $adoption.author '/root';Owner-Exact $adoption.verdict 'ACCEPT_ROOT_OWNER_V2_METADATA_SCOPE_SOURCE_ONLY'
+    Owner-Exact $adoption.target_execution $false;Owner-Exact $adoption.operational_authority $false
+    Owner-Subjects $adoption.subjects $subjects;Owner-Pin $adoption.different_review;Require (Same-Fact $adoption.different_review $reviewPin) 'Actual owner adoption binds real different review'
+    $adopted=Owner-Ticks $adoption.created_utc
+    Require ($created -le $proofCreated -and $proofCreated -le $reviewed -and $reviewed -le $adopted -and $adopted -le $now) 'Owner scope/fullproof/review/Rootadoption/current-clock exact chronology'
+    return [ordered]@{root_thread=$ExpectedRootThread;scope_pin=$scopePin;review_pin=$reviewPin;adoption_pin=$adoptionPin;instruction_pin=$instructionPin;policy_pin=$policyPin;full_proof_pin=$fullPin;created_ticks=$created;interval_start_ticks=$start;interval_end_ticks=$end;validated_now_ticks=$now;metadata_only=$true;operational_authority=$false;scientific_authority=$false;Parser_requires_separate_purpose_admission=$true;human_origin_authenticated_by_this_pure_validator=$false}
+}
+function Validate-CurrentOwnerSupport([object]$Facts,[object]$Gate) {
+    Require ($script:CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED -is [bool] -and $script:CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED) 'Source-held Parser bindings require actual reviewed successor, never a flag-only qualification'
+    [void](Read-Fact $script:I0SourcePin);[void](Read-Fact $script:I0APIPin)
+    $support=[pscustomobject]@{current_owner_scope=$Facts.Source_preparation;different_current_owner_scope_Source_review=$Facts.Source_preparation_review;current_owner_scope_Root_adoption=$Facts.Source_preparation_Root_adoption}
+    $context=Validate-OwnerSupportPure $support $script:RootThread $script:ActualSourceEditor (Native-Now)
+    Require ((Same-Fact $context.scope_pin $Facts.Source_preparation) -and $Gate.Root_thread -ceq $script:RootThread) 'Current actual Root context; no old95 implicit cast and no peer grant'
+    return $context
+}
+'''
+
+# No target is born by this preparation file until actual protocol adoption is supplied below.
+AUTHORITY_PS=r'''
+function Decode-OwnerObject([byte[]]$Bytes) {
+    Require ($Bytes.Length -gt 0 -and $Bytes.Length -le 2097152) 'Bounded complete owner JSON bytes'
+    $at=0
+    while($at -lt $Bytes.Length -and $Bytes[$at] -in @(9,10,13,32)){$at++}
+    Require ($at -lt $Bytes.Length -and $Bytes[$at] -eq 123) 'Raw JSON root object required before protected pipeline decoder; no singleton-array unwrapping'
+    $value=Decode-Strict $Bytes
+    Require ($null -ne $value -and $value -is [pscustomobject]) 'Decoded strict owner root object'
+    return $value
+}
+function Read-OwnerObjectFact([object]$Pin,[long]$PreferredCap=2097152) {
+    return Decode-OwnerObject (Read-ContextPin $Pin $PreferredCap)
+}
+function Require-QualifiedParserInterfaces() {
+    throw 'UNWIRED: accepted I3 Native8 support carrier, I5 canonical SourceProof6/publication ABI, saved v2 Parser result adapter and actual fresh Root pre-launch resource evidence require a separately reviewed enforcing binding successor. Editing the False flag alone cannot qualify this Source.'
+}
+function Read-ContextPin([object]$Pin,[long]$PreferredCap=2097152,[bool]$Image=$false) {
+    Owner-Pin $Pin
+    if($script:Inputs.ContainsKey([string]$Pin.path)){
+        $held=$script:Inputs[[string]$Pin.path]
+        return ,(Read-Fact $Pin ([long]$held.cap) ([bool]$held.image))
+    }
+    return ,(Read-Fact $Pin $PreferredCap $Image)
+}
+function Validate-ImplementationAPI([object]$Facts) {
+    $codeReview=Read-OwnerObjectFact $Facts.implementation_Source_review
+    $matches=@($codeReview.subjects|Where-Object{$_.path -is [string] -and $_.path -ceq $script:CurrentAPIPath})
+    Require ($matches.Count -eq 1) 'One exact known current API path among genuinely reviewed implementation subjects; no arbitrary carrier traversal'
+    $apiPin=$matches[0];Owner-Pin $apiPin
+    $api=Decode-OwnerObject (Read-ContextPin $apiPin)
+    Integer $api.schema_version 2 2
+    Require ($api.record_type -ceq 'Root_owner_v2_native_Parser_parent_child_inert_API' -and $api.author -ceq $script:ActualSourceEditor -and (Same-Fact $api.parent_Source $Facts.native_parent) -and (Same-Fact $api.child_Source $Facts.parser_child)) 'Acyclic actual API to exact parent/child Source crossjoins'
+    Require ((Same-Fact $api.fixed_I0_Source $script:I0SourcePin) -and (Same-Fact $api.fixed_I0_API $script:I0APIPin)) 'Actual accepted I0 Source/API provenance, pure PS port never imports Python'
+    return $apiPin
+}
+function Different-Review([object]$Pin,[object[]]$Subjects,[string]$PhysicalAuthor) {
+    $r=Read-OwnerObjectFact $Pin;Require-Keys $r $script:ReviewKeys13;Integer $r.schema_version 1 1
+    Require ($r.record_type -ceq 'different_native_Parser_only_Source_review' -and $r.scope -ceq $script:ExactScope) 'Exact retained compatible Source13 schema1 scope, never v2 authority by itself'
+    Owner-Actor $r.reviewer
+    Require ($r.reviewer -cne '/root' -and $r.reviewer -cne $PhysicalAuthor -and -not ($PhysicalAuthor -cne '/root' -and $r.reviewer.StartsWith($PhysicalAuthor+'/',[StringComparison]::Ordinal)) -and $r.reviewer -cne $script:ActualSourceEditor -and -not $r.reviewer.StartsWith($script:ActualSourceEditor+'/',[StringComparison]::Ordinal)) 'Actual genuinely different reviewer; Root excluded exactly, actual nonRoot editor and subtrees excluded'
+    Require ($r.verdict -is [string] -and $r.verdict.StartsWith('PASS_',[StringComparison]::Ordinal) -and $r.verdict.ToUpperInvariant().Contains('SOURCE')) 'Positive Source verdict retains PASS and SOURCE markers'
+    foreach($flag in @('target_execution','operational_authority','native_Parser_executed')){Owner-Exact $r.$flag $false}
+    Integer $r.checks_failed 0 0
+    Require ($r.source_author -is [string] -and $r.source_author -ceq $PhysicalAuthor -and (Moment $r.created_utc) -le [DateTimeOffset]::UtcNow) 'Exact covered collection author and actual review chronology'
+    foreach($subject in $Subjects){Owner-Pin $subject;Require (Covers-Fact $r $subject) 'Actual Source13 covers every exact subject pin'}
+    $full=Read-OwnerObjectFact $r.full_proof
+    Require ($full.reviewer -ceq $r.reviewer -and $full.source_author -ceq $r.source_author -and $full.verdict -ceq $r.verdict -and $full.scope -ceq $script:ExactScope) 'Actual bounded full Source proof joins genuine capsule and scope'
+    Integer $full.checks_failed 0 0
+    foreach($flag in @('target_execution','operational_authority','native_Parser_executed')){Owner-Exact $full.$flag $false}
+    Require ($full.checks -is [Array]) 'Actual finite named full Source check array';Integer $full.checks.Count 1 10000
+    $checkNames=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach($check in $full.checks){Owner-Text $check.name 4096;Owner-Exact $check.passed $true;Require ($checkNames.Add([string]$check.name)) 'Every actual full Source check unique and passed'}
+    foreach($subject in $Subjects){Require (Covers-Fact $full $subject) 'Actual full proof covers every exact Source input';if($script:Inputs.ContainsKey([string]$subject.path)){Require ((Moment $r.created_utc).UtcDateTime.Ticks -ge $script:Inputs[[string]$subject.path].path9[2]) 'Actual already observed Source birth precedes different review'}}
+    Require ((Moment $full.created_utc) -le (Moment $r.created_utc)) 'Actual full Source proof precedes capsule, no recast or fabricated measurements'
+    return $r
+}
+function Root-Adoption([object]$Pin,[object]$ReviewPin,[object[]]$Subjects) {
+    $r=Read-OwnerObjectFact $Pin;Require-Keys $r $script:AdoptionKeys9;Integer $r.schema_version 1 1
+    Require ($r.record_type -ceq 'Root_native_Parser_only_different_Source_review_adoption' -and $r.author -ceq '/root' -and $r.verdict -ceq 'ACCEPT_NATIVE_PARSER_ONLY_DIFFERENT_SOURCE_REVIEW' -and (Same-Fact $r.different_review $ReviewPin)) 'Actual compatible schema1 Root9 exact Source acceptance'
+    Owner-Exact $r.target_execution $false;Owner-Exact $r.operational_authority $false
+    foreach($subject in $Subjects){Require (Covers-Fact $r $subject) 'Separate Root9 covers each exact subject'}
+    $review=Decode-OwnerObject $script:Inputs[[string]$ReviewPin.path].bytes
+    Require ((Moment $review.created_utc) -le (Moment $r.created_utc) -and (Moment $r.created_utc) -le [DateTimeOffset]::UtcNow) 'Actual Source review then Root acceptance'
+}
+function Parser-PurposeInputs([object]$Admission,[object]$AdmissionPin,[object]$Facts) {
+    $excluded=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach($p in @($AdmissionPin,$Admission.owner_acceptance_Source_review,$Admission.owner_acceptance_Root_adoption)){[void]$excluded.Add([string]$p.path)}
+    [void]$excluded.Add([string]$Facts.outputs.parent_INTENT)
+    if($script:Inputs.ContainsKey([string]$Admission.owner_acceptance_Source_review.path)){
+        $r=Decode-OwnerObject $script:Inputs[[string]$Admission.owner_acceptance_Source_review.path].bytes
+        Owner-Pin $r.full_proof;[void]$excluded.Add([string]$r.full_proof.path)
+    }
+    $paths=[Collections.Generic.List[string]]::new()
+    foreach($path in $script:InputOrder){if(-not $excluded.Contains([string]$path)){$paths.Add([string]$path)}}
+    $paths.Sort([StringComparer]::Ordinal)
+    $subjects=[Collections.Generic.List[object]]::new()
+    foreach($path in $paths){$subjects.Add($script:Inputs[$path].fact)}
+    return ,$subjects.ToArray()
+}
+'''
+
+API_PATH=D/'CURRENT_OWNER_NATIVE_PARSER_PARENT_CHILD_INERT_API_001.json'
+TARGETS=[D/'Invoke-CurrentCohortNativeParserOnlyParent_CurrentOwner_001.ps1',D/'Measure-CurrentCohortNativeParserOnlyChild_CurrentOwner_001.ps1']
+ADOPTION=exact(P/'ROOT_I4_STATIC_PROTOCOL_AND_BINDING_CLARIFICATION_SOURCE_REVIEW_ADOPTION_001.json',4069,'87e7f6ef224c282e88802e1ddde92366ceb77a58108d7b92e72bafa032e1ac5f')
+ADDENDUM=pin(P/'ROOT_I4_COMPATIBLE_PROOF13_ROOT9_AND_PREREQUISITE_SOURCE_BINDING_ADDENDUM_001.json')
+ENUM=exact(P/'ROOT_I4_EXACT_OWNER_DIRECT_ADMISSION_DECISION_ENUM_SOURCE_CLARIFICATION_001.json',940,'ea5a6a2cd45788acd544323d66106c7fcaf2efeaf4ae14163233aeb8d350bd8f')
+assert read(Path(ADOPTION['path']))['author']=='/root'
+assert read(Path(ENUM['path']))['required_exact_value']=='ADMIT_REVIEWED_FOUR_CURRENT_COHORT_PARSEFILE_ONLY_OWNER_DIRECT'
+I1=read(Path(protocol['fixed_I1_API']['path']))
+I1_SOURCE=I1['tool_source']
+assert pin(Path(I1_SOURCE['path']))==I1_SOURCE
+I1_ROOT=str(Path(I1_SOURCE['path']).parent)
+scope_fixed=dict(I0['owner_scope28_contract']['fixed_booleans'],**I0['owner_scope28_contract']['fixed_integers'])
+scope_fixed.update(schema_version=2,record_type='Root_owner_v2_native_metadata_Source_preparation_scope',author='/root',operation_scope='EXACT8_NATIVE_SOURCE_METADATA_AND_SEPARATELY_ADMITTED_PARSER4_ONLY',scope_stage='SEPARATELY_GRANTED_METADATA_PREPARATION',read_only_native_metadata_authority=True)
+CONSTANTS='\n# Current owner-v2 context; historical Source024 constants below are provenance only.\n'
+for name,value in dict(ActualSourceEditor=AUTHOR,CurrentAPIPath=str(API_PATH),CurrentProtocolPin=PROTOCOL,I0SourcePin=protocol['fixed_I0_Source'],I0APIPin=protocol['fixed_I0_API'],I1APIPin=protocol['fixed_I1_API'],OwnerSupportKeys3=I0['schema_fields']['support3'],OwnerScopeKeys28=I0['schema_fields']['owner_scope28_v2'],OwnerWitnessKeys9=I0['schema_fields']['retained_witness9_v2'],OwnerFullProofKeys15=I0['schema_fields']['full_Source_proof15_v2']).items():
+ CONSTANTS+='$script:'+name+' = '+ps(value)+'\n'
+CONSTANTS+='$script:OwnerScopeFixed = [ordered]@{'+(';'.join(str(k)+'='+ps(v) for k,v in scope_fixed.items()))+'}\n'
+CONSTANTS+='$script:OwnerAdmissionDecision = '+ps(read(Path(ENUM['path']))['required_exact_value'])+'\n'
+
+def replace_once(source,old,new):
+ assert source.count(old)==1,(old[:160],source.count(old))
+ return source.replace(old,new,1)
+def replace_schema(source,var,schema):
+ return re.sub(r'(?m)^\$script:'+re.escape(var)+r' = [^\r\n]+',lambda m:'$script:'+var+' = '+ps(schemas[schema]['keys']),source,count=1)
+
+def dedicated_lease(which):
+ s=original_functions[which]['Validate-DedicatedLeasePublication'][2]
+ for field in ('decision','publication','candidateReceipt','producerFact'):
+  s=s.replace('Integer $'+field+'.schema_version 1 1','Integer $'+field+'.schema_version 2 2')
+ mapping={'Root_separate_Source024_prospective_closed12_lease_issuance_decision':'Root_owner_v2_prospective_lease_issuance_decision','Root_actual_Source024_exact_reviewed_closed12_lease_Source_publication':'Root_owner_v2_prospective_lease_original_publication','Root_actual_Source024_prospective_closed12_lease_candidate_receipt':'Root_owner_v2_prospective_lease_candidate_author_receipt','Root_deferred_Source024_prospective_lease_metadata_facts':'Root_owner_v2_prospective_lease_metadata_facts','ROOT_SOURCE024_PROSPECTIVE_LEASE_CANONICAL_PUBLICATION_RECEIPT_001.json':'ROOT_CURRENT_OWNER_PROSPECTIVE_LEASE_CANONICAL_PUBLICATION_RECEIPT_003.json','ROOT_SOURCE024_PROSPECTIVE_LEASE_CANDIDATE_RECEIPT_001.json':'ROOT_CURRENT_OWNER_PROSPECTIVE_LEASE_CANDIDATE_RECEIPT_003.json','ROOT_SOURCE024_PROSPECTIVE_LEASE_AUTHOR_FACTS_001.json':'ROOT_CURRENT_OWNER_PROSPECTIVE_LEASE_AUTHOR_FACTS_001.json','ROOT_SOURCE024_PROSPECTIVE_LEASE_PUBLICATION_FACTS_001.json':'ROOT_CURRENT_OWNER_PROSPECTIVE_LEASE_PUBLICATION_FACTS_001.json'}
+ for before,after in mapping.items():s=s.replace(before,after)
+ s=s.replace('.Source024_support.gate','.current_owner_support.current_owner_scope').replace('.Source024','.current_owner_scope')
+ s=s.replace(".metadata_tool_Source_author -ceq '/root/runtime_audit'",".metadata_tool_Source_author -ceq '/root/phase_frontier'")
+ needle="        [void](Read-Fact $producerFact.tool_source);[void](Read-Fact $producerFact.tool_review);[void](Read-Fact $producerFact.tool_Root_adoption)"
+ extra="""        Require-Keys $producerFact.current_owner_support $script:OwnerSupportKeys3
+        Require ((Same-Fact $producerFact.current_owner_support.different_current_owner_scope_Source_review $Facts.Source_preparation_review) -and (Same-Fact $producerFact.current_owner_support.current_owner_scope_Root_adoption $Facts.Source_preparation_Root_adoption)) 'Strict actual I1 support3 joins current owner review and Root adoption'
+        [void](Read-ContextPin $script:I1APIPin)
+        [void](Lease-CandidateSourceReview $producerFact.tool_review @($producerFact.tool_source,$script:I1APIPin))
+        [void](Lease-CandidateRootAdoption $producerFact.tool_Root_adoption $producerFact.tool_review $producerFact.tool_source)
+"""
+ s=replace_once(s,needle,needle+'\n'+extra)
+ s=s.replace('Read-JsonFact','Read-OwnerObjectFact').replace('Decode-Strict','Decode-OwnerObject')
+ return s
+
+def candidate_review(which):
+ s=original_functions[which]['Lease-CandidateSourceReview'][2]
+ s=s.replace("$review.reviewer -cin @('/root/runtime_audit','/root/m3_source_editor','/root/owner_docs_review','/root/actual_record_checker','/root/pipeline_source_editor')","$review.reviewer -cmatch '\\A/root(?:/[A-Za-z0-9_-]+)+\\z'")
+ s=s.replace("$review.reviewer -cne '/root/runtime_audit'","$review.reviewer -cne '/root/phase_frontier' -and -not $review.reviewer.StartsWith('/root/phase_frontier/',[StringComparison]::Ordinal) -and $review.reviewer -cne '/root/runtime_audit'")
+ s=s.replace("$review.verdict.StartsWith('PASS_',[StringComparison]::Ordinal)","$review.verdict.StartsWith('PASS_',[StringComparison]::Ordinal) -and $review.verdict.ToUpperInvariant().Contains('SOURCE')")
+ needle='    [void](Read-Fact $review.full_proof)'
+ extra="""    $full=Read-JsonFact $review.full_proof
+    Require ($full.reviewer -ceq $review.reviewer -and $full.verdict -ceq $review.verdict) 'Actual dedicated candidate fullproof reviewer/verdict joins'
+    Integer $full.checks_failed 0 0;Owner-Exact $full.target_execution $false;Owner-Exact $full.operational_authority $false
+    Require ($full.checks -is [Array]) 'Actual finite dedicated producer Source checks';Integer $full.checks.Count 1 10000
+    foreach($check in $full.checks){Owner-Text $check.name 4096;Owner-Exact $check.passed $true}
+    foreach($subject in $Subjects){Require (Contains-LeaseProducerFact $full $subject) 'Dedicated fullproof covers exact producer subject'}
+    Require ((Moment $full.created_utc) -le (Moment $review.created_utc)) 'Actual fullproof precedes dedicated producer capsule'
+"""
+ s=replace_once(s,needle,extra.rstrip())
+ return s.replace('Read-JsonFact','Read-OwnerObjectFact')
+
+def admission(which):
+ s=original_functions[which]['Validate-Admission'][2]
+ first=s.index('\n')+1
+ s=s[:first]+"    Require ($script:CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED -is [bool] -and $script:CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED) 'Current owner dependency binding Source hold'\n    Require-QualifiedParserInterfaces\n    $Facts=Decode-OwnerObject $script:Inputs[[string]$FactsPin.path].bytes\n    $Admission=Decode-OwnerObject $script:Inputs[[string]$AdmissionPin.path].bytes\n"+s[first:]
+ for v in ('Facts','Admission','request','response','pathSelection','sourceAuthorReceipt'):
+  s=s.replace('Integer $'+v+'.schema_version 1 1','Integer $'+v+'.schema_version 2 2').replace('$'+v+'.schema_version -eq 1','$'+v+'.schema_version -eq 2')
+ for old,new in {'Root_four_BOUND018_native_Parser_only_actual_facts':schemas['Parser_facts27_v2']['new_record_type'],'Root_four_BOUND018_native_Parser_only_execution_admission':schemas['Parser_admission30_v2']['new_record_type'],'ADMIT_REVIEWED_FOUR_BOUND018_NATIVE_PARSEFILE_ONLY':'ADMIT_REVIEWED_FOUR_CURRENT_COHORT_PARSEFILE_ONLY_OWNER_DIRECT','Root_exact_four_BOUND018_native_Parser_only_purpose_request':schemas['Parser_request32_v2']['new_record_type'],'Pro3_genuine_four_BOUND018_native_Parser_only_response':schemas['Parser_owner_acceptance16_v2']['new_record_type'],'ACCEPT_EXACT_FOUR_BOUND018_NATIVE_PARSEFILE_ONLY':'ACCEPT_EXACT_PARSER_ONLY_PURPOSE_OWNER_DIRECT','Root_Source024_actual_separate_future45_Source_path_selection':schemas['selected45_decision13_v2']['new_record_type'],'Source024_actual_deferred_M3_Source_draft_author_receipt':'Root_owner_v2_actual_deferred_M3_Source_draft_author_receipt'}.items():s=s.replace(old,new)
+ for old,new in schemas['Parser_admission30_v2']['explicit_field_renames'].items():s=s.replace('$Admission.'+old,'$Admission.'+new)
+ s=s.replace('$request.peer_thread','$request.authority_mode').replace('$response.author_thread','$response.author').replace('$response.peer_thread','$response.authority_mode')
+ # Replace the historical roster-bound context block with typed owner28; old source constants remain inert provenance.
+ start=s.index('    foreach($field in $script:FixedHistoricalSupport.Keys)')
+ end=s.index('    foreach($pin in @($Facts.Source_preparation_review',start)
+ new="""    $gate=Read-JsonFact $Facts.Source_preparation
+    Require (Same-Fact $Admission.Source_preparation $Facts.Source_preparation) 'Actual admission binds exact new owner scope pin'
+    $ownerContext=Validate-CurrentOwnerSupport $Facts $gate
+    Owner-Exact $Admission.Root_thread $script:RootThread;Owner-Exact $Admission.authority_mode 'OWNER_DIRECT'
+"""
+ s=s[:start]+new+s[end:]
+ # API pin is selected only from the one reviewed exact known path, not a new facts/argv field.
+ s=replace_once(s,"    $implementationSubjects=@($Facts.native_parent,$Facts.parser_child)","    $apiPin=Validate-ImplementationAPI $Facts\n    $implementationSubjects=@($Facts.native_parent,$Facts.parser_child,$apiPin,$script:I0SourcePin,$script:I0APIPin)")
+ s=s.replace("Different-Review $Facts.implementation_Source_review $implementationSubjects '/root/owner_docs_review'","Different-Review $Facts.implementation_Source_review $implementationSubjects $script:ActualSourceEditor")
+ start=s.index('    $currentDesign=Read-JsonFact $Facts.prerequisite_design')
+ end=s.index('    [void](Different-Review $Facts.Root_future_path_review',start)
+ new="""    Require (Same-Fact $Facts.prerequisite_design $script:CurrentProtocolPin) 'Exact reviewed static current I4 protocol Source, never old Source024 design cast'
+    $currentDesign=Read-JsonFact $Facts.prerequisite_design;Integer $currentDesign.schema_version 1 1
+    Require ($currentDesign.record_type -ceq 'Root_I4_exact_owner_direct_Parser_Source_protocol_not_grant' -and $currentDesign.author -ceq '/root' -and $currentDesign.authority.mode -ceq 'OWNER_DIRECT' -and $currentDesign.authority.trusted_Root_thread_Source_literal -ceq $script:RootThread -and $null -eq $currentDesign.actual_future_decisions) 'Exact static protocol authority specification and actual Root literal, not a future owner scope or grant'
+    Owner-Exact $currentDesign.target_execution $false;Owner-Exact $currentDesign.operational_authority $false;Owner-Exact $currentDesign.scientific_authority $false;Owner-Exact $currentDesign.all_specification_cells_are_not_issued_grants $true
+"""
+ s=s[:start]+new+s[end:]
+ s=s.replace('$pathSelection.Source024','$pathSelection.current_owner_scope')
+ # Acceptance16 author/mode joins are explicit Owner Direct, never an invented peer response.
+ s=s.replace("$response.author -ceq $Admission.authority_mode -and $response.authority_mode -ceq $Admission.Root_thread","$response.author -ceq '/root' -and $response.authority_mode -ceq 'OWNER_DIRECT'")
+ s=replace_once(s,"    Integer $request.schema_version 2 2;Integer $response.schema_version 2 2","    Integer $request.schema_version 2 2;Integer $response.schema_version 2 2\n    Owner-Exact $request.Root_thread $script:RootThread;Owner-Exact $request.authority_mode 'OWNER_DIRECT';Owner-Exact $response.Root_thread $script:RootThread;Owner-Exact $response.authority_mode 'OWNER_DIRECT'")
+ # The proof is checked after all known metadata preflight, for complete acyclic input coverage.
+ marker="    [void](Different-Review $Admission.owner_acceptance_Source_review @($Admission.request,$Admission.owner_purpose_acceptance,$Admission.retained_owner_acceptance_copy) '/root');Root-Adoption $Admission.owner_acceptance_Root_adoption $Admission.owner_acceptance_Source_review @($Admission.request,$Admission.owner_purpose_acceptance,$Admission.retained_owner_acceptance_copy)"
+ s=replace_once(s,marker,'')
+ s=s.replace("'Source024','actual_Source_packet'","'current_owner_scope','actual_Source_packet'").replace('$sourceAuthorReceipt.Source024','$sourceAuthorReceipt.current_owner_scope')
+ s=s.replace("$sourceAuthorReceipt.author -ceq '/root/m3_source_editor'","$sourceAuthorReceipt.author -ceq '/root'")
+ s=s.replace('Integer $chosen[0].selected_ordinal 1 ([long]::MaxValue)','Integer $chosen[0].selected_ordinal 19 ([long]::MaxValue)').replace('Integer $chosenTemplate[0].selected_ordinal 1 ([long]::MaxValue)','Integer $chosenTemplate[0].selected_ordinal 19 ([long]::MaxValue)')
+ s=s.replace("$sourceReceiptRole.preparation_Source_author -ceq '/root/m3_source_editor'","$sourceReceiptRole.preparation_Source_author -ceq $sourceAuthorReceipt.steps.metadata_Source_provenance.actual_implementation_Source_editor")
+ s=s.replace("$phaseSourceReview.reviewer -cne '/root/m3_source_editor' -and -not $phaseSourceReview.reviewer.StartsWith('/root/m3_source_editor/',[StringComparison]::Ordinal)","$phaseSourceReview.reviewer -cne $actualMetadataSourceEditor -and -not $phaseSourceReview.reviewer.StartsWith($actualMetadataSourceEditor+'/',[StringComparison]::Ordinal)")
+ s=replace_once(s,"            Require ((Moment $sourceAuthorReceipt.created_utc) -le (Moment $proof.actual_Source_birth_utc))", "            $actualMetadataSourceEditor=Validate-KnownM3ReceiptProvenance $sourceAuthorReceipt $sourceReceiptRole $proof.subject $Facts\n            Require ((Moment $sourceAuthorReceipt.created_utc) -le (Moment $proof.actual_Source_birth_utc))")
+ before='    $script:LiveGate=$gate;$script:LiveAdmission=$Admission'
+ proof="""    $purposeSubjects=Parser-PurposeInputs $Admission $AdmissionPin $Facts
+    $ownerAcceptanceReview=Different-Review $Admission.owner_acceptance_Source_review $purposeSubjects '/root'
+    Root-Adoption $Admission.owner_acceptance_Root_adoption $Admission.owner_acceptance_Source_review $purposeSubjects
+    $ownerAcceptanceAdoption=Decode-Strict $script:Inputs[[string]$Admission.owner_acceptance_Root_adoption.path].bytes
+    Require ((Moment $response.created_utc) -le (Moment $ownerAcceptanceReview.created_utc) -and (Moment $ownerAcceptanceAdoption.created_utc) -le (Moment $Admission.created_utc)) 'Real owner acceptance then different full-input Source proof then Root adoption precede actual admission'
+    $purposeSubjectsAfter=Parser-PurposeInputs $Admission $AdmissionPin $Facts
+    Require ((Sha-Bytes (Json-Bytes $purposeSubjects)) -ceq (Sha-Bytes (Json-Bytes $purposeSubjectsAfter))) 'Complete known bootstrap metadata closure, ownproof/admission excluded; later unknown I3/I5 binding stays unwired'
+"""
+ s=replace_once(s,before,proof+before)
+ s=s.replace('Read-JsonFact','Read-OwnerObjectFact').replace('Decode-Strict','Decode-OwnerObject')
+ s=s.replace('metadata worker M3 and physical editor Root remain distinct','Root physical serializer and real helper implementation editor remain distinct').replace('Actual Root13 metadata worker, exact role','Actual Root13 preparation editor, exact role').replace('Retain metadata worker M3 and subtree reviewer exclusions','Retain actual helper Source editor and subtree reviewer exclusions')
+ return s
+
+M3_PS=r'''
+function Validate-KnownM3ReceiptProvenance([object]$Receipt,[object]$SelectedRow,[object]$Canonical,[object]$Facts) {
+    Require ($script:CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED -is [bool] -and $script:CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED) 'Known M3 schema predicates remain behind held I5/native-support binding'
+    Require-Keys $Receipt $script:M3ReceiptKeys22;Integer $Receipt.schema_version 2 2
+    Require ($Receipt.record_type -ceq 'Root_owner_v2_actual_deferred_M3_Source_draft_author_receipt' -and $Receipt.author -ceq '/root' -and $Receipt.actual_physical_Source_editor -ceq '/root') 'Known22 Root physical serializer, distinct actual helper Source editor and semantic author'
+    $sourceFacts=Decode-OwnerObject (Read-ContextPin $Receipt.actual_Source_packet)
+    Require-Keys $sourceFacts $script:M3FactsKeys21;Integer $sourceFacts.schema_version 2 2
+    Require ($sourceFacts.record_type -ceq 'Root_owner_v2_exact_M3_Source_stage_purpose_and_facts' -and $sourceFacts.author -ceq '/root' -and $sourceFacts.Root_thread -ceq $script:RootThread -and (Same-Fact $sourceFacts.current_owner_scope $Facts.Source_preparation)) 'Actual known M3 facts21 Root/current owner context'
+    Owner-Exact $sourceFacts.source_only $true
+    foreach($flag in @('target_execution','operational_authority','canonical_publication','native_Parser_authority')){Owner-Exact $sourceFacts.$flag $false}
+    Require-Keys $sourceFacts.lease_support @('canonical','separate_Root_decision','different_review','Root_adoption','original_publication')
+    Require-Keys $sourceFacts.selection_support @('selection','different_review','Root_adoption')
+    Require ((Same-Fact $sourceFacts.lease_support.canonical $Facts.canonical_lease) -and (Same-Fact $sourceFacts.selection_support.selection $Facts.Root_future_path_selection)) 'Known M3 facts exact real lease/selection, not historical context'
+    Require-Keys $sourceFacts.tool_support @('Source','API','different_review','Root_adoption')
+    Require-Keys $Receipt.steps @('complete_inverse','actual_diff_removed_byte_basis','actual_check_codec','metadata_Source_provenance')
+    $provenance=$Receipt.steps.metadata_Source_provenance
+    Require-Keys $provenance @('Source','API','actual_implementation_Source_editor','historical_implementation_Source_editor','stage_purpose','resource_observation')
+    Owner-Actor $provenance.actual_implementation_Source_editor
+    Require ($provenance.historical_implementation_Source_editor -ceq '/root/pipeline_source_editor' -and $SelectedRow.preparation_Source_author -ceq $provenance.actual_implementation_Source_editor -and (Same-Fact $provenance.Source $sourceFacts.tool_support.Source) -and (Same-Fact $provenance.API $sourceFacts.tool_support.API)) 'Actual selected preparation author and real helper Source/API/editor, historical nominal separate'
+    Require (-not (Same-Fact $provenance.Source $script:HeldI2SourcePin) -and -not (Same-Fact $provenance.API $script:HeldI2APIPin)) 'Held I2Source002/API cannot be actual eight-Source generator'
+    [void](Read-ContextPin $provenance.Source)
+    $helperAPI=Decode-OwnerObject (Read-ContextPin $provenance.API);Integer $helperAPI.schema_version 2 2
+    Require ($helperAPI.record_type -ceq 'Root_owner_v2_M3_deferred_metadata_inert_API' -and $helperAPI.author -ceq $provenance.actual_implementation_Source_editor -and $helperAPI.actual_binding_Source_editor -ceq $provenance.actual_implementation_Source_editor -and (Same-Fact $helperAPI.Source $provenance.Source)) 'Actual M3 helper API exact Source/editor/provenance crossjoins'
+    Owner-Exact $helperAPI.external_canonical_receipt_ABI_qualified $true
+    [void](Lease-CandidateSourceReview $sourceFacts.tool_support.different_review @($provenance.Source,$provenance.API))
+    [void](Lease-CandidateRootAdoption $sourceFacts.tool_support.Root_adoption $sourceFacts.tool_support.different_review $provenance.Source)
+    $purpose=$provenance.stage_purpose;Require-Keys $purpose @('schema_version','stage','role','facts','inputs','output_paths');Integer $purpose.schema_version 2 2
+    Require ($purpose.stage -ceq $sourceFacts.stage -and (Same-Fact $purpose.facts $Receipt.actual_Source_packet) -and $purpose.inputs -is [Array] -and $purpose.output_paths -is [Array]) 'Known exact Source-stage purpose refers to real facts21'
+    if($sourceFacts.stage -ceq 'templates'){Require ($null -eq $sourceFacts.role -and $null -eq $purpose.role -and $SelectedRow.role.EndsWith('_template',[StringComparison]::Ordinal)) 'Template facts/purpose role null, selected actual template receipt role'}
+    else{Require ($sourceFacts.stage -ceq 'phase_bound' -and $sourceFacts.role -ceq $SelectedRow.role -and $purpose.role -ceq $SelectedRow.role -and $SelectedRow.role.EndsWith('_bound',[StringComparison]::Ordinal)) 'Phase-bound facts/purpose exact selected bound role'}
+    Require ((Same-Fact $Receipt.draft ([pscustomobject]@{path=$SelectedRow.draft_path;bytes=$Canonical.bytes;sha256=$Canonical.sha256})) -and (Same-Fact $Receipt.predecessor $SelectedRow.predecessor)) 'Known receipt exact draft path plus actual canonical SHA/bytes and genuine predecessor'
+    Require ((Contains-LeaseProducerFact $purpose.inputs $provenance.Source) -and (Contains-LeaseProducerFact $purpose.inputs $provenance.API) -and (Contains-LeaseProducerFact $purpose.inputs $Facts.Source_preparation) -and (Contains-LeaseProducerFact $purpose.inputs $Facts.canonical_lease) -and (Contains-LeaseProducerFact $purpose.inputs $Facts.Root_future_path_selection)) 'Separate known M3 Source-stage purpose binds exact helper/current scope/lease/selection inputs'
+    return [string]$provenance.actual_implementation_Source_editor
+}
+'''
+I3API=read(Path(protocol['fixed_I3_helper_API_provenance']['path']))
+I2API=read(Path(I3API['fixed_actual_Source_context']['I2_held_API_provenance']['path']))
+for name,value in dict(M3ReceiptKeys22=I2API['future_receipt22']['keys'],M3FactsKeys21=I2API['future_Record21']['keys'],HeldI2SourcePin=I3API['fixed_actual_Source_context']['I2_held_Source_provenance'],HeldI2APIPin=I3API['fixed_actual_Source_context']['I2_held_API_provenance']).items():
+ CONSTANTS+='$script:'+name+' = '+ps(value)+'\n'
+
+def build(which):
+ source=texts[which];f=original_functions[which]
+ replacements={'Different-Review':'','Root-Adoption':'','Validate-CurrentSourceGate24':'',
+   'Lease-CandidateSourceReview':candidate_review(which),
+   'Validate-DedicatedLeasePublication':dedicated_lease(which),'Validate-Admission':admission(which)}
+ for name,new in sorted(replacements.items(),key=lambda item:f[item[0]][0],reverse=True):
+  start,end,_=f[name];source=source[:start]+new+source[end:]
+ schema_vars={'FactsKeys27':'Parser_facts27_v2','AdmissionKeys30':'Parser_admission30_v2','RequestKeys32':'Parser_request32_v2','ResponseKeys16':'Parser_owner_acceptance16_v2','LeaseDecisionKeys20':'lease_issuance_decision20_v2','LeasePublicationKeys36':'lease_publication36_v2','LeaseCandidateKeys32':'lease_candidate_receipt32_v2','LeaseProducerFactsKeys14':'lease_producer_facts14_v2','PathSelectionKeys13':'selected45_decision13_v2'}
+ for name,spec in schema_vars.items():source=replace_schema(source,name,spec)
+ for name,value in dict(RootThread=CURRENT_ROOT,LeaseProducerRoot=I1_ROOT,LeaseProducerSource=I1_SOURCE,RunRoot=str(P/'future_Parser_runs')).items():
+  source,n=re.subn(r'(?m)^\$script:'+re.escape(name)+r' = [^\r\n]+',lambda m:'$script:'+name+' = '+ps(value),source,count=1);assert n==1,name
+ first=source.index('function Require(')
+ source=source[:first]+CONSTANTS+'\n'+source[first:]
+ # All new functions are definitions before the entire preserved original main complement.
+ main=next(r for r in protected['protected_regions'] if r['Source']==original[which] and r['classification']=='immutable_PS_parent_child_main_complements')
+ old_main=''.join(texts[which].splitlines(keepends=True)[main['line_start']-1:main['line_end']])
+ assert source.count(old_main)==1
+ source=source.replace(old_main,OWNER_PS+'\n'+AUTHORITY_PS+'\n'+M3_PS+'\n'+old_main,1)
+ mask,pairs=lexical(source);param_start=mask.index('param(')+5;param_end=pairs[param_start]+1
+ guard="\n# Unconditional Source hold precedes every original top-level side effect and main.\n$script:CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED = $false\nif (-not $script:CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED) { throw 'INERT_SOURCE_ONLY: reviewed I3/I5/result binding successor required before any Parser entry; no flag/JSON/CLI/environment qualification.' }\n"
+ source=source[:param_end]+guard+source[param_end:]
+ source='# Current physical Source editor /root/phase_frontier; original Runtime/BOUND018 semantic lineage retained. No PS execution or compilation qualification.\n'+source
+ lexical(source)
+ # Assert every exact accepted protected region occurs unchanged exactly once.
+ for region in protected['protected_regions']:
+  if region['Source']!=original[which]:continue
+  old=''.join(texts[which].splitlines(keepends=True)[region['line_start']-1:region['line_end']]).encode()
+  assert len(old)==region['whole_utf8_span_bytes'] and sha(old)==region['whole_utf8_span_sha256']
+  assert source.encode().count(old)==1,(which,region['label'])
+ return source,sorted(replacements),old_main
+
+# Own author entry below constructs bytes only; no PS parser/compiler or target execution.
+INTENT_CLARIFICATION=exact(P/'ROOT_I4_ACYCLIC_RUNTIME_INTENT_OUTPUT_EXCLUSION_SOURCE_CLARIFICATION_001.json',1975,'3d800992688ec80b0dc3f2bd27ed8ad80ae59741ce00ddbcc223806e17c9c4f7')
+created=dt.datetime.now(dt.timezone.utc).isoformat(timespec='microseconds')
+assert dt.datetime.fromisoformat(created)+dt.timedelta(seconds=60)<dt.datetime.fromisoformat(read(Path(SCOPE['path']))['interval_end'])
+outputs=[];newtexts=[];changed=[];mains=[]
+for which in (0,1):
+ source,names,main=build(which);newtexts.append(source);changed.append(names);mains.append(main)
+# Both full Sources are constructed and their accepted regions checked before first target birth.
+CHECKS=[]
+def check(name,passed,details=None):
+ CHECKS.append(dict(name=name,passed=bool(passed),details=details))
+ assert passed,name
+for which,s in enumerate(newtexts):
+ nf=funcs(s);label='parent' if which==0 else 'child'
+ check(label+': distinct lexically delimited functions',len(nf)==len(set(nf)))
+ check(label+': first actual guard before every original side effect',s.index('CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED = $false')<s.index('function Require(') and (which==1 or s.index('if (-not $script:CURRENT_OWNER_PARSER_DEPENDENCY_BINDINGS_QUALIFIED)')<s.index('$script:Watch=')))
+ check(label+': no fake active peer fields in authority validator',all(token not in nf['Validate-Admission'][2] for token in ('$Admission.peer_thread','$request.peer_thread','$response.peer_thread','$response.author_thread','$Admission.response','$Admission.retained_response_copy')))
+ check(label+': exact new admission OWNER_DIRECT decision','ADMIT_REVIEWED_FOUR_CURRENT_COHORT_PARSEFILE_ONLY_OWNER_DIRECT' in nf['Validate-Admission'][2] and 'ADMIT_REVIEWED_FOUR_BOUND018_NATIVE_PARSEFILE_ONLY' not in nf['Validate-Admission'][2])
+ check(label+': real ordered dictionary fixed scope map','$script:OwnerScopeFixed = [ordered]@{' in s)
+ check(label+': raw JSON root object check precedes original decoder',nf['Decode-OwnerObject'][2].index('$Bytes[$at] -eq 123')<nf['Decode-OwnerObject'][2].index('$value=Decode-Strict $Bytes'))
+ check(label+': future interfaces explicitly always throw','throw ' in nf['Require-QualifiedParserInterfaces'][2] and 'Require-QualifiedParserInterfaces' in nf['Validate-Admission'][2])
+ check(label+': original Active-Window unchanged',nf['Active-Window'][2]==original_functions[which]['Active-Window'][2])
+ check(label+': deterministic new purpose list does not reorder original I/O','$paths.Sort([StringComparer]::Ordinal)' in nf['Parser-PurposeInputs'][2] and '$Facts.outputs.parent_INTENT' in nf['Parser-PurposeInputs'][2])
+ check(label+': current Root Source literal bound',"$script:RootThread = '"+CURRENT_ROOT+"'" in s)
+ check(label+': old closed95 context function inactive','Validate-CurrentSourceGate24' not in nf and 'Validate-CurrentOwnerSupport' in nf)
+ check(label+': all owner I0 public predicates present',all(n in nf for n in ('Owner-Text','Owner-Pin','Owner-Ticks','Owner-Actor','Owner-Exact','Owner-Record','Owner-Subjects','Owner-Witness','Validate-OwnerSupportPure')))
+ check(label+': actual >018 TEMPLATE and BOUND ordinals enforced','Integer $chosen[0].selected_ordinal 19' in nf['Validate-Admission'][2] and 'Integer $chosenTemplate[0].selected_ordinal 19' in nf['Validate-Admission'][2])
+ check(label+': exact actual helper editor replaces old worker source identity',"$sourceReceiptRole.preparation_Source_author -ceq '/root/m3_source_editor'" not in nf['Validate-Admission'][2] and '$actualMetadataSourceEditor' in nf['Validate-Admission'][2])
+ for region in protected['protected_regions']:
+  if region['Source']!=original[which]:continue
+  raw=''.join(texts[which].splitlines(keepends=True)[region['line_start']-1:region['line_end']]).encode()
+  check(label+': protected '+region['label'],s.encode().count(raw)==1,dict(bytes=len(raw),sha256=sha(raw)))
+newpins=[save(path,source.encode('utf8')) for path,source in zip(TARGETS,newtexts)]
+static_inputs=dict(scope=SCOPE,protocol=PROTOCOL,protocol_Root_Source_adoption=ADOPTION,compatible_proof_and_design_binding_addendum=ADDENDUM,exact_new_admission_decision=ENUM,acyclic_INTENT_output_exclusion=INTENT_CLARIFICATION,protected_algorithm_contract=protected_pin,accepted_design=protocol['accepted_design'],fixed_I0_Source=protocol['fixed_I0_Source'],fixed_I0_API=protocol['fixed_I0_API'],fixed_I1_Source=I1_SOURCE,fixed_I1_API=protocol['fixed_I1_API'],accepted_I3_helper_API_provenance_only=protocol['fixed_I3_helper_API_provenance'],accepted_I3_wrapper_API_provenance_only=protocol['fixed_I3_wrapper_API_provenance'])
+api=dict(schema_version=2,record_type='Root_owner_v2_native_Parser_parent_child_inert_API',author=AUTHOR,actual_physical_Source_editor=AUTHOR,created_utc=created,parent_Source=newpins[0],child_Source=newpins[1],fixed_I0_Source=protocol['fixed_I0_Source'],fixed_I0_API=protocol['fixed_I0_API'],actual_static_Source_inputs=static_inputs,original_three_predecessors=original,
+ trusted_Root_thread_Source_literal=CURRENT_ROOT,authority_mode='OWNER_DIRECT',actual_future_owner_scope_request_acceptance_admission_facts_lease_family_paths_ordinals_clocks_outputs_results=None,
+ future_closed_authority_schemas={k:schemas[k] for k in ('Parser_facts27_v2','Parser_request32_v2','Parser_owner_acceptance16_v2','Parser_admission30_v2')},
+ actual_future_cells={key:None for key in ('owner_scope','owner_support','facts27','request32','acceptance16','retained_acceptance_copy','acceptance_Source_review','acceptance_Root_adoption','admission30','new_lease','new_Source_family','Native8_result_support','Parser_result_envelope','actual_resource_observation')},
+ pure_PS_owner_context=dict(fixed_I0_Source=protocol['fixed_I0_Source'],fixed_I0_API=protocol['fixed_I0_API'],implementation='New PS predicates Owner-* and Validate-OwnerSupportPure call only original retained paired Read-Fact and untouched strict JSON codec through new raw-root-object adapter. No Python/external validator/new process.',schemas=I0['schema_fields'],predicate_contract='Exact closed28/support3/witness9/review13/fullproof15/Root9; strict bool/int/text/UTF8 bounds, UTC6/7 Z/+00 calendar and integer100ns FILETIME1601; whole Source pin bytes/hash through original cap-aware paired reader; distinct exact paths; actual witness provenance, four named checks and ordered three-subject coverage; genuine different actual editor/subtree exclusions; exact Root chronology and strict Source60.',provenance_boundary='Human origin and actual review performance require separate trusted Root evidence; this validator authenticates Source declarations and exact files only. Exact-path dedup does not prove case/cross-path physical alias absence.',prior_I0_seventeen_fixtures_verify_this_PS_port=False),
+ source_proof13_Root9='Exact original compatible schema1 Source-evidence record types/closed13+9/Root ACCEPT_NATIVE_PARSER_ONLY_DIFFERENT_SOURCE_REVIEW. Positive PASS_+SOURCE, actual different actor/editor exclusions, actual bounded fullproof/namedchecks/coverage/chronology. These records never independently grant Parser permission. Scope support uses distinct exact I0 v2 proof types.',
+ prerequisite_design='facts27.prerequisite_design/request32.design bind exact static current I4 protocol Source pin plus genuinely separate future compatible13/9 proofs. Current static protocol Source review/adoption is provenance only; never cast to a future compatibility record or ownerScope28.',
+ implementation_API_cycle='Sources bind only exact new API path. Future implementation compatible review subjects must contain one actual fact3 at that known path; actual paired API bytes crossjoin both Source pins and fixed I0 Source/API. Actual proof covers all five Source/API subjects. API holds both actual Source pins, no self-hash cycle.',
+ purpose_pregrant_input_closure=dict(order='Exact case-sensitive native path, List[string].Sort(StringComparer.Ordinal); original InputOrder and I/O order untouched.',members='Every actual cap/image-preserving held bootstrap fact3 after known metadata phase/reversal/lease/owner/implementation preflight. Required equal parent/child closure; genuine owner acceptance Source13/fullproof and Root9 cover each exact pin.',exclusions='Only actual future admission pin, own owner acceptance review/fullproof/Rootadoption and exact Facts.outputs.parent_INTENT runtime output. The INTENT is born after admission, read/validated through complete frozen child main and retains original manifest/facts/admission/request/phase joins. It is never fabricated as a pregrant input; no wildcard/other outputs omitted.',limitations='This implements only known bootstrap closure. Accepted I3 Native8 support/I5 external receipts and result adapter remain unwired, and a later reviewed binding must add the exact qualified input interfaces before any admission.'),
+ held_interfaces=dict(literal_Source_flag=False,always_throw_function='Require-QualifiedParserInterfaces',I5_SourceProof6_publication_and_M3_dependency_route='UNWIRED pending actual qualified I5 protocol and binding successor; known22/21/provenance predicates alone do not qualify it.',accepted_I3_Native8_result_support='UNWIRED; facts/phase/proof have no agreed carrier. Do not claim I3Source005 as producer or local Source_birth_utc as accepted Native8 evidence.',Parser_v2_result_envelope='UNWIRED; no after-exit emitter, no leaf rewrite. Full old mains terminate and emit exact schema1 data lineage only. Later reviewed adapter/binding must validate actual leaves/saved results/proofs/owner/producers.',actual_resources='UNWIRED actual Root external pre-launch observation age<=60seconds/RAM>=1GiB/disk>=10GiB and later qualified binding enforcing before directory/launch/ParseFile. I0 policy floors are not fresh observations. No current in-module resource collector or observation claimed.',mere_flag_change_does_not_qualify=True),
+ preservation=dict(original_functions_parent=46,original_functions_child=41,protected_native_IO_spans=47,entire_original_mains=2,original_Active_Window_unchanged=True,original_child_argv_unchanged=True,original_leaf_schemas='schema1 INTENT12/result20/witness20/phase8/result12/consumer6/SourceProof6/outputs8 and BOUND018 labels remain exact data lineage. Actual current authority inputs are new v2 records only.',guards='Original Native10 incl LastAccess/full independently retained path9+handle10; no normalization/retry/baseline/SetFileTime; ordinarynlink1/imageonly2; model131072/phase65536/metadata/stdout/stderr2MiB; total120/wait110/cleanup10/reap5 nonadditive; exact four ParseFile/arrays/no eval preserved.'),
+ bootstrap_order='Direct False guard immediately after original param, before Stopwatch/Read-Fact/main side effects. Original protected Read-Fact may lazily Init-NativeMetadata before internal Validate-Admission. Later actual Root prelaunch admission must precede invocation. Do not claim internal owner validator precedes every native bootstrap.',
+ legacy_response_context_alias='Internal context.response is already fully validated owner acceptance16 data for frozen main lineage only; no peer/author_thread fields or fake peer reply are emitted or accepted as v2 authority.',
+ static_validation='Own stdlib generic lexical delimiter/function/byte/JSON analysis only; no PowerShell language parser, ParseInput/ParseFile, AST or compilation. No PS syntax/runtime qualification claimed.',PowerShell_compiled_or_parsed=False,tests_executed=False,actual_project_import_function_main_native_Parser_execution=False,new_actual_authority_created=False,runtime_eligibility=False,target_execution=False,operational_authority=False,scientific_authority=False)
+api_pin=save(API_PATH,api)
+inventory=[];predicate_map=[]
+for which,s in enumerate(newtexts):
+ current=funcs(s);module='parent' if which==0 else 'child'
+ for name,(_,_,before) in original_functions[which].items():
+  mapped='Validate-CurrentOwnerSupport' if name=='Validate-CurrentSourceGate24' else name
+  after=current[mapped][2]
+  inventory.append(dict(module=module,old_name=name,new_name=mapped,before_bytes=len(before.encode()),before_sha256=sha(before.encode()),after_bytes=len(after.encode()),after_sha256=sha(after.encode()),byte_exact=before==after,allowed_authority_change=name in changed[which]))
+  if before!=after:
+   for index,line in enumerate(before.splitlines(),1):
+    if re.search(r'\b(Require|Require-Keys|Integer|Different-Review|Root-Adoption|Lease-CandidateSourceReview|Lease-CandidateRootAdoption)\b',line):
+     predicate_map.append(dict(module=module,original_function=name,original_relative_line=index,exact_original_predicate_source=line,original_predicate_sha256=sha(line.encode()),successor_function=mapped,disposition='Exact original Source024/peer95/56/35 context predicates replaced by strict current owner28/I0 witness-proof chain' if name=='Validate-CurrentSourceGate24' else 'Retained Source/lease/phase/reversal/output/time semantics or explicit strict version2 authority/context/provenance port; exact before/after function hashes and complete original bytes are supplied for independent predicate review'))
+inverse=save(D/'I4_COMPLETE_THREE_PREDECESSOR_SOURCE_API_INVERSE_FUNCTION_REGION_AND_PREDICATE_INVENTORY_001.json',dict(schema_version=1,record_type='I4_complete_original_parent_child_API_inverse_and_actual_static_function_region_predicate_inventory',author=AUTHOR,created_utc=created,scope=SCOPE,static_inputs=static_inputs,actual_outputs=newpins+[api_pin],whole_original_predecessors=[dict(pin=p,complete_base64=base64.b64encode(Path(p['path']).read_bytes()).decode()) for p in original],function_before_after=inventory,protected_regions=[r for r in protected['protected_regions'] if r['Source'] in original[:2]],all_47_native_IO_spans_and_both_mains_actual_bytes_exact=True,original_predicate_source_inventory=predicate_map,prebirth_static_checks=CHECKS,logical_limits='Predicate inventory is author Source evidence, not independent proof or PS compilation. New typed owner context replaces historical static95/56/35; original semantic leaf lineage and whole main algorithm unchanged.',project_or_Parser_or_PS_compilation_executed=False))
+receipt=save(D/'I4_ACTUAL_INERT_PARENT_CHILD_API_SOURCE_AUTHOR_RECEIPT_001.json',dict(schema_version=1,record_type='I4_actual_inert_PS_parent_child_API_Source_author_receipt',author=AUTHOR,actual_physical_Source_editor=AUTHOR,created_utc=created,scope=SCOPE,actual_static_inputs=static_inputs,actual_outputs=newpins+[api_pin,inverse],actual_author_program=pin(Path(__file__)),whole_original_inputs=original,original_function_count=87,protected_IO_spans=47,protected_entire_mains=2,all_future_actual_grants_lease_family_Native8_Parser_purpose_admission_results=None,SourceOnly=True,PowerShell_compiled_or_parsed=False,tests_executed=False,project_function_import_main_or_native_Parser_execution=False,actual_resource_observation=None,operational_authority=False,target_execution=False,scientific_authority=False))
+print(json.dumps(dict(outputs=newpins+[api_pin,inverse,receipt],prebirth_checks=len(CHECKS),Source_only=True,PS_compiled=False),sort_keys=True))
