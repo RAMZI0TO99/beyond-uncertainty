@@ -1,0 +1,2204 @@
+{
+  "Git_mutations": 0,
+  "PowerShell_Parser_or_ParseFile_calls": 0,
+  "actual_exact3_guard_ported_writer_Source": "def root_publish_once(path, data, cap, allowed_path):\n    \"\"\"Windows rename refuses an existing destination; no overwrite fallback.\"\"\"\n    need(os.name == \"nt\", \"reviewed Windows create-once rename semantics required\")\n    path = absolute(path)\n    need(str(path) == str(allowed_path) and type(data) is bytes and type(cap) is int and\n         0 < cap <= 2097152 and len(data) <= cap, \"single exact Root-selected output and original finite cap\")\n    ordinary_chain(path.parent)\n    absent_output(path)\n    staging = Path(str(path) + \".staging\")\n    # All immutable input bytes and both complete metadata APIs remain exact\n    # before each mutation; a refused partial stage remains visible for Root.\n    postread()\n    _current_owner_publication_guard()\n    with staging.open(\"xb\") as stream:\n        need(stream.write(data) == len(data), \"complete create-once Source staging write\")\n        stream.flush()\n        os.fsync(stream.fileno())\n    need(read(staging, sha(data), cap) == data, \"complete genuine staging readback\")\n    need(not os.path.lexists(path), \"fresh canonical immediately before no-overwrite rename\")\n    postread()\n    ordinary_chain(path.parent)\n    _current_owner_publication_guard()\n    os.rename(staging, path)\n    need(not os.path.lexists(staging), \"successful exact staging rename without a retained temp alias\")\n    # The intentional staging identity moved to its exact canonical path.\n    # Keep its actual observations separately; do not fabricate a new raw9.\n    staging_observation = OBSERVATIONS.pop(str(staging))\n    need(read(path, sha(data), cap) == data, \"exact Root canonical whole-byte readback\")\n    canonical_observation = dict(OBSERVATIONS[str(path)])\n    need(all(staging_observation[\"path9\"][index] == canonical_observation[\"path9\"][index]\n             for index in (0, 1, 2, 3, 5, 6, 7, 8)), \"renamed Source stable identity, mode, size, mtime, attributes and birth\")\n    need(all(staging_observation[\"descriptor9\"][index] == canonical_observation[\"descriptor9\"][index]\n             for index in (0, 1, 2, 3, 5, 6, 7, 8)), \"renamed descriptor retains every non-ctime field independently\")\n    _current_owner_publication_guard()\n    return fact(path, data), dict(staging=staging_observation, canonical=canonical_observation)\n",
+  "actual_original_IO_Source_readings": [
+    {
+      "actual_read_Source": "def need(condition, message):\n    if not condition:\n        raise ValueError(message)\n",
+      "original": {
+        "bytes": 86,
+        "end_byte": 120961,
+        "kind": "FunctionDef",
+        "line_end": 949,
+        "line_start": 947,
+        "name": "need",
+        "sha256": "3465e0985f3f62e9dea02f78e02f29cfa7b90ed3f7a940310e4ee3984d1993cd",
+        "signature": "def need(condition, message):",
+        "start_byte": 120875
+      }
+    },
+    {
+      "actual_read_Source": "def sha(data):\n    return hashlib.sha256(data).hexdigest()\n",
+      "original": {
+        "bytes": 59,
+        "end_byte": 121021,
+        "kind": "FunctionDef",
+        "line_end": 952,
+        "line_start": 951,
+        "name": "sha",
+        "sha256": "4e627faf4b903521e935f7c6f3ae93545856f821d0e2565ba7ea6cf97d3d0e6c",
+        "signature": "def sha(data):",
+        "start_byte": 120962
+      }
+    },
+    {
+      "actual_read_Source": "def utc():\n    return dt.datetime.now(dt.timezone.utc).isoformat(timespec=\"microseconds\")\n",
+      "original": {
+        "bytes": 90,
+        "end_byte": 121112,
+        "kind": "FunctionDef",
+        "line_end": 955,
+        "line_start": 954,
+        "name": "utc",
+        "sha256": "7e06b0050f9c7c682e23cd6d5a37d5b0538e809e4db6eb7e5a1d4047c1856f9b",
+        "signature": "def utc():",
+        "start_byte": 121022
+      }
+    },
+    {
+      "actual_read_Source": "def raw9(info):\n    return [getattr(info, key, None) for key in (\n        \"st_dev\", \"st_ino\", \"st_size\", \"st_mtime_ns\", \"st_ctime_ns\", \"st_mode\", \"st_nlink\",\n        \"st_file_attributes\", \"st_birthtime_ns\")]\n",
+      "original": {
+        "bytes": 208,
+        "end_byte": 121321,
+        "kind": "FunctionDef",
+        "line_end": 960,
+        "line_start": 957,
+        "name": "raw9",
+        "sha256": "dd2949fbc9829272c2e8ebbd5c3ba30f234ad92be06ca17ec9ecdf332ab590df",
+        "signature": "def raw9(info):",
+        "start_byte": 121113
+      }
+    },
+    {
+      "actual_read_Source": "def absolute(path):\n    path = Path(path)\n    need(path.is_absolute() and \"..\" not in path.parts, f\"explicit absolute path without parent traversal: {path}\")\n    return path\n",
+      "original": {
+        "bytes": 174,
+        "end_byte": 121496,
+        "kind": "FunctionDef",
+        "line_end": 965,
+        "line_start": 962,
+        "name": "absolute",
+        "sha256": "17fc4582ee66053430db4f45f1a293c3fd697bad08beae982bf7bda61c4f59f8",
+        "signature": "def absolute(path):",
+        "start_byte": 121322
+      }
+    },
+    {
+      "actual_read_Source": "def ordinary_chain(path, *, file=False):\n    path = absolute(path)\n    for item in (*reversed(path.parents), path):\n        if os.path.lexists(item):\n            info = item.lstat()\n            need(not stat.S_ISLNK(info.st_mode) and\n                 not (getattr(info, \"st_file_attributes\", 0) & 0x400), f\"no symlink/reparse path: {item}\")\n            if item != path:\n                need(stat.S_ISDIR(info.st_mode), f\"ordinary directory ancestor: {item}\")\n    if file:\n        info = path.lstat()\n        need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, f\"ordinary single-link Source file: {path}\")\n    return path\n",
+      "original": {
+        "bytes": 625,
+        "end_byte": 122122,
+        "kind": "FunctionDef",
+        "line_end": 979,
+        "line_start": 967,
+        "name": "ordinary_chain",
+        "sha256": "6ed341871a5a9a537f00656270c50fc648c290440259f3b47265627fdc70dd30",
+        "signature": "def ordinary_chain(path, *, file=False):",
+        "start_byte": 121497
+      }
+    },
+    {
+      "actual_read_Source": "def read(path, expected=None, cap=2097152):\n    path = ordinary_chain(path, file=True)\n    need(type(cap) is int and 0 < cap <= 8388608, \"explicit finite Source/archival read cap\")\n    before = raw9(path.lstat())\n    need(before[2] <= cap, f\"Source input cap: {path}\")\n    identity_indexes = (0, 1, 2, 3, 6, 7, 8)\n    with path.open(\"rb\") as handle:\n        descriptor_info = os.fstat(handle.fileno())\n        descriptor_before = raw9(descriptor_info)\n        need(stat.S_ISREG(descriptor_info.st_mode) and descriptor_info.st_nlink == 1 and\n             not (getattr(descriptor_info, \"st_file_attributes\", 0) & 0x400),\n             f\"retained ordinary non-reparse Source handle: {path}\")\n        need(all(before[index] == descriptor_before[index] for index in identity_indexes),\n             f\"retained Source handle shared-seven identity: {path}\")\n        first = handle.read(cap + 1)\n        handle.seek(0)\n        second = handle.read(cap + 1)\n        need(raw9(os.fstat(handle.fileno())) == descriptor_before,\n             f\"retained full descriptor9 independently unchanged: {path}\")\n    need(first == second and raw9(path.lstat()) == before, f\"stable full Source bytes/path9: {path}\")\n    need(len(first) <= cap and (expected is None or sha(first) == expected), f\"Source digest/length: {path}\")\n    OBSERVATIONS[str(path)] = dict(path=str(path), sha256=sha(first), bytes=len(first), cap=cap,\n                                   raw9=before, path9=before, descriptor9=descriptor_before,\n                                   shared_identity_indexes=list(identity_indexes),\n                                   shared_descriptor7=[descriptor_before[index] for index in identity_indexes],\n                                   both_full_API9_independently_stable=True,\n                                   two_read_match=True, observed_utc=utc())\n    return first\n",
+      "original": {
+        "bytes": 1856,
+        "end_byte": 123979,
+        "kind": "FunctionDef",
+        "line_end": 1008,
+        "line_start": 981,
+        "name": "read",
+        "sha256": "161a9627d905d1f4f22873cd5a94255eaa63b12a56e56024b035f3fc3d2ef6bf",
+        "signature": "def read(path, expected=None, cap=2097152):",
+        "start_byte": 122123
+      }
+    },
+    {
+      "actual_read_Source": "def pairs(items):\n    result = {}\n    for key, value in items:\n        need(key not in result, f\"duplicate JSON key: {key}\")\n        result[key] = value\n    return result\n",
+      "original": {
+        "bytes": 171,
+        "end_byte": 124151,
+        "kind": "FunctionDef",
+        "line_end": 1015,
+        "line_start": 1010,
+        "name": "pairs",
+        "sha256": "3509f129815c852fa9e805cca690bf86ee0e6f4c5c31949a621239c0aa9d749a",
+        "signature": "def pairs(items):",
+        "start_byte": 123980
+      }
+    },
+    {
+      "actual_read_Source": "def decode(data):\n    return json.loads(data.decode(\"utf-8\", errors=\"strict\"), object_pairs_hook=pairs,\n                      parse_constant=lambda token: (_ for _ in ()).throw(ValueError(token)))\n",
+      "original": {
+        "bytes": 197,
+        "end_byte": 124349,
+        "kind": "FunctionDef",
+        "line_end": 1019,
+        "line_start": 1017,
+        "name": "decode",
+        "sha256": "a77ec15984968423f6317939c88e78d26efde1a4fe4c126d696aba862846fe70",
+        "signature": "def decode(data):",
+        "start_byte": 124152
+      }
+    },
+    {
+      "actual_read_Source": "def wire(value, indent=2):\n    return (json.dumps(value, sort_keys=True, indent=indent, allow_nan=False) + \"\\n\").encode(\"utf-8\")\n",
+      "original": {
+        "bytes": 129,
+        "end_byte": 124479,
+        "kind": "FunctionDef",
+        "line_end": 1022,
+        "line_start": 1021,
+        "name": "wire",
+        "sha256": "9ec7d6144a3bdde8623758279ac8cc0f13c4f917c2ffd2f318f5fbea619ab4d0",
+        "signature": "def wire(value, indent=2):",
+        "start_byte": 124350
+      }
+    },
+    {
+      "actual_read_Source": "def fact(path, data):\n    return dict(path=str(absolute(path)), sha256=sha(data), bytes=len(data))\n",
+      "original": {
+        "bytes": 99,
+        "end_byte": 124579,
+        "kind": "FunctionDef",
+        "line_end": 1025,
+        "line_start": 1024,
+        "name": "fact",
+        "sha256": "ab082050f568e30cc3f9126402aba1b2131fb9f9bda7af3ca07f25eef8c0df03",
+        "signature": "def fact(path, data):",
+        "start_byte": 124480
+      }
+    },
+    {
+      "actual_read_Source": "def fact3(pin):\n    need(isinstance(pin, dict) and all(key in pin for key in (\"path\", \"sha256\", \"bytes\")), \"actual fact3 pin\")\n    need(type(pin[\"path\"]) is str and type(pin[\"sha256\"]) is str and\n         re.fullmatch(r\"[0-9a-f]{64}\", pin[\"sha256\"]) is not None and\n         type(pin[\"bytes\"]) is int and 0 <= pin[\"bytes\"] <= 8388608, \"fact3 path/hash/exact length types\")\n    return {key: pin[key] for key in (\"path\", \"sha256\", \"bytes\")}\n",
+      "original": {
+        "bytes": 439,
+        "end_byte": 125019,
+        "kind": "FunctionDef",
+        "line_end": 1032,
+        "line_start": 1027,
+        "name": "fact3",
+        "sha256": "db2da3c74bc37cc2592e0ba0962bddff186a939bf54c89bfef3500a2966b333f",
+        "signature": "def fact3(pin):",
+        "start_byte": 124580
+      }
+    },
+    {
+      "actual_read_Source": "def read_pin(pin, *, cap=2097152):\n    pin = fact3(pin)\n    data = read(pin[\"path\"], pin[\"sha256\"], cap)\n    need(len(data) == pin[\"bytes\"], \"exact selected Source input length\")\n    return data\n",
+      "original": {
+        "bytes": 195,
+        "end_byte": 125215,
+        "kind": "FunctionDef",
+        "line_end": 1038,
+        "line_start": 1034,
+        "name": "read_pin",
+        "sha256": "235967ad58551733507d515962c4585b54424a959feaaaa2359570a1e2988069",
+        "signature": "def read_pin(pin, *, cap=2097152):",
+        "start_byte": 125020
+      }
+    },
+    {
+      "actual_read_Source": "def same_pin(actual, expected):\n    return fact3(actual) == fact3(expected)\n",
+      "original": {
+        "bytes": 76,
+        "end_byte": 125292,
+        "kind": "FunctionDef",
+        "line_end": 1041,
+        "line_start": 1040,
+        "name": "same_pin",
+        "sha256": "1670c55a7e1efc3dad4ee2416121bc92e2a8b449a7569639ce92e283e0896fe9",
+        "signature": "def same_pin(actual, expected):",
+        "start_byte": 125216
+      }
+    },
+    {
+      "actual_read_Source": "def moment(value, digits=None):\n    need(type(value) is str, \"producer timestamp string\")\n    match = re.fullmatch(r\"(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})(?:\\.(\\d{6,7}))?\\+00:00\", value)\n    need(match is not None and (digits is None or len(match[2] or \"\") == digits), \"canonical UTC producer timestamp shape\")\n    base = dt.datetime.strptime(match[1], \"%Y-%m-%dT%H:%M:%S\").replace(tzinfo=dt.timezone.utc)\n    epoch = dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)\n    delta = base - epoch\n    return (delta.days * 86400 + delta.seconds) * 10000000 + int((match[2] or \"\").ljust(7, \"0\"))\n",
+      "original": {
+        "bytes": 588,
+        "end_byte": 125881,
+        "kind": "FunctionDef",
+        "line_end": 1050,
+        "line_start": 1043,
+        "name": "moment",
+        "sha256": "16b5f845a5daade1383df307fdf940fe7338c6d8ee0c2c61d3c9e16142bd15c9",
+        "signature": "def moment(value, digits=None):",
+        "start_byte": 125293
+      }
+    },
+    {
+      "actual_read_Source": "def current_ticks():\n    return moment(utc(), 6)\n",
+      "original": {
+        "bytes": 49,
+        "end_byte": 125931,
+        "kind": "FunctionDef",
+        "line_end": 1053,
+        "line_start": 1052,
+        "name": "current_ticks",
+        "sha256": "e1523834f3d589ef9901c6900d2e95635cdd8816c0d7068de45fdc40f791d972",
+        "signature": "def current_ticks():",
+        "start_byte": 125882
+      }
+    },
+    {
+      "actual_read_Source": "def _contains_pin(value, selected):\n    if isinstance(value, dict):\n        if all(key in value for key in (\"path\", \"sha256\", \"bytes\")):\n            if {key:value[key] for key in (\"path\", \"sha256\", \"bytes\")} == fact3(selected):\n                return True\n        return any(_contains_pin(item, selected) for item in value.values())\n    return isinstance(value, list) and any(_contains_pin(item, selected) for item in value)\n",
+      "original": {
+        "bytes": 425,
+        "end_byte": 126357,
+        "kind": "FunctionDef",
+        "line_end": 1061,
+        "line_start": 1055,
+        "name": "_contains_pin",
+        "sha256": "e38da962eb09f36a22e565249008b2f74a6371e7bed7f397598d4bbc3e45d705",
+        "signature": "def _contains_pin(value, selected):",
+        "start_byte": 125932
+      }
+    },
+    {
+      "actual_read_Source": "def postread():\n    \"\"\"Preserve every initial complete path9 and descriptor9 across Source work.\"\"\"\n    pins = [dict(pin) for pin in OBSERVATIONS.values()]\n    for pin in pins:\n        read(pin[\"path\"], pin[\"sha256\"], pin[\"cap\"])\n        fresh = OBSERVATIONS[pin[\"path\"]]\n        need(fresh[\"path9\"] == pin[\"path9\"] and fresh[\"descriptor9\"] == pin[\"descriptor9\"],\n             \"full initial path9 and descriptor9 each remain exact across Source preparation\")\n        need(fresh[\"bytes\"] == pin[\"bytes\"] and fresh[\"sha256\"] == pin[\"sha256\"],\n             \"whole initial Source bytes/digest/length remain exact across preparation\")\n    return pins\n",
+      "original": {
+        "bytes": 646,
+        "end_byte": 127004,
+        "kind": "FunctionDef",
+        "line_end": 1073,
+        "line_start": 1063,
+        "name": "postread",
+        "sha256": "4201279e3530cd806a38e6c8cb8df773b0e4d90706cf395e03317fd427b06e67",
+        "signature": "def postread():",
+        "start_byte": 126358
+      }
+    },
+    {
+      "actual_read_Source": "def absent_output(path):\n    path = ordinary_chain(path)\n    need(not os.path.lexists(path) and not os.path.lexists(str(path) + \".staging\"),\n         \"fresh create-once canonical and staging identities; never overwrite or replay\")\n    return path\n",
+      "original": {
+        "bytes": 247,
+        "end_byte": 127252,
+        "kind": "FunctionDef",
+        "line_end": 1079,
+        "line_start": 1075,
+        "name": "absent_output",
+        "sha256": "7571216aef61984e925563a55b2c02783738ce3e6b52d443a06448451e524a16",
+        "signature": "def absent_output(path):",
+        "start_byte": 127005
+      }
+    },
+    {
+      "actual_read_Source": "def strict_source_json(data):\n    need(type(data) is bytes and not data.startswith(b\"\\xef\\xbb\\xbf\"), \"strict Root metadata rejects BOM\")\n    def forbidden(token):\n        raise ValueError(\"float/nonfinite Root metadata token: \" + token)\n    value = json.loads(data.decode(\"utf8\", errors=\"strict\"), object_pairs_hook=pairs,\n        parse_float=forbidden, parse_constant=forbidden)\n    need(type(value) is dict, \"strict Root Source metadata object\")\n    return value\n",
+      "original": {
+        "bytes": 465,
+        "end_byte": 127718,
+        "kind": "FunctionDef",
+        "line_end": 1088,
+        "line_start": 1081,
+        "name": "strict_source_json",
+        "sha256": "176d12e2a9462b69aeb59c7e69bc205b48bae5b19d24a837dce2f1f5f5ab808e",
+        "signature": "def strict_source_json(data):",
+        "start_byte": 127253
+      }
+    },
+    {
+      "actual_read_Source": "def exact_fact3(pin):\n    need(type(pin) is dict and set(pin) == {\"path\", \"sha256\", \"bytes\"}, \"closed exact Root Source fact3\")\n    need(type(pin[\"path\"]) is str and str(absolute(pin[\"path\"])) == pin[\"path\"] and\n         type(pin[\"sha256\"]) is str and re.fullmatch(\"[a-f0-9]{64}\", pin[\"sha256\"]) is not None and\n         type(pin[\"bytes\"]) is int and 0 <= pin[\"bytes\"] <= 2097152, \"typed exact finite Source fact3\")\n    return dict(pin)\n",
+      "original": {
+        "bytes": 437,
+        "end_byte": 128156,
+        "kind": "FunctionDef",
+        "line_end": 1095,
+        "line_start": 1090,
+        "name": "exact_fact3",
+        "sha256": "20a2c12ca7bd0c38f2a78c08d9f46983e0cd5938682c28afb95c1cdb24e66b8a",
+        "signature": "def exact_fact3(pin):",
+        "start_byte": 127719
+      }
+    },
+    {
+      "actual_read_Source": "def exact_pin_occurs(value, pin):\n    if type(value) is dict:\n        if all(key in value and type(value[key]) is type(pin[key]) and value[key] == pin[key] for key in pin):\n            return True\n        return any(exact_pin_occurs(child, pin) for child in value.values())\n    return type(value) is list and any(exact_pin_occurs(child, pin) for child in value)\n",
+      "original": {
+        "bytes": 362,
+        "end_byte": 128519,
+        "kind": "FunctionDef",
+        "line_end": 1102,
+        "line_start": 1097,
+        "name": "exact_pin_occurs",
+        "sha256": "62b9988d9244b8a61a87e8bc1eb7488c30fd0138ab4d2f88bcc24f04fcbbf6de",
+        "signature": "def exact_pin_occurs(value, pin):",
+        "start_byte": 128157
+      }
+    },
+    {
+      "actual_read_Source": "def strict_source_decode(body):\n    def reject(token):\n        raise ValueError('non-integer Source JSON numeric token forbidden: '+token)\n    return json.loads(body.decode('utf-8', errors='strict'), object_pairs_hook=pairs,\n                      parse_float=reject, parse_constant=reject)\n",
+      "original": {
+        "bytes": 290,
+        "end_byte": 128810,
+        "kind": "FunctionDef",
+        "line_end": 1108,
+        "line_start": 1104,
+        "name": "strict_source_decode",
+        "sha256": "469bc45ce2af21b66a7e8d241332c07c64fb8d8dfbdab86cbfbb64e28122eb7f",
+        "signature": "def strict_source_decode(body):",
+        "start_byte": 128520
+      }
+    },
+    {
+      "actual_read_Source": "def tracked_pin(pin, *, cap=SOURCE_CAP):\n    need(type(pin) is dict and set(pin) == {'path', 'sha256', 'bytes'}, 'closed typed actual fact3 Source pin')\n    pin = fact3(pin)\n    need(type(cap) is int and 0 < cap <= SOURCE_CAP, 'ordinary Source/proof cap remains at most2MiB')\n    previous = dict(OBSERVATIONS[pin['path']]) if pin['path'] in OBSERVATIONS else None\n    body = read_pin(pin, cap=cap)\n    if previous is not None:\n        current = OBSERVATIONS[pin['path']]\n        need(current['path9'] == previous['path9'] and current['descriptor9'] == previous['descriptor9'],\n             'both complete metadata APIs unchanged across every repeated input read')\n    return body\n",
+      "original": {
+        "bytes": 680,
+        "end_byte": 129491,
+        "kind": "FunctionDef",
+        "line_end": 1120,
+        "line_start": 1110,
+        "name": "tracked_pin",
+        "sha256": "340e717c7297d77e6d92a11d986e978741fb67e6e0674fa31bec56785da8b0cb",
+        "signature": "def tracked_pin(pin, *, cap=SOURCE_CAP):",
+        "start_byte": 128811
+      }
+    },
+    {
+      "actual_read_Source": "def root_publish_once(path, data, cap, allowed_path):\n    \"\"\"Windows rename refuses an existing destination; no overwrite fallback.\"\"\"\n    need(os.name == \"nt\", \"reviewed Windows create-once rename semantics required\")\n    path = absolute(path)\n    need(str(path) == str(allowed_path) and type(data) is bytes and type(cap) is int and\n         0 < cap <= 2097152 and len(data) <= cap, \"single exact Root-selected output and original finite cap\")\n    ordinary_chain(path.parent)\n    absent_output(path)\n    staging = Path(str(path) + \".staging\")\n    # All immutable input bytes and both complete metadata APIs remain exact\n    # before each mutation; a refused partial stage remains visible for Root.\n    postread()\n    gate(SOURCE022[\"path\"], SOURCE022[\"sha256\"])\n    with staging.open(\"xb\") as stream:\n        need(stream.write(data) == len(data), \"complete create-once Source staging write\")\n        stream.flush()\n        os.fsync(stream.fileno())\n    need(read(staging, sha(data), cap) == data, \"complete genuine staging readback\")\n    need(not os.path.lexists(path), \"fresh canonical immediately before no-overwrite rename\")\n    postread()\n    ordinary_chain(path.parent)\n    gate(SOURCE022[\"path\"], SOURCE022[\"sha256\"])\n    os.rename(staging, path)\n    need(not os.path.lexists(staging), \"successful exact staging rename without a retained temp alias\")\n    # The intentional staging identity moved to its exact canonical path.\n    # Keep its actual observations separately; do not fabricate a new raw9.\n    staging_observation = OBSERVATIONS.pop(str(staging))\n    need(read(path, sha(data), cap) == data, \"exact Root canonical whole-byte readback\")\n    canonical_observation = dict(OBSERVATIONS[str(path)])\n    need(all(staging_observation[\"path9\"][index] == canonical_observation[\"path9\"][index]\n             for index in (0, 1, 2, 3, 5, 6, 7, 8)), \"renamed Source stable identity, mode, size, mtime, attributes and birth\")\n    need(all(staging_observation[\"descriptor9\"][index] == canonical_observation[\"descriptor9\"][index]\n             for index in (0, 1, 2, 3, 5, 6, 7, 8)), \"renamed descriptor retains every non-ctime field independently\")\n    gate(SOURCE022[\"path\"], SOURCE022[\"sha256\"])\n    return fact(path, data), dict(staging=staging_observation, canonical=canonical_observation)\n",
+      "original": {
+        "bytes": 2296,
+        "end_byte": 139424,
+        "kind": "FunctionDef",
+        "line_end": 1247,
+        "line_start": 1213,
+        "name": "root_publish_once",
+        "sha256": "80db68c47bbba64620ebb78293eab163e5a405eeeaf35fc7acdf3e3d26778ab1",
+        "signature": "def root_publish_once(path, data, cap, allowed_path):",
+        "start_byte": 137128
+      }
+    }
+  ],
+  "all_actual_inputs": [
+    {
+      "bytes": 21322,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\independent_review_001\\review_I7_exact_protocol001_static_001.py",
+      "sha256": "1bfb666eff332a58ab1272de807cab4b873e2d5eac94e2ee6653b07db91bfbda"
+    },
+    {
+      "bytes": 51580,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_I7_EXACT_HELD_PUBLISHER_IO_AND_ENVELOPE_IMPLEMENTATION_PROTOCOL_001.json",
+      "sha256": "95f7e88d85a57d713fd74399b9c5132be0506cd9876e2e2406c5c7e0046c2393"
+    },
+    {
+      "bytes": 4315,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_CURRENT_I7_CANONICAL_PUBLISHER_IMPLEMENTATION_SOURCE_SCOPE_001.json",
+      "sha256": "59d328ed6d2ac90ff122f64c31a96a4a01d5a9300f98d46d5965382d457150dd"
+    },
+    {
+      "bytes": 3775,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_I7_PROTOCOL001_FIXTURE_GUARD_AND_STRUCTURAL_PLAN_CLARIFICATION_001.json",
+      "sha256": "1d7873e2d9b77a75ee86bda612fd4dcc1050b9b170a2faf3daf6686862562637"
+    },
+    {
+      "bytes": 30283,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\i7\\I7_AUTHOR_STANDALONE_FINITE8_PUBLISHER_IMPLEMENTATION_PLAN_001.json",
+      "sha256": "ee9a203640939879fd30d012baa19c8b06faf460aa5966d37cccad7280ba86a7"
+    },
+    {
+      "bytes": 39298,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\step079_role_publication_deferred_Source024_preparation_001\\STEP079_SOURCE024_ROOT_ROLE_PUBLICATION_DEFERRED_INERT_API_005.json",
+      "sha256": "4898b1d98725864248ed3658f69d91f03c8f92036864c1712a64c9ddb00daa19"
+    },
+    {
+      "bytes": 24223,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\observer010_lease009_root_001\\ROOT_SOURCE024_STEP079_ROLE_PUBLISHER005_DIFFERENT_DORMANT_WHOLE_SOURCE_REVIEW_ADOPTION_001.json",
+      "sha256": "1df3313a331dda7645826e78c0e0679db9b060ae842eac518cef788f98f567dd"
+    },
+    {
+      "bytes": 223719,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\step079_role_publication_deferred_Source024_preparation_001\\root_Source024_role_publication_deferred_005.py",
+      "sha256": "3a96d40d5f3a1c8947565a8042a0c648699edf6058c89d48a3c45dd6adb13a41"
+    },
+    {
+      "bytes": 12750,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\reviews\\source024_STEP079_role_publisher005_implementation001\\INDEPENDENT_SOURCE024_PUBLISHER005_WHOLE_DORMANT_IMPLEMENTATION_FLOAT_FREE_SOURCE_CAPSULE_001.json",
+      "sha256": "61a8e4b3ee9910aea4a509201b400607f46a5f9cbb4b4afde4bf9ed0e980811b"
+    },
+    {
+      "bytes": 1397990,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\reviews\\source024_STEP079_role_publisher005_implementation001\\INDEPENDENT_SOURCE024_PUBLISHER005_WHOLE_DORMANT_IMPLEMENTATION_FULL_SOURCE_PROOF_001.json",
+      "sha256": "5d55e3058538577fc5d615547090c86ad355f5d3ced9f7dff7436096e87f67b3"
+    },
+    {
+      "bytes": 30682,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\CURRENT_OWNER_M3_PUBLICATION_METADATA_INERT_API_002.json",
+      "sha256": "fc4363c20541add634522654f9f9195fa3333504b6b850c3decfaca0677c07f9"
+    },
+    {
+      "bytes": 25452,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\ROOT_I6_M3_PUBLICATION_ADAPTER_AND_SAVED_MEMORY_RESULTS_ADOPTION_001.json",
+      "sha256": "089b0ebeaeff17c984688672fc0607314d703d0edc260008e52b2618eaf9b59b"
+    },
+    {
+      "bytes": 44076,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\validate_current_owner_M3_publication_metadata_002.py",
+      "sha256": "b1fa875d93e38727b494ae6a63d1319c03001ac153ae3dc2aca478892c24845a"
+    },
+    {
+      "bytes": 57630,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\discovery_001\\I6_EXACT_PUBLICATION_RECONCILIATION_ABI_SOURCE_AND_PRESERVATION_MAP_001.json",
+      "sha256": "52704596ad96f48ba08b194a263ef465b894cca1b749f7bde5779eb343b389de"
+    },
+    {
+      "bytes": 55888,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\discovery_001\\I7_STANDALONE_FINITE8_PUBLISHER_EXACT_IO_CORE_AND_PREWRITE_FRONTIER_001.json",
+      "sha256": "2ef24e34cc5ee3c46c18e514196417ba86e6e58c506b29b64ffc070be8af288f"
+    },
+    {
+      "bytes": 3959,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\discovery_001\\I7_ACYCLIC43_AND_STAGED_EIGHT_SOURCE_BOOTSTRAP_ADDENDUM_001.json",
+      "sha256": "c73bfbf33482e07a4105cc8759a0ce6be62d3276a51d44fe3e72111cad171f07"
+    },
+    {
+      "bytes": 105687,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\independent_review_001\\I7_ACTUAL_CONSUMER_POLICY_DEPENDENCY_AND_ACYCLIC_PUBLICATION_FRONTIER_001.json",
+      "sha256": "6fd9ddaa22fad3328fafb2cf0bf64fbca8272e1866f5cace9aae0937a5602a05"
+    },
+    {
+      "bytes": 3273,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\independent_review_001\\I7_REDUCED_HELD_IO_AND_ENVELOPE_SLICE_NATIVE_ORDER_CLARIFICATION_001.json",
+      "sha256": "3799d4f9dd137179062b69700f45649ffd771232422aef88950eff9d19b28567"
+    },
+    {
+      "bytes": 2277,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_I7_ACTUAL_START_READ_ONLY_PRESERVATION_CHECK_001.json",
+      "sha256": "07faa63957ff0729ca3b7c0398c86e1c69ff72f690535fe3b73a24e3ce1fde83"
+    },
+    {
+      "bytes": 72288,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\ROOT_I6_PUBLICATION_ADAPTER_IMPLEMENTATION_AND_MANAGED_PUBLICATION_FINAL_OUTCOME_001.json",
+      "sha256": "02e6b4bb44f9e17e365063efa8b5486626b095aedd328a0a22af7277fb672c46"
+    },
+    {
+      "bytes": 44269,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\managed_preparation_001\\candidates_001\\EXACT_MANAGED_I6_PUBLICATION_ADAPTER_IMPLEMENTATION_PUBLICATION_SCOPE_001.json",
+      "sha256": "4d4b78ccba40ee970c1cc6b6bb38a57d074e36a3217c87c199be0c58006bab20"
+    }
+  ],
+  "boundary": "Protocol Source review only, including actual25 raw predecessor spans and exactly3 guard-context edits. Permits new held IO-kernel/strict structural plan/43-26 data-constructor Source authoring only after Root adoption. Full actual I0/I1/I2/receipt22/facts21/proof/caller binding stays UNWIRED; real entry must always refuse before IO. Inherited primitives are not admission APIs. Only a separate immutable fixture context can later exercise the new kernel on neutral owned files after final actual Source/API/fixture review, Root adoption and fresh exact one-use test scope. No Native8-before-Sourcebirth/all45/I6-prewrite cycle; no fake standalone authority files or process/native proof claims. All actual future grants/lease/family/paths/ordinals/purpose/results stay null.",
+  "checks": [
+    {
+      "evidence": {
+        "bytes": 51580,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_I7_EXACT_HELD_PUBLISHER_IO_AND_ENVELOPE_IMPLEMENTATION_PROTOCOL_001.json",
+        "sha256": "95f7e88d85a57d713fd74399b9c5132be0506cd9876e2e2406c5c7e0046c2393"
+      },
+      "name": "exact_Root_protocol001_pin",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 4315,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_CURRENT_I7_CANONICAL_PUBLISHER_IMPLEMENTATION_SOURCE_SCOPE_001.json",
+        "sha256": "59d328ed6d2ac90ff122f64c31a96a4a01d5a9300f98d46d5965382d457150dd"
+      },
+      "name": "exact_Source_scope_pin",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 3775,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_I7_PROTOCOL001_FIXTURE_GUARD_AND_STRUCTURAL_PLAN_CLARIFICATION_001.json",
+        "sha256": "1d7873e2d9b77a75ee86bda612fd4dcc1050b9b170a2faf3daf6686862562637"
+      },
+      "name": "exact_Root_clarification_pin",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 30283,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\i7\\I7_AUTHOR_STANDALONE_FINITE8_PUBLISHER_IMPLEMENTATION_PLAN_001.json",
+        "sha256": "ee9a203640939879fd30d012baa19c8b06faf460aa5966d37cccad7280ba86a7"
+      },
+      "name": "exact_author_plan_pin",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "Root_scope_protocol_clarifier_join",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 39298,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\step079_role_publication_deferred_Source024_preparation_001\\STEP079_SOURCE024_ROOT_ROLE_PUBLICATION_DEFERRED_INERT_API_005.json",
+        "sha256": "4898b1d98725864248ed3658f69d91f03c8f92036864c1712a64c9ddb00daa19"
+      },
+      "name": "actual_pin:inherited:BatchPublisher005_API",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 24223,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\observer010_lease009_root_001\\ROOT_SOURCE024_STEP079_ROLE_PUBLISHER005_DIFFERENT_DORMANT_WHOLE_SOURCE_REVIEW_ADOPTION_001.json",
+        "sha256": "1df3313a331dda7645826e78c0e0679db9b060ae842eac518cef788f98f567dd"
+      },
+      "name": "actual_pin:inherited:BatchPublisher005_Root_adoption",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 223719,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\step079_role_publication_deferred_Source024_preparation_001\\root_Source024_role_publication_deferred_005.py",
+        "sha256": "3a96d40d5f3a1c8947565a8042a0c648699edf6058c89d48a3c45dd6adb13a41"
+      },
+      "name": "actual_pin:inherited:BatchPublisher005_Source",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 12750,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\reviews\\source024_STEP079_role_publisher005_implementation001\\INDEPENDENT_SOURCE024_PUBLISHER005_WHOLE_DORMANT_IMPLEMENTATION_FLOAT_FREE_SOURCE_CAPSULE_001.json",
+        "sha256": "61a8e4b3ee9910aea4a509201b400607f46a5f9cbb4b4afde4bf9ed0e980811b"
+      },
+      "name": "actual_pin:inherited:BatchPublisher005_different_review",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 1397990,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\reviews\\source024_STEP079_role_publisher005_implementation001\\INDEPENDENT_SOURCE024_PUBLISHER005_WHOLE_DORMANT_IMPLEMENTATION_FULL_SOURCE_PROOF_001.json",
+        "sha256": "5d55e3058538577fc5d615547090c86ad355f5d3ced9f7dff7436096e87f67b3"
+      },
+      "name": "actual_pin:inherited:BatchPublisher005_full_proof",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 30682,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\CURRENT_OWNER_M3_PUBLICATION_METADATA_INERT_API_002.json",
+        "sha256": "fc4363c20541add634522654f9f9195fa3333504b6b850c3decfaca0677c07f9"
+      },
+      "name": "actual_pin:inherited:I6_API002",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 25452,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\ROOT_I6_M3_PUBLICATION_ADAPTER_AND_SAVED_MEMORY_RESULTS_ADOPTION_001.json",
+        "sha256": "089b0ebeaeff17c984688672fc0607314d703d0edc260008e52b2618eaf9b59b"
+      },
+      "name": "actual_pin:inherited:I6_Root_adoption",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 44076,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\validate_current_owner_M3_publication_metadata_002.py",
+        "sha256": "b1fa875d93e38727b494ae6a63d1319c03001ac153ae3dc2aca478892c24845a"
+      },
+      "name": "actual_pin:inherited:I6_Source002",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 57630,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\discovery_001\\I6_EXACT_PUBLICATION_RECONCILIATION_ABI_SOURCE_AND_PRESERVATION_MAP_001.json",
+        "sha256": "52704596ad96f48ba08b194a263ef465b894cca1b749f7bde5779eb343b389de"
+      },
+      "name": "actual_pin:inherited:I6_previous_discovery",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 4315,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_CURRENT_I7_CANONICAL_PUBLISHER_IMPLEMENTATION_SOURCE_SCOPE_001.json",
+        "sha256": "59d328ed6d2ac90ff122f64c31a96a4a01d5a9300f98d46d5965382d457150dd"
+      },
+      "name": "actual_pin:inherited:Root_I7_scope",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 55888,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\discovery_001\\I7_STANDALONE_FINITE8_PUBLISHER_EXACT_IO_CORE_AND_PREWRITE_FRONTIER_001.json",
+        "sha256": "2ef24e34cc5ee3c46c18e514196417ba86e6e58c506b29b64ffc070be8af288f"
+      },
+      "name": "actual_pin:discovery_or_policy:I7_STANDALONE_FINITE8_PUBLISHER_EXACT_IO_CORE_AND_PREWRITE_FRONTIER_001.json",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 3959,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\discovery_001\\I7_ACYCLIC43_AND_STAGED_EIGHT_SOURCE_BOOTSTRAP_ADDENDUM_001.json",
+        "sha256": "c73bfbf33482e07a4105cc8759a0ce6be62d3276a51d44fe3e72111cad171f07"
+      },
+      "name": "actual_pin:discovery_or_policy:I7_ACYCLIC43_AND_STAGED_EIGHT_SOURCE_BOOTSTRAP_ADDENDUM_001.json",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 105687,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\independent_review_001\\I7_ACTUAL_CONSUMER_POLICY_DEPENDENCY_AND_ACYCLIC_PUBLICATION_FRONTIER_001.json",
+        "sha256": "6fd9ddaa22fad3328fafb2cf0bf64fbca8272e1866f5cace9aae0937a5602a05"
+      },
+      "name": "actual_pin:discovery_or_policy:I7_ACTUAL_CONSUMER_POLICY_DEPENDENCY_AND_ACYCLIC_PUBLICATION_FRONTIER_001.json",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 3273,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\independent_review_001\\I7_REDUCED_HELD_IO_AND_ENVELOPE_SLICE_NATIVE_ORDER_CLARIFICATION_001.json",
+        "sha256": "3799d4f9dd137179062b69700f45649ffd771232422aef88950eff9d19b28567"
+      },
+      "name": "actual_pin:discovery_or_policy:I7_REDUCED_HELD_IO_AND_ENVELOPE_SLICE_NATIVE_ORDER_CLARIFICATION_001.json",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 2277,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_I7_ACTUAL_START_READ_ONLY_PRESERVATION_CHECK_001.json",
+        "sha256": "07faa63957ff0729ca3b7c0398c86e1c69ff72f690535fe3b73a24e3ce1fde83"
+      },
+      "name": "actual_pin:actual_start_preservation",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 30682,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\CURRENT_OWNER_M3_PUBLICATION_METADATA_INERT_API_002.json",
+        "sha256": "fc4363c20541add634522654f9f9195fa3333504b6b850c3decfaca0677c07f9"
+      },
+      "name": "actual_pin:accepted_I6_API",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 72288,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\ROOT_I6_PUBLICATION_ADAPTER_IMPLEMENTATION_AND_MANAGED_PUBLICATION_FINAL_OUTCOME_001.json",
+        "sha256": "02e6b4bb44f9e17e365063efa8b5486626b095aedd328a0a22af7277fb672c46"
+      },
+      "name": "actual_pin:scope_basis:accepted_I6_final_outcome",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 44269,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\managed_preparation_001\\candidates_001\\EXACT_MANAGED_I6_PUBLICATION_ADAPTER_IMPLEMENTATION_PUBLICATION_SCOPE_001.json",
+        "sha256": "4d4b78ccba40ee970c1cc6b6bb38a57d074e36a3217c87c199be0c58006bab20"
+      },
+      "name": "actual_pin:scope_basis:prior_finite_managed_scope",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 223719,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\step079_role_publication_deferred_Source024_preparation_001\\root_Source024_role_publication_deferred_005.py",
+        "sha256": "3a96d40d5f3a1c8947565a8042a0c648699edf6058c89d48a3c45dd6adb13a41"
+      },
+      "name": "actual_pin:actual_original223719",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "exact25unique_old_function_spans",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 86,
+        "end_byte": 120961,
+        "kind": "FunctionDef",
+        "line_end": 949,
+        "line_start": 947,
+        "name": "need",
+        "sha256": "3465e0985f3f62e9dea02f78e02f29cfa7b90ed3f7a940310e4ee3984d1993cd",
+        "signature": "def need(condition, message):",
+        "start_byte": 120875
+      },
+      "name": "original_whole_span_size_SHA:need",
+      "passed": true
+    },
+    {
+      "evidence": "def need(condition, message):",
+      "name": "original_whole_span_ast_name_signature:need",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 59,
+        "end_byte": 121021,
+        "kind": "FunctionDef",
+        "line_end": 952,
+        "line_start": 951,
+        "name": "sha",
+        "sha256": "4e627faf4b903521e935f7c6f3ae93545856f821d0e2565ba7ea6cf97d3d0e6c",
+        "signature": "def sha(data):",
+        "start_byte": 120962
+      },
+      "name": "original_whole_span_size_SHA:sha",
+      "passed": true
+    },
+    {
+      "evidence": "def sha(data):",
+      "name": "original_whole_span_ast_name_signature:sha",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 90,
+        "end_byte": 121112,
+        "kind": "FunctionDef",
+        "line_end": 955,
+        "line_start": 954,
+        "name": "utc",
+        "sha256": "7e06b0050f9c7c682e23cd6d5a37d5b0538e809e4db6eb7e5a1d4047c1856f9b",
+        "signature": "def utc():",
+        "start_byte": 121022
+      },
+      "name": "original_whole_span_size_SHA:utc",
+      "passed": true
+    },
+    {
+      "evidence": "def utc():",
+      "name": "original_whole_span_ast_name_signature:utc",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 208,
+        "end_byte": 121321,
+        "kind": "FunctionDef",
+        "line_end": 960,
+        "line_start": 957,
+        "name": "raw9",
+        "sha256": "dd2949fbc9829272c2e8ebbd5c3ba30f234ad92be06ca17ec9ecdf332ab590df",
+        "signature": "def raw9(info):",
+        "start_byte": 121113
+      },
+      "name": "original_whole_span_size_SHA:raw9",
+      "passed": true
+    },
+    {
+      "evidence": "def raw9(info):",
+      "name": "original_whole_span_ast_name_signature:raw9",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 174,
+        "end_byte": 121496,
+        "kind": "FunctionDef",
+        "line_end": 965,
+        "line_start": 962,
+        "name": "absolute",
+        "sha256": "17fc4582ee66053430db4f45f1a293c3fd697bad08beae982bf7bda61c4f59f8",
+        "signature": "def absolute(path):",
+        "start_byte": 121322
+      },
+      "name": "original_whole_span_size_SHA:absolute",
+      "passed": true
+    },
+    {
+      "evidence": "def absolute(path):",
+      "name": "original_whole_span_ast_name_signature:absolute",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 625,
+        "end_byte": 122122,
+        "kind": "FunctionDef",
+        "line_end": 979,
+        "line_start": 967,
+        "name": "ordinary_chain",
+        "sha256": "6ed341871a5a9a537f00656270c50fc648c290440259f3b47265627fdc70dd30",
+        "signature": "def ordinary_chain(path, *, file=False):",
+        "start_byte": 121497
+      },
+      "name": "original_whole_span_size_SHA:ordinary_chain",
+      "passed": true
+    },
+    {
+      "evidence": "def ordinary_chain(path, *, file=False):",
+      "name": "original_whole_span_ast_name_signature:ordinary_chain",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 1856,
+        "end_byte": 123979,
+        "kind": "FunctionDef",
+        "line_end": 1008,
+        "line_start": 981,
+        "name": "read",
+        "sha256": "161a9627d905d1f4f22873cd5a94255eaa63b12a56e56024b035f3fc3d2ef6bf",
+        "signature": "def read(path, expected=None, cap=2097152):",
+        "start_byte": 122123
+      },
+      "name": "original_whole_span_size_SHA:read",
+      "passed": true
+    },
+    {
+      "evidence": "def read(path, expected=None, cap=2097152):",
+      "name": "original_whole_span_ast_name_signature:read",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 171,
+        "end_byte": 124151,
+        "kind": "FunctionDef",
+        "line_end": 1015,
+        "line_start": 1010,
+        "name": "pairs",
+        "sha256": "3509f129815c852fa9e805cca690bf86ee0e6f4c5c31949a621239c0aa9d749a",
+        "signature": "def pairs(items):",
+        "start_byte": 123980
+      },
+      "name": "original_whole_span_size_SHA:pairs",
+      "passed": true
+    },
+    {
+      "evidence": "def pairs(items):",
+      "name": "original_whole_span_ast_name_signature:pairs",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 197,
+        "end_byte": 124349,
+        "kind": "FunctionDef",
+        "line_end": 1019,
+        "line_start": 1017,
+        "name": "decode",
+        "sha256": "a77ec15984968423f6317939c88e78d26efde1a4fe4c126d696aba862846fe70",
+        "signature": "def decode(data):",
+        "start_byte": 124152
+      },
+      "name": "original_whole_span_size_SHA:decode",
+      "passed": true
+    },
+    {
+      "evidence": "def decode(data):",
+      "name": "original_whole_span_ast_name_signature:decode",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 129,
+        "end_byte": 124479,
+        "kind": "FunctionDef",
+        "line_end": 1022,
+        "line_start": 1021,
+        "name": "wire",
+        "sha256": "9ec7d6144a3bdde8623758279ac8cc0f13c4f917c2ffd2f318f5fbea619ab4d0",
+        "signature": "def wire(value, indent=2):",
+        "start_byte": 124350
+      },
+      "name": "original_whole_span_size_SHA:wire",
+      "passed": true
+    },
+    {
+      "evidence": "def wire(value, indent=2):",
+      "name": "original_whole_span_ast_name_signature:wire",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 99,
+        "end_byte": 124579,
+        "kind": "FunctionDef",
+        "line_end": 1025,
+        "line_start": 1024,
+        "name": "fact",
+        "sha256": "ab082050f568e30cc3f9126402aba1b2131fb9f9bda7af3ca07f25eef8c0df03",
+        "signature": "def fact(path, data):",
+        "start_byte": 124480
+      },
+      "name": "original_whole_span_size_SHA:fact",
+      "passed": true
+    },
+    {
+      "evidence": "def fact(path, data):",
+      "name": "original_whole_span_ast_name_signature:fact",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 439,
+        "end_byte": 125019,
+        "kind": "FunctionDef",
+        "line_end": 1032,
+        "line_start": 1027,
+        "name": "fact3",
+        "sha256": "db2da3c74bc37cc2592e0ba0962bddff186a939bf54c89bfef3500a2966b333f",
+        "signature": "def fact3(pin):",
+        "start_byte": 124580
+      },
+      "name": "original_whole_span_size_SHA:fact3",
+      "passed": true
+    },
+    {
+      "evidence": "def fact3(pin):",
+      "name": "original_whole_span_ast_name_signature:fact3",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 195,
+        "end_byte": 125215,
+        "kind": "FunctionDef",
+        "line_end": 1038,
+        "line_start": 1034,
+        "name": "read_pin",
+        "sha256": "235967ad58551733507d515962c4585b54424a959feaaaa2359570a1e2988069",
+        "signature": "def read_pin(pin, *, cap=2097152):",
+        "start_byte": 125020
+      },
+      "name": "original_whole_span_size_SHA:read_pin",
+      "passed": true
+    },
+    {
+      "evidence": "def read_pin(pin, *, cap=2097152):",
+      "name": "original_whole_span_ast_name_signature:read_pin",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 76,
+        "end_byte": 125292,
+        "kind": "FunctionDef",
+        "line_end": 1041,
+        "line_start": 1040,
+        "name": "same_pin",
+        "sha256": "1670c55a7e1efc3dad4ee2416121bc92e2a8b449a7569639ce92e283e0896fe9",
+        "signature": "def same_pin(actual, expected):",
+        "start_byte": 125216
+      },
+      "name": "original_whole_span_size_SHA:same_pin",
+      "passed": true
+    },
+    {
+      "evidence": "def same_pin(actual, expected):",
+      "name": "original_whole_span_ast_name_signature:same_pin",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 588,
+        "end_byte": 125881,
+        "kind": "FunctionDef",
+        "line_end": 1050,
+        "line_start": 1043,
+        "name": "moment",
+        "sha256": "16b5f845a5daade1383df307fdf940fe7338c6d8ee0c2c61d3c9e16142bd15c9",
+        "signature": "def moment(value, digits=None):",
+        "start_byte": 125293
+      },
+      "name": "original_whole_span_size_SHA:moment",
+      "passed": true
+    },
+    {
+      "evidence": "def moment(value, digits=None):",
+      "name": "original_whole_span_ast_name_signature:moment",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 49,
+        "end_byte": 125931,
+        "kind": "FunctionDef",
+        "line_end": 1053,
+        "line_start": 1052,
+        "name": "current_ticks",
+        "sha256": "e1523834f3d589ef9901c6900d2e95635cdd8816c0d7068de45fdc40f791d972",
+        "signature": "def current_ticks():",
+        "start_byte": 125882
+      },
+      "name": "original_whole_span_size_SHA:current_ticks",
+      "passed": true
+    },
+    {
+      "evidence": "def current_ticks():",
+      "name": "original_whole_span_ast_name_signature:current_ticks",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 425,
+        "end_byte": 126357,
+        "kind": "FunctionDef",
+        "line_end": 1061,
+        "line_start": 1055,
+        "name": "_contains_pin",
+        "sha256": "e38da962eb09f36a22e565249008b2f74a6371e7bed7f397598d4bbc3e45d705",
+        "signature": "def _contains_pin(value, selected):",
+        "start_byte": 125932
+      },
+      "name": "original_whole_span_size_SHA:_contains_pin",
+      "passed": true
+    },
+    {
+      "evidence": "def _contains_pin(value, selected):",
+      "name": "original_whole_span_ast_name_signature:_contains_pin",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 646,
+        "end_byte": 127004,
+        "kind": "FunctionDef",
+        "line_end": 1073,
+        "line_start": 1063,
+        "name": "postread",
+        "sha256": "4201279e3530cd806a38e6c8cb8df773b0e4d90706cf395e03317fd427b06e67",
+        "signature": "def postread():",
+        "start_byte": 126358
+      },
+      "name": "original_whole_span_size_SHA:postread",
+      "passed": true
+    },
+    {
+      "evidence": "def postread():",
+      "name": "original_whole_span_ast_name_signature:postread",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 247,
+        "end_byte": 127252,
+        "kind": "FunctionDef",
+        "line_end": 1079,
+        "line_start": 1075,
+        "name": "absent_output",
+        "sha256": "7571216aef61984e925563a55b2c02783738ce3e6b52d443a06448451e524a16",
+        "signature": "def absent_output(path):",
+        "start_byte": 127005
+      },
+      "name": "original_whole_span_size_SHA:absent_output",
+      "passed": true
+    },
+    {
+      "evidence": "def absent_output(path):",
+      "name": "original_whole_span_ast_name_signature:absent_output",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 465,
+        "end_byte": 127718,
+        "kind": "FunctionDef",
+        "line_end": 1088,
+        "line_start": 1081,
+        "name": "strict_source_json",
+        "sha256": "176d12e2a9462b69aeb59c7e69bc205b48bae5b19d24a837dce2f1f5f5ab808e",
+        "signature": "def strict_source_json(data):",
+        "start_byte": 127253
+      },
+      "name": "original_whole_span_size_SHA:strict_source_json",
+      "passed": true
+    },
+    {
+      "evidence": "def strict_source_json(data):",
+      "name": "original_whole_span_ast_name_signature:strict_source_json",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 437,
+        "end_byte": 128156,
+        "kind": "FunctionDef",
+        "line_end": 1095,
+        "line_start": 1090,
+        "name": "exact_fact3",
+        "sha256": "20a2c12ca7bd0c38f2a78c08d9f46983e0cd5938682c28afb95c1cdb24e66b8a",
+        "signature": "def exact_fact3(pin):",
+        "start_byte": 127719
+      },
+      "name": "original_whole_span_size_SHA:exact_fact3",
+      "passed": true
+    },
+    {
+      "evidence": "def exact_fact3(pin):",
+      "name": "original_whole_span_ast_name_signature:exact_fact3",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 362,
+        "end_byte": 128519,
+        "kind": "FunctionDef",
+        "line_end": 1102,
+        "line_start": 1097,
+        "name": "exact_pin_occurs",
+        "sha256": "62b9988d9244b8a61a87e8bc1eb7488c30fd0138ab4d2f88bcc24f04fcbbf6de",
+        "signature": "def exact_pin_occurs(value, pin):",
+        "start_byte": 128157
+      },
+      "name": "original_whole_span_size_SHA:exact_pin_occurs",
+      "passed": true
+    },
+    {
+      "evidence": "def exact_pin_occurs(value, pin):",
+      "name": "original_whole_span_ast_name_signature:exact_pin_occurs",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 290,
+        "end_byte": 128810,
+        "kind": "FunctionDef",
+        "line_end": 1108,
+        "line_start": 1104,
+        "name": "strict_source_decode",
+        "sha256": "469bc45ce2af21b66a7e8d241332c07c64fb8d8dfbdab86cbfbb64e28122eb7f",
+        "signature": "def strict_source_decode(body):",
+        "start_byte": 128520
+      },
+      "name": "original_whole_span_size_SHA:strict_source_decode",
+      "passed": true
+    },
+    {
+      "evidence": "def strict_source_decode(body):",
+      "name": "original_whole_span_ast_name_signature:strict_source_decode",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 680,
+        "end_byte": 129491,
+        "kind": "FunctionDef",
+        "line_end": 1120,
+        "line_start": 1110,
+        "name": "tracked_pin",
+        "sha256": "340e717c7297d77e6d92a11d986e978741fb67e6e0674fa31bec56785da8b0cb",
+        "signature": "def tracked_pin(pin, *, cap=SOURCE_CAP):",
+        "start_byte": 128811
+      },
+      "name": "original_whole_span_size_SHA:tracked_pin",
+      "passed": true
+    },
+    {
+      "evidence": "def tracked_pin(pin, *, cap=SOURCE_CAP):",
+      "name": "original_whole_span_ast_name_signature:tracked_pin",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 2296,
+        "end_byte": 139424,
+        "kind": "FunctionDef",
+        "line_end": 1247,
+        "line_start": 1213,
+        "name": "root_publish_once",
+        "sha256": "80db68c47bbba64620ebb78293eab163e5a405eeeaf35fc7acdf3e3d26778ab1",
+        "signature": "def root_publish_once(path, data, cap, allowed_path):",
+        "start_byte": 137128
+      },
+      "name": "original_whole_span_size_SHA:root_publish_once",
+      "passed": true
+    },
+    {
+      "evidence": "def root_publish_once(path, data, cap, allowed_path):",
+      "name": "original_whole_span_ast_name_signature:root_publish_once",
+      "passed": true
+    },
+    {
+      "evidence": [
+        {
+          "end_byte": 137890,
+          "line": 1225,
+          "original": "gate(SOURCE022[\"path\"], SOURCE022[\"sha256\"])",
+          "proposal": "_current_owner_publication_guard()",
+          "purpose": "Explicit current owner prewrite guard. This is the complete reviewed context-only edit span; every other writer byte remains exact.",
+          "start_byte": 137846
+        },
+        {
+          "end_byte": 138352,
+          "line": 1234,
+          "original": "gate(SOURCE022[\"path\"], SOURCE022[\"sha256\"])",
+          "proposal": "_current_owner_publication_guard()",
+          "purpose": "Explicit current owner prewrite guard. This is the complete reviewed context-only edit span; every other writer byte remains exact.",
+          "start_byte": 138308
+        },
+        {
+          "end_byte": 139327,
+          "line": 1246,
+          "original": "gate(SOURCE022[\"path\"], SOURCE022[\"sha256\"])",
+          "proposal": "_current_owner_publication_guard()",
+          "purpose": "Explicit current owner prewrite guard. This is the complete reviewed context-only edit span; every other writer byte remains exact.",
+          "start_byte": 139283
+        }
+      ],
+      "name": "exact3gate_replacement_spans",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "end_byte": 137890,
+        "line": 1225,
+        "original": "gate(SOURCE022[\"path\"], SOURCE022[\"sha256\"])",
+        "proposal": "_current_owner_publication_guard()",
+        "purpose": "Explicit current owner prewrite guard. This is the complete reviewed context-only edit span; every other writer byte remains exact.",
+        "start_byte": 137846
+      },
+      "name": "exact_only_guard_old_span:0",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "end_byte": 138352,
+        "line": 1234,
+        "original": "gate(SOURCE022[\"path\"], SOURCE022[\"sha256\"])",
+        "proposal": "_current_owner_publication_guard()",
+        "purpose": "Explicit current owner prewrite guard. This is the complete reviewed context-only edit span; every other writer byte remains exact.",
+        "start_byte": 138308
+      },
+      "name": "exact_only_guard_old_span:1",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "end_byte": 139327,
+        "line": 1246,
+        "original": "gate(SOURCE022[\"path\"], SOURCE022[\"sha256\"])",
+        "proposal": "_current_owner_publication_guard()",
+        "purpose": "Explicit current owner prewrite guard. This is the complete reviewed context-only edit span; every other writer byte remains exact.",
+        "start_byte": 139283
+      },
+      "name": "exact_only_guard_old_span:2",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "expected_ported_SHA": "2b2224bfbbe3235564b47a236b2b62534215d22fdac2ae2f82293e2668eb8a81",
+        "expected_ported_bytes": 2266,
+        "original_SHA": "80db68c47bbba64620ebb78293eab163e5a405eeeaf35fc7acdf3e3d26778ab1"
+      },
+      "name": "writer_complement_only3_ports_reversible",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "author_plan_uses_same25_and_exact3",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "bytes": 30682,
+        "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publication_implementation_009\\i6\\CURRENT_OWNER_M3_PUBLICATION_METADATA_INERT_API_002.json",
+        "sha256": "fc4363c20541add634522654f9f9195fa3333504b6b850c3decfaca0677c07f9"
+      },
+      "name": "actual_pin:I6schema_basis",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "all6schema_definitions_exact_I6",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "schema_version",
+        "record_type",
+        "author",
+        "Root_thread",
+        "created_utc",
+        "request_id",
+        "verdict",
+        "actual_Root_request",
+        "current_owner_scope",
+        "current_owner_support",
+        "Root_future_path_selection",
+        "Root_future_path_selection_acceptance",
+        "actual_new_lease",
+        "actual_new_lease_support",
+        "predecessor_inventory_support",
+        "producer_supports",
+        "publisher_source",
+        "publisher_API",
+        "publisher_different_Source_review",
+        "publisher_Root_Source_adoption",
+        "publication_helper_physical_Source_editor",
+        "inherited_Source022_publisher",
+        "inherited_reader_Source_editor",
+        "inherited_no_overwrite_writer_Source_editor",
+        "canonical_physical_actor",
+        "published",
+        "published_count",
+        "composer_carried",
+        "topology",
+        "complete_input_postreads",
+        "canonical_publication",
+        "publication_reserve_seconds",
+        "original_numerical_guards",
+        "immutable_historical_leases",
+        "operational_authority",
+        "target_execution",
+        "actual_entry006",
+        "whole_cohort_or_runtime_acceptance",
+        "original_import_function_main_oracle_fixture_C8_test_actor_Job_native_science",
+        "Git_mutation_push_unrelated_stop_or_host_quiet",
+        "old_leases_extended",
+        "partial_failure_preserved_no_rollback_no_automatic_retry",
+        "canonical_delta_and_creation_review_pending"
+      ],
+      "name": "schema_closed_count:batch_publication43_v2",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "schema_future_cells_null:batch_publication43_v2",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "role",
+        "predecessor",
+        "draft",
+        "canonical",
+        "author_receipt",
+        "exact_Source_review",
+        "Root_Source_review_adoption",
+        "physical_Source_editor",
+        "metadata_Source_worker",
+        "retained_semantic_Source_author",
+        "canonical_physical_actor",
+        "source_cap",
+        "actual_publication_metadata_APIs"
+      ],
+      "name": "schema_closed_count:batch_published_row_v2",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "schema_future_cells_null:batch_published_row_v2",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "Root_future_path_selection_support",
+        "Root_thread",
+        "current_owner_support",
+        "author",
+        "canonical_publication_selected",
+        "created_utc",
+        "new_lease_support",
+        "operational_authority",
+        "predecessor_inventory_support",
+        "producer_supports",
+        "publication_receipt_path",
+        "publisher_API",
+        "publisher_Root_adoption",
+        "publisher_Source_review",
+        "publisher_source",
+        "record_type",
+        "request_id",
+        "rows",
+        "schema_version",
+        "source_only",
+        "target_execution"
+      ],
+      "name": "schema_closed_count:batch_request21_v2",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "schema_future_cells_null:batch_request21_v2",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "Root_adoption",
+        "author_receipt",
+        "canonical_path",
+        "draft",
+        "metadata_Source_worker",
+        "physical_Source_editor",
+        "retained_semantic_Source_author",
+        "role",
+        "source_cap",
+        "source_review"
+      ],
+      "name": "schema_closed_count:batch_request_row10_v2",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "schema_future_cells_null:batch_request_row10_v2",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "facts",
+        "different_review",
+        "Root_adoption"
+      ],
+      "name": "schema_closed_count:external_M3_stage_support3",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "schema_future_cells_null:external_M3_stage_support3",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "Git_mutation",
+        "Root_future_path_selection",
+        "current_owner_scope",
+        "actual_canonical_delta_Source_review",
+        "actual_input_observations",
+        "author",
+        "canonical_Source",
+        "canonical_Source_birth_utc",
+        "canonical_delta_Root_adoption",
+        "canonical_publication",
+        "canonical_publication_flag_scope",
+        "created_utc",
+        "exact_draft_Source",
+        "initial_actual_Root_request",
+        "initial_actual_canonical_publication_receipt",
+        "initial_actual_execution_witness",
+        "new_canonical_Source_write_by_reconciliation",
+        "new_canonical_lease",
+        "operational_authority",
+        "prior_actual_publisher_Source",
+        "prior_publication_created_utc",
+        "record_type",
+        "schema_version",
+        "target_execution",
+        "verdict",
+        "whole_cohort_or_runtime_or_fixture_acceptance"
+      ],
+      "name": "schema_closed_count:reconciliation26_v2",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "schema_future_cells_null:reconciliation26_v2",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_template",
+        "SUPERVISE_ROOT_METADATA_BEFORE_template",
+        "WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_template",
+        "SUPERVISE_ROOT_METADATA_AFTER_template",
+        "WRITE_ROOT_METADATA_BEFORE_AUTHORIZATION_bound",
+        "SUPERVISE_ROOT_METADATA_BEFORE_bound",
+        "WRITE_ROOT_METADATA_AFTER_AUTHORIZATION_bound",
+        "SUPERVISE_ROOT_METADATA_AFTER_bound"
+      ],
+      "name": "finite8_roles_exact_I6_Source_order",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "protocol_false:target_execution",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "protocol_false:tests_executed",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "protocol_false:operational_authority",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "protocol_false:scientific_authority",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "clarification_false:actual_real_publication_admission",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "clarification_false:full_I0_I1_I2_proof_binding_semantics_implemented_in_this_slice",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "clarification_false:new_module_or_fixture_invocation_authorized_now",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "clarification_false:target_execution",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "clarification_false:tests_executed",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "clarification_false:operational_authority",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "clarification_false:scientific_authority",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "scope_false:I0_I1_I2_I3_I4_I5_original_import_call_main_fixture_test_native_Parser_or_PowerShell_syntax_execution_authorized",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "scope_false:I6_module_invocation_before_fresh_scoped_test_authorized",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "scope_false:actual_selected_eight_Source_publication_authorized",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "scope_false:canonical_actual45_or_I0_I1_I2_I3_I4_I5_I6_Source_changes_authorized",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "scope_false:new_publisher_import_call_tests_before_Source_adoption_and_fresh_scope_authorized",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "scope_false:Pro3_coordination_required",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "scope_false:target_execution",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "scope_false:tests_executed",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "scope_false:operational_authority",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "scope_false:scientific_authority",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "Root_actual_thread_resource_override_and_agentceilings",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "Source_scope_caps_and_frozen_counts",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "no_actual_future_grants_and_no_oldchanges",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Every real-family public entry refuses before filesystem/stat/reader callbacks or output mutation. Scope unqualified publication and reconciliation separately; no CLI enabling path.",
+        "required": [
+          "Every real-family public entry refuses before filesystem/stat/reader callbacks",
+          "publication and reconciliation separately",
+          "no CLI enabling path"
+        ]
+      },
+      "name": "real_publicentry_first_noIO",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "real_literalhold_exactFalse",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "An unconditional UNWIRED admission refusal remains even if that literal is changed; no file, environment value, JSON flag, callback response, successful fixture or installed fixture context may enter real-family publisher or reconciliation.",
+        "required": [
+          "unconditional UNWIRED admission refusal",
+          "literal is changed",
+          "successful fixture or installed fixture context",
+          "real-family publisher or reconciliation"
+        ]
+      },
+      "name": "second_unconditional_refusal_no_fixture_bridge",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "The inherited discovery wording about a fully admitted Root context and full I0/lease/resource rechecks describes the FUTURE real binding. In current I7, _current_owner_publication_guard serves only immutable fresh Root owned-fixture scope/context; it checks actual pinned test scope, time, exact namespace/leaves/caps and current fixture state. Missing context refuses. Full real admission remains unconditionally UNWIRED. Fixture context never satisfies real entry.",
+        "required": [
+          "describes the FUTURE real binding",
+          "current I7",
+          "only immutable fresh Root owned-fixture scope/context",
+          "test scope, time, exact namespace/leaves/caps",
+          "Full real admission remains unconditionally UNWIRED",
+          "Fixture context never satisfies real entry"
+        ]
+      },
+      "name": "full_real_admission_futurenot_current_guard",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Validate structure and detach immutable data only. Preserve exact input path/UTC/pin strings; reject lexical variants and conflicting identities. Do not canonicalize, rebaseline, round or normalize comparisons.",
+        "required": [
+          "detach immutable data only",
+          "Preserve exact input path/UTC/pin strings",
+          "reject lexical variants and conflicting identities",
+          "Do not canonicalize, rebaseline, round"
+        ]
+      },
+      "name": "validate_detach_no_path_UTC_normalization",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Real-family publishing and reconciliation entrypoints are explicitly listed in new API and hard-refuse before any IO. Inherited read/root_publish_once and codecs are low-level IO primitives; calling them is not an admission API. Every fixture wrapper checks fixture scope/context/path/cap before invoking any IO primitive. There is no runnable real-family CLI enabling route.",
+        "required": [
+          "hard-refuse before any IO",
+          "low-level IO primitives",
+          "not an admission API",
+          "Every fixture wrapper checks fixture scope/context/path/cap before invoking any IO primitive",
+          "no runnable real-family CLI"
+        ]
+      },
+      "name": "primitives_not_public_admission_fixturewrapper_checksfirst",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Fixture entry accepts the pinned fresh Root scope data; exact closed private fixture context and case/leaf/cap manifest are authored in the new API and independently reviewed before test scope issuance. Root loader verifies Source/adoption/scope and captures actual calls. These are synthetic test controls, never alternative owner/I0/lease credentials.",
+        "required": [
+          "exact closed private fixture context and case/leaf/cap manifest",
+          "new API",
+          "independently reviewed before test scope issuance",
+          "never alternative owner/I0/lease credentials"
+        ]
+      },
+      "name": "fixture_context_schema_API_first_review_before_freshscope",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "D:\\Aenv\\pro2\\WORK\\I7F010\\n1 is reserved prospective synthetic test namespace only. A fresh Root scope selects it and the exact case/leaf manifest after finalSourceadoption. Root owned supervisor create-once binds it before child launch; no cleanup/delete/retry. It is not a selected45/canonical publication namespace.",
+        "required": [
+          "reserved prospective synthetic test namespace only",
+          "after finalSourceadoption",
+          "create-once binds it before child launch",
+          "no cleanup/delete/retry",
+          "not a selected45/canonical publication namespace"
+        ]
+      },
+      "name": "prospective_namespace_not_actualfamily",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Write neutral owned payloads for actual kernel IO. Schema21/43/26 examples remain nested synthetic fixture data/results; no standalone fake actual Root policy/lease/grant/Source authority files. Record actual stat/readback/writes separately from injected clocks/stat/exception branches.",
+        "required": [
+          "Write neutral owned payloads",
+          "Schema21/43/26 examples remain nested synthetic",
+          "no standalone fake actual Root policy/lease/grant/Source authority files",
+          "actual stat/readback/writes separately from injected"
+        ]
+      },
+      "name": "neutral_payload_nested_synthetic_schema_only",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "All returned original raw9 reader/writer observation keys and vectors remain intact. Do not invent a Native8/process witness schema or infer human authority/birth qualification. Constructor verification of supplied data is metadata-only; physical native validation and full actualadmission remain explicitly outside this slice.",
+        "required": [
+          "raw9 reader/writer observation keys and vectors remain intact",
+          "Do not invent a Native8/process witness schema",
+          "metadata-only",
+          "full actualadmission remain explicitly outside"
+        ]
+      },
+      "name": "no_native_process_schema_or_wholehost_claim",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Only new module state/call boundaries may be temporarily faulted; restore every patch in finally. Do not change real-entry qualification holds. Actual hardlink test setup is allowed only after explicit fresh scope authorization, inside owned namespace with declared endpoints. Unsupported real reparse/symlink setup is not actual proof; disclose a synthetic injected rejection or defer that claim.",
+        "required": [
+          "restore every patch in finally",
+          "Do not change real-entry qualification holds",
+          "explicit fresh scope authorization",
+          "Unsupported real reparse/symlink setup is not actual proof"
+        ]
+      },
+      "name": "faults_restore_no_actual_hold_monkeypatch",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "Accepted Native8 of unborn canonical scripts",
+        "All45 canonical paths or phasepeer before finite8 Source publication",
+        "I6 postbirth batch metadata PASS before initial writes",
+        "Future publication43/delta/recon/witness byte hashes"
+      ],
+      "name": "Native8_not_prepublication_prerequisite",
+      "passed": true
+    },
+    {
+      "evidence": "Exact I0 owner support3/manifest and instruction evidence plus dedicated Source-publication purpose, not mere I0 Native scope",
+      "name": "explicit_future_unwired_requirement:0",
+      "passed": true
+    },
+    {
+      "evidence": "Canonical I1 lease/issuance/publication support, max43200/M3exact43200/native7/strict1200, immutable expired leases",
+      "name": "explicit_future_unwired_requirement:1",
+      "passed": true
+    },
+    {
+      "evidence": "Selected45 decision/review/Root adoption and actual row path/nonce/predecessor/ordinal>018/pairs/caps",
+      "name": "explicit_future_unwired_requirement:2",
+      "passed": true
+    },
+    {
+      "evidence": "Qualified M3 producer successor, not held I2Source002, exact receipt22/facts21/stage support3 and full inverse/render/codec guarantees",
+      "name": "explicit_future_unwired_requirement:3",
+      "passed": true
+    },
+    {
+      "evidence": "Actual code Source/API/editor/different proof/fullproof/direct Root coverage and dynamic author/subtree exclusion",
+      "name": "explicit_future_unwired_requirement:4",
+      "passed": true
+    },
+    {
+      "evidence": "Actual Source60/lease1200/resource60 at mutation; RAM1GiB/disk10GiB",
+      "name": "explicit_future_unwired_requirement:5",
+      "passed": true
+    },
+    {
+      "evidence": "Genuine request/draft+receipt different Source proof/adoption and exact M3 derived purpose6 joins; distinct17 versus45 inventories",
+      "name": "explicit_future_unwired_requirement:6",
+      "passed": true
+    },
+    {
+      "evidence": "Future real caller binding and separate admitted operation witness",
+      "name": "explicit_future_unwired_requirement:7",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Normalize and crosscheck existing request21/row10 metadata and present selected draft material; this is a metadata plan, never an admitted publisher context. Enumerate any deeper22/facts/proof/lease semantics not implemented as UNWIRED.",
+        "required": [
+          "existing request21/row10",
+          "present selected draft material",
+          "metadata plan, never an admitted publisher context",
+          "not implemented as UNWIRED"
+        ]
+      },
+      "name": "strict_existing_metadata_plan_only",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Strict UTF8 JSON/rootdict/no duplicate keys/floats/nonfinite/depth48/node50000/metadata2MiB; closed21/row10/schema2/types from I6. Empty/malformed known lease5/inventory3 leaves rejected, distinct fixed17 M3inventory versus45 catalogue not aliased.",
+        "required": [
+          "UTF8 JSON/rootdict/no duplicate keys/floats/nonfinite/depth48/node50000/metadata2MiB",
+          "closed21/row10/schema2",
+          "lease5/inventory3 leaves rejected",
+          "fixed17 M3inventory versus45 catalogue not aliased"
+        ]
+      },
+      "name": "strict_JSON_shape_and_supportleaf_domains",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Strict closed fact3 builtinintnotbool positive Source<=65536/metadata<=2097152, lower64 SHA, absolute ordinary lexical Windows paths, reject UNC/device/dot/ADS/trailingdotspace/separator aliases. Case-insensitive path conflict registry across every consumed known leaf and reject conflicting caps before IO.",
+        "required": [
+          "builtinintnotbool positive Source<=65536/metadata<=2097152",
+          "lower64 SHA",
+          "absolute ordinary lexical Windows paths",
+          "UNC/device/dot/ADS/trailingdotspace/separator aliases",
+          "Case-insensitive path conflict registry",
+          "every consumed known leaf",
+          "conflicting caps before IO"
+        ]
+      },
+      "name": "strict_positivepins_and_case_cap_conflicts_before_IO",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Strict ordered nonempty subset1..8 of the exact ROLE_ORDER; no duplicates, arbitrary producer families, Generic single14/29 route or fabricated unselected futureBOUND pins. producer_supports exactly M3.",
+        "required": [
+          "subset1..8",
+          "ROLE_ORDER",
+          "no duplicates",
+          "Generic single14/29",
+          "fabricated unselected futureBOUND pins",
+          "producer_supports exactly M3"
+        ]
+      },
+      "name": "only_present_subset_no_fabricated_BOUND_or_generic",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Candidate canonical hashes may derive only from actually supplied/read draft bytes, labelled declared candidate metadata until a real canonical readback. No unborn BOUND candidate with unknown bytes and no fabricated observed birth.",
+        "required": [
+          "only from actually supplied/read draft bytes",
+          "declared candidate metadata",
+          "until a real canonical readback",
+          "No unborn BOUND candidate with unknown bytes"
+        ]
+      },
+      "name": "hashes_from_actual_draftbytes_no_birthfabrication",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "An explicit Root-selected finite canonical/staging/publication/reconciliation output whitelist and trusted row paths/caps. Full selected output absence and ordinary namespace checks before first mutation; no Source bodies executed. Read every selected synthetic draft/pred/input using preserved paired reader, exact pins/postreads and source65536 before first mutation.",
+        "required": [
+          "finite canonical/staging/publication/reconciliation output whitelist",
+          "Full selected output absence and ordinary namespace checks before first mutation",
+          "Read every selected synthetic draft/pred/input",
+          "exact pins/postreads and source65536"
+        ]
+      },
+      "name": "selected_whitelist_and_allpreflight_beforemutation",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Body read callbacks for new writer are distinct from I6 protected16 metadata callback. I6 immutable adapter remains postbirth and is not imported/called before its own separately authorised complete-graph audit.",
+        "required": [
+          "distinct from I6 protected16 metadata callback",
+          "I6 immutable adapter remains postbirth",
+          "not imported/called before its own separately authorised complete-graph audit"
+        ]
+      },
+      "name": "I6_immutable_postbirth_no_prewriteuse",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "publication43/row13 generated only from complete actual returned writer observations for all rows in this operation, count matches exact selected subset. It uses existing draft+receipt proofs; source_review/Root_adoption request maps to exact_Source_review/Root_Source_review_adoption published row. Publisher top Source review is publisher CODE proof. Root physically serializes, metadata_Source_worker retains actual helper editor and retained semantic author remains explicit.",
+        "required": [
+          "complete actual returned writer observations",
+          "count matches exact selected subset",
+          "existing draft+receipt proofs",
+          "exact_Source_review/Root_Source_review_adoption",
+          "Publisher top Source review is publisher CODE proof",
+          "Root physically serializes",
+          "metadata_Source_worker retains actual helper editor"
+        ]
+      },
+      "name": "publication43_prior_draft_proofs_no_future_delta",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Actual original43 exists after writes; external actual execution witness follows the owned invocation; later canonical delta review/fullproof/adoption covers canonical/draft/receipt/request/43/witness. No containing-record selfhash cycle.",
+        "required": [
+          "original43 exists after writes",
+          "external actual execution witness follows",
+          "later canonical delta review/fullproof/adoption",
+          "canonical/draft/receipt/request/43/witness",
+          "No containing-record selfhash cycle"
+        ]
+      },
+      "name": "acyclic_externalwitness_delta_after43",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Separate26 data constructor over existing original43/request/witness/delta proof/adoption and actual immutable canonical metadata. Never rewrites canonical or creates a lease; new_canonical_Source_write_by_reconciliation=False. Its own different review/adoption follows. Constructor may validate supplied existing-data shape/order, but may not call UNWIRED full proof semantics as if implemented.",
+        "required": [
+          "Separate26 data constructor",
+          "existing original43/request/witness/delta proof/adoption",
+          "Never rewrites canonical or creates a lease",
+          "new_canonical_Source_write_by_reconciliation=False",
+          "own different review/adoption follows",
+          "may not call UNWIRED full proof semantics as if implemented"
+        ]
+      },
+      "name": "separate_recon26_dataonly_no_rewrite_lease",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Consumer bindings are explicit declared postbirth ports only. I6 expected8positive/16paths cannot gate earlytemplate bootstrap. Do not change I6, fabricatefuture43 or invoke its private internals.",
+        "required": [
+          "I6 expected8positive/16paths cannot gate earlytemplate bootstrap",
+          "Do not change I6",
+          "fabricatefuture43",
+          "private internals"
+        ]
+      },
+      "name": "I6_bootstrap_no_fakefuture43",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Copy root_publish_once with exactly the three identified gate(SOURCE022[...]) calls replaced by _current_owner_publication_guard(), preserving every other Source byte and call position. Retain complete inverse and old span pins. No gate movement/removal, write normalization, os.replace fallback, overwrite, deletion or retry.",
+        "required": [
+          "exactly the three identified",
+          "every other Source byte and call position",
+          "complete inverse",
+          "No gate movement/removal",
+          "os.replace fallback",
+          "deletion or retry"
+        ]
+      },
+      "name": "exact_helpers_and_three_context_ports_only",
+      "passed": true
+    },
+    {
+      "evidence": null,
+      "name": "raw9_exact_order_9fields",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "PATH9 and descriptor9 retain all9 cells independently; shared cross-API indices exactly[0,1,2,3,6,7,8]. ctime4/mode5 never forced cross-API equal, but each full vector stable across entire reads and postreads.",
+        "required": [
+          "all9 cells independently",
+          "[0,1,2,3,6,7,8]",
+          "ctime4/mode5 never forced cross-API equal",
+          "each full vector stable"
+        ]
+      },
+      "name": "raw9_independentfull_and_shared7_not_crossctime_mode",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Actual observations are obtained by the writer from lstat/fstat and cannot be accepted as claimed JSON. They prove the named API vectors/bytes at scoped checks, not process/Job/whole-host absence or nativeHandle10/Parser measurement.",
+        "required": [
+          "writer from lstat/fstat",
+          "cannot be accepted as claimed JSON",
+          "not process/Job/whole-host absence",
+          "nativeHandle10/Parser"
+        ]
+      },
+      "name": "actual_Python_metadata_not_claimedJSON_or_native",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Original raw9 uses getattr defaultNone; new strict preflight must require the actual Windows Python313 full metadata fields needed by downstream contracts. Missing/mismatched values refuse; do not substitute ctime for birthtime or clip inode. No native measurement is claimed by these Python-only vectors.",
+        "required": [
+          "Missing/mismatched values refuse",
+          "do not substitute ctime for birthtime or clip inode",
+          "No native measurement"
+        ]
+      },
+      "name": "missingfullmetadata_refuse_no_inode_birth_mask",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Two complete buffers from same ordinary retained fd; complete descriptor9 unchanged across reads; complete path9 unchanged after close; exact hash/length/cap. Full inode/birthtime values remain unmasked/un-normalized.",
+        "required": [
+          "Two complete buffers from same ordinary retained fd",
+          "descriptor9 unchanged",
+          "path9 unchanged after close",
+          "inode/birthtime values remain unmasked/un-normalized"
+        ]
+      },
+      "name": "retained_samefd_two_reads_and_full_postclose",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "Require native Windows semantics; absolute exact selected path; bytes typed; cap builtinint positive<=2097152 and len(data)<=cap; upstream finite8 preflight requires nonempty Source bytes and exact cap65536.",
+        "ordinary parent chain; absent canonical and <canonical>.staging. Snapshot complete input postreads, then first explicit current owner guard.",
+        "Open staging xb, write complete bytes, flush and fsync; read full staging back with exact SHA/cap.",
+        "Canonical still absent; complete input postreads; ordinary parent check; second explicit current owner guard.",
+        "Windows os.rename(staging,canonical) with no overwrite fallback; staging must now be absent.",
+        "Remove and retain actual staging observation separately, read canonical complete bytes, retain actual canonical observation.",
+        "Compare staging/canonical PATH9 and descriptor9 independently for indices[0,1,2,3,5,6,7,8], intentionally excluding only ctime4 across rename; retain original raw values.",
+        "Third current owner guard, return actual canonical fact3 and actual staging/canonical metadata pair."
+      ],
+      "name": "exact8_write_operation_order",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "No rollback/delete/retry/identity reuse. Before rename keep staging; after rename keep canonical. Later-row failures preserve earlier prefix. Publication receipt overflow/collision/failure after Source writes is a preserved partial failure with no success43. Reconciliation never touches prior Sources.",
+        "required": [
+          "No rollback/delete/retry/identity reuse",
+          "Before rename keep staging; after rename keep canonical",
+          "earlier prefix",
+          "no success43",
+          "Reconciliation never touches prior Sources"
+        ]
+      },
+      "name": "honest_partialprefix_noretry_nosuccess43",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Return bounded structured refusal capturing actual reached stage/exception/available observations/published prefix and partial paths; caller supervisor captures real stdout/stderr/exit/argv/PID/times separately. Do not claim native/process correctness from JSON flags.",
+        "required": [
+          "bounded structured refusal",
+          "actual reached stage/exception/available observations/published prefix and partial paths",
+          "caller supervisor captures real stdout/stderr/exit/argv/PID/times separately",
+          "Do not claim native/process correctness"
+        ]
+      },
+      "name": "separate_real_process_witness_from_partialdata",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "run_owned_io_suite(publisher_module, fixture_scope) only after final Source/API/fixture review, Root adoption and fresh one-use Root scope. Fixture Source may be authored now after protocol adoption but cannot be invoked now.",
+        "required": [
+          "only after final Source/API/fixture review",
+          "Root adoption and fresh one-use Root scope",
+          "cannot be invoked now"
+        ]
+      },
+      "name": "future_test_requires_Source_review_and_fresh_oneuseScope",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Windows only, one hidden owned general Python -I-S-B child, hard60seconds/2MiB streams/5secondreap, no original/I0-I6 module imports/calls/tests except new I7copied IO code; no Native/Parser. Root owns exact namespace and scope; no existing paths reused.",
+        "required": [
+          "Windows only",
+          "one hidden owned general Python -I-S-B child",
+          "hard60seconds/2MiB streams/5secondreap",
+          "no original/I0-I6 module imports/calls/tests",
+          "no Native/Parser",
+          "no existing paths reused"
+        ]
+      },
+      "name": "future_Windows_ownedchild_no_legacy_native_Parser",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "Actual owned-file IO substantiates only those synthetic kernel paths. Injected clocks/stat/raw mismatches are explicitly synthetic; no current family publication/admission/producer/caller/lease/Native8/Parser/runtime/science qualification.",
+        "required": [
+          "Actual owned-file IO substantiates only those synthetic kernel paths",
+          "Injected clocks/stat/raw mismatches are explicitly synthetic",
+          "no current family publication/admission/producer/caller/lease/Native8/Parser/runtime/science qualification"
+        ]
+      },
+      "name": "fixture_physical_and_injected_limits",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual": "A distinct immutable fixture-only IO context checks exact Root one-use scope pin/current interval/private namespace/exact allowed leaves/caps and each original guard call. It can never satisfy real-family admission. Clear/restore module state after each case and restore all fault patches in finally. No monkeypatch of real entry holds.",
+        "required": [
+          "distinct immutable fixture-only IO context",
+          "Root one-use scope pin/current interval/private namespace/exact allowed leaves/caps",
+          "never satisfy real-family admission",
+          "restore all fault patches in finally",
+          "No monkeypatch of real entry holds"
+        ]
+      },
+      "name": "fixture_private_context_no_realbridge_restore",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "actual single and multiple owned writes/staging flush fsync rename readback vectors",
+        "public actual entry refuses with zeroIO including after fixture context installed",
+        "canonical and staging preexist no overwrite",
+        "source65537 and metadata2097153 rejected with no mutation; bool/zero/cap conflict",
+        "invalid path/outside namespace/reparse or hardlink safety; actual setup only if authorised and supported, otherwise explicitly synthetic injection",
+        "input mutation postread refusal",
+        "full PATH9/descriptor9/crossAPI mismatch refusal without field masking",
+        "each of three guard positions refuses and exact staging/canonical prefix retained",
+        "later-row refusal preserves earlier canonical, no retry/rollback",
+        "record output collision and receipt overflow after rows preserves Sources with no success43",
+        "strictclosed21/row10 plusorderedsubset/producer-only map/pin conflicts/malformed leaf cases",
+        "exact43/row13 and26 constructor fields/chronology, no futurewitness/delta dependencies and no canonicalrewrite"
+      ],
+      "name": "future_cases_cover_all_stage_and_metadata_failures",
+      "passed": true
+    },
+    {
+      "evidence": [
+        "Root protocol independent Source review/adoption before targetSourcebirth",
+        "Final newSource/API/fixture independent Source review/adoption before invocation",
+        "Actual owned-TempFS freshScope needs its own preinvocation Source review",
+        "Different savedoutcome review without rerun then Root adoption",
+        "Exact finite manageddocs/inertSource candidate review/Root adoption before normalFFcommit/push"
+      ],
+      "name": "successive_reviews_before_invocation_and_savedoutcome_no_rerun",
+      "passed": true
+    },
+    {
+      "evidence": {
+        "actual_UTC": "2026-10-15T15:40:27.325828+00:00",
+        "end": "2026-10-15T18:23:52.234035+00:00"
+      },
+      "name": "actual_UTC_within3hScope_strict60reserve",
+      "passed": true
+    },
+    {
+      "evidence": 21,
+      "name": "all_actual_inputs_unique",
+      "passed": true
+    }
+  ],
+  "checks_failed": 0,
+  "created_utc": "2026-10-15T15:40:27.325828+00:00",
+  "filesystem_IO_kernel_calls": 0,
+  "native_calls": 0,
+  "new_module_or_fixture_invocations": 0,
+  "operational_authority": false,
+  "optional_author_plan": {
+    "bytes": 30283,
+    "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\i7\\I7_AUTHOR_STANDALONE_FINITE8_PUBLISHER_IMPLEMENTATION_PLAN_001.json",
+    "sha256": "ee9a203640939879fd30d012baa19c8b06faf460aa5966d37cccad7280ba86a7"
+  },
+  "project_calls": 0,
+  "project_imports": 0,
+  "project_test_runs": 0,
+  "record_type": "actual_independent_I7_exact_protocol001_Source_full_proof",
+  "reviewer": "/root/owner_source_review",
+  "reviewer_Source": {
+    "bytes": 21322,
+    "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\independent_review_001\\review_I7_exact_protocol001_static_001.py",
+    "sha256": "1bfb666eff332a58ab1272de807cab4b873e2d5eac94e2ee6653b07db91bfbda"
+  },
+  "schema_version": 1,
+  "scientific_authority": false,
+  "scope_instruction_coverage": [
+    {
+      "bytes": 4315,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_CURRENT_I7_CANONICAL_PUBLISHER_IMPLEMENTATION_SOURCE_SCOPE_001.json",
+      "sha256": "59d328ed6d2ac90ff122f64c31a96a4a01d5a9300f98d46d5965382d457150dd"
+    },
+    {
+      "bytes": 51580,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_I7_EXACT_HELD_PUBLISHER_IO_AND_ENVELOPE_IMPLEMENTATION_PROTOCOL_001.json",
+      "sha256": "95f7e88d85a57d713fd74399b9c5132be0506cd9876e2e2406c5c7e0046c2393"
+    },
+    {
+      "bytes": 3775,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_I7_PROTOCOL001_FIXTURE_GUARD_AND_STRUCTURAL_PLAN_CLARIFICATION_001.json",
+      "sha256": "1d7873e2d9b77a75ee86bda612fd4dcc1050b9b170a2faf3daf6686862562637"
+    }
+  ],
+  "source_author": "/root",
+  "subjects": [
+    {
+      "bytes": 51580,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_I7_EXACT_HELD_PUBLISHER_IO_AND_ENVELOPE_IMPLEMENTATION_PROTOCOL_001.json",
+      "sha256": "95f7e88d85a57d713fd74399b9c5132be0506cd9876e2e2406c5c7e0046c2393"
+    },
+    {
+      "bytes": 4315,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_CURRENT_I7_CANONICAL_PUBLISHER_IMPLEMENTATION_SOURCE_SCOPE_001.json",
+      "sha256": "59d328ed6d2ac90ff122f64c31a96a4a01d5a9300f98d46d5965382d457150dd"
+    },
+    {
+      "bytes": 3775,
+      "path": "D:\\Aenv\\pro2\\WORK\\resume-20261015-001\\native_publisher_implementation_010\\ROOT_I7_PROTOCOL001_FIXTURE_GUARD_AND_STRUCTURAL_PLAN_CLARIFICATION_001.json",
+      "sha256": "1d7873e2d9b77a75ee86bda612fd4dcc1050b9b170a2faf3daf6686862562637"
+    }
+  ],
+  "target_Source_compilations": 0,
+  "target_execution": false,
+  "tests_executed": false,
+  "verdict": "PASS_I7_PROTOCOL001_WITH_EXACT_FIXTURE_GUARD_CLARIFICATION_SOURCE_ONLY"
+}
