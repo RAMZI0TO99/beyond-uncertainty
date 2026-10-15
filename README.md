@@ -1,3 +1,7 @@
+**October15 I3 Native8 Source port accepted.** The [native helper/wrapper report](docs/development/native-measurement-implementation/20261015-i3/I3_NATIVE_IMPLEMENTATION.md) records reviewed owner-context/purpose and typed-result Source changes with all15 protected functions and exact8 loop preserved. Both modules remain unrun; dependency interfaces stay held for later I5/I2/I4 qualification and a reviewed I3 successor. Next: separately scope I4 Parser context. The dated Source inventory stays36/45 and frozen STEP08035/45. All prior guidance is preserved below.
+
+---
+
 **October15 I2 family helper Source accepted.** The [M3 family implementation report](docs/development/native-family-implementation/20261015-i2/I2_FAMILY_IMPLEMENTATION.md) records the reviewed owner-context/stage-purpose port, preserved algorithms and explicit future phase ordinals>018. I2 remains unrun; no actual family, stage grant or native/Parser result was created. Next: separately scope I3 Native8 helper/wrapper/API context. The dated Source inventory stays36/45 and frozen STEP08035/45. All prior guidance is preserved below.
 
 ---
