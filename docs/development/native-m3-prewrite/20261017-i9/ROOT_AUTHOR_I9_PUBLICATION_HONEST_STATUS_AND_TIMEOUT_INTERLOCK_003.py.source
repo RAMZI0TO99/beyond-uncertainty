@@ -1,0 +1,28 @@
+"""Keep child status independent of acceptance and prevent automatic timeout retries."""
+import ast, datetime, hashlib, json, os
+from pathlib import Path
+P = Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+subjects = []
+for stem, digest in (('ROOT_PREPARE_I9_MANAGED_CANDIDATES', '828b69c9f8dc7a2f4d1a5130edcdba9af80fd5c8ca5cabb9b0284208b6e518b3'), ('ROOT_REVIEWED_I9_FINITE_PUBLICATION', '3233e6c17261ec75ee6103e2421181089f4924d17eec70bf65c58a0f00866678')):
+    old_path = P / (stem + '_002.py'); old = old_path.read_bytes()
+    assert hashlib.sha256(old).hexdigest() == digest
+    text = old.decode()
+    before = "  assert type(row['all_cases_passed']) is bool and row['all_cases_passed'] is row['accepted_complete_run']\n  if row['accepted_complete_run']:assert row['tests_executed'] is True"
+    after = "  assert type(row['all_cases_passed']) is bool or row['all_cases_passed'] is None\n  if row['accepted_complete_run']:assert row['tests_executed'] is True and row['all_cases_passed'] is True"
+    assert text.count(before) == 1
+    text = text.replace(before, after)
+    if stem == 'ROOT_REVIEWED_I9_FINITE_PUBLICATION':
+        marker = "authority();step=sys.argv[1];assert step in ('copy','stage','commit','push')"
+        assert text.count(marker) == 1
+        interlock = "\nfor refused_step in ('COPY','STAGE','COMMIT','PUSH'):\n assert not (O/('ROOT_I9_OWNED_GIT_TIMEOUT_REFUSAL_'+refused_step+'_001.json')).exists(),'Saved owned Git timeout blocks this publisher; perform read-only reconciliation and adopt a separately reviewed successor before mutation'"
+        text = text.replace(marker, marker + interlock)
+    data = text.encode(); output = P / (stem + '_003.py')
+    ast.parse(data); compile(data, str(output), 'exec')
+    with output.open('xb') as handle:
+        handle.write(data); handle.flush(); os.fsync(handle.fileno())
+    subjects.append(dict(path=str(output), bytes=len(data), sha256=hashlib.sha256(data).hexdigest()))
+receipt = dict(schema_version=1, record_type='Root_I9_publication_honest_status_and_timeout_interlock_Source_receipt', author='/root', created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(), new_Source_subjects=subjects, prior001_and002_preserved_unrun=True, new_Source_invoked=False, Source_AST_and_compile_only=True, child_status_contract='all_cases_passed preserves actual child bool, or null when no child status was saved; accepted last row implies actual tests executed and all child cases passed. Prior successful child cases may remain unaccepted for a recorded supervisor failure. Never fabricate False for unknown.', count_boundary='tests_executed and invocation count must remain known from actual evidence for final counted qualification; unknown invocation history cannot be converted to zero.', timeout_interlock='Any saved timeout refusal in any of the four modes blocks this entire publisher003 on a later invocation. Root must perform read-only effect reconciliation and obtain a separately reviewed/adopted Source successor; no automatic retry.', actual_result_or_candidate_adoption_exists=False, target_execution=False, tests_executed=False, operational_authority=False, scientific_authority=False)
+encoded = (json.dumps(receipt, sort_keys=True, indent=2, allow_nan=False) + '\n').encode()
+with (P / 'ROOT_I9_PUBLICATION_HONEST_STATUS_AND_TIMEOUT_INTERLOCK_SOURCE_RECEIPT_003.json').open('xb') as handle:
+    handle.write(encoded); handle.flush(); os.fsync(handle.fileno())
+print(json.dumps(dict(new_Source_subjects=subjects)))

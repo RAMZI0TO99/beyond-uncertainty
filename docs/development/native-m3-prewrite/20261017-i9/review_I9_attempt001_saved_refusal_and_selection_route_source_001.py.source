@@ -1,0 +1,375 @@
+"""Independent read/hash/JSON/AST review of an already consumed failed attempt.
+
+Never imports or executes either reviewed target, fixture, renderer, or builder.
+Only this directory receives create-once metadata outputs. No target replay.
+"""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+P = Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+OWN = P / 'saved_refusal_review_001'
+REVIEWER = '/root/owner_source_review'
+VERDICT = 'PASS_I9_ATTEMPT001_SAVED_REFUSAL_AND_FIXTURE_SELECTION_ROUTE_CAUSE_SOURCE_ONLY'
+CHECKS = []
+INPUTS = {}
+BYTES = {}
+DOCUMENTS = {}
+
+def check(name, passed, evidence=None):
+    assert type(name) is str and name and name not in {v['name'] for v in CHECKS}
+    assert type(passed) is bool
+    item = dict(name=name, passed=passed)
+    if evidence is not None:
+        item['evidence'] = evidence
+    CHECKS.append(item)
+
+def fact(path, allow_empty=False):
+    path = Path(path)
+    body = path.read_bytes()
+    assert len(body) <= 2097152
+    assert allow_empty or len(body) > 0
+    pin = dict(path=str(path), bytes=len(body), sha256=hashlib.sha256(body).hexdigest())
+    BYTES[str(path)] = body
+    if body:
+        INPUTS[str(path)] = pin
+    return pin
+
+def verify(pin, label):
+    shape = (type(pin) is dict and set(pin) == {'path','bytes','sha256'} and
+             type(pin.get('path')) is str and type(pin.get('bytes')) is int and pin['bytes'] > 0 and
+             type(pin.get('sha256')) is str and len(pin['sha256']) == 64)
+    check(label + ': strict positive fact3', shape)
+    assert shape
+    observed = fact(pin['path'])
+    check(label + ': whole bytes and SHA256', observed == pin)
+    return observed
+
+def pairs(rows):
+    result = {}
+    for k,v in rows:
+        assert k not in result
+        result[k] = v
+    return result
+
+def bad(value):
+    raise ValueError(value)
+
+def doc(path):
+    path = str(Path(path))
+    if path not in DOCUMENTS:
+        if path not in BYTES:
+            fact(path)
+        DOCUMENTS[path] = json.loads(BYTES[path].decode('utf-8'), object_pairs_hook=pairs,
+                                      parse_float=bad, parse_constant=bad)
+    return DOCUMENTS[path]
+
+def refs(value):
+    if type(value) is dict:
+        if set(value) == {'path','bytes','sha256'}:
+            yield value
+        else:
+            for v in value.values():
+                yield from refs(v)
+    elif type(value) is list:
+        for v in value:
+            yield from refs(v)
+
+def utc(text):
+    value = datetime.datetime.fromisoformat(text.replace('Z','+00:00'))
+    assert value.utcoffset() == datetime.timedelta(0)
+    return value
+
+def load(name):
+    path = P/name
+    fact(path)
+    return doc(path)
+
+S = load('ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_001.json')
+R = load('ROOT_I9_ACTUAL_ONCE_MEMORY_SUITE_RESULT_001.json')
+U = load('ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_001.json')
+C = load('ROOT_I9_ACTUAL_OWNED_MEMORY_STREAMS_CAPTURE_001.json')
+M = load('ROOT_I9_MEMORY_SCOPE_CONSUMED_001.json')
+SM = load('ROOT_I9_MEMORY_SUPERVISOR_CONSUMED_001.json')
+SA = load('ROOT_I9_FINAL_RECORDED_M3_SEMANTIC_AND_FIXTURE_SOURCE_REVIEW_ADOPTION_001.json')
+TA = load('ROOT_I9_EXACT_BOUND_MEMORY_TOOL_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json')
+FA = load('ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_DIFFERENT_REVIEW_ADOPTION_001.json')
+B = load('ROOT_I9_EXACT_MEMORY_TOOL_BINDINGS_001.json')
+BR = load('ROOT_I9_EXACT_MEMORY_TOOL_ACTUAL_BINDING_SOURCE_RECEIPT_001.json')
+W = load('ROOT_CURRENT_I9_M3_SEMANTIC_PREFLIGHT_SOURCE_SCOPE_001.json')
+
+# Exact direct provenance and the actual reviewed input rosters are rehashed.
+# This follows finite saved review lists, never synthetic fixture paths.
+for label, value in [('suite', R), ('supervisor', U), ('capture', C), ('scope', S),
+                     ('child marker', M), ('supervisor marker', SM),
+                     ('Source adoption', SA), ('tool adoption', TA), ('fresh adoption', FA),
+                     ('bindings', B), ('binding receipt', BR)]:
+    check(label + ': genuine Root author', value.get('author', value.get('Root_author')) == '/root')
+    seen = set()
+    for pin in refs(value):
+        if type(pin.get('bytes')) is int and pin['bytes'] == 0:
+            continue  # External empty stderr is checked separately below.
+        key = pin['path']
+        if key not in seen:
+            verify(pin, label + ': ' + str(len(seen)+1) + ' ' + Path(key).name)
+            seen.add(key)
+
+for label, adopted in [('Source',SA), ('tools',TA), ('fresh scope',FA)]:
+    capsule = doc(adopted['different_Source_review']['path'])
+    full = doc(adopted['full_proof']['path'])
+    check(label + ': saved different review strict integer zero',
+          type(capsule['checks_failed']) is int and capsule['checks_failed'] == 0 and
+          type(full['checks_failed']) is int and full['checks_failed'] == 0)
+    check(label + ': saved review Source-only flags',
+          capsule['target_execution'] is False and capsule['tests_executed'] is False and
+          full['target_execution'] is False and full['tests_executed'] is False)
+    check(label + ': exact capsule/full proof join', capsule['full_proof'] == adopted['full_proof'])
+    checks = full['checks']
+    check(label + ': unique all-passed named checks', type(checks) is list and len(checks) > 0 and
+          len({q['name'] for q in checks}) == len(checks) and
+          all(type(q['name']) is str and q['name'] and q['passed'] is True for q in checks))
+    check(label + ': same reviewed subject set', capsule['subjects'] == full['subjects'])
+    check(label + ': accepted before launch', utc(full['created_utc']) <= utc(capsule['created_utc']) <=
+          utc(adopted['created_utc']) <= utc(SM['created_utc']))
+    roster = full['all_actual_inputs']
+    check(label + ': finite unique actual input roster', type(roster) is list and
+          0 < len(roster) <= 1024 and len({q['path'] for q in roster}) == len(roster))
+    for i,pin in enumerate(roster):
+        verify(pin, label + ': reviewed input ' + str(i+1))
+
+scope_pin = fact(P/S['names']['scope'])
+module_pin = S['module_Source']
+fixture_pin = S['fixture_Source']
+api = doc(S['API']['path'])
+module_text = BYTES[module_pin['path']].decode('utf-8')
+fixture_text = BYTES[fixture_pin['path']].decode('utf-8')
+ma, fa = ast.parse(module_text), ast.parse(fixture_text)
+mn = {n.name:n for n in ma.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+fn = {n.name:n for n in fa.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+
+def literals(tree):
+    values = {}
+    for node in tree.body:
+        if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name):
+            try:
+                values[node.targets[0].id] = ast.literal_eval(node.value)
+            except (ValueError,TypeError):
+                pass
+    return values
+
+mc, fc = literals(ma), literals(fa)
+planned = list(fc['PLANNED_CASE_NAMES'])
+check('case count: exact 96 distinct literal names', len(planned)==96 and len(set(planned))==96)
+check('case count: scope/API/fixture/saved result identical',
+      planned==S['planned_case_names']==R['planned_case_names']==api['fixture_interface']['planned_case_names'] and
+      type(fc['EXPECTED_CASE_COUNT']) is int and fc['EXPECTED_CASE_COUNT']==96 and
+      type(S['expected_planned_case_count']) is int and S['expected_planned_case_count']==96 and
+      type(R['expected_planned_case_count']) is int and R['expected_planned_case_count']==96)
+check('attempt: one actual invocation, no completed cases',
+      R['tests_executed'] is True and R['fixture_entry_invoked'] is True and
+      type(R['I9_memory_test_runs']) is int and R['I9_memory_test_runs']==1 and
+      type(R['actual_test_case_count']) is int and R['actual_test_case_count']==0 and
+      R['partial_completed_cases_at_failure']==[] and R['outcome'] is None)
+check('attempt: actual failing first planned positive',
+      R['failed_or_last_case_at_failure']==planned[0]=='positive_complete_templates5')
+check('attempt: exact implementation error preserved',
+      R['error']==dict(message='E_SELECTION_ROUTE',type='I9MetadataError') and
+      R['all_cases_passed'] is False and R['partial_capture_issue'] is None)
+check('attempt: supervisor truthfully refuses child', U['passed'] is False and
+      U['owned_child_exit_code']==1 and type(U['owned_child_exit_code']) is int and
+      U['refusal']=='saved child refused:RuntimeError:CHILD_COMPLETE_ACCEPTED_MEMORY_RESULT')
+check('attempt: capture never converts failure to acceptance', C['supervisor_accepted'] is False and
+      C['no_child_or_test_rerun'] is True)
+check('attempt: all records identify consumed attempt 1',
+      all(type(q['attempt_number']) is int and q['attempt_number']==1 for q in (S,R,U,C,M,SM)))
+check('attempt: exact Source quartet bindings', all(R[k]==S[k]==B[k] for k in
+      ('module_Source','fixture_Source','API')) and S['author_receipt']==B['author_receipt'])
+check('attempt: Source adoption actual pin joins',
+      S['Source_adoption']==R['actual_Source_adoption']==B['Source_adoption']==fact(P/'ROOT_I9_FINAL_RECORDED_M3_SEMANTIC_AND_FIXTURE_SOURCE_REVIEW_ADOPTION_001.json'))
+check('attempt: marker/result/supervisor/capture exact scope', all(q['scope']==scope_pin for q in (R,U,C,M,SM)))
+check('attempt: child result pin in supervisor', U['child_saved_result']==fact(P/S['names']['child_result']))
+check('attempt: supervisor result pin in capture', C['supervisor_result']==fact(P/S['names']['supervisor_result']))
+check('attempt: both consumed marker pins', R['consumption_marker']==fact(P/S['names']['child_marker']) and
+      U['supervisor_marker']==fact(P/S['names']['supervisor_marker']))
+check('attempt: no automatic retry', S['automatic_retry_authorized'] is False and
+      M['automatic_retry_authorized'] is False and SM['automatic_retry_authorized'] is False and
+      type(S['maximum_invocations']) is int and S['maximum_invocations']==1)
+check('scope: authoring window surrounds entire once run',
+      utc(W['interval_start']) <= utc(SA['created_utc']) < utc(S['created_utc']) <
+      utc(FA['created_utc']) < utc(SM['created_utc']) < utc(M['created_utc']) <
+      utc(R['started_utc']) < utc(R['created_utc']) < utc(U['created_utc']) <
+      utc(C['created_utc']) < utc(W['interval_end']))
+check('scope: adopted before one-use supervisor start', utc(FA['created_utc']) < utc(SM['created_utc']))
+check('scope: one-use interval and >60 second launch reserve',
+      utc(S['interval_start']) <= utc(U['started_utc']) and
+      utc(U['created_utc']) < utc(S['interval_end']) and
+      (utc(S['interval_end'])-utc(U['resource_prelaunch']['observed_utc'])).total_seconds() > 60)
+check('scope: exact tools remain the previously reviewed bytes', all(
+      S['tool_Source_pins'][k] in TA['actual_tool_Source_pins'] for k in S['tool_Source_pins']))
+check('child: exact isolated argv and working directory',
+      U['argv']==[B['python_executable'],'-I','-S','-B',S['tool_Source_pins']['runner']['path'],'001'] and U['cwd']==str(P))
+check('child: one positive owned PID and one child', type(U['owned_child_PID']) is int and U['owned_child_PID']>0 and
+      type(U['owned_child_invocations']) is int and U['owned_child_invocations']==1)
+check('child: exit reaped and reader threads joined', U['owned_child_wait_reaped'] is True and
+      U['stream_reader_threads_joined'] is True)
+check('child: measured wall is exactly monotonic difference',
+      type(U['owned_child_wall_integer_nanoseconds']) is int and U['owned_child_wall_integer_nanoseconds']==
+      U['child_exit_observed_monotonic_ns']-U['child_launch_monotonic_ns']==768749000)
+check('child: honest suite/supervisor/child durations under 60 seconds',
+      all(type(q) is int and 0<q<60000000000 for q in
+      (R['elapsed_integer_nanoseconds'],U['elapsed_integer_nanoseconds'],U['owned_child_wall_integer_nanoseconds'])) and
+      R['elapsed_integer_nanoseconds'] <= U['owned_child_wall_integer_nanoseconds'] <= U['elapsed_integer_nanoseconds'])
+check('child: reviewed cleanup limits preserved', U['wall_cap_seconds']==60 and U['cleanup_reap_seconds']==5)
+res=U['resource_prelaunch']
+check('resources: typed RAM/disk above actual floors',
+      type(res['available_RAM_bytes']) is int and res['available_RAM_bytes']>=1073741824 and
+      type(res['disk_free_bytes']) is int and res['disk_free_bytes']>=10737418240 and
+      res['RAM_floor_bytes']==S['RAM_floor_bytes']==1073741824 and res['disk_floor_bytes']==S['disk_floor_bytes']==10737418240)
+check('resources: observed immediately before child within 60 seconds',
+      0 <= U['child_launch_monotonic_ns']-res['observed_monotonic_ns'] < 60000000000 and
+      utc(U['started_utc']) <= utc(res['observed_utc']) <= utc(R['started_utc']))
+check('resources: no Native8/FileTime claim', res['FileTime_or_Native8_collection'] is False and
+      U['scope_creation_resource_observation_is_historical'] is True)
+check('profiles: exact one loader compile/exec per new target',
+      set(R['target_compile_counts'])==set(R['target_exec_counts'])=={module_pin['path'],fixture_pin['path']} and
+      all(type(v) is int and v==1 for v in list(R['target_compile_counts'].values())+list(R['target_exec_counts'].values())))
+check('profiles: actual module and fixture calls both observed',
+      set(R['profile_call_counts'])=={module_pin['path'],fixture_pin['path']} and
+      all(type(v) is int and v>0 for v in R['profile_call_counts'].values()))
+calls=R['new_module_function_call_counts']
+check('profiles: stage/common/selection invoked exactly once',
+      all(type(calls.get(k)) is int and calls[k]==1 for k in
+      ('validate_recorded_M3_stage_semantics','_i9_validate_stage','_i9_load_common','_i9_selection')))
+check('profiles: no render, prewrite or held-entry coverage falsely claimed',
+      all(calls.get(k,0)==0 for k in B['required_positive_module_function_names'] if k!='validate_recorded_M3_stage_semantics'))
+check('audit: observed counts distinguish AST-only parse from loaders',
+      type(R['ast_parse_internal_compile_events']) is int and R['ast_parse_internal_compile_events']==3 and
+      R['audit_event_counts']['compile']==5 and R['audit_event_counts']['exec']==2)
+check('audit: no recorded forbidden events or unexpected IO event names',
+      R['blocked_forbidden_event_names']==[] and not any(k=='open' or k.startswith(('os.','subprocess.','socket.','ctypes.','winreg.')) for k in R['audit_event_counts']))
+check('audit: physical isolation boundary remains explicit',
+      'not exhaustive stat/native or security isolation proof' in R['audit_evidence_boundary'])
+
+stream_observations=[]
+for index,role in enumerate(('stdout','stderr')):
+    actual = fact(P/S['names'][role],allow_empty=True)
+    body=BYTES[actual['path']]
+    cs=C['streams'][index];us=U['streams'][index]
+    check('stream '+role+': raw bytes/digest and captured text exact',
+          cs['role']==role and cs['actual_capture']==us['actual_capture']==actual and
+          cs['UTF8_text'].encode('utf-8')==body)
+    check('stream '+role+': bounded complete joined reader evidence',
+          cs['complete'] is True and cs['overcap'] is False and cs['reader_error'] is None and
+          us['overcap'] is False and us['reader_error'] is None and
+          us['saved_bytes']==us['observed_lower_bound_bytes']==actual['bytes']<=2097152)
+    check('stream '+role+': target buffered stream itself empty', R[role]['bytes']==0 and
+          R[role]['UTF8_text']=='' and R[role]['overcap'] is False and
+          R[role]['sha256']==hashlib.sha256(b'').hexdigest())
+    stream_observations.append(actual)
+check('stream stdout: exact Root child serializer result pointer',
+      json.loads(BYTES[str(P/S['names']['stdout'])])==U['child_saved_result'])
+check('stream stderr: zero-byte external observation retained honestly',
+      stream_observations[1]['bytes']==0 and C['empty_captured_stream_bytes_are_actual_observation_not_positive_metadata_schema_pins'] is True)
+
+selection_source=ast.get_source_segment(module_text,mn['_i9_selection'])
+record_source=ast.get_source_segment(fixture_text,fn['_fx_record'])
+put_source=ast.get_source_segment(fixture_text,fn['_fx_put'])
+common_source=ast.get_source_segment(fixture_text,fn['_fx_common'])
+bad_assign=[n for n in ast.walk(fn['_fx_common']) if isinstance(n,ast.Assign) and
+            any(isinstance(t,ast.Subscript) and isinstance(t.value,ast.Name) and t.value.id=='graph' and
+                isinstance(t.slice,ast.Constant) and t.slice.value=='selection' for t in n.targets)]
+check('cause: module exact strong Root-owned selection route remains required',
+      "_i9_parent(pin['path'])==I9_ROOT_OWNED and not _i9_same(pin,I9_CURRENT_ROOT_SELECTION)" in selection_source and
+      "'E_SELECTION_ROUTE'" in selection_source)
+check('cause: route predicate occurs before selection shape or historical row reads',
+      selection_source.index("'E_SELECTION_ROUTE'") < selection_source.index('I9_SELECTION13') <
+      selection_source.index('reader.record(I9_CURRENT_ROOT_SELECTION)'))
+check('cause: fixture selection is specifically made by generic synthetic record helper',
+      len(bad_assign)==1 and isinstance(bad_assign[0].value,ast.Call) and
+      isinstance(bad_assign[0].value.func,ast.Name) and bad_assign[0].value.func.id=='_fx_record' and
+      len(bad_assign[0].value.args)==4 and ast.literal_eval(bad_assign[0].value.args[1])=='selection45')
+check('cause: fixture helper path algebra is literal and memory only',
+      "_FX_HOME+'\\\\'+label+'.json'" in record_source and
+      "graph['store'][path]=body" in put_source and '.write' not in put_source and '.open' not in put_source)
+synthetic_selection=fc['_FX_HOME']+'\\selection45.json'
+required_parent=mc['I9_ROOT_OWNED']
+check('cause: exact fictional selection parent mismatches required directory',
+      synthetic_selection.rsplit('\\',1)[0] != required_parent and
+      synthetic_selection==r'C:\I9_SYNTHETIC_MEMORY_ONLY\selection45.json' and
+      required_parent==r'D:\Aenv\pro2\WORK\resume-20261007-001\generation\observer010_lease009_root_001')
+check('cause: other fixture base and session constants already match module',
+      fc['_FX_BASE']==mc['I9_BASE'] and fc['_FX_SESSION']==mc['I9_SESSION'])
+check('cause: fixture common graph is shared by every positive route',
+      '_fx_finish(_fx_common(fixed),stage,role,request_roles)' in ast.get_source_segment(fixture_text,fn['_fx_graph']))
+check('cause: runtime error and profile directly corroborate first route rejection',
+      R['error']['message']=='E_SELECTION_ROUTE' and calls['_i9_selection']==1 and calls.get('_i9_inventory',0)==0)
+check('cause: fixture correction must preserve module guard and historical pin',
+      required_parent != fc['_FX_HOME'] and mc['I9_CURRENT_ROOT_SELECTION']['path'].rsplit('\\',1)[0]==required_parent)
+
+for label,value in [('suite',R),('supervisor',U)]:
+    for key in ('operational_authority','scientific_authority','actual_canonical_IO',
+                'original_I0_I1_I2_I3_I4_I5_I6_I7_I8_import_call_or_test',
+                'original_project_native_Parser_runtime_scientific_execution'):
+        check(label+': permanent false '+key,value[key] is False)
+for key in ('owner_lease_qualified','producer_qualified','caller_qualified',
+            'actual_native_human_physical_provenance_qualified','actual_entry_authorized'):
+    check('suite: no qualification '+key,R[key] is False)
+check('review: original actual future authority cells remain null',
+      U['actual_new_lease_family_grants_Native8_Parser_results'] is None)
+
+source_pin=fact(__file__)
+created=datetime.datetime.now(datetime.timezone.utc).isoformat()
+check('review: own actor differs from Root, physical Source editor and fixture contributor',
+      REVIEWER not in {'/root','/root/phase_frontier','/root/i9_fixture_author'})
+check('review: target and fixture files remain exact adopted bytes',
+      fact(module_pin['path'])==module_pin and fact(fixture_pin['path'])==fixture_pin)
+check('review: no failed suite presented as complete acceptance',
+      R['all_cases_passed'] is False and R['actual_test_case_count']==0 and U['passed'] is False)
+
+subjects=[fact(P/S['names'][k]) for k in ('scope','child_result','supervisor_result','capture')]
+failed=sum(q['passed'] is not True for q in CHECKS)
+proof=dict(schema_version=1,record_type='Independent_I9_consumed_attempt001_saved_refusal_and_Source_cause_review',
+    reviewer=REVIEWER,source_author='/root',created_utc=created,verdict=VERDICT if failed==0 else 'REFUSE_SAVED_REVIEW_CHECKS_FAILED',
+    target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False,
+    I9_fixture_reruns=0,I9_target_calls_by_reviewer=0,I9_target_imports_by_reviewer=0,
+    checks_failed=failed,checks_passed=len(CHECKS)-failed,checks=CHECKS,subjects=subjects,
+    reviewer_Source=source_pin,all_actual_inputs=[INPUTS[k] for k in sorted(INPUTS)],
+    actual_saved_attempt=dict(attempt_number=1,tests_executed=True,actual_memory_runs=1,accepted_complete_suites=0,
+      planned_cases=96,completed_cases=0,partial_cases=[],failed_case=R['failed_or_last_case_at_failure'],
+      error=R['error'],owned_PID=U['owned_child_PID'],child_wall_integer_nanoseconds=U['owned_child_wall_integer_nanoseconds'],
+      exit_code=1,reaped=True,reader_threads_joined=True,consumed_scope=scope_pin),
+    Source_cause=dict(classification='fixture_positive_base_selection_path_construction_defect',
+      actual_selection_path=synthetic_selection,required_parent=required_parent,
+      module_guard_preserved=True,Source_qualified_cause_only_no_replay=True,
+      fixture_assignment=dict(line=bad_assign[0].lineno,Source=ast.get_source_segment(fixture_text,bad_assign[0])),
+      module_function=dict(line=mn['_i9_selection'].lineno,Source_prefix='\n'.join(selection_source.splitlines()[:5])),
+      correction='Use an explicit fresh fictional selection leaf directly under required_parent in the memory store; preserve module route guard and historical selection pin. Regenerate detached graph/proof pins normally in an immutable fixture/API/receipt successor. Add explicit fixture construction assertion.',
+      reviewer_limitation='Earlier Source review missed this valid-positive route mismatch; runtime exposed it. No later cases or renderers were reached, so this review makes no passing or complete algorithm claim.'),
+    raw_stream_observations=stream_observations,
+    evidence_boundary='Read/hash/strict JSON/AST only. Saved CPython audit observations are not exhaustive native/stat/isolation proof. Empty raw stderr is a valid external observation, excluded from positive metadata-schema all_actual_inputs.',
+    next_invocation_authorized=False,fresh_corrected_Source_review_and_Root_adoption_and_new_once_scope_required=True,
+    actual_new_grants_lease_family_Native8_Parser_results=None)
+
+def save(name,value):
+    body=(json.dumps(value,ensure_ascii=False,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('utf-8')
+    assert len(body)<=2097152
+    with (OWN/name).open('xb') as handle:
+        handle.write(body)
+    return dict(path=str(OWN/name),bytes=len(body),sha256=hashlib.sha256(body).hexdigest())
+
+OWN.mkdir(parents=True,exist_ok=True)
+full_pin=save('INDEPENDENT_I9_ATTEMPT001_SAVED_REFUSAL_FULL_PROOF_001.json',proof)
+capsule=dict(schema_version=1,record_type='Independent_I9_attempt001_saved_refusal_review_capsule',
+    reviewer=REVIEWER,source_author='/root',created_utc=created,verdict=proof['verdict'],
+    target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False,
+    I9_fixture_reruns=0,checks_failed=failed,checks_passed=len(CHECKS)-failed,subjects=subjects,
+    reviewer_Source=source_pin,full_proof=full_pin,actual_saved_attempt_tests_executed=True,
+    actual_saved_attempt_passed=False,actual_saved_attempts=1,actual_complete_accepted_suites=0,
+    actual_completed_cases=0,expected_planned_cases=96,fixture_Source_cause='selection pin outside required Root-owned directory',
+    module_guard_change_required=False,next_invocation_authorized=False)
+cap_pin=save('INDEPENDENT_I9_ATTEMPT001_SAVED_REFUSAL_CAPSULE_001.json',capsule)
+print(json.dumps(dict(capsule=cap_pin,full_proof=full_pin,reviewer_Source=source_pin,
+    checks=len(CHECKS),checks_failed=failed,inputs=len(INPUTS),failed_checks=[q for q in CHECKS if not q['passed']]),sort_keys=True))
+assert failed==0

@@ -1,0 +1,208 @@
+"""Adopt independently reviewed actual saved memory outcomes; never rerun code."""
+import ast, datetime, hashlib, json, os, re, sys
+from pathlib import Path
+P = Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+CAP = 2097152
+
+def raw(path):
+    path = Path(path)
+    assert path.is_file() and not path.is_symlink() and path.stat().st_size <= CAP
+    with path.open('rb') as handle:
+        data = handle.read(CAP + 1)
+    assert len(data) <= CAP
+    return data
+
+def fact(path):
+    data = raw(path)
+    return dict(path=str(path), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+def pin(q):
+    assert type(q) is dict and set(q) == {'path', 'bytes', 'sha256'}
+    assert type(q['bytes']) is int and 0 <= q['bytes'] <= CAP
+    assert type(q['sha256']) is str and re.fullmatch('[0-9a-f]{64}', q['sha256'])
+    data = raw(q['path'])
+    assert len(data) == q['bytes'] and hashlib.sha256(data).hexdigest() == q['sha256']
+    return data
+
+def pairs(items):
+    result = {}
+    for key, value in items:
+        assert key not in result
+        result[key] = value
+    return result
+
+def bad(value):
+    raise AssertionError(value)
+
+def obj(data):
+    return json.loads(data, object_pairs_hook=pairs, parse_float=bad, parse_constant=bad)
+
+def main():
+    assert sys.flags.isolated and sys.flags.no_site and sys.flags.dont_write_bytecode
+    assert len(sys.argv) == 3 and re.fullmatch('[0-9a-f]{64}', sys.argv[2])
+    capsule_path = Path(sys.argv[1])
+    assert capsule_path.parent.parent == P and 'CAPSULE' in capsule_path.name
+    cp = fact(capsule_path)
+    assert cp['sha256'] == sys.argv[2]
+    c = obj(pin(cp))
+    f = obj(pin(c['full_proof']))
+    for record in (c, f):
+        assert record['reviewer'] == '/root/owner_source_review'
+        assert record['verdict'].startswith(('PASS_', 'ACCEPT_'))
+        assert record['target_execution'] is False and record['tests_executed'] is False
+        assert type(record['checks_failed']) is int and record['checks_failed'] == 0
+        assert type(record['I9_fixture_reruns']) is int and record['I9_fixture_reruns'] == 0
+    assert c['verdict'] == f['verdict']
+    checks = f['checks']
+    assert type(checks) is list and checks and len({q['name'] for q in checks}) == len(checks)
+    assert all(type(q['passed']) is bool and q['passed'] for q in checks)
+    review_inputs = f['all_actual_inputs']
+    assert type(review_inputs) is list and review_inputs and len({q['path'].casefold() for q in review_inputs}) == len(review_inputs)
+    assert c['reviewer_Source'] in review_inputs
+    for q in review_inputs:
+        pin(q)
+    supervisor_paths = sorted(P.glob('ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_[0-9][0-9][0-9].json'))
+    assert supervisor_paths and len(supervisor_paths) <= 999
+    attempts = []
+    for ordinal, path in enumerate(supervisor_paths, 1):
+        suffix = f'{ordinal:03d}'
+        assert path.name == f'ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_{suffix}.json'
+        sp = fact(P / f'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_{suffix}.json')
+        s = obj(pin(sp))
+        rp = fact(P / f'ROOT_I9_ACTUAL_ONCE_MEMORY_SUITE_RESULT_{suffix}.json')
+        r = obj(pin(rp))
+        vp = fact(path)
+        v = obj(pin(vp))
+        capture_pin = fact(P / f'ROOT_I9_ACTUAL_OWNED_MEMORY_STREAMS_CAPTURE_{suffix}.json')
+        capture = obj(pin(capture_pin))
+        fresh_adoption_pin = fact(P / f'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_DIFFERENT_REVIEW_ADOPTION_{suffix}.json')
+        fresh_adoption = obj(pin(fresh_adoption_pin))
+        assert fresh_adoption['author'] == '/root' and fresh_adoption['fresh_one_use_scope'] == sp
+        assert fresh_adoption['verdict'] == 'ACCEPT_I9_FRESH_ONE_USE_SYNTHETIC_MEMORY_SCOPE_ONLY'
+        assert fresh_adoption['new_I9_memory_invocation_authorized_now'] is True
+        assert fresh_adoption_pin in review_inputs
+        for q in (sp, rp, vp, capture_pin, s['Source_adoption'], s['module_Source'], s['fixture_Source'], s['API'], s['author_receipt']):
+            assert q in review_inputs
+            pin(q)
+        assert r['scope'] == sp == v['scope'] == capture['scope']
+        assert datetime.datetime.fromisoformat(fresh_adoption['created_utc']) <= datetime.datetime.fromisoformat(v['started_utc'])
+        assert r['attempt_number'] == v['attempt_number'] == s['attempt_number'] == ordinal
+        assert v['child_saved_result'] == rp and capture['supervisor_result'] == vp
+        assert type(r['I9_memory_test_runs']) is int and r['I9_memory_test_runs'] in (0, 1)
+        assert type(r['tests_executed']) is bool and r['I9_memory_test_runs'] == int(r['tests_executed'])
+        assert type(r['all_cases_passed']) is bool
+        assert r['original_project_native_Parser_runtime_scientific_execution'] is False
+        assert r['original_I0_I1_I2_I3_I4_I5_I6_I7_I8_import_call_or_test'] is False
+        assert r['actual_canonical_IO'] is False and v['actual_canonical_IO'] is False
+        assert v['owned_child_wait_reaped'] is True and v['stream_reader_threads_joined'] is True
+        assert capture['all_streams_complete'] is True and capture['no_child_or_test_rerun'] is True
+        for marker_pin in (r['consumption_marker'], v['supervisor_marker']):
+            assert marker_pin in review_inputs
+            marker = obj(pin(marker_pin))
+            assert marker['scope'] == sp and marker['automatic_retry_authorized'] is False
+        assert len(v['streams']) == len(capture['streams']) == 2
+        for actual, envelope in zip(v['streams'], capture['streams']):
+            q = actual['actual_capture']
+            assert q in review_inputs and envelope['actual_capture'] == q
+            assert envelope['UTF8_text'].encode() == pin(q)
+            assert actual['overcap'] is False and actual['reader_error'] is None
+        accepted = ordinal == len(supervisor_paths)
+        assert type(v['passed']) is bool and v['passed'] is accepted
+        if accepted:
+            assert r['all_cases_passed'] is True and r['tests_executed'] is True and r['error'] is None
+            assert v['owned_child_exit_code'] == 0 and type(v['owned_child_exit_code']) is int and v['refusal'] is None
+            assert 0 < r['elapsed_integer_nanoseconds'] <= 60000000000
+            assert 0 < v['owned_child_wall_integer_nanoseconds'] <= 60000000000
+            assert v['owned_child_wall_integer_nanoseconds'] == v['child_exit_observed_monotonic_ns'] - v['child_launch_monotonic_ns']
+            resource = v['resource_prelaunch']
+            assert type(resource['available_RAM_bytes']) is int and resource['available_RAM_bytes'] >= 1073741824
+            assert type(resource['disk_free_bytes']) is int and resource['disk_free_bytes'] >= 10737418240
+            assert 0 <= v['child_launch_monotonic_ns'] - resource['observed_monotonic_ns'] < 60000000000
+            assert v['argv'] == [r'C:\Users\aladdin-alyanai\AppData\Local\Programs\Python\Python313\python.exe', '-I', '-S', '-B', s['tool_Source_pins']['runner']['path'], suffix]
+            assert v['cwd'] == str(P) and r['blocked_forbidden_event_names'] == []
+            assert r['module_Source'] == s['module_Source'] and r['fixture_Source'] == s['fixture_Source']
+            assert r['API'] == s['API'] and r['actual_Source_adoption'] == s['Source_adoption']
+            for timestamp in (r['started_utc'], r['created_utc'], v['started_utc'], v['created_utc']):
+                assert datetime.datetime.fromisoformat(s['interval_start']) <= datetime.datetime.fromisoformat(timestamp) < datetime.datetime.fromisoformat(s['interval_end'])
+            target_paths = {s['module_Source']['path'], s['fixture_Source']['path']}
+            assert set(r['profile_call_counts']) == set(r['target_compile_counts']) == set(r['target_exec_counts']) == target_paths
+            assert all(type(q) is int and q > 0 for q in r['profile_call_counts'].values())
+            assert all(type(q) is int and q == 1 for q in list(r['target_compile_counts'].values()) + list(r['target_exec_counts'].values()))
+            for name in ('validate_recorded_M3_stage_semantics', 'validate_recorded_M3_prewrite_semantics', 'require_actual_M3_prewrite_publication_admission', '_i9_render_templates', '_i9_render_manifest', '_i9_render_capture', '_i9_render_phase_bound', '_i9_render_phase_binding'):
+                assert type(r['new_module_function_call_counts'].get(name)) is int and r['new_module_function_call_counts'][name] > 0
+            literals = {}
+            for node in ast.parse(pin(s['fixture_Source'])).body:
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name) and target.id in ('EXPECTED_CASE_COUNT', 'PLANNED_CASE_NAMES'):
+                            literals[target.id] = ast.literal_eval(node.value)
+            count = literals['EXPECTED_CASE_COUNT']
+            planned = list(literals['PLANNED_CASE_NAMES'])
+            assert type(count) is int and 1 <= count <= 256 and len(planned) == len(set(planned)) == count
+            assert s['expected_planned_case_count'] == count and s['planned_case_names'] == planned
+            interface = obj(pin(s['API']))['fixture_interface']
+            assert interface['expected_case_count'] == count and interface['planned_case_names'] == planned
+            outcome = r['outcome']
+            assert type(outcome) is dict and outcome['synthetic_fixture'] is True and outcome['project_or_native_tests'] is False
+            assert type(outcome['filesystem_calls']) is int and outcome['filesystem_calls'] == 0
+            cases = outcome['cases']
+            assert type(cases) is list and len(cases) == r['actual_test_case_count'] == count
+            assert [q['name'] for q in cases] == planned
+            assert all(type(q['passed']) is bool and q['passed'] is True and q['synthetic_fixture'] is True and type(q['memory_record_reader_calls']) is int and q['memory_record_reader_calls'] >= 0 for q in cases)
+            assert type(outcome['checks_passed']) is int and outcome['checks_passed'] == count
+            assert type(outcome['checks_failed']) is int and outcome['checks_failed'] == 0
+            final = dict(scope=sp, result=rp, supervisor=vp, streams=capture_pin, record=r, scope_record=s)
+        attempts.append(dict(attempt_ordinal=ordinal, I9_memory_test_runs=r['I9_memory_test_runs'],
+            tests_executed=r['tests_executed'], accepted_complete_run=accepted,
+            all_cases_passed=r['all_cases_passed'], scope=sp, result=rp,
+            supervisor=vp, streams_capture=capture_pin,
+            actual_test_case_count=r['actual_test_case_count'],
+            failed_or_last_case_at_failure=r['failed_or_last_case_at_failure']))
+    evidence = []
+    seen_names = set()
+    for path in sorted(P.rglob('*'), key=lambda value: str(value).casefold()):
+        if not path.is_file() or path.suffix.lower() not in ('.json', '.py', '.txt', '.md'):
+            continue
+        assert not path.is_symlink() and path.name.casefold() not in seen_names
+        seen_names.add(path.name.casefold())
+        evidence.append(fact(path))
+    assert cp in evidence and c['full_proof'] in evidence and c['reviewer_Source'] in evidence and fact(Path(__file__)) in evidence
+    runs = sum(row['I9_memory_test_runs'] for row in attempts)
+    failed_runs = sum(row['I9_memory_test_runs'] for row in attempts[:-1])
+    assert runs == failed_runs + 1
+    adoption = dict(schema_version=1, record_type='Root_actual_I9_recorded_M3_semantics_and_saved_memory_results_adoption',
+        author='/root', created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        verdict='ACCEPT_I9_RECORDED_M3_SEMANTICS_AND_SAVED_MEMORY_RESULTS_ONLY',
+        Source_adoption=final['scope_record']['Source_adoption'], module_Source=final['scope_record']['module_Source'],
+        fixture_Source=final['scope_record']['fixture_Source'], API=final['scope_record']['API'],
+        actual_memory_scope=final['scope'], actual_memory_saved_result=final['result'],
+        actual_memory_owned_supervisor_result=final['supervisor'], actual_owned_streams=final['streams'],
+        different_saved_results_review=cp, full_proof=c['full_proof'], reviewer_Source=c['reviewer_Source'],
+        actual_independent_saved_results_checks=len(checks), all_actual_saved_review_inputs_rehashed=True,
+        actual_rehashed_saved_review_input_count=len(review_inputs), actual_memory_case_count=count,
+        actual_memory_cases_passed=count, actual_memory_cases_failed=0, I9_memory_test_runs=runs,
+        accepted_complete_memory_test_runs=1, failed_memory_test_runs=failed_runs,
+        accepted_attempt_ordinal=len(attempts), all_saved_memory_attempts=attempts,
+        tests_executed=True, synthetic_memory_only=True, actual_canonical_IO=False,
+        original_project_native_Parser_runtime_scientific_execution=False,
+        owner_lease_qualified=False, producer_qualified=False, caller_qualified=False,
+        physical_origin_authenticated=False, human_origin_authenticated=False,
+        actual_publication_admission=False, no_observed_forbidden_audit_events=True,
+        observed_audit_boundary=final['record']['audit_evidence_boundary'], owned_child_exit_code=0,
+        owned_child_reaped=True, current_dated_Source_present=36, current_dated_pending=9,
+        frozen_STEP080_present=35, frozen_STEP080_pending=10,
+        all75_spent_no_replay_and_all_prior_holds_preserved=True,
+        all_actual_new_grants_lease_family_paths_ordinals_purpose_Native8_Parser_results=None,
+        operational_authority=False, scientific_authority=False, managed_evidence_inputs=evidence,
+        next='Qualify actual producer successors, receipt carriers and caller/IO composition with I8 and I9, then Native8, Parser adapters and qualifying I3/I4/I5 successors.')
+    data = (json.dumps(adoption, sort_keys=True, indent=2, allow_nan=False) + '\n').encode()
+    assert len(data) <= CAP
+    path = P / 'ROOT_I9_RECORDED_M3_SEMANTICS_AND_SAVED_MEMORY_RESULTS_ADOPTION_001.json'
+    with path.open('xb') as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    print(json.dumps(fact(path)))
+
+if __name__ == '__main__':
+    main()

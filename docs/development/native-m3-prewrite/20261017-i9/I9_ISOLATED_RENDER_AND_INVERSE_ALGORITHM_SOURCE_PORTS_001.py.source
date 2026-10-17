@@ -1,0 +1,324 @@
+def _i9_occurs(value, pin):
+    if type(value) is dict:
+        if all((key in value and type(value[key]) is type(pin[key]) and (value[key] == pin[key]) for key in pin)):
+            return True
+        return any((_i9_occurs(child, pin) for child in value.values()))
+    return type(value) is list and any((_i9_occurs(child, pin) for child in value))
+
+def _i9_stage_roles(stage, role):
+    if stage == 'templates':
+        return list(I9_TEMPLATE_ROLES)
+    if stage == 'manifest':
+        return ['metadata_manifest']
+    if stage == 'capture':
+        return ['plan', 'capture_bound', 'metadata_binding']
+    if stage == 'phase_bound' and role in I9_PHASE_BOUND_ROLES:
+        return [role]
+    if stage == 'phase_binding':
+        return ['phase_binding']
+    raise ValueError('unknown exact M3 Source stage/role')
+
+def _i9_assignments(data):
+    return {node.targets[0].id: node for node in _i9_data_ast(data).body if isinstance(node, _i9_ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], _i9_ast.Name)}
+
+def _i9_functions(data):
+    return {node.name: _i9_ast.dump(node, include_attributes=False) for node in _i9_data_ast(data).body if isinstance(node, (_i9_ast.FunctionDef, _i9_ast.AsyncFunctionDef, _i9_ast.ClassDef))}
+
+def _i9_protected_assignments(data):
+    return {name: _i9_ast.dump(node, include_attributes=False) for name, node in _i9_assignments(data).items() if name not in I9_CAPTURE_SLOTS}
+
+def _i9_splice_exact(raw, edits):
+    _i9_need(type(raw) is bytes and type(edits) is list and bool(edits), 'finite actual nonempty Source span edits')
+    edits = sorted(edits, key=lambda x: x['start_byte'])
+    cursor, parts, proof, delta = (0, [], [], 0)
+    for item in edits:
+        _i9_need(set(item) == {'start_byte', 'end_byte', 'old', 'new'} and type(item['start_byte']) is int and (type(item['end_byte']) is int) and (cursor <= item['start_byte'] < item['end_byte'] <= len(raw)) and (type(item['old']) is str) and (type(item['new']) is str) and (raw[item['start_byte']:item['end_byte']] == item['old'].encode('utf8')), 'nonoverlapping exact old whole literal/assignment span')
+        old, new = (item['old'].encode('utf8'), item['new'].encode('utf8'))
+        start = item['start_byte'] + delta
+        proof.append(dict(item, selected_start_byte=start, selected_end_byte=start + len(new)))
+        parts.extend((raw[cursor:item['start_byte']], new))
+        cursor = item['end_byte']
+        delta += len(new) - len(old)
+    parts.append(raw[cursor:])
+    result = b''.join(parts)
+    reverse = result
+    for item in reversed(proof):
+        start, end = (item['selected_start_byte'], item['selected_end_byte'])
+        _i9_need(reverse[start:end] == item['new'].encode('utf8'), 'exact selected span for whole Source inverse')
+        reverse = reverse[:start] + item['old'].encode('utf8') + reverse[end:]
+    _i9_need(reverse == raw, 'entire complete Source byte inverse; all complement bytes untouched')
+    return (result, proof)
+
+def _i9_safe_relative(value):
+    _i9_need(type(value) is str and _i9_re.fullmatch('[A-Za-z0-9_./-]+', value) is not None and (not value.startswith('/')) and all((x not in ('', '..', '.') for x in value.split('/'))), 'ordinary finite Root-chosen relative identity only; no code/numeric predicate replacement')
+    return value
+
+def _i9_template_identity(_i9_engine, role, old, inventory, rows, lease_pin, operational_choices):
+    entry = inventory[role]
+    slots = entry['literal_slots']
+    edits = []
+    _i9_need(entry['available_basis'] == rows[role]['predecessor'] and _i9_sha(old) == entry['available_basis']['sha256'], 'actual inventory binds complete current template Source')
+    operational = {slot['value'] for slot in slots if slot['kind'] == 'separate_unselected_operational_path'}
+    _i9_need(type(operational_choices) is dict and set(operational_choices) == operational, 'exact closed Root-chosen operational filename identities, never actual operational records')
+    for slot in slots:
+        old_literal = slot['raw_literal']
+        value = slot['value']
+        _i9_need(old[slot['start_byte']:slot['end_byte']] == old_literal.encode(), 'actual inventoried literal byte boundaries')
+        if slot['kind'] == 'future_lease_leaf':
+            selected = _i9_leaf(lease_pin['path'])
+        elif slot['kind'] == 'selected_family_literal_reference':
+            target = rows[slot['referenced_role']]['canonical_path']
+            selected = _i9_relative(target, I9_BASE) if '/' in value else _i9_leaf(target)
+        elif slot['kind'] == 'separate_unselected_operational_path':
+            selected = operational_choices[value]
+        else:
+            raise ValueError('uninventoried literal transformation kind')
+        _i9_safe_relative(selected)
+        _i9_need(type(selected) is type(value), 'same original literal type')
+        new_literal = repr(selected) if role == 'capture_template' else "'" + selected + "'"
+        if selected != value:
+            edits.append(dict(start_byte=slot['start_byte'], end_byte=slot['end_byte'], old=old_literal, new=new_literal))
+    _i9_need(bool(edits), 'selected successor actually changes Source identity bytes')
+    result, proof = _i9_splice_exact(old, edits)
+    if role == 'capture_template':
+        tree = _i9_data_ast(old)
+        literals = {(n.lineno, n.col_offset, _i9_literal(n)) for n in _i9_ast.walk(tree) if isinstance(n, _i9_ast.Constant) and type(n.value) is str}
+        _i9_need(bool(literals), 'actual Python Source literals parsed as data only')
+        restored = result
+        for item in reversed(proof):
+            restored = restored[:item['selected_start_byte']] + item['old'].encode() + restored[item['selected_end_byte']:]
+        _i9_need(_i9_functions(restored) == _i9_functions(old) and _i9_protected_assignments(restored) == _i9_protected_assignments(old), 'all original Python functions/guards/owner/timestamp assignments retained by exact identity inverse')
+        nodes = _i9_assignments(result)
+        _i9_need(all((_i9_literal(nodes[x].value) is None for x in I9_CAPTURE_SLOTS if x != 'BINDINGS')) and len(_i9_literal(nodes['BINDINGS'].value)) == 9 and all((x is None for x in _i9_literal(nodes['BINDINGS'].value).values())), 'capture six slots/nine binding cells remain unbound')
+        _i9_data_ast(result)
+    else:
+        _i9_need(result.count(b'$BoundScriptSha256 = $null') == 1 and result.count(b'$BoundReviewSha256 = $null') == 1, 'two phase assignment slots remain original null; no Parser execution')
+    return (result, proof)
+
+def _i9_immutable_json(old, new, changed_keys):
+    _i9_need(set(old) == set(new), 'original closed JSON ABI retained')
+    _i9_need(all((old[key] == new[key] for key in old if key not in changed_keys)), 'all original JSON fields outside dependency cells retained')
+    reverse = _i9_copy_module.deepcopy(new)
+    for key in changed_keys:
+        reverse[key] = _i9_copy_module.deepcopy(old[key])
+    _i9_need(reverse == old, 'exact original decoded JSON reconstruction')
+
+def _i9_json_artifact(_i9_engine, role, old_raw, value, fields, rows, proof):
+    old = _i9_json(old_raw)
+    _i9_need(_i9_original_wire(old) == old_raw, 'complete original JSON wire identity; no hidden formatting normalization')
+    _i9_immutable_json(old, value, fields)
+    restored = _i9_copy_module.deepcopy(value)
+    for key in fields:
+        restored[key] = _i9_copy_module.deepcopy(old[key])
+    _i9_need(_i9_original_wire(restored) == old_raw, 'whole original JSON byte inverse')
+    proof = dict(proof, changed_top_level_fields=sorted(fields), original_fields={key: old[key] for key in sorted(fields)}, complete_current_predecessor_byte_inverse=True)
+    return _i9_pack(_i9_engine, role, _i9_original_wire(value), old_raw, rows[role]['predecessor'], rows, proof)
+
+def _i9_capture_assignment_bind(template, values):
+    _i9_need(set(values) == set(I9_CAPTURE_SLOTS), 'exact original six capture assignments')
+    nodes = _i9_assignments(template)
+    offsets = [0]
+    for line in template.splitlines(keepends=True):
+        offsets.append(offsets[-1] + len(line))
+    edits = []
+    for name in I9_CAPTURE_SLOTS:
+        node = nodes[name]
+        old_value = _i9_literal(node.value)
+        _i9_need(name == 'BINDINGS' and type(old_value) is dict and (set(old_value) == I9_BINDING_KEYS) and all((x is None for x in old_value.values())) or (name != 'BINDINGS' and old_value is None), 'original capture template unbound slots retained before binding')
+        start, end = (offsets[node.lineno - 1] + node.col_offset, offsets[node.end_lineno - 1] + node.end_col_offset)
+        edits.append(dict(start_byte=start, end_byte=end, old=template[start:end].decode(), new=name + ' = ' + repr(values[name])))
+    result, proof = _i9_splice_exact(template, edits)
+    _i9_need(_i9_functions(result) == _i9_functions(template) and _i9_protected_assignments(result) == _i9_protected_assignments(template), 'all original capture functions/classes/guards/protected assignments exact outside six slots')
+    _i9_data_ast(result)
+    return (result, proof)
+
+def _i9_old_bound_template_inverse(old_bound, old_template):
+    b, t = (_i9_assignments(old_bound), _i9_assignments(old_template))
+    bo, to = ([0], [0])
+    for line in old_bound.splitlines(keepends=True):
+        bo.append(bo[-1] + len(line))
+    for line in old_template.splitlines(keepends=True):
+        to.append(to[-1] + len(line))
+    edits = []
+    for name in I9_CAPTURE_SLOTS:
+        bn, tn = (b[name], t[name])
+        bs, be = (bo[bn.lineno - 1] + bn.col_offset, bo[bn.end_lineno - 1] + bn.end_col_offset)
+        ts, te = (to[tn.lineno - 1] + tn.col_offset, to[tn.end_lineno - 1] + tn.end_col_offset)
+        edits.append(dict(start_byte=bs, end_byte=be, old=old_bound[bs:be].decode(), new=old_template[ts:te].decode()))
+    restored, proof = _i9_splice_exact(old_bound, edits)
+    _i9_need(restored == old_template and _i9_functions(old_bound) == _i9_functions(old_template), 'actual whole predecessor BOUND six-assignment inverse to current predecessor TEMPLATE')
+    return proof
+
+def _i9_phase_assignment_bind(template, bound_sha, peer_sha):
+    _i9_need(_i9_re.fullmatch('[a-f0-9]{64}', bound_sha) is not None and _i9_re.fullmatch('[a-f0-9]{64}', peer_sha) is not None, 'two real canonical dependency digests, never guessed future Source pins')
+    edits = []
+    for variable, digest in (('BoundScriptSha256', bound_sha), ('BoundReviewSha256', peer_sha)):
+        old = '$' + variable + ' = $null'
+        new = '$' + variable + " = '" + digest + "'"
+        _i9_need(template.count(old.encode()) == 1, 'exact original single phase binding assignment')
+        start = template.index(old.encode())
+        edits.append(dict(start_byte=start, end_byte=start + len(old), old=old, new=new))
+    return _i9_splice_exact(template, edits)
+
+def _i9_phase_predecessor_inverse(old_bound, old_template):
+    restored = old_bound
+    for name in ('BoundScriptSha256', 'BoundReviewSha256'):
+        pattern = b'^\\$' + name.encode() + b" = '[a-f0-9]{64}'$"
+        matches = list(_i9_re.finditer(pattern, restored, _i9_re.M))
+        _i9_need(len(matches) == 1, 'actual previous single digest-bound phase assignment')
+        match = matches[0]
+        restored = restored[:match.start()] + ('$' + name + ' = $null').encode() + restored[match.end():]
+    _i9_need(restored == old_template, 'complete original phase BOUND two-literal predecessor inverse')
+    return True
+
+def _i9_pack(_i9_engine, role, raw, diff_basis_raw, diff_basis_pin, rows, proof):
+    row = rows[role]
+    _i9_need(role in I9_GENERATED_ROLES and role not in I9_PEER_ROLES and (type(raw) is bytes) and (0 < len(raw) <= row['source_cap']) and (_i9_sha(raw) != row['predecessor']['sha256']), 'finite changed selected Source only; no peer synthesis/cap relaxation')
+    _i9_need(_i9_read_pin(_i9_engine, diff_basis_pin, cap=row['source_cap']) == diff_basis_raw, 'actual exact removed-byte diff basis, no false oldBOUND header claim')
+    return dict(role=role, raw=raw, proof=proof, diff_basis=diff_basis_pin, diff_basis_raw=diff_basis_raw)
+
+def _i9_validate_binding_supports(_i9_engine, facts, deps, rows, selection_pin):
+    supports = facts['binding_supports']
+    _i9_need(type(supports) is dict and set(supports) == I9_BINDING_KEYS, 'exact original nine binding-source proof rows')
+    bindings = {}
+    for key, support in supports.items():
+        _i9_need(type(support) is dict and set(support) == {'source', 'different_review', 'Root_adoption'}, 'closed3 real binding Source/eligibility review/adoption')
+        pin = _i9_pin(support['source'])
+        _i9_read_pin(_i9_engine, pin)
+        role = I9_RENEWED_BINDINGS.get(key)
+        if role is not None:
+            _i9_need(pin == deps[role][0], 'new profile/static/genuineM3 peer exact current canonical binding')
+        else:
+            _i9_need(pin['sha256'] == I9_CURRENT_PLAN_BINDINGS[key], 'six retained historical capsule/coordination Source bindings exact')
+        review = _i9_different_review(_i9_engine, support['different_review'], [pin], ['/root'])
+        _i9_root_review_adoption(_i9_engine, support['Root_adoption'], [pin], support['different_review'], review, selection=selection_pin)
+        bindings[key] = pin['sha256']
+    selections = facts['role_selections']
+    _i9_need(type(selections) is dict and set(selections) == set(I9_CAPTURE_SLOTS[3:]) and (selections['UNIT_TERMINAL_RELATIVE'] == I9_CURRENT_PLAN_ROLE_SELECTIONS['UNIT_TERMINAL_RELATIVE']), 'exact original Unit006 terminal identity/three role selections; no operational publication')
+    for name, key in (('COORDINATION_PEER_REPLY_RELATIVE', 'coordination_peer_reply_sha256'), ('COORDINATION_ROOT_RESPONSE_RELATIVE', 'coordination_root_response_sha256')):
+        _i9_need(selections[name] == _i9_relative(supports[key]['source']['path'], I9_BASE), 'actual carried coordination paths as dated static Source only, not fresh runtime ACK')
+    return (bindings, selections)
+
+def _i9_validate_peer_metadata(_i9_engine, deps, inventory, rows):
+    if 'metadata_peer' in deps:
+        pin, raw = deps['metadata_peer']
+        peer = _i9_json(raw)
+        old = _i9_json(_i9_read_pin(_i9_engine, inventory['metadata_peer']['available_basis']))
+        manifest_pin, manifest_raw = deps['metadata_manifest']
+        _i9_need(set(peer) == set(old) and len(peer) == 22 and (peer['reviewer'] == '/root/owner_docs_review') and (peer['source_author'] == I9_SEMANTIC) and (peer['verdict'] == 'PASS_STATIC_METADATA_PREPARATION_ONLY') and (peer['source_manifest_sha256'] == manifest_pin['sha256']) and (peer['manifest_payload_count'] == 12) and (peer['runtime_acceptance'] is False) and (peer['operational_authority'] is False) and (peer['actual_results'] is None) and (peer['post_capture_reference'] is None), 'genuine new closed22 M3 peer binds current actual manifest and original null/false scope')
+        _i9_need(_i9_engine.observations[pin['path']]['path9'][8] >= _i9_engine.observations[manifest_pin['path']]['path9'][8], 'new peer actual Source birth follows current actual manifest')
+    if 'metadata_bound_review' in deps:
+        pin, raw = deps['metadata_bound_review']
+        peer = _i9_json(raw)
+        old = _i9_json(_i9_read_pin(_i9_engine, inventory['metadata_bound_review']['available_basis']))
+        bound_pin, _ = deps['capture_bound']
+        _, binding_raw = deps['metadata_binding']
+        binding = _i9_json(binding_raw)
+        _i9_need(set(peer) == set(old) and len(peer) == 9 and (peer['reviewer'] == '/root/owner_docs_review') and (peer['source_author'] == I9_SEMANTIC) and (peer['verdict'] == 'PASS_STATIC_BOUND_METADATA_ONLY') and (peer['actual_script_sha256'] == bound_pin['sha256']) and (peer['source_bindings'] == binding['bindings']) and (peer['metadata_only'] is True) and (peer['phase_set'] == ['before', 'after']), 'genuine new closed9 bound peer authenticates current actual capture Source and exact nine bindings')
+        _i9_need(_i9_engine.observations[pin['path']]['path9'][8] >= _i9_engine.observations[bound_pin['path']]['path9'][8], 'new genuine bound-peer physical birth follows actual capture Source')
+
+def _i9_render_templates(_i9_engine, facts, inventory, rows, lease_pin):
+    _i9_need(type(facts['operational_choices']) is dict and set(facts['operational_choices']) == set(I9_TEMPLATE_ROLES), 'five exact future Root template identity-choice maps')
+    outputs = []
+    for role in I9_TEMPLATE_ROLES:
+        old = _i9_read_pin(_i9_engine, rows[role]['predecessor'], cap=rows[role]['source_cap'])
+        raw, steps = _i9_template_identity(_i9_engine, role, old, inventory, rows, lease_pin, facts['operational_choices'][role])
+        outputs.append(_i9_pack(_i9_engine, role, raw, old, rows[role]['predecessor'], rows, dict(identity_steps=steps, complete_current_predecessor_byte_inverse=True, all_binding_slots_unfilled=True, original_function_guard_complement_exact=True, native_Parser_executed=False)))
+    return outputs
+
+def _i9_render_manifest(_i9_engine, facts, inventory, rows, deps):
+    old_raw = _i9_read_pin(_i9_engine, rows['metadata_manifest']['predecessor'])
+    old = _i9_json(old_raw)
+    value = _i9_copy_module.deepcopy(old)
+    _i9_need(set(old) == set(inventory['metadata_manifest']['JSON_ABI']['ordered_top_keys']) and len(old) == 23 and (old['payload_count'] == len(old['payloads']) == 12) and (old['active_source_count'] == 6), 'original closed23 manifest12/active6 retained')
+    by_old = {_i9_leaf(inventory[role]['available_basis']['path']): role for role in I9_TEMPLATE_ROLES}
+    changed, carried, observed = ([], [], [])
+    for index, item in enumerate(value['payloads']):
+        previous = _i9_copy_module.deepcopy(old['payloads'][index])
+        role = by_old.get(item['path'])
+        if role is None:
+            pin = dict(path=_i9_join(_i9_parent(rows['metadata_manifest']['predecessor']['path']), item['path']), sha256=item['sha256'], bytes=item['bytes'])
+            _i9_read_pin(_i9_engine, pin, cap=65536)
+            carried.append(index)
+        else:
+            pin, _ = deps[role]
+            item.update(path=_i9_leaf(rows[role]['canonical_path']), sha256=pin['sha256'], bytes=pin['bytes'])
+            changed.append(index)
+        item['two_read_match'] = True
+        observed.append(_i9_copy_module.deepcopy(_i9_engine.observations[pin['path']]))
+        _i9_need(set(item) == set(previous) and type(item['bytes']) is int, 'original payload row shape/types retained with real paired-read provenance')
+    _i9_need(changed == [0, 2, 3, 4, 5] and carried == [1, 6, 7, 8, 9, 10, 11], 'manifest exact five updated/seven retained rows')
+    names = {_i9_leaf(inventory[role]['available_basis']['path']): _i9_leaf(rows[role]['canonical_path']) for role in I9_TEMPLATE_ROLES}
+    value.update(created_utc=_i9_recorded_utc(_i9_engine), selected_source_paths=[names.get(x, x) for x in old['selected_source_paths']], source_peer_expected_path=rows['metadata_peer']['canonical_path'], selected_guard_profile=_i9_leaf(rows['profile']['canonical_path']), selected_guard_profile_sha256=deps['profile'][0]['sha256'])
+    _i9_need(value['source_author'] == I9_SEMANTIC and value['source_approval_issued'] is False and (value['target_or_phase_or_binding_execution'] is False) and all((value[x] is None for x in ('actual_authorization', 'actual_bindings', 'actual_capture', 'actual_lease'))) and (value['preserved_previous_payloads'] == old['preserved_previous_payloads']) and (value['preserved_previous_manifest'] == old['preserved_previous_manifest']) and (value['selected_guard_manifest009_sha256'] == old['selected_guard_manifest009_sha256']), 'all protected manifest/historical payload/guard-manifest fields exact and all runtime cells null')
+    fields = {'created_utc', 'payloads', 'selected_source_paths', 'source_peer_expected_path', 'selected_guard_profile', 'selected_guard_profile_sha256'}
+    return [_i9_json_artifact(_i9_engine, 'metadata_manifest', old_raw, value, fields, rows, dict(updated_payload_indexes=changed, retained_payload_indexes=carried, current_paired_payload_observations=observed, original12_preserved_payload_rows_exact=True, header_producer='actual general-host Python UTC6; no native timestamp claim'))]
+
+def _i9_render_capture(_i9_engine, facts, inventory, rows, deps, lease_pin, lease, selection_pin):
+    _i9_validate_peer_metadata(_i9_engine, deps, inventory, rows)
+    static = _i9_json(deps['static'][1])
+    profile = _i9_json(deps['profile'][1])
+    _i9_need(static['reviewer'] == '/root' and static['verdict'] == 'PASS_STATIC_PREPARATION_ONLY' and (static['profile_sha256'] == deps['profile'][0]['sha256']) and (static['tests_executed'] is False) and (static['target_definitions_executed'] is False) and (profile['lease_is_owner_deadline'] is False) and (profile['live_fullQA_native_fit_Git_authority'] is False), 'current real profile/static retain original Source-only guard ABI')
+    old_raw = _i9_read_pin(_i9_engine, rows['plan']['predecessor'], cap=65536)
+    old = _i9_json(old_raw)
+    plan = _i9_copy_module.deepcopy(old)
+    _i9_need(len(old) == 7 and old['actual_binding'] is None and (old['source_author'] == I9_SEMANTIC) and (set(old['bindings']) == I9_BINDING_KEYS) and (set(old['role_selections']) == set(I9_CAPTURE_SLOTS[3:])), 'original closed7 plan/nine Source bindings/three Unit006 role ABI')
+    bindings, selections = _i9_validate_binding_supports(_i9_engine, facts, deps, rows, selection_pin)
+    plan.update(bindings=bindings, role_selections=selections, lease_selection=dict(path=lease_pin['path'], sha256=lease_pin['sha256'], lease_end_utc=lease['lease_end_utc']))
+    template_pin, template = deps['capture_template']
+    values = dict(OWNER_SHA=lease_pin['sha256'], OWNER_END=lease['lease_end_utc'], BINDINGS=bindings, **selections)
+    bound, steps = _i9_capture_assignment_bind(template, values)
+    old_bound = _i9_read_pin(_i9_engine, rows['capture_bound']['predecessor'], cap=65536)
+    old_template = _i9_read_pin(_i9_engine, inventory['capture_template']['available_basis'], cap=65536)
+    predecessor_inverse = _i9_old_bound_template_inverse(old_bound, old_template)
+    outputs = [_i9_json_artifact(_i9_engine, 'plan', old_raw, plan, {'bindings', 'role_selections', 'lease_selection'}, rows, dict(exact_nine_actual_source_bindings=True, old_six_carried_Source_SHA_preserved=True)), _i9_pack(_i9_engine, 'capture_bound', bound, template, template_pin, rows, dict(six_assignment_steps=steps, original_bound_to_original_template_steps=predecessor_inverse, current_original_template=inventory['capture_template']['available_basis'], new_actual_template=template_pin, complete_current_predecessor_byte_inverse=True, new_template_identity_inverse_authenticated_by_canonical_Source_review=True, original_functions_classes_globals_exact=True))]
+    old_binding_raw = _i9_read_pin(_i9_engine, rows['metadata_binding']['predecessor'], cap=65536)
+    old_binding = _i9_json(old_binding_raw)
+    binding = _i9_copy_module.deepcopy(old_binding)
+    _i9_need(len(old_binding) == 11 and old_binding['binder'] == '/root' and (old_binding['target_capture_executed'] is False) and (old_binding['actual_before_authorization'] is None) and (old_binding['actual_after_authorization'] is None) and (old_binding['exact_function_ASTs'] is True) and (old_binding['exact_six_assignment_reversal'] is True), 'original closed11 capture binding and all protected false/null/inverse fields retained')
+    binding.update(template_sha256=template_pin['sha256'], actual_script_sha256=_i9_sha(bound), bindings=bindings, role_selections=selections)
+    outputs.append(_i9_json_artifact(_i9_engine, 'metadata_binding', old_binding_raw, binding, {'template_sha256', 'actual_script_sha256', 'bindings', 'role_selections'}, rows, dict(exact_six_assignment_reversal=True)))
+    return outputs
+
+def _i9_render_phase_bound(_i9_engine, facts, inventory, rows, deps):
+    _i9_validate_peer_metadata(_i9_engine, deps, inventory, rows)
+    role = facts['role']
+    template_role = role.replace('_bound', '_template')
+    template_pin, template = deps[template_role]
+    raw, steps = _i9_phase_assignment_bind(template, deps['capture_bound'][0]['sha256'], deps['metadata_bound_review'][0]['sha256'])
+    old_bound = _i9_read_pin(_i9_engine, rows[role]['predecessor'], cap=65536)
+    old_template_pin = inventory[template_role]['available_basis']
+    old_template = _i9_read_pin(_i9_engine, old_template_pin, cap=65536)
+    _i9_phase_predecessor_inverse(old_bound, old_template)
+    return [_i9_pack(_i9_engine, role, raw, template, template_pin, rows, dict(exact_two_assignment_steps=steps, original_bound_to_original_template_inverse=True, original_template=old_template_pin, new_actual_template=template_pin, complete_current_predecessor_byte_inverse=True, new_template_identity_inverse_authenticated_by_canonical_Source_review=True, native_Parser_executed=False, all_original_protected_Source_complement_exact=True))]
+
+def _i9_render_phase_binding(_i9_engine, facts, inventory, rows, deps):
+    _i9_validate_peer_metadata(_i9_engine, deps, inventory, rows)
+    old_raw = _i9_read_pin(_i9_engine, rows['phase_binding']['predecessor'], cap=65536)
+    old = _i9_json(old_raw)
+    value = _i9_copy_module.deepcopy(old)
+    sources = []
+    _i9_need(len(old) == 7 and old['binder'] == '/root' and (old['actual_authorization'] is None) and (old['prepared_source_actions_executed'] is False) and (len(old['sources']) == 4), 'original closed7 phase binding/no prepared action/authorization')
+    for template_role in I9_TEMPLATE_ROLES[1:]:
+        role = template_role.replace('_template', '_bound')
+        template_pin, template = deps[template_role]
+        bound_pin, bound = deps[role]
+        expected, _ = _i9_phase_assignment_bind(template, deps['capture_bound'][0]['sha256'], deps['metadata_bound_review'][0]['sha256'])
+        _i9_need(expected == bound, 'actual canonical BOUND exactly two assignments from actual canonical TEMPLATE/current capture/bound peer')
+        sources.append(dict(path=bound_pin['path'], sha256=bound_pin['sha256'], template_sha256=template_pin['sha256'], exact_two_literal_reversal=True))
+    value.update(actual_script_sha256=deps['capture_bound'][0]['sha256'], bound_review_sha256=deps['metadata_bound_review'][0]['sha256'], sources=sources)
+    return [_i9_json_artifact(_i9_engine, 'phase_binding', old_raw, value, {'actual_script_sha256', 'bound_review_sha256', 'sources'}, rows, dict(actual_four_canonical_two_assignment_reconstructions=True, native_Parser_executed=False))]
+
+def _i9_required_dependencies(stage, role):
+    if stage == 'templates':
+        return set()
+    if stage == 'manifest':
+        return set(I9_TEMPLATE_ROLES) | {'profile'}
+    if stage == 'capture':
+        return {'capture_template', 'metadata_manifest', 'profile', 'static', 'metadata_peer'}
+    if stage == 'phase_bound':
+        return {role.replace('_bound', '_template'), 'capture_bound', 'metadata_binding', 'metadata_bound_review'}
+    if stage == 'phase_binding':
+        return set(I9_TEMPLATE_ROLES[1:]) | set(I9_PHASE_BOUND_ROLES) | {'capture_bound', 'metadata_binding', 'metadata_bound_review'}
+    raise ValueError('unknown deferred metadata stage')
+

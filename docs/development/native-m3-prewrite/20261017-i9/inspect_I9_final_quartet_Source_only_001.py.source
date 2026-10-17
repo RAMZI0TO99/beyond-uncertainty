@@ -1,0 +1,79 @@
+"""Finite static Source inspection; target/fixture code never imported or executed."""
+import ast
+import hashlib
+import json
+import symtable
+import builtins
+from pathlib import Path
+
+OWN=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012\i9')
+def pin(path):
+    data=path.read_bytes();return dict(path=str(path),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+def wire(value):return (json.dumps(value,indent=2,sort_keys=True,allow_nan=False)+'\n').encode()
+checks=[]
+def check(name,value):
+    assert type(value) is bool
+    checks.append(dict(name=name,passed=value))
+    assert value,name
+module=OWN/'validate_recorded_M3_semantics_002.py';fixture=OWN/'test_recorded_M3_semantics_memory_only_001.py'
+api=OWN/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_INERT_API_001.json';receipt=OWN/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_SOURCE_AUTHOR_RECEIPT_001.json'
+mraw=module.read_bytes();fraw=fixture.read_bytes();mt=ast.parse(mraw);ft=ast.parse(fraw)
+av=json.loads(api.read_bytes());rv=json.loads(receipt.read_bytes())
+check('Actual module pin matches final API and author receipt',pin(module)==av['Source']==rv['Source'])
+check('Actual final API pin matches actual author receipt',pin(api)==rv['API'])
+check('Actual fixture pin matches final API and author receipt',pin(fixture)==av['fixture_Source']==rv['fixture_Source'])
+proposal=Path(rv['fixture_content_proposal']['path'])
+check('Whole independent fixture proposal copied byte exactly',proposal.read_bytes()==fraw and pin(proposal)==rv['fixture_content_proposal'])
+check('Actual fixture content and physical editors remain distinct',rv['fixture_content_contributor']=='/root/i9_fixture_author' and rv['actual_physical_Source_editor']=='/root/phase_frontier')
+literals={n.targets[0].id:ast.literal_eval(n.value) for n in ft.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in ('EXPECTED_CASE_COUNT','PLANNED_CASE_NAMES')}
+check('Planned case count is actual literal95 and unique ordered names join API',literals['EXPECTED_CASE_COUNT']==95 and len(literals['PLANNED_CASE_NAMES'])==95 and len(set(literals['PLANNED_CASE_NAMES']))==95 and list(literals['PLANNED_CASE_NAMES'])==av['fixture_interface']['planned_case_names'] and av['fixture_interface']['expected_case_count']==95)
+check('Both actual Sources fit unchanged2MiB bound',0<len(mraw)<=2097152 and 0<len(fraw)<=2097152)
+for label,tree in (('module',mt),('fixture',ft)):
+    allowed={'ast','base64','copy','datetime','difflib','hashlib','json','re','zlib'}
+    check(label+' uses only declared pure standard imports',all(all(a.name in allowed for a in n.names) for n in ast.walk(tree) if isinstance(n,ast.Import)) and not any(isinstance(n,ast.ImportFrom) for n in ast.walk(tree)))
+    check(label+' has no exec/eval/compile/open/import dispatcher',not any(isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id in ('exec','eval','compile','open','__import__') for n in ast.walk(tree)))
+    check(label+' has no dataclass or namedtuple dynamic generation',not any(isinstance(n,ast.Name) and n.id in ('dataclass','dataclasses','namedtuple') for n in ast.walk(tree)))
+    compile(mraw if label=='module' else fraw,'I9_'+label+'_Source_only','exec')
+    check(label+' syntax accepted by Source-only compile without execution',True)
+nodes={n.name:n for n in mt.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
+ports=ast.parse((OWN/'I9_ISOLATED_RENDER_AND_INVERSE_ALGORITHM_SOURCE_PORTS_001.py').read_bytes())
+plines=(OWN/'I9_ISOLATED_RENDER_AND_INVERSE_ALGORITHM_SOURCE_PORTS_001.py').read_bytes().splitlines(keepends=True);mlines=mraw.splitlines(keepends=True)
+for original in ports.body:
+    if isinstance(original,ast.FunctionDef):
+        selected=nodes[original.name]
+        a=b''.join(plines[original.lineno-1:original.end_lineno]);b=b''.join(mlines[selected.lineno-1:selected.end_lineno])
+        check('Original isolated algorithm Source exact: '+original.name,a==b)
+inverse=json.loads((OWN/'I9_COMPLETE_ORIGINAL_I2_SOURCE_AND_API_PREDECESSOR_INVERSE_001.json').read_bytes())
+for row in inverse['originals']:
+    expected=bytes.fromhex(row['whole_original_bytes_hex']);path=Path(row['Source']['path'])
+    check('Whole original byte inverse exact: '+row['role'],expected==path.read_bytes() and pin(path)==row['Source'])
+mi=json.loads((OWN/'I9_MODULE001_TO002_COMPLETE_SOURCE_INVERSE_AND_CHANGE_MAP_001.json').read_bytes())
+check('Whole refused module001 predecessor preserved exactly',bytes.fromhex(mi['whole_predecessor_Source_hex'])==Path(mi['predecessor']['path']).read_bytes())
+held=nodes['require_actual_M3_prewrite_publication_admission']
+check('Actual entry first checks held flag then unconditionally raises',isinstance(held.body[0],ast.Expr) and isinstance(held.body[1],ast.Raise) and len(held.body)==2)
+flag=next(n.value for n in mt.body if isinstance(n,ast.Assign) and any(isinstance(x,ast.Name) and x.id=='I9_ACTUAL_PUBLICATION_DEPENDENCIES_QUALIFIED' for x in n.targets))
+check('Actual qualification flag is literal False',isinstance(flag,ast.Constant) and flag.value is False)
+binding=set()
+for n in mt.body:
+    if isinstance(n,(ast.FunctionDef,ast.ClassDef)):binding.add(n.name)
+    elif isinstance(n,ast.Import):binding.update(x.asname or x.name for x in n.names)
+    elif isinstance(n,ast.Assign):binding.update(x.id for x in n.targets if isinstance(x,ast.Name))
+unknown=[]
+def walk(table):
+    for symbol in table.get_symbols():
+        if symbol.is_global() and symbol.is_referenced() and symbol.get_name() not in binding and symbol.get_name() not in vars(builtins):unknown.append(symbol.get_name())
+    for child in table.get_children():walk(child)
+walk(symtable.symtable(mraw.decode(),'I9_static','exec'))
+check('No statically unresolved module global names',not unknown)
+check('All expected false authority/qualification result flags declared',all(v is False for v in (av['operational_authority'],av['scientific_authority'],av['target_execution'],rv['actual_admission'])))
+check('No test execution or original invocation claimed',rv['tests_and_execution']==dict(module_imports=0,module_function_calls=0,fixture_imports=0,fixture_function_calls=0,new_tests_executed=False,old_modules_imported_or_called=False,Native_or_Parser_invoked=False))
+record=dict(schema_version=1,record_type='I9_actual_final_quartet_author_static_Source_inspection',author='/root/phase_frontier',
+ inputs=[pin(p) for p in (module,fixture,api,receipt,proposal)],checks=checks,checks_passed=len(checks),checks_failed=0,
+ target_imports=0,target_calls=0,fixture_calls=0,tests_executed=False,independent_Source_review_required=True,
+ operational_authority=False,scientific_authority=False,target_execution=False,
+ limitations=['This is author static Source inspection, not independent review or executed fixture evidence.',
+ 'All95 named fixture cases remain planned until a separately adopted fresh one-use Root scope executes them.',
+ 'Source semantic reasoning and saved metadata consistency do not establish runtime, human, physical or scientific authority.'])
+out=OWN/'I9_FINAL_QUARTET_AUTHOR_SOURCE_ONLY_STATIC_INSPECTION_001.json'
+assert not out.exists();out.write_bytes(wire(record))
+print(json.dumps(dict(proof=pin(out),checks_passed=len(checks),checks_failed=0)))

@@ -1,0 +1,486 @@
+"""Read/hash/JSON/AST-only review of already saved I9 memory outcomes.
+
+Preparation is not acceptance. This program is invoked only after Root reports
+an actual outcome, with an explicit last ordinal and accepted/refused status.
+It cannot import/call/replay a target, fixture, builder, renderer or oracle.
+"""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+import sys
+
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+OWN=P/'saved_refusal_review_003'
+REVIEWER='/root/owner_source_review'
+CAP=2097152
+CHECKS=[]
+INPUTS={}
+RAW={}
+DOCS={}
+
+def check(name,passed,evidence=None):
+    assert type(name) is str and name and name not in {r['name'] for r in CHECKS}
+    assert type(passed) is bool
+    r=dict(name=name,passed=passed)
+    if evidence is not None:r['evidence']=evidence
+    CHECKS.append(r)
+
+def fact(path):
+    path=str(Path(path));data=Path(path).read_bytes()
+    assert len(data)<=CAP
+    # Zero-byte external .txt captures are genuine file observations. They are
+    # not cast into a positive metadata-schema record declaration.
+    assert data or Path(path).suffix=='.txt'
+    q=dict(path=path,bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+    if path in INPUTS:assert INPUTS[path]==q
+    INPUTS[path]=q;RAW[path]=data
+    return q
+
+def verify(q,label):
+    check(label+': typed whole-file fact3',type(q) is dict and set(q)=={'path','bytes','sha256'} and
+          type(q['path']) is str and type(q['bytes']) is int and 0<=q['bytes']<=CAP and
+          (q['bytes']>0 or Path(q['path']).suffix=='.txt') and type(q['sha256']) is str and len(q['sha256'])==64)
+    check(label+': actual bytes and digest',fact(q['path'])==q)
+
+def pairs(values):
+    out={}
+    for k,v in values:
+        assert k not in out;out[k]=v
+    return out
+
+def bad(value):raise ValueError(value)
+
+def obj(path):
+    path=str(Path(path))
+    if path not in DOCS:
+        if path not in RAW:fact(path)
+        DOCS[path]=json.loads(RAW[path].decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+    return DOCS[path]
+
+def refs(value):
+    if type(value) is dict:
+        if set(value)=={'path','bytes','sha256'}:yield value
+        else:
+            for v in value.values():yield from refs(v)
+    elif type(value) is list:
+        for v in value:yield from refs(v)
+
+def utc(text):
+    t=datetime.datetime.fromisoformat(text.replace('Z','+00:00'))
+    assert t.utcoffset()==datetime.timedelta(0)
+    return t
+
+def literal_fixture(pin):
+    tree=ast.parse(RAW[pin['path']]);values={};functions={}
+    for node in tree.body:
+        if isinstance(node,ast.FunctionDef):functions[node.name]=node
+        elif isinstance(node,ast.Assign):
+            for target in node.targets:
+                if isinstance(target,ast.Name) and target.id in {'EXPECTED_CASE_COUNT','PLANNED_CASE_NAMES'}:
+                    assert target.id not in values;values[target.id]=ast.literal_eval(node.value)
+    return values,tree,functions
+
+def rehash_review(adoption,label,capfield):
+    cap=obj(adoption[capfield]['path']);full=obj(adoption['full_proof']['path'])
+    check(label+': actual Root adoption',adoption['author']=='/root' and adoption['target_execution'] is False and adoption['tests_executed'] is False)
+    check(label+': genuine prior Source-only review',cap['target_execution'] is False and cap['tests_executed'] is False and
+          full['target_execution'] is False and full['tests_executed'] is False and
+          type(cap['checks_failed']) is int and cap['checks_failed']==0 and type(full['checks_failed']) is int and full['checks_failed']==0)
+    check(label+': exact capsule/full proof join',cap['full_proof']==adoption['full_proof'] and cap['subjects']==full['subjects'])
+    checks=full['checks']
+    check(label+': unique all-passed named checks',type(checks) is list and len(checks)>0 and
+          len({q['name'] for q in checks})==len(checks) and all(type(q['name']) is str and q['name'] and q['passed'] is True for q in checks))
+    check(label+': reviewer and verdict equality',cap['reviewer']==full['reviewer'] and cap['verdict']==full['verdict'] and
+          cap['verdict'].startswith(('PASS_','ACCEPT_')))
+    check(label+': review chronology before Root adoption',utc(full['created_utc'])<=utc(cap['created_utc'])<=utc(adoption['created_utc']))
+    roster=full['all_actual_inputs']
+    check(label+': finite unique actual input roster',type(roster) is list and 0<len(roster)<=2048 and
+          len({q['path'].casefold() for q in roster})==len(roster))
+    for n,q in enumerate(roster):verify(q,label+': actual reviewed input '+str(n+1))
+    for n,q in enumerate(refs(adoption)):verify(q,label+': adoption reference '+str(n+1))
+    return cap,full
+
+def save(name,value):
+    data=(json.dumps(value,ensure_ascii=False,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('utf8')
+    assert len(data)<=CAP
+    with (OWN/name).open('xb') as handle:handle.write(data)
+    return dict(path=str(OWN/name),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+
+def main():
+    assert sys.flags.isolated and sys.flags.no_site and sys.flags.dont_write_bytecode
+    assert len(sys.argv)==3
+    last=int(sys.argv[1]);mode=sys.argv[2]
+    assert 2<=last<=999 and mode in {'accepted','refused'}
+    # No target invocation and no speculative outcome construction. All final
+    # outcome/capture records must already exist before any review is emitted.
+    for n in range(1,last+1):
+        for leaf in ('ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE',
+                     'ROOT_I9_ACTUAL_ONCE_MEMORY_SUITE_RESULT',
+                     'ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT',
+                     'ROOT_I9_ACTUAL_OWNED_MEMORY_STREAMS_CAPTURE',
+                     'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_DIFFERENT_REVIEW_ADOPTION'):
+            assert (P/(leaf+f'_{n:03d}.json')).is_file()
+    actual_supers=sorted(q.name for q in P.glob('ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_[0-9][0-9][0-9].json'))
+    check('sequence: all actual supervisor results contiguous and accounted',actual_supers==[
+        f'ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_{n:03d}.json' for n in range(1,last+1)])
+    root_adopter=fact(P/'ROOT_ADOPT_I9_ACTUAL_SAVED_MEMORY_RESULTS_001.py')
+    root_adopter_text=RAW[root_adopter['path']].decode('utf8');ast.parse(root_adopter_text)
+    check('Root saved-results adopter: read-only evidence then metadata adoption',
+          'never rerun code' in root_adopter_text and 'subprocess' not in root_adopter_text and
+          "record['I9_fixture_reruns'] == 0" in root_adopter_text)
+    window=obj(P/'ROOT_CURRENT_I9_M3_SEMANTIC_PREFLIGHT_SOURCE_SCOPE_001.json')
+    attempts=[];previous_end=None;seen_scopes=set();seen_markers=set();seen_outputs=set()
+    latest_subjects=[];latest_module=None;latest_fixture=None;latest_api=None
+    reviewed_adoptions=set()
+    for ordinal in range(1,last+1):
+        suffix=f'{ordinal:03d}';label='attempt '+suffix
+        scope_pin=fact(P/f'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_{suffix}.json');s=obj(scope_pin['path'])
+        result_pin=fact(P/f'ROOT_I9_ACTUAL_ONCE_MEMORY_SUITE_RESULT_{suffix}.json');r=obj(result_pin['path'])
+        super_pin=fact(P/f'ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_{suffix}.json');v=obj(super_pin['path'])
+        capture_pin=fact(P/f'ROOT_I9_ACTUAL_OWNED_MEMORY_STREAMS_CAPTURE_{suffix}.json');c=obj(capture_pin['path'])
+        fresh_pin=fact(P/f'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_DIFFERENT_REVIEW_ADOPTION_{suffix}.json');fresh=obj(fresh_pin['path'])
+        check(label+': exact author/schema/attempt identity',all(q['author']=='/root' and type(q['schema_version']) is int and q['schema_version']==1 and
+              type(q['attempt_number']) is int and q['attempt_number']==ordinal for q in (s,r,v,c)))
+        check(label+': exact whole saved scope joins',r['scope']==v['scope']==c['scope']==scope_pin and fresh['fresh_one_use_scope']==scope_pin)
+        check(label+': result and supervisor pins cross-bound',v['child_saved_result']==result_pin and c['supervisor_result']==super_pin)
+        for record_name,record in [('scope',s),('result',r),('supervisor',v),('capture',c),('fresh adoption',fresh)]:
+            unique={q['path']:q for q in refs(record)}
+            for i,q in enumerate(unique.values()):verify(q,label+': '+record_name+' saved ref '+str(i+1))
+        for adopt_pin,adopt_label in [(s['Source_adoption'],'Source adoption'),(fresh_pin,'fresh scope adoption')]:
+            if adopt_pin['path'] not in reviewed_adoptions:
+                rehash_review(obj(adopt_pin['path']),label+' '+adopt_label,'different_Source_review')
+                reviewed_adoptions.add(adopt_pin['path'])
+        prior_tools=fresh.get('previous_tool_Source_review_adoption')
+        if prior_tools is not None and prior_tools['path'] not in reviewed_adoptions:
+            rehash_review(obj(prior_tools['path']),label+' bound tool review','different_Source_review')
+            reviewed_adoptions.add(prior_tools['path'])
+        check(label+': fresh review/adoption permits only one reviewed memory call',
+              fresh['author']=='/root' and fresh['verdict']=='ACCEPT_I9_FRESH_ONE_USE_SYNTHETIC_MEMORY_SCOPE_ONLY' and
+              fresh['new_I9_memory_invocation_authorized_now'] is True and s['maximum_invocations']==1 and
+              s['automatic_retry_authorized'] is False)
+        check(label+': adopted source and fresh scope precede actual launch',
+              utc(obj(s['Source_adoption']['path'])['created_utc'])<=utc(s['created_utc'])<=utc(fresh['created_utc'])<=utc(v['started_utc']))
+        check(label+': attempt namespace disjoint from all earlier scopes',scope_pin['path'] not in seen_scopes)
+        seen_scopes.add(scope_pin['path'])
+        check(label+': complete result timeline inside Source and one-use windows',
+              utc(window['interval_start'])<=utc(s['interval_start'])<=utc(v['started_utc'])<=utc(r['started_utc'])<=
+              utc(r['created_utc'])<=utc(v['created_utc'])<utc(s['interval_end'])<=utc(window['interval_end']))
+        check(label+': >60 second prelaunch reserve',
+              (utc(s['interval_end'])-utc(v['resource_prelaunch']['observed_utc'])).total_seconds()>60)
+        check(label+': sequential actual executions never overlap',previous_end is None or previous_end<utc(v['started_utc']))
+        previous_end=utc(v['created_utc'])
+        for q,role in [(r['consumption_marker'],'child'),(v['supervisor_marker'],'supervisor')]:
+            mark=obj(q['path'])
+            check(label+': '+role+' marker once-consumption and exact scope',mark['scope']==scope_pin and
+                  mark['automatic_retry_authorized'] is False and mark['attempt_number']==ordinal and q['path'] not in seen_markers)
+            seen_markers.add(q['path'])
+            check(label+': '+role+' marker chronology before target start',utc(fresh['created_utc'])<=utc(mark['created_utc'])<=utc(r['started_utc']))
+        check(label+': exact reviewed Source/module/API/receipt joins',
+              all(r[k]==s[k] for k in ('module_Source','fixture_Source','API')) and r['actual_Source_adoption']==s['Source_adoption'])
+        check(label+': Root Source adoption contains actual quartet pins',
+              set(q['path'] for q in obj(s['Source_adoption']['path'])['subjects'])==
+              {s[k]['path'] for k in ('module_Source','fixture_Source','API','author_receipt')})
+        api=obj(s['API']['path']);author=obj(s['author_receipt']['path'])
+        check(label+': actual author receipt bound Source/API/fixture',author['Source']==s['module_Source'] and
+              author['fixture_Source']==s['fixture_Source'] and author['API']==s['API'])
+        literal,tree,functions=literal_fixture(s['fixture_Source'])
+        planned=list(literal['PLANNED_CASE_NAMES']);count=literal['EXPECTED_CASE_COUNT']
+        check(label+': literal planned cases unique typed bounded',type(count) is int and 1<=count<=256 and
+              len(planned)==len(set(planned))==count and all(type(q) is str and q for q in planned))
+        check(label+': exact API/scope/result planned case joins',planned==s['planned_case_names']==r['planned_case_names']==api['fixture_interface']['planned_case_names'] and
+              all(type(q) is int and q==count for q in (s['expected_planned_case_count'],r['expected_planned_case_count'],api['fixture_interface']['expected_case_count'])))
+        check(label+': no substituted different suite entry',api['fixture_interface']['entry']=='run_memory_suite(module)' and 'run_memory_suite' in functions)
+        fixture_text=RAW[s['fixture_Source']['path']].decode('utf8')
+        oracle=ast.get_source_segment(fixture_text,functions['_fx_bad'])
+        check(label+': pinned negative oracle requires exact typed target refusal',
+              'type(error) is module.I9MetadataError and error.code in accepted_codes' in oracle and
+              "raise AssertionError('mutated synthetic metadata was accepted')" in oracle)
+        check(label+': pinned callback/zero-call assertions are actually in fixture oracle',
+              'if before_read:assert count==0' in oracle and 'assert count==expected_calls' in oracle)
+        check(label+': Source and fixture each compiled/executed once',
+              set(r['target_compile_counts'])==set(r['target_exec_counts'])=={s['module_Source']['path'],s['fixture_Source']['path']} and
+              all(type(n) is int and n==1 for n in list(r['target_compile_counts'].values())+list(r['target_exec_counts'].values())))
+        check(label+': actual target/fixture function profile evidence',
+              set(r['profile_call_counts'])=={s['module_Source']['path'],s['fixture_Source']['path']} and
+              all(type(n) is int and n>0 for n in r['profile_call_counts'].values()))
+        check(label+': compile counts distinguish narrow AST-only data parsing',
+              type(r['ast_parse_internal_compile_events']) is int and r['ast_parse_internal_compile_events']>=0 and
+              r['audit_event_counts']['compile']==2+r['ast_parse_internal_compile_events'] and r['audit_event_counts']['exec']==2)
+        check(label+': no observed forbidden audit events',r['blocked_forbidden_event_names']==[] and
+              not any(k=='open' or k.startswith(('os.','subprocess.','socket.','ctypes.','winreg.')) for k in r['audit_event_counts']))
+        check(label+': audit boundary does not imply exhaustive physical isolation',
+              'not exhaustive stat/native or security isolation proof' in r['audit_evidence_boundary'])
+        check(label+': actual execution flags and run count typed',type(r['tests_executed']) is bool and
+              type(r['I9_memory_test_runs']) is int and r['I9_memory_test_runs'] in (0,1) and
+              r['I9_memory_test_runs']==int(r['tests_executed']) and r['fixture_entry_invoked'] is r['tests_executed'])
+        check(label+': supervisor actual child identity/one invocation',type(v['owned_child_PID']) is int and v['owned_child_PID']>0 and
+              type(v['owned_child_invocations']) is int and v['owned_child_invocations']==1)
+        check(label+': exact isolated child argv/cwd',v['argv']==[
+              r'C:\Users\aladdin-alyanai\AppData\Local\Programs\Python\Python313\python.exe','-I','-S','-B',s['tool_Source_pins']['runner']['path'],suffix] and v['cwd']==str(P))
+        check(label+': owned child exit reaped and stream readers joined',v['owned_child_wait_reaped'] is True and v['stream_reader_threads_joined'] is True)
+        check(label+': measured terminal wall exactly monotonic difference',
+              type(v['owned_child_wall_integer_nanoseconds']) is int and v['owned_child_wall_integer_nanoseconds']==
+              v['child_exit_observed_monotonic_ns']-v['child_launch_monotonic_ns'])
+        check(label+': child and suite bounded by 60 second cap',
+              all(type(n) is int and 0<n<=60000000000 for n in
+              (v['owned_child_wall_integer_nanoseconds'],r['elapsed_integer_nanoseconds'])) and
+              r['elapsed_integer_nanoseconds']<=v['owned_child_wall_integer_nanoseconds'])
+        check(label+': exact timeout/cleanup bounds',v['wall_cap_seconds']==s['wall_cap_seconds']==60 and v['cleanup_reap_seconds']==s['cleanup_reap_seconds']==5)
+        res=v['resource_prelaunch']
+        check(label+': actual fresh typed RAM/disk floors',type(res['available_RAM_bytes']) is int and res['available_RAM_bytes']>=1073741824 and
+              type(res['disk_free_bytes']) is int and res['disk_free_bytes']>=10737418240 and
+              0<=v['child_launch_monotonic_ns']-res['observed_monotonic_ns']<60000000000)
+        check(label+': resources recorded prelaunch with no Native8 claim',utc(v['started_utc'])<=utc(res['observed_utc'])<=utc(r['started_utc']) and
+              res['FileTime_or_Native8_collection'] is False and v['scope_creation_resource_observation_is_historical'] is True)
+        check(label+': exact two complete captured streams',len(v['streams'])==len(c['streams'])==2 and
+              c['all_streams_complete'] is True and c['no_child_or_test_rerun'] is True and c['supervisor_accepted'] is v['passed'])
+        for i,role in enumerate(('stdout','stderr')):
+            vs,cs=v['streams'][i],c['streams'][i];q=vs['actual_capture'];data=RAW[q['path']]
+            check(label+': '+role+' raw capture exact and complete',cs['role']==role and cs['actual_capture']==q and
+                  cs['UTF8_text'].encode('utf8')==data and cs['complete'] is True and cs['overcap'] is False and cs['reader_error'] is None and
+                  vs['overcap'] is False and vs['reader_error'] is None and vs['saved_bytes']==vs['observed_lower_bound_bytes']==len(data)<=CAP)
+            check(label+': '+role+' capture path not reused',q['path'] not in seen_outputs)
+            seen_outputs.add(q['path'])
+        check(label+': Root child stdout is exact saved result fact3',json.loads(RAW[v['streams'][0]['actual_capture']['path']])==result_pin)
+        check(label+': capture chronology after actual supervisor',utc(v['created_utc'])<=utc(c['created_utc']))
+        check(label+': memory-only no canonical/native/runtime authority',all(r[k] is False for k in
+              ('operational_authority','scientific_authority','actual_canonical_IO','owner_lease_qualified','producer_qualified','caller_qualified',
+               'actual_native_human_physical_provenance_qualified','actual_entry_authorized',
+               'original_project_native_Parser_runtime_scientific_execution','original_I0_I1_I2_I3_I4_I5_I6_I7_I8_import_call_or_test')) and
+              all(v[k] is False for k in ('operational_authority','scientific_authority','actual_canonical_IO','actual_selected_family_Source_publication')) and
+              v['actual_new_lease_family_grants_Native8_Parser_results'] is None)
+        is_complete=(ordinal==last and mode=='accepted')
+        check(label+': actual final status matches explicit review mode',r['all_cases_passed'] is is_complete and v['passed'] is is_complete)
+        completed=r['actual_test_case_count']
+        if is_complete:
+            out=r['outcome'];cases=out['cases'];names=[q['name'] for q in cases]
+            check(label+': successful actual child terminal state',r['tests_executed'] is True and r['I9_memory_test_runs']==1 and
+                  r['error'] is None and v['owned_child_exit_code']==0 and type(v['owned_child_exit_code']) is int and v['refusal'] is None)
+            check(label+': exact complete saved case outcomes',type(cases) is list and type(completed) is int and completed==count and
+                  len(cases)==count and names==planned)
+            check(label+': saved outcome memory-only flags',out['synthetic_fixture'] is True and out['project_or_native_tests'] is False and
+                  type(out['filesystem_calls']) is int and out['filesystem_calls']==0)
+            for index,case in enumerate(cases):
+                check(label+': case '+str(index+1)+' '+case['name'],case['passed'] is True and case['synthetic_fixture'] is True and
+                      type(case['memory_record_reader_calls']) is int and case['memory_record_reader_calls']>=0)
+            check(label+': exact typed suite success counters',type(out['checks_passed']) is int and out['checks_passed']==count and
+                  type(out['checks_failed']) is int and out['checks_failed']==0)
+            for name in ('validate_recorded_M3_stage_semantics','validate_recorded_M3_prewrite_semantics','require_actual_M3_prewrite_publication_admission',
+                         '_i9_render_templates','_i9_render_manifest','_i9_render_capture','_i9_render_phase_bound','_i9_render_phase_binding'):
+                check(label+': actually called '+name,type(r['new_module_function_call_counts'].get(name)) is int and r['new_module_function_call_counts'][name]>0)
+            check(label+': no partial failure hidden in complete result',r['partial_completed_cases_at_failure'] is None and
+                  r['failed_or_last_case_at_failure'] is None and r['partial_capture_issue'] is None)
+            latest_subjects=[scope_pin,result_pin,super_pin,capture_pin]
+            latest_module=s['module_Source'];latest_fixture=s['fixture_Source'];latest_api=s['API']
+        else:
+            prefix=r['partial_completed_cases_at_failure']
+            check(label+': refusal preserves actual exception and no successful outcome',type(r['error']) is dict and
+                  type(r['error']['type']) is str and type(r['error']['message']) is str and r['outcome'] is None and
+                  type(v['owned_child_exit_code']) is int and v['owned_child_exit_code']!=0 and type(v['refusal']) is str)
+            check(label+': saved partial prefix is honest typed completed cases',type(prefix) is list and type(completed) is int and
+                  len(prefix)==completed<count and [q['name'] for q in prefix]==planned[:completed] and
+                  all(q['passed'] is True and q['synthetic_fixture'] is True and type(q['memory_record_reader_calls']) is int for q in prefix))
+            check(label+': interrupted case follows completed prefix',r['failed_or_last_case_at_failure']==planned[completed] and
+                  r['partial_capture_issue'] is None)
+            if ordinal==last:latest_subjects=[scope_pin,result_pin,super_pin,capture_pin]
+        attempts.append(dict(attempt_ordinal=ordinal,scope=scope_pin,result=result_pin,supervisor=super_pin,
+            streams_capture=capture_pin,fresh_scope_Root_adoption=fresh_pin,tests_executed=r['tests_executed'],
+            actual_memory_test_runs=r['I9_memory_test_runs'],accepted_complete_run=is_complete,
+            actual_completed_case_count=completed,expected_planned_case_count=count,error=r['error'],
+            failed_case=r['failed_or_last_case_at_failure'],owned_PID=v['owned_child_PID'],
+            child_wall_integer_nanoseconds=v['owned_child_wall_integer_nanoseconds'],child_exit_code=v['owned_child_exit_code'],
+            reaped=v['owned_child_wait_reaped'],reader_threads_joined=v['stream_reader_threads_joined']))
+
+    # The independently adopted first failure is mandatory historical evidence.
+    fail_adop_pin=fact(P/'ROOT_I9_ATTEMPT001_ACTUAL_SAVED_REFUSAL_AND_FIXTURE_ROUTE_CORRECTION_ADOPTION_001.json')
+    fail_adop=obj(fail_adop_pin['path'])
+    rehash_review(fail_adop,'first actual saved refusal','different_saved_refusal_review')
+    check('history: first actual failure retained exactly',attempts[0]['actual_completed_case_count']==0 and
+          attempts[0]['error']==dict(type='I9MetadataError',message='E_SELECTION_ROUTE') and
+          fail_adop['I9_memory_test_runs']==1 and fail_adop['accepted_complete_memory_test_runs']==0)
+    check('history: no consumed scope reused',len(seen_scopes)==last and len(seen_markers)==2*last)
+    check('history: no zero-completion attempt mistaken for no execution',attempts[0]['tests_executed'] is True and attempts[0]['actual_memory_test_runs']==1)
+    actual_runs=sum(a['actual_memory_test_runs'] for a in attempts)
+    accepted=sum(a['accepted_complete_run'] for a in attempts)
+    check('history: exact cumulative actual run accounting',actual_runs==last and accepted==(1 if mode=='accepted' else 0))
+
+    check('diagnosis: exact saved refusal003 review only',last==3 and mode=='refused')
+    latest_scope=obj(P/'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_003.json')
+    latest_result=obj(P/'ROOT_I9_ACTUAL_ONCE_MEMORY_SUITE_RESULT_003.json')
+    module_pin=latest_scope['module_Source'];verify(module_pin,'diagnosis actual module004')
+    text=RAW[module_pin['path']].decode('utf8');tree=ast.parse(text);constants={}
+    functions={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)}
+    for node in tree.body:
+        if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name):
+            try:constants[node.targets[0].id]=ast.literal_eval(node.value)
+            except (ValueError,TypeError):pass
+    fixture_text=RAW[latest_scope['fixture_Source']['path']].decode('utf8');ft=ast.parse(fixture_text);fc={}
+    for node in ft.body:
+        if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name):
+            try:fc[node.targets[0].id]=ast.literal_eval(node.value)
+            except (ValueError,TypeError):pass
+    fixed=constants['I9_FIXED_CONTEXT'];optionals=constants['I9_OPTIONAL_FALSE_FLAGS']
+    def contains(value,pin):
+        if type(value) is dict:
+            if all(k in value and type(value[k]) is type(v) and value[k]==v for k,v in pin.items()):return True
+            return any(contains(v,pin) for v in value.values())
+        return type(value) is list and any(contains(v,pin) for v in value)
+    def json_stats(value,depth=0):
+        count=1;maximum=depth;scalars=True;surrogates=False;keys=True
+        if type(value) is dict:
+            keys=all(type(k) is str for k in value)
+            children=value.values()
+        elif type(value) is list:children=value
+        else:
+            children=()
+            scalars=type(value) in (str,int,bool,type(None))
+            if type(value) is str:surrogates=any(0xD800<=ord(c)<=0xDFFF for c in value)
+        for child in children:
+            q=json_stats(child,depth+1);count+=q['nodes'];maximum=max(maximum,q['depth']);scalars=scalars and q['scalar_types'];keys=keys and q['string_keys'];surrogates=surrogates or q['surrogates']
+        return dict(nodes=count,depth=maximum,scalar_types=scalars,string_keys=keys,surrogates=surrogates)
+    bundles=[]
+    for prefix,editor in [('I0','/root/checker_frontier'),('I1','/root/phase_frontier')]:
+        support=dict(Source=fixed[prefix+'_Source'],API=fixed[prefix+'_API'],different_review=fixed[prefix+'_Source_review'],Root_adoption=fixed[prefix+'_Root_adoption'])
+        subjects=[support['Source'],support['API']]
+        if prefix=='I1':subjects.append(fixed['I1_native_entry'])
+        bundles.append((prefix,'active exact fixed bootstrap',editor,support,fixed[prefix+'_full_proof'],subjects))
+    family=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_family_implementation_005')
+    i2cap=fact(family/'independent_review_001/INDEPENDENT_I2_SOURCE002_SOURCE_CAPSULE_001.json')
+    i2full=fact(family/'independent_review_001/INDEPENDENT_I2_SOURCE002_FULL_SOURCE_PROOF_001.json')
+    i2adop=fact(family/'ROOT_I2_FAMILY_HELPER_SOURCE_REVIEW_ADOPTION_001.json')
+    i2source=fact(family/'i2/build_M3_metadata_current_owner_deferred_002.py')
+    i2api=fact(family/'i2/CURRENT_OWNER_M3_DEFERRED_METADATA_INERT_API_002.json')
+    bundles.append(('I2Source002','conditional held producer only; not fixed bootstrap dispatch','/root/phase_frontier',
+                    dict(Source=i2source,API=i2api,different_review=i2cap,Root_adoption=i2adop),i2full,[i2source,i2api]))
+    bundles.append(('I2Protocol','fixed hashed normative protocol anchor; not a producer Tool4 dispatch','/root',
+                    dict(different_review=fixed['I2_contract_Source_review'],Root_adoption=fixed['I2_contract_Root_adoption']),
+                    fixed['I2_contract_full_proof'],[fixed['I2_contract']]))
+    proof_matrix=[]
+    for prefix,route,editor,support,full_pin,subjects in bundles:
+        for key,q in support.items():verify(q,'ABI '+prefix+' '+key)
+        verify(full_pin,'ABI '+prefix+' full proof')
+        cap=obj(support['different_review']['path']);full=obj(full_pin['path']);adopt=obj(support['Root_adoption']['path'])
+        rows=full['checks'];names=[q.get('name') if type(q) is dict else None for q in rows]
+        duplicates=sorted({name for name in names if names.count(name)>1})
+        rejected=['/root',fc['_FX_CONSUMER'],fc['_FX_EDITOR'],fc['_FX_CONTENT'],editor]
+        who=cap.get('reviewer')
+        capsule_conditions=dict(target_execution_false=cap.get('target_execution') is False,operational_authority_false=cap.get('operational_authority') is False,
+            known_optional_flags_false_if_present=all(k not in cap or cap[k] is False for k in optionals),
+            actor_builtin_string=type(who) is str,actor_nonRoot_descendant=type(who) is str and who.startswith('/root/'),
+            actual_fixture_actor_exclusions=type(who) is str and all(who!=a and (a=='/root' or not who.startswith(a+'/')) for a in rejected),
+            PASS_verdict=type(cap.get('verdict')) is str and cap['verdict'].startswith('PASS_'),
+            strict_checks_failed_zero=type(cap.get('checks_failed')) is int and cap['checks_failed']==0,
+            complete_required_subject_coverage=all(contains(cap,q) for q in subjects),exact_full_proof_pin=cap.get('full_proof')==full_pin,
+            code_SOURCE_verdict=type(cap.get('verdict')) is str and 'SOURCE' in cap['verdict'].upper())
+        full_conditions=dict(target_execution_false=full.get('target_execution') is False,operational_authority_false=full.get('operational_authority') is False,
+            known_optional_flags_false_if_present=all(k not in full or full[k] is False for k in optionals),nonempty_bounded_list=type(rows) is list and 0<len(rows)<=10000,
+            every_named_check_typed_passed=all(type(q) is dict and type(q.get('name')) is str and bool(q['name']) and q.get('passed') is True for q in rows),
+            unique_check_names=len(set(names))==len(names),same_reviewer=full.get('reviewer')==who,same_verdict=full.get('verdict')==cap['verdict'],
+            strict_checks_failed_zero=type(full.get('checks_failed')) is int and full['checks_failed']==0,
+            complete_required_subject_coverage=all(contains(full,q) for q in subjects),full_created_lte_capsule_created=utc(full['created_utc'])<=utc(cap['created_utc']))
+        adoption_conditions=dict(Root_author=adopt.get('author')=='/root',ACCEPT_verdict=type(adopt.get('verdict')) is str and adopt['verdict'].startswith('ACCEPT_'),
+            current_target_execution_false=adopt.get('target_execution') is False,operational_authority_false=adopt.get('operational_authority') is False,
+            scientific_authority_false=adopt.get('scientific_authority') is False,
+            required_code_capsule_full_coverage=all(contains(adopt,q) for q in subjects+[support['different_review'],full_pin]),
+            capsule_created_lte_adoption_created=utc(cap['created_utc'])<=utc(adopt['created_utc']))
+        stats={key:json_stats(value) for key,value in [('capsule',cap),('full',full),('adoption',adopt)]}
+        check('ABI '+prefix+': strict JSON bounded typed metadata at all three records',all(q['nodes']<=50000 and q['depth']<=48 and q['scalar_types'] and q['string_keys'] and not q['surrogates'] for q in stats.values()))
+        check('ABI '+prefix+': all actor/flags/verdict/subject capsule predicates true',all(capsule_conditions.values()))
+        check('ABI '+prefix+': all full predicates except documented uniqueness true',all(v for k,v in full_conditions.items() if k!='unique_check_names'))
+        check('ABI '+prefix+': every generic adoption predicate except historical missing target true',all(v for k,v in adoption_conditions.items() if k!='current_target_execution_false'))
+        expected=(72,72) if prefix=='I0' else (199,189) if prefix=='I1' else (216,207) if prefix=='I2Source002' else (29,29)
+        check('ABI '+prefix+': actual historical row and distinct-name counts exact',(len(rows),len(set(names)))==expected)
+        check('ABI '+prefix+': expected original target flag presence retained',adoption_conditions['current_target_execution_false'] is (prefix not in {'I0','I1'}))
+        proof_matrix.append(dict(bundle=prefix,route=route,Source_editor=editor,support=support,subjects=subjects,full_proof=full_pin,
+            capsule=capsule_conditions,full=full_conditions,adoption=adoption_conditions,metadata_stats=stats,
+            full_check_row_count=len(rows),distinct_check_name_count=len(set(names)),repeated_names=duplicates,
+            original_row_order_and_bytes_preserved=True,
+            timestamp_shapes=dict(full=full['created_utc'],capsule=cap['created_utc'],adoption=adopt['created_utc']),
+            birth_boundary='created<=caller-recorded birth<=now and subject birth<=review/adoption chronology remain required. Original physical/native birth authentication is external; no target builder executed to materialize synthetic graph.',
+            codec_boundary='These open code proofs use actual typed named-check lists; no separate actual-check-codec field is required or invented. Receipt22 codec remains a different stage-output predicate, not yet reached.'))
+    review_source=ast.get_source_segment(text,functions['_i9_review'])
+    code_source=ast.get_source_segment(text,functions['_i9_code_support'])
+    bootstrap_source=ast.get_source_segment(text,functions['_i9_bootstrap'])
+    check('diagnosis: actual generic full-proof uniqueness rejects immutable I1 labels',
+          'len(set(names))==len(names)' in review_source and proof_matrix[1]['full']['unique_check_names'] is False)
+    check('diagnosis: generic review is invoked before fixed whole-bundle dispatch',code_source.index('reviewed=_i9_review')<code_source.index('matches=[]'))
+    calls=latest_result['new_module_function_call_counts']
+    check('diagnosis: actual saved I1 full-proof frontier, not a renderer or held action',latest_result['error']==dict(type='I9MetadataError',message='E_FULL_PROOF') and
+          calls['_i9_code_support']==3 and calls['_i9_review']==5 and calls['_i9_fixed_legacy_code_adoption']==1 and
+          all(calls.get(k,0)==0 for k in ('_i9_render_templates','_i9_render_manifest','_i9_render_capture','_i9_render_phase_bound','_i9_render_phase_binding')))
+    check('diagnosis: no held I2 tool dispatch silently mandatory in current bootstrap',
+          "(('I0','/root/checker_frontier'),('I1','/root/phase_frontier'))" in bootstrap_source and "('I2','" not in bootstrap_source)
+    check('diagnosis: existing public dynamic duplicate-name regression retained',
+          'full_proof_duplicate_check_name_refused' in fc['PLANNED_CASE_NAMES'] and "codes=('E_FULL_PROOF',)" in fixture_text)
+    map_pin=fact(P/'i9/I9_ALL_FIXED_CODE_SUPPORT_ABI_SOURCE_COMPATIBILITY_MAP_002.json')
+    source_map=obj(map_pin['path'])
+    check('independent crosscheck: exact final author comprehensive Source map',
+          map_pin['bytes']==110318 and map_pin['sha256']=='e686b7f49fe4f05caf4d7229759042b941a40fab5fb427a3223fa3fb8191350c' and
+          source_map['author']=='/root/phase_frontier' and source_map['Source_only'] is True)
+    for i,p in enumerate(source_map['all_actual_inputs']):verify(p,'author map actual Source input '+str(i+1))
+    for name,p in fixed.items():
+        verify(p,'independent all19 actual fixed anchor '+name)
+    check('independent crosscheck: all19 fixed anchors match actual module constants',len(fixed)==source_map['fixed19_anchor_count']==19)
+    check('independent crosscheck: all four proof row/count/coverage projections agree',len(source_map['code_support_bundles'])==len(proof_matrix)==4 and
+          all(a['full_check_rows']==b['full_check_row_count'] and a['full_unique_check_names']==b['distinct_check_name_count'] and
+              a['current_full_named_row_predicates_except_uniqueness'] and a['capsule_current_shape_verdict_and_subject_predicates'] and
+              a['full_current_actor_verdict_zero_failure_subject_joins'] and a['header_chronology_full_le_capsule_le_adoption']
+              for a,b in zip(source_map['code_support_bundles'],proof_matrix)))
+    check('independent crosscheck: phase map grants no actual acceptance or calls',source_map['independent_acceptance_of_own_module'] is False and
+          source_map['author_target_calls']==0 and source_map['author_fixture_calls']==0 and source_map['author_target_imports']==0 and
+          source_map['physical_or_human_origin_authenticated'] is False)
+    refusal2_pin=fact(P/'ROOT_I9_ATTEMPT002_ACTUAL_SAVED_REFUSAL_AND_FIXED_ADOPTION_COMPATIBILITY_CORRECTION_ADOPTION_001.json')
+    rehash_review(obj(refusal2_pin['path']),'actual saved refusal002','different_saved_refusal_review')
+    check('history: exact three actual first-positive zero-completion failures',
+          [q['actual_completed_case_count'] for q in attempts]==[0,0,0] and
+          [q['error']['message'] for q in attempts]==['E_SELECTION_ROUTE','E_AUTHORITY','E_FULL_PROOF'] and actual_runs==3 and accepted==0)
+    prepared1=fact(P/'saved_results_review_001/review_I9_actual_saved_memory_attempts_source_001.py')
+    prepared2=fact(P/'saved_results_review_001/review_I9_actual_saved_memory_attempts_source_002.py')
+    diagnosis=dict(classification='active_fixed_I1_historical_full_proof_duplicate_label_compatibility_defect',
+        observed_actual_error='E_FULL_PROOF',observed_attempt=3,completed_cases=0,proof_abi_matrix=proof_matrix,
+        independently_crosschecked_comprehensive_Source_map=map_pin,all19_fixed_anchor_bytes_rehashed=True,
+        Source_predicate_spans={k:dict(line=functions[k].lineno,end_line=functions[k].end_lineno,
+            sha256=hashlib.sha256(ast.get_source_segment(text,functions[k]).encode()).hexdigest())
+            for k in ('_i9_review','_i9_adoption','_i9_no_authority','_i9_code_support','_i9_fixed_legacy_code_adoption','_i9_bootstrap','_i9_historical_basis')},
+        exact_cause='Immutable I1 fullproof has199 individually passed rows but189 distinct names. Generic new-proof uniqueness is applied before authenticated fixed-bundle dispatch and refuses it.',
+        bounded_correction='Authenticate exact I0/I1 support4/subjects/editor/full bundle before review dispatch. Fixed-pin-only legacy review may retain I1 original duplicate labels without deduplication, while preserving all other typed checks, actor exclusions, flags, subjects, same-verdict/full pin, code SOURCE verdict and creation/birth/adoption chronology. Generic current review uniqueness and all current authority predicates remain unchanged.',
+        conditional_I2_frontier='Held I2Source002 known tool proof216/207 also has duplicates. It is not the mandatory fixed bootstrap dispatch and remains explicitly unqualified/unwired for actual producer/caller qualification; not silently added to this legacy adapter.',
+        no_extra_case_needed='Existing public full_proof_duplicate_check_name_refused already proves current dynamic duplicate labels are refused; full public positives exercise immutable fixed bundles. Do not mutate fixed-hash bytes or introduce private/helper mirror tests.',
+        known_remaining_inherited_record_compatibility='No additional capsule flag/actor/verdict/subject/metadata/creation-order mismatch found in the three exact bundles; fixed I0/I1 Root missing-target ABI already has bounded adapter. Caller recorded birth/provenance remains separately trusted/external.',
+        current_predicate_inventory_complete_for_code_proofs=True,
+        previous_review_limitation='Earlier static review missed immutable I1 duplicate labels. All three actual suites failed before a completed case; no complete render/inverse/runtime qualification follows.',
+        prepared_saved_result_reviewers=[prepared1,prepared2],both_prepared_reviewers_executed=False,
+        next_invocation_authorized=False)
+
+    source=fact(__file__);created=datetime.datetime.now(datetime.timezone.utc).isoformat()
+    check('review: genuine independent actor distinct from Source contributors',REVIEWER not in {'/root','/root/phase_frontier','/root/i9_fixture_author'})
+    failed=sum(q['passed'] is not True for q in CHECKS)
+    verdict=('PASS_I9_ACTUAL_SAVED_MEMORY_RESULTS_ALL_ATTEMPTS_NO_RERUN' if mode=='accepted' else
+             f'PASS_I9_ATTEMPT{last:03d}_ACTUAL_SAVED_REFUSAL_NO_RERUN') if failed==0 else 'REFUSE_I9_SAVED_REVIEW_CHECKS_FAILED'
+    full=dict(schema_version=1,record_type='Independent_I9_actual_saved_memory_attempts_review',reviewer=REVIEWER,source_author='/root',
+        created_utc=created,verdict=verdict,subjects=latest_subjects,reviewer_Source=source,
+        checks=CHECKS,checks_failed=failed,checks_passed=len(CHECKS)-failed,all_actual_inputs=[INPUTS[k] for k in sorted(INPUTS)],
+        tests_executed=False,target_execution=False,I9_fixture_reruns=0,I9_target_calls_by_reviewer=0,I9_target_imports_by_reviewer=0,
+        Source_cause=diagnosis,actual_saved_attempts=attempts,actual_I9_memory_test_runs=actual_runs,accepted_complete_memory_test_runs=accepted,
+        failed_memory_test_runs=actual_runs-accepted,accepted_attempt_ordinal=last if accepted else None,
+        actual_latest_module=latest_module,actual_latest_fixture=latest_fixture,actual_latest_API=latest_api,
+        operational_authority=False,scientific_authority=False,actual_native_human_physical_provenance_qualified=False,
+        actual_grants_lease_family_Native8_Parser_results=None,next_invocation_authorized=False,
+        coverage_boundary='Saved case passed flags plus exact pinned fixture Source oracles; individual negative exception codes were asserted by fixture but are not separately emitted per-case. Audit is CPython observed events, not exhaustive physical isolation proof. Empty external txt captures are genuine nonnegative facts, not positive metadata-schema record pins.',
+        declared_reader_defensive_counters_boundary='Budgets demonstrated only where actual pinned cases execute their assertions; no new claim that every defensive maximum is reachable through a valid public state.')
+    suffix=f'{last:03d}'
+    stem='INDEPENDENT_I9_ACTUAL_SAVED_MEMORY_RESULTS' if mode=='accepted' else f'INDEPENDENT_I9_ATTEMPT{suffix}_ACTUAL_SAVED_REFUSAL'
+    full_pin=save(stem+'_FULL_PROOF_001.json',full)
+    capsule=dict(schema_version=1,record_type='Independent_I9_actual_saved_memory_review_capsule',reviewer=REVIEWER,source_author='/root',
+        created_utc=created,verdict=verdict,subjects=latest_subjects,reviewer_Source=source,full_proof=full_pin,
+        checks_failed=failed,checks_passed=len(CHECKS)-failed,tests_executed=False,target_execution=False,I9_fixture_reruns=0,
+        actual_I9_memory_test_runs=actual_runs,accepted_complete_memory_test_runs=accepted,failed_memory_test_runs=actual_runs-accepted,
+        accepted_attempt_ordinal=last if accepted else None,operational_authority=False,scientific_authority=False,next_invocation_authorized=False)
+    capsule_pin=save(stem+'_CAPSULE_001.json',capsule)
+    print(json.dumps(dict(capsule=capsule_pin,full_proof=full_pin,reviewer_Source=source,checks=len(CHECKS),checks_failed=failed,
+                         inputs=len(INPUTS),failed_checks=[q for q in CHECKS if not q['passed']]),sort_keys=True))
+    assert failed==0
+
+if __name__=='__main__':main()

@@ -1,0 +1,159 @@
+"""Own immutable Source-only cache-edge correction; never execute target or fixture helpers."""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+OWN=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012\i9')
+def pin(path):
+    raw=path.read_bytes();return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def wire(value):return (json.dumps(value,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+def save(path,raw):
+    assert not path.exists() and 0<len(raw)<=2097152
+    with path.open('xb') as f:f.write(raw)
+    assert path.read_bytes()==raw
+    return pin(path)
+oldmodule=OWN/'validate_recorded_M3_semantics_002.py';mraw=oldmodule.read_bytes()
+assert hashlib.sha256(mraw).hexdigest()=='ecfdbf2da16eddb1aa89eac1735255ebebf928ec0df6818fd9058a047a8b1da1'
+before="""    def record(self,value):
+        p=self.declare(value);key=p['path'].casefold()
+        if key not in self.records:
+            self.records[key]=_i9_json(self.body(p))
+            self.creation(p,self.records[key])
+        return self.records[key]"""
+after="""    def record(self,value):
+        p=self.declare(value);key=p['path'].casefold()
+        # Every semantic edge registers with its active stage even when JSON/bytes are cached.
+        raw=self.body(p)
+        if key not in self.records:
+            self.records[key]=_i9_json(raw)
+            self.creation(p,self.records[key])
+        return self.records[key]"""
+msource=mraw.decode();assert msource.count(before)==1;msource=msource.replace(before,after)
+newmraw=msource.encode();ast.parse(newmraw);compile(newmraw,'I9_module003_Source_only','exec')
+oldfixture=OWN/'test_recorded_M3_semantics_memory_only_002.py';fraw=oldfixture.read_bytes()
+assert hashlib.sha256(fraw).hexdigest()=='796e672cee68f78c8b15ca73a38a00040a5889c43f7fd2cf78ba71c011137145'
+fsource=fraw.decode();edits=[]
+def edit(before,after,label):
+    global fsource
+    assert fsource.count(before)==1,(label,fsource.count(before))
+    fsource=fsource.replace(before,after);edits.append(dict(label=label,before=before,after=after))
+tree=ast.parse(fraw)
+planned_node=next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='PLANNED_CASE_NAMES' for t in n.targets))
+names=ast.literal_eval(planned_node.value);assert len(names)==95 and len(set(names))==95
+newcase='cached_later_stage_full_missing_from_purpose_refused';assert newcase not in names
+edit(ast.get_source_segment(fsource,planned_node),'PLANNED_CASE_NAMES = '+repr(list(names)+[newcase]),'Append distinct shared-cache regression preserving all95 relative positions')
+count_node=next(n for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='EXPECTED_CASE_COUNT' for t in n.targets))
+edit(ast.get_source_segment(fraw.decode(),count_node),'EXPECTED_CASE_COUNT = 96','Literal count truthfully updated96')
+helper='''def _fx_drop_later_stage_purpose_input(fixture,stage_key,path,protected_stage_key):
+    # One later stage only. Retain first-stage bytes so the shared Reader must actually cache it first.
+    graph=fixture['graph'];support=fixture['trusted']['stage_supports'][stage_key]
+    current_cap=json.loads(graph['store'][support['different_review']['path']])
+    stage_role=stage_key.split(':',1)[1]
+    assert current_cap['exact_M3_Source_stage_purpose']['role']==stage_role
+    assert path in [p['path'] for p in current_cap['exact_M3_Source_stage_purpose']['inputs']]
+    first=fixture['trusted']['stage_supports'][protected_stage_key]
+    first_cap=json.loads(graph['store'][first['different_review']['path']])
+    assert path in [p['path'] for p in first_cap['exact_M3_Source_stage_purpose']['inputs']]
+    protected_paths=[p['path'] for p in first.values()]+[first_cap['full_proof']['path']]
+    protected_paths += [p['path'] for artifact in graph['stage_artifacts'][protected_stage_key] for p in (artifact['draft'],artifact['diff'],artifact['author_receipt'])]
+    protected={p:graph['store'][p] for p in protected_paths}
+    targets=[current_cap['full_proof']['path'],support['different_review']['path'],support['Root_adoption']['path']]
+    targets += [a['author_receipt']['path'] for a in graph['stage_artifacts'][stage_key]]
+    for current in targets:
+        raw=graph['store'][current];value=json.loads(raw);changed=[False]
+        def remove(v):
+            if type(v) is dict:
+                selected={k:remove(x) for k,x in v.items()}
+                if set(selected)=={'schema_version','stage','role','facts','inputs','output_paths'} and selected['stage']=='phase_bound' and selected['role']==stage_role:
+                    previous=selected['inputs'];selected['inputs']=[p for p in previous if p['path']!=path]
+                    assert len(selected['inputs'])==len(previous)-1
+                    changed[0]=True
+                if type(selected.get('finite_actual_Source_observations')) is list:
+                    previous=selected['finite_actual_Source_observations']
+                    selected['finite_actual_Source_observations']=[p for p in previous if p['path']!=path]
+                    assert len(selected['finite_actual_Source_observations'])==len(previous)-1
+                    changed[0]=True
+                return selected
+            if type(v) is list:return [remove(x) for x in v]
+            return v
+        selected=remove(value);assert changed[0]
+        _fx_repin(fixture,current,_fx_wire(selected))
+    assert all(graph['store'][p]==raw for p,raw in protected.items())
+    later=json.loads(graph['store'][support['different_review']['path']])
+    assert path not in [p['path'] for p in later['exact_M3_Source_stage_purpose']['inputs']]
+    assert path in [p['path'] for p in fixture['trusted']['expected_inputs']]
+    return fixture
+
+
+'''
+edit('def run_memory_suite(module):',helper+'def run_memory_suite(module):','Explicit targeted later-stage-only mutation and first-stage byte preservation')
+edit("            elif case.startswith('request_'):",'''            elif case=='cached_later_stage_full_missing_from_purpose_refused':
+                fixture=base('prewrite_bounds')
+                selection_cap=json.loads(fixture['graph']['store'][fixture['graph']['selection_support']['different_review']['path']])
+                full_path=selection_cap['full_proof']['path']
+                _fx_drop_later_stage_purpose_input(fixture,'phase_bound:'+bound_roles[1],full_path,'phase_bound:'+bound_roles[0])
+                codes=('E_GENERATION_PRELUDE',)
+            elif case.startswith('request_'):''','Cross-stage cached selection-full proof negative routed through actual public prewrite')
+edit("            count=_fx_bad(module,fixture,codes,before_read=before_read,reader_override=override,expected_calls=exact_calls)",'''            count=_fx_bad(module,fixture,codes,before_read=before_read,reader_override=override,expected_calls=exact_calls)
+            if case=='cached_later_stage_full_missing_from_purpose_refused':
+                reached={p['path'] for p in fixture['_last_calls']}
+                first_key='phase_bound:'+bound_roles[0];later_key='phase_bound:'+bound_roles[1]
+                assert fixture['graph']['stage_artifacts'][first_key][0]['author_receipt']['path'] in reached
+                assert fixture['trusted']['stage_supports'][later_key]['facts']['path'] in reached and full_path in reached''','Reader trace confirms first artifact and later facts reached before exact closure refusal')
+newfraw=fsource.encode();ft=ast.parse(newfraw);compile(newfraw,'I9_fixture003_Source_only','exec')
+literal={n.targets[0].id:ast.literal_eval(n.value) for n in ft.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in ('PLANNED_CASE_NAMES','EXPECTED_CASE_COUNT')}
+assert literal['EXPECTED_CASE_COUNT']==96 and literal['PLANNED_CASE_NAMES']==list(names)+[newcase]
+reverse=fsource
+for e in reversed(edits):
+    assert reverse.count(e['after'])==1;reverse=reverse.replace(e['after'],e['before'])
+assert reverse.encode()==fraw
+oldtree=ast.parse(mraw);newtree=ast.parse(newmraw);olines=mraw.splitlines(keepends=True);nlines=newmraw.splitlines(keepends=True)
+oldnodes={n.name:n for n in oldtree.body if isinstance(n,ast.FunctionDef)};newnodes={n.name:n for n in newtree.body if isinstance(n,ast.FunctionDef)}
+ports=ast.parse((OWN/'I9_ISOLATED_RENDER_AND_INVERSE_ALGORITHM_SOURCE_PORTS_001.py').read_bytes());portchecks=[]
+for n in ports.body:
+    if isinstance(n,ast.FunctionDef):
+        a=oldnodes[n.name];b=newnodes[n.name];x=b''.join(olines[a.lineno-1:a.end_lineno]);y=b''.join(nlines[b.lineno-1:b.end_lineno]);assert x==y
+        portchecks.append(dict(name=n.name,bytes=len(y),sha256=hashlib.sha256(y).hexdigest(),unchanged=True))
+mp=save(OWN/'validate_recorded_M3_semantics_003.py',newmraw)
+fp=save(OWN/'test_recorded_M3_semantics_memory_only_003.py',newfraw)
+oldapi=OWN/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_INERT_API_002.json';oldreceipt=OWN/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_SOURCE_AUTHOR_RECEIPT_002.json'
+inverse=save(OWN/'I9_MODULE_AND_FIXTURE002_TO003_COMPLETE_SOURCE_INVERSE_001.json',wire(dict(
+ schema_version=1,record_type='I9_cached_semantic_record_edge_Source_successor_complete_inverse',author='/root/phase_frontier',
+ predecessor_module=pin(oldmodule),successor_module=mp,whole_predecessor_module_hex=mraw.hex(),
+ module_exact_edit=dict(before=before,after=after),predecessor_fixture=pin(oldfixture),successor_fixture=fp,
+ fixture_exact_Source_edits=edits,reverse_fixture_edits_recover_whole_predecessor=True,
+ original23_ports_byte_exact=portchecks,prior_API=pin(oldapi),whole_prior_API_hex=oldapi.read_bytes().hex(),
+ prior_author_receipt=pin(oldreceipt),whole_prior_author_receipt_hex=oldreceipt.read_bytes().hex(),
+ older_complete_inverse=pin(OWN/'I9_FIXTURE001_TO002_COMPLETE_SOURCE_DELTA_AND_PRIOR_API_RECEIPT_INVERSE_001.json'),
+ target_imported=False,target_called=False,tests_executed=False)))
+api=json.loads(oldapi.read_bytes());api.update(Source=mp,fixture_Source=fp,
+ created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),
+ preserved_module002=pin(oldmodule),preserved_fixture002=pin(oldfixture),preserved_API002=pin(oldapi),
+ cached_record_Source_correction_inverse=inverse,independent_correction_Source_review_pending=True)
+api['fixture_interface'].update(expected_case_count=96,planned_case_names=literal['PLANNED_CASE_NAMES'])
+api['detailed_boundaries']['generation_closure']+=' Every semantic record access calls the same pure byte-cache body method before parsed-record cache lookup, registering cached edges with the current generation stage without additional callbacks.'
+api['fixture_correction_groups'].append('Every semantic cached-record edge registered per stage; new96th case removes selection fullproof only in second BOUND stage while preserving first-stage bytes.')
+ap=save(OWN/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_INERT_API_003.json',wire(api))
+receipt=json.loads(oldreceipt.read_bytes());receipt.update(Source=mp,fixture_Source=fp,API=ap,
+ created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),
+ preserved_module002=pin(oldmodule),preserved_fixture002=pin(oldfixture),preserved_API002=pin(oldapi),preserved_author_receipt002=pin(oldreceipt),
+ cached_record_Source_correction_inverse=inverse,independent_correction_Source_review_pending=True)
+receipt['actual_author_checks'].update(planned_case_count=96,same95_planned_case_names=False,
+ all_prior95_names_preserved_in_order=True,appended_cached_later_stage_regression=True,original23_ports_exact=True,
+ cached_record_edge_Source_checked=True)
+receipt['fixture_copy']['corrected_fixture_sha256']=fp['sha256']
+receipt['author_programs'].append(pin(OWN/'author_I9_cached_record_and_regression_successor_003.py'))
+rp=save(OWN/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_SOURCE_AUTHOR_RECEIPT_003.json',wire(receipt))
+inspection=save(OWN/'I9_CACHED_RECORD_AND_96_CASE_SOURCE_CORRECTION_INSPECTION_001.json',wire(dict(
+ schema_version=1,record_type='I9_actual_cached_record_edge_Source_correction_inspection',author='/root/phase_frontier',
+ Source=mp,fixture=fp,API=ap,author_receipt=rp,inverse=inverse,
+ defect='Parsed-record cache hit skipped body and therefore omitted a known later-stage generation input edge.',
+ correction='Every record access passes through pure immutable body cache before parsed-record conditional; callbacks/budgets/caps unchanged.',
+ regression='New96th case omits selection-review fullproof only from second BOUND literal purpose/snapshot, preserving first-stage proof/output bytes and checking reader trace reaches both.',
+ original23_ports_exact=True,module_AST_and_compile_Source_only=True,fixture_AST_and_compile_Source_only=True,
+ prior95_case_order_exact=True,planned_case_count=96,complete_Source_reverse_reconstruction=True,
+ target_imports=0,target_calls=0,fixture_calls=0,tests_executed=False,independent_Source_review_required=True,
+ operational_authority=False,scientific_authority=False,target_execution=False)))
+print(json.dumps(dict(Source=mp,fixture=fp,API=ap,author_receipt=rp,inverse=inverse,Source_inspection=inspection)))

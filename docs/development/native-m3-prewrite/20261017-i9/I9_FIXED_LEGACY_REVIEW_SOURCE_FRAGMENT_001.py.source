@@ -1,0 +1,42 @@
+def _i9_fixed_legacy_code_review(reader,kind,pin,subjects,editor,fixed_full):
+    # Exact immutable bundle is authenticated before this legacy-only dispatch.
+    _i9_need(kind in ('I0','I1'),'E_FIXED_CODE_BUNDLE')
+    expected_subjects=[I9_FIXED_CONTEXT[kind+'_Source'],I9_FIXED_CONTEXT[kind+'_API']]
+    if kind=='I1':expected_subjects.append(I9_FIXED_CONTEXT['I1_native_entry'])
+    actual_editor={'I0':'/root/checker_frontier','I1':'/root/phase_frontier'}[kind]
+    _i9_need(_i9_same(subjects,expected_subjects) and editor==actual_editor and
+      _i9_same(fixed_full,I9_FIXED_CONTEXT[kind+'_full_proof']),'E_FIXED_CODE_BUNDLE')
+    p=reader.declare(pin)
+    _i9_need(_i9_same(p,I9_FIXED_CONTEXT[kind+'_Source_review']),'E_FIXED_CODE_BUNDLE')
+    v=reader.record(p);_i9_no_authority(v)
+    abi={
+      'I0':('independent_I0_pure_validator_implementation_actual_Source_review_capsule',
+        'independent_I0_pure_validator_implementation_actual_full_Source_review',72,72),
+      'I1':('independent_I1_Source003_and_I0_saved_fixture_review_capsule',
+        'independent_I1_Source003_actual_static_and_I0_saved_fixture_full_review',199,189)}[kind]
+    _i9_need(type(v.get('schema_version')) is int and v['schema_version']==1 and
+      v.get('record_type')==abi[0] and v.get('source_author')==actual_editor and
+      type(v.get('checks_performed')) is int and v['checks_performed']==abi[2],'E_FIXED_REVIEW_ABI')
+    who=_i9_actor(v.get('reviewer'));reject=['/root',reader.source_editor,reader.producer_editor,*reader.authors,editor]
+    _i9_need(all(who!=a and (a=='/root' or not who.startswith(a+'/')) for a in reject),'E_REVIEWER')
+    _i9_need(type(v.get('verdict')) is str and v['verdict'].startswith('PASS_') and
+      type(v.get('checks_failed')) is int and v['checks_failed']==0 and
+      all(_i9_occurs(v,x) for x in subjects),'E_REVIEW')
+    fp=reader.declare(v.get('full_proof'))
+    _i9_need(_i9_same(fp,fixed_full) and _i9_same(fp,I9_FIXED_CONTEXT[kind+'_full_proof']),'E_CODE_FULL')
+    full=reader.record(fp);_i9_no_authority(full)
+    _i9_need(type(full.get('schema_version')) is int and full['schema_version']==1 and
+      full.get('record_type')==abi[1] and full.get('source_author')==actual_editor and
+      type(full.get('checks_performed')) is int and full['checks_performed']==abi[2],'E_FIXED_REVIEW_ABI')
+    checks=full.get('checks');_i9_need(type(checks) is list and 0<len(checks)<=10000 and len(checks)==abi[2],'E_FULL_PROOF')
+    names=[]
+    for c in checks:
+        _i9_need(type(c) is dict and type(c.get('name')) is str and bool(c['name']) and c.get('passed') is True,'E_FULL_PROOF');names.append(c['name'])
+    # No row is removed, sorted or renamed; exact full-body hash retains original order.
+    _i9_need(len(set(names))==abi[3] and full.get('reviewer')==who and full.get('verdict')==v['verdict'] and
+      type(full.get('checks_failed')) is int and full['checks_failed']==0 and
+      all(_i9_occurs(full,x) for x in subjects),'E_FULL_PROOF')
+    vt=reader.creation(p,v);ft=reader.creation(fp,full)
+    _i9_need(ft is not None and vt is not None and ft<=vt<=reader.now and
+      all(reader.born_ticks(x)<=vt for x in subjects),'E_REVIEW_TIME')
+    return dict(pin=p,value=v,full_pin=fp,full=full,time=vt,full_time=ft)

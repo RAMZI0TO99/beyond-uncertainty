@@ -1,0 +1,39 @@
+"""Read and compress fixed byte data only. Never load a target or fixture."""
+import ast,base64,hashlib,json,zlib
+from pathlib import Path
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+OWN=P/'fixture_author_001'
+OLD=Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_family_implementation_005\i2\build_M3_metadata_current_owner_deferred_002.py')
+raw=OLD.read_bytes();assert hashlib.sha256(raw).hexdigest()=='600ab5bf46faceee88b7b5a99eb32b71a7ebfc763151e2f4e3453a6cccd281c2'
+nodes={n.targets[0].id:n.value for n in ast.parse(raw).body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name)}
+names=['CURRENT_ROOT_SELECTION','EXISTING_LEASE010','INVENTORY_PIN','BASIS_PIN','INVENTORY_REVIEW','INVENTORY_ADOPTION','HISTORICAL_SOURCE023_ARTIFACTS','CURRENT_PLAN_BINDINGS','CURRENT_PLAN_ROLE_SELECTIONS','RENEWED_BINDINGS','TEMPLATE_ROLES','PHASE_BOUND_ROLES','CAPTURE_SLOTS','FIXED_CONTEXT_ANCHORS','ROLE_SOURCE_CAPS','M3_ROLES','GENERATED_ROLES','PEER_ROLES']
+c={k:ast.literal_eval(nodes[k]) for k in names}
+store={};pins={}
+def add(p):
+ b=Path(p['path']).read_bytes();assert 0<len(b)<=2097152 and len(b)==p['bytes'] and hashlib.sha256(b).hexdigest()==p['sha256'];store[p['path']]=base64.b64encode(b).decode();pins[p['path']]=p;return b
+sel=json.loads(add(c['CURRENT_ROOT_SELECTION']));c['HISTORICAL45_PIN']=sel['current_complete45_inventory'];add(c['HISTORICAL45_PIN']);add(c['EXISTING_LEASE010'])
+inv=json.loads(add(c['INVENTORY_PIN']));add(c['BASIS_PIN'])
+for p in list(c['FIXED_CONTEXT_ANCHORS'].values())+list(c['HISTORICAL_SOURCE023_ARTIFACTS'].values())+[c['INVENTORY_REVIEW'],c['INVENTORY_ADOPTION']]:add(p)
+for r in sel['rows']:add(r['predecessor'])
+for r in inv['roles']:add(r['available_basis'])
+manifest=next(r for r in inv['roles'] if r['role']=='metadata_manifest');m=json.loads(add(manifest['available_basis']))
+for index in (1,6,7,8,9,10,11):
+ q=m['payloads'][index];add(dict(path=str(Path(manifest['available_basis']['path']).parent/q['path']),bytes=q['bytes'],sha256=q['sha256']))
+audit=Path(r'D:\Aenv\pro2\resume-2026-10-03-continuation001\capsule-design-independent-review001\AUDIT_MANIFEST_001.json');a=json.loads(audit.read_bytes());bysha={p['sha256']:p for p in a['files']};c['FIXED_BINDING_SOURCE_DATA']={}
+for key,digest in c['CURRENT_PLAN_BINDINGS'].items():
+ if key in c['RENEWED_BINDINGS']:continue
+ if key.startswith('coordination_'):
+  role='COORDINATION_PEER_REPLY_RELATIVE' if key=='coordination_peer_reply_sha256' else 'COORDINATION_ROOT_RESPONSE_RELATIVE';p=Path(r'D:\Aenv\pro2\resume-2026-10-03-continuation001')/c['CURRENT_PLAN_ROLE_SELECTIONS'][role];b=p.read_bytes();assert hashlib.sha256(b).hexdigest()==digest
+ elif key=='source_projection_sha256':
+  p=Path(r'D:\Aenv\pro2\resume-2026-10-03-continuation001\consumer005-guard006-runtime-prep001\SOURCE_INPUTS_PROJECTION_006.json');b=p.read_bytes();assert hashlib.sha256(b).hexdigest()==digest
+ else:
+  row=bysha[digest];p=audit.parent/row['path'];b=p.read_bytes();assert hashlib.sha256(b).hexdigest()==digest
+ c['FIXED_BINDING_SOURCE_DATA'][key]=dict(original_path=str(p),bytes=len(b),sha256=digest,base64=base64.b64encode(b).decode())
+value=dict(constants=c,records=store,pins=pins)
+blob=json.dumps(value,sort_keys=True,separators=(',',':')).encode();packed=zlib.compress(blob,9)
+source=('FIXTURE_FIXED_DATA_DECODED_BYTES = '+str(len(blob))+'\nFIXTURE_FIXED_DATA_DECODED_SHA256 = '+repr(hashlib.sha256(blob).hexdigest())+'\nFIXTURE_FIXED_DATA_ZLIB_BASE64 = '+repr(base64.b64encode(packed).decode())+'\n').encode()
+with (OWN/'I9_FIXED_BYTE_LITERAL_SOURCE_FRAGMENT_001.py').open('xb') as f:f.write(source)
+subjects=[dict(path=str(OLD),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest()),dict(path=str(audit),bytes=audit.stat().st_size,sha256=hashlib.sha256(audit.read_bytes()).hexdigest()),*pins.values()]
+receipt=dict(author='/root/i9_fixture_author',record_type='I9_fixed_existing_bytes_literal_authoring_receipt',fixed_inputs=subjects,decoded_bytes=len(blob),decoded_sha256=hashlib.sha256(blob).hexdigest(),source_fragment=dict(path=str(OWN/'I9_FIXED_BYTE_LITERAL_SOURCE_FRAGMENT_001.py'),bytes=len(source),sha256=hashlib.sha256(source).hexdigest()),target_or_fixture_executed=False,physical_births_observed=False,all_future_context_and_births_synthetic=True)
+with (OWN/'I9_FIXED_BYTE_LITERAL_AUTHOR_RECEIPT_001.json').open('xb') as f:f.write((json.dumps(receipt,sort_keys=True,indent=2)+'\n').encode())
+print(json.dumps(dict(records=len(store),fixed_raw_bytes=sum(p['bytes'] for p in pins.values()),fragment_bytes=len(source),fragment_sha256=hashlib.sha256(source).hexdigest(),decoded_bytes=len(blob))))

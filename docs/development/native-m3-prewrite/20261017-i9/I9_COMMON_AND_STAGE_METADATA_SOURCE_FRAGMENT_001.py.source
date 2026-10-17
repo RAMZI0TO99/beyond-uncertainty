@@ -1,0 +1,240 @@
+# New I9 metadata predicates; author never invokes this fragment.
+def _i9_original_wire(value):
+    _i9_walk(value)
+    raw=(_i9_json_module.dumps(value,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('utf8')
+    _i9_need(0<len(raw)<=2097152,'E_METADATA_CAP')
+    return raw
+
+
+def _i9_different_review(reader,pin,subjects,rejected):
+    checked=_i9_review(reader,pin,subjects,rejected)
+    reader.reviews[checked['pin']['path']]=checked
+    return checked['value']
+
+
+def _i9_root_review_adoption(reader,pin,subjects,review_pin,review,*,selection=None,context_required=True):
+    checked=reader.reviews.get(review_pin['path'])
+    _i9_need(checked is not None and _i9_same(checked['value'],review),'E_REVIEW_BINDING')
+    if selection is not None:_i9_need(_i9_same(selection,reader.trusted['selection']),'E_SELECTION_JOIN')
+    return _i9_adoption(reader,pin,subjects,checked,context=context_required,selection=selection is not None)['value']
+
+
+def _i9_code_support(reader,support,subjects,editor,*,fixed_full=None):
+    reader.support(support,I9_TOOL4)
+    reader.body(support['Source']);reader.record(support['API'])
+    reviewed=_i9_review(reader,support['different_review'],subjects,[editor])
+    _i9_need('SOURCE' in reviewed['value']['verdict'].upper(),'E_CODE_REVIEW_VERDICT')
+    if fixed_full is not None:_i9_need(_i9_same(reviewed['full_pin'],fixed_full),'E_CODE_FULL')
+    adopted=_i9_adoption(reader,support['Root_adoption'],subjects,reviewed,context=False)
+    return reviewed,adopted
+
+
+def _i9_historical_basis(reader):
+    h=I9_HISTORICAL_SOURCE023_ARTIFACTS
+    old=reader.record(h['gate']);request=reader.record(h['request']);peer_raw=reader.body(h['genuine_response']);peer=_i9_json(peer_raw)
+    _i9_need(set(old)==set(I9_HISTORICAL_SOURCE023_GATE_KEYS) and set(request)==set(I9_HISTORICAL_REQUEST023_KEYS) and
+      set(peer)==set(I9_HISTORICAL_PEER023_KEYS) and reader.body(h['retained_copy'])==peer_raw and
+      old['record_type']==I9_HISTORICAL_SOURCE023_GATE_RECORD_TYPE and request['record_type']==I9_HISTORICAL_REQUEST023_RECORD_TYPE and
+      peer['schema']==I9_HISTORICAL_PEER023_SCHEMA and peer['source_tools_only']==I9_HISTORICAL_PEER023_DESCRIPTOR,'E_HISTORICAL_BASIS')
+    _i9_need(old['author']==request['author']=='/root' and old['genuine_peer_response'] is True and
+      all(_i9_same(old[k],h[v]) for k,v in (('request','request'),('response','genuine_response'),('retained_copy','retained_copy'))) and
+      _i9_same(peer['exact_request'],h['request']) and request['scope']==peer['scope']==old['scope'] and
+      type(old['publication_reserve_seconds']) is int and old['publication_reserve_seconds']==60 and
+      type(old['maximum_concurrent_subagents']) is int and old['maximum_concurrent_subagents']==5,'E_HISTORICAL_BASIS')
+    for key in ('operational_authority','actual_entry006_authority','target_import_function_main_or_original_oracle_authority',
+      'C8_or_tests_authority','science_or_native_recovery_authority','whole_host_quiet','push','lease_issued_or_extended'):
+        _i9_need(old[key] is False,'E_HISTORICAL_AUTHORITY')
+    for key in ('actual6_or_c8_or_original_target_admitted','peer_runtime_or_original_fixture_admitted','peer_results_or_reviews_accepted',
+      'new_real_case_or_scientific_signature_granted','prospective_lease_issued_or_extended_by_this_response'):
+        _i9_need(peer[key] is False,'E_HISTORICAL_AUTHORITY')
+    gr=reader.record(h['different_review']);ga=reader.record(h['Root_adoption'])
+    ir=reader.record(I9_INVENTORY_REVIEW);ia=reader.record(I9_INVENTORY_ADOPTION)
+    for value,subjects in ((gr,[h['gate']]),(ir,[I9_INVENTORY_PIN])):
+        _i9_no_authority(value)
+        _i9_need(type(value.get('checks_failed')) is int and value['checks_failed']==0 and type(value.get('verdict')) is str and
+          value['verdict'].startswith('PASS_') and all(_i9_occurs(value,p) for p in subjects),'E_HISTORICAL_REVIEW')
+    _i9_need(gr['reviewer']=='/root/owner_docs_review' and gr['verdict']=='PASS_SOURCE023_GENUINE_ACTUAL_GATE_CONDITIONAL_METADATA_SOURCE_ONLY' and
+      ir['reviewer'] not in ('/root','/root/m3_source_editor'),'E_HISTORICAL_REVIEW')
+    for value,subjects in ((ga,[h['gate'],h['different_review']]),(ia,[I9_INVENTORY_PIN,I9_INVENTORY_REVIEW,h['gate']])):
+        _i9_no_authority(value)
+        _i9_need(value.get('author')=='/root' and type(value.get('verdict')) is str and value['verdict'].startswith('ACCEPT_') and
+          all(_i9_occurs(value,p) for p in subjects),'E_HISTORICAL_ADOPTION')
+    start,end=_i9_time(old['interval_start'],'retained'),_i9_time(old['interval_end'],'retained')
+    times=[_i9_time(v['created_utc'],'retained') for v in (request,peer,old,gr,ga,ir,ia)]
+    _i9_need(times==sorted(times) and times[-1]<end and start<=reader.born_ticks(I9_INVENTORY_PIN)<=times[-2] and
+      reader.born_ticks(I9_INVENTORY_REVIEW)<=times[-1],'E_HISTORICAL_CHRONOLOGY')
+
+
+def _i9_selection(reader):
+    b=reader.trusted;pin=b['selection'];value=reader.record(pin)
+    _i9_need(_i9_parent(pin['path'])==I9_ROOT_OWNED and not _i9_same(pin,I9_CURRENT_ROOT_SELECTION),'E_SELECTION_ROUTE')
+    _i9_closed(value,I9_SELECTION13,'E_SELECTION13');_i9_no_authority(value)
+    _i9_need(type(value['schema_version']) is int and value['schema_version']==2 and
+      value['record_type']=='Root_owner_v2_actual_separate_future45_Source_path_selection' and value['author']=='/root' and
+      _i9_same(reader.declare(value['current_owner_scope']),b['current_owner_scope']) and
+      _i9_same(reader.declare(value['new_canonical_lease']),b['canonical_lease']) and
+      _i9_same(reader.declare(value['current_selection']),I9_CURRENT_ROOT_SELECTION),'E_SELECTION13')
+    old=reader.record(I9_CURRENT_ROOT_SELECTION)
+    reader.body(reader.declare(value['current_complete45_inventory']))
+    _i9_need(_i9_same(value['current_complete45_inventory'],I9_HISTORICAL45_PIN) and
+      type(value['selected_Source_nonce']) is str and _i9_re.fullmatch('[0-9a-f]{32}',value['selected_Source_nonce']) is not None and
+      value['selected_Source_nonce']==old['selected_Source_nonce'],'E_SELECTION_NONCE')
+    rows=value['rows'];_i9_need(type(rows) is list and len(rows)==45,'E_SELECTION_ROWS')
+    oldrows={r['role']:r for r in old['rows']};found={};can=set();drafts=set()
+    for row in rows:
+        _i9_closed(row,I9_ROW9,'E_ROW9');role=row['role']
+        _i9_need(type(role) is str and role in oldrows and role not in found,'E_SELECTION_ROWS')
+        cap=65536 if role=='composer' else I9_ROLE_SOURCE_CAPS[role]
+        _i9_need(type(row['source_cap']) is int and row['source_cap']==cap,'E_ROLE_CAP')
+        pred=reader.cap(row['predecessor'],cap);canonical=_i9_path(row['canonical_path'])
+        _i9_need(canonical.startswith(I9_BASE+'\\') and canonical.casefold() not in can,'E_SELECTION_ALIAS');can.add(canonical.casefold())
+        if canonical.casefold() in reader.pins:reader.cap(reader.pins[canonical.casefold()],cap)
+        if role=='composer':
+            _i9_need(_i9_same(row,oldrows[role]) and canonical==pred['path'] and row['must_change_Source_bytes'] is False and
+              all(row[k] is None for k in ('draft_path','selected_ordinal','preparation_Source_author','retained_semantic_Source_author')),'E_COMPOSER')
+        else:
+            previous=oldrows[role]['selected_ordinal'];ordinal=row['selected_ordinal']
+            _i9_need(type(previous) is int and type(ordinal) is int and previous<ordinal<1000 and
+              row['must_change_Source_bytes'] is True and row['retained_semantic_Source_author']==oldrows[role]['retained_semantic_Source_author'],'E_SELECTION_SUCCESSOR')
+            _i9_actor(row['preparation_Source_author'])
+            if role in I9_M3_ROLES and role not in I9_PEER_ROLES:
+                _i9_need(row['preparation_Source_author']==reader.producer_editor,'E_M3_EDITOR')
+            leaf=_i9_leaf(oldrows[role]['canonical_path']);matches=[m for m in _i9_re.finditer(r'[0-9]{3}(?![0-9])',leaf) if int(m.group())==previous]
+            _i9_need(len(matches)==1,'E_SELECTION_BASENAME');m=matches[0]
+            expected=leaf[:m.start()]+str(ordinal).zfill(3)+leaf[m.end():];draft=_i9_path(row['draft_path'])
+            _i9_need(_i9_leaf(canonical)==expected and _i9_parent(canonical)==_i9_parent(oldrows[role]['canonical_path'])==_i9_parent(pred['path']) and
+              canonical.casefold()!=pred['path'].casefold() and _i9_leaf(draft)==expected and _i9_leaf(_i9_parent(draft))=='drafts' and
+              draft.startswith(I9_SESSION+'\\generation\\') and draft.casefold() not in drafts,'E_SELECTION_BASENAME')
+            drafts.add(draft.casefold())
+            if draft.casefold() in reader.pins:reader.cap(reader.pins[draft.casefold()],cap)
+            if role in I9_PHASE_ROLES:
+                suffix='.TEMPLATE.ps1' if role.endswith('_template') else '.BOUND.ps1'
+                _i9_need(ordinal>18 and expected.endswith(suffix),'E_PHASE_ORDINAL')
+        found[role]=row
+    _i9_need(set(found)==set(I9_ROLE_SOURCE_CAPS)|{'composer'} and len(drafts)==44,'E_SELECTION_ROWS')
+    for group in I9_ORDINAL_GROUPS:_i9_need(len({found[r]['selected_ordinal'] for r in group})==1,'E_ORDINAL_COUPLING')
+    launcher=found['launcher_template']['canonical_path']
+    _i9_need(value['derived_launcher_runtime_path']==_i9_parent(launcher)+'\\'+_i9_leaf(launcher).replace('.TEMPLATE.ps1','.BOUND.ps1'),'E_LAUNCHER_RUNTIME')
+    reader.rows=found;reader.selection=value
+    return found
+
+
+def _i9_inventory(reader):
+    value=reader.record(I9_INVENTORY_PIN);rows=value.get('roles')
+    _i9_need(type(rows) is list and len(rows)==17 and value.get('future_Source_bytes_generated') is False,'E_INVENTORY17')
+    found={};basis=reader.record(I9_BASIS_PIN);br=basis.get('rows')
+    _i9_need(type(br) is list and len(br)==17 and basis.get('future_Source_bytes_generated') is False and
+      basis.get('future_successor_inverse_results') is None,'E_BASIS17')
+    originals={}
+    for row in br:
+        _i9_closed(row,('complete_STEP077_predecessor','current_or_historical_basis','role','whole_current_bytes_base64','whole_predecessor_bytes_base64'),'E_BASIS17')
+        role=row['role'];_i9_need(type(role) is str and role in I9_M3_ROLES and role not in originals,'E_BASIS17');originals[role]=row
+    for row in rows:
+        role=row.get('role');_i9_need(type(role) is str and role in I9_M3_ROLES and role not in found,'E_INVENTORY17')
+        _i9_need(type(row.get('source_cap')) is int and row['source_cap']==I9_ROLE_SOURCE_CAPS[role],'E_ROLE_CAP')
+        p=reader.cap(row['available_basis'],I9_ROLE_SOURCE_CAPS[role])
+        _i9_need(_i9_same(p,reader.rows[role]['predecessor']),'E_M3_PREDECESSOR')
+        body=reader.body(p);original=originals[role]
+        _i9_need(_i9_same(original['current_or_historical_basis'],p),'E_BASIS17')
+        for field,expected in (('whole_current_bytes_base64',p),('whole_predecessor_bytes_base64',_i9_pin(original['complete_STEP077_predecessor'],I9_ROLE_SOURCE_CAPS[role]))):
+            text=original[field];_i9_need(type(text) is str and len(text)<=4*((I9_ROLE_SOURCE_CAPS[role]+2)//3),'E_BASE64_CAP')
+            try:decoded=_i9_base64.b64decode(text,validate=True)
+            except (ValueError,_i9_base64.binascii.Error) as error:raise I9MetadataError('E_BASE64') from error
+            _i9_need(len(decoded)==expected['bytes'] and _i9_sha(decoded)==expected['sha256'] and
+              (field!='whole_current_bytes_base64' or decoded==body),'E_BASIS_BYTES')
+        slots=row.get('literal_slots');_i9_need(type(slots) is list,'E_LITERAL_SLOTS')
+        for slot in slots:
+            _i9_need(type(slot) is dict and type(slot.get('start_byte')) is int and type(slot.get('end_byte')) is int and
+              0<=slot['start_byte']<slot['end_byte']<=len(body) and type(slot.get('raw_literal')) is str and
+              body[slot['start_byte']:slot['end_byte']]==slot['raw_literal'].encode(),'E_LITERAL_SLOTS')
+        found[role]=row
+    _i9_need(set(found)==set(originals)==set(I9_M3_ROLES),'E_INVENTORY17');reader.inventory=found
+    return found
+
+
+def _i9_load_common(reader):
+    if reader.common_loaded:return
+    b=reader.trusted;scope=reader.record(b['current_owner_scope']);_i9_no_authority(scope)
+    _i9_need(scope.get('Root_thread')==reader.root_thread and
+      _i9_time(scope['interval_start'])<=reader.now and _i9_time(scope['interval_end'])-reader.now>600000000,'E_SCOPE_TIME')
+    reader.scope=scope
+    leasepin=reader.cap(b['canonical_lease'],65536);lease=reader.record(leasepin);_i9_closed(lease,I9_LEASE12,'E_LEASE12')
+    for k,v in I9_LEASE_FIXED.items():_i9_need(_i9_same(lease[k],v),'E_LEASE12')
+    start,end=_i9_time(lease['created_utc'],'native7'),_i9_time(lease['lease_end_utc'],'native7')
+    _i9_need(end-start==43200*10000000 and start<=reader.now and end-reader.now>1200*10000000,'E_LEASE_TIME');reader.lease=lease
+    _i9_selection(reader);_i9_inventory(reader);_i9_historical_basis(reader)
+    # All selected roles now have strict caps, before any speculative bootstrap scan.
+    api=reader.record(b['producer_support']['API'])
+    _i9_need(type(api.get('schema_version')) is int and api['schema_version']==2 and api.get('record_type')=='Root_owner_v2_M3_deferred_metadata_inert_API' and
+      _i9_same(reader.declare(api.get('Source')),b['producer_support']['Source']) and
+      api.get('actual_binding_Source_editor')==reader.producer_editor and api.get('author')==reader.producer_editor,'E_PRODUCER_API')
+    _i9_no_authority(api)
+    cr,ca=_i9_code_support(reader,b['producer_support'],[b['producer_support']['Source'],b['producer_support']['API']],reader.producer_editor)
+    reader.code_adopted=ca['time'];reader.common_loaded=True
+
+
+def _i9_bootstrap(reader,purpose_inputs):
+    names={p['path']:reader.declare(p) for p in purpose_inputs}
+    for p in I9_FIXED_CONTEXT.values():
+        _i9_need(p['path'] in names and _i9_same(names[p['path']],p),'E_FIXED_CONTEXT');reader.body(p)
+    for prefix,editor in (('I0','/root/checker_frontier'),('I1','/root/phase_frontier')):
+        keys=[prefix+'_Source',prefix+'_API']+(['I1_native_entry'] if prefix=='I1' else [])
+        subjects=[I9_FIXED_CONTEXT[k] for k in keys]
+        support=dict(Source=I9_FIXED_CONTEXT[prefix+'_Source'],API=I9_FIXED_CONTEXT[prefix+'_API'],
+          different_review=I9_FIXED_CONTEXT[prefix+'_Source_review'],Root_adoption=I9_FIXED_CONTEXT[prefix+'_Root_adoption'])
+        _i9_code_support(reader,support,subjects,editor,fixed_full=I9_FIXED_CONTEXT[prefix+'_full_proof'])
+    _i9_need(reader.record(I9_FIXED_CONTEXT['I0_Root_adoption']).get('I1_or_original_entry_authorized') is False and
+      reader.record(I9_FIXED_CONTEXT['I1_Root_adoption']).get('I1_executed') is False,'E_FIXED_CONTEXT_AUTHORITY')
+    candidates=[]
+    for p in purpose_inputs:
+        body=reader.body(p)
+        if not body.lstrip(b' \t\r\n').startswith(b'{'):continue
+        try:v=_i9_json(body)
+        except ValueError:continue
+        if set(v)==set(I9_OWNER3):candidates.append((p,v))
+    _i9_need(len(candidates)==1,'E_OWNER_MANIFEST')
+    manifest,m=candidates[0];reader.support(m,I9_OWNER3)
+    _i9_need(_i9_same(m['current_owner_scope'],reader.trusted['current_owner_scope']),'E_OWNER_MANIFEST')
+    required_json={p['path'] for p in m.values()}
+    scope_record=reader.record(m['current_owner_scope'])
+    owner_review=reader.record(m['different_current_owner_scope_Source_review'])
+    mandatory=[reader.declare(scope_record[k]) for k in ('owner_instruction_record','owner_policy_record')]+[reader.declare(owner_review['full_proof'])]
+    required_json.update(p['path'] for p in mandatory)
+    visited=set();stack=list(m.values())+mandatory;records={}
+    while stack:
+        p=reader.declare(stack.pop());_i9_need(p['path'] in names and _i9_same(p,names[p['path']]),'E_BOOTSTRAP_CLOSURE')
+        if p['path'] in visited:continue
+        visited.add(p['path']);body=reader.body(p)
+        if p['path'] in required_json:v=reader.record(p)
+        else:
+            if not body.lstrip(b' \t\r\n').startswith(b'{'):continue
+            try:v=_i9_json(body)
+            except ValueError:continue
+            reader.creation(p,v)
+        records[p['path']]=v;stack.extend(_i9_pins(v))
+    scope=records[reader.trusted['current_owner_scope']['path']]
+    for key in ('owner_instruction_record','owner_policy_record'):
+        p=reader.declare(scope[key]);_i9_need(p['path'] in visited,'E_BOOTSTRAP_CLOSURE')
+    scope_review=records[m['different_current_owner_scope_Source_review']['path']]
+    _i9_need(reader.declare(scope_review['full_proof'])['path'] in visited,'E_BOOTSTRAP_CLOSURE')
+    return manifest,visited
+
+
+def _i9_codec(value):
+    keys=('encoding','check_labels','checks','actual_serialized_check_count','checks_failed','ordered_check_stream_sha256','snapshot_phase')
+    _i9_closed(value,keys,'E_CODEC')
+    labels=value['check_labels'];rows=value['checks']
+    _i9_need(value['encoding']=='lossless_boolean_label_index_v1' and type(labels) is list and bool(labels) and
+      all(type(x) is str for x in labels) and len(set(labels))==len(labels) and type(rows) is list and bool(rows) and
+      type(value['actual_serialized_check_count']) is int and value['actual_serialized_check_count']==len(rows) and
+      type(value['checks_failed']) is int and value['checks_failed']==0 and
+      value['snapshot_phase']=='before per-artifact receipt serialization; later writer gates execute separately','E_CODEC')
+    stream=[];canonical_labels=[];indices={};canonical_rows=[]
+    for row in rows:
+        _i9_need(type(row) is list and len(row)==2 and row[0] is True and type(row[1]) is int and 0<=row[1]<len(labels),'E_CODEC')
+        label=labels[row[1]];stream.append([True,label])
+        if label not in indices:indices[label]=len(canonical_labels);canonical_labels.append(label)
+        canonical_rows.append([True,indices[label]])
+    _i9_need(canonical_labels==labels and _i9_same(canonical_rows,rows) and
+      type(value['ordered_check_stream_sha256']) is str and value['ordered_check_stream_sha256']==_i9_sha(_i9_original_wire(stream)),'E_CODEC_CANONICAL')
+    return len(stream)

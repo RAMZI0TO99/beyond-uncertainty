@@ -1,0 +1,202 @@
+"""Independent read/hash/AST review only; never execute a subject or Git."""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+P = Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+O = P/'managed_review_001'
+I8 = Path(r'D:\Aenv\pro2\WORK\resume-20261015-001\native_publisher_admission_011')
+CAP = 2097152
+ledger = {}
+checks = []
+
+def check(name, ok, detail=None):
+    checks.append(dict(name=f'{len(checks)+1:04d}:{name}', passed=bool(ok), detail=detail))
+    if not ok:
+        raise AssertionError(name)
+
+def fact(path):
+    path = Path(path)
+    check('regular_capped_input',path.is_file() and not path.is_symlink() and path.stat().st_size<=CAP,str(path))
+    data = path.read_bytes()
+    q = dict(path=str(path),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+    key = str(path).casefold()
+    check('stable_unique_input',key not in ledger or ledger[key] == q,str(path))
+    ledger[key] = q
+    return data,q
+
+def pairs(items):
+    result = {}
+    for key,value in items:
+        if key in result:
+            raise ValueError('duplicate JSON key')
+        result[key] = value
+    return result
+
+def bad(value):
+    raise ValueError('nonfinite or float JSON')
+
+def decode(data):
+    return json.loads(data.decode('utf-8','strict'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+
+def source(name, expected_sha=None, expected_bytes=None, folder=P):
+    data,q = fact(folder/name)
+    if expected_sha:
+        check('expected_Source_hash',q['sha256']==expected_sha,name)
+    if expected_bytes:
+        check('expected_Source_length',q['bytes']==expected_bytes,name)
+    tree = ast.parse(data,filename=str(folder/name))
+    compile(tree,str(folder/name),'exec')
+    check('Source_AST_and_compile_only',True,name)
+    return data.decode('utf-8'),tree,q
+
+def main():
+    prep,prep_tree,prep_pin = source('ROOT_PREPARE_I9_MANAGED_CANDIDATES_001.py',
+        '4f061118ef760796e835e4b59816c833042de057ed5535166045548ef6dc4a63')
+    pub,pub_tree,pub_pin = source('ROOT_REVIEWED_I9_FINITE_PUBLICATION_001.py',
+        '71c603c6a39307d98c15a5dd22ce2ea9f4b4b66c184ed1c861e637176a6408d7',13081)
+    author,author_tree,author_pin = source('ROOT_AUTHOR_I9_FINITE_PUBLICATION_TOOL_SOURCE_001.py')
+    old,old_tree,old_pin = source('ROOT_REVIEWED_I8_FINITE_PUBLICATION_005.py',
+        '75ed6eb493dc003ce5390600a69080c243f613177e9b41e65389cd032da8fe49',12336,I8)
+    receipt_data,receipt_pin = fact(P/'ROOT_I9_FINITE_PUBLICATION_TOOL_ACTUAL_SOURCE_AUTHOR_RECEIPT_001.json')
+    receipt = decode(receipt_data)
+    check('Root_author_receipt_exact_old',receipt['old_Source']==old_pin)
+    check('Root_author_receipt_exact_new',receipt['new_Source']==pub_pin)
+    check('Root_author_receipt_Source_only',receipt['Source_AST_and_compile_only'] is True and
+        receipt['new_Source_invoked'] is False and receipt['original_Source_invoked'] is False and
+        receipt['target_execution'] is False and receipt['tests_executed'] is False)
+    window_data,window_pin = fact(P/'ROOT_CURRENT_I9_M3_SEMANTIC_PREFLIGHT_SOURCE_SCOPE_001.json')
+    check('exact_current_Source_scope',window_pin['bytes']==3262 and
+        window_pin['sha256']=='0c0815540d0be020040f1114f18975300ddeb279a24ba201ba4204680ea9773d')
+    window = decode(window_data)
+    check('Source_only_no_Pro3_current_window',window['Pro3_coordination_required'] is False and
+        window['maximum_local_agents_including_Root']==3 and
+        datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=60)<
+        datetime.datetime.fromisoformat(window['interval_end']))
+    # Reconstruct author's literal transformations as DATA. Never call/exec/import author.
+    reconstructed = old
+    replacement_count = 0
+    for statement in author_tree.body:
+        if isinstance(statement,ast.Expr) and isinstance(statement.value,ast.Call) and \
+                isinstance(statement.value.func,ast.Name) and statement.value.func.id=='replace':
+            values = [ast.literal_eval(arg) for arg in statement.value.args]
+            check('literal_replacement_arity',len(values) in (2,3))
+            before,after = values[:2]
+            count = reconstructed.count(before)
+            check('literal_replacement_found',count>0,before)
+            if len(values)==3:
+                check('literal_replacement_exact_count',count==values[2],before)
+            reconstructed = reconstructed.replace(before,after)
+            replacement_count += 1
+    assignments = [n for n in author_tree.body if isinstance(n,ast.Assign) and
+        any(isinstance(t,ast.Name) and t.id=='new' for t in n.targets)]
+    check('single_author_new_assignment',len(assignments)==1)
+    expression = assignments[0].value
+    check('author_prefix_only_encode_expression',isinstance(expression,ast.Call) and
+        isinstance(expression.func,ast.Attribute) and expression.func.attr=='encode' and
+        isinstance(expression.func.value,ast.BinOp) and isinstance(expression.func.value.op,ast.Add))
+    prefix = ast.literal_eval(expression.func.value.left)
+    check('exact_all_author_deltas_reproduce_publisher',prefix+reconstructed==pub,
+        dict(literal_replacements=replacement_count))
+    for label,needle in [
+        ('current_base',"BASE='add1a93c7a0ad841f3760565b087afcbe638d292'"),
+        ('finite_REL','docs/development/native-m3-prewrite/20261017-i9/'),
+        ('new_scope_name','EXACT_MANAGED_I9_RECORDED_M3_SEMANTICS_PUBLICATION_SCOPE_001.json'),
+        ('current_scope_hash','0c0815540d0be020040f1114f18975300ddeb279a24ba201ba4204680ea9773d'),
+        ('608_exact_baseline','315cce6ac373b917213cd13e4f4059200b94de7cadb1f0b7bd9b501f9b745c44'),
+        ('sole_big_exception_size',"i['bytes']==3483233"),
+        ('sole_big_exception_sha','e646afc11642d8df66cf7ef0aff26474ce45eaec23d08ecd16f17eaedae2b0e9'),
+        ('sole_big_exception_path','docs/development/closeout-evidence/root-docs-independent-major036/INDEPENDENT_MAJOR036_CREATION_REVIEW_001.json'),
+        ('prior342_key','all_prior_I6_I7_I8_non_navigation_file_pins'),
+        ('prior342_count',"'])==342"),
+        ('36_Source_preservation',"b['actual_present']==36"),
+        ('9_missing_paths',"not pathlib.Path(i['canonical_path']).exists()"),
+        ('8frozen_pins',"s['all_frozen_STEP080_sentinels']"),
+        ('complete_nav_suffix',"b[i['prefix_bytes']:]==pinned(i['saved_predecessor'])"),
+        ('exact_index_names',"['diff','--cached','--name-only','-z']"),
+        ('exact_index_status',"['diff','--cached','--name-status','-z']"),
+        ('whitespace',"['-c','core.whitespace=cr-at-eol','diff','--cached','--check']"),
+        ('index_blob',"['show',':'+i['managed_path']]"),
+        ('normal_push',"git(['push','origin','HEAD:main'])"),
+        ('remote_base',"git(['ls-remote','origin','refs/heads/main']).decode().split()[0]==BASE"),
+        ('parent_base',"git(['rev-parse','HEAD^']).decode().strip()==BASE"),
+        ('exact_changed_paths',"['diff-tree','--no-commit-id','--name-only','-r','-z','HEAD']"),
+        ('hooks_refused',"core.hooksPath"),
+        ('original_exclusion','old_publisher_I0_I1_I2_I3_I4_I5_I6_I7_I8_changes_or_invocations_authorized'),
+        ('no_science_authority',"'scientific_authority':False"),
+        ('no_operational_authority',"'operational_authority':False")]:
+        check('publisher_'+label,needle in pub,needle)
+    check('no_force_push_argv','--force' not in pub and 'HEAD:main' in pub and '+HEAD' not in pub)
+    check('four_fixed_publication_modes',all("step=='"+name+"'" in pub for name in ('copy','stage','commit','push')))
+    check('new_temp_label',".i9-memory-stage001" in pub and '.i8-memory' not in pub)
+    check('no_old_runtime_imports',not any(isinstance(n,(ast.Import,ast.ImportFrom)) and
+        any('I8' in str(v) or 'I9' in str(v) for v in ([n.module] if isinstance(n,ast.ImportFrom) else [a.name for a in n.names]))
+        for n in ast.walk(pub_tree)))
+    for label,needle in [
+        ('short_candidate_root',"WORK/I9P012/c1"),
+        ('future_adoption_exact_verdict','ACCEPT_I9_RECORDED_M3_SEMANTICS_AND_SAVED_MEMORY_RESULTS_ONLY'),
+        ('create_once',"path.open('xb')"),
+        ('inert_code_suffix',"'.source' if inert else ''"),
+        ('input_P_confinement','path.resolve().is_relative_to(P.resolve())'),
+        ('known_prior_I8_pin','a3f10ce3864b493a6a1b1d7d314072ca752d7256189bf050f83a3c84015c7fd3'),
+        ('prior_count342','len(prior) == 342'),
+        ('all_three_navigation_names',"('CONTINUE.md', 'AGENTS.md', 'README.md')"),
+        ('aggregate_reader_report','one bounded reader, immutable cache and aggregate limits'),
+        ('full_five_stages_report','all five stages'),
+        ('separate_I8_authority_report','I8 remains the required separate owner/lease/publication-purpose layer'),
+        ('held_actual_entry_report','actual publisher entry refuses before any callback'),
+        ('no_old_execution_report','No old I0-I8 helper'),
+        ('future_final_case_count','actual_memory_case_count'),
+        ('future_saved_attempts','all_saved_memory_attempts')]:
+        check('preparer_'+label,needle in prep,needle)
+    git_fn = next(n for n in pub_tree.body if isinstance(n,ast.FunctionDef) and n.name=='git')
+    check('inherited_timeout_without_cleanup_confirmed',any(isinstance(n,ast.Call) and
+        isinstance(n.func,ast.Attribute) and n.func.attr=='communicate' for n in ast.walk(git_fn)) and
+        not any(isinstance(n,(ast.Try,ast.TryStar)) for n in ast.walk(git_fn)))
+    check('boolean_integer_guard_gap_confirmed',"type(adoption['accepted_complete_memory_test_runs'])" not in prep and
+        "type(implementation['accepted_complete_memory_test_runs'])" not in pub)
+    check('negative_failure_guard_gap_confirmed','failed_runs >= 0' not in prep and
+        "implementation['failed_memory_test_runs']>=0" not in pub)
+    findings = [
+        dict(id='I9-PUB-001',priority=1,status='REQUIRES_SUCCESSOR_BEFORE_INVOCATION',
+             file=pub_pin['path'],symbol='git',
+             problem='communicate(timeout=60) has no TimeoutExpired handler. On timeout the exact owned Git process can remain alive/unreaped and continue add/commit/push after wrapper failure.',
+             recommendation='Use exact-owned-child kill on timeout and one bounded5s reap, retain partial stdout/stderr hashes/refusal/cleanup evidence and prohibit retry when outcome is unknown. Do not enumerate or kill unrelated processes.'),
+        dict(id='I9-PUB-002',priority=2,status='REQUIRES_TYPED_GUARDS_IN_SUCCESSOR_OR_EXACT_ROOT_ADOPTER',
+             files=[prep_pin['path'],pub_pin['path']],
+             problem='New dynamic saved-run guards allow bool==1 for accepted count and passed case count, and do not reject negative failed_runs or zero runs. No direct exact join checks accepted ordinal/list length/all saved attempts.',
+             recommendation='Require builtin int case/passed/accepted/failed/run/ordinal fields, passed==case1..256, accepted==1, failed>=0, runs==failed+1>=1, accepted ordinal/list and retained failed attempt identities exactly joined to actual reviewed adoption; no invented expected counts.'),
+        dict(id='I9-PUB-003',priority=2,status='FINAL_ADOPTION_SCHEMA_MUST_BE_PINNED_BEFORE_PUBLICATION',
+             file=pub_pin['path'],symbol='copy adoption guard',
+             problem='Managed adoption currently accepts any verdict.startswith(ACCEPT_). Its exact final I9 verdict/schema do not exist yet.',
+             recommendation='In final successor bind exact I9 managed-review verdict plus strict Source-only reviewer flags and current scope/capsule/fullproof joins, after the actual adopter schema is authored.'),
+        dict(id='I9-PUB-CANDIDATES',priority=None,status='FUTURE_ACTUAL_FINITE_REVIEW_REQUIRED',
+             problem='No actual I9 final Source/API, saved-result adoption or candidate scope exists for this preliminary review; report component claims are intended future claims only.',
+             recommendation='Final actual audit must inspect all candidate bytes/index/copies/inertness/relative Markdown links, unique casefold-normalized finite paths/modes, all608/342/8/current36+9 and3suffixes, exact actual Source/test/review/failed-history joins before Root publication.')]
+    fact(Path(__file__))
+    all_inputs = sorted(ledger.values(),key=lambda q:q['path'].casefold())
+    for q in all_inputs:
+        data = Path(q['path']).read_bytes()
+        check('final_input_pin_rehash',len(data)==q['bytes'] and hashlib.sha256(data).hexdigest()==q['sha256'],q['path'])
+    record = dict(schema_version=1,record_type='Independent_I9_preliminary_publication_tooling_Source_review',
+        author='/root/owner_publication_review',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        verdict='PRELIMINARY_SOURCE_REVIEW_FINDINGS_FINAL_SUCCESSOR_AND_CANDIDATES_REQUIRED',
+        checks_passed=len(checks),checks_failed=0,serialized_check_count=len(checks),checks=checks,
+        all_actual_inputs=all_inputs,actual_input_count=len(all_inputs),findings=findings,
+        exact_I8_author_transform_reproduced=True,Root_scripts_executed=False,
+        old_I0_I1_I2_I3_I4_I5_I6_I7_I8_import_call_or_test=False,
+        target_execution=False,tests_executed=False,Git_commands_or_mutation=False,
+        candidate_review_completed=False,publication_authorized=False,
+        operational_authority=False,scientific_authority=False)
+    output = O/'INDEPENDENT_I9_PUBLICATION_TOOLING_PRELIMINARY_SOURCE_REVIEW_001.json'
+    data = (json.dumps(record,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+    check('proof_under_cap',len(data)<=CAP)
+    with output.open('xb') as handle:
+        handle.write(data)
+    print(json.dumps(dict(path=str(output),bytes=len(data),sha256=hashlib.sha256(data).hexdigest(),
+        checks_passed=record['checks_passed'],checks_failed=0,actual_input_count=len(all_inputs))))
+
+if __name__=='__main__':
+    main()

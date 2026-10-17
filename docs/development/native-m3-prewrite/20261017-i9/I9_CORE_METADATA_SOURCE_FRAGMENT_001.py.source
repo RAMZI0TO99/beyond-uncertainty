@@ -1,0 +1,269 @@
+# Own Source construction fragment. Never imported or invoked by its author.
+class I9MetadataError(ValueError):
+    def __init__(self, code, detail=''):
+        self.code = code
+        super().__init__(code+(': '+detail if detail else ''))
+
+
+def _i9_need(condition, code, detail=''):
+    if not condition:
+        raise I9MetadataError(code if code.startswith('E_') else 'E_RENDER',detail or ('' if code.startswith('E_') else code))
+
+
+def _i9_walk(value, depth=0, counter=None):
+    if counter is None:counter=[0]
+    counter[0]+=1
+    _i9_need(depth<=48 and counter[0]<=50000,'E_JSON_BOUNDS')
+    if type(value) is dict:
+        _i9_need(all(type(k) is str for k in value),'E_JSON_TYPE')
+        for x in value.values():_i9_walk(x,depth+1,counter)
+    elif type(value) is list:
+        for x in value:_i9_walk(x,depth+1,counter)
+    else:
+        _i9_need(type(value) in (str,int,bool,type(None)),'E_JSON_TYPE')
+        if type(value) is str:_i9_need(not any(0xD800<=ord(c)<=0xDFFF for c in value),'E_JSON')
+
+
+def _i9_wire(value):
+    _i9_walk(value)
+    try:raw=(_i9_json_module.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False)+'\n').encode()
+    except (UnicodeError,ValueError,RecursionError) as error:raise I9MetadataError('E_JSON') from error
+    _i9_need(0<len(raw)<=2097152,'E_METADATA_CAP')
+    return raw
+
+
+def _i9_json(raw):
+    _i9_need(type(raw) is bytes and 0<len(raw)<=2097152 and not raw.startswith(b'\xef\xbb\xbf'),'E_METADATA_CAP')
+    def pairs(items):
+        out={}
+        for k,v in items:
+            _i9_need(k not in out,'E_JSON_DUPLICATE');out[k]=v
+        return out
+    def reject(x):raise I9MetadataError('E_JSON_NUMBER')
+    try:value=_i9_json_module.loads(raw.decode('utf8',errors='strict'),object_pairs_hook=pairs,parse_float=reject,parse_constant=reject)
+    except I9MetadataError:raise
+    except (UnicodeError,RecursionError,_i9_json_module.JSONDecodeError) as error:raise I9MetadataError('E_JSON') from error
+    except ValueError as error:raise I9MetadataError('E_JSON_NUMBER') from error
+    _i9_need(type(value) is dict,'E_JSON_ROOT');_i9_walk(value)
+    return value
+
+
+def _i9_snapshot(value):
+    _i9_need(type(value) is dict,'E_OBJECT')
+    return _i9_json(_i9_wire(value))
+
+
+def _i9_closed(value,keys,code='E_SHAPE'):
+    _i9_need(type(value) is dict and set(value)==set(keys),code)
+    return value
+
+
+def _i9_same(a,b):
+    if type(a) is not type(b):return False
+    if type(a) is dict:return set(a)==set(b) and all(_i9_same(a[k],b[k]) for k in a)
+    if type(a) is list:return len(a)==len(b) and all(_i9_same(x,y) for x,y in zip(a,b))
+    return a==b
+
+
+def _i9_sha(raw):return _i9_hashlib.sha256(raw).hexdigest()
+
+
+def _i9_path(path):
+    _i9_need(type(path) is str and 3<len(path)<=512 and _i9_re.fullmatch(r'[A-Z]:\\[^/]+',path) is not None,'E_PATH')
+    reserved={'CON','PRN','AUX','NUL','CLOCK$',*('COM'+str(x) for x in range(1,10)),*('LPT'+str(x) for x in range(1,10))}
+    _i9_need(all(p and p not in ('.','..') and p[-1] not in '. ' and p.split('.')[0].upper() not in reserved and
+                  not any(ord(c)<32 or c in '/:"<>|?*' for c in p) for p in path[3:].split('\\')),'E_PATH')
+    return path
+
+
+def _i9_parent(path):return _i9_path(path).rsplit('\\',1)[0]
+def _i9_leaf(path):return _i9_path(path).rsplit('\\',1)[1]
+def _i9_join(parent,leaf):return _i9_path(parent+'\\'+leaf.replace('/','\\'))
+def _i9_relative(path,parent):
+    _i9_path(path);_i9_path(parent)
+    _i9_need(path.startswith(parent+'\\'),'E_RELATIVE')
+    return path[len(parent)+1:].replace('\\','/')
+
+
+def _i9_pin(value,cap=2097152):
+    _i9_closed(value,('path','bytes','sha256'),'E_PIN');_i9_path(value['path'])
+    _i9_need(type(cap) is int and 0<cap<=2097152 and type(value['bytes']) is int and 0<value['bytes']<=cap and
+              type(value['sha256']) is str and _i9_re.fullmatch('[0-9a-f]{64}',value['sha256']) is not None,'E_PIN')
+    return dict(value)
+
+
+def _i9_actor(value,allow_root=False):
+    if allow_root and value=='/root':return value
+    _i9_need(type(value) is str and len(value)<=512 and _i9_re.fullmatch(r'/root(?:/[A-Za-z0-9_-]+)+',value) is not None,'E_ACTOR')
+    return value
+
+
+def _i9_time(value,mode='current'):
+    _i9_need(type(value) is str,'E_TIME')
+    match=_i9_re.fullmatch(r'([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.([0-9]{6,7}))?(Z|[+-][0-9]{2}:[0-9]{2})',value)
+    _i9_need(match is not None,'E_TIME')
+    year,month,day,hour,minute,second=(int(x) for x in match.groups()[:6]);fraction=match[7] or '';zone=match[8]
+    _i9_need(year>=1601 and hour<24 and minute<60 and second<60,'E_TIME')
+    if mode=='current':_i9_need(len(fraction) in (6,7) and zone in ('Z','+00:00'),'E_TIME')
+    if mode=='native7':_i9_need(len(fraction)==7 and zone=='+00:00','E_NATIVE7')
+    try:ordinal=_i9_dt.date(year,month,day).toordinal()
+    except ValueError as error:raise I9MetadataError('E_TIME') from error
+    offset=0
+    if zone!='Z':
+        hours,minutes=int(zone[1:3]),int(zone[4:6]);_i9_need(hours<24 and minutes<60,'E_TIME')
+        offset=(1 if zone[0]=='+' else -1)*(hours*3600+minutes*60)
+    return ((ordinal-_i9_dt.date(1601,1,1).toordinal())*86400+hour*3600+minute*60+second-offset)*10000000+int(fraction.ljust(7,'0'))
+
+
+def _i9_data_ast(data):
+    _i9_need(type(data) in (str,bytes) and 0<len(data)<=2097152,'E_AST_BOUNDS')
+    try:tree=_i9_ast.parse(data)
+    except (SyntaxError,ValueError,RecursionError,UnicodeError) as error:raise I9MetadataError('E_AST_DATA') from error
+    stack=[(tree,0)];count=0
+    while stack:
+        node,depth=stack.pop();count+=1
+        _i9_need(count<=50000 and depth<=48,'E_AST_BOUNDS')
+        stack.extend((x,depth+1) for x in _i9_ast.iter_child_nodes(node))
+    return tree
+
+
+def _i9_literal(value):
+    try:return _i9_ast.literal_eval(value)
+    except (ValueError,TypeError,SyntaxError,RecursionError) as error:raise I9MetadataError('E_AST_LITERAL') from error
+
+
+def _i9_no_authority(value):
+    _i9_need(value.get('target_execution') is False and value.get('operational_authority') is False,'E_AUTHORITY')
+    for key in I9_OPTIONAL_FALSE_FLAGS:_i9_need(key not in value or value[key] is False,'E_AUTHORITY',key)
+
+
+def _i9_pins(value):
+    out=[]
+    if type(value) is dict:
+        if set(value)=={'path','bytes','sha256'}:out.append(_i9_pin(value))
+        else:
+            for k in sorted(value):out.extend(_i9_pins(value[k]))
+    elif type(value) is list:
+        for x in value:out.extend(_i9_pins(x))
+    return out
+
+
+class I9Reader:
+    def __init__(self,trusted_bindings,read_record,expected_root_thread,source_editor,now_utc):
+        self.trusted=_i9_snapshot(trusted_bindings);b=_i9_closed(self.trusted,I9_TRUSTED_KEYS,'E_BINDINGS')
+        self.root_thread=expected_root_thread;self.source_editor=_i9_actor(source_editor);self.now=_i9_time(now_utc)
+        _i9_need(type(expected_root_thread) is str and _i9_re.fullmatch(r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}',expected_root_thread) is not None,'E_ROOT_THREAD')
+        _i9_need(callable(read_record),'E_READER');self.external=read_record
+        outputs=b['expected_output_paths'];_i9_need(type(outputs) is list and len(outputs)<=18 and outputs==sorted(outputs) and
+          all(type(x) is str for x in outputs) and len(set(x.casefold() for x in outputs))==len(outputs),'E_OUTPUTS')
+        self.outputs=frozenset(_i9_path(x).casefold() for x in outputs)
+        roster=b['expected_inputs'];_i9_need(type(roster) is list and 0<len(roster)<=256,'E_READER_LIMIT')
+        self.pins={};self.caps={};self.cache={};self.records={};self.calls=0;self.returned=0;self.observations={}
+        for value in roster:
+            p=_i9_pin(value);key=p['path'].casefold()
+            _i9_need(key not in self.outputs,'E_FUTURE_OUTPUT_INPUT');_i9_need(key not in self.pins,'E_INPUT_ALIAS')
+            self.pins[key]=p;self.caps[key]=2097152
+        _i9_need([p['path'] for p in roster]==sorted(p['path'] for p in roster) and sum(p['bytes'] for p in roster)<=33554432,'E_READER_LIMIT')
+        births=b['recorded_births_ns'];_i9_need(type(births) is dict and set(births)=={p['path'] for p in roster} and
+          all(type(n) is int and n>0 for n in births.values()),'E_BIRTHS')
+        self.births=births
+        self.producer_editor=_i9_actor(b['producer_Source_editor'])
+        authors=b['actual_content_authors'];_i9_need(type(authors) is list and len(authors)<=32 and len(set(authors))==len(authors),'E_AUTHORS')
+        self.authors=[_i9_actor(x,allow_root=True) for x in authors]
+        for key in ('current_owner_scope','canonical_lease','selection','M3_predecessor_inventory'):self.declare(b[key])
+        _i9_need(_i9_same(b['M3_predecessor_inventory'],I9_INVENTORY_PIN),'E_INVENTORY17')
+        self.support(b['producer_support'],I9_TOOL4)
+        supports=b['stage_supports'];_i9_need(type(supports) is dict and 0<len(supports)<=8 and set(supports)<=I9_STAGE_KEYS,'E_STAGE_SUPPORTS')
+        for support in supports.values():self.support(support,I9_STAGE3)
+        for path,cap in I9_KNOWN_ROLE_CAPS.items():
+            if path.casefold() in self.pins:self.cap(self.pins[path.casefold()],cap)
+        self.rows=None;self.inventory=None;self.selection=None;self.scope=None;self.lease=None;self.common_loaded=False
+        self.stage_results={};self.recorded_time=None;self.current_stage=None;self.reviews={}
+
+    def declare(self,value):
+        p=_i9_pin(value);key=p['path'].casefold()
+        _i9_need(key not in self.outputs,'E_FUTURE_OUTPUT_INPUT')
+        _i9_need(key in self.pins and _i9_same(p,self.pins[key]),'E_UNDECLARED_INPUT')
+        return p
+
+    def cap(self,value,cap):
+        p=self.declare(value);key=p['path'].casefold();_i9_pin(p,cap)
+        old=self.caps[key];_i9_need(cap<=old,'E_CAP_WIDENING')
+        _i9_need(cap==old or key not in self.cache,'E_ROLECAP_ORDER')
+        self.caps[key]=cap
+        return p
+
+    def support(self,value,keys):
+        _i9_closed(value,keys,'E_SUPPORT')
+        return {k:self.declare(p) for k,p in value.items()}
+
+    def body(self,value,cap=None):
+        p=self.declare(value);key=p['path'].casefold()
+        if cap is not None:
+            _i9_need(type(cap) is int and 0<cap<=2097152,'E_PIN')
+            if cap<self.caps[key]:self.cap(p,cap)
+            _i9_need(p['bytes']<=min(cap,self.caps[key]),'E_PIN')
+        bound=self.caps[key]
+        if key not in self.cache:
+            self.calls+=1;_i9_need(self.calls<=1024,'E_CALLBACK_LIMIT')
+            try:raw=self.external(dict(p))
+            except Exception as error:raise I9MetadataError('E_READER_REFUSAL') from error
+            _i9_need(type(raw) is bytes,'E_READER_BYTES');self.returned+=len(raw)
+            _i9_need(self.returned<=67108864,'E_CALLBACK_LIMIT')
+            _i9_need(len(raw)==p['bytes'] and len(raw)<=bound and _i9_sha(raw)==p['sha256'],'E_HASH')
+            self.cache[key]=raw
+        return self.cache[key]
+
+    def record(self,value):
+        p=self.declare(value);key=p['path'].casefold()
+        if key not in self.records:
+            self.records[key]=_i9_json(self.body(p))
+            self.creation(p,self.records[key])
+        return self.records[key]
+
+    def birth(self,value):return self.births[self.declare(value)['path']]
+    def born_ticks(self,value):return self.birth(value)//100+116444736000000000
+    def creation(self,value,record):
+        if 'created_utc' in record:
+            created=_i9_time(record['created_utc'],'retained')
+            _i9_need(created<=self.born_ticks(value)<=self.now,'E_CREATED_BIRTH')
+            return created
+        _i9_need(self.born_ticks(value)<=self.now,'E_CREATED_BIRTH')
+        return None
+
+
+def _i9_review(reader,pin,subjects,rejected=()):
+    p=reader.declare(pin);v=reader.record(p);_i9_no_authority(v)
+    who=_i9_actor(v.get('reviewer'));reject=['/root',reader.source_editor,reader.producer_editor,*reader.authors,*rejected]
+    _i9_need(all(who!=a and (a=='/root' or not who.startswith(a+'/')) for a in reject),'E_REVIEWER')
+    _i9_need(type(v.get('verdict')) is str and v['verdict'].startswith('PASS_') and type(v.get('checks_failed')) is int and v['checks_failed']==0 and
+              all(_i9_occurs(v,x) for x in subjects),'E_REVIEW')
+    fp=reader.declare(v.get('full_proof'));full=reader.record(fp);_i9_no_authority(full)
+    checks=full.get('checks');_i9_need(type(checks) is list and 0<len(checks)<=10000,'E_FULL_PROOF')
+    names=[]
+    for c in checks:
+        _i9_need(type(c) is dict and type(c.get('name')) is str and bool(c['name']) and c.get('passed') is True,'E_FULL_PROOF');names.append(c['name'])
+    _i9_need(len(set(names))==len(names) and full.get('reviewer')==who and full.get('verdict')==v['verdict'] and
+              type(full.get('checks_failed')) is int and full['checks_failed']==0 and all(_i9_occurs(full,x) for x in subjects),'E_FULL_PROOF')
+    vt=reader.creation(p,v);ft=reader.creation(fp,full)
+    _i9_need(ft is not None and vt is not None and ft<=vt<=reader.now and all(reader.born_ticks(x)<=vt for x in subjects),'E_REVIEW_TIME')
+    return dict(pin=p,value=v,full_pin=fp,full=full,time=vt,full_time=ft)
+
+
+def _i9_adoption(reader,pin,subjects,review,*,context=True,selection=False,verdict=None):
+    p=reader.declare(pin);v=reader.record(p);_i9_no_authority(v)
+    required=list(subjects)+[review['pin'],review['full_pin']]
+    if context:required.append(reader.trusted['current_owner_scope'])
+    if selection:required.append(reader.trusted['selection'])
+    _i9_need(v.get('author')=='/root' and type(v.get('verdict')) is str and
+              (v['verdict']==verdict if verdict is not None else v['verdict'].startswith('ACCEPT_')) and
+              all(_i9_occurs(v,x) for x in required),'E_ADOPTION')
+    at=reader.creation(p,v);_i9_need(at is not None and review['time']<=at<=reader.now and
+              reader.born_ticks(review['pin'])<=at and reader.born_ticks(review['full_pin'])<=at,'E_ADOPTION_TIME')
+    return dict(pin=p,value=v,time=at)
+
+
+def _i9_read_pin(reader,pin,*,cap=2097152):return reader.body(pin,cap)
+def _i9_recorded_utc(reader):
+    _i9_need(type(reader.recorded_time) is str,'E_RECORDED_RENDER_TIME')
+    return reader.recorded_time

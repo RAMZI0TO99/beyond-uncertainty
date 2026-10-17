@@ -1,0 +1,143 @@
+"""Source-only fixture correction and immutable API/receipt serialization. Never invokes targets."""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+OWN=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012\i9')
+def pin(path):
+    raw=path.read_bytes();return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+def wire(value):return (json.dumps(value,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+def save(path,raw):
+    assert not path.exists() and 0<len(raw)<=2097152
+    with path.open('xb') as f:f.write(raw)
+    assert path.read_bytes()==raw
+    return pin(path)
+old=OWN/'test_recorded_M3_semantics_memory_only_001.py';oldraw=old.read_bytes()
+assert hashlib.sha256(oldraw).hexdigest()=='2959fae47777c7cba19eb83dec543085be5b83b9f70af175b3671b23991b4eac'
+source=oldraw.decode();changes=[]
+def replace(before,after,label):
+    global source
+    assert source.count(before)==1,(label,source.count(before))
+    source=source.replace(before,after);changes.append(dict(label=label,before=before,after=after))
+replace("_fx_proof(graph,'producer_code',[source,api],12,context=False)",
+ "_fx_proof(graph,'producer_code',[source,api],12,context=False,verdict='PASS_SYNTHETIC_RECORDED_SOURCE_METADATA_ONLY')",'F1 code-specific SOURCE verdict; generic stage proof policy unchanged')
+replace("allowed={p['path']:p for p in trusted['expected_inputs']}",
+ "allowed={p['path']:p for p in copy.deepcopy(trusted['expected_inputs'])}",'F3 independent deep snapshot of callback allowed pins')
+replace("    before=fixture['graph']['store'][path];value=json.loads(before);edited=edit(value)\n    selected=value if edited is None else edited\n    raw=_fx_wire(selected);assert raw!=before",'''    before=fixture['graph']['store'][path];value=json.loads(before);edited=edit(value)
+    assert edited is None,'record mutation must edit in place and return None'
+    raw=_fx_wire(value);assert raw!=before''','F2 prevent accidental record replacement by mutation return')
+replace("path=trusted['stage_supports']['templates']['different_review']['path'];_fx_edit_record(fixture,path,lambda v:v['exact_M3_Source_stage_purpose']['output_paths'].pop());codes=('E_PURPOSE6',)",'''path=trusted['stage_supports']['templates']['different_review']['path']
+                def edit(v):v['exact_M3_Source_stage_purpose']['output_paths'].pop()
+                _fx_edit_record(fixture,path,edit);codes=('E_PURPOSE6',)''','F2 actual wrong string-return purpose mutation corrected')
+replace("elif 'steps_missing' in case:edit=lambda v:v['steps'].pop('complete_inverse');codes=('E_STEPS4',)",'''elif 'steps_missing' in case:
+                    def edit(v):v['steps'].pop('complete_inverse')
+                    codes=('E_STEPS4',)''','F2 actual wrong dict-return receipt mutation corrected')
+replace("fixture=base('bound:'+bound_roles[0]);path=fixture['graph']['dependencies']['capture_bound']['late_reconciliation']['path'];_fx_edit_record(fixture,path,lambda v:v.pop('retained_fictional_field_0'));codes=('E_RECONCILIATION26',)",'''fixture=base('bound:'+bound_roles[0]);path=fixture['graph']['dependencies']['capture_bound']['late_reconciliation']['path']
+                def edit(v):v.pop('retained_fictional_field_0')
+                _fx_edit_record(fixture,path,edit);codes=('E_RECONCILIATION26',)''','Preventive explicit in-place reconciliation edit; old popped value was None, not an actual001 failure')
+replace('def _fx_bad(module,fixture,accepted_codes,*,before_read=False,reader_override=None):',
+ 'def _fx_bad(module,fixture,accepted_codes,*,before_read=False,reader_override=None,expected_calls=None):','F3 optional exact callback-count oracle')
+replace("        assert error.code in accepted_codes,(error.code,accepted_codes)\n        count=len(fixture.get('_last_calls',[]))\n        if before_read:assert count==0",'''        assert type(error) is module.I9MetadataError and error.code in accepted_codes,(error.code,accepted_codes)
+        count=len(fixture.get('_last_calls',[]))
+        if before_read:assert count==0
+        if expected_calls is not None:assert count==expected_calls,(count,expected_calls)''','F3 exact target refusal class and four callback-count controls')
+replace("            fixture=base('templates')\n            def mutate(caller):caller.clear();caller['malicious_after_snapshot']=True\n            view,calls=_fx_invoke(module,fixture,mutate_caller=mutate);count=len(calls)\n            assert view.to_dict()['recorded_M3_semantics_validated'] is True",'''            fixture=base('templates');original_bindings=copy.deepcopy(fixture['trusted'])
+            mutation_seen=[]
+            def mutate(caller):
+                assert caller['expected_inputs'] and caller['producer_support']['Source']['sha256']!='0'*64
+                assert type(caller['expected_inputs'][0]['bytes']) is int
+                caller['expected_inputs'][0]['bytes']=True
+                caller['producer_support']['Source']['sha256']='0'*64
+                caller['stage_supports']['templates']['facts']['path']=r'C:\\fictional_snapshot_poison\\facts.json'
+                caller['actual_content_authors'].append('/root/fictional_callback_mutation')
+                caller['expected_inputs'].clear()
+                mutation_seen.append(True)
+            view,calls=_fx_invoke(module,fixture,mutate_caller=mutate);count=len(calls);data=view.to_dict()
+            assert mutation_seen==[True] and fixture['trusted']['expected_inputs']==[]
+            assert fixture['trusted']['producer_support']['Source']['sha256']=='0'*64
+            assert data['recorded_M3_semantics_validated'] is True
+            assert data['producer_support']==original_bindings['producer_support'] and data['current_owner_scope']==original_bindings['current_owner_scope']
+            expected_allowed={p['path']:p for p in original_bindings['expected_inputs']}
+            assert calls and all(p==expected_allowed[p['path']] for p in calls)''','F3 nested dict/list snapshot mutation with independent expected pin oracle')
+replace("except module.I9MetadataError as error:assert error.code in ('E_ACTUAL_ENTRY_HELD','E_ACTUAL_ENTRY_UNWIRED')",'''except module.I9MetadataError as error:
+                    expected='E_ACTUAL_ENTRY_UNWIRED' if 'toggle' in case else 'E_ACTUAL_ENTRY_HELD'
+                    assert type(error) is module.I9MetadataError and error.code==expected''','F3 held and flag-toggled controls use distinct exact guards')
+replace("_fx_repin(fixture,path,raw);codes=('E_JSON_DUPLICATE','E_JSON','E_JSON_NUMBER')",'''_fx_repin(fixture,path,raw)
+                codes=({'strict_duplicate_JSON_names_refused':'E_JSON_DUPLICATE','strict_UTF8_refused':'E_JSON','strict_JSON_float_refused':'E_JSON_NUMBER'}[case],)''','F3 exact per-case strict JSON branches')
+replace("receipt_edit(fixture,edit);codes=('E_CODEC','E_CODEC_CANONICAL')",'''receipt_edit(fixture,edit)
+                codes=(('E_CODEC' if case in ('codec_bool_index_refused','codec_false_row_refused') else 'E_CODEC_CANONICAL'),)''','F3 exact codec shape versus canonicalization branches')
+replace("receipt_edit(fixture,edit,later=later);codes=('E_OBSERVATION_VECTOR','E_OBSERVATION_SHARED7','E_OBSERVATION9','E_OBSERVATION_PREFIX','E_OBSERVATION_STABILITY')",'''receipt_edit(fixture,edit,later=later)
+                expected_observation_code={
+                    'observation_path9_size_refused':'E_OBSERVATION_VECTOR',
+                    'observation_fd9_shared_inode_refused':'E_OBSERVATION_SHARED7',
+                    'observation_shared_all9_refused':'E_OBSERVATION9',
+                    'observation_two_read_false_refused':'E_OBSERVATION9',
+                    'observation_duplicate_row_refused':'E_OBSERVATION9',
+                    'observation_output_order_refused':'E_OBSERVATION_PREFIX',
+                    'observation_input_after_output_refused':'E_OBSERVATION_PREFIX',
+                    'later_receipt_unshared_slot_drift_refused':'E_OBSERVATION_STABILITY',
+                    'later_receipt_observed_time_drift_refused':'E_OBSERVATION_STABILITY',
+                    'later_receipt_cap_drift_refused':'E_OBSERVATION_STABILITY'}[case]
+                codes=(expected_observation_code,)''','F3 exact observation vector/shared7/shape/prefix/stability branch oracles')
+replace("count=_fx_bad(module,fixture,codes,before_read=before_read,reader_override=override)",'''exact_calls=1 if case in ('callback_bytearray_refused','callback_text_refused','callback_wrong_whole_bytes_refused','callback_exception_wrapped') else None
+            count=_fx_bad(module,fixture,codes,before_read=before_read,reader_override=override,expected_calls=exact_calls)''','F3 four reader overrides each require exactly one callback')
+newraw=source.encode();tree=ast.parse(newraw);compile(newraw,'I9_fixture002_Source_only','exec')
+prior=ast.parse(oldraw)
+def planned(t):
+    return {n.targets[0].id:ast.literal_eval(n.value) for n in t.body if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name) and n.targets[0].id in ('PLANNED_CASE_NAMES','EXPECTED_CASE_COUNT')}
+names=planned(tree);assert names==planned(prior) and names['EXPECTED_CASE_COUNT']==95
+assert len(newraw)<=2097152
+# Exact complement and complete reverse Source reconstruction, without importing/calling either Source.
+reverse=source
+for edit in reversed(changes):
+    assert reverse.count(edit['after'])==1,edit['label']
+    reverse=reverse.replace(edit['after'],edit['before'])
+assert reverse.encode()==oldraw
+np=save(OWN/'test_recorded_M3_semantics_memory_only_002.py',newraw)
+oldapi=OWN/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_INERT_API_001.json';oldreceipt=OWN/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_SOURCE_AUTHOR_RECEIPT_001.json'
+inverse=save(OWN/'I9_FIXTURE001_TO002_COMPLETE_SOURCE_DELTA_AND_PRIOR_API_RECEIPT_INVERSE_001.json',wire(dict(
+ schema_version=1,record_type='I9_fixture_Source_oracle_successor_complete_inverse',author='/root/phase_frontier',
+ prior_fixture=pin(old),successor_fixture=np,exact_forward_Source_edits=changes,reverse_all_edits_recovers_whole_predecessor=True,
+ complete_original_fixed_literal_complement_exact=True,prior_API=pin(oldapi),whole_prior_API_hex=oldapi.read_bytes().hex(),
+ prior_author_receipt=pin(oldreceipt),whole_prior_author_receipt_hex=oldreceipt.read_bytes().hex(),
+ module_unchanged=pin(OWN/'validate_recorded_M3_semantics_002.py'),
+ retained_originals=pin(OWN/'I9_COMPLETE_ORIGINAL_I2_SOURCE_AND_API_PREDECESSOR_INVERSE_001.json'),
+ tests_executed=False,target_imported=False,target_called=False)))
+api=json.loads(oldapi.read_bytes());api.update(fixture_Source=np,created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),
+ fixture_correction_Source_editor='/root/phase_frontier',fixture_content_contributors=['/root/i9_fixture_author','/root/phase_frontier'],
+ preserved_initial_fixture_Source=pin(old),preserved_initial_API=pin(oldapi),fixture_Source_correction_inverse=inverse,
+ fixture_correction_groups=['Dedicated producer-code SOURCE verdict; generic stage verdicts unchanged.',
+   'Two confirmed pop-return defects corrected; all mutations explicitly in-place None. Reconciliation old pop was already None.',
+   'Precise held/codec/JSON/observation branches, exact reader counts, nested snapshot mutation and independent callback pin snapshot.'],
+ independent_correction_Source_review_pending=True)
+assert api['fixture_interface']['expected_case_count']==95 and api['fixture_interface']['planned_case_names']==list(names['PLANNED_CASE_NAMES'])
+ap=save(OWN/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_INERT_API_002.json',wire(api))
+receipt=json.loads(oldreceipt.read_bytes());receipt.update(API=ap,fixture_Source=np,
+ created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='microseconds'),
+ fixture_correction_Source_editor='/root/phase_frontier',fixture_content_contributors=['/root/i9_fixture_author','/root/phase_frontier'],
+ preserved_initial_fixture_Source=pin(old),preserved_initial_API=pin(oldapi),preserved_initial_author_receipt=pin(oldreceipt),
+ fixture_Source_correction_inverse=inverse,
+ fixture_copy=dict(whole_bytes_exact=False,original_proposal_bytes_preserved_in_fixture001=True,
+   original_proposal_sha256=receipt['fixture_content_proposal']['sha256'],corrected_fixture_sha256=np['sha256'],
+   complete_Source_reverse_edits_recover_exact_original_proposal=True,
+   source_authorship='Original independent fixture content by /root/i9_fixture_author, precise Source review corrections and physical successor serialization by /root/phase_frontier.'),
+ independent_correction_Source_review_pending=True)
+receipt['actual_author_checks'].update(fixture_whole_byte_copy=False,fixture_original_whole_copy_preserved=True,
+ fixture_complete_Source_delta_reconstruction=True,fixture_AST_parse=True,fixture_compile_Source_only=True,
+ same95_planned_case_names=True,fixture_nested_snapshot_oracle_Source_checked=True)
+receipt['author_programs'].append(pin(OWN/'author_I9_fixture_oracle_successor_002.py'))
+rp=save(OWN/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_SOURCE_AUTHOR_RECEIPT_002.json',wire(receipt))
+report=save(OWN/'I9_FIXTURE002_ACTUAL_SOURCE_CORRECTION_INSPECTION_001.json',wire(dict(
+ schema_version=1,record_type='I9_actual_fixture002_Source_correction_inspection',author='/root/phase_frontier',
+ Source=np,API=ap,author_receipt=rp,inverse=inverse,exact95_planned_names_unchanged=True,
+ AST_and_compile_Source_only=True,complete_reverse_Source_reconstruction=True,original_fixed_literal_complement_exact=True,
+ actual_confirmed_defects=['Producer code capsule/full generic verdict omitted required SOURCE marker.',
+   'Purpose-output pop returned string and receipt inverse pop returned dict, replacing the intended full record.'],
+ explicit_nondefect='Reconciliation retained_fictional_field_0 is None, so its old pop returned None; explicit in-place form is preventive clarity only.',
+ assertion_strengthening=['Dedicated exact held/toggled guards.','Exact strict JSON, codec and observation code oracles.',
+   'Four reader overrides each require exactly1 callback.','Nested caller pin/list mutations and independent allowed-pin deep snapshot.'],
+ target_imports=0,target_calls=0,fixture_calls=0,tests_executed=False,independent_review_required=True,
+ operational_authority=False,scientific_authority=False,target_execution=False)))
+print(json.dumps(dict(fixture=np,API=ap,author_receipt=rp,inverse=inverse,Source_inspection=report)))

@@ -1,0 +1,576 @@
+"""Independent fictional saved-metadata recipes. Source only until Root one-use admission.
+
+No filesystem, native, process, clock, historical renderer, or target-private helper is used.
+The embedded old bytes are data. Every new context, reviewer and birth is fictional.
+"""
+import ast
+import base64
+import copy
+import datetime
+import difflib
+import hashlib
+import json
+import re
+import zlib
+
+_FX_HOME = r'C:\I9_SYNTHETIC_MEMORY_ONLY'
+_FX_THREAD = '00000000-0000-0000-0000-000000000009'
+_FX_EDITOR = '/root/synthetic_producer'
+_FX_CONSUMER = '/root/synthetic_consumer'
+_FX_CONTENT = '/root/synthetic_content_author'
+_FX_REVIEWER = '/root/synthetic_different_reviewer'
+_FX_BASE = r'D:\Aenv\pro2\resume-2026-10-03-continuation001'
+_FX_SESSION = r'D:\Aenv\pro2\WORK\resume-20261007-001'
+_FX_EPOCH = datetime.datetime(2030,1,1,tzinfo=datetime.timezone.utc)
+_FX_NOW = '2030-01-01T06:00:00.000000+00:00'
+
+
+def _fx_wire(value):
+    return (json.dumps(value,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('utf8')
+
+
+def _fx_sha(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _fx_time(seconds):
+    return (_FX_EPOCH+datetime.timedelta(seconds=seconds)).isoformat(timespec='microseconds')
+
+
+def _fx_ns(value):
+    # Recorded fictional Unix nanoseconds; this does not observe any native file.
+    date=datetime.datetime.fromisoformat(value.replace('Z','+00:00'))
+    epoch=datetime.datetime(1970,1,1,tzinfo=datetime.timezone.utc)
+    delta=date-epoch
+    return (delta.days*86400+delta.seconds)*1000000000+delta.microseconds*1000
+
+
+def _fx_pin(path,raw):
+    return dict(path=path,bytes=len(raw),sha256=_fx_sha(raw))
+
+
+def _fx_pin_refs(value):
+    if type(value) is dict:
+        if set(value)=={'path','bytes','sha256'}:
+            return [value]
+        result=[]
+        for child in value.values():result.extend(_fx_pin_refs(child))
+        return result
+    if type(value) is list:
+        result=[]
+        for child in value:result.extend(_fx_pin_refs(child))
+        return result
+    return []
+
+
+def _fx_fixed():
+    compressed=base64.b64decode(FIXTURE_FIXED_DATA_ZLIB_BASE64,validate=True)
+    decoder=zlib.decompressobj()
+    raw=decoder.decompress(compressed,FIXTURE_FIXED_DATA_DECODED_BYTES+1)
+    assert len(raw)==FIXTURE_FIXED_DATA_DECODED_BYTES and decoder.eof and not decoder.unused_data and not decoder.unconsumed_tail
+    assert _fx_sha(raw)==FIXTURE_FIXED_DATA_DECODED_SHA256
+    data=json.loads(raw)
+    return data
+
+
+def _fx_put(graph,path,value,seconds=0,raw=False):
+    body=value if raw else _fx_wire(value)
+    assert type(body) is bytes and 0<len(body)<=2097152
+    assert path not in graph['store'],path
+    pin=_fx_pin(path,body)
+    graph['store'][path]=body;graph['pins'][path]=pin
+    graph['births'][path]=_fx_ns(_fx_time(seconds))+1000
+    graph['refs'][path]=[] if raw else _fx_pin_refs(value)
+    return pin
+
+
+def _fx_record(graph,label,value,seconds=0):
+    return _fx_put(graph,_FX_HOME+'\\'+label+'.json',value,seconds)
+
+
+def _fx_proof(graph,label,subjects,seconds,*,context=True,selection=False,purpose=None,reviewer=_FX_REVIEWER,verdict=None):
+    verdict=verdict or 'PASS_SYNTHETIC_RECORDED_METADATA_ONLY'
+    values=dict(reviewer=reviewer,verdict=verdict,checks_failed=0,target_execution=False,
+        operational_authority=False,subjects=copy.deepcopy(subjects),fixture_context='fictional saved metadata')
+    if purpose is not None:values['exact_M3_Source_stage_purpose']=copy.deepcopy(purpose)
+    full=dict(values,created_utc=_fx_time(seconds),checks=[dict(name='explicit synthetic metadata predicate',passed=True)])
+    fp=_fx_record(graph,label+'_full',full,seconds)
+    cap=dict(values,created_utc=_fx_time(seconds+1),full_proof=fp)
+    cp=_fx_record(graph,label+'_capsule',cap,seconds+1)
+    covered=copy.deepcopy(subjects)+[cp,fp]
+    if context:covered.append(graph['scope'])
+    if selection:covered.append(graph['selection'])
+    adopt=dict(author='/root',verdict='ACCEPT_SYNTHETIC_RECORDED_METADATA_ONLY',created_utc=_fx_time(seconds+2),
+        target_execution=False,operational_authority=False,subjects=covered,fixture_context='fictional saved metadata')
+    if purpose is not None:
+        adopt['exact_M3_Source_stage_purpose']=copy.deepcopy(purpose)
+        adopt['verdict']='ACCEPT_ROOT_OWNER_V2_EXACT_M3_SOURCE_STAGE_PURPOSE_AND_FACTS_ONLY'
+    ap=_fx_record(graph,label+'_Root_adoption',adopt,seconds+2)
+    return cp,ap,fp
+
+
+def _fx_splice(old,edits):
+    # Independent buffer construction uses a descending replacement pass; the proof
+    # offsets are calculated from the original span-length prefix sums.
+    ordered=sorted(edits,key=lambda e:e['start_byte'])
+    assert ordered and all(e['old'].encode()==old[e['start_byte']:e['end_byte']] for e in ordered)
+    result=old
+    for e in reversed(ordered):result=result[:e['start_byte']]+e['new'].encode()+result[e['end_byte']:]
+    delta=0;proof=[]
+    for e in ordered:
+        start=e['start_byte']+delta
+        proof.append(dict(e,selected_start_byte=start,selected_end_byte=start+len(e['new'].encode())))
+        delta+=len(e['new'].encode())-(e['end_byte']-e['start_byte'])
+    rebuilt=result
+    for e in reversed(proof):rebuilt=rebuilt[:e['selected_start_byte']]+e['old'].encode()+rebuilt[e['selected_end_byte']:]
+    assert rebuilt==old
+    return result,proof
+
+
+def _fx_assign_spans(raw):
+    lines=raw.splitlines(keepends=True);offsets=[0]
+    for line in lines:offsets.append(offsets[-1]+len(line))
+    out={}
+    for node in ast.parse(raw).body:
+        if isinstance(node,ast.Assign) and len(node.targets)==1 and isinstance(node.targets[0],ast.Name):
+            start=offsets[node.lineno-1]+node.col_offset;end=offsets[node.end_lineno-1]+node.end_col_offset
+            out[node.targets[0].id]=(start,end,raw[start:end].decode())
+    return out
+
+
+def _fx_bind_six(template,values,slots):
+    spans=_fx_assign_spans(template)
+    edits=[]
+    for name in slots:
+        start,end,old=spans[name]
+        edits.append(dict(start_byte=start,end_byte=end,old=old,new=name+' = '+repr(values[name])))
+    return _fx_splice(template,edits)
+
+
+def _fx_old_six_inverse(bound,template,slots):
+    left,right=_fx_assign_spans(bound),_fx_assign_spans(template)
+    edits=[]
+    for name in slots:
+        start,end,old=left[name]
+        edits.append(dict(start_byte=start,end_byte=end,old=old,new=right[name][2]))
+    restored,proof=_fx_splice(bound,edits)
+    assert restored==template
+    return proof
+
+
+def _fx_bind_two(template,capture_digest,peer_digest):
+    edits=[]
+    for name,digest in [('BoundScriptSha256',capture_digest),('BoundReviewSha256',peer_digest)]:
+        old='$'+name+' = $null';new='$'+name+" = '"+digest+"'"
+        assert template.count(old.encode())==1
+        start=template.index(old.encode());edits.append(dict(start_byte=start,end_byte=start+len(old),old=old,new=new))
+    return _fx_splice(template,edits)
+
+
+def _fx_json_inverse(old,fields,extra):
+    return dict(extra,changed_top_level_fields=sorted(fields),original_fields={k:copy.deepcopy(old[k]) for k in sorted(fields)},
+        complete_current_predecessor_byte_inverse=True)
+
+
+def _fx_observation(graph,pin,seconds):
+    born=graph['births'][pin['path']]
+    # PATH9 and fd9 deliberately differ at the two non-shared slots.
+    inode=int(_fx_sha(pin['path'].encode())[:12],16)
+    a=[1,inode,pin['bytes'],1,2,32768,1,0,born]
+    b=[1,inode,pin['bytes'],1,3,32768,1,0,born]
+    return dict(pin,cap=2097152,path9=a,descriptor9=b,shared_identity_indexes=[0,1,2,3,6,7,8],two_read_match=True,observed_utc=_fx_time(seconds))
+
+
+def _fx_recipe(graph):
+    c=graph['constants'];rows=graph['rows'];inv=graph['inventory'];out={};proofs={};bases={};choices={}
+    for role in c['TEMPLATE_ROLES']:
+        old=graph['store'][rows[role]['predecessor']['path']];edits=[];pick={}
+        for slot in inv[role]['literal_slots']:
+            val=slot['value']
+            if slot['kind']=='future_lease_leaf':selected=graph['lease']['path'].rsplit('\\',1)[1]
+            elif slot['kind']=='selected_family_literal_reference':
+                target=rows[slot['referenced_role']]['canonical_path']
+                selected=target[len(_FX_BASE)+1:].replace('\\','/') if '/' in val else target.rsplit('\\',1)[1]
+            else:selected=val;pick[val]=selected
+            new=repr(selected) if role=='capture_template' else "'"+selected+"'"
+            if selected!=val:edits.append(dict(start_byte=slot['start_byte'],end_byte=slot['end_byte'],old=slot['raw_literal'],new=new))
+        raw,steps=_fx_splice(old,edits);out[role]=raw;choices[role]=pick
+        proofs[role]=dict(identity_steps=steps,complete_current_predecessor_byte_inverse=True,all_binding_slots_unfilled=True,
+            original_function_guard_complement_exact=True,native_Parser_executed=False)
+        bases[role]=rows[role]['predecessor']
+    # Profile/static are current fictional dependency bodies under their original
+    # known narrow guard predicates; they confer no live qualification.
+    profile=json.loads(graph['store'][rows['profile']['predecessor']['path']]);profile['synthetic_metadata_identity']='fictional2030'
+    profile_raw=_fx_wire(profile);out['profile']=profile_raw
+    static=json.loads(graph['store'][rows['static']['predecessor']['path']]);static['profile_sha256']=_fx_sha(profile_raw)
+    static['synthetic_metadata_identity']='fictional2030';out['static']=_fx_wire(static)
+    canonical={r:_fx_pin(rows[r]['canonical_path'],raw) for r,raw in out.items()}
+    old=json.loads(graph['store'][rows['metadata_manifest']['predecessor']['path']]);value=copy.deepcopy(old)
+    old_leaves={inv[r]['available_basis']['path'].rsplit('\\',1)[1]:r for r in c['TEMPLATE_ROLES']}
+    paired=[]
+    for item in value['payloads']:
+        role=old_leaves.get(item['path'])
+        if role is not None:
+            p=canonical[role];item.update(path=p['path'].rsplit('\\',1)[1],bytes=p['bytes'],sha256=p['sha256'])
+        else:
+            p=dict(path=rows['metadata_manifest']['predecessor']['path'].rsplit('\\',1)[0]+'\\'+item['path'],bytes=item['bytes'],sha256=item['sha256'])
+        item['two_read_match']=True;paired.append(p)
+    names={name:rows[r]['canonical_path'].rsplit('\\',1)[1] for name,r in old_leaves.items()}
+    value.update(created_utc=_fx_time(100),selected_source_paths=[names.get(x,x) for x in old['selected_source_paths']],
+        source_peer_expected_path=rows['metadata_peer']['canonical_path'],selected_guard_profile=rows['profile']['canonical_path'].rsplit('\\',1)[1],selected_guard_profile_sha256=canonical['profile']['sha256'])
+    out['metadata_manifest']=_fx_wire(value)
+    graph['manifest_paired_pins']=paired
+    fields={'created_utc','payloads','selected_source_paths','source_peer_expected_path','selected_guard_profile','selected_guard_profile_sha256'}
+    proofs['metadata_manifest']=_fx_json_inverse(old,fields,dict(updated_payload_indexes=[0,2,3,4,5],retained_payload_indexes=[1,6,7,8,9,10,11],
+        current_paired_payload_observations=[],original12_preserved_payload_rows_exact=True,header_producer='actual general-host Python UTC6; no native timestamp claim'))
+    bases['metadata_manifest']=rows['metadata_manifest']['predecessor']
+    peer=json.loads(graph['store'][inv['metadata_peer']['available_basis']['path']]);peer['source_manifest_sha256']=_fx_sha(out['metadata_manifest']);out['metadata_peer']=_fx_wire(peer)
+    bindings={}
+    for key,old_digest in c['CURRENT_PLAN_BINDINGS'].items():
+        role=c['RENEWED_BINDINGS'].get(key);bindings[key]=_fx_sha(out[role]) if role else old_digest
+    selections=copy.deepcopy(c['CURRENT_PLAN_ROLE_SELECTIONS'])
+    old=json.loads(graph['store'][rows['plan']['predecessor']['path']]);plan=copy.deepcopy(old)
+    plan.update(bindings=bindings,role_selections=selections,lease_selection=dict(path=graph['lease']['path'],sha256=graph['lease']['sha256'],lease_end_utc=graph['lease_value']['lease_end_utc']))
+    out['plan']=_fx_wire(plan);proofs['plan']=_fx_json_inverse(old,{'bindings','role_selections','lease_selection'},dict(exact_nine_actual_source_bindings=True,old_six_carried_Source_SHA_preserved=True));bases['plan']=rows['plan']['predecessor']
+    values=dict(OWNER_SHA=graph['lease']['sha256'],OWNER_END=graph['lease_value']['lease_end_utc'],BINDINGS=bindings,**selections)
+    bound,six=_fx_bind_six(out['capture_template'],values,c['CAPTURE_SLOTS']);out['capture_bound']=bound
+    old_bound=graph['store'][rows['capture_bound']['predecessor']['path']];old_template=graph['store'][inv['capture_template']['available_basis']['path']]
+    template_pin=_fx_pin(rows['capture_template']['canonical_path'],out['capture_template'])
+    proofs['capture_bound']=dict(six_assignment_steps=six,original_bound_to_original_template_steps=_fx_old_six_inverse(old_bound,old_template,c['CAPTURE_SLOTS']),
+        current_original_template=inv['capture_template']['available_basis'],new_actual_template=template_pin,complete_current_predecessor_byte_inverse=True,
+        new_template_identity_inverse_authenticated_by_canonical_Source_review=True,original_functions_classes_globals_exact=True)
+    bases['capture_bound']=template_pin
+    old=json.loads(graph['store'][rows['metadata_binding']['predecessor']['path']]);binding=copy.deepcopy(old)
+    binding.update(template_sha256=template_pin['sha256'],actual_script_sha256=_fx_sha(bound),bindings=bindings,role_selections=selections)
+    out['metadata_binding']=_fx_wire(binding);proofs['metadata_binding']=_fx_json_inverse(old,{'template_sha256','actual_script_sha256','bindings','role_selections'},dict(exact_six_assignment_reversal=True));bases['metadata_binding']=rows['metadata_binding']['predecessor']
+    peer=json.loads(graph['store'][inv['metadata_bound_review']['available_basis']['path']]);peer.update(actual_script_sha256=_fx_sha(bound),source_bindings=bindings)
+    out['metadata_bound_review']=_fx_wire(peer)
+    sources=[]
+    for template_role in c['TEMPLATE_ROLES'][1:]:
+        role=template_role.replace('_template','_bound');template=out[template_role]
+        raw,two=_fx_bind_two(template,_fx_sha(bound),_fx_sha(out['metadata_bound_review']));out[role]=raw
+        template_pin=_fx_pin(rows[template_role]['canonical_path'],template)
+        oldb=graph['store'][rows[role]['predecessor']['path']];oldt=graph['store'][inv[template_role]['available_basis']['path']]
+        recovered=re.sub(br"(?m)^(\$(?:BoundScriptSha256|BoundReviewSha256)) = '[a-f0-9]{64}'$",br'\1 = $null',oldb)
+        assert recovered==oldt
+        proofs[role]=dict(exact_two_assignment_steps=two,original_bound_to_original_template_inverse=True,original_template=inv[template_role]['available_basis'],
+            new_actual_template=template_pin,complete_current_predecessor_byte_inverse=True,new_template_identity_inverse_authenticated_by_canonical_Source_review=True,
+            native_Parser_executed=False,all_original_protected_Source_complement_exact=True)
+        bases[role]=template_pin
+        sources.append(dict(path=rows[role]['canonical_path'],sha256=_fx_sha(raw),template_sha256=_fx_sha(template),exact_two_literal_reversal=True))
+    old=json.loads(graph['store'][rows['phase_binding']['predecessor']['path']]);value=copy.deepcopy(old)
+    value.update(actual_script_sha256=_fx_sha(bound),bound_review_sha256=_fx_sha(out['metadata_bound_review']),sources=sources)
+    out['phase_binding']=_fx_wire(value);proofs['phase_binding']=_fx_json_inverse(old,{'actual_script_sha256','bound_review_sha256','sources'},dict(actual_four_canonical_two_assignment_reconstructions=True,native_Parser_executed=False));bases['phase_binding']=rows['phase_binding']['predecessor']
+    graph.update(recipe_bytes=out,recipe_proofs=proofs,recipe_diff_bases=bases,operational_choices=choices,bindings=bindings,role_selections=selections)
+
+
+def _fx_common(fixed):
+    c=copy.deepcopy(fixed['constants'])
+    graph=dict(constants=c,store={},pins={},births={},refs={},dependencies={},stage_supports={},stage_artifacts={},fixed_paths=set(fixed['records']))
+    for path,text in fixed['records'].items():
+        raw=base64.b64decode(text,validate=True);p=_fx_put(graph,path,raw,-126230400,raw=True)
+        assert p==fixed['pins'][path]
+        try:value=json.loads(raw)
+        except (ValueError,UnicodeError):value=None
+        if type(value) is dict and type(value.get('created_utc')) is str:
+            graph['births'][path]=_fx_ns(value['created_utc'])+1000
+    instructions=_fx_record(graph,'owner_instruction',dict(target_execution=False,operational_authority=False,fixture_context='fictional instruction'),0)
+    policy=_fx_record(graph,'owner_policy',dict(target_execution=False,operational_authority=False,fixture_context='fictional policy'),0)
+    scope_value=dict(Root_thread=_FX_THREAD,created_utc=_fx_time(1),interval_start=_fx_time(0),interval_end=_fx_time(86400),
+        owner_instruction_record=instructions,owner_policy_record=policy,target_execution=False,operational_authority=False)
+    graph['scope']=_fx_record(graph,'owner_scope',scope_value,1)
+    review,adoption,_=_fx_proof(graph,'owner_scope_review',[graph['scope']],2,context=False)
+    graph['owner_support']=dict(current_owner_scope=graph['scope'],different_current_owner_scope_Source_review=review,current_owner_scope_Root_adoption=adoption)
+    graph['owner_manifest']=_fx_record(graph,'owner_manifest',graph['owner_support'],5)
+    lv=json.loads(graph['store'][c['EXISTING_LEASE010']['path']]);lv.update(created_utc='2030-01-01T00:00:00.0000000+00:00',lease_end_utc='2030-01-01T12:00:00.0000000+00:00')
+    graph['lease_value']=lv;graph['lease']=_fx_put(graph,_FX_BASE+'\\EXECUTION_LEASE_GG6_M3_900.json',lv,0)
+    ls=dict(canonical=graph['lease'])
+    for key in ['separate_Root_decision','different_review','Root_adoption','original_publication']:
+        ls[key]=_fx_record(graph,'lease_'+key,dict(target_execution=False,operational_authority=False,fixture_context='fictional lease-support bytes'),2)
+    graph['lease_support']=ls
+    source=_fx_put(graph,_FX_HOME+'\\producer\\synthetic_producer.py',b'# Fictional metadata source; never executed.\n',10,raw=True)
+    api=_fx_put(graph,_FX_HOME+'\\producer\\synthetic_producer_API.json',dict(schema_version=2,record_type='Root_owner_v2_M3_deferred_metadata_inert_API',Source=source,
+        actual_binding_Source_editor=_FX_EDITOR,author=_FX_EDITOR,target_execution=False,operational_authority=False,created_utc=_fx_time(10)),10)
+    review,adoption,_=_fx_proof(graph,'producer_code',[source,api],12,context=False)
+    graph['producer_support']=dict(Source=source,API=api,different_review=review,Root_adoption=adoption)
+    old=json.loads(graph['store'][c['CURRENT_ROOT_SELECTION']['path']]);inventory=json.loads(graph['store'][c['INVENTORY_PIN']['path']]);inv={r['role']:r for r in inventory['roles']};rows={}
+    for original in old['rows']:
+        row=copy.deepcopy(original);role=row['role']
+        if role!='composer':
+            previous=row['selected_ordinal'];leaf=row['canonical_path'].rsplit('\\',1)[1]
+            hits=[m for m in re.finditer(r'[0-9]{3}(?![0-9])',leaf) if int(m.group())==previous]
+            assert len(hits)==1
+            m=hits[0];leaf=leaf[:m.start()]+'900'+leaf[m.end():]
+            row.update(canonical_path=row['canonical_path'].rsplit('\\',1)[0]+'\\'+leaf,
+                draft_path=_FX_SESSION+'\\generation\\i9_synthetic_900\\drafts\\'+leaf,selected_ordinal=900,preparation_Source_author=_FX_EDITOR)
+            if role in inv:row['predecessor']=copy.deepcopy(inv[role]['available_basis'])
+        rows[role]=row
+    value={k:copy.deepcopy(v) for k,v in old.items() if k!='Source022'}
+    value.update(schema_version=2,record_type='Root_owner_v2_actual_separate_future45_Source_path_selection',created_utc=_fx_time(30),
+        current_owner_scope=graph['scope'],new_canonical_lease=graph['lease'],current_selection=c['CURRENT_ROOT_SELECTION'],rows=list(rows.values()),
+        derived_launcher_runtime_path=rows['launcher_template']['canonical_path'].replace('.TEMPLATE.ps1','.BOUND.ps1'))
+    graph['selection']=_fx_record(graph,'selection45',value,30)
+    review,adoption,_=_fx_proof(graph,'selection',[graph['selection'],graph['lease']],32)
+    graph['selection_support']=dict(selection=graph['selection'],different_review=review,Root_adoption=adoption)
+    graph.update(rows=rows,inventory=inv)
+    for key,item in c['FIXED_BINDING_SOURCE_DATA'].items():
+        raw=base64.b64decode(item['base64'],validate=True)
+        if key.startswith('coordination_'):path=item['original_path']
+        else:path=_FX_HOME+'\\bindings\\'+key+'.bytes'
+        if path not in graph['store']:_fx_put(graph,path,raw,40,raw=True)
+        graph.setdefault('binding_fixed_pins',{})[key]=graph['pins'][path]
+    _fx_recipe(graph)
+    return graph
+
+
+def _fx_generated_receipt(graph,role,canonical,draft):
+    # The dependency adapter consumes the documented shallow receipt22 witness;
+    # complete stage receipts below carry the independently reconstructed proofs.
+    return dict(schema_version=2,record_type='Root_owner_v2_actual_deferred_M3_Source_draft_author_receipt',author='/root',
+        actual_physical_Source_editor='/root',created_utc=_fx_time(104),role=role,
+        retained_semantic_Source_author=graph['rows'][role]['retained_semantic_Source_author'],
+        Root_future_path_selection=graph['selection'],current_owner_scope=graph['scope'],actual_Source_packet=graph['scope'],
+        draft=draft,predecessor=graph['rows'][role]['predecessor'],diff=graph['scope'],new_canonical_lease=graph['lease'],
+        complete_current_predecessor_byte_inverse=True,different_actual_generated_Source_review_pending=True,
+        canonical_publication=False,operational_authority=False,original_fixtures_and_runtime_admission=False,target_execution=False,
+        finite_actual_Source_observations=[],steps={})
+
+
+def _fx_dependency(graph,role):
+    if role in graph['dependencies']:return graph['dependencies'][role]
+    row=graph['rows'][role];raw=graph['recipe_bytes'][role]
+    canonical=_fx_put(graph,row['canonical_path'],raw,100 if role!='metadata_bound_review' else 101,raw=True)
+    draft=_fx_put(graph,row['draft_path'],raw,100 if role!='metadata_bound_review' else 101,raw=True)
+    if role in graph['constants']['PEER_ROLES']:
+        proposal=_fx_put(graph,_FX_HOME+'\\peer_proposals\\'+role+'.bytes',raw,95,raw=True)
+        review,adoption,_=_fx_proof(graph,'peer_content_'+role,[proposal],96,selection=True)
+        receipt=dict(author=_FX_CONTENT,genuine_metadata_content_author=_FX_CONTENT,physical_proposal_editor=_FX_CONTENT,
+            physical_selected_draft_editor='/root',actual_peer_content_proposal=proposal,actual_selected_peer_draft=draft,
+            Owner_genuine_content_review=review,Owner_review_Root_adoption=adoption,current_owner_scope=graph['scope'],
+            selection=graph['selection'],target_execution=False,operational_authority=False,created_utc=_fx_time(104))
+    elif role in graph['constants']['GENERATED_ROLES']:
+        receipt=_fx_generated_receipt(graph,role,canonical,draft)
+    else:
+        receipt=dict(author='/root',predecessor=row['predecessor'],current_owner_scope=graph['scope'],selection=graph['selection'],
+            target_execution=False,operational_authority=False,created_utc=_fx_time(104))
+    rp=_fx_record(graph,'canonical_'+role+'_author_receipt',receipt,104)
+    pub=_fx_record(graph,'canonical_'+role+'_original_publication',dict(author='/root',created_utc=_fx_time(110),target_execution=False,
+        operational_authority=False,subjects=[canonical,rp,graph['selection'],graph['scope']]),110)
+    review,adoption,_=_fx_proof(graph,'canonical_'+role,[canonical],120,selection=True)
+    recon=dict(author='/root',created_utc=_fx_time(130),target_execution=False,operational_authority=False,
+        subjects=[canonical,pub,review,adoption])
+    for i in range(21):recon['retained_fictional_field_'+str(i)]=None
+    assert len(recon)==26
+    reconpin=_fx_record(graph,'canonical_'+role+'_late_reconciliation',recon,130)
+    rr,ra,_=_fx_proof(graph,'canonical_'+role+'_reconciliation',[reconpin,canonical],140,selection=True)
+    support=dict(role=role,canonical=canonical,author_receipt=rp,different_review=review,Root_adoption=adoption,
+        original_publication=pub,late_reconciliation=reconpin,reconciliation_review=rr,reconciliation_Root_adoption=ra)
+    graph['dependencies'][role]=support
+    return support
+
+
+def _fx_required(stage,role,c):
+    if stage=='templates':return []
+    if stage=='manifest':return list(c['TEMPLATE_ROLES'])+['profile']
+    if stage=='capture':return ['capture_template','metadata_manifest','profile','static','metadata_peer']
+    if stage=='phase_bound':return [role.replace('_bound','_template'),'capture_bound','metadata_binding','metadata_bound_review']
+    return list(c['TEMPLATE_ROLES'][1:])+list(c['PHASE_BOUND_ROLES'])+['capture_bound','metadata_binding','metadata_bound_review']
+
+
+def _fx_roles(stage,role,c):
+    if stage=='templates':return list(c['TEMPLATE_ROLES'])
+    if stage=='manifest':return ['metadata_manifest']
+    if stage=='capture':return ['plan','capture_bound','metadata_binding']
+    if stage=='phase_bound':return [role]
+    return ['phase_binding']
+
+
+def _fx_closure(graph,seeds):
+    found={};stack=list(seeds)
+    while stack:
+        p=stack.pop();path=p['path']
+        assert path in graph['pins'] and p==graph['pins'][path],path
+        if path in found:continue
+        found[path]=p;stack.extend(graph['refs'][path])
+    return [found[path] for path in sorted(found)]
+
+
+def _fx_codec():
+    stream=[[True,'independent complete byte reconstruction'],[True,'closed saved metadata'],[True,'independent complete byte reconstruction']]
+    return dict(encoding='lossless_boolean_label_index_v1',check_labels=['independent complete byte reconstruction','closed saved metadata'],
+        checks=[[True,0],[True,1],[True,0]],actual_serialized_check_count=3,checks_failed=0,
+        ordered_check_stream_sha256=_fx_sha(_fx_wire(stream)),snapshot_phase='before per-artifact receipt serialization; later writer gates execute separately')
+
+
+def _fx_stage(graph,stage,role):
+    c=graph['constants'];key=stage+(':'+role if role else '')
+    if key in graph['stage_supports']:return
+    dependencies=[_fx_dependency(graph,r) for r in _fx_required(stage,role,c)]
+    binding_supports={}
+    if stage=='capture':
+        for k in c['CURRENT_PLAN_BINDINGS']:
+            renewed=c['RENEWED_BINDINGS'].get(k)
+            p=graph['dependencies'][renewed]['canonical'] if renewed else graph['binding_fixed_pins'][k]
+            review,adoption,_=_fx_proof(graph,'binding_'+k,[p],200,selection=True)
+            binding_supports[k]=dict(source=p,different_review=review,Root_adoption=adoption)
+    facts=dict(schema_version=2,record_type='Root_owner_v2_exact_M3_Source_stage_purpose_and_facts',author='/root',Root_thread=_FX_THREAD,
+        created_utc=_fx_time(500),stage=stage,role=role,current_owner_scope=graph['scope'],tool_support=graph['producer_support'],
+        lease_support=graph['lease_support'],selection_support=graph['selection_support'],predecessor_inventory=c['INVENTORY_PIN'],dependencies=dependencies,
+        operational_choices=graph['operational_choices'] if stage=='templates' else {},binding_supports=binding_supports,
+        role_selections=graph['role_selections'] if stage=='capture' else {},source_only=True,target_execution=False,operational_authority=False,
+        canonical_publication=False,native_Parser_authority=False)
+    fact=_fx_record(graph,'stage_'+key.replace(':','_')+'_facts',facts,500)
+    roles=_fx_roles(stage,role,c);home=graph['producer_support']['Source']['path'].rsplit('\\',1)[0];routes=[]
+    for r in roles:
+        draft=graph['rows'][r]['draft_path'];routes.append(dict(role=r,draft=draft,diff=home+'\\source_diffs\\'+draft.rsplit('\\',1)[1]+'.diff',
+            receipt=home+'\\stage_receipts\\ROOT_CURRENT_OWNER_'+r.upper()+'_ACTUAL_M3_SOURCE_DRAFT_AUTHOR_RECEIPT_001.json'))
+    outputs=sorted(v for row in routes for k,v in row.items() if k!='role')
+    seeds=[fact,graph['owner_manifest'],c['INVENTORY_PIN'],c['BASIS_PIN'],c['CURRENT_ROOT_SELECTION'],c['HISTORICAL45_PIN']]
+    seeds+=list(c['FIXED_CONTEXT_ANCHORS'].values())+list(c['HISTORICAL_SOURCE023_ARTIFACTS'].values())+[c['INVENTORY_REVIEW'],c['INVENTORY_ADOPTION']]
+    seeds += [row['predecessor'] for row in graph['rows'].values()]
+    oldmanifest=json.loads(graph['store'][graph['rows']['metadata_manifest']['predecessor']['path']])
+    parent=graph['rows']['metadata_manifest']['predecessor']['path'].rsplit('\\',1)[0]
+    for i in (1,6,7,8,9,10,11):
+        item=oldmanifest['payloads'][i];seeds.append(dict(path=parent+'\\'+item['path'],bytes=item['bytes'],sha256=item['sha256']))
+    purpose_inputs=_fx_closure(graph,seeds)
+    assert not (set(p['path'] for p in purpose_inputs)&set(outputs))
+    purpose=dict(schema_version=2,stage=stage,role=role,facts=fact,inputs=purpose_inputs,output_paths=outputs)
+    review,adoption,full=_fx_proof(graph,'stage_'+key.replace(':','_'),[fact]+purpose_inputs,600,purpose=purpose)
+    graph['stage_supports'][key]=dict(facts=fact,different_review=review,Root_adoption=adoption)
+    obsbase=purpose_inputs+[review,full,adoption];prior=[];artifacts=[]
+    ordered_observations=[_fx_observation(graph,p,699) for p in obsbase]
+    first_observations={o['path']:copy.deepcopy(o) for o in ordered_observations}
+    for index,route in enumerate(routes):
+        r=route['role'];row=graph['rows'][r];seconds=700+index*10;raw=graph['recipe_bytes'][r]
+        if r=='metadata_manifest':
+            rendered=json.loads(raw);rendered['created_utc']=_fx_time(699);raw=_fx_wire(rendered)
+        draft=_fx_put(graph,route['draft'],raw,seconds,raw=True)
+        basis=graph['recipe_diff_bases'][r];oldraw=graph['store'][basis['path']]
+        difference=''.join(difflib.unified_diff(oldraw.decode().splitlines(keepends=True),raw.decode().splitlines(keepends=True),fromfile=basis['path'],tofile=row['canonical_path'])).encode()
+        assert difference
+        diff=_fx_put(graph,route['diff'],difference,seconds+1,raw=True)
+        inverse=copy.deepcopy(graph['recipe_proofs'][r])
+        if r=='metadata_manifest':inverse['current_paired_payload_observations']=[copy.deepcopy(first_observations[p['path']]) for p in graph['manifest_paired_pins']]
+        ordered_observations.extend([_fx_observation(graph,draft,seconds+3),_fx_observation(graph,diff,seconds+3)])
+        observed=copy.deepcopy(ordered_observations)
+        receipt=dict(schema_version=2,record_type='Root_owner_v2_actual_deferred_M3_Source_draft_author_receipt',author='/root',actual_physical_Source_editor='/root',
+            created_utc=_fx_time(seconds+5),role=r,retained_semantic_Source_author=row['retained_semantic_Source_author'],
+            Root_future_path_selection=graph['selection'],current_owner_scope=graph['scope'],actual_Source_packet=fact,draft=draft,predecessor=row['predecessor'],diff=diff,
+            new_canonical_lease=graph['lease'],complete_current_predecessor_byte_inverse=True,different_actual_generated_Source_review_pending=True,
+            canonical_publication=False,operational_authority=False,original_fixtures_and_runtime_admission=False,target_execution=False,
+            finite_actual_Source_observations=observed,steps=dict(complete_inverse=inverse,actual_diff_removed_byte_basis=basis,actual_check_codec=_fx_codec(),
+                metadata_Source_provenance=dict(Source=graph['producer_support']['Source'],API=graph['producer_support']['API'],actual_implementation_Source_editor=_FX_EDITOR,
+                    historical_implementation_Source_editor='/root/pipeline_source_editor',stage_purpose=purpose,
+                    resource_observation=dict(observed_utc=_fx_time(seconds+4),available_RAM_bytes=1073741824,free_disk_bytes=10737418240))))
+        rp=_fx_put(graph,route['receipt'],receipt,seconds+5)
+        artifacts.append(dict(role=r,draft=draft,diff=diff,author_receipt=rp,inverse=inverse,basis=basis))
+        prior.extend([draft,diff,rp])
+        ordered_observations.append(_fx_observation(graph,rp,seconds+6))
+    graph['stage_artifacts'][key]=artifacts
+
+
+def _fx_finish(graph,stage,role,request_roles=None):
+    c=graph['constants'];_fx_stage(graph,stage,role)
+    request=None;outputs=[]
+    if request_roles:
+        rows=[]
+        for r in request_roles:
+            sk='templates' if r.endswith('_template') else 'phase_bound:'+r
+            _fx_stage(graph,'templates' if r.endswith('_template') else 'phase_bound',None if r.endswith('_template') else r)
+            artifact=next(a for a in graph['stage_artifacts'][sk] if a['role']==r)
+            subjects=[artifact['draft'],artifact['author_receipt'],artifact['diff']]+_fx_pin_refs(artifact['inverse'])
+            review,adoption,_=_fx_proof(graph,'publication_'+r,subjects,1000,selection=True)
+            selected=graph['rows'][r]
+            rows.append(dict(role=r,canonical_path=selected['canonical_path'],draft=artifact['draft'],author_receipt=artifact['author_receipt'],
+                source_cap=65536,metadata_Source_worker=_FX_EDITOR,physical_Source_editor='/root',retained_semantic_Source_author=selected['retained_semantic_Source_author'],
+                source_review=review,Root_adoption=adoption))
+            outputs.extend([selected['canonical_path'],selected['canonical_path']+'.staging'])
+        pubsource=_fx_record(graph,'publisher_Source',dict(target_execution=False,operational_authority=False),10)
+        pubapi=_fx_record(graph,'publisher_API',dict(target_execution=False,operational_authority=False),10)
+        pubreview=_fx_record(graph,'publisher_review',dict(target_execution=False,operational_authority=False),10)
+        pubadopt=_fx_record(graph,'publisher_adoption',dict(target_execution=False,operational_authority=False),10)
+        receiptpath=_FX_HOME+'\\future_publication_receipt.json';outputs.extend([receiptpath,receiptpath+'.staging'])
+        ss=graph['selection_support']
+        value=dict(schema_version=2,record_type='Root_owner_v2_finite8_M3_Source_canonical_publication_request',author='/root',Root_thread=_FX_THREAD,
+            request_id='synthetic-i9-partial-request',created_utc=_fx_time(1100),source_only=True,target_execution=False,operational_authority=False,
+            canonical_publication_selected=True,rows=rows,current_owner_support=graph['owner_support'],new_lease_support=graph['lease_support'],
+            Root_future_path_selection_support=dict(subject=ss['selection'],different_review=ss['different_review'],Root_adoption=ss['Root_adoption']),
+            predecessor_inventory_support=dict(subject=c['INVENTORY_PIN'],different_review=c['INVENTORY_REVIEW'],Root_adoption=c['INVENTORY_ADOPTION']),
+            producer_supports=dict(M3=graph['producer_support']),publisher_source=pubsource,publisher_API=pubapi,publisher_Source_review=pubreview,publisher_Root_adoption=pubadopt,
+            publication_receipt_path=receiptpath)
+        request=_fx_record(graph,'publication_request',value,1100)
+    seeds=[request] if request else []
+    for key,support in graph['stage_supports'].items():
+        seeds+=list(support.values())
+        for artifact in graph['stage_artifacts'][key]:seeds.extend([artifact['draft'],artifact['diff'],artifact['author_receipt']])
+    roster=_fx_closure(graph,seeds)
+    assert len(roster)<=256 and sum(p['bytes'] for p in roster)<=33554432
+    assert not (set(p['path'].casefold() for p in roster)&set(p.casefold() for p in outputs))
+    trusted=dict(current_owner_scope=graph['scope'],canonical_lease=graph['lease'],selection=graph['selection'],producer_support=graph['producer_support'],
+        producer_Source_editor=_FX_EDITOR,actual_content_authors=[_FX_CONTENT],M3_predecessor_inventory=c['INVENTORY_PIN'],stage_supports=graph['stage_supports'],
+        expected_inputs=roster,expected_output_paths=sorted(outputs),recorded_births_ns={p['path']:graph['births'][p['path']] for p in roster})
+    return dict(graph=graph,trusted=trusted,stage=stage,role=role,request=request,now=_FX_NOW)
+
+
+def _fx_graph(fixed,stage,role=None,request_roles=None):
+    return _fx_finish(_fx_common(fixed),stage,role,request_roles)
+
+
+def _fx_invoke(module,fixture,mode=None,reader_override=None,mutate_caller=None):
+    calls=[];fixture['_last_calls']=calls;trusted=fixture['trusted'];store=fixture['graph']['store'];allowed={p['path']:p for p in trusted['expected_inputs']}
+    def read(pin):
+        calls.append(copy.deepcopy(pin))
+        assert pin['path'] in allowed and pin==allowed[pin['path']]
+        if mutate_caller is not None and len(calls)==1:mutate_caller(trusted)
+        return reader_override(pin,store[pin['path']]) if reader_override is not None else store[pin['path']]
+    kwargs=dict(trusted_bindings=trusted,read_record=read,expected_root_thread=_FX_THREAD,source_editor=_FX_CONSUMER,now_utc=fixture['now'])
+    if mode=='prewrite' or (mode is None and fixture['request'] is not None):
+        return module.validate_recorded_M3_prewrite_semantics(request_pin=fixture['request'],**kwargs),calls
+    return module.validate_recorded_M3_stage_semantics(stage=fixture['stage'],role=fixture['role'],**kwargs),calls
+
+
+def _fx_repin(fixture,path,newraw):
+    # A mutation updates every declared reference and whole-record hash up the
+    # acyclic fixture graph. This prevents cheap SHA mismatch masking semantics.
+    graph=fixture['graph'];old=graph['pins'][path];new=_fx_pin(path,newraw)
+    assert old!=new and graph['store'][path]!=newraw
+    graph['store'][path]=newraw;graph['pins'][path]=new
+    replacements={path:(old,new)}
+    changed=True
+    while changed:
+        changed=False
+        for current,raw in list(graph['store'].items()):
+            if current==path or current in replacements or current in graph['fixed_paths']:continue
+            try:value=json.loads(raw)
+            except (ValueError,UnicodeError):continue
+            hit=[False]
+            def replace(v):
+                if type(v) is dict:
+                    if {'path','bytes','sha256'}<=set(v) and v.get('path') in replacements:
+                        previous,selected=replacements[v['path']]
+                        if all(v[k]==previous[k] for k in previous):
+                            hit[0]=True;v=copy.deepcopy(v);v.update(selected)
+                            for vector in ('path9','descriptor9'):
+                                if type(v.get(vector)) is list and len(v[vector])==9:v[vector][2]=selected['bytes']
+                    return {k:replace(x) for k,x in v.items()}
+                if type(v) is list:return [replace(x) for x in v]
+                return v
+            selected=replace(value)
+            if hit[0]:
+                body=_fx_wire(selected);prior=graph['pins'][current];following=_fx_pin(current,body)
+                graph['store'][current]=body;graph['pins'][current]=following;replacements[current]=(prior,following);changed=True
+    def replace_final(v):
+        if type(v) is dict:
+            if set(v)=={'path','bytes','sha256'} and v.get('path') in replacements:return copy.deepcopy(replacements[v['path']][1])
+            return {k:replace_final(x) for k,x in v.items()}
+        if type(v) is list:return [replace_final(x) for x in v]
+        return v
+    fixture['trusted']=replace_final(fixture['trusted']);fixture['request']=replace_final(fixture['request'])
+    return fixture
+
+
+def _fx_edit_record(fixture,path,edit):
+    before=fixture['graph']['store'][path];value=json.loads(before);edited=edit(value)
+    selected=value if edited is None else edited
+    raw=_fx_wire(selected);assert raw!=before
+    return _fx_repin(fixture,path,raw)

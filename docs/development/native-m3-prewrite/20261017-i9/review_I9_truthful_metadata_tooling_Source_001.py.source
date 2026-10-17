@@ -1,0 +1,267 @@
+"""Independent bounded read/hash/AST audit; never invoke any Root/target/Git code."""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+O=P/'managed_review_001'
+CAP=2097152
+checks=[]
+inputs={}
+
+def check(name,ok,detail=None):
+    checks.append(dict(name=f'{len(checks)+1:04d}:{name}',passed=bool(ok),detail=detail))
+    if not ok:
+        raise AssertionError(name)
+
+def read(path,sha=None,size=None):
+    path=Path(path)
+    check('ordinary_capped_file',path.is_file() and not path.is_symlink() and path.stat().st_size<=CAP,str(path))
+    data=path.read_bytes()
+    q=dict(path=str(path),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+    if sha:
+        check('exact_expected_SHA',q['sha256']==sha,str(path))
+    if size is not None:
+        check('exact_expected_size',q['bytes']==size,str(path))
+    key=str(path).casefold()
+    check('stable_input',key not in inputs or inputs[key]==q,str(path))
+    inputs[key]=q
+    return data,q
+
+def pairs(items):
+    out={}
+    for k,v in items:
+        if k in out:
+            raise ValueError('duplicate key')
+        out[k]=v
+    return out
+
+def bad(value):
+    raise ValueError('float/nonfinite JSON')
+
+def obj(data):
+    return json.loads(data.decode('utf-8','strict'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+
+def src(name,sha=None,size=None,folder=P):
+    data,q=read(folder/name,sha,size)
+    tree=ast.parse(data,filename=q['path'])
+    compile(tree,q['path'],'exec')
+    check('Source_AST_compile_only',True,name)
+    # Root authors used read_text(); model universal-newline decoding as data.
+    return data.decode('utf-8').replace('\r\n','\n').replace('\r','\n'),tree,q
+
+def fn(tree,name):
+    rows=[n for n in tree.body if isinstance(n,ast.FunctionDef) and n.name==name]
+    check('single_named_function',len(rows)==1,name)
+    return rows[0]
+
+def const(tree,name):
+    rows=[n for n in ast.walk(tree) if isinstance(n,ast.Assign) and
+        any(isinstance(t,ast.Name) and t.id==name for t in n.targets)]
+    check('single_literal_data_assignment',len(rows)==1,name)
+    return ast.literal_eval(rows[0].value)
+
+def literal(node,environment):
+    if isinstance(node,ast.Name):
+        check('finite_literal_name',node.id in environment,node.id)
+        return environment[node.id]
+    if isinstance(node,ast.BinOp) and isinstance(node.op,ast.Add):
+        return literal(node.left,environment)+literal(node.right,environment)
+    return ast.literal_eval(node)
+
+def transform(text,call,environment):
+    check('Source_data_transform_shape',isinstance(call.func,ast.Name) and call.func.id=='replace' and
+          isinstance(call.args[0],ast.Name) and call.args[0].id=='text' and len(call.args) in (3,4))
+    before,after=(literal(n,environment) for n in call.args[1:3])
+    count=literal(call.args[3],environment) if len(call.args)==4 else 1
+    check('Source_data_transform_exact_occurrences',text.count(before)==count,before[:100])
+    return text.replace(before,after)
+
+def same(a,b,name):
+    check('protected_function_AST_exact',ast.dump(fn(a,name),include_attributes=False)==
+          ast.dump(fn(b,name),include_attributes=False),name)
+
+def main():
+    receipt_data,receipt_pin=read(P/'ROOT_I9_TRUTHFUL_TIMEOUT_ACCOUNTING_SOURCE_AUTHOR_RECEIPT_001.json',
+        '21199194b6eb977139984a6bb2b046388cfeb453e4ba625be9b638c32e46b8b8',2299)
+    finite_data,finite_receipt_pin=read(P/'ROOT_I9_FINITE_REVIEW_ADOPTER_TRUTHFUL_TIMEOUT_SOURCE_RECEIPT_001.json',
+        '3fdea73efcfbdb4795c35ddb0a7100d9264b89db3bac8eb98ee8b7469fa415f1',849)
+    receipt,finite_receipt=obj(receipt_data),obj(finite_data)
+    check('receipts_no_invocation',receipt['new_sources_invoked'] is False and receipt['no_target_or_fixture_or_Git_invocation'] is True and finite_receipt['new_Source_invoked'] is False and receipt['target_execution'] is False and finite_receipt['target_execution'] is False)
+    old,new={},{}
+    for row in receipt['subjects']:
+        for dictionary,key in ((old,'original_Source'),(new,'new_Source')):
+            q=row[key]
+            dictionary[Path(q['path']).name]=src(Path(q['path']).name,q['sha256'],q['bytes'])
+    for dictionary,key in ((old,'original_Source'),(new,'new_Source')):
+        q=finite_receipt[key]
+        dictionary[Path(q['path']).name]=src(Path(q['path']).name,q['sha256'],q['bytes'])
+    author,ta,pa=src('ROOT_AUTHOR_I9_TRUTHFUL_TIMEOUT_ACCOUNTING_SUCCESSORS_001.py')
+    finite_author,tfa,pfa=src('ROOT_AUTHOR_I9_FINITE_REVIEW_ADOPTER_TRUTHFUL_TIMEOUT_001.py')
+    prior_data,prior_pin=read(O/'INDEPENDENT_I9_PUBLICATION_TOOLING_PRELIMINARY_SOURCE_CAPSULE_003.json',
+        'e7505b66b5c504c767eadb6e69e1e65f550ec9f26a6356e44da7c1a359968d80',2823)
+    prior=obj(prior_data)
+    check('prior204_static_checks_retained',type(prior['checks_failed']) is int and prior['checks_failed']==0 and prior['checks_passed']==204 and prior['verdict']=='PASS_I9_PREPARER003_AND_PUBLISHER003_PRELIMINARY_STATIC_SOURCE_ONLY')
+    pinned_prior=prior['full_proof'];read(pinned_prior['path'],pinned_prior['sha256'],pinned_prior['bytes'])
+    template,tt,pt=src('review_I9_managed_publication_TEMPLATE_006.py',
+        'ca118aaa45bc38bd637ea4d6a5227547d0444fa67c5454359cf17c28008b71c0',47315,O)
+    check('reviewer_template_literal_unbound',const(tt,'EXACT_ROOT_BINDINGS') is None)
+    # Exact saved-adopter whole Source transformation, interpreted as strings.
+    old_saved=old['ROOT_ADOPT_I9_ACTUAL_SAVED_MEMORY_RESULTS_001.py']
+    saved=new['ROOT_ADOPT_I9_ACTUAL_SAVED_MEMORY_RESULTS_002.py']
+    environment={'anchor':const(ta,'anchor'),'unknown_branch':const(ta,'unknown_branch')}
+    expected=old_saved[0]
+    for statement in ta.body:
+        if isinstance(statement,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='text' for t in statement.targets) and isinstance(statement.value,ast.Call) and isinstance(statement.value.func,ast.Name) and statement.value.func.id=='replace':
+            expected=transform(expected,statement.value,environment)
+    check('whole_saved_adopter001_to002_exact_data_transform',expected.encode()==Path(saved[2]['path']).read_bytes())
+    # Whole builder/publisher transforms, including the shared literal counter.
+    counts=const(ta,'new_counts')
+    loops=[n for n in ta.body if isinstance(n,ast.For)]
+    check('single_two_tool_author_loop',len(loops)==1)
+    fork=next(n for n in loops[0].body if isinstance(n,ast.If))
+    pairs_tools=(('ROOT_PREPARE_I9_MANAGED_CANDIDATES_003.py','ROOT_PREPARE_I9_MANAGED_CANDIDATES_004.py',fork.body),
+        ('ROOT_REVIEWED_I9_FINITE_PUBLICATION_003.py','ROOT_REVIEWED_I9_FINITE_PUBLICATION_004.py',fork.orelse))
+    for old_name,new_name,branch in pairs_tools:
+        expected=old[old_name][0]
+        segment=ast.get_source_segment(expected,fn(ast.parse(expected),'validate_counts'))
+        check('single_counter_replacement',expected.count(segment)==1)
+        expected=expected.replace(segment,counts.rstrip())
+        for statement in branch:
+            if isinstance(statement,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='text' for t in statement.targets):
+                expected=transform(expected,statement.value,{})
+        check('whole_tool003_to004_exact_data_transform',expected.encode()==Path(new[new_name][2]['path']).read_bytes(),new_name)
+    # Exact finite-adopter nullable-schema delta with every other byte preserved.
+    expected=old['ROOT_ADOPT_I9_FINITE_MANAGED_PUBLICATION_REVIEW_001.py'][0]
+    for statement in tfa.body:
+        if isinstance(statement,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='text' for t in statement.targets) and isinstance(statement.value,ast.Call) and isinstance(statement.value.func,ast.Name) and statement.value.func.id=='replace':
+            expected=transform(expected,statement.value,{})
+    finite=new['ROOT_ADOPT_I9_FINITE_MANAGED_PUBLICATION_REVIEW_002.py']
+    check('whole_finite_adopter001_to002_exact_data_transform',expected.encode()==Path(finite[2]['path']).read_bytes())
+    prep=new['ROOT_PREPARE_I9_MANAGED_CANDIDATES_004.py']
+    pub=new['ROOT_REVIEWED_I9_FINITE_PUBLICATION_004.py']
+    for name in ('raw','fact','pinned','save','git','authority','resources','preserve','copies','exact_index'):
+        same(old['ROOT_REVIEWED_I9_FINITE_PUBLICATION_003.py'][1],pub[1],name)
+    for name in ('raw','fact','pin','save'):
+        same(old['ROOT_PREPARE_I9_MANAGED_CANDIDATES_003.py'][1],prep[1],name)
+    for name in ('raw','fact','pin','pairs','bad','obj'):
+        same(old_saved[1],saved[1],name)
+        same(old['ROOT_ADOPT_I9_FINITE_MANAGED_PUBLICATION_REVIEW_001.py'][1],finite[1],name)
+    same(prep[1],pub[1],'validate_counts')
+    unknown=const(ta,'unknown_branch')
+    for label,needle in (
+        ('only005_branch','if ordinal == 5:'),
+        ('actual_no_child_result','assert not (P / f\'ROOT_I9_ACTUAL_ONCE_MEMORY_SUITE_RESULT_{suffix}.json\').exists()'),
+        ('all_unknown_status',"v['child_saved_result'] is None and v['tests_executed'] is None and v['I9_memory_test_runs'] is None"),
+        ('exact_scope_capture_join',"v['scope'] == capture['scope'] == sp and capture['supervisor_result'] == vp"),
+        ('saved_input_pin_ledger','sp,vp,capture_pin,ap,up'),
+        ('saved_source_subjects',"s['Source_adoption'],s['module_Source'],s['fixture_Source'],s['API'],s['author_receipt']"),
+        ('exact_root_timeout_adoption',"ROOT_I9_ATTEMPT005_ACTUAL_SAVED_REFUSAL_AND_BOUNDED_SOURCE_CORRECTION_ADOPTION_001.json"),
+        ('actual_reap_join',"v['owned_child_invocations'] == 1 and v['owned_child_wait_reaped'] is True"),
+        ('actual_stream_join',"v['stream_reader_threads_joined'] is True and capture['all_streams_complete'] is True"),
+        ('wall_reap_caps',"v['wall_cap_seconds'] == 60 and v['cleanup_reap_seconds'] == 5"),
+        ('timeout_wall_honest',"60000000000 <= v['owned_child_wall_integer_nanoseconds'] < 65000000000"),
+        ('fresh_scope_adoption',"a['fresh_one_use_scope'] == sp and a['author'] == '/root'"),
+        ('historical_fresh_authority',"a['new_I9_memory_invocation_authorized_now'] is True"),
+        ('root_unknown_total',"u['author'] == '/root' and u['I9_memory_test_runs'] is None"),
+        ('root_known_unknown',"u['known_I9_memory_test_runs'] == 4 and u['unknown_I9_memory_test_runs'] == 1"),
+        ('both_consumed_markers',"('ROOT_I9_MEMORY_SCOPE_CONSUMED','ROOT_I9_MEMORY_SUPERVISOR_CONSUMED')"),
+        ('marker_scope_no_retry',"m['scope'] == sp and m['automatic_retry_authorized'] is False"),
+        ('exact_two_zero_streams',"q['bytes'] == 0 and pin(q) == b'' and envelope['UTF8_text'] == ''"),
+        ('stream_completeness',"stream['overcap'] is False and stream['reader_error'] is None and envelope['complete'] is True"),
+        ('unknown_row_nulls','accepted_complete_run=False,all_cases_passed=None,scope=sp,result=None'),
+        ('unknown_progress_nulls','actual_test_case_count=None,failed_or_last_case_at_failure=None'),
+        ('explicit_unknown_status','unknown_suite_status=True,unknown_timeout_Root_adoption=up')):
+        check('unknown005_'+label,needle in unknown)
+    # Remaining known-result acceptance body is unchanged, not rewritten as a shortcut.
+    for label,needle in (
+        ('accepted_full_cases',"len(cases) == r['actual_test_case_count'] == count"),
+        ('all_named_cases',"[q['name'] for q in cases] == planned"),
+        ('literal_API_scope',"interface['expected_case_count'] == count and interface['planned_case_names'] == planned"),
+        ('Source_load_sets',"set(r['profile_call_counts']) == set(r['target_compile_counts']) == set(r['target_exec_counts']) == target_paths"),
+        ('exact_load_compile_exec',"q == 1 for q in list(r['target_compile_counts'].values()) + list(r['target_exec_counts'].values())"),
+        ('child_wall60',"0 < r['elapsed_integer_nanoseconds'] <= 60000000000"),
+        ('supervisor_wall60',"0 < v['owned_child_wall_integer_nanoseconds'] <= 60000000000"),
+        ('actual_exit0',"v['owned_child_exit_code'] == 0 and type(v['owned_child_exit_code']) is int and v['refusal'] is None"),
+        ('no_observed_accepted_audit',"r['blocked_forbidden_event_names'] == []"),
+        ('new_functions_called',"r['new_module_function_call_counts'][name] > 0"),
+        ('all_old_runtime_excluded',"r['original_I0_I1_I2_I3_I4_I5_I6_I7_I8_import_call_or_test'] is False"),
+        ('future_only_scope6',"len(attempts) == 6 and attempts[4]['I9_memory_test_runs'] is None"),
+        ('known_fail_totals',"runs == 5 and failed_runs == 4 and runs == failed_runs + 1"),
+        ('nullable_total_output','I9_memory_test_runs=None,'),
+        ('known_unknown_spent_output','known_I9_memory_test_runs=runs, unknown_I9_memory_test_runs=1, spent_memory_scope_count=6'),
+        ('aggregate_audit_unknown','no_observed_forbidden_audit_events=None'),
+        ('accepted_audit_only','accepted_run_no_observed_forbidden_audit_events=True, timeout005_audit_status_unknown=True')):
+        check('known_result_'+label,needle in saved[0])
+    for label,needle in (
+        ('strict_count_ints','assert type(a[key]) is int and a[key]>=0'),
+        ('nullable_total',"a['I9_memory_test_runs'] is None"),
+        ('single_unknown',"a['unknown_I9_memory_test_runs']==1"),
+        ('six_spent_scopes',"len(attempts)==a['spent_memory_scope_count']==a['accepted_attempt_ordinal']==6"),
+        ('only_unknown5','if ordinal==5:'),
+        ('strict_known_run1',"type(row['I9_memory_test_runs']) is int and row['I9_memory_test_runs']==1"),
+        ('unknown_has_no_result',"row['I9_memory_test_runs'] is None and row['tests_executed'] is None and row['result'] is None"),
+        ('strict_last_acceptance',"row['accepted_complete_run'] is (ordinal==len(attempts))")):
+        check('pipeline_count_'+label,needle in prep[0] and needle in pub[0])
+    for needle in ('six separately scoped owned launches','four known failed suite entries','one 60-second timeout with unknown suite entry and progress','one accepted complete run','Five suite entries are known; aggregate suite-entry count remains unknown.'):
+        check('report_truthful_launch_and_suite_boundary',needle in prep[0],needle)
+    for field in ('I9_memory_runs_saved_and_adopted','known_I9_memory_runs_saved_and_adopted','unknown_I9_memory_runs_preserved','spent_memory_scopes_saved','failed_memory_runs_preserved','accepted_complete_memory_runs'):
+        check('finite_adopter_template_field_compatible',field in finite[0] and '"'+field+'":' in template,field)
+    check('finite_old_null_arithmetic_removed',"implementation['I9_memory_test_runs'] == implementation['failed_memory_test_runs'] + 1" not in finite[0] and "implementation['known_I9_memory_test_runs'] == implementation['failed_memory_test_runs'] + 1" in finite[0])
+    # Actual saved record facts confirm the schema; no target or control is run.
+    supervisor_data,supervisor_pin=read(P/'ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_005.json',
+        '8b2f9bc4324cf6acc0b220348bd9db8a8ee20a9bf45468ce827896eaea781de3',3563)
+    capture_data,capture_pin=read(P/'ROOT_I9_ACTUAL_OWNED_MEMORY_STREAMS_CAPTURE_005.json',
+        '0131b744aea3a426339a34105723ccc1910c529d492ece6e01e58de51d5cf990',2148)
+    supervisor,capture=obj(supervisor_data),obj(capture_data)
+    check('actual005_nulls_match_contract',supervisor['child_saved_result'] is None and supervisor['tests_executed'] is None and supervisor['I9_memory_test_runs'] is None)
+    check('actual005_reaped_joined',supervisor['owned_child_wait_reaped'] is True and supervisor['stream_reader_threads_joined'] is True and capture['all_streams_complete'] is True)
+    for row in supervisor['streams']:
+        q=row['actual_capture'];read(q['path'],q['sha256'],q['bytes'])
+        check('actual005_stream_zero',q['bytes']==0)
+    # All four current Sources and metadata receipts remain unchanged at finish.
+    read(Path(__file__))
+    all_inputs=sorted(inputs.values(),key=lambda q:q['path'].casefold())
+    for q in all_inputs:
+        data=Path(q['path']).read_bytes()
+        check('final_input_rehash',len(data)==q['bytes'] and hashlib.sha256(data).hexdigest()==q['sha256'],q['path'])
+    check('unique_checks_all_pass',len(checks)==len({q['name'] for q in checks}) and all(q['passed'] is True for q in checks))
+    common=dict(schema_version=1,record_type='Independent_I9_truthful_unknown_timeout_metadata_tooling_Source_review',
+        author='/root/owner_publication_review',reviewer='/root/owner_publication_review',
+        created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        verdict='PASS_I9_TRUTHFUL_TIMEOUT_METADATA_TOOLING_SOURCE_ONLY',
+        subjects=[saved[2],prep[2],pub[2],finite[2]],checks_passed=len(checks),checks_failed=0,
+        serialized_check_count=len(checks),actual_input_count=len(all_inputs),
+        full_old_to_new_Source_data_transform_verified=True,protected_publication_function_ASTs_exact=True,
+        remaining_blocking_static_findings=[],
+        current_known_fixture_invocations=4,current_unknown_fixture_status_attempts=1,current_spent_scopes=5,
+        current_aggregate_fixture_invocation_count=None,current_accepted_complete_runs=0,
+        future_sixth_attempt_or_candidate_acceptance_claimed=False,
+        Root_tool_execution=False,target_execution=False,tests_executed=False,
+        Git_commands_or_mutation=False,new_fixture_reruns=0,candidate_review_completed=False,
+        process_cleanup_runtime_tested_by_this_reviewer=False,
+        limits=['Source-only review of four metadata successors; actual future accepted6/fullcase results and different review/Root adoption still required.',
+            'No candidate bytes/index/links or final finite publication verdict reviewed here.',
+            'Only005 can be unknown; aggregate suite count must stay null. Launch, known invocation, unknown and accepted counters are separate.',
+            'Audit absence for accepted run cannot establish audit absence during timeout005.',
+            'Owned Git timeout cleanup/interlock retained as Source; no process or Git execution performed.'],
+        operational_authority=False,scientific_authority=False)
+    proof=dict(common,all_actual_inputs=all_inputs,checks=checks)
+    dest=O/'INDEPENDENT_I9_TRUTHFUL_METADATA_TOOLING_FULL_SOURCE_PROOF_001.json'
+    data=(json.dumps(proof,indent=2,sort_keys=True,allow_nan=False)+'\n').encode()
+    assert len(data)<=CAP
+    with dest.open('xb') as handle:handle.write(data)
+    assert dest.read_bytes()==data
+    full_pin=dict(path=str(dest),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+    capsule=dict(common,full_proof=full_pin,reviewer_Source=inputs[str(Path(__file__)).casefold()])
+    dest=O/'INDEPENDENT_I9_TRUTHFUL_METADATA_TOOLING_SOURCE_CAPSULE_001.json'
+    data=(json.dumps(capsule,indent=2,sort_keys=True,allow_nan=False)+'\n').encode()
+    with dest.open('xb') as handle:handle.write(data)
+    assert dest.read_bytes()==data
+    print(json.dumps(dict(capsule=dict(path=str(dest),bytes=len(data),sha256=hashlib.sha256(data).hexdigest()),
+        full_proof=full_pin,reviewer_Source=capsule['reviewer_Source'],checks_passed=len(checks),checks_failed=0,actual_input_count=len(all_inputs)),indent=2))
+
+if __name__=='__main__':
+    main()

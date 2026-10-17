@@ -1,0 +1,507 @@
+"""Read/hash/JSON/AST-only review of already saved I9 memory outcomes.
+
+Actual saved refusal004 review only. Invoked after Root reports
+an actual outcome, with an explicit last ordinal and accepted/refused status.
+It cannot import/call/replay a target, fixture, builder, renderer or oracle.
+"""
+import ast
+import datetime
+import hashlib
+import json
+import re
+import ntpath
+import os
+from pathlib import Path
+import sys
+
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+OWN=P/'saved_refusal_review_005'
+REVIEWER='/root/owner_source_review'
+CAP=2097152
+CHECKS=[]
+INPUTS={}
+RAW={}
+DOCS={}
+METADATA_CASE_ALIASES=[]
+
+def check(name,passed,evidence=None):
+    assert type(name) is str and name and name not in {r['name'] for r in CHECKS}
+    assert type(passed) is bool
+    r=dict(name=name,passed=passed)
+    if evidence is not None:r['evidence']=evidence
+    CHECKS.append(r)
+
+def fact(path):
+    path=str(Path(path));data=Path(path).read_bytes()
+    assert len(data)<=CAP
+    # Zero-byte external .txt captures are genuine file observations. They are
+    # not cast into a positive metadata-schema record declaration.
+    assert data or (Path(path).parent==P and re.fullmatch(r'ROOT_I9_ACTUAL_MEMORY_CHILD_(?:STDOUT|STDERR)_[0-9]{3}\.txt',Path(path).name))
+    q=dict(path=path,bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+    canonical=path
+    authority='ROOT_I9_ATTEMPT003_ACTUAL_SAVED_REFUSAL_AND_BOUNDED_SOURCE_CORRECTION_ADOPTION_001.json'
+    if Path(path).parent==P and Path(path).name.casefold()==authority.casefold():canonical=str(P/authority)
+    cq=dict(q,path=canonical)
+    if canonical in INPUTS:assert INPUTS[canonical]==cq
+    INPUTS[canonical]=cq;RAW[path]=data;RAW[canonical]=data
+    if canonical!=path and not any(x['reference_spelling']['path']==path for x in METADATA_CASE_ALIASES):
+        METADATA_CASE_ALIASES.append(dict(reference_spelling=q,actual_input_canonical_spelling=cq,
+            boundary='Windows metadata observation alias only; no component Source/pin bytes or target guard normalized.'))
+    return q
+
+def verify(q,label):
+    check(label+': typed whole-file fact3',type(q) is dict and set(q)=={'path','bytes','sha256'} and
+          type(q['path']) is str and type(q['bytes']) is int and 0<=q['bytes']<=CAP and
+          (q['bytes']>0 or (Path(q['path']).parent==P and re.fullmatch(r'ROOT_I9_ACTUAL_MEMORY_CHILD_(?:STDOUT|STDERR)_[0-9]{3}\.txt',Path(q['path']).name))) and type(q['sha256']) is str and len(q['sha256'])==64)
+    check(label+': actual bytes and digest',fact(q['path'])==q)
+
+def pairs(values):
+    out={}
+    for k,v in values:
+        assert k not in out;out[k]=v
+    return out
+
+def bad(value):raise ValueError(value)
+
+def obj(path):
+    path=str(Path(path))
+    if path not in DOCS:
+        if path not in RAW:fact(path)
+        DOCS[path]=json.loads(RAW[path].decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+    return DOCS[path]
+
+def refs(value):
+    if type(value) is dict:
+        if set(value)=={'path','bytes','sha256'}:yield value
+        else:
+            for v in value.values():yield from refs(v)
+    elif type(value) is list:
+        for v in value:yield from refs(v)
+
+def utc(text):
+    t=datetime.datetime.fromisoformat(text.replace('Z','+00:00'))
+    assert t.utcoffset()==datetime.timedelta(0)
+    return t
+
+def literal_fixture(pin):
+    tree=ast.parse(RAW[pin['path']]);values={};functions={}
+    for node in tree.body:
+        if isinstance(node,ast.FunctionDef):functions[node.name]=node
+        elif isinstance(node,ast.Assign):
+            for target in node.targets:
+                if isinstance(target,ast.Name) and target.id in {'EXPECTED_CASE_COUNT','PLANNED_CASE_NAMES'}:
+                    assert target.id not in values;values[target.id]=ast.literal_eval(node.value)
+    return values,tree,functions
+
+def rehash_review(adoption,label,capfield):
+    cap=obj(adoption[capfield]['path']);full=obj(adoption['full_proof']['path'])
+    check(label+': actual Root adoption',adoption['author']=='/root' and adoption['target_execution'] is False and adoption['tests_executed'] is False)
+    check(label+': genuine prior Source-only review',cap['target_execution'] is False and cap['tests_executed'] is False and
+          full['target_execution'] is False and full['tests_executed'] is False and
+          type(cap['checks_failed']) is int and cap['checks_failed']==0 and type(full['checks_failed']) is int and full['checks_failed']==0)
+    check(label+': exact capsule/full proof join',cap['full_proof']==adoption['full_proof'] and cap['subjects']==full['subjects'])
+    checks=full['checks']
+    check(label+': unique all-passed named checks',type(checks) is list and len(checks)>0 and
+          len({q['name'] for q in checks})==len(checks) and all(type(q['name']) is str and q['name'] and q['passed'] is True for q in checks))
+    check(label+': reviewer and verdict equality',cap['reviewer']==full['reviewer'] and cap['verdict']==full['verdict'] and
+          cap['verdict'].startswith(('PASS_','ACCEPT_')))
+    check(label+': review chronology before Root adoption',utc(full['created_utc'])<=utc(cap['created_utc'])<=utc(adoption['created_utc']))
+    roster=full['all_actual_inputs']
+    check(label+': finite unique actual input roster',type(roster) is list and 0<len(roster)<=2048 and
+          len({q['path'].casefold() for q in roster})==len(roster))
+    for n,q in enumerate(roster):verify(q,label+': actual reviewed input '+str(n+1))
+    for n,q in enumerate(refs(adoption)):verify(q,label+': adoption reference '+str(n+1))
+    return cap,full
+
+def save(name,value):
+    data=(json.dumps(value,ensure_ascii=False,sort_keys=True,indent=2,allow_nan=False)+'\n').encode('utf8')
+    assert len(data)<=CAP
+    with (OWN/name).open('xb') as handle:handle.write(data)
+    return dict(path=str(OWN/name),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+
+def main():
+    assert sys.flags.isolated and sys.flags.no_site and sys.flags.dont_write_bytecode
+    assert len(sys.argv)==3
+    last=int(sys.argv[1]);mode=sys.argv[2]
+    assert last==5 and mode=='timeout'  # Actual fifth launch has no saved child result; never invent suite counts.
+    known=4
+    # No target invocation and no speculative outcome construction. All final
+    # outcome/capture records must already exist before any review is emitted.
+    for n in range(1,known+1):
+        for leaf in ('ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE',
+                     'ROOT_I9_ACTUAL_ONCE_MEMORY_SUITE_RESULT',
+                     'ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT',
+                     'ROOT_I9_ACTUAL_OWNED_MEMORY_STREAMS_CAPTURE',
+                     'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_DIFFERENT_REVIEW_ADOPTION'):
+            assert (P/(leaf+f'_{n:03d}.json')).is_file()
+    actual_supers=sorted(q.name for q in P.glob('ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_[0-9][0-9][0-9].json'))
+    check('sequence: all actual supervisor results contiguous and accounted',actual_supers==[
+        f'ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_{n:03d}.json' for n in range(1,last+1)])
+    root_adopter=fact(P/'ROOT_ADOPT_I9_ACTUAL_SAVED_MEMORY_RESULTS_001.py')
+    root_adopter_text=RAW[root_adopter['path']].decode('utf8');ast.parse(root_adopter_text)
+    check('Root saved-results adopter: read-only evidence then metadata adoption',
+          'never rerun code' in root_adopter_text and 'subprocess' not in root_adopter_text and
+          "record['I9_fixture_reruns'] == 0" in root_adopter_text)
+    window=obj(P/'ROOT_CURRENT_I9_M3_SEMANTIC_PREFLIGHT_SOURCE_SCOPE_001.json')
+    attempts=[];previous_end=None;seen_scopes=set();seen_markers=set();seen_outputs=set()
+    latest_subjects=[];latest_module=None;latest_fixture=None;latest_api=None
+    reviewed_adoptions=set()
+    for ordinal in range(1,known+1):
+        suffix=f'{ordinal:03d}';label='attempt '+suffix
+        scope_pin=fact(P/f'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_{suffix}.json');s=obj(scope_pin['path'])
+        result_pin=fact(P/f'ROOT_I9_ACTUAL_ONCE_MEMORY_SUITE_RESULT_{suffix}.json');r=obj(result_pin['path'])
+        super_pin=fact(P/f'ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_{suffix}.json');v=obj(super_pin['path'])
+        capture_pin=fact(P/f'ROOT_I9_ACTUAL_OWNED_MEMORY_STREAMS_CAPTURE_{suffix}.json');c=obj(capture_pin['path'])
+        fresh_pin=fact(P/f'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_DIFFERENT_REVIEW_ADOPTION_{suffix}.json');fresh=obj(fresh_pin['path'])
+        check(label+': exact author/schema/attempt identity',all(q['author']=='/root' and type(q['schema_version']) is int and q['schema_version']==1 and
+              type(q['attempt_number']) is int and q['attempt_number']==ordinal for q in (s,r,v,c)))
+        check(label+': exact whole saved scope joins',r['scope']==v['scope']==c['scope']==scope_pin and fresh['fresh_one_use_scope']==scope_pin)
+        check(label+': result and supervisor pins cross-bound',v['child_saved_result']==result_pin and c['supervisor_result']==super_pin)
+        for record_name,record in [('scope',s),('result',r),('supervisor',v),('capture',c),('fresh adoption',fresh)]:
+            unique={q['path']:q for q in refs(record)}
+            for i,q in enumerate(unique.values()):verify(q,label+': '+record_name+' saved ref '+str(i+1))
+        for adopt_pin,adopt_label in [(s['Source_adoption'],'Source adoption'),(fresh_pin,'fresh scope adoption')]:
+            if adopt_pin['path'] not in reviewed_adoptions:
+                rehash_review(obj(adopt_pin['path']),label+' '+adopt_label,'different_Source_review')
+                reviewed_adoptions.add(adopt_pin['path'])
+        prior_tools=fresh.get('previous_tool_Source_review_adoption')
+        if prior_tools is not None and prior_tools['path'] not in reviewed_adoptions:
+            rehash_review(obj(prior_tools['path']),label+' bound tool review','different_Source_review')
+            reviewed_adoptions.add(prior_tools['path'])
+        check(label+': fresh review/adoption permits only one reviewed memory call',
+              fresh['author']=='/root' and fresh['verdict']=='ACCEPT_I9_FRESH_ONE_USE_SYNTHETIC_MEMORY_SCOPE_ONLY' and
+              fresh['new_I9_memory_invocation_authorized_now'] is True and s['maximum_invocations']==1 and
+              s['automatic_retry_authorized'] is False)
+        check(label+': adopted source and fresh scope precede actual launch',
+              utc(obj(s['Source_adoption']['path'])['created_utc'])<=utc(s['created_utc'])<=utc(fresh['created_utc'])<=utc(v['started_utc']))
+        check(label+': attempt namespace disjoint from all earlier scopes',scope_pin['path'] not in seen_scopes)
+        seen_scopes.add(scope_pin['path'])
+        check(label+': complete result timeline inside Source and one-use windows',
+              utc(window['interval_start'])<=utc(s['interval_start'])<=utc(v['started_utc'])<=utc(r['started_utc'])<=
+              utc(r['created_utc'])<=utc(v['created_utc'])<utc(s['interval_end'])<=utc(window['interval_end']))
+        check(label+': >60 second prelaunch reserve',
+              (utc(s['interval_end'])-utc(v['resource_prelaunch']['observed_utc'])).total_seconds()>60)
+        check(label+': sequential actual executions never overlap',previous_end is None or previous_end<utc(v['started_utc']))
+        previous_end=utc(v['created_utc'])
+        for q,role in [(r['consumption_marker'],'child'),(v['supervisor_marker'],'supervisor')]:
+            mark=obj(q['path'])
+            check(label+': '+role+' marker once-consumption and exact scope',mark['scope']==scope_pin and
+                  mark['automatic_retry_authorized'] is False and mark['attempt_number']==ordinal and q['path'] not in seen_markers)
+            seen_markers.add(q['path'])
+            check(label+': '+role+' marker chronology before target start',utc(fresh['created_utc'])<=utc(mark['created_utc'])<=utc(r['started_utc']))
+        check(label+': exact reviewed Source/module/API/receipt joins',
+              all(r[k]==s[k] for k in ('module_Source','fixture_Source','API')) and r['actual_Source_adoption']==s['Source_adoption'])
+        check(label+': Root Source adoption contains actual quartet pins',
+              set(q['path'] for q in obj(s['Source_adoption']['path'])['subjects'])==
+              {s[k]['path'] for k in ('module_Source','fixture_Source','API','author_receipt')})
+        api=obj(s['API']['path']);author=obj(s['author_receipt']['path'])
+        check(label+': actual author receipt bound Source/API/fixture',author['Source']==s['module_Source'] and
+              author['fixture_Source']==s['fixture_Source'] and author['API']==s['API'])
+        literal,tree,functions=literal_fixture(s['fixture_Source'])
+        planned=list(literal['PLANNED_CASE_NAMES']);count=literal['EXPECTED_CASE_COUNT']
+        check(label+': literal planned cases unique typed bounded',type(count) is int and 1<=count<=256 and
+              len(planned)==len(set(planned))==count and all(type(q) is str and q for q in planned))
+        check(label+': exact API/scope/result planned case joins',planned==s['planned_case_names']==r['planned_case_names']==api['fixture_interface']['planned_case_names'] and
+              all(type(q) is int and q==count for q in (s['expected_planned_case_count'],r['expected_planned_case_count'],api['fixture_interface']['expected_case_count'])))
+        check(label+': no substituted different suite entry',api['fixture_interface']['entry']=='run_memory_suite(module)' and 'run_memory_suite' in functions)
+        fixture_text=RAW[s['fixture_Source']['path']].decode('utf8')
+        oracle=ast.get_source_segment(fixture_text,functions['_fx_bad'])
+        check(label+': pinned negative oracle requires exact typed target refusal',
+              'type(error) is module.I9MetadataError and error.code in accepted_codes' in oracle and
+              "raise AssertionError('mutated synthetic metadata was accepted')" in oracle)
+        check(label+': pinned callback/zero-call assertions are actually in fixture oracle',
+              'if before_read:assert count==0' in oracle and 'assert count==expected_calls' in oracle)
+        check(label+': Source and fixture each compiled/executed once',
+              set(r['target_compile_counts'])==set(r['target_exec_counts'])=={s['module_Source']['path'],s['fixture_Source']['path']} and
+              all(type(n) is int and n==1 for n in list(r['target_compile_counts'].values())+list(r['target_exec_counts'].values())))
+        check(label+': actual target/fixture function profile evidence',
+              set(r['profile_call_counts'])=={s['module_Source']['path'],s['fixture_Source']['path']} and
+              all(type(n) is int and n>0 for n in r['profile_call_counts'].values()))
+        check(label+': compile counts distinguish narrow AST-only data parsing',
+              type(r['ast_parse_internal_compile_events']) is int and r['ast_parse_internal_compile_events']>=0 and
+              r['audit_event_counts']['compile']==2+r['ast_parse_internal_compile_events'] and r['audit_event_counts']['exec']==2)
+        check(label+': no observed forbidden audit events',r['blocked_forbidden_event_names']==[] and
+              not any(k=='open' or k.startswith(('os.','subprocess.','socket.','ctypes.','winreg.')) for k in r['audit_event_counts']))
+        check(label+': audit boundary does not imply exhaustive physical isolation',
+              'not exhaustive stat/native or security isolation proof' in r['audit_evidence_boundary'])
+        check(label+': actual execution flags and run count typed',type(r['tests_executed']) is bool and
+              type(r['I9_memory_test_runs']) is int and r['I9_memory_test_runs'] in (0,1) and
+              r['I9_memory_test_runs']==int(r['tests_executed']) and r['fixture_entry_invoked'] is r['tests_executed'])
+        check(label+': supervisor actual child identity/one invocation',type(v['owned_child_PID']) is int and v['owned_child_PID']>0 and
+              type(v['owned_child_invocations']) is int and v['owned_child_invocations']==1)
+        check(label+': exact isolated child argv/cwd',v['argv']==[
+              r'C:\Users\aladdin-alyanai\AppData\Local\Programs\Python\Python313\python.exe','-I','-S','-B',s['tool_Source_pins']['runner']['path'],suffix] and v['cwd']==str(P))
+        check(label+': owned child exit reaped and stream readers joined',v['owned_child_wait_reaped'] is True and v['stream_reader_threads_joined'] is True)
+        check(label+': measured terminal wall exactly monotonic difference',
+              type(v['owned_child_wall_integer_nanoseconds']) is int and v['owned_child_wall_integer_nanoseconds']==
+              v['child_exit_observed_monotonic_ns']-v['child_launch_monotonic_ns'])
+        check(label+': child and suite bounded by 60 second cap',
+              all(type(n) is int and 0<n<=60000000000 for n in
+              (v['owned_child_wall_integer_nanoseconds'],r['elapsed_integer_nanoseconds'])) and
+              r['elapsed_integer_nanoseconds']<=v['owned_child_wall_integer_nanoseconds'])
+        check(label+': exact timeout/cleanup bounds',v['wall_cap_seconds']==s['wall_cap_seconds']==60 and v['cleanup_reap_seconds']==s['cleanup_reap_seconds']==5)
+        res=v['resource_prelaunch']
+        check(label+': actual fresh typed RAM/disk floors',type(res['available_RAM_bytes']) is int and res['available_RAM_bytes']>=1073741824 and
+              type(res['disk_free_bytes']) is int and res['disk_free_bytes']>=10737418240 and
+              0<=v['child_launch_monotonic_ns']-res['observed_monotonic_ns']<60000000000)
+        check(label+': resources recorded prelaunch with no Native8 claim',utc(v['started_utc'])<=utc(res['observed_utc'])<=utc(r['started_utc']) and
+              res['FileTime_or_Native8_collection'] is False and v['scope_creation_resource_observation_is_historical'] is True)
+        check(label+': exact two complete captured streams',len(v['streams'])==len(c['streams'])==2 and
+              c['all_streams_complete'] is True and c['no_child_or_test_rerun'] is True and c['supervisor_accepted'] is v['passed'])
+        for i,role in enumerate(('stdout','stderr')):
+            vs,cs=v['streams'][i],c['streams'][i];q=vs['actual_capture'];data=RAW[q['path']]
+            check(label+': '+role+' raw capture exact and complete',cs['role']==role and cs['actual_capture']==q and
+                  cs['UTF8_text'].encode('utf8')==data and cs['complete'] is True and cs['overcap'] is False and cs['reader_error'] is None and
+                  vs['overcap'] is False and vs['reader_error'] is None and vs['saved_bytes']==vs['observed_lower_bound_bytes']==len(data)<=CAP)
+            check(label+': '+role+' capture path not reused',q['path'] not in seen_outputs)
+            seen_outputs.add(q['path'])
+        check(label+': Root child stdout is exact saved result fact3',json.loads(RAW[v['streams'][0]['actual_capture']['path']])==result_pin)
+        check(label+': capture chronology after actual supervisor',utc(v['created_utc'])<=utc(c['created_utc']))
+        check(label+': memory-only no canonical/native/runtime authority',all(r[k] is False for k in
+              ('operational_authority','scientific_authority','actual_canonical_IO','owner_lease_qualified','producer_qualified','caller_qualified',
+               'actual_native_human_physical_provenance_qualified','actual_entry_authorized',
+               'original_project_native_Parser_runtime_scientific_execution','original_I0_I1_I2_I3_I4_I5_I6_I7_I8_import_call_or_test')) and
+              all(v[k] is False for k in ('operational_authority','scientific_authority','actual_canonical_IO','actual_selected_family_Source_publication')) and
+              v['actual_new_lease_family_grants_Native8_Parser_results'] is None)
+        is_complete=(ordinal==last and mode=='accepted')
+        check(label+': actual final status matches explicit review mode',r['all_cases_passed'] is is_complete and v['passed'] is is_complete)
+        completed=r['actual_test_case_count']
+        if is_complete:
+            out=r['outcome'];cases=out['cases'];names=[q['name'] for q in cases]
+            check(label+': successful actual child terminal state',r['tests_executed'] is True and r['I9_memory_test_runs']==1 and
+                  r['error'] is None and v['owned_child_exit_code']==0 and type(v['owned_child_exit_code']) is int and v['refusal'] is None)
+            check(label+': exact complete saved case outcomes',type(cases) is list and type(completed) is int and completed==count and
+                  len(cases)==count and names==planned)
+            check(label+': saved outcome memory-only flags',out['synthetic_fixture'] is True and out['project_or_native_tests'] is False and
+                  type(out['filesystem_calls']) is int and out['filesystem_calls']==0)
+            for index,case in enumerate(cases):
+                check(label+': case '+str(index+1)+' '+case['name'],case['passed'] is True and case['synthetic_fixture'] is True and
+                      type(case['memory_record_reader_calls']) is int and case['memory_record_reader_calls']>=0)
+            check(label+': exact typed suite success counters',type(out['checks_passed']) is int and out['checks_passed']==count and
+                  type(out['checks_failed']) is int and out['checks_failed']==0)
+            for name in ('validate_recorded_M3_stage_semantics','validate_recorded_M3_prewrite_semantics','require_actual_M3_prewrite_publication_admission',
+                         '_i9_render_templates','_i9_render_manifest','_i9_render_capture','_i9_render_phase_bound','_i9_render_phase_binding'):
+                check(label+': actually called '+name,type(r['new_module_function_call_counts'].get(name)) is int and r['new_module_function_call_counts'][name]>0)
+            check(label+': no partial failure hidden in complete result',r['partial_completed_cases_at_failure'] is None and
+                  r['failed_or_last_case_at_failure'] is None and r['partial_capture_issue'] is None)
+            latest_subjects=[scope_pin,result_pin,super_pin,capture_pin]
+            latest_module=s['module_Source'];latest_fixture=s['fixture_Source'];latest_api=s['API']
+        else:
+            prefix=r['partial_completed_cases_at_failure']
+            check(label+': refusal preserves actual exception and no successful outcome',type(r['error']) is dict and
+                  type(r['error']['type']) is str and type(r['error']['message']) is str and r['outcome'] is None and
+                  type(v['owned_child_exit_code']) is int and v['owned_child_exit_code']!=0 and type(v['refusal']) is str)
+            check(label+': saved partial prefix is honest typed completed cases',type(prefix) is list and type(completed) is int and
+                  len(prefix)==completed<count and [q['name'] for q in prefix]==planned[:completed] and
+                  all(q['passed'] is True and q['synthetic_fixture'] is True and type(q['memory_record_reader_calls']) is int for q in prefix))
+            check(label+': interrupted case follows completed prefix',r['failed_or_last_case_at_failure']==planned[completed] and
+                  r['partial_capture_issue'] is None)
+            if ordinal==last:latest_subjects=[scope_pin,result_pin,super_pin,capture_pin]
+        attempts.append(dict(attempt_ordinal=ordinal,scope=scope_pin,result=result_pin,supervisor=super_pin,
+            streams_capture=capture_pin,fresh_scope_Root_adoption=fresh_pin,tests_executed=r['tests_executed'],
+            actual_memory_test_runs=r['I9_memory_test_runs'],accepted_complete_run=is_complete,
+            actual_completed_case_count=completed,expected_planned_case_count=count,error=r['error'],
+            failed_case=r['failed_or_last_case_at_failure'],owned_PID=v['owned_child_PID'],
+            child_wall_integer_nanoseconds=v['owned_child_wall_integer_nanoseconds'],child_exit_code=v['owned_child_exit_code'],
+            reaped=v['owned_child_wait_reaped'],reader_threads_joined=v['stream_reader_threads_joined']))
+
+    # All four saved child outcomes remain known failures. The fifth launch
+    # is reviewed separately and is never assigned a manufactured child result.
+    refusal_names=[
+      'ROOT_I9_ATTEMPT001_ACTUAL_SAVED_REFUSAL_AND_FIXTURE_ROUTE_CORRECTION_ADOPTION_001.json',
+      'ROOT_I9_ATTEMPT002_ACTUAL_SAVED_REFUSAL_AND_FIXED_ADOPTION_COMPATIBILITY_CORRECTION_ADOPTION_001.json',
+      'ROOT_I9_ATTEMPT003_ACTUAL_SAVED_REFUSAL_AND_BOUNDED_SOURCE_CORRECTION_ADOPTION_001.json',
+      'ROOT_I9_ATTEMPT004_ACTUAL_SAVED_REFUSAL_AND_BOUNDED_SOURCE_CORRECTION_ADOPTION_001.json']
+    prior_adoptions=[]
+    for number,leaf in enumerate(refusal_names,1):
+        q=fact(P/leaf);ad=obj(q['path']);rehash_review(ad,'known actual saved refusal'+str(number),'different_saved_refusal_review')
+        check('known history: refusal'+str(number)+' cumulative status',ad['I9_memory_test_runs']==ad['failed_memory_test_runs']==number and ad['accepted_complete_memory_test_runs']==0)
+        prior_adoptions.append(q)
+    check('known history: four actual saved suite entries and exact errors',[a['error'] for a in attempts]==[
+          dict(type='I9MetadataError',message=code) for code in ('E_SELECTION_ROUTE','E_AUTHORITY','E_FULL_PROOF','E_ROLECAP_ORDER')] and
+          all(a['tests_executed'] is True and type(a['actual_memory_test_runs']) is int and a['actual_memory_test_runs']==1 and
+              a['accepted_complete_run'] is False for a in attempts))
+    check('known history: prefix0,0,0,1 does not constitute any accepted suite',
+          [a['actual_completed_case_count'] for a in attempts]==[0,0,0,1] and attempts[3]['failed_case']=='positive_complete_manifest12')
+
+    scope5_pin=fact(P/'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_005.json');s5=obj(scope5_pin['path'])
+    super5_pin=fact(P/'ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_005.json');v5=obj(super5_pin['path'])
+    capture5_pin=fact(P/'ROOT_I9_ACTUAL_OWNED_MEMORY_STREAMS_CAPTURE_005.json');c5=obj(capture5_pin['path'])
+    fresh5_pin=fact(P/'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_DIFFERENT_REVIEW_ADOPTION_005.json');fresh5=obj(fresh5_pin['path'])
+    child_marker5=fact(P/'ROOT_I9_MEMORY_SCOPE_CONSUMED_005.json');cm5=obj(child_marker5['path'])
+    supervisor_marker5=fact(P/'ROOT_I9_MEMORY_SUPERVISOR_CONSUMED_005.json');sm5=obj(supervisor_marker5['path'])
+    subjects=[scope5_pin,super5_pin,capture5_pin]
+    check('timeout5: exact reported supervisor and capture pins',super5_pin['bytes']==3563 and
+          super5_pin['sha256']=='8b2f9bc4324cf6acc0b220348bd9db8a8ee20a9bf45468ce827896eaea781de3' and capture5_pin['bytes']==2148 and
+          capture5_pin['sha256']=='0131b744aea3a426339a34105723ccc1910c529d492ece6e01e58de51d5cf990')
+    check('timeout5: exact observed scope pin',scope5_pin['bytes']==9147 and scope5_pin['sha256']=='eff3eab32516e56644e0dbab2f7526e729a8541ea0c44ab3e5f228f466ccf786')
+    for label,record in [('scope5',s5),('supervisor5',v5),('capture5',c5),('fresh5',fresh5),('child consumption5',cm5),('supervisor consumption5',sm5)]:
+        for j,q in enumerate({q['path']:q for q in refs(record)}.values()):verify(q,label+' saved actual reference'+str(j+1))
+    for q,label in [(s5['Source_adoption'],'Source adopted before5'),(fresh5_pin,'fresh scope5')]:
+        rehash_review(obj(q['path']),label,'different_Source_review')
+    tools5=fresh5.get('previous_tool_Source_review_adoption')
+    if tools5 is not None:rehash_review(obj(tools5['path']),'bound tools5','different_Source_review')
+    check('timeout5: exact author/schema/ordinal records',all(q['author']=='/root' and type(q['schema_version']) is int and q['schema_version']==1 and
+          type(q['attempt_number']) is int and q['attempt_number']==5 for q in (s5,v5,c5,cm5,sm5)))
+    check('timeout5: exact scope and supervisor joins',v5['scope']==c5['scope']==cm5['scope']==sm5['scope']==scope5_pin and
+          c5['supervisor_result']==super5_pin and v5['supervisor_marker']==supervisor_marker5 and fresh5['fresh_one_use_scope']==scope5_pin)
+    check('timeout5: actual child result path absent, no synthetic record substituted',
+          not os.path.lexists(P/'ROOT_I9_ACTUAL_ONCE_MEMORY_SUITE_RESULT_005.json') and v5['child_saved_result'] is None)
+    check('timeout5: suite entry/count explicitly unknown null',v5['tests_executed'] is None and v5['I9_memory_test_runs'] is None)
+    check('timeout5: exact60cap refusal and unaccepted supervisor status',v5['passed'] is False and
+          v5['refusal']=='owned I9 child exceeded60second wall cap' and v5['wall_cap_seconds']==60 and v5['cleanup_reap_seconds']==5)
+    check('timeout5: honest terminal wall exceeds60 within owned5cleanup window',type(v5['owned_child_wall_integer_nanoseconds']) is int and
+          v5['owned_child_wall_integer_nanoseconds']==60068578100 and
+          v5['owned_child_wall_integer_nanoseconds']==v5['child_exit_observed_monotonic_ns']-v5['child_launch_monotonic_ns'] and
+          60000000000<=v5['owned_child_wall_integer_nanoseconds']<65000000000)
+    check('timeout5: exactly one owned child with actual identity reaped and streams joined',type(v5['owned_child_PID']) is int and v5['owned_child_PID']>0 and
+          type(v5['owned_child_invocations']) is int and v5['owned_child_invocations']==1 and
+          v5['owned_child_wait_reaped'] is True and v5['stream_reader_threads_joined'] is True and type(v5['owned_child_exit_code']) is int and v5['owned_child_exit_code']==1)
+    check('timeout5: exact isolated argv/cwd/runner pin',v5['argv']==[
+          r'C:\Users\aladdin-alyanai\AppData\Local\Programs\Python\Python313\python.exe','-I','-S','-B',s5['tool_Source_pins']['runner']['path'],'005'] and
+          v5['cwd']==str(P) and v5['child_runner']==s5['tool_Source_pins']['runner'])
+    check('timeout5: fresh scope one-use reserve and no automatic retry',s5['maximum_invocations']==1 and type(s5['maximum_invocations']) is int and
+          s5['automatic_retry_authorized'] is False and fresh5['verdict']=='ACCEPT_I9_FRESH_ONE_USE_SYNTHETIC_MEMORY_SCOPE_ONLY' and
+          fresh5['new_I9_memory_invocation_authorized_now'] is True and
+          (utc(s5['interval_end'])-utc(v5['resource_prelaunch']['observed_utc'])).total_seconds()>60)
+    check('timeout5: chronology after prior4 and within active Source/scope',utc(obj(s5['Source_adoption']['path'])['created_utc'])<=utc(s5['created_utc'])<=
+          utc(fresh5['created_utc'])<=utc(v5['started_utc'])<=utc(v5['created_utc'])<=utc(c5['created_utc'])<utc(s5['interval_end'])<=utc(window['interval_end']) and
+          previous_end<utc(v5['started_utc']))
+    check('timeout5: both marker times before completion, not suite-progress proof',
+          utc(fresh5['created_utc'])<=utc(sm5['created_utc'])<=utc(v5['started_utc'])<=utc(cm5['created_utc'])<=utc(v5['created_utc']) and
+          cm5['record_type']=='Root_I9_one_use_memory_scope_consumed_before_target_compile' and
+          cm5['automatic_retry_authorized'] is False and sm5['automatic_retry_authorized'] is False)
+    check('timeout5: source/module/fixture markers match adopted current pair',cm5['module_Source']==s5['module_Source'] and cm5['fixture_Source']==s5['fixture_Source'] and
+          sm5['child_runner']==v5['child_runner'] and s5['module_Source']['sha256']=='38b0d6343cb10b9ab28a9785f974d6a293ffed11713f7bea4e3111dbedaaca81' and
+          s5['fixture_Source']['sha256']=='efbc96a635050337d7d2b39b36679db08c6d2c2b6fa66620ac437dd507e8a1b8')
+    literal,fixture_tree,fixture_functions=literal_fixture(s5['fixture_Source']);api5=obj(s5['API']['path'])
+    check('timeout5: only98 planned cases, no actual progress invented',literal['EXPECTED_CASE_COUNT']==98 and type(literal['EXPECTED_CASE_COUNT']) is int and
+          list(literal['PLANNED_CASE_NAMES'])==s5['planned_case_names']==api5['fixture_interface']['planned_case_names'] and
+          s5['expected_planned_case_count']==api5['fixture_interface']['expected_case_count']==98)
+    res=v5['resource_prelaunch']
+    check('timeout5: actual fresh RAM/disk floors withoutNative8 claim',type(res['available_RAM_bytes']) is int and res['available_RAM_bytes']>=1073741824 and
+          type(res['disk_free_bytes']) is int and res['disk_free_bytes']>=10737418240 and
+          0<=v5['child_launch_monotonic_ns']-res['observed_monotonic_ns']<60000000000 and res['FileTime_or_Native8_collection'] is False and
+          v5['scope_creation_resource_observation_is_historical'] is True)
+    check('timeout5: both captured streams complete/empty not positive metadata pins',len(v5['streams'])==len(c5['streams'])==2 and
+          c5['all_streams_complete'] is True and c5['no_child_or_test_rerun'] is True and c5['supervisor_accepted'] is False and
+          c5['empty_captured_stream_bytes_are_actual_observation_not_positive_metadata_schema_pins'] is True)
+    for j,role in enumerate(('stdout','stderr')):
+        a,b=v5['streams'][j],c5['streams'][j];q=a['actual_capture'];raw=RAW[q['path']]
+        check('timeout5 '+role+': actual empty raw bytes/digest and no reader error',b['role']==role and b['actual_capture']==q and raw==b'' and
+              q['bytes']==a['saved_bytes']==a['observed_lower_bound_bytes']==0 and b['UTF8_text']=='' and b['complete'] is True and
+              a['overcap'] is b['overcap'] is False and a['reader_error'] is None and b['reader_error'] is None)
+        check('timeout5 '+role+': no earlier raw path reused',q['path'] not in seen_outputs)
+        seen_outputs.add(q['path'])
+    check('timeout5: no original/canonical/scientific grant',all(v5[k] is False for k in
+          ('operational_authority','scientific_authority','actual_canonical_IO','actual_selected_family_Source_publication',
+           'original_I0_I1_I2_I3_I4_I5_I6_I7_I8_import_call_or_test','original_project_native_Parser_runtime_scientific_execution')) and
+          v5['actual_new_lease_family_grants_Native8_Parser_results'] is None)
+    check('timeout5: fifth scope and markers uniquely consumed',scope5_pin['path'] not in seen_scopes and
+          child_marker5['path'] not in seen_markers and supervisor_marker5['path'] not in seen_markers)
+    seen_scopes.add(scope5_pin['path']);seen_markers.update((child_marker5['path'],supervisor_marker5['path']))
+    check('aggregate: five spent scopes/owned launches, only four known suite entries',len(seen_scopes)==5 and len(seen_markers)==10 and len(seen_outputs)==10 and
+          sum(a['actual_memory_test_runs'] for a in attempts)==4)
+
+    # The timeout provides no current function profile or per-case progress.
+    # The following performance candidate is Source algebra only, not a claim
+    # that this helper caused the observed timeout or that a fix is faster.
+    module_pin=s5['module_Source'];ms=RAW[module_pin['path']].decode('utf8');mt=ast.parse(ms)
+    md={q.name:q for q in mt.body if isinstance(q,(ast.FunctionDef,ast.ClassDef))}
+    path_node=md['_i9_path'];path_source=ast.get_source_segment(ms,path_node)
+    check('path Source: exact initial drive/type/length guard retained for future port',
+          "type(path) is str and 3<len(path)<=512 and _i9_re.fullmatch(r'[A-Z]:\\\\[^/]+',path) is not None,'E_PATH'" in path_source)
+    check('path Source: exact23 reserved construction known',"reserved={'CON','PRN','AUX','NUL','CLOCK$',*('COM'+str(x) for x in range(1,10)),*('LPT'+str(x) for x in range(1,10))}" in path_source)
+    check('path Source: exact component short-circuit predicates retained for future port',
+          "p and p not in ('.','..') and p[-1] not in '. ' and p.split('.')[0].upper() not in reserved" in path_source and
+          "for p in path[3:].split('\\\\')" in path_source and 'return path' in path_source)
+    check('path Source: forbidden character test exactly C0 or literal eight ASCII chars',
+          "any(ord(c)<32 or c in '/:\"<>|?*' for c in p)" in path_source)
+    ports_pin=fact(P/'i9/I9_ISOLATED_RENDER_AND_INVERSE_ALGORITHM_SOURCE_PORTS_001.py');pts=ast.parse(RAW[ports_pin['path']])
+    ports=[q.name for q in pts.body if isinstance(q,ast.FunctionDef)]
+    check('path Source: helper outside protected23 and all23 still exact',len(ports)==23 and '_i9_path' not in ports)
+    for n in pts.body:
+        if isinstance(n,ast.FunctionDef):check('timeout current protected port '+n.name,ast.get_source_segment(RAW[ports_pin['path']].decode('utf8'),n)==ast.get_source_segment(ms,md[n.name]))
+    prior4=obj(attempts[3]['result']['path']);known_path_calls=prior4['new_module_function_call_counts']['_i9_path']
+    check('performance inference: only earlier saved4 supplies path call count',type(known_path_calls) is int and known_path_calls==8312)
+    cause=dict(classification='Actual owned-child wall timeout with no saved child result; current suite entry/progress/audit/profile unknown.',
+        actual_timeout_refusal=v5['refusal'],current_tests_executed=None,current_I9_memory_test_runs=None,current_actual_completed_case_count=None,
+        current_failed_case=None,current_child_error=None,current_audit_or_profile_evidence=None,
+        latest_module=module_pin,Source_helper=dict(name='_i9_path',start_line=path_node.lineno,end_line=path_node.end_lineno,
+          Source_bytes=len(path_source.encode()),sha256=hashlib.sha256(path_source.encode()).hexdigest()),
+        Source_only_optimization_candidate=dict(required_preservation='Preserve initial exact type/length/drive fullmatch; component nonempty/dot/trailing ASCII dot/space/first-dot stem.upper/reserved tests; E_PATH error, return string and all callsites.',
+          exact_reserved_names='CON,PRN,AUX,NUL,CLOCK$,COM1..COM9,LPT1..LPT9 (23 identical strings), hoisted as immutable frozenset.',
+          exact_forbidden_regex=r'[\x00-\x1f/:"<>|?*]',
+          equivalence='For every unchanged string component, existence of a character with ord<32 or membership in the eight literal ASCII characters equals a regex search over that same C0 inclusive range plus those literals. DEL, C1, other Unicode characters and existing surrogate behavior are not newly changed. Identical23-string frozenset preserves the same reserved membership relation.',
+          no_changes=['No path normalization/case rewrite/alias resolution.','No path/result/object-id cache.','No new Unicode/DEL/C1 restriction.','No cap/resource/time/case or actualentry-hold change.','All23 protected algorithms and generic proof guards whole byteexact.'],
+          experiments_performed=False,measured_speed_gain=False,timeout_causal_attribution=False),
+        earlier_saved4_observation=dict(path_function_calls=known_path_calls,completed_cases=1,failed_case='positive_complete_manifest12',
+          boundary='Earlier partial run only; not current timeout progress or a measured function-level timing profile.'),
+        no_target_or_fixture_rerun=True,new_invocation_authorized=False)
+
+    map_pin=fact(P/'i9/I9_TIMEOUT005_ALL_FILEPATH_PREDICATE_EQUIVALENCE_SOURCE_MAP_002.json');path_map=obj(map_pin['path'])
+    check('ancillary path map: exact actual Source bytes',map_pin['bytes']==11669 and map_pin['sha256']=='95d7a965b8296d5a342e80fe9696ce848c85c54149412cd80db0e2262c880dd4')
+    for j,q in enumerate(path_map['all_actual_inputs']):verify(q,'ancillary path map actual input'+str(j+1))
+    verify(path_map['own_report_predecessor'],'ancillary preserved prose-count predecessor')
+    check('ancillary path map: author-only static interpretation, no runtime or self acceptance',path_map['author']=='/root/phase_frontier' and path_map['Source_only'] is True and
+          path_map['independent_acceptance_of_own_code'] is False and path_map['author_target_calls']==path_map['author_fixture_calls']==path_map['author_target_imports']==0)
+    check('ancillary path map: exact23 ordered reserved string literals',path_map['immutable_reserved_literal']==[
+          'CON','PRN','AUX','NUL','CLOCK$','COM1','COM2','COM3','COM4','COM5','COM6','COM7','COM8','COM9','LPT1','LPT2','LPT3','LPT4','LPT5','LPT6','LPT7','LPT8','LPT9'])
+    for name,anchor in path_map['path_predicate_and_callsite_Source_anchors'].items():
+        actual=ast.get_source_segment(ms,md[name]);raw=actual.encode('utf8')
+        check('ancillary exact actual path Source region '+name,anchor['Source_text']==actual and anchor['bytes']==len(raw) and anchor['sha256']==hashlib.sha256(raw).hexdigest())
+    check('ancillary path map: timeout progress null and no speed/causal claim',path_map['actual_timeout_evidence']['tests_executed'] is None and
+          path_map['actual_timeout_evidence']['I9_memory_test_runs'] is None and path_map['actual_timeout_evidence']['completed_case_count'] is None and
+          path_map['source_identifiable_work']['benchmark_performed'] is False and path_map['source_identifiable_work']['measured_speed_improvement'] is False and
+          path_map['source_identifiable_work']['timeout_cause_not_exclusively_proven'] is True)
+    cause['ancillary_Source_author_path_map']=map_pin
+    cause['ancillary_map_boundary']='Author-only source map retained; all six exact path/helper Source anchors and23 reserved strings were independently compared here. No target or regex/index experiment was performed.'
+    special_pin=fact(P/'ROOT_ADOPT_I9_ACTUAL_UNKNOWN_TIMEOUT_AND_BOUNDED_SOURCE_CORRECTION_001.py');special=RAW[special_pin['path']].decode('utf8');ast.parse(special)
+    check('Root special adopter: exact Source pin',special_pin['bytes']==7558 and special_pin['sha256']=='ec3171fd56485c8291ae516915e54b745f810633de8e86b3f57101064f0b571c')
+    check('Root special adopter: Source explicitly preserves null current suite state',"v['tests_executed'] is None and v['I9_memory_test_runs'] is None" in special and
+          "I9_memory_test_runs=None,known_I9_memory_test_runs=4,unknown_I9_memory_test_runs=1" in special and
+          'actual_completed_case_count=None,actual_failed_case=None,actual_error=None' in special and
+          'timeout_does_not_establish_suite_entry_progress_or_path_bottleneck=True' in special)
+    check('Root special adopter: no new run/cap/normalization authority',"new_invocation_authorized_now=False" in special and
+          'no_path_normalization_or_cache_or_time_cap_relaxation_authorized=True' in special and 'subprocess' not in special)
+    generic_pin=fact(P/'ROOT_ADOPT_I9_NEXT_ACTUAL_SAVED_REFUSAL_001.py');generic=RAW[generic_pin['path']].decode('utf8');ast.parse(generic)
+    check('Root generic adopter: known-child ABI correctly inapplicable to5',"rp = fact(P / f'ROOT_I9_ACTUAL_ONCE_MEMORY_SUITE_RESULT_{suffix}.json')" in generic and
+          "r['tests_executed'] is True" in generic)
+    prep_pin=fact(P/'saved_results_review_001/INDEPENDENT_I9_ACTUAL5_SAVED_REVIEWER_SOURCE_PREPARATION_001.json');prep=obj(prep_pin['path'])
+    verify(prep['reviewer_Source'],'preserved UNRUN accepted-results reviewer003')
+    check('preparation: no speculative accepted results review invoked',prep['reviewer_invoked'] is False and prep['acceptance_verdict'] is None)
+    prepared_sources=[fact(P/'saved_results_review_001'/name) for name in
+          ('review_I9_actual_saved_memory_attempts_source_001.py','review_I9_actual_saved_memory_attempts_source_002.py')]
+    source=fact(__file__);created=datetime.datetime.now(datetime.timezone.utc).isoformat()
+    check('review: independent actor, no target or fixture run',REVIEWER not in {'/root','/root/phase_frontier','/root/i9_fixture_author'})
+    check('review: all input paths casefold unique',len(INPUTS)==len({x.casefold() for x in INPUTS}))
+    check('review: >60second Source review reserve',utc(created)+datetime.timedelta(seconds=60)<utc(window['interval_end']))
+    failed=sum(q['passed'] is not True for q in CHECKS);assert failed==0,json.dumps([q for q in CHECKS if not q['passed']],ensure_ascii=True)
+    verdict='PASS_I9_ATTEMPT005_ACTUAL_UNKNOWN_TIMEOUT_AND_BOUNDED_PATH_SOURCE_EQUIVALENCE_NO_RERUN'
+    current=dict(attempt_ordinal=5,scope=scope5_pin,supervisor=super5_pin,streams_capture=capture5_pin,result=None,
+        tests_executed=None,I9_memory_test_runs=None,accepted_complete_run=False,actual_test_case_count=None,error=None,
+        unknown_suite_status=True,owned_child_PID=v5['owned_child_PID'],owned_child_wall_integer_nanoseconds=v5['owned_child_wall_integer_nanoseconds'],
+        owned_child_exit_code=v5['owned_child_exit_code'],owned_child_reaped=True,stream_threads_joined=True)
+    full=dict(schema_version=1,record_type='Independent_I9_attempt005_actual_unknown_timeout_and_Source_equivalence_review',reviewer=REVIEWER,source_author='/root',
+        created_utc=created,verdict=verdict,subjects=subjects,reviewer_Source=source,checks=CHECKS,checks_failed=0,checks_passed=len(CHECKS),
+        all_actual_inputs=[INPUTS[k] for k in sorted(INPUTS)],target_execution=False,tests_executed=False,I9_fixture_reruns=0,
+        I9_target_calls_by_reviewer=0,I9_target_imports_by_reviewer=0,Source_equivalence_experiments=0,Source_cause=cause,
+        actual_saved_prior_attempts=attempts,actual_current_unknown_attempt=current,prior_saved_refusal_Root_adoptions=prior_adoptions,
+        actual_I9_memory_test_runs=None,known_I9_memory_test_runs=4,unknown_suite_status_owned_launches=1,owned_child_launches=5,spent_memory_scopes=5,
+        known_failed_memory_test_runs=4,accepted_complete_memory_test_runs=0,actual_completed_case_count=None,accepted_attempt_ordinal=None,
+        actual_latest_tests_executed=None,actual_current_case_progress=None,actual_current_audit_or_profile=None,
+        metadata_path_spelling_observations=METADATA_CASE_ALIASES,prepared_accepted_result_reviewers_invoked=False,
+        preserved_preparation=prep_pin,preserved_earlier_prepared_Sources=prepared_sources,
+        operational_authority=False,scientific_authority=False,actual_native_human_physical_provenance_qualified=False,
+        actual_grants_lease_family_Native8_Parser_results=None,next_invocation_authorized=False,
+        evidence_boundary='Supervisor/reap/streams and consumed markers are observed saved evidence. No child result005 exists. Do not infer tests_executed, a test-run increment, compile/exec counts, case progress, no audit events, or function bottleneck from absent child data. Four earlier saved known suite failures have prefixes[0,0,0,1]; no accepted suite exists.')
+    fp=save('INDEPENDENT_I9_ATTEMPT005_ACTUAL_SAVED_TIMEOUT_FULL_PROOF_001.json',full)
+    cap=dict(schema_version=1,record_type='Independent_I9_attempt005_actual_saved_unknown_timeout_capsule',reviewer=REVIEWER,source_author='/root',created_utc=created,
+        verdict=verdict,subjects=subjects,reviewer_Source=source,full_proof=fp,checks_failed=0,checks_passed=len(CHECKS),target_execution=False,tests_executed=False,I9_fixture_reruns=0,
+        actual_I9_memory_test_runs=None,known_I9_memory_test_runs=4,unknown_suite_status_owned_launches=1,owned_child_launches=5,spent_memory_scopes=5,
+        known_failed_memory_test_runs=4,accepted_complete_memory_test_runs=0,actual_completed_case_count=None,accepted_attempt_ordinal=None,
+        operational_authority=False,scientific_authority=False,next_invocation_authorized=False)
+    cp=save('INDEPENDENT_I9_ATTEMPT005_ACTUAL_SAVED_TIMEOUT_CAPSULE_001.json',cap)
+    print(json.dumps(dict(capsule=cp,full_proof=fp,reviewer_Source=source,checks=len(CHECKS),checks_failed=0,inputs=len(INPUTS)),sort_keys=True))
+
+if __name__=='__main__':main()

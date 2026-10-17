@@ -1,0 +1,207 @@
+"""Independent Source/candidate audit only; no I9 or publication tool execution."""
+import ast
+import datetime
+import hashlib
+import json
+import pathlib
+import re
+import sys
+import urllib.parse
+
+R = pathlib.Path(r"D:\Aenv\pro2")
+P = R / "WORK/resume-20261017-001/m3_prewrite_validation_012"
+G = R / "github-portable-20261012-001"
+OUT = P / "managed_review_001"
+REL = "docs/development/native-m3-prewrite/20261017-i9/"
+BASE = "add1a93c7a0ad841f3760565b087afcbe638d292"
+CAP = 2097152
+AUTHOR = "/root/owner_publication_review"
+checks = []
+inputs = {}
+
+
+def check(name, value, detail=None):
+    item = {"name": f"{len(checks) + 1:05d}: {name}", "passed": bool(value)}
+    if detail is not None:
+        item["detail"] = detail
+    checks.append(item)
+    if not value:
+        raise AssertionError(name)
+
+
+def raw(path, cap=CAP):
+    p = pathlib.Path(path)
+    check("ordinary input: " + p.name, p.is_file() and not p.is_symlink())
+    check("input cap: " + p.name, p.stat().st_size <= cap)
+    with p.open("rb") as handle:
+        data = handle.read(cap + 1)
+    check("whole capped read: " + p.name, len(data) <= cap)
+    inputs[str(p)] = {"path": str(p), "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+    return data
+
+
+def fact(path, cap=CAP):
+    raw(path, cap)
+    return inputs[str(pathlib.Path(path))]
+
+
+def pinned(pin, path=None, cap=CAP):
+    check("closed fact3", type(pin) is dict and set(pin) == {"path", "bytes", "sha256"})
+    check("strict fact3 types", type(pin["path"]) is str and type(pin["bytes"]) is int and pin["bytes"] >= 0 and
+          type(pin["sha256"]) is str and re.fullmatch(r"[0-9a-f]{64}", pin["sha256"]) is not None)
+    data = raw(path or pin["path"], cap)
+    check("exact whole pin: " + pathlib.Path(path or pin["path"]).name, len(data) == pin["bytes"] and hashlib.sha256(data).hexdigest() == pin["sha256"])
+    return data
+
+
+def loads(data):
+    def pairs(items):
+        result = {}
+        for key, value in items:
+            if key in result:
+                raise ValueError("duplicate key")
+            result[key] = value
+        return result
+    def reject(value):
+        raise ValueError("non-integer JSON number " + value)
+    return json.loads(data, object_pairs_hook=pairs, parse_float=reject, parse_constant=reject)
+
+
+def save(name, record):
+    data = (json.dumps(record, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
+    assert len(data) <= CAP
+    path = OUT / name
+    with path.open("xb") as handle:
+        handle.write(data)
+    return {"path": str(path), "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def main():
+    reviewer = fact(pathlib.Path(__file__))
+    scope_pin = fact(P / "ROOT_CURRENT_I9_M3_SEMANTIC_PREFLIGHT_SOURCE_SCOPE_001.json")
+    check("exact fresh I9 Source scope", (scope_pin["bytes"], scope_pin["sha256"]) == (3262, "0c0815540d0be020040f1114f18975300ddeb279a24ba201ba4204680ea9773d"))
+    scope = loads(pinned(scope_pin))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    start = datetime.datetime.fromisoformat(scope["interval_start"])
+    end = datetime.datetime.fromisoformat(scope["interval_end"])
+    check("current four-hour Source scheduling window", start <= now and now + datetime.timedelta(seconds=60) < end and (end - start).total_seconds() == 14400 and scope["window_is_Source_scheduling_only_not_owner_or_execution_lease"] is True)
+    check("fresh scope is Root and exact managed base", scope["author"] == "/root" and scope["managed_base_HEAD"] == BASE and scope["maximum_local_agents_including_Root"] == 3 and scope["Pro3_coordination_required"] is False)
+    for key in ("new_target_import_call_test_before_Source_adoption_and_fresh_scope_authorized", "old_publisher_I0_I1_I2_I3_I4_I5_I6_I7_I8_changes_or_invocations_authorized", "actual_selected_family_Source_publication_authorized", "target_execution", "tests_executed", "operational_authority", "scientific_authority"):
+        check("fresh Source scope denies execution or grant: " + key, scope[key] is False)
+    check("fresh Source requires reviewed exact protocol before target birth", scope["new_target_Source_authoring_requires_reviewed_exact_protocol"] is True and scope["own_stdlib_read_hash_strict_JSON_AST_compile_and_metadata_authoring_authorized"] is True)
+    program_pin = fact(P / "ROOT_I9_READ_ONLY_PRESERVATION_CHECK_001.py")
+    check("exact Root preservation program Source", (program_pin["bytes"], program_pin["sha256"]) == (5022, "d4c50db002294a1e8bbbdd9c3fc8eab6ffa44040f69d211e3d95e124117cdb06"))
+    code = pinned(program_pin)
+    compile(ast.parse(code, filename=program_pin["path"]), program_pin["path"], "exec")
+    check("Root preservation program only statically compiled", True)
+    text = code.decode()
+    check("Root program read-only Git queries and create-once receipt", all(fragment in text for fragment in ("git('rev-parse','HEAD')", "git('diff','--cached','--name-only')", "git('ls-remote','origin','refs/heads/main')", "p.open('xb')")) and not any(fragment in text for fragment in ("git('add'", "git('commit'", "git('push'", "git('reset'", "git('checkout'", "git('clean'")))
+    refresh_pin = fact(P / "ROOT_I9_ACTUAL_START_READ_ONLY_PRESERVATION_CHECK_001.json")
+    check("exact Root actual refresh receipt", (refresh_pin["bytes"], refresh_pin["sha256"]) == (4565, "0047f84783f1102e6788865931cb48926601c759f99f7b983d07e2d52a8d5e84"))
+    refresh = loads(pinned(refresh_pin))
+    check("refresh joins exact Root program and scope", refresh["reviewer_Source"] == program_pin and refresh["scope"] == scope_pin and refresh["managed_HEAD"] == refresh["remote_main"] == BASE and refresh["index_empty"] is True)
+    prior_pin = scope["prior_finite_managed_scope"]
+    check("exact accepted I8 finite scope", (prior_pin["bytes"], prior_pin["sha256"]) == (144497, "a3f10ce3864b493a6a1b1d7d314072ca752d7256189bf050f83a3c84015c7fd3") and prior_pin == refresh["prior_finite_scope"])
+    prior = loads(pinned(prior_pin))
+    outcome_pin = scope["accepted_I8_final_outcome"]
+    check("exact accepted I8 published outcome", (outcome_pin["bytes"], outcome_pin["sha256"]) == (154557, "c665e0afbee45d6db01ae29d47235a476d242095153727f2d82f18d5762a36a6") and outcome_pin == refresh["accepted_I8_outcome"])
+    outcome = loads(pinned(outcome_pin))
+    check("I8 outcome exact scope/base and recorded normal publication", outcome["scope"] == prior_pin and outcome["HEAD"] == outcome["remote_main"] == BASE and outcome["parent"] == prior["base_HEAD"] and outcome["normal_fast_forward_push_completed"] is True and outcome["local_remote_parity"] is True)
+    check("I8 checkpoint and cumulative execution evidence remain accurately classified", outcome["actual_published_path_count"] == 178 and outcome["new_file_count"] == 175 and (outcome["I8_memory_test_runs"], outcome["accepted_complete_memory_test_runs"], outcome["failed_memory_test_runs"], outcome["accepted_attempt_ordinal"]) == (3, 1, 2, 3) and outcome["actual_real_family_publication_admission_implemented"] is False and outcome["original_native_Parser_project_entry_executed"] is False)
+    historical_pin = prior["preexisting608_byte_baseline"]
+    check("known baseline608 pin inherited exactly", historical_pin == refresh["preexisting608_byte_baseline"] and (historical_pin["bytes"], historical_pin["sha256"]) == (165128, "315cce6ac373b917213cd13e4f4059200b94de7cadb1f0b7bd9b501f9b745c44"))
+    historical = loads(pinned(historical_pin))["all_preexisting_file_bytes"]
+    check("608 unique historical paths and byte aggregate", len(historical) == len({item["path"].casefold() for item in historical}) == 608 and sum(item["bytes"] for item in historical) == refresh["total_historical_bytes"] == 18830379)
+    large = [item for item in historical if item["bytes"] > CAP]
+    check("sole exact historical cap exception", len(large) == 1 and large == refresh["exact_dated_historical_raw_cap_exception"] and large[0] == {"path": "docs/development/closeout-evidence/root-docs-independent-major036/INDEPENDENT_MAJOR036_CREATION_REVIEW_001.json", "bytes": 3483233, "sha256": "e646afc11642d8df66cf7ef0aff26474ce45eaec23d08ecd16f17eaedae2b0e9"})
+    for item in historical:
+        pinned(item, G / item["path"], cap=item["bytes"] if item["bytes"] > CAP else CAP)
+    rows = prior["files"]
+    check("exact178 I8 checkpoint rows and unique paths", len(rows) == prior["managed_file_count"] == len({row["managed_path"].casefold() for row in rows}) == 178)
+    expected_prior = list(prior["all_prior_I6_I7_non_navigation_file_pins"])
+    check("exact167 inherited I6/I7 non-navigation rows", len(expected_prior) == 167)
+    nav = []
+    table = {}
+    for row in rows:
+        name = row["managed_path"]
+        candidate = pinned(row["source"])
+        published = pinned(row["source"], G / name)
+        check("I8 saved candidate equals published bytes: " + pathlib.Path(name).name, candidate == published)
+        table[name] = published
+        if row["mode"] == "create":
+            expected_prior.append({"path": str(G / name), "bytes": len(published), "sha256": hashlib.sha256(published).hexdigest()})
+        else:
+            check("exact historical navigation modes", row["mode"] == "prepend" and name in ("CONTINUE.md", "AGENTS.md", "README.md") and type(row["prefix_bytes"]) is int and 0 < row["prefix_bytes"] < len(published))
+            saved = pinned(row["saved_predecessor"])
+            check("complete pre-I8 navigation suffix retained: " + name, published[row["prefix_bytes"]:] == saved)
+            nav.append(name)
+    check("exact all3 navigation suffixes", sorted(nav) == ["AGENTS.md", "CONTINUE.md", "README.md"])
+    check("342 unique prior I6/I7/I8 non-navigation pins", len(expected_prior) == len({item["path"].casefold() for item in expected_prior}) == 342)
+    for item in expected_prior:
+        pinned(item)
+    sentinels = prior["all_frozen_STEP080_sentinels"]
+    check("8 frozen sentinels retained", len(sentinels) == 8)
+    for row in sentinels:
+        pinned(row["actual_current_pin"])
+    current_pin = prior["current36_Source_baseline"]
+    check("known current36 baseline", current_pin == refresh["current36_Source_baseline"] and (current_pin["bytes"], current_pin["sha256"]) == (21205, "da4fe74a1e5d80c97ad230fb3dcc7dc9313acd4b60eb9533bb560dbc4068feaf"))
+    current = loads(pinned(current_pin))
+    present = absent = 0
+    for row in current["current_45_identity_rows"]:
+        if row["canonical"] is not None:
+            pinned(row["canonical"])
+            present += 1
+        else:
+            check("pending canonical path remains absent: " + pathlib.Path(row["canonical_path"]).name, not pathlib.Path(row["canonical_path"]).exists())
+            absent += 1
+    check("current36/nine pending and frozen35/ten pending remain distinct", (present, absent, refresh["frozen_STEP080_present"], refresh["frozen_STEP080_pending"]) == (36, 9, 35, 10))
+    implementation = loads(pinned(prior["Root_implementation_adoption"]))
+    check("I8 accepted97 with two prior failures retained", implementation["actual_memory_case_count"] == 97 and (implementation["I8_memory_test_runs"], implementation["accepted_complete_memory_test_runs"], implementation["failed_memory_test_runs"]) == (3, 1, 2) and implementation["actual_publication_admission"] is False and implementation["producer_qualified"] is False and implementation["caller_qualified"] is False)
+    old_rel = "docs/development/native-publisher-admission/20261015-i8/"
+    index = loads(table[old_rel + "evidence-index.json"])
+    originals = implementation["managed_evidence_inputs"] + [prior["Root_implementation_adoption"]]
+    check("I8 index exact173 evidence inputs", [row["original"] for row in index["files"]] == originals and len(originals) == index["actual_evidence_copy_count"] == 173)
+    for row in index["files"]:
+        original = pinned(row["original"])
+        check("I8 original and published evidence copy remain exact: " + pathlib.Path(row["managed_path"]).name, original == table[row["managed_path"]] and len(original) == row["copied_bytes"] and hashlib.sha256(original).hexdigest() == row["copied_sha256"])
+    streams = []
+    for group in implementation["all_prior_failed_attempts"] + [{"supervisor": implementation["actual_memory_owned_supervisor_result"]}]:
+        supervisor = loads(pinned(group["supervisor"]))
+        for item in supervisor["streams"]:
+            pinned(item)
+            streams.append(item)
+    check("all6 I8 raw streams match fresh Root refresh", len(streams) == len({item["path"].casefold() for item in streams}) == 6 and streams == refresh["all6_I8_owned_streams_exact"])
+    managed_adoption = loads(pinned(outcome["Root_managed_review_adoption"]))
+    for key in ("different_Source_review", "full_proof", "reviewer_Source"):
+        pinned(managed_adoption[key])
+    check("published managed review joins same prior scope", managed_adoption["managed_publication_scope"] == prior_pin and managed_adoption["target_execution"] is False and managed_adoption["tests_executed"] is False)
+    check("live symbolic HEAD remains main by metadata only", raw(G / ".git/HEAD").decode("ascii").strip() == "ref: refs/heads/main")
+    check("live main equals exact I9 base by metadata only", raw(G / ".git/refs/heads/main").decode("ascii").strip() == BASE)
+    for key in ("all608_wholebytes_exact", "all342_prior_I6_I7_I8_non_navigation_file_pins_exact", "all178_I8_checkpoint_files_exact", "all_I8_original_evidence_inputs_exact", "all8_frozen_sentinels_exact", "all36_original_Source_bytes_exact", "all9_pending_canonical_paths_absent"):
+        check("fresh saved Root preservation claim independently confirmed: " + key, refresh[key] is True)
+    stable = list(inputs.values())
+    exception = {"path": str(G / large[0]["path"]), "bytes": large[0]["bytes"], "sha256": large[0]["sha256"]}
+    for item in stable:
+        cap = CAP
+        if item["bytes"] > CAP:
+            assert item == exception
+            cap = item["bytes"]
+        path = pathlib.Path(item["path"])
+        assert path.is_file() and not path.is_symlink() and path.stat().st_size <= cap
+        with path.open("rb") as handle:
+            data = handle.read(cap + 1)
+        assert len(data) == item["bytes"] and hashlib.sha256(data).hexdigest() == item["sha256"]
+    check("entire actual input ledger stable and casefold unique", len(stable) == len({row["path"].casefold() for row in stable}))
+    proof = {"schema_version": 1, "record_type": "independent_I9_fresh_scope_and_start_preservation_Source_proof", "reviewer": AUTHOR, "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(), "reviewer_Source": reviewer, "current_Source_scope": scope_pin, "Root_refresh": refresh_pin, "prior_I8_scope": prior_pin, "accepted_I8_outcome": outcome_pin, "checks_failed": 0, "serialized_check_count": len(checks), "checks": checks, "actual_input_count": len(stable), "all_actual_inputs": stable, "all_actual_input_pins_stable_at_final_readback": True, "all608_historical_bytes_preserved": True, "all342_prior_I6_I7_I8_non_navigation_files_preserved": True, "all178_I8_candidate_and_published_files_exact": True, "all173_I8_evidence_copies_and_originals_exact": True, "all6_I8_raw_streams_exact": True, "all8_frozen_sentinels_preserved": True, "all3_pre_I8_navigation_suffixes_preserved": True, "current_Source_present": 36, "pending_roles": 9, "frozen_STEP080_present": 35, "frozen_STEP080_pending": 10, "Git_command_executed": False, "live_managed_main_base": BASE, "Git_metadata_read_only": True, "Root_preservation_program_invoked": False, "old_or_new_project_target_import_call_test": False, "native_Parser_runtime_scientific_execution": False, "tests_executed": False, "target_execution": False, "operational_authority": False, "scientific_authority": False, "verdict": "PASS_I9_FRESH_SOURCE_SCOPE_AND_START_PRESERVATION_ONLY"}
+    full_pin = save("INDEPENDENT_I9_START_PRESERVATION_FULL_SOURCE_PROOF_001.json", proof)
+    capsule = {key: value for key, value in proof.items() if key not in ("checks", "all_actual_inputs")}
+    capsule.update({"record_type": "independent_I9_start_preservation_Source_capsule", "full_proof": full_pin, "limitations": ["Read/hash and static Root-program AST/compile only; no target, Root preservation program or Git command was invoked by this reviewer.", "Root's saved07:57UTC refresh supplies observed remote-main parity and empty-index facts. This review independently checked live local main via read-only Git metadata and did not query remote or Git index.", "Historical I8 managed-review input ledgers retain prepublication navigation/Git facts; their saved proof bytes were hashed without replaying stale input states.", "This current Source scheduling window grants no owner lease, target execution, actual M3 family publication, producer/caller/physical/native qualification or science."]})
+    capsule_pin = save("INDEPENDENT_I9_START_PRESERVATION_SOURCE_CAPSULE_001.json", capsule)
+    for item in (reviewer, full_pin, capsule_pin):
+        data = pathlib.Path(item["path"]).read_bytes()
+        assert len(data) == item["bytes"] <= CAP and hashlib.sha256(data).hexdigest() == item["sha256"]
+    print(json.dumps({"capsule": capsule_pin, "full_proof": full_pin, "checks": len(checks), "inputs": len(stable)}))
+
+
+if __name__ == "__main__":
+    main()
