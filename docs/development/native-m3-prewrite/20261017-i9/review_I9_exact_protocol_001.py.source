@@ -1,0 +1,167 @@
+"""Independent I9 consumer discovery: read/hash/strict JSON/AST only."""
+import ast,base64,datetime,hashlib,json,os
+from pathlib import Path
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012');OWN=P/'independent_review_001';CAP=2097152
+inputs={};raws={};checks=[];regions=[]
+def fact(p):
+ p=Path(p);b=p.read_bytes();assert 0<len(b)<=CAP
+ q=dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+ if str(p) in inputs:assert inputs[str(p)]==q
+ inputs[str(p)]=q;raws[str(p)]=b;return q
+def pin(q):assert fact(q['path'])==q;return raws[q['path']]
+def pairs(rows):
+ d={}
+ for k,v in rows:assert k not in d;d[k]=v
+ return d
+def bad(v):raise ValueError(v)
+def obj(b):return json.loads(b,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def ck(name,value,evidence):
+ assert type(value) is bool and name not in {c['name'] for c in checks}
+ checks.append(dict(name=name,passed=value,evidence=evidence))
+def load(p):
+ q=fact(p);b=raws[q['path']];t=ast.parse(b);defs={n.name:n for n in t.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))};constants={}
+ for n in t.body:
+  if isinstance(n,ast.Assign):
+   value=n.value
+   if isinstance(value,ast.Call) and isinstance(value.func,ast.Name) and value.func.id in ('frozenset','set','tuple') and len(value.args)==1:value=value.args[0]
+   try:value=ast.literal_eval(value)
+   except (ValueError,TypeError,SyntaxError):continue
+   for target in n.targets:
+    if isinstance(target,ast.Name):constants[target.id]=value
+ return q,b,t,defs,constants
+def span(source,name):
+ q,b,t,defs,constants=source;n=defs[name];s=ast.get_source_segment(b.decode(),n);raw=s.encode()
+ r=dict(Source=q,name=name,first_line=n.lineno,last_line=n.end_lineno,AST_region_bytes=len(raw),AST_region_sha256=hashlib.sha256(raw).hexdigest(),region_convention='AST exact source segment; module hash covers retained line endings and whole bytes')
+ regions.append(r);return s
+
+expected_subjects=[
+('ROOT_I9_EXACT_RECORDED_M3_SEMANTIC_IMPLEMENTATION_PROTOCOL_001.json',122682,'64f10785564b5bdeca10996384b3ad312d208fcd5f041f21e49190790fedd1bc'),
+('ROOT_I9_PROTOCOL001_BOUNDED_AST_AND_AGGREGATE_READER_CLARIFICATION_001.json',2514,'07b09a988e8d8328c2f5362e90a5bbc144eff6af7bc65fd5bf37d414d17783aa'),
+('ROOT_I9_PROTOCOL001_OPEN_PROOF_FLAGS_AND_CANONICAL_CODEC_CLARIFICATION_001.json',2348,'483451d49c32be2a7d45ac4cb0d372890695f0b0c68951b7368e983ce8046e8f'),
+('ROOT_I9_PROTOCOL001_RECORDED_BOOTSTRAP_CLOSURE_AND_EXTERNAL_AUTHORITY_BOUNDARY_001.json',9160,'bb4a6d54e210d722847b96e68ad761486a59085abe30c4031985b9f41ebab982'),
+('ROOT_I9_PROTOCOL001_EXACT_CURRENT_DIFF_HEADER_CLARIFICATION_001.json',1529,'e88cb920fbb000eff1b3efbb7135167e465f2e7d7c836e4c833516d7ee63d974')]
+subjects=[];docs=[]
+for name,size,digest in expected_subjects:
+ q=fact(P/name);v=obj(pin(q));subjects.append(q);docs.append(v)
+ ck('actual_exact_subject_'+name,q['bytes']==size and q['sha256']==digest and v['author']=='/root',[q])
+protocol,clarAST,clarProof,clarBoot,clarDiff=docs;pp=subjects[0]
+sp=protocol['scope'];scope=obj(pin(sp));now=datetime.datetime.now(datetime.timezone.utc)
+ck('actual_fresh_Root_Source_scope',sp['bytes']==3262 and sp['sha256']=='0c0815540d0be020040f1114f18975300ddeb279a24ba201ba4204680ea9773d' and scope['author']=='/root' and datetime.datetime.fromisoformat(scope['interval_start'])<=now and now+datetime.timedelta(seconds=60)<datetime.datetime.fromisoformat(scope['interval_end']),[sp])
+ck('max3_noPro3_Source_only',scope['maximum_local_agents_including_Root']==3 and scope['Pro3_coordination_required'] is False and scope['old_publisher_I0_I1_I2_I3_I4_I5_I6_I7_I8_changes_or_invocations_authorized'] is False,[sp])
+for i,(q,d) in enumerate(zip(subjects,docs)):
+ if i<4:ck('subject'+str(i)+'_same_scope',d['scope']==sp,[q,sp])
+ for key in ('target_execution','tests_executed','operational_authority','scientific_authority'):ck('subject'+str(i)+'_no_'+key,d[key] is False,[q])
+ if i:
+  ck('clarifier'+str(i)+'_joins_exact_protocol',d['protocol']==pp,[q,pp])
+  if i<4:ck('clarifier'+str(i)+'_no_budget_or_grant',d['budget_relaxation'] is False and d['new_target_Source_authoring_authority'] is False and d['new_actual_grants_lease_family_Native8_Parser_results'] is None,[q])
+  else:ck('clarifier4_no_new_grants',d['new_target_Source_authoring_authority'] is False and d['new_grants_lease_family_Native8_Parser_results'] is None,[q])
+ck('unreviewed_protocol_not_own_authority',protocol['actual_implementation_Source_authoring_authorized_by_this_unreviewed_document'] is False and protocol['new_target_invocation_authorized'] is False and protocol['all_actual_new_grants_lease_family_paths_ordinals_purpose_Native8_Parser_results'] is None,[pp])
+producer=obj(pin(protocol['producer_discovery']));consumer=obj(pin(protocol['consumer_discovery']));capreport=obj(pin(protocol['recorded_cap_and_closure_addendum']));pin(protocol['initial_preservation'])
+chronp=fact(OWN/'I9_EXACT_OPEN_PROOF_CHRONOLOGY_CODEC_AND_OBSERVATION_ABI_ADDENDUM_001.json');chron=obj(pin(chronp));pin(chron['reviewer_Source'])
+ck('independent_actual_discovery43_and_chronology37_pass',consumer['checks_failed']==0 and len(consumer['checks'])==43 and chron['checks_failed']==0 and len(chron['checks'])==37 and consumer['tests_executed'] is False and chron['tests_executed'] is False,[protocol['consumer_discovery'],chronp])
+i2=load(Path(protocol['reference_contracts']['I2_Source']['path']));pin(protocol['reference_contracts']['I2_Source']);pin(protocol['reference_contracts']['I2_API']);i2q,i2raw,i2tree,i2defs,i2const=i2
+ck('actual_I2_source_exact',i2q['bytes']==127014 and i2q['sha256']=='600ab5bf46faceee88b7b5a99eb32b71a7ebfc763151e2f4e3453a6cccd281c2',[i2q])
+for name,r in protocol['pure_port_contract']['function_regions'].items():
+ n=i2defs[name];raw=b''.join(i2raw.splitlines(keepends=True)[n.lineno-1:n.end_lineno])
+ ck('actual_original_region_'+name,n.lineno==r['first_line'] and n.end_lineno==r['last_line'] and len(raw)==r['bytes'] and hashlib.sha256(raw).hexdigest()==r['sha256'],[pp,i2q])
+ck('actual68_original_regions_complete',len(protocol['pure_port_contract']['function_regions'])==68,[pp,i2q])
+for name,r in protocol['producer_literal_schemas'].items():
+ value=i2const[name];recorded=r['keys_or_value']
+ if type(value) is tuple:value=list(value)
+ ck('exact_producer_literal_'+name,value==recorded,[pp,i2q])
+sc=protocol['schemas'];actual=consumer['actual_schemas']
+for key,value in sc.items():
+ if key in actual:
+  other=actual[key]
+  same=(set(value['keys'])==set(other['keys']) and all(value.get(k)==other.get(k) for k in ('record_type','schema_version'))) if type(value) is dict and 'record_type' in value else (set(value['keys'])==set(other['keys']) if type(value) is dict else set(value)==set(other))
+  ck('known_actual_schema_'+key,same,[pp,protocol['consumer_discovery']])
+ck('full5_stages_exact_order', [d['stage'] for d in protocol['all_stage_definitions']]==list(i2const['STAGES'])==['templates','manifest','capture','phase_bound','phase_binding'],[pp,i2q])
+stages={x['stage']:x for x in protocol['all_stage_definitions']}
+ck('templates_complete5_roles15outputs',stages['templates']['output_roles']==list(i2const['TEMPLATE_ROLES']) and stages['templates']['dependencies']==[] and stages['templates']['facts_role'] is None,[pp,i2q])
+ck('capture_complete3_outputs',stages['capture']['output_roles']==['plan','capture_bound','metadata_binding'],[pp,i2q])
+ck('phase_binding_11_dependencies',len(stages['phase_binding']['dependencies'])==11 and len(set(stages['phase_binding']['dependencies']))==11,[pp])
+ck('source_budget_exact_metadata_phase_model',protocol['reader_contract']['metadata_cap']==2097152 and protocol['reader_contract']['phase_Source_cap']==65536 and protocol['preserved_invariants']['model_export_cap']==131072,[pp])
+for k,v in [('distinct_records_maximum',256),('declared_unique_bytes_maximum',33554432),('external_callback_count_maximum',1024),('actual_returned_bytes_maximum',67108864),('depth_maximum',48),('nodes_maximum',50000)]:ck('finite_reader_'+k,type(protocol['reader_contract'][k]) is int and protocol['reader_contract'][k]==v,[pp])
+trusted=['current_owner_scope','canonical_lease','selection','producer_support','producer_Source_editor','actual_content_authors','M3_predecessor_inventory','stage_supports','expected_inputs','expected_output_paths','recorded_births_ns']
+ck('exact_closed11_binding',protocol['trusted_bindings_keys']==trusted and set(protocol['trusted_binding_contract'])==set(trusted),[pp])
+ck('stage_only_and_prewrite_two_separate_pure_APIs',protocol['public_functions']==['validate_recorded_M3_stage_semantics','validate_recorded_M3_prewrite_semantics','require_actual_M3_prewrite_publication_admission'] and 'request_pin' not in protocol['public_interfaces']['validate_recorded_M3_stage_semantics'] and 'request_pin' in protocol['public_interfaces']['validate_recorded_M3_prewrite_semantics'],[pp])
+ck('stage_map_exact_and_nullable_role',all(x in protocol['trusted_binding_contract']['stage_supports'] for x in ('templates','manifest','capture','phase_binding','phase_bound:','facts,different_review,Root_adoption')),[pp])
+ck('single_aggregate_reader_private_stage_dispatch',all(x in clarAST['aggregate_reader'] for x in ('exactly one I9Reader','private validation','sharing that same Reader','aggregate256','33554432','1024','67108864','must not recursively call the public stage-only')),[subjects[1]])
+ck('AST_DATA_only_exception_no_executable_compile',all(x in clarAST['AST_data_exception'] for x in ('ast.parse','ast.literal_eval','PyCF_ONLY_AST','Direct target use of compile/eval/exec/__import__','exactly-two')),[subjects[1]])
+ck('no_dynamic_old_IO_resource_or_clock_ports',all(x in protocol['pure_port_contract']['never_copy_or_invoke_IO_entry_functions'] for x in ('current_ticks','utc','read','postread','gate','_source_resources','admit','write_once','execute_stage','main')),[pp])
+ck('five_new_pure_render_ports_required',all(x in protocol['pure_port_contract']['recorded_buffer_adaptations'] for x in ('render_templates','render_manifest','render_capture','render_phase_bound','render_phase_binding','frozen_check_codec')),[pp])
+rules=' '.join(protocol['pure_port_contract']['rules']);proofs=' '.join(protocol['proof_and_closure_rules']);request_rules=' '.join(protocol['stage_and_request_rules']);times=protocol['chronology_contract']
+for name,terms in {
+ 'exact_whole_inverse_diff_and_protected_complement':['whole bytes','inverse proof object','exact unified diff'],
+ 'manifest_recorded_header_not_now':['already-hashed actual draft JSON','explicit reconstruction input','never normalize'],
+ 'phase_actual_TEMPLATE_removed_basis':['actual canonical TEMPLATE','header may name predecessor BOUND','oldBOUND-to-oldTEMPLATE'],
+ 'full17_current_prior_bytes':['seventeen current source buffers','embedded prior basis buffers','role caps']}.items():ck(name,all(x in rules for x in terms),[pp])
+ck('I8_separate_required_no_copy_call_or_token','No I0-I8 copy, import or invocation' in protocol['decision'] and 'No fabricated serialized I8 view' in protocol['result_contract']['separate_required_layer'],[pp])
+for q in (protocol['reference_contracts']['I8_separate_required_layer']['Source'],protocol['reference_contracts']['I8_separate_required_layer']['API']):pin(q)
+ck('all_actual_qualification_flags_permanently_false',set(protocol['result_contract']['permanently_false'])=={'actual_admission','owner_lease_qualified','producer_qualified','caller_qualified','physical_origin_authenticated','human_origin_authenticated','native_Parser_authority','new_grants_issued','operational_authority','scientific_authority'} and protocol['result_contract']['metadata_only'] is True and protocol['result_contract']['frozen_detached'] is True,[pp])
+ck('actualentry_firstFalse_second_unconditional',all(x in protocol['public_interfaces']['require_actual_M3_prewrite_publication_admission'] for x in ('first false','unconditional','before any reader')),[pp])
+ck('open_proofs_no_invented_fixed_shape',all(x in clarProof['open_proof_flags'] for x in ('OPEN','IF PRESENT','does not add missing required fields','fixed record_type/schema_version','new strengthening')),[subjects[2]])
+ck('canonical_codec_first_occurrence_table_indices_SHA',all(x in clarProof['canonical_codec'] for x in ('first-occurrence','canonical index','unused labels','permutations/reindexing','wire SHA','does not authenticate')),[subjects[2]])
+ck('code_proof_direct4_coverage_contextFalse','directly covers Source/API/capsule/full' in proofs and 'context_required=False' in proofs,[pp])
+ck('stage_exact6_literal_and_adoption_verdict','ACCEPT_ROOT_OWNER_V2_EXACT_M3_SOURCE_STAGE_PURPOSE_AND_FACTS_ONLY' in proofs and 'exactly equal literal purpose' in proofs,[pp])
+ck('purpose_vs_reader_closures_acyclic','distinct superset' in proofs and 'Never derive purpose from I9 read log' in proofs and 'excludes all current stage draft/diff/receipt outputs' in proofs,[pp])
+ck('observations_stage_order_prefix_not_purpose_equality','stage-order-aware observed-input/output prefix' in proofs and 'Current receipt is absent' in proofs and 'No naive observations==purpose.inputs' in proofs,[pp])
+ck('separate_PATH9_fd9_shared7_not_all9','Do not require all9 cross-API equality' in proofs and '[0,1,2,3,6,7,8]' in proofs,[pp])
+ck('semantic_Source_cap_independent_observation_cap','Source byte cap and historical observation read cap are different' in proofs and 'may be2MiB' in proofs,[pp])
+ck('original_full_time_leq_not_equal','full.created<=capsule.created, not equality' in times['review_ABI'],[pp])
+ck('own_record_created_before_birth_feasible','created<=ownbirth<=now' in times['record_creation'] and 'never require own birth<=its own created' in times['record_creation'],[pp])
+ck('last_resource_after_draft_diff_not_reverse','draft_birth<=diff_birth<=recorded_resource_time<=receipt.created<=receipt_birth' in times['resource_snapshot'] and 'Never enforce resource<=draft/diff' in times['resource_snapshot'],[pp])
+ck('recorded_resource_exact_disk_field','free_disk_bytes' in times['resource_snapshot'] and sc['resource3']==['observed_utc','available_RAM_bytes','free_disk_bytes'],[pp])
+ck('new_birth_rules_distinguished_from_original_floor','original subject_ns//100 floor' in times['time_units'] and 'strengthened metadata rules' in times['time_units'] and 'New I9 may additionally' in times['review_ABI'],[pp])
+ck('publication_review_and_adoption_before_request','adoption.birth<=request.created<=request.birth<=now' in times['publication_chain'],[pp])
+ck('phase_staged_no_samepair_and_max4','every matching TEMPLATE+BOUND pair is forbidden' in request_rules and 'upper bound is four roles' in request_rules and 'max4 is not a guarantee' in request_rules,[pp])
+ck('no_postbirth_Native8_I6_or_unborn_hash_dependency','I6 all8 postbirth invocation' in request_rules and 'No future canonical hash invention' in request_rules,[pp])
+ck('unknown_real_carriers_and_I2_hold_not_qualified','EXTERNAL_CANONICAL_RECEIPT_ABI_QUALIFIED=False' in request_rules and 'does not certify' in request_rules,[pp])
+ck('all_requested_draft_receipt_diff_proof_coverage','draft+receipt+diff' in request_rules and 'Generation-stage proof cannot cover unborn output hashes' in request_rules,[pp])
+ck('unique_owner_manifest_closure_no_new_binding_key',clarBoot['new_trusted_binding_keys'] is False and all(x in clarBoot['owner_manifest'] for x in ('exactly one','closed3','current_owner_scope','different_current_owner_scope_Source_review','current_owner_scope_Root_adoption','ambiguous')),[subjects[3]])
+ck('owner_retained_scope_full_witness_closure',all(x in clarBoot['retained_record_closure'] for x in ('scope.owner_instruction_record','scope.owner_policy_record','owner-scope review.full_proof','recursively','purpose.inputs and expected_inputs','finite')),[subjects[3]])
+ck('all19_fixed_context_anchors_exact',clarBoot['exact_fixed_I2_context_anchors']==i2const['FIXED_CONTEXT_ANCHORS'] and len(clarBoot['exact_fixed_I2_context_anchors'])==19,[subjects[3],i2q])
+for name,q in clarBoot['exact_fixed_I2_context_anchors'].items():pin(q);ck('actual_immutable_anchor_'+name,True,[q,subjects[3]])
+ck('bootstrap_metadata_not_I0_dynamic_authority',all(x in clarBoot['external_authority'] for x in ('does not authenticate','I0 dynamic','I8','all qualification flags stay False')),[subjects[3]])
+invp=protocol['reference_contracts']['fixed_inventory17'];basisq=protocol['reference_contracts']['fixed_reconstruction_basis17'];inventory=obj(pin(invp));basis=obj(pin(basisq));byrole={r['role']:r for r in inventory['roles']}
+ck('fixed17_inventory_and_basis_below2MiB',invp['bytes']==154055 and basisq['bytes']==1387387 and len(byrole)==len(basis['rows'])==17 and set(byrole)==set(i2const['M3_ROLES']),[invp,basisq])
+for row in protocol['reference_contracts']['inventory_and_basis_actual_rows']:
+ role=row['role'];q=row['available_basis'];raw=pin(q)
+ ck('actual_current_role_body_cap_'+role,q==byrole[role]['available_basis'] and len(raw)==q['bytes']<=row['source_cap']==i2const['ROLE_SOURCE_CAPS'][role],[q,pp,invp])
+for row in basis['rows']:
+ role=row['role'];cap=i2const['ROLE_SOURCE_CAPS'][role]
+ for field,pfield in [('whole_current_bytes_base64','current_or_historical_basis'),('whole_predecessor_bytes_base64','complete_STEP077_predecessor')]:
+  raw=base64.b64decode(row[field],validate=True);q=row[pfield]
+  ck('actual_embedded_basis_'+role+'_'+field,type(q['bytes']) is int and 0<len(raw)==q['bytes']<=cap and hashlib.sha256(raw).hexdigest()==q['sha256'],[basisq,invp])
+fixturetext=' '.join(protocol['fixture_contract']['coverage'])
+for name,terms in {'all5_positive_stage_controls':['templates5','capture3','four phaseBOUND','phase_binding'],'independent_positive_recipes':['independently built','Do not call target render functions'],'genuine_noop_negative_preconditions':['genuine mutation preconditions','exact error branches and callback counts'],'future_only_scoped_memory_tests':['separately reviewed one-use Root supervisor','zero poison-callbacks'],'bounded_literal_fixture_compression':['zlib/base64','bounded decode','no untrusted decompression']}.items():ck('fixture_contract_'+name,all(x in fixturetext for x in terms),[pp])
+ck('fixture_count_literal_API_join_and_honest_failures',protocol['fixture_contract']['case_count_builtin_int_range']==[1,256] and protocol['fixture_contract']['literal_fields']==['EXPECTED_CASE_COUNT','PLANNED_CASE_NAMES'] and 'completed prefix' in protocol['fixture_contract']['failure_reporting'],[pp])
+diff_rule=clarDiff['normative_current_diff_recipe'];current_execute=span(i2,'execute_stage');current_bound=span(i2,'render_phase_bound')
+ck('exact_current_diff_header_no_alternate_BOUND',all(x in diff_rule for x in ('fromfile is item.diff_basis.path','canonical TEMPLATE','No alternate predecessor-BOUND header')) and "fromfile=item['diff_basis']['path'],tofile=row['canonical_path']" in current_execute and 'pack(role,raw,template,template_pin' in current_bound,[subjects[4],i2q])
+ck('historical_diff_attribution_only_not_current_alternate','historical Source019' in clarDiff['historical_wording'] and 'does not broaden' in clarDiff['historical_wording'],[subjects[4]])
+authors=['ROOT_AUTHOR_I9_PROTOCOL001_EXACT_CURRENT_DIFF_HEADER_CLARIFICATION_001.py','ROOT_AUTHOR_I9_EXACT_IMPLEMENTATION_PROTOCOL_001.py','ROOT_AUTHOR_I9_PROTOCOL001_BOUNDED_AST_AND_SHARED_READER_CLARIFICATION_001.py','ROOT_AUTHOR_I9_PROTOCOL001_OPEN_PROOF_AND_CODEC_CLARIFICATION_001.py','ROOT_AUTHOR_I9_PROTOCOL001_RECORDED_BOOTSTRAP_CLARIFICATION_001.py']
+for name in authors:
+ q=fact(P/name);t=ast.parse(raws[q['path']]);forbidden=[]
+ for n in ast.walk(t):
+  if isinstance(n,ast.Call) and isinstance(n.func,ast.Name) and n.func.id in ('exec','eval','compile','__import__'):forbidden.append(n.func.id)
+ ck('Root_metadata_author_Source_only_'+name,not forbidden,[q])
+adopter=fact(P/'ROOT_ADOPT_I9_EXACT_DIFFERENT_SOURCE_REVIEW_002.py');at=raws[adopter['path']].decode();ast.parse(at)
+ck('actual_adopter6556_pin',adopter['bytes']==6556 and adopter['sha256']=='f504df121290822f59bdeceaa4e58262b31f18e488ceef8e765d8fb2d797ce0f',[adopter])
+ck('adopter_strict0_falseflags_4subjects_and_no_target',all(x in at for x in ("type(item['checks_failed']) is int", "item['target_execution'] is False", "item['tests_executed'] is False",'len(subjects) == 4',"all(not (P / 'i9' / name).exists()")),[adopter])
+absence=[]
+for name in protocol['author_evidence_contract']['four_final_subjects']:
+ absent=not os.path.lexists(P/'i9'/name);absence.append(dict(path=str(P/'i9'/name),lexists_absent=absent));ck('target_Source_not_born_'+name,absent,[pp])
+selfpin=fact(Path(__file__));held=sorted(inputs.values(),key=lambda q:q['path'])
+ck('all_inputs_sorted_casefold_unique',len({q['path'].casefold() for q in held})==len(held),[selfpin])
+for i,q in enumerate(held):
+ raw=Path(q['path']).read_bytes();ck('final_actual_input_rehash_'+str(i),len(raw)==q['bytes'] and hashlib.sha256(raw).hexdigest()==q['sha256'],[q])
+failed=[c['name'] for c in checks if not c['passed']];created=datetime.datetime.now(datetime.timezone.utc).isoformat()
+common=dict(schema_version=1,reviewer='/root/owner_source_review',source_author='/root',created_utc=created,verdict='PASS_I9_EXACT_RECORDED_M3_PROTOCOL_AND_FOUR_CLARIFIERS_SOURCE_ONLY' if not failed else 'REFUSE_I9_EXACT_PROTOCOL_SOURCE_REVIEW',subjects=subjects,reviewer_Source=selfpin,checks_failed=len(failed),checks_passed=len(checks)-len(failed),tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False)
+full=dict(**common,record_type='Independent_I9_exact_five_subject_protocol_full_Source_proof',checks=checks,all_actual_inputs=held,failures=failed,target_absence=absence,review_scope='Actual protocol+four immutable clarifiers, pinned producer/consumer/chronology discoveries, actual68 original function spans,21 literal contracts,17current and34 embedded body/cap/hash checks, fixed19 bootstrap anchors and future fixture boundaries. No old or new target imports/calls/tests/renderer/native/Parser.',authoring_adoption_scope='Root may adopt this exact Source contract to author the finite new I9 module/fixture/API/receipt only. This review itself grants no invocation; new target Source remains unborn. Any synthetic fixture execution requires separate final different Source review/adoption and fresh pin-specific one-use scope.',implementation_guidance='Use literal manual tuple/__slots__ immutable view; no dataclasses/namedtuple/dynamic executable code generation. AST-only exception is bounded data parsing; one shared aggregateReader per call. Preserve optional open-proof flags and canonical first-occurrence codec.',I9_fixture_reruns=0,target_imports=0,target_calls=0,target_Source_compilations=0,renderer_calls=0,native_or_Parser_calls=0,Git_mutations=0,Pro3_messages=0,all_actual_future_grants_lease_family_paths_purpose_Native8_Parser_results=None)
+def save(name,v):
+ path=OWN/name;raw=(json.dumps(v,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(raw)<=CAP
+ with path.open('xb') as h:h.write(raw)
+ return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+fp=save('INDEPENDENT_I9_EXACT_PROTOCOL_FULL_SOURCE_PROOF_001.json',full)
+cp=save('INDEPENDENT_I9_EXACT_PROTOCOL_SOURCE_CAPSULE_001.json',dict(**common,record_type='Independent_I9_exact_five_subject_protocol_Source_capsule',full_proof=fp,actual_input_count=len(held),target_Source_not_born=all(x['lexists_absent'] for x in absence),Source_authoring_only_after_Root_adoption=True))
+print(json.dumps(dict(capsule=cp,full_proof=fp,reviewer_Source=selfpin,checks=len(checks),checks_failed=len(failed),failures=failed,actual_inputs=len(held)),indent=2))

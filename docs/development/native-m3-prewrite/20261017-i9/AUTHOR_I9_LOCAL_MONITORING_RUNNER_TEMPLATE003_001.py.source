@@ -1,0 +1,280 @@
+"""Author only UNBOUND instrumentation Source; never activate monitoring or targets."""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+O=P/'memory_tooling_001'
+CAP=2097152
+
+MONITOR_FUNCTIONS='''    monitoring = sys.monitoring
+    monitoring_tool_id = 5
+    monitoring_tool_name = 'I9_exact_compiled_target_entries'
+    monitoring_owned = False
+    monitored_code_by_id = {}  # Strong references; CodeType structural equality is not identity.
+    registered_local_codes = []
+    registered_callbacks = []
+    monitoring_cleanup_errors = []
+    monitoring_cleanup_verified = False
+    monitoring_event_counts = {'PY_START': 0, 'PY_RESUME': 0, 'PY_THROW': 0}
+    monitoring_totals = {'events': 0, 'function_names': 0}
+    function_counts_by_path = {path: {} for path in target_paths}
+    function_counts = function_counts_by_path[module_path]
+    local_event_mask = monitoring.events.PY_START | monitoring.events.PY_RESUME
+
+    def count_monitored_entry(code, event_name):
+        stored = monitored_code_by_id.get(id(code))
+        if stored is not code:
+            return  # In particular, global PY_THROW for every non-target code.
+        path = code.co_filename
+        need(path in calls, 'MONITOR_EXACT_TWO_SOURCE_PATHS')
+        calls[path] += 1
+        monitoring_totals['events'] += 1
+        monitoring_event_counts[event_name] += 1
+        need(monitoring_totals['events'] <= 50000000, 'PROFILE_CALL_CAP')
+        name = code.co_name
+        per_path = function_counts_by_path[path]
+        if name not in per_path:
+            need(monitoring_totals['function_names'] < 4096, 'FUNCTION_NAME_CAP')
+            monitoring_totals['function_names'] += 1
+            per_path[name] = 0
+        per_path[name] += 1
+
+    def monitor_start(code, instruction_offset):
+        count_monitored_entry(code, 'PY_START')
+
+    def monitor_resume(code, instruction_offset):
+        count_monitored_entry(code, 'PY_RESUME')
+
+    def monitor_throw(code, instruction_offset, exception):
+        # Check exact identity before entering any counter, without frame access.
+        stored = monitored_code_by_id.get(id(code))
+        if stored is not code:
+            return
+        count_monitored_entry(code, 'PY_THROW')
+
+    def install_exact_code_tree(root_code):
+        pending = [root_code]
+        while pending:
+            code = pending.pop()
+            need(type(code) is types.CodeType and code.co_filename in target_paths,
+                 'EXACT_COMPILED_TARGET_CODE_TREE')
+            identity = id(code)
+            stored = monitored_code_by_id.get(identity)
+            if stored is not None:
+                need(stored is code, 'MONITOR_CODE_IDENTITY_COLLISION')
+                continue
+            monitored_code_by_id[identity] = code
+            registered_local_codes.append(code)
+            monitoring.set_local_events(monitoring_tool_id, code, local_event_mask)
+            for value in code.co_consts:
+                if type(value) is types.CodeType:
+                    pending.append(value)
+'''
+
+MONITOR_SETUP='''    try:
+        need(sys.version_info[:2] == (3, 13), 'PINNED_PYTHON313_MONITORING')
+        need(b['maximum_profiled_module_calls'] == 50000000, 'EXACT_50M_TARGET_EVENT_CAP')
+        need(monitoring.get_tool(monitoring_tool_id) is None, 'OWN_UNUSED_MONITOR_TOOL5')
+        monitoring.use_tool_id(monitoring_tool_id, monitoring_tool_name)
+        monitoring_owned = True
+        need(monitoring.get_events(monitoring_tool_id) == 0, 'OWN_TOOL_HAS_NO_PREEXISTING_GLOBAL_EVENTS')
+        for event, callback in ((monitoring.events.PY_START, monitor_start),
+                                (monitoring.events.PY_RESUME, monitor_resume),
+                                (monitoring.events.PY_THROW, monitor_throw)):
+            registered_callbacks.append(event)
+            previous = monitoring.register_callback(monitoring_tool_id, event, callback)
+            need(previous is None, 'OWN_TOOL_HAS_NO_PREEXISTING_CALLBACK')
+        # PY_THROW is global-only; only its identity-filtered callback is global.
+        monitoring.set_events(monitoring_tool_id, monitoring.events.PY_THROW)
+        sys.addaudithook(audit)
+        sys.stdout, sys.stderr = out, err
+'''
+
+MONITOR_CLEANUP='''    finally:
+        try:
+            if monitoring_owned:
+                if monitoring.get_tool(monitoring_tool_id) != monitoring_tool_name:
+                    monitoring_cleanup_errors.append('OWN_MONITOR_TOOL_IDENTITY_CHANGED')
+                else:
+                    # Protocol order: all OWN local0, OWN global0, unregister3, free OWN5.
+                    for code in registered_local_codes:
+                        try:
+                            monitoring.set_local_events(monitoring_tool_id, code, 0)
+                        except BaseException as cleanup_error:
+                            monitoring_cleanup_errors.append('local0:' + type(cleanup_error).__name__)
+                    try:
+                        monitoring.set_events(monitoring_tool_id, 0)
+                    except BaseException as cleanup_error:
+                        monitoring_cleanup_errors.append('global0:' + type(cleanup_error).__name__)
+                    for event in registered_callbacks:
+                        try:
+                            monitoring.register_callback(monitoring_tool_id, event, None)
+                        except BaseException as cleanup_error:
+                            monitoring_cleanup_errors.append('callbackNone:' + type(cleanup_error).__name__)
+                    if not monitoring_cleanup_errors:
+                        monitoring.free_tool_id(monitoring_tool_id)
+                        monitoring_cleanup_verified = monitoring.get_tool(monitoring_tool_id) is None
+                        if not monitoring_cleanup_verified:
+                            monitoring_cleanup_errors.append('OWN_TOOL_NOT_FREE_AFTER_CLEANUP')
+                # Do not free an incompletely disabled tool or touch another tool id.
+                if monitoring_cleanup_errors and error is None:
+                    error = dict(type='I9MonitoringCleanupError', message=';'.join(monitoring_cleanup_errors)[:8192])
+        finally:
+            state['active'] = False
+            sys.stdout, sys.stderr = old_out, old_err
+'''
+
+def pin(path):
+    data=path.read_bytes()
+    assert len(data)<=CAP
+    return dict(path=str(path),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+
+def write(name,value):
+    path=O/name
+    data=value if type(value) is bytes else (json.dumps(value,indent=2,sort_keys=True,allow_nan=False)+'\n').encode()
+    assert len(data)<=CAP
+    with path.open('xb') as handle:handle.write(data)
+    assert path.read_bytes()==data
+    return pin(path)
+
+def main():
+    predecessor=O/'RUN_I9_ONCE_ISOLATED_MEMORY_FIXTURES_TEMPLATE_002.py'
+    old=predecessor.read_bytes()
+    assert len(old)==25353 and hashlib.sha256(old).hexdigest()=='dbd64396b20019b965115d2a5a8b2e1c465b8c36e227b5b403657cb49036680d'
+    text=old.decode('utf-8')
+    steps=[]
+    def replace(before,after,label):
+        nonlocal text
+        assert text.count(before)==1,label
+        text=text.replace(before,after)
+        steps.append(dict(label=label,before=before,after=after))
+    replace("    for node in ast.walk(tree):\n        if isinstance(node, ast.Import):",
+        "    for node in ast.walk(tree):\n        if isinstance(node, ast.Attribute):\n            need(node.attr not in {'monitoring','use_tool_id','free_tool_id','set_events','set_local_events','register_callback','restart_events'}, 'NO_TARGET_MONITORING_API')\n        if isinstance(node, ast.Import):",
+        'Target Source additionally denies monitoring namespace/API attributes')
+    replace("        elif event in {'sys.settrace','sys.setprofile'}:\n",
+        "        elif event.startswith('sys.monitoring.'):\n            caller = sys._getframe(1)\n            forbidden = caller.f_code.co_filename != own_filename\n        elif event in {'sys.settrace','sys.setprofile'}:\n",
+        'Audit denies target monitoring manipulation, retaining original setprofile/settrace denials')
+    before="""    def profile(frame, event, arg):
+        if event == 'call' and frame.f_code.co_filename in calls:
+            path = frame.f_code.co_filename
+            calls[path] += 1
+            need(sum(calls.values()) <= b['maximum_profiled_module_calls'], 'PROFILE_CALL_CAP')
+            if path == module_path:
+                name = frame.f_code.co_name
+                need(len(function_counts) <= 4096, 'FUNCTION_NAME_CAP')
+                function_counts[name] = function_counts.get(name, 0) + 1
+"""
+    replace(before,MONITOR_FUNCTIONS,'Replace global frame profiler with exact code-local start/resume and filtered global throw')
+    replace("    sys.addaudithook(audit)\n    try:\n        sys.stdout, sys.stderr = out, err\n        sys.setprofile(profile)\n",
+        MONITOR_SETUP,'Own unused tool5 and register callbacks before audit; no global profile')
+    replace("            state['loader_compile'] = None\n            state['loader_exec'] = code\n",
+        "            state['loader_compile'] = None\n            install_exact_code_tree(code)\n            state['loader_exec'] = code\n",
+        'Install all recursive actual compiled code identities before each of exactly two execs')
+    replace("    finally:\n        sys.setprofile(None)\n        state['active'] = False\n        sys.stdout, sys.stderr = old_out, old_err\n",
+        MONITOR_CLEANUP,'Cleanup all OWN local/global events and callbacks before freeing OWN5')
+    replace('        profile_call_counts=calls, new_module_function_call_counts=function_counts,\n',
+        "        profile_call_counts=calls, new_module_function_call_counts=function_counts,\n        monitoring_method='Python3.13 exact compiled code identity entry/resume/throw events',\n        monitoring_event_counts=monitoring_event_counts, monitoring_target_event_total=monitoring_totals['events'],\n        monitoring_function_counts_by_Source=function_counts_by_path,\n        monitoring_unique_function_name_count=monitoring_totals['function_names'],\n        monitoring_registered_code_identity_count=len(monitored_code_by_id),\n        monitoring_tool_id=monitoring_tool_id, monitoring_tool_claimed=monitoring_owned,\n        monitoring_cleanup_verified=monitoring_cleanup_verified, monitoring_cleanup_errors=monitoring_cleanup_errors,\n        profile_evidence_boundary='Target code entry/resume/throw events only; no measured numeric equivalence to historical sys.setprofile call counts.',\n",
+        'Preserve result fields and explicitly label new instrumentation evidence/cleanup')
+    output=O/'RUN_I9_ONCE_ISOLATED_MEMORY_FIXTURES_TEMPLATE_003.py'
+    data=text.encode('utf-8')
+    tree=ast.parse(data,filename=str(output));compile(tree,str(output),'exec')
+    bindings=[n.value for n in tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='EXACT_ROOT_BINDINGS' for t in n.targets)]
+    assert len(bindings)==1 and isinstance(bindings[0],ast.Constant) and bindings[0].value is None
+    assert not any(isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute) and n.func.attr=='setprofile' for n in ast.walk(tree))
+    callbacks=[n for n in ast.walk(tree) if isinstance(n,ast.FunctionDef) and n.name in ('count_monitored_entry','monitor_start','monitor_resume','monitor_throw')]
+    assert len(callbacks)==4
+    for callback in callbacks:
+        assert not any(isinstance(n,ast.Attribute) and n.attr in ('f_code','_getframe') for n in ast.walk(callback))
+    assert "stored is not code" in text and 'monitored_code_by_id[identity] = code' in text
+    assert "set_events(monitoring_tool_id, monitoring.events.PY_THROW)" in text
+    assert 'monitoring.DISABLE' not in text
+    new_pin=write(output.name,data)
+    # Complete inverse: whole original Source and every forward/reverse splice.
+    inverse=text
+    for step in reversed(steps):
+        assert inverse.count(step['after'])==1,step['label']
+        inverse=inverse.replace(step['after'],step['before'])
+    assert inverse.encode()==old
+    replay=old.decode()
+    for step in steps:
+        assert replay.count(step['before'])==1
+        replay=replay.replace(step['before'],step['after'])
+    assert replay.encode()==data
+    inverse_pin=write('I9_RUNNER_TEMPLATE002_TO003_COMPLETE_SOURCE_INVERSE_001.json',dict(
+        schema_version=1,record_type='Complete_I9_runner_instrumentation_Source_only_predecessor_inverse',
+        predecessor=pin(predecessor),successor=new_pin,whole_predecessor_UTF8_Source=old.decode(),
+        exact_ordered_splices=steps,forward_replay_wholebytes_exact=True,reverse_replay_wholebytes_exact=True,
+        any_target_or_template_execution=False))
+    others=[]
+    for stem,sha in (
+        ('SUPERVISE_I9_ONCE_MEMORY_FIXTURES_TEMPLATE','02e6fc14789a27e0b5d5d3a2ef23b9fdbf9b9e43116f7fe7135fe29902b3afaf'),
+        ('PREPARE_I9_FRESH_MEMORY_SCOPE_TEMPLATE','b926dd703bdb4aea87f8ed1693ffd218e70d62e2c2cdeb5ce7c5a80022f20d87'),
+        ('CAPTURE_I9_ACTUAL_MEMORY_STREAMS_TEMPLATE','cf1533d475dc113d1e5ab85c0749faf8345ed0d2f534d88ae33762c357824720')):
+        original=O/(stem+'_002.py');payload=original.read_bytes()
+        assert hashlib.sha256(payload).hexdigest()==sha
+        compile(ast.parse(payload),stem+'_003.py','exec')
+        successor=write(stem+'_003.py',payload)
+        assert successor['bytes']==len(payload) and successor['sha256']==sha
+        others.append(dict(predecessor=pin(original),successor=successor,wholebytes_identical=True))
+    protocol=P/'ROOT_I9_CODE_LOCAL_MONITORING_EXACT_INSTRUMENTATION_PROTOCOL_001.json'
+    protocol_pin=pin(protocol)
+    assert protocol_pin['bytes']==4246 and protocol_pin['sha256']=='9b34de28ba26474a416bb5708673f62804ea547a26bfb80807ce1c0595b11e4a'
+    protocol_record=json.loads(protocol.read_bytes())
+    subject_pins=[protocol_record['module_Source'],protocol_record['fixture_Source'],protocol_record['adopted_target_Source']]
+    for q in subject_pins:
+        assert pin(Path(q['path']))==q
+    supervisor=P/'ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_006.json'
+    capture=P/'ROOT_I9_ACTUAL_OWNED_MEMORY_STREAMS_CAPTURE_006.json'
+    assert pin(supervisor)['sha256']=='649b1bf8e76040f17c0edaf261b76fcfd838ff83f64888f394ae92a646d11fd2'
+    assert pin(capture)['sha256']=='cc93a06dc2eff2a840857299d546c01f68fe9944104d9fc8473b6de05883f593'
+    saved=json.loads(supervisor.read_bytes())
+    assert saved['child_saved_result'] is None and saved['tests_executed'] is None and saved['I9_memory_test_runs'] is None
+    inputs=[pin(predecessor),pin(Path(__file__)),protocol_pin,*subject_pins,pin(supervisor),pin(capture)]
+    actual_root=P/'ROOT_RUN_I9_ONCE_ISOLATED_MEMORY_FIXTURES_006.py'
+    root=actual_root.read_text(encoding='utf-8');root_tree=ast.parse(root)
+    root_binding=next(n for n in root_tree.body if isinstance(n,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='EXACT_ROOT_BINDINGS' for t in n.targets))
+    first=root_tree.body[0];old_tree=ast.parse(old)
+    old_doc=ast.get_source_segment(old.decode(),old_tree.body[0])
+    root_doc=ast.get_source_segment(root,first)
+    root_unbound=root.replace(ast.get_source_segment(root,root_binding),'EXACT_ROOT_BINDINGS = None')
+    root_unbound=root_unbound.replace(root_doc,old_doc,1)
+    assert root_unbound==old.decode()
+    inputs.append(pin(actual_root))
+    proposal=write('I9_MONITORING_TEMPLATE003_SOURCE_PROPOSAL_001.json',dict(
+        schema_version=1,author='/root/owner_publication_review',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        record_type='I9_unbound_exact_code_monitoring_Source_proposal',protocol=protocol_pin,
+        runner=new_pin,other_templates=others,complete_inverse=inverse_pin,
+        direct_code_identity_registry='id(code)->strong_code_reference; stored is code required',
+        local_events=['PY_START','PY_RESUME'],global_events=['PY_THROW'],global_throw_identity_filtered=True,
+        callback_signatures=dict(PY_START='code,instruction_offset',PY_RESUME='code,instruction_offset',PY_THROW='code,instruction_offset,exception'),
+        counters='All executed names in both exact paths;50M total target events and4096 total per-path function-name identities. Existing module counts/result fields retained.',
+        cleanup_order=['all owned local events0','owned global events0','all three callbacksNone','free only owned tool5 after successful disabling'],
+        no_other_tool_id_or_process_mutation=True,no_sampling_or_DISABLE=True,
+        no_target_Source_or_fixture_change=True,exact23_ports_not_touched=True,
+        monitoring_activated_by_author=False,callbacks_registered_by_author=False,
+        runtime_speedup_or_timeout_cause_measured=False,old_new_numeric_count_equivalence_claimed=False,
+        current_known_fixture_entries=4,current_unknown_suite_entries=2,current_spent_scopes=6,
+        actual_accepted_complete_runs=0,
+        required_next='Actual different protocol review+Root adoption; exact Root binding; genuinely different tool Source review+Root adoption; fresh reviewed one-use scope. No invocation authorized by this proposal.',
+        source_reference='https://docs.python.org/3.13/library/sys.monitoring.html',
+        source_reference_boundary='Documentation read only; local3.13.5 builtin metadata introspection only. No monitoring setters/callbacks or target experiment executed.',
+        tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False))
+    receipt=write('I9_MONITORING_TEMPLATE003_ACTUAL_SOURCE_AUTHOR_RECEIPT_001.json',dict(
+        schema_version=1,author='/root/owner_publication_review',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        record_type='Actual_I9_monitoring_TEMPLATE003_Source_author_receipt',actual_inputs=inputs,
+        runner=new_pin,other_templates=others,complete_inverse=inverse_pin,proposal=proposal,
+        literal_EXACT_ROOT_BINDINGS=None,Source_AST_compile_only=True,template_executed=False,
+        monitor_API_activated=False,callbacks_registered=False,target_or_fixture_import_call_test=False,
+        Git_commands_or_mutation=False,Root_tool_execution=False,
+        whole_actual_runner006_minus_only_header_and_binding_equals_template002=True,
+        original_history_preserved=True,no_runtime_result_or_candidate_verdict=True,
+        operational_authority=False,scientific_authority=False))
+    for q in inputs:
+        assert pin(Path(q['path']))==q
+    print(json.dumps(dict(runner=new_pin,others=others,inverse=inverse_pin,proposal=proposal,receipt=receipt,author_Source=pin(Path(__file__))),indent=2))
+
+if __name__=='__main__':
+    main()

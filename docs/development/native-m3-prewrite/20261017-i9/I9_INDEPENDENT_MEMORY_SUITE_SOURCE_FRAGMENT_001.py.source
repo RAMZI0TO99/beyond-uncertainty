@@ -1,0 +1,387 @@
+FIXTURE_SOURCE_ONLY_BUDGET_BOUNDARY_NOTES = [
+    'The1024 callback guard is unreachable under256 unique declared inputs and immutable cache; no runtime coverage claimed.',
+    'The64MiB returned-byte guard is unreachable for valid whole-pin reads under32MiB declared bytes and immutable cache; no runtime coverage claimed.',
+    'Fixed internal literal decompression is bounded by its exact declared size and digest; no arbitrary or caller-supplied archive is decompressed.'
+]
+
+PLANNED_CASE_NAMES = [
+    'positive_complete_templates5',
+    'positive_complete_manifest12',
+    'positive_complete_capture3',
+    'positive_write_before_bound',
+    'positive_supervise_before_bound',
+    'positive_write_after_bound',
+    'positive_supervise_after_bound',
+    'positive_phase_binding_four_reconstructions',
+    'positive_partial_template_prewrite',
+    'positive_four_bound_prewrite_shared_reader',
+    'view_is_immutable_and_detached',
+    'caller_snapshot_survives_callback_mutation',
+    'held_actual_entry_zero_callbacks',
+    'held_actual_entry_after_flag_toggle_zero_callbacks',
+    'trusted_extra_key_refused_before_read',
+    'trusted_float_refused_before_read',
+    'trusted_depth49_refused_before_read',
+    'trusted_nodes50001_refused_before_read',
+    'input_count257_refused_before_read',
+    'declared_bytes_over32MiB_refused_before_read',
+    'future_output_input_alias_refused_before_read',
+    'same_pair_future_template_input_excluded_before_read',
+    'input_casefold_alias_refused_before_read',
+    'path_lowercase_drive_refused_before_read',
+    'path_traversal_refused_before_read',
+    'path_ADS_refused_before_read',
+    'path_reserved_component_refused_before_read',
+    'pin_bool_bytes_refused_before_read',
+    'pin_bad_digest_refused_before_read',
+    'missing_inventory_refused_before_read',
+    'birth_bool_refused_before_read',
+    'callback_bytearray_refused',
+    'callback_text_refused',
+    'callback_wrong_whole_bytes_refused',
+    'callback_exception_wrapped',
+    'strict_duplicate_JSON_names_refused',
+    'strict_UTF8_refused',
+    'strict_JSON_float_refused',
+    'owner_remaining_exact60_refused',
+    'lease_remaining_exact1200_refused',
+    'lease_duration_off100ns_refused',
+    'selection_phase_ordinal18_refused',
+    'selection_changed_phase_suffix_refused',
+    'facts_schema_bool_refused',
+    'facts_context_pin_swap_refused',
+    'facts_native_authority_refused',
+    'facts_nonempty_wrong_stage_choices_refused',
+    'code_reviewer_editor_descendant_refused',
+    'full_proof_false_check_refused',
+    'full_proof_duplicate_check_name_refused',
+    'Root_adoption_missing_direct_subject_refused',
+    'purpose_output_list_tamper_refused',
+    'dynamic_full_missing_from_purpose_refused',
+    'receipt_schema_bool_refused',
+    'receipt_actual_packet_swap_refused',
+    'receipt_target_authority_refused',
+    'receipt_steps_missing_refused',
+    'receipt_provenance_editor_refused',
+    'receipt_historical_editor_label_refused',
+    'resource_wrong_disk_key_refused',
+    'resource_RAM_bool_refused',
+    'resource_RAM_below_floor_refused',
+    'resource_disk_below_floor_refused',
+    'resource_after_receipt_refused',
+    'resource_before_diff_refused',
+    'receipt_created_after_birth_refused',
+    'codec_unused_label_refused',
+    'codec_permuted_first_occurrence_table_refused',
+    'codec_bool_index_refused',
+    'codec_false_row_refused',
+    'codec_wrong_stream_sha_refused',
+    'observation_path9_size_refused',
+    'observation_fd9_shared_inode_refused',
+    'observation_shared_all9_refused',
+    'observation_two_read_false_refused',
+    'observation_duplicate_row_refused',
+    'observation_output_order_refused',
+    'observation_input_after_output_refused',
+    'later_receipt_unshared_slot_drift_refused',
+    'later_receipt_observed_time_drift_refused',
+    'later_receipt_cap_drift_refused',
+    'complete_inverse_flag_tamper_refused',
+    'protected_template_byte_tamper_refused',
+    'diff_whole_bytes_tamper_refused',
+    'manifest_protected_field_tamper_refused',
+    'manifest_header_after_birth_refused',
+    'manifest_header_after_now_refused',
+    'capture_plan_protected_field_tamper_refused',
+    'dependency_peer_actual_reviewer_is_author_refused',
+    'dependency_reconciliation_shape_refused',
+    'request_row_cap_bool_refused',
+    'request_role_order_refused',
+    'request_duplicate_role_refused',
+    'request_physical_editor_refused',
+    'request_missing_receipt_staging_output_refused'
+]
+EXPECTED_CASE_COUNT = 95
+
+
+def _fx_good(module,fixture):
+    view,calls=_fx_invoke(module,fixture)
+    data=view.to_dict()
+    assert data['metadata_only'] is True and data['recorded_M3_semantics_validated'] is True and data['frozen_detached'] is True
+    for key in ['actual_admission','owner_lease_qualified','producer_qualified','caller_qualified','physical_origin_authenticated',
+        'human_origin_authenticated','native_Parser_authority','new_grants_issued','operational_authority','scientific_authority']:
+        assert data[key] is False
+    assert data['request']==fixture['request'] and data['current_owner_scope']==fixture['trusted']['current_owner_scope']
+    assert data['actual_reader_calls']==len(calls)==len({p['path'] for p in calls})
+    assert data['actual_reader_bytes']==sum(p['bytes'] for p in calls)
+    assert len(calls)<=256 and data['actual_reader_bytes']<=33554432
+    return view,len(calls)
+
+
+def _fx_bad(module,fixture,accepted_codes,*,before_read=False,reader_override=None):
+    try:
+        _fx_invoke(module,fixture,reader_override=reader_override)
+    except module.I9MetadataError as error:
+        assert error.code in accepted_codes,(error.code,accepted_codes)
+        count=len(fixture.get('_last_calls',[]))
+        if before_read:assert count==0
+        return count
+    raise AssertionError('mutated synthetic metadata was accepted')
+
+
+def _fx_drop_purpose_input(fixture,path):
+    # Edit all literal copies of the same independently derived stage purpose,
+    # and remove its recorded initial observation. Trusted bytes remain present.
+    graph=fixture['graph'];targets=[]
+    for current in list(graph['store']):
+        if current in graph['fixed_paths']:continue
+        raw=graph['store'][current]
+        try:value=json.loads(raw)
+        except (ValueError,UnicodeError):continue
+        changed=[False]
+        def edit(v):
+            if type(v) is dict:
+                selected={k:edit(x) for k,x in v.items()}
+                if set(selected)=={'schema_version','stage','role','facts','inputs','output_paths'}:
+                    before=len(selected['inputs']);selected['inputs']=[p for p in selected['inputs'] if p['path']!=path]
+                    changed[0]|=len(selected['inputs'])!=before
+                if type(selected.get('finite_actual_Source_observations')) is list:
+                    prior=selected['finite_actual_Source_observations'];selected['finite_actual_Source_observations']=[r for r in prior if r['path']!=path]
+                    changed[0]|=len(prior)!=len(selected['finite_actual_Source_observations'])
+                return selected
+            if type(v) is list:return [edit(x) for x in v]
+            return v
+        result=edit(value)
+        if changed[0]:
+            targets.append(current)
+            _fx_repin(fixture,current,_fx_wire(result))
+    assert targets
+    return fixture
+
+
+def run_memory_suite(module):
+    cases=[]
+    case='fixture_bootstrap'
+    fixed=_fx_fixed();constants=fixed['constants'];bound_roles=constants['PHASE_BOUND_ROLES'];template_roles=constants['TEMPLATE_ROLES'][1:]
+    base_cache={}
+    def base(name):
+        if name not in base_cache:
+            if name=='templates':value=_fx_graph(fixed,'templates')
+            elif name=='manifest':value=_fx_graph(fixed,'manifest')
+            elif name=='capture':value=_fx_graph(fixed,'capture')
+            elif name=='phase_binding':value=_fx_graph(fixed,'phase_binding')
+            elif name=='prewrite_templates':value=_fx_graph(fixed,'templates',request_roles=template_roles[:2])
+            elif name=='prewrite_bounds':value=_fx_graph(fixed,'phase_bound',bound_roles[0],request_roles=bound_roles)
+            elif name.startswith('bound:'):value=_fx_graph(fixed,'phase_bound',name.split(':',1)[1])
+            else:raise AssertionError(name)
+            base_cache[name]=value
+        return copy.deepcopy(base_cache[name])
+    def first_artifact(fixture,later=False):
+        key=fixture['stage']+(':'+fixture['role'] if fixture['role'] else '')
+        return fixture['graph']['stage_artifacts'][key][1 if later else 0]
+    def receipt_edit(fixture,edit,later=False):
+        return _fx_edit_record(fixture,first_artifact(fixture,later)['author_receipt']['path'],edit)
+    positive_specs={
+        'positive_complete_templates5':('templates',None),
+        'positive_complete_manifest12':('manifest',None),
+        'positive_complete_capture3':('capture',None),
+        'positive_write_before_bound':('bound:'+bound_roles[0],None),
+        'positive_supervise_before_bound':('bound:'+bound_roles[1],None),
+        'positive_write_after_bound':('bound:'+bound_roles[2],None),
+        'positive_supervise_after_bound':('bound:'+bound_roles[3],None),
+        'positive_phase_binding_four_reconstructions':('phase_binding',None),
+        'positive_partial_template_prewrite':('prewrite_templates',None),
+        'positive_four_bound_prewrite_shared_reader':('prewrite_bounds',None)
+    }
+    for case in PLANNED_CASE_NAMES:
+        count=0
+        if case in positive_specs:
+            fixture=base(positive_specs[case][0]);view,count=_fx_good(module,fixture)
+            groups=view.to_dict()['validated_stage_groups']
+            assert len(groups)==(4 if case=='positive_four_bound_prewrite_shared_reader' else 1)
+            if case=='positive_complete_templates5':assert len(groups[0]['artifacts'])==5
+            if case=='positive_complete_capture3':assert len(groups[0]['artifacts'])==3
+        elif case=='view_is_immutable_and_detached':
+            fixture=base('templates');view,count=_fx_good(module,fixture);before=view.to_dict();copydata=view.to_dict();copydata['actual_admission']=True
+            copydata['validated_stage_groups'].clear();assert view.to_dict()==before
+            try:view.actual_admission=True
+            except AttributeError:pass
+            else:raise AssertionError('mutable view')
+            try:del view._payload
+            except AttributeError:pass
+            else:raise AssertionError('deletable view')
+        elif case=='caller_snapshot_survives_callback_mutation':
+            fixture=base('templates')
+            def mutate(caller):caller.clear();caller['malicious_after_snapshot']=True
+            view,calls=_fx_invoke(module,fixture,mutate_caller=mutate);count=len(calls)
+            assert view.to_dict()['recorded_M3_semantics_validated'] is True
+        elif case.startswith('held_actual_entry'):
+            poison_calls=[]
+            def poison(*args,**kwargs):poison_calls.append(True);raise AssertionError('actual entry touched callback')
+            original=module.I9_ACTUAL_PUBLICATION_DEPENDENCIES_QUALIFIED
+            if 'toggle' in case:module.I9_ACTUAL_PUBLICATION_DEPENDENCIES_QUALIFIED=True
+            try:
+                try:module.require_actual_M3_prewrite_publication_admission(read_record=poison,synthetic_fixture=True,actual_entry_enabled=True)
+                except module.I9MetadataError as error:assert error.code in ('E_ACTUAL_ENTRY_HELD','E_ACTUAL_ENTRY_UNWIRED')
+                else:raise AssertionError('actual entry admitted')
+            finally:module.I9_ACTUAL_PUBLICATION_DEPENDENCIES_QUALIFIED=original
+            assert poison_calls==[]
+        else:
+            fixture=base('templates');trusted=fixture['trusted'];before_read=False;codes=();override=None
+            if case=='trusted_extra_key_refused_before_read':trusted['extra']=None;codes=('E_BINDINGS',);before_read=True
+            elif case=='trusted_float_refused_before_read':trusted['extra']=0.5;codes=('E_JSON_TYPE',);before_read=True
+            elif case=='trusted_depth49_refused_before_read':
+                nested=None
+                for _ in range(50):nested=[nested]
+                trusted['extra']=nested;codes=('E_JSON_BOUNDS',);before_read=True
+            elif case=='trusted_nodes50001_refused_before_read':trusted['extra']=[None]*50001;codes=('E_JSON_BOUNDS',);before_read=True
+            elif case=='input_count257_refused_before_read':
+                for i in range(257-len(trusted['expected_inputs'])):trusted['expected_inputs'].append(dict(path=_FX_HOME+'\\fake'+str(i)+'.bytes',bytes=1,sha256='0'*64))
+                trusted['expected_inputs'].sort(key=lambda p:p['path']);codes=('E_READER_LIMIT',);before_read=True
+            elif case=='declared_bytes_over32MiB_refused_before_read':
+                for i in range(17):
+                    p=dict(path=_FX_HOME+'\\large'+str(i)+'.bytes',bytes=2097152,sha256='0'*64);trusted['expected_inputs'].append(p);trusted['recorded_births_ns'][p['path']]=1
+                trusted['expected_inputs'].sort(key=lambda p:p['path']);codes=('E_READER_LIMIT',);before_read=True
+            elif case=='future_output_input_alias_refused_before_read':trusted['expected_output_paths']=[trusted['expected_inputs'][0]['path']];codes=('E_FUTURE_OUTPUT_INPUT',);before_read=True
+            elif case=='same_pair_future_template_input_excluded_before_read':
+                fixture=base('bound:'+bound_roles[0]);trusted=fixture['trusted'];trusted['expected_output_paths']=[fixture['graph']['rows'][template_roles[0]]['canonical_path']];codes=('E_FUTURE_OUTPUT_INPUT',);before_read=True
+            elif case=='input_casefold_alias_refused_before_read':
+                p=copy.deepcopy(trusted['expected_inputs'][0]);p['path']=p['path'][:3]+p['path'][3:].lower();assert p!=trusted['expected_inputs'][0]
+                trusted['expected_inputs'].append(p);trusted['expected_inputs'].sort(key=lambda p:p['path']);codes=('E_INPUT_ALIAS',);before_read=True
+            elif case.startswith('path_'):
+                p=trusted['expected_inputs'][0]
+                if 'lowercase_drive' in case:p['path']=p['path'][0].lower()+p['path'][1:]
+                elif 'traversal' in case:p['path']=r'C:\bad\..\entry.json'
+                elif 'ADS' in case:p['path']=r'C:\bad\entry.json:stream'
+                else:p['path']=r'C:\bad\NUL.json'
+                codes=('E_PATH',);before_read=True
+            elif case=='pin_bool_bytes_refused_before_read':trusted['expected_inputs'][0]['bytes']=True;codes=('E_PIN',);before_read=True
+            elif case=='pin_bad_digest_refused_before_read':trusted['expected_inputs'][0]['sha256']='F'*64;codes=('E_PIN',);before_read=True
+            elif case=='missing_inventory_refused_before_read':
+                path=trusted['M3_predecessor_inventory']['path'];trusted['expected_inputs']=[p for p in trusted['expected_inputs'] if p['path']!=path];trusted['recorded_births_ns'].pop(path)
+                codes=('E_UNDECLARED_INPUT',);before_read=True
+            elif case=='birth_bool_refused_before_read':trusted['recorded_births_ns'][trusted['expected_inputs'][0]['path']]=True;codes=('E_BIRTHS',);before_read=True
+            elif case=='callback_bytearray_refused':override=lambda pin,raw:bytearray(raw);codes=('E_READER_BYTES',)
+            elif case=='callback_text_refused':override=lambda pin,raw:raw.decode('utf8');codes=('E_READER_BYTES',)
+            elif case=='callback_wrong_whole_bytes_refused':override=lambda pin,raw:raw[:-1]+(b'X' if raw[-1:]!=b'X' else b'Y');codes=('E_HASH',)
+            elif case=='callback_exception_wrapped':
+                def override(pin,raw):raise RuntimeError('fictional callback refusal')
+                codes=('E_READER_REFUSAL',)
+            elif case in ('strict_duplicate_JSON_names_refused','strict_UTF8_refused','strict_JSON_float_refused'):
+                path=trusted['current_owner_scope']['path']
+                raw={'strict_duplicate_JSON_names_refused':b'{"target_execution":false,"target_execution":false}',
+                    'strict_UTF8_refused':b'{"x":"\xff"}', 'strict_JSON_float_refused':b'{"x":1.5}'}[case]
+                _fx_repin(fixture,path,raw);codes=('E_JSON_DUPLICATE','E_JSON','E_JSON_NUMBER')
+            elif case=='owner_remaining_exact60_refused':
+                path=trusted['current_owner_scope']['path'];_fx_edit_record(fixture,path,lambda v:v.update(interval_end='2030-01-01T06:01:00.000000+00:00'));codes=('E_SCOPE_TIME',)
+            elif case=='lease_remaining_exact1200_refused':fixture['now']='2030-01-01T11:40:00.000000+00:00';codes=('E_LEASE_TIME',)
+            elif case=='lease_duration_off100ns_refused':_fx_edit_record(fixture,trusted['canonical_lease']['path'],lambda v:v.update(lease_end_utc='2030-01-01T12:00:00.0000001+00:00'));codes=('E_LEASE_TIME',)
+            elif case=='selection_phase_ordinal18_refused':
+                def edit(v):next(r for r in v['rows'] if r['role']==template_roles[0])['selected_ordinal']=18
+                _fx_edit_record(fixture,trusted['selection']['path'],edit);codes=('E_SELECTION_SUCCESSOR','E_PHASE_ORDINAL')
+            elif case=='selection_changed_phase_suffix_refused':
+                def edit(v):
+                    row=next(r for r in v['rows'] if r['role']==template_roles[0]);row['canonical_path']=row['canonical_path'].replace('.TEMPLATE.ps1','.WRONG.ps1')
+                _fx_edit_record(fixture,trusted['selection']['path'],edit);codes=('E_SELECTION_BASENAME',)
+            elif case.startswith('facts_'):
+                path=trusted['stage_supports']['templates']['facts']['path']
+                if 'schema_bool' in case:edit=lambda v:v.update(schema_version=True);codes=('E_FACTS21',)
+                elif 'context_pin_swap' in case:edit=lambda v:v.update(current_owner_scope=fixture['graph']['lease']);codes=('E_FACTS_CONTEXT',)
+                elif 'native_authority' in case:edit=lambda v:v.update(native_Parser_authority=True);codes=('E_AUTHORITY',)
+                else:
+                    fixture=base('manifest');path=fixture['trusted']['stage_supports']['manifest']['facts']['path'];edit=lambda v:v.update(operational_choices=dict(extra='invalid'));codes=('E_CHOICES_STAGE',)
+                _fx_edit_record(fixture,path,edit)
+            elif case=='code_reviewer_editor_descendant_refused':
+                path=trusted['producer_support']['different_review']['path'];_fx_edit_record(fixture,path,lambda v:v.update(reviewer=_FX_EDITOR+'/child'));codes=('E_REVIEWER',)
+            elif case in ('full_proof_false_check_refused','full_proof_duplicate_check_name_refused'):
+                cap=json.loads(fixture['graph']['store'][trusted['producer_support']['different_review']['path']]);path=cap['full_proof']['path']
+                if 'false' in case:edit=lambda v:v['checks'][0].update(passed=False)
+                else:edit=lambda v:v['checks'].append(copy.deepcopy(v['checks'][0]))
+                _fx_edit_record(fixture,path,edit);codes=('E_FULL_PROOF',)
+            elif case=='Root_adoption_missing_direct_subject_refused':
+                path=trusted['producer_support']['Root_adoption']['path'];source=trusted['producer_support']['Source']['path']
+                _fx_edit_record(fixture,path,lambda v:v.update(subjects=[p for p in v['subjects'] if p['path']!=source]));codes=('E_ADOPTION',)
+            elif case=='purpose_output_list_tamper_refused':
+                path=trusted['stage_supports']['templates']['different_review']['path'];_fx_edit_record(fixture,path,lambda v:v['exact_M3_Source_stage_purpose']['output_paths'].pop());codes=('E_PURPOSE6',)
+            elif case=='dynamic_full_missing_from_purpose_refused':
+                cap=json.loads(fixture['graph']['store'][trusted['producer_support']['different_review']['path']]);_fx_drop_purpose_input(fixture,cap['full_proof']['path']);codes=('E_PURPOSE_CLOSURE','E_BOOTSTRAP_CLOSURE','E_GENERATION_PRELUDE')
+            elif case.startswith('receipt_'):
+                if 'schema_bool' in case:edit=lambda v:v.update(schema_version=True);codes=('E_RECEIPT22',)
+                elif 'actual_packet_swap' in case:edit=lambda v:v.update(actual_Source_packet=fixture['graph']['scope']);codes=('E_RECEIPT_JOIN',)
+                elif 'target_authority' in case:edit=lambda v:v.update(target_execution=True);codes=('E_AUTHORITY',)
+                elif 'steps_missing' in case:edit=lambda v:v['steps'].pop('complete_inverse');codes=('E_STEPS4',)
+                elif 'provenance_editor' in case:edit=lambda v:v['steps']['metadata_Source_provenance'].update(actual_implementation_Source_editor='/root/another');codes=('E_PROVENANCE6',)
+                elif 'historical_editor_label' in case:edit=lambda v:v['steps']['metadata_Source_provenance'].update(historical_implementation_Source_editor='/root/m3_source_editor');codes=('E_PROVENANCE6',)
+                else:edit=lambda v:v.update(created_utc=_fx_time(1000));codes=('E_CREATED_BIRTH',)
+                receipt_edit(fixture,edit)
+            elif case.startswith('resource_'):
+                def edit(v):
+                    resource=v['steps']['metadata_Source_provenance']['resource_observation']
+                    if 'wrong_disk_key' in case:resource['disk_free_bytes']=resource.pop('free_disk_bytes')
+                    elif 'RAM_bool' in case:resource['available_RAM_bytes']=True
+                    elif 'RAM_below' in case:resource['available_RAM_bytes']=1073741823
+                    elif 'disk_below' in case:resource['free_disk_bytes']=10737418239
+                    elif 'after_receipt' in case:resource['observed_utc']=_fx_time(1000)
+                    else:resource['observed_utc']=_fx_time(700)
+                receipt_edit(fixture,edit);codes=('E_RESOURCE3',) if 'wrong_disk_key' in case else (('E_OUTPUT_CHRONOLOGY',) if 'before_diff' in case else ('E_RESOURCE',))
+            elif case.startswith('codec_'):
+                def edit(v):
+                    codec=v['steps']['actual_check_codec']
+                    if 'unused_label' in case:codec['check_labels'].append('unused')
+                    elif 'permuted' in case:
+                        codec['check_labels'].reverse()
+                        for row in codec['checks']:row[1]=1-row[1]
+                    elif 'bool_index' in case:codec['checks'][0][1]=False
+                    elif 'false_row' in case:codec['checks'][0][0]=False
+                    else:codec['ordered_check_stream_sha256']='0'*64
+                receipt_edit(fixture,edit);codes=('E_CODEC','E_CODEC_CANONICAL')
+            elif case.startswith('observation_') or case.startswith('later_receipt_'):
+                later=case.startswith('later_receipt_')
+                def edit(v):
+                    observations=v['finite_actual_Source_observations'];row=observations[0]
+                    if 'path9_size' in case:row['path9'][2]+=1
+                    elif 'fd9_shared_inode' in case:row['descriptor9'][1]+=1
+                    elif 'shared_all9' in case:row['shared_identity_indexes']=list(range(9))
+                    elif 'two_read_false' in case:row['two_read_match']=False
+                    elif 'duplicate_row' in case:observations.append(copy.deepcopy(row))
+                    elif 'output_order' in case:observations[-1],observations[-2]=observations[-2],observations[-1]
+                    elif 'input_after_output' in case:observations.append(observations.pop(0))
+                    elif 'unshared_slot' in case:row['path9'][4]+=1
+                    elif 'observed_time' in case:row['observed_utc']=_fx_time(704)
+                    else:row['cap']=2097151
+                receipt_edit(fixture,edit,later=later);codes=('E_OBSERVATION_VECTOR','E_OBSERVATION_SHARED7','E_OBSERVATION9','E_OBSERVATION_PREFIX','E_OBSERVATION_STABILITY')
+            elif case=='complete_inverse_flag_tamper_refused':receipt_edit(fixture,lambda v:v['steps']['complete_inverse'].update(complete_current_predecessor_byte_inverse=False));codes=('E_COMPLETE_INVERSE',)
+            elif case=='protected_template_byte_tamper_refused':
+                path=first_artifact(fixture)['draft']['path'];raw=fixture['graph']['store'][path];assert raw[-1:]==b'\n';_fx_repin(fixture,path,raw[:-1]+b' ');codes=('E_COMPLETE_INVERSE',)
+            elif case=='diff_whole_bytes_tamper_refused':
+                path=first_artifact(fixture)['diff']['path'];raw=fixture['graph']['store'][path];assert raw.startswith(b'---');_fx_repin(fixture,path,b'+++'+raw[3:]);codes=('E_EXACT_DIFF',)
+            elif case.startswith('manifest_'):
+                fixture=base('manifest');path=first_artifact(fixture)['draft']['path']
+                if 'protected_field' in case:edit=lambda v:v.update(source_approval_issued=True);codes=('E_COMPLETE_INVERSE',)
+                elif 'after_birth' in case:edit=lambda v:v.update(created_utc=_fx_time(701));codes=('E_MANIFEST_TIME','E_MANIFEST_HEADER_TIME','E_CREATED_BIRTH')
+                else:edit=lambda v:v.update(created_utc=_fx_time(21601));codes=('E_MANIFEST_TIME','E_MANIFEST_HEADER_TIME','E_CREATED_BIRTH')
+                _fx_edit_record(fixture,path,edit)
+            elif case=='capture_plan_protected_field_tamper_refused':
+                fixture=base('capture');path=first_artifact(fixture)['draft']['path'];_fx_edit_record(fixture,path,lambda v:v.update(scope='FICTIONAL_CHANGED_PROTECTED_SCOPE'));codes=('E_COMPLETE_INVERSE',)
+            elif case=='dependency_peer_actual_reviewer_is_author_refused':
+                fixture=base('capture');support=fixture['graph']['dependencies']['metadata_peer'];receipt=json.loads(fixture['graph']['store'][support['author_receipt']['path']]);path=receipt['Owner_genuine_content_review']['path']
+                _fx_edit_record(fixture,path,lambda v:v.update(reviewer=_FX_CONTENT));codes=('E_REVIEWER',)
+            elif case=='dependency_reconciliation_shape_refused':
+                fixture=base('bound:'+bound_roles[0]);path=fixture['graph']['dependencies']['capture_bound']['late_reconciliation']['path'];_fx_edit_record(fixture,path,lambda v:v.pop('retained_fictional_field_0'));codes=('E_RECONCILIATION26',)
+            elif case.startswith('request_'):
+                fixture=base('prewrite_templates');path=fixture['request']['path']
+                if 'missing_receipt_staging' in case:
+                    fixture['trusted']['expected_output_paths']=[p for p in fixture['trusted']['expected_output_paths'] if not p.endswith('future_publication_receipt.json.staging')];codes=('E_REQUEST_OUTPUTS',)
+                else:
+                    if 'cap_bool' in case:edit=lambda v:v['rows'][0].update(source_cap=True);codes=('E_REQUEST_ROW_JOIN',)
+                    elif 'role_order' in case:edit=lambda v:v['rows'].reverse();codes=('E_REQUEST_ROLE_ORDER',)
+                    elif 'duplicate_role' in case:edit=lambda v:v['rows'].append(copy.deepcopy(v['rows'][0]));codes=('E_REQUEST_ROLES',)
+                    else:edit=lambda v:v['rows'][0].update(physical_Source_editor=_FX_EDITOR);codes=('E_REQUEST_ROW_JOIN',)
+                    _fx_edit_record(fixture,path,edit)
+            else:raise AssertionError('unimplemented planned case '+case)
+            assert codes,case
+            count=_fx_bad(module,fixture,codes,before_read=before_read,reader_override=override)
+        cases.append(dict(name=case,passed=True,synthetic_fixture=True,memory_record_reader_calls=count))
+    assert len(cases)==EXPECTED_CASE_COUNT and [row['name'] for row in cases]==PLANNED_CASE_NAMES
+    return dict(synthetic_fixture=True,filesystem_calls=0,project_or_native_tests=False,cases=cases,checks_passed=len(cases),checks_failed=0,
+        source_only_budget_boundary_notes=list(FIXTURE_SOURCE_ONLY_BUDGET_BOUNDARY_NOTES))

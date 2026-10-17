@@ -1,0 +1,214 @@
+"""Independent module-only Source/AST audit. Never import or call any target."""
+import ast
+import base64
+import builtins
+import copy
+import datetime
+import hashlib
+import json
+import symtable
+from pathlib import Path
+
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+OWN=P/'module_review_001';I=P/'i9';CAP=2097152
+inputs={};checks=[];regions=[]
+def fact(path):
+    path=Path(path);raw=path.read_bytes();assert 0<len(raw)<=CAP
+    q=dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+    if str(path) in inputs:assert inputs[str(path)]==q
+    inputs[str(path)]=q;return q,raw
+def pairs(rows):
+    v={}
+    for k,x in rows:assert k not in v;v[k]=x
+    return v
+def bad(x):raise ValueError(x)
+def obj(path):
+    q,b=fact(path);return q,json.loads(b,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def check(name,value,evidence):
+    assert type(value) is bool and name not in {c['name'] for c in checks}
+    checks.append(dict(name=name,passed=value,evidence=evidence))
+def constant_values(tree):
+    d={}
+    for n in tree.body:
+        if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+            x=n.value
+            if isinstance(x,ast.Call) and isinstance(x.func,ast.Name) and x.func.id=='frozenset':x=x.args[0]
+            try:d[n.targets[0].id]=frozenset(ast.literal_eval(x)) if isinstance(n.value,ast.Call) and isinstance(n.value.func,ast.Name) and n.value.func.id=='frozenset' else ast.literal_eval(x)
+            except (TypeError,ValueError,SyntaxError):pass
+    return d
+def norm(v):
+    if type(v) in (tuple,list):return [norm(x) for x in v]
+    if type(v) in (set,frozenset):return sorted(norm(x) for x in v)
+    if type(v) is dict:return {k:norm(x) for k,x in v.items()}
+    return v
+
+q,raw=fact(I/'validate_recorded_M3_semantics_001.py');subjects=[q];text=raw.decode('utf8');tree=ast.parse(raw)
+check('module116461_frozen_exact_pin',q['bytes']==116461 and q['sha256']=='d75d31c59be76332c625e17b3312284068706b0aac954512c4f8d8a9b0501ed1',[q])
+defs={n.name:n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))};const=constant_values(tree)
+for name,n in defs.items():
+    body=b''.join(raw.splitlines(keepends=True)[n.lineno-1:n.end_lineno])
+    regions.append(dict(name=name,first_line=n.lineno,last_line=n.end_lineno,bytes=len(body),sha256=hashlib.sha256(body).hexdigest()))
+def src(name):return ast.get_source_segment(text,defs[name])
+constants_q,constants=obj(I/'I9_ASSEMBLED_MODULE_CONSTANT_BINDINGS_001.json')
+check('actual_constants36118_pin',constants_q['bytes']==36118 and constants_q['sha256']=='f89359702866739ada621ef41f06f588854969024634f283e4b0725b7312930e',[constants_q])
+check('all60_module_constants_match_separate_bindings',len(constants)==len(const)==60 and all(json.dumps(norm(const[k]),sort_keys=True)==json.dumps(sorted(norm(v)) if type(const[k]) is frozenset else norm(v),sort_keys=True) for k,v in constants.items()),[q,constants_q])
+receipt_q,receipt=obj(I/'I9_ACTUAL_MODULE_SOURCE_ASSEMBLY_RECEIPT_001.json')
+check('assembly_receipt3354_exact',receipt_q['bytes']==3354 and receipt_q['sha256']=='bc6899ba229edbd84bebd3318239b044f1fe3f5ef17a2f9dd639e300ba7ea488' and receipt['Source']==q,[receipt_q,q])
+for fq in receipt['fragments']:
+    actual,_=fact(fq['path']);check('actual_fragment_'+Path(fq['path']).name,actual==fq,[receipt_q,actual])
+for key in ('Root_protocol_adoption','actor_clarifier_Root_adoption','protocol'):
+    actual,_=fact(receipt[key]['path']);check('actual_receipt_authority_input_'+key,actual==receipt[key],[receipt_q,actual])
+protocol_q,protocol=obj(receipt['protocol']['path'])
+adopt_q,adopt=obj(receipt['Root_protocol_adoption']['path'])
+check('protocol_adoption4717_exact_and_5subjects',adopt_q['bytes']==4717 and adopt_q['sha256']=='f2447b86e8178a59f94e5fd4d75866d27ba83f994bc5f9d60ca5b9a5599bcc0f' and len(adopt['subjects'])==5,[adopt_q])
+for pq in adopt['subjects']:
+    actual,_=fact(pq['path']);check('actual_protocol_subject_'+Path(pq['path']).name,actual==pq,[adopt_q,actual])
+actor_adopt_q,actor_adopt=obj(receipt['actor_clarifier_Root_adoption']['path'])
+check('actor_adoption2543_exact',actor_adopt_q['bytes']==2543 and actor_adopt_q['sha256']=='a9de80e3d8313a953d01aa13b60e21867bccc096e43bab0010318855ca7aea6b',[actor_adopt_q])
+actor_q,actor=obj(P/'ROOT_I9_CURRENT_ACTOR_OPEN_PROOF_ADAPTATION_SOURCE_CLARIFICATION_001.json')
+check('actor_clarifier3243_exact',actor_q['bytes']==3243 and actor_q['sha256']=='94f6c2be74c5350b9f6d1323d57e8e5f420987f5132985df7c141336d5771f66',[actor_q])
+scope_q,scope=obj(protocol['scope']['path']);now=datetime.datetime.now(datetime.timezone.utc)
+check('actual_Source_scope_current_reserve60',scope_q==protocol['scope'] and datetime.datetime.fromisoformat(scope['interval_start'])<=now and now+datetime.timedelta(seconds=60)<datetime.datetime.fromisoformat(scope['interval_end']),[scope_q])
+for path in ('I9_SOURCE_ANALYSIS_AND_UNEXECUTED_AUTHORING_CORRECTIONS_001.json','I9_ACTUAL_PROTOCOL_AND_ADOPTION_PREBIRTH_REHASH_001.json','author_I9_complete_module_source_001.py','author_I9_isolated_algorithm_ports_001.py'):
+    aq,ar=fact(I/path)
+    if path.endswith('.py'):ast.parse(ar)
+    else:json.loads(ar)
+check('assembly_claims_no_target_calls_or_imports',receipt['target_execution'] is False and type(receipt['target_calls']) is int and receipt['target_calls']==0 and receipt['target_imports']==0 and receipt['fixtures_executed'] is False,[receipt_q])
+
+old_q,old_raw=fact(protocol['reference_contracts']['I2_Source']['path']);old_tree=ast.parse(old_raw);old_defs={n.name:n for n in old_tree.body if isinstance(n,ast.FunctionDef)};old_const=constant_values(old_tree)
+check('original_I2_source_exact127014',old_q==protocol['reference_contracts']['I2_Source'],[old_q,protocol_q])
+fact(protocol['reference_contracts']['I2_API']['path'])
+map_q,mapping_record=obj(I/'I9_ORIGINAL_ALGORITHM_FULL_REGION_INVERSE_AND_ADAPTATION_MAP_001.json')
+check('whole_original_inverse_map95357_exact',map_q['bytes']==95357 and map_q['sha256']=='42b0c8eb388d42d5eb73dc17faddc305381824bbf72326aa085d09a9b2fa19f0' and len(mapping_record['entries'])==23,[map_q])
+intrinsic=['exact_pin_occurs','assignments','functions','protected_assignments','splice_exact','safe_relative','immutable_json','capture_assignment_bind','old_bound_template_inverse','phase_assignment_bind','phase_predecessor_inverse','_stage_roles','required_dependencies']
+buffers=['template_identity','json_artifact','pack','validate_binding_supports','validate_peer_metadata','render_templates','render_manifest','render_capture','render_phase_bound','render_phase_binding']
+rename={n:'_i9_'+n.lstrip('_') for n in intrinsic+buffers}
+rename.update(exact_pin_occurs='_i9_occurs',need='_i9_need',sha='_i9_sha',wire='_i9_original_wire',strict_source_json='_i9_json',exact_fact3='_i9_pin',read_pin='_i9_read_pin',utc='_i9_recorded_utc',different_review='_i9_different_review',root_review_adoption='_i9_root_review_adoption',ast='_i9_ast',copy='_i9_copy_module',re='_i9_re')
+constant_names={'SEMANTIC','CAPTURE_SLOTS','BINDING_KEYS','TEMPLATE_ROLES','PHASE_BOUND_ROLES','GENERATED_ROLES','PEER_ROLES','ROLE_SOURCE_CAPS','CURRENT_PLAN_BINDINGS','CURRENT_PLAN_ROLE_SELECTIONS','RENEWED_BINDINGS','BASE'}
+rename.update({n:'I9_'+n for n in constant_names});context=set(buffers)|{'read_pin','utc','different_review','root_review_adoption'}
+paths=[("Path(lease_pin['path']).name","_i9_leaf(lease_pin['path'])"),("Path(rows[slot['referenced_role']]['canonical_path'])","rows[slot['referenced_role']]['canonical_path']"),('target.relative_to(BASE).as_posix()','_i9_relative(target,I9_BASE)'),('target.name','_i9_leaf(target)'),("Path(supports[key]['source']['path']).relative_to(BASE).as_posix()","_i9_relative(supports[key]['source']['path'],I9_BASE)"),("Path(inventory[role]['available_basis']['path']).name","_i9_leaf(inventory[role]['available_basis']['path'])"),("str(Path(rows['metadata_manifest']['predecessor']['path']).parent/item['path'])","_i9_join(_i9_parent(rows['metadata_manifest']['predecessor']['path']),item['path'])"),("Path(rows[role]['canonical_path']).name","_i9_leaf(rows[role]['canonical_path'])"),("Path(rows['profile']['canonical_path']).name","_i9_leaf(rows['profile']['canonical_path'])")]
+class PurePort(ast.NodeTransformer):
+    def visit_FunctionDef(self,n):
+        old=n.name;n=self.generic_visit(n);n.name=rename.get(old,old)
+        if old in buffers:n.args.args.insert(0,ast.arg(arg='_i9_engine'))
+        return n
+    def visit_Call(self,n):
+        original=n.func.id if isinstance(n.func,ast.Name) else None
+        special=n.func.attr if isinstance(n.func,ast.Attribute) and isinstance(n.func.value,ast.Name) and n.func.value.id=='ast' else None
+        n=self.generic_visit(n)
+        if original in context:n.args.insert(0,ast.Name(id='_i9_engine',ctx=ast.Load()))
+        if special in ('parse','literal_eval'):n.func=ast.Name(id='_i9_data_ast' if special=='parse' else '_i9_literal',ctx=ast.Load())
+        return n
+    def visit_Name(self,n):
+        if n.id=='OBSERVATIONS':return ast.Attribute(value=ast.Name(id='_i9_engine',ctx=ast.Load()),attr='observations',ctx=n.ctx)
+        return ast.Name(id=rename.get(n.id,n.id),ctx=n.ctx)
+for entry in mapping_record['entries']:
+    name=entry['original_name'];node=old_defs[name];original=b''.join(old_raw.splitlines(keepends=True)[node.lineno-1:node.end_lineno])
+    check('whole_actual_original_'+name,original.decode()==entry['original_whole_Source_utf8'] and len(original)==entry['original_bytes'] and hashlib.sha256(original).hexdigest()==entry['original_sha256'] and node.lineno==entry['original_first_line'] and node.end_lineno==entry['original_last_line'],[old_q,map_q])
+    data=original.decode();actual_edits=[]
+    for a,b in paths:
+        if a in data:actual_edits.append(dict(old=a,new=b,count=data.count(a)));data=data.replace(a,b)
+    port=PurePort().visit(ast.parse(data));ast.fix_missing_locations(port)
+    produced=(ast.unparse(port)+'\n\n').encode()
+    check('isolated_port_exact_predicate_AST_'+name,entry['exact_AST_identifier_and_context_adaptations']==rename and entry['path_adaptations']==actual_edits and ast.dump(port.body[0],include_attributes=False)==ast.dump(defs[entry['selected_name']],include_attributes=False) and len(produced)==entry['new_bytes'] and hashlib.sha256(produced).hexdigest()==entry['new_sha256'],[old_q,map_q,q])
+
+check('all44_original_role_caps_exact',norm(const['I9_ROLE_SOURCE_CAPS'])==norm(old_const['ROLE_SOURCE_CAPS']) and len(const['I9_ROLE_SOURCE_CAPS'])==44,[q,old_q])
+check('17_M3_roles_and_all5_stage_order_retained',norm(const['I9_M3_ROLES'])==norm(old_const['M3_ROLES']) and list(const['I9_STAGES'])==list(old_const['STAGES']),[q,old_q])
+for name,value in const['I9_FIXED_CONTEXT'].items():
+    aq,_=fact(value['path']);check('actual_fixed_bootstrap_anchor_'+name,aq==value,[q,aq])
+check('fixed_bootstrap19_exact_protocol',len(const['I9_FIXED_CONTEXT'])==19,[q])
+for key in ('fixed_inventory17','fixed_reconstruction_basis17'):
+    aq,_=fact(protocol['reference_contracts'][key]['path']);check('actual_fixed_'+key,aq==protocol['reference_contracts'][key],[protocol_q,aq])
+inv_q,inv=obj(const['I9_INVENTORY_PIN']['path']);basis_q,basis=obj(const['I9_BASIS_PIN']['path'])
+for row in inv['roles']:
+    aq,ab=fact(row['available_basis']['path']);check('actual17_Source_'+row['role'],aq==row['available_basis'] and len(ab)<=const['I9_ROLE_SOURCE_CAPS'][row['role']],[inv_q,aq])
+for row in basis['rows']:
+    for field,pf in (('whole_current_bytes_base64','current_or_historical_basis'),('whole_predecessor_bytes_base64','complete_STEP077_predecessor')):
+        decoded=base64.b64decode(row[field],validate=True);p=row[pf]
+        check('whole_embedded_basis_'+row['role']+'_'+field,type(p['bytes']) is int and 0<len(decoded)==p['bytes']<=const['I9_ROLE_SOURCE_CAPS'][row['role']] and hashlib.sha256(decoded).hexdigest()==p['sha256'],[basis_q])
+
+imports=[(n.module if isinstance(n,ast.ImportFrom) else n.names[0].name) for n in tree.body if isinstance(n,(ast.Import,ast.ImportFrom))]
+check('eight_pure_stdlib_imports_no_original_load',imports==['ast','base64','copy','datetime','difflib','hashlib','json','re'],[q])
+check('no_executable_dynamic_or_IO_dispatch',not any(isinstance(n,ast.Call) and ((isinstance(n.func,ast.Name) and n.func.id in ('exec','eval','compile','__import__','open')) or (isinstance(n.func,ast.Attribute) and n.func.attr in ('open','import_module','Popen','system','stat','lstat'))) for n in ast.walk(tree)),[q])
+bindings=[]
+for n in tree.body:
+    if isinstance(n,(ast.FunctionDef,ast.ClassDef)):bindings.append(n.name)
+    elif isinstance(n,ast.Assign):bindings.extend(a.id for a in n.targets if isinstance(a,ast.Name))
+    elif isinstance(n,ast.Import):bindings.extend(a.asname or a.name for a in n.names)
+check('module_bindings_unique_no_authority_override',len(bindings)==len(set(bindings)),[q])
+exceptions=set(protocol['public_functions'])|{'I9MetadataError','I9Reader','I9M3SemanticView'}
+check('all_names_new_I9_namespace',all(n.startswith(('I9_','_i9_')) or n in exceptions for n in bindings),[q])
+table=symtable.symtable(text,q['path'],'exec');known=set(table.get_identifiers());unknown=[]
+def symbols(block):
+    for item in block.get_symbols():
+        if item.is_global() and item.is_referenced() and item.get_name() not in known and item.get_name() not in vars(builtins):unknown.append([block.get_name(),item.get_name()])
+    for child in block.get_children():symbols(child)
+symbols(table);check('no_unresolved_global_names',not unknown,[q])
+arity=[]
+for n in ast.walk(tree):
+    if not isinstance(n,ast.Call) or not isinstance(n.func,ast.Name) or n.func.id not in defs or not isinstance(defs[n.func.id],ast.FunctionDef) or any(isinstance(a,ast.Starred) for a in n.args) or any(k.arg is None for k in n.keywords):continue
+    args=defs[n.func.id].args;pos=args.posonlyargs+args.args;names=[a.arg for a in pos];kw={k.arg for k in n.keywords};bound=set(names[:len(n.args)])|kw
+    badcall=(args.vararg is None and len(n.args)>len(pos)) or (args.kwarg is None and bool(kw-set(names)-{a.arg for a in args.kwonlyargs})) or bool(set(names[:len(n.args)])&kw) or bool(set(names[:len(pos)-len(args.defaults)])-bound) or bool({a.arg for a,v in zip(args.kwonlyargs,args.kw_defaults) if v is None}-bound)
+    if badcall:arity.append([n.lineno,n.func.id])
+check('all_unexpanded_local_direct_call_signatures_match',not arity,[q])
+reader=src('I9Reader');review=src('_i9_review');purpose=src('_i9_purpose');stage=src('_i9_validate_stage');obs=src('_i9_observations')
+for label,needles,body in [
+ ('reader_snapshot_before_callbacks',['_i9_snapshot(trusted_bindings)','self.outputs=frozenset','E_INPUT_ALIAS','E_READER_LIMIT'],reader),
+ ('reader_declared_budget_cache_exactbytes_hash',['<=256','<=33554432','<=1024','<=67108864','type(raw) is bytes','self.cache[key]=raw'],reader),
+ ('closed_builtin_positive_pin_paths',['type(value[\'bytes\']) is int','0<value[\'bytes\']<=cap'],src('_i9_pin')),
+ ('finite_JSON_duplicate_float_depth_nodes',['E_JSON_DUPLICATE','parse_float=reject','parse_constant=reject'],src('_i9_json')),
+ ('review_real_actor_full_verdict_and_checks',['reader.source_editor,reader.producer_editor,*reader.authors','full.get(\'reviewer\')==who','len(set(names))==len(names)'],review),
+ ('canonical_owner_lease_selection_join',['E_SCOPE_TIME','E_LEASE12','E_LEASE_TIME','_i9_selection(reader)','_i9_inventory(reader)'],src('_i9_load_common')),
+ ('stagefacts21_and_known_support_shapes',['E_FACTS21','E_FACTS_CONTEXT','E_DEPENDENCY_ROLES'],src('_i9_stage_facts')),
+ ('receipt22_all_four_steps_provenance_resource',['E_RECEIPT22','E_STEPS4','E_PROVENANCE6','E_OUTPUT_CHRONOLOGY'],stage),
+ ('resource_last_after_draft_diff',['reader.born_ticks(draft)<=reader.born_ticks(diff)<=resource<=rt'],stage),
+ ('whole_raw_inverse_and_exact_diff',['raw==item[\'raw\']','E_COMPLETE_INVERSE','E_EXACT_DIFF'],stage),
+ ('lossless_codec_first_occurrence_not_equivalent_relabel',['canonical_labels==labels','E_CODEC_CANONICAL','snapshot_phase'],src('_i9_codec')),
+ ('actual_nonRoot_content_authors_and_review_subtrees',['who in reader.authors','E_PEER_ACTOR','E_PEER_DRAFT'],src('_i9_dependency')),
+ ('finite8_subset_order_and_no_pair',['0<len(rows)<=4','E_REQUEST_ROLE_ORDER','E_REQUEST_OUTPUTS'],src('_i9_request')),
+ ('purpose_literal_scope_outputs_exclusions',['E_PURPOSE_EXCLUSIONS','E_PURPOSE_LITERAL','_i9_bootstrap(reader,actual)'],purpose),
+ ('single_reader_private_stage_dispatch',['reader=I9Reader','_i9_request(reader,actual)'],src('validate_recorded_M3_prewrite_semantics')),
+ ('manual_frozen_detached_view',['__slots__','__setattr__','__delattr__','return _i9_json(self._payload)'],src('I9M3SemanticView'))]:
+    check('Source_verified_'+label,all(s in body for s in needles),[q])
+check('declared_known_role_caps_do_not_widen_retained_cache','E_CAP_WIDENING' in reader and 'E_ROLECAP_ORDER' in reader and 'min(cap,self.caps[key])' in reader,[q])
+check('correct_FILETIME_Unixns_bridge_no_float','self.birth(value)//100+116444736000000000' in reader and '10000000' in src('_i9_time'),[q])
+check('ten_permanent_authority_flags_false',list(const['I9_PERMANENT_FALSE'])==protocol['result_contract']['permanently_false'] and 'for key in I9_PERMANENT_FALSE:value[key]=False' in src('_i9_result'),[q,protocol_q])
+held_entry=src('require_actual_M3_prewrite_publication_admission')
+check('actual_entry_literalFalse_then_unconditional_refusal',const['I9_ACTUAL_PUBLICATION_DEPENDENCIES_QUALIFIED'] is False and 'E_ACTUAL_ENTRY_HELD' in held_entry and 'raise I9MetadataError' in held_entry,[q])
+
+findings=[
+ dict(id='I9_MODULE001_F1_GENERATION_PRELUDE_CLOSURE',functions=['_i9_code_support','_i9_stage_facts','_i9_purpose','_i9_observations'],
+      actual_issue='Future producer/selection/dependency/reconciliation/peer/binding review fullproofs and known proof auxiliaries are read during the semantic generation prelude, but are not required in purpose.inputs by the static required list. Observation expected_paths then repeats that weakened list. A known generation-input fullproof can be omitted from both retained stage purpose and receipt snapshots.',
+      required_correction='Track or derive the explicit per-stage original generation-prelude input closure including dynamic fullproofs/proposal/draft auxiliaries and original common inputs. Compare exact required pin identities against purpose and observations. Do not use whole global I9 postgeneration read log: it includes request/other-stage/new output artifacts.',
+      basis='Original I2 _purpose_inputs uses original generation observations excluding own stage3 proof auxiliaries and current stage outputs. Adopted I9 stage-purpose/recorded-bootstrap closure remains complete; original I0 dynamic physical/authentication stream stays external.'),
+ dict(id='I9_MODULE001_F2_TIMESTAMPED_SEMANTIC_JSON_BODIES',functions=['_i9_validate_stage','_i9_dependency','_i9_render_manifest','_i9_validate_peer_metadata'],
+      actual_issue='Manifest draft created_utc is grammar-parsed then used for rendering without reader.creation(draft,manifest). Canonical metadata_peer JSON also has created_utc but is parsed from reader.body without creation validation. Future timestamps after own declared physical birth/now can therefore survive otherwise valid pin/proof/whole-byte checks.',
+      required_correction='Apply existing created<=ownbirth<=now to consumed timestamped semantic JSON bodies before using their fields. Validate fresh manifest header at its own draft pin, and preserve original staged rendering chronology. Do not rewrite retained UTC strings or require historical retained headers to follow the new stage adoption.',
+      basis='Protocol record_creation covers every consumed timestamped record; pure-port contract explicitly requires temporally validated actual manifest header.'),
+ dict(id='I9_MODULE001_F3_RETAINED_OBSERVATION_PREFIX_CONSISTENCY',functions=['_i9_observations','_i9_validate_stage'],
+      actual_issue='Each multi-artifact receipt snapshot is checked independently and replaces reader.observations. Existing rows can change PATH9/fd9, cap or observed_utc across later same-stage receipt prefixes despite equal pin hashes and declared birth.',
+      required_correction='Keep a per-stage first-observation row ledger. Every retained row in later same-stage snapshots must remain typed-equal, while newly introduced output rows extend the actual ordered prefix. Preserve original first observation semantics, not merely matching path sets.',
+      basis='Pinned I2 read retains FIRST full path9/descriptor9/body/cap/time and rejects changed observations across work; no new physical authenticity claim is needed.')]
+check('generation_prelude_closure_complete',False,[q,protocol_q,old_q])
+check('timestamped_semantic_JSON_body_own_creation_validated',False,[q,protocol_q])
+check('same_stage_retained_observation_rows_immutable',False,[q,old_q])
+
+for prior in ('review_I9_module001_source_001.py','INDEPENDENT_I9_MODULE001_SOURCE_REFUSAL_CAPSULE_001.json','INDEPENDENT_I9_MODULE001_SOURCE_FULL_REFUSAL_PROOF_001.json'):fact(OWN/prior)
+selfq,_=fact(Path(__file__));held=sorted(inputs.values(),key=lambda p:p['path'])
+check('all_actual_inputs_sorted_unique_casefold',len({p['path'].casefold() for p in held})==len(held),[selfq])
+for i,p in enumerate(held):
+    body=Path(p['path']).read_bytes();check('final_actual_input_rehash_'+str(i),len(body)==p['bytes'] and hashlib.sha256(body).hexdigest()==p['sha256'],[p])
+failed=[c['name'] for c in checks if not c['passed']]
+common=dict(schema_version=1,reviewer='/root/owner_source_review',source_author='/root/phase_frontier',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),verdict='REFUSE_I9_MODULE001_RECORDED_SEMANTIC_SOURCE_THREE_CONSOLIDATED_DEFECTS',subjects=subjects,reviewer_Source=selfq,checks_failed=len(failed),checks_passed=len(checks)-len(failed),tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False,module_only=True,final_quartet_acceptance=False)
+full=dict(**common,record_type='Independent_I9_module001_full_static_Source_refusal_proof',checks=checks,all_actual_inputs=held,failures=failed,findings=findings,Source_regions=regions,unresolved_globals=unknown,direct_call_signature_errors=arity,
+ own_checker_correction='Prior reviewer001 falsely compared frozenset constructor input ordering as an ordered list against the constants table. Actual sets agree. Reviewer002 retains frozenset type and compares unordered contents while preserving tuple/list order and typed JSON values. Prior Source/proofs are retained as actual inputs; only three confirmed semantic blockers remain.',
+ scope='Actual complete frozen module read, independent 23 allowed AST predicate/lexical-path adaptations and whole original inverse checks, strict reader/proof/stage/request/render/codec/observations/time metadata review. No target code execution or oracle.',
+ preserved_good_boundaries=['Single aggregate Reader and immutable byte cache.','Original five-stage renderer predicates retained by exact permitted AST adaptations.','Distinct request actual45, selection historical45 and M3 inventory17.','Correct FILETIME1601/Unixbirthns bridge and last resource-after-draft/diff ordering.','Manual detached immutable metadata view, ten false authority flags, double-held actual entry.'],
+ reviewer_target_imports=0,reviewer_target_calls=0,reviewer_target_Source_compilations=0,renderer_calls=0,fixture_runs=0,native_Parser_calls=0,Git_mutations=0,Pro3_messages=0,actual_new_grants_lease_family_Native8_Parser_results=None)
+def save(name,value):
+    path=OWN/name;data=(json.dumps(value,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(data)<=CAP
+    with path.open('xb') as handle:handle.write(data)
+    return dict(path=str(path),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+fp=save('INDEPENDENT_I9_MODULE001_SOURCE_FULL_REFUSAL_PROOF_002.json',full)
+cp=save('INDEPENDENT_I9_MODULE001_SOURCE_REFUSAL_CAPSULE_002.json',dict(**common,record_type='Independent_I9_module001_Source_refusal_capsule',full_proof=fp,actual_input_count=len(held),consolidated_defect_count=len(findings)))
+print(json.dumps(dict(capsule=cp,full_proof=fp,reviewer_Source=selfq,checks=len(checks),checks_failed=len(failed),failures=failed,actual_inputs=len(held)),indent=2))

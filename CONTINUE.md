@@ -1,3 +1,7 @@
+**October17 I9 recorded M3 semantics tested.** The [M3 semantic checkpoint](docs/development/native-m3-prewrite/20261017-i9/I9_RECORDED_M3_SEMANTICS.md) records pure receipt/facts, whole render, inverse and diff validation for all five stages with synthetic memory evidence. I8 remains the separate required owner/lease/purpose layer; actual producer/caller/IO qualification and real publication remain held. Source remains36/45 and frozen STEP08035/45. All prior guidance is preserved below.
+
+---
+
 **October15 I8 prewrite metadata guards tested.** The [owner/lease/purpose checkpoint](docs/development/native-publisher-admission/20261015-i8/I8_PREWRITE_OWNER_LEASE_PURPOSE.md) records the tested pure owner, existing-lease and separate Source-publication-purpose checks. Full M3 producer semantics and actual caller/IO qualification remain pending; real publication stays held. Source remains36/45 and frozen STEP08035/45. All prior guidance is preserved below.
 
 ---

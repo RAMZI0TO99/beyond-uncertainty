@@ -1,0 +1,302 @@
+"""Independent preliminary read/hash/AST audit. Never import or invoke templates."""
+import ast
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+
+P = Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+OWN = P / 'tooling_review_001'
+M = P / 'memory_tooling_001'
+CAP = 2097152
+inputs = {}
+checks = []
+
+
+def pin(path):
+    path = Path(path)
+    data = path.read_bytes()
+    assert 0 < len(data) <= CAP
+    result = dict(path=str(path), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+    if str(path) in inputs:
+        assert inputs[str(path)] == result
+    inputs[str(path)] = result
+    return result, data
+
+
+def check(name, value, evidence):
+    assert type(value) is bool and name not in {x['name'] for x in checks}
+    checks.append(dict(name=name, passed=value, evidence=evidence))
+
+
+def pairs(rows):
+    value = {}
+    for k, v in rows:
+        assert k not in value
+        value[k] = v
+    return value
+
+
+def no_number(value):
+    raise ValueError(value)
+
+
+def decode(raw):
+    return json.loads(raw, object_pairs_hook=pairs, parse_float=no_number,
+                      parse_constant=no_number)
+
+
+def direct_calls(tree, name):
+    return [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name) and n.func.id == name]
+
+
+def attr_calls(tree, name):
+    return [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute) and n.func.attr == name]
+
+
+expected = {
+    'runner': ('RUN_I9_ONCE_ISOLATED_MEMORY_FIXTURES_TEMPLATE_002.py', 25353,
+               'dbd64396b20019b965115d2a5a8b2e1c465b8c36e227b5b403657cb49036680d'),
+    'supervisor': ('SUPERVISE_I9_ONCE_MEMORY_FIXTURES_TEMPLATE_002.py', 21319,
+                   '02e6fc14789a27e0b5d5d3a2ef23b9fdbf9b9e43116f7fe7135fe29902b3afaf'),
+    'scope_preparer': ('PREPARE_I9_FRESH_MEMORY_SCOPE_TEMPLATE_002.py', 14333,
+                      'b926dd703bdb4aea87f8ed1693ffd218e70d62e2c2cdeb5ce7c5a80022f20d87'),
+    'capture': ('CAPTURE_I9_ACTUAL_MEMORY_STREAMS_TEMPLATE_002.py', 14799,
+                'cf1533d475dc113d1e5ab85c0749faf8345ed0d2f534d88ae33762c357824720'),
+}
+subjects = []
+sources = {}
+trees = {}
+defs = {}
+regions = {}
+for role, (name, size, sha) in expected.items():
+    q, raw = pin(M / name)
+    subjects.append(q)
+    text = raw.decode('utf-8', 'strict')
+    tree = ast.parse(raw)
+    sources[role] = text
+    trees[role] = tree
+    defs[role] = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.ClassDef))}
+    check(role + '_exact_actual_Source_pin', q['bytes'] == size and q['sha256'] == sha, [q])
+    constants = {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body
+                 if isinstance(n, ast.Assign) and len(n.targets) == 1
+                 and isinstance(n.targets[0], ast.Name) and n.targets[0].id in
+                 ('EXACT_ROOT_BINDINGS', 'CAP', 'SOURCE_VERDICT', 'OLD_AUTHORITY_KEY', 'PYTHON')}
+    check(role + '_UNBOUND_None_refuses_before_main_work', constants['EXACT_ROOT_BINDINGS'] is None
+          and "need(type(b) is dict, 'UNBOUND_I9_MEMORY_TOOLING_TEMPLATE')" in text, [q])
+    check(role + '_fixed_2MiB_and_Source_verdict', constants['CAP'] == CAP
+          and constants['SOURCE_VERDICT'] == 'ACCEPT_I9_RECORDED_M3_SEMANTIC_AND_FIXTURE_SOURCE_ONLY', [q])
+    check(role + '_main_guard_is_only_top_level_entry', isinstance(tree.body[-1], ast.If)
+          and ast.unparse(tree.body[-1].test) == "__name__ == '__main__'"
+          and len(direct_calls(tree.body[-1], 'main')) == 1, [q])
+    check(role + '_strict_duplicate_float_JSON_and_positive_pin', all(s in text for s in
+          ('DUPLICATE_JSON_KEY', 'parse_float=bad_json, parse_constant=bad_json',
+           "type(pin['bytes']) is int", "0 < pin['bytes'] <= CAP", 'PIN_CHANGED')), [q])
+    check(role + '_finite_outputs_xb_readback_fsync', all(s in text for s in
+          ("path.parent == P", "path.open('xb')", 'os.fsync', 'OUTPUT_READBACK')), [q])
+    check(role + '_closed_role_paths_and_three_digit_attempt_only', all(s in text for s in
+          ("{'runner', 'supervisor', 'scope_preparer', 'capture'}", "len(sys.argv) == 2",
+           "re.fullmatch('[0-9]{3}', sys.argv[1])", 'ATTEMPT_NOT_REVIEWED')), [q])
+    check(role + '_Source_review_API_count_names_typed_and_joined', all(s in text for s in
+          ('STRICT_SOURCE_REVIEW_ONLY', "type(record['checks_failed']) is int",
+           "fixture[b['API_entry_field']] == 'run_memory_suite(module)'",
+           '1 <= count <= 256', "len(set(planned)) == count")), [q])
+    check(role + '_scope_fresh_60s_reserve_exact_once_and_false_old_authority', all(s in text for s in
+          ("s['maximum_invocations'] == 1", 'NEW_I9_ONLY', 'FRESH_PRIVATE_SCOPE',
+           "now() + datetime.timedelta(seconds=60) < end <= source_end",
+           "'cleanup_reap_seconds':5", "'actual_selected_family_Source_publication':False")), [q])
+    check(role + '_no_original_project_helper_import', all(not isinstance(n, ast.ImportFrom)
+          or not n.level for n in ast.walk(tree)) and not any(
+          isinstance(n, (ast.Import, ast.ImportFrom)) and 'Source0' in ast.unparse(n)
+          for n in ast.walk(tree)), [q])
+    regions[role] = {name: dict(first_line=n.lineno, last_line=n.end_lineno,
+                               AST_sha256=hashlib.sha256(ast.dump(n, include_attributes=False).encode()).hexdigest())
+                     for name, n in defs[role].items()}
+
+common = set.intersection(*(set(v) for v in defs.values()))
+for name in sorted(common):
+    fingerprints = {regions[role][name]['AST_sha256'] for role in defs}
+    check('common_function_exact_AST_' + name, len(fingerprints) == 1, subjects)
+
+r, s, p, c = [sources[k] for k in ('runner', 'supervisor', 'scope_preparer', 'capture')]
+rt, st = trees['runner'], trees['supervisor']
+rq, sq, pq, cq = subjects
+check('runner_only_one_compile_and_one_exec_site_in_private_loader',
+      len(direct_calls(rt, 'compile')) == len(direct_calls(rt, 'exec')) == 1
+      and len(direct_calls(defs['runner']['main'], 'load')) == 2, [rq])
+check('no_other_template_exec_eval_or_compile_calls', all(not direct_calls(trees[k], n)
+      for k in ('supervisor', 'scope_preparer', 'capture') for n in ('compile', 'exec', 'eval')),
+      [sq, pq, cq])
+check('two_distinct_target_filenames_loaded_and_profiled', all(x in r for x in
+      ("module = load(module_raw", "fixture = load(fixture_raw", 'target_paths = {module_path, fixture_path}',
+       'compile_counts[loader_path] != 1', 'exec_counts[code.co_filename] != 1')),
+      [rq])
+check('AST_only_compile_exception_actual_ast_parse_code_identity', all(x in r for x in
+      ('ast_parse_code = ast.parse.__code__', 'elif caller.f_code is ast_parse_code:',
+       "state['AST_parse_compile_events'] += 1")), [rq])
+check('all_other_exec_compile_import_events_refuse', all(x in r for x in
+      ("elif event == 'exec':", "code is state['loader_exec']", "elif event == 'import':",
+       'I9_FORBIDDEN_AUDIT_EVENT:', "'open' or event.startswith(('os.','subprocess.','socket.','ctypes.','winreg.'))")), [rq])
+check('Source_literal_import_AST_checks_and_preloads_before_audit',
+      r.index('actual_imports = inspect_imports') < r.index('for name in baseline_preloads')
+      < r.index('loaded_modules = dict(sys.modules)') < r.index('sys.addaudithook(audit)'), [rq])
+check('restricted_import_hook_top_level_known_preloaded_only', all(x in r for x in
+      ("name in b['exact_import_modules']", "caller.f_code.co_name == '<module>'",
+       "'PRELOADED_IMPORT_ONLY'", "safe_builtins['__import__'] = approved_import")), [rq])
+check('bounded_stream_overflow_sets_flag_and_raises', all(x in r for x in
+      ('len(self.data) + len(encoded) > CAP', 'self.overcap = True', 'I9_TARGET_STREAM_CAP')),
+      [rq])
+check('marker_created_before_target_compile_and_invocation',
+      r.index("marker = save(P/n['child_marker']") < r.index('sys.addaudithook(audit)')
+      < r.index('module = load(module_raw') < r.index('outcome = fixture.run_memory_suite(module)'), [rq])
+check('profile_counter_and_positive_function_requirements', all(x in r for x in
+      ("maximum_profiled_module_calls", "function_counts.get(name, 0) > 0",
+       "profile_call_counts=calls", "new_module_function_call_counts=function_counts")), [rq])
+check('outcome_exact_order_names_count_positive_bool_all_pass', all(x in r for x in
+      ("[q['name'] for q in cases] == planned", "type(q['passed']) is bool", "q['passed'] is True",
+       "type(outcome['checks_failed']) is int", "outcome['checks_failed'] == 0")), [rq])
+check('partial_completed_prefix_case_and_unknown_null_not_false_zero', all(x in r for x in
+      ("partial = None", "failed_case = None", "frame.f_code.co_name == 'run_memory_suite'",
+       "frame.f_locals.get('cases')", "frame.f_locals.get('case')", "else None)",
+       'interrupted case separate; unknown null')), [rq])
+check('failure_exception_retained_not_success', all(x in r for x in
+      ('except BaseException as exc:', 'all_cases_passed=error is None', "if error is not None:",
+       'raise SystemExit(1)', 'partial_capture_issue=capture_issue')), [rq])
+check('audit_profile_restored_before_serializer_io', r.index("state['active'] = False")
+      < r.index("save(P/n['child_result'], record)"), [rq])
+check('honest_observed_audit_not_OS_security_or_native_claim',
+      'not exhaustive stat/native or security isolation proof' in r and 'actual_canonical_IO=False' in r
+      and 'actual_entry_authorized=False' in r, [rq])
+check('supervisor_one_Popen_one_owned_kill_one_wait5', len(attr_calls(st, 'Popen')) == 1
+      and len(attr_calls(st, 'kill')) == 1 and len(attr_calls(st, 'wait')) == 1
+      and 'code = proc.wait(timeout=5)' in s, [sq])
+check('one_hidden_exact_child_isolated_flags_and_no_shell', all(x in s for x in
+      ("argv = [PYTHON,'-I','-S','-B',runner['path'],f'{attempt:03d}']",
+       'creationflags=subprocess.CREATE_NO_WINDOW', 'stdin=subprocess.DEVNULL'))
+      and not any('shell' == kw.arg for n in attr_calls(st, 'Popen') for kw in n.keywords), [sq])
+check('fresh_external_RAM_disk_floors_immediately_before_launch',
+      s.index('resource = fresh_resources()') < s.index('launch = time.monotonic_ns()')
+      < s.index('proc = subprocess.Popen') and all(x in s for x in
+      ('GlobalMemoryStatusEx', 'shutil.disk_usage(P).free', "status.available >= 1073741824",
+       'disk >= 10737418240', 'FRESH_PRELAUNCH_RESOURCES', 'FileTime_or_Native8_collection=False')), [sq])
+check('terminal_observation_wall_over60_refuses_even_exit_race', all(x in s for x in
+      ('launch = time.monotonic_ns()', 'observed-launch > 60000000000',
+       'wall > 60000000000', 'terminal child wall observation exceeded60seconds')), [sq])
+check('one_cleanup5_budget_shared_with_reader_threads', all(x in s for x in
+      ('cleanup_started = time.monotonic_ns()', 'proc.wait(timeout=5)',
+       '5000000000-(time.monotonic_ns()-cleanup_started)', 'thread.join(timeout=remaining)',
+       'owned stream readers not joined within cleanup5seconds')), [sq])
+check('stream_thread_bounded4096_reads_saved2MiB_cap_and_overcap', all(x in s for x in
+      ('pipe.read(4096)', "available = max(0,CAP-state['saved_bytes'])", 'chunk = data[:available]',
+       "state['overcap'] = True", "observed_lower_bound_bytes", 'pipe.close()', 'handle.close()')), [sq])
+check('supervisor_saves_actual_PID_exit_reap_wall_and_failure', all(x in s for x in
+      ('owned_child_PID=proc.pid', 'owned_child_exit_code=code', 'owned_child_wait_reaped=reaped',
+       'owned_child_wall_integer_nanoseconds=wall', 'refusal=reason',
+       'passed=reason is None and code == 0 and reaped and joined')), [sq])
+check('scope_preparer_only_serializes_finite_attempt_scope_no_child',
+      not attr_calls(trees['scope_preparer'], 'Popen') and not direct_calls(trees['scope_preparer'], 'exec')
+      and "fresh_scope_different_review_and_Root_adoption_required_before_invocation" in p
+      and "for name in n.values():" in p, [pq])
+check('scope_selfhash_cycle_avoided_by_fresh_external_tool_pins', all(x in p for x in
+      ("tool_pins = {role:fact(path)", 'tool_Source_pins=tool_pins'))
+      and 'Hashes live in the independently reviewed fresh scope' in p, [pq])
+check('capture_zero_rerun_no_expired_scope_authority_reopen', not attr_calls(trees['capture'], 'Popen')
+      and not direct_calls(trees['capture'], 'exec') and 'captured after the one-use interval has ended' in c
+      and 'no_child_or_test_rerun=True' in c, [cq])
+check('capture_reap_join_requirement_finite_two_stream_paths', all(x in c for x in
+      ("supervisor['owned_child_wait_reaped'] is True", "supervisor['stream_reader_threads_joined'] is True",
+       'len(streams) == 2', "q['path'] == str(P/n[role])", 'ACTUAL_STREAM_BYTES')), [cq])
+check('empty_stream_bytes_honestly_nonnegative_external_facts', all(x in c for x in
+      ("0 <= q['bytes'] <= CAP", 'empty_captured_stream_bytes_are_actual_observation_not_positive_metadata_schema_pins=True')),
+      [cq])
+
+receipt_q, receipt_raw = pin(M / 'I9_MEMORY_TOOLING_TEMPLATE_SOURCE_AUTHOR_RECEIPT_002.json')
+receipt = decode(receipt_raw)
+check('actual_author_receipt_6671_pin', receipt_q['bytes'] == 6671 and receipt_q['sha256'] ==
+      '979e29411e984367a77abb6f0384620b8d14918a8da700a5d19813aff5d0b553', [receipt_q])
+check('receipt_truth_UNBOUND_unrun_and_no_authority', receipt['author'] == '/root/owner_publication_review'
+      and receipt['all_templates_UNBOUND'] is True and receipt['template_execution_authorized'] is False
+      and receipt['tests_executed'] is False and receipt['Root_tool_execution'] is False, [receipt_q])
+check('receipt_exact_four_template_pins', [x['Source'] for x in receipt['templates']] == subjects, [receipt_q] + subjects)
+for q in receipt['actual_inputs']:
+    actual, _ = pin(q['path'])
+    check('actual_author_input_' + Path(q['path']).name, actual == q, [receipt_q, actual])
+for name in ('I9_MEMORY_TOOLING_TEMPLATE_FINAL_READBACK_002.json',
+             'ROOT_CURRENT_I9_M3_SEMANTIC_PREFLIGHT_SOURCE_SCOPE_001.json'):
+    root = M if name.startswith('I9_MEMORY_') else P
+    pin(root / name)
+for q in receipt['templates']:
+    check('receipt_no_template_run_' + q['role'], q['template_executed'] is False and q['bindings'] is None,
+          [receipt_q, q['Source']])
+adoption_path = P / 'ROOT_I9_PROTOCOL001_ACTUAL_DIFFERENT_SOURCE_REVIEW_ADOPTION_001.json'
+adoption_q, adoption_raw = pin(adoption_path)
+adoption = decode(adoption_raw)
+check('actual_Root_protocol_adoption4717_pin', adoption_q['bytes'] == 4717 and adoption_q['sha256'] ==
+      'f2447b86e8178a59f94e5fd4d75866d27ba83f994bc5f9d60ca5b9a5599bcc0f', [adoption_q])
+for q in adoption['subjects']:
+    actual, _ = pin(q['path'])
+    check('actual_five_subject_protocol_' + Path(q['path']).name, actual == q, [adoption_q, actual])
+check('all_five_clarified_protocol_subjects_present', len(adoption['subjects']) == 5, [adoption_q])
+for name in ('INDEPENDENT_I9_EXACT_PROTOCOL_SOURCE_CAPSULE_001.json',
+             'INDEPENDENT_I9_EXACT_PROTOCOL_FULL_SOURCE_PROOF_001.json'):
+    pin(P / 'independent_review_001' / name)
+self_q, _ = pin(Path(__file__))
+held = sorted(inputs.values(), key=lambda q: q['path'])
+check('all_actual_inputs_unique_casefold', len({q['path'].casefold() for q in held}) == len(held), [self_q])
+for i, q in enumerate(held):
+    raw = Path(q['path']).read_bytes()
+    check('final_actual_input_rehash_' + str(i), len(raw) == q['bytes']
+          and hashlib.sha256(raw).hexdigest() == q['sha256'], [q])
+
+failed = [x['name'] for x in checks if not x['passed']]
+now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+common_record = dict(schema_version=1, created_utc=now, reviewer='/root/owner_source_review',
+    source_author='/root/owner_publication_review', subjects=subjects, reviewer_Source=self_q,
+    verdict='PASS_PRELIMINARY_UNBOUND_I9_MEMORY_TOOLING_SOURCE_ONLY' if not failed else
+            'REFUSE_PRELIMINARY_UNBOUND_I9_MEMORY_TOOLING_SOURCE_REVIEW',
+    checks_failed=len(failed), checks_passed=len(checks)-len(failed), tests_executed=False,
+    target_execution=False, template_execution=False, operational_authority=False, scientific_authority=False)
+full = dict(**common_record, record_type='Independent_I9_UNBOUND_memory_tooling_preliminary_full_Source_proof',
+    checks=checks, all_actual_inputs=held, failures=failed, Source_function_regions=regions,
+    conclusions=[
+      'No blocking template logic defect identified in this preliminary actual Source review. All four bindings remain None and each main refuses before action.',
+      'This review is not final tooling acceptance, final target acceptance, actual fresh-scope review, or permission to invoke any template/successor.',
+      'One owned child, observed 60-second wall and one 5-second cleanup wait shared with stream-thread joins; all incomplete cleanup refuses.',
+      'Exactly two initial target loader executable compile+exec pairs; internal ast.parse code-identity exception is data-only. No target/dataclass executable code generation is admitted.',
+      'CPython audit/profile instrumentation is bounded and useful evidence, not an OS security sandbox or exhaustive stat/native interception.'
+    ],
+    final_binding_obligations=[
+      'Bind immutable actual Source/API/fixture/author-receipt and Source review capsule/full/adoption pins, the five protocol subjects through actual Root adoption, and current Source-window fields. Rehash exact actual bound successors.',
+      'Bind exact top-level import module union and practical positive profile function names/cap against actual final Sources. Runtime lazy standard-library imports must already be preloaded; no dataclasses/namedtuple executable codegen.',
+      'Verify actual fixture run_memory_suite locals cases/case support partial-prefix capture, API literal count/names and outcome fields match runner assumptions, and failure prefix contains completed outcomes only.',
+      'Bind source-review/adoption required_fields to exact genuine reviewer/author/subjects/fullproof/false execution flags; trusted static binding is not derived from runtime JSON claims.',
+      'Require exact pin-specific final tooling Source review then fresh one-use scope and different pre-invocation Source review/Root adoption. No pre-granted attempts or automatic retries.',
+      'Recheck absence with lexists for all finite attempt outputs; raw/save also fail closed for symlinks/nonregular paths or create-once conflicts.',
+      'Choose scope_duration_seconds greater than65 (for example900): bound accepts65 but preparer strict started+65<end makes the65 boundary unusable, safely refusing. This is a nonblocking configuration edge, not authority escalation.',
+      'A prelaunch setup failure may leave finite empty stream artifacts/handles until process exit and no two-stream capture; retain refusal/markers and do not interpret missing suite result as zero attempted execution.',
+      'If serialization of a large captured result exceeds2MiB, saving refuses; supervisor/stream/marker evidence must retain the failure rather than retry. Fixture output should be intentionally small.'
+    ],
+    reviewer_template_imports=0, reviewer_template_calls=0, reviewer_template_compilations=0,
+    reviewer_target_imports=0, reviewer_target_calls=0, reviewer_fixture_runs=0,
+    original_helper_calls=0, native_Parser_calls=0, Git_mutations=0, Pro3_messages=0)
+
+
+def save(name, value):
+    path = OWN / name
+    raw = (json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + '\n').encode()
+    assert len(raw) <= CAP
+    with path.open('xb') as handle:
+        handle.write(raw)
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+
+fp = save('INDEPENDENT_I9_UNBOUND_MEMORY_TOOLING_PRELIMINARY_FULL_SOURCE_PROOF_001.json', full)
+cp = save('INDEPENDENT_I9_UNBOUND_MEMORY_TOOLING_PRELIMINARY_SOURCE_CAPSULE_001.json',
+          dict(**common_record, record_type='Independent_I9_UNBOUND_memory_tooling_preliminary_Source_capsule',
+               full_proof=fp, actual_input_count=len(held), final_invocation_or_binding_acceptance=False))
+print(json.dumps(dict(capsule=cp, full_proof=fp, reviewer_Source=self_q,
+                     checks=len(checks), checks_failed=len(failed), failures=failed,
+                     actual_inputs=len(held)), indent=2))

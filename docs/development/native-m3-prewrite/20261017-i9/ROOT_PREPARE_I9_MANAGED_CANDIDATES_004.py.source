@@ -1,0 +1,126 @@
+"""Prepare exact finite I9 inert evidence/docs candidates after accepted saved results."""
+import datetime, hashlib, json, os
+from pathlib import Path
+R = Path(r'D:\Aenv\pro2')
+P = R / 'WORK/resume-20261017-001/m3_prewrite_validation_012'
+G = R / 'github-portable-20261012-001'
+C = R / 'WORK/I9P012/c1'
+CAP = 2097152
+REL = 'docs/development/native-m3-prewrite/20261017-i9/'
+
+def raw(path):
+    path = Path(path)
+    assert path.is_file() and not path.is_symlink() and path.stat().st_size <= CAP
+    with path.open('rb') as handle:
+        data = handle.read(CAP + 1)
+    assert len(data) <= CAP
+    return data
+
+def fact(path):
+    data = raw(path)
+    return dict(path=str(path), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+def pin(q):
+    data = raw(q['path'])
+    assert type(q['bytes']) is int and len(data) == q['bytes'] and hashlib.sha256(data).hexdigest() == q['sha256']
+    return data
+
+def save(path, value):
+    path = Path(path)
+    data = value if type(value) is bytes else (json.dumps(value, sort_keys=True, indent=2, allow_nan=False) + '\n').encode()
+    assert len(data) <= CAP
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open('xb') as handle:
+        handle.write(data); handle.flush(); os.fsync(handle.fileno())
+    return fact(path)
+
+def validate_counts(a):
+ for key in ('actual_memory_case_count','actual_memory_cases_passed','known_I9_memory_test_runs','unknown_I9_memory_test_runs','spent_memory_scope_count','failed_memory_test_runs','accepted_complete_memory_test_runs','accepted_attempt_ordinal'):
+  assert type(a[key]) is int and a[key]>=0, key
+ assert a['I9_memory_test_runs'] is None and a['unknown_I9_memory_test_runs']==1
+ assert 1<=a['actual_memory_case_count']<=256 and a['actual_memory_cases_passed']==a['actual_memory_case_count']
+ runs=a['known_I9_memory_test_runs'];failed=a['failed_memory_test_runs']
+ assert runs==5 and failed==4 and a['accepted_complete_memory_test_runs']==1 and runs==failed+1
+ attempts=a['all_saved_memory_attempts'];assert type(attempts) is list and len(attempts)==a['spent_memory_scope_count']==a['accepted_attempt_ordinal']==6
+ for ordinal,row in enumerate(attempts,1):
+  assert type(row) is dict and type(row['attempt_ordinal']) is int and row['attempt_ordinal']==ordinal
+  assert type(row['accepted_complete_run']) is bool and row['accepted_complete_run'] is (ordinal==len(attempts))
+  if ordinal==5:
+   assert row['I9_memory_test_runs'] is None and row['tests_executed'] is None and row['result'] is None
+   assert row['all_cases_passed'] is None and row['actual_test_case_count'] is None and row['unknown_suite_status'] is True
+  else:
+   assert type(row['I9_memory_test_runs']) is int and row['I9_memory_test_runs']==1
+   assert row['tests_executed'] is True and type(row['all_cases_passed']) is bool
+   assert row['all_cases_passed'] is (ordinal==6)
+ assert sum(row['I9_memory_test_runs'] for row in attempts if type(row['I9_memory_test_runs']) is int)==runs
+ return runs,failed
+
+def main():
+    adoption_pin = fact(P / 'ROOT_I9_RECORDED_M3_SEMANTICS_AND_SAVED_MEMORY_RESULTS_ADOPTION_001.json')
+    adoption = json.loads(pin(adoption_pin))
+    assert adoption['author'] == '/root' and adoption['verdict'] == 'ACCEPT_I9_RECORDED_M3_SEMANTICS_AND_SAVED_MEMORY_RESULTS_ONLY'
+    assert adoption['tests_executed'] is True and adoption['original_project_native_Parser_runtime_scientific_execution'] is False
+    count = adoption['actual_memory_case_count']
+    assert type(count) is int and 1 <= count <= 256 and adoption['actual_memory_cases_passed'] == count
+    runs, failed_runs = validate_counts(adoption)
+    scope_pin = fact(P / 'ROOT_CURRENT_I9_M3_SEMANTIC_PREFLIGHT_SOURCE_SCOPE_001.json')
+    assert scope_pin['sha256'] == '0c0815540d0be020040f1114f18975300ddeb279a24ba201ba4204680ea9773d'
+    scope = json.loads(pin(scope_pin))
+    assert datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=60) < datetime.datetime.fromisoformat(scope['interval_end'])
+    previous_pin = dict(path=str(R / 'WORK/resume-20261015-001/native_publisher_admission_011/managed_preparation_001/candidates_001/EXACT_MANAGED_I8_PREWRITE_METADATA_IMPLEMENTATION_PUBLICATION_SCOPE_001.json'), bytes=144497, sha256='a3f10ce3864b493a6a1b1d7d314072ca752d7256189bf050f83a3c84015c7fd3')
+    previous = json.loads(pin(previous_pin))
+    prior = list(previous['all_prior_I6_I7_non_navigation_file_pins'])
+    for row in previous['files']:
+        current = dict(path=str(G / row['managed_path']), bytes=row['source']['bytes'], sha256=row['source']['sha256'])
+        pin(current)
+        if row['mode'] == 'create':
+            prior.append(current)
+    assert len(prior) == 342 and len({q['path'].casefold() for q in prior}) == len(prior)
+    for q in prior:
+        pin(q)
+    rows, evidence, seen = [], [], set()
+    def add(name, data):
+        relative = REL + name
+        assert relative not in seen and not (G / relative).exists() and len(str(G / relative)) < 260
+        seen.add(relative)
+        copied = save(C / relative, data)
+        rows.append(dict(managed_path=relative, mode='create', source=copied))
+        return copied
+    inputs = adoption['managed_evidence_inputs'] + [adoption_pin]
+    assert inputs and len({q['path'].casefold() for q in inputs}) == len(inputs)
+    for q in inputs:
+        path = Path(q['path'])
+        assert path.resolve().is_relative_to(P.resolve())
+        inert = path.suffix.lower() in ('.py', '.ps1')
+        name = path.name + ('.source' if inert else '')
+        assert Path(name).suffix in ('.json', '.source', '.txt', '.md')
+        copied = add(name, pin(q))
+        evidence.append(dict(original=q, managed_path=REL + name, copied_bytes=copied['bytes'], copied_sha256=copied['sha256'], inert_Source_copy=inert))
+    add('evidence-index.json', dict(schema_version=1, record_type='I9_recorded_M3_semantic_Source_and_saved_memory_evidence_index', files=evidence, actual_evidence_copy_count=len(evidence), actual_new_I9_synthetic_memory_tests=True, I9_memory_test_runs=None, known_I9_memory_test_runs=runs, unknown_I9_memory_test_runs=1, spent_memory_scope_count=6, failed_memory_test_runs=failed_runs, accepted_complete_memory_test_runs=1, original_I0_I1_I2_I3_I4_I5_I6_I7_I8_import_call_or_test=False, actual_selected45_Source_publication=False, actual_lease_family_Native8_Parser_results=None, dated_Source_present=36, dated_Source_pending=9, frozen_STEP080_present=35, frozen_STEP080_pending=10, absolute_paths_are_dated_provenance_not_runtime_bindings=True))
+    checks = adoption['actual_independent_saved_results_checks']
+    report = f'''# Recorded M3 semantic validation
+
+The new pure semantic validator passed {count}/{count} synthetic memory cases. There were six separately scoped owned launches: four known failed suite entries, one 60-second timeout with unknown suite entry and progress, and one accepted complete run. Five suite entries are known; aggregate suite-entry count remains unknown. Independent saved-result review passed {checks} checks without rerunning the fixtures. The [Root adoption](ROOT_I9_RECORDED_M3_SEMANTICS_AND_SAVED_MEMORY_RESULTS_ADOPTION_001.json) and [evidence index](evidence-index.json) retain exact Source, protocol, review, test and result pins.
+
+The component validates recorded M3 facts, receipts, purpose and dependency joins and reconstructs complete draft bytes, predecessor inverses and exact diffs for all five stages: templates, manifest, capture, each of four phase BOUND roles, and phase binding. It keeps the historical inventory of17, the selection lineage of45 and the actual request catalogue of45 separate. The recorded manifest header time is data. Codec and observation checks establish saved-record consistency; physical read stability and original check execution remain unqualified.
+
+A stage-only API verifies one complete recorded stage. The prewrite API additionally joins the finite requested phase subset, protecting future output paths before reading any input. All groups within one prewrite call share one bounded reader, immutable cache and aggregate limits. Owner-support bootstrap records and fixed source anchors are declared and hashed. Python and PowerShell source bodies are data; Python AST parsing executes no parsed code.
+
+The detached frozen result grants no admission, owner/lease, producer, caller, human, physical, native Parser, operational or scientific authority. The actual publisher entry refuses before any callback even if a qualification flag is toggled. I8 remains the required separate owner/lease/publication-purpose layer. Actual producer successors, receipt carriers and caller/IO composition require later qualification. No old I0-I8 helper, native collector, Parser, runtime or scientific program was invoked.
+
+The dated Source family remains36/45 with nine pending; frozen STEP080 remains35/45 with ten pending. All75 spent identities and existing caps, clocks and reserves remain preserved. The608 historical file bytes,342 prior I6-I8 non-navigation files, eight frozen sentinels,36 current Sources and three complete navigation suffixes remain exact. No real grant, new lease, selected family, Native8 or Parser result was issued.
+
+Programs are published with inert `.source` suffixes. Absolute paths are dated provenance. Root publication receipts and normal Git history record the later finite commit and push.
+'''
+    add('I9_RECORDED_M3_SEMANTICS.md', report.encode())
+    prefix = ('**October17 I9 recorded M3 semantics tested.** The [M3 semantic checkpoint](' + REL + 'I9_RECORDED_M3_SEMANTICS.md) records pure receipt/facts, whole render, inverse and diff validation for all five stages with synthetic memory evidence. I8 remains the separate required owner/lease/purpose layer; actual producer/caller/IO qualification and real publication remain held. Source remains36/45 and frozen STEP08035/45. All prior guidance is preserved below.\n\n---\n\n').encode()
+    for name in ('CONTINUE.md', 'AGENTS.md', 'README.md'):
+        predecessor = fact(G / name); old = pin(predecessor)
+        saved = save(P / 'managed_preparation_001/predecessors_001' / name, old)
+        source = save(C / name, prefix + old)
+        rows.append(dict(managed_path=name, mode='prepend', source=source, predecessor=predecessor, saved_predecessor=saved, prefix_bytes=len(prefix)))
+    out = dict(schema_version=1, record_type='Root_exact_finite_I9_recorded_M3_semantics_managed_publication_scope', author='/root', created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(), base_HEAD='add1a93c7a0ad841f3760565b087afcbe638d292', files=rows, managed_file_count=len(rows), Root_implementation_adoption=adoption_pin, source_scope=scope_pin, prior_I8_scope=previous_pin, preexisting608_byte_baseline=previous['preexisting608_byte_baseline'], all_frozen_STEP080_sentinels=previous['all_frozen_STEP080_sentinels'], current36_Source_baseline=previous['current36_Source_baseline'], all_prior_I6_I7_I8_non_navigation_file_pins=prior, target_execution=False, tests_executed=True, I9_memory_test_runs=None, known_I9_memory_test_runs=runs, unknown_I9_memory_test_runs=1, spent_memory_scope_count=6, accepted_complete_memory_test_runs=1, failed_memory_test_runs=failed_runs, all_saved_memory_attempts=adoption['all_saved_memory_attempts'], original_project_target_execution=False, actual_selected45_Source_publication=False, operational_authority=False, scientific_authority=False)
+    print(json.dumps(save(P / 'managed_preparation_001/candidates_001/EXACT_MANAGED_I9_RECORDED_M3_SEMANTICS_PUBLICATION_SCOPE_001.json', out)))
+
+if __name__ == '__main__':
+    main()

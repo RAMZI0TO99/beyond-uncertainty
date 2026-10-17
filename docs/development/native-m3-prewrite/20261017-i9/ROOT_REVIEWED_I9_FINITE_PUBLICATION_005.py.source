@@ -1,0 +1,145 @@
+"""Root finite inert docs publication only; requires actual I9 saved-result and candidate adoptions."""
+import pathlib,json,hashlib,datetime,os,subprocess,sys,ctypes,shutil,time
+R=pathlib.Path(r'D:\Aenv\pro2');O=R/'WORK/resume-20261017-001/m3_prewrite_validation_012';G=R/'github-portable-20261012-001';CAP=2097152;BASE='add1a93c7a0ad841f3760565b087afcbe638d292';GIT=r'C:\Users\aladdin-alyanai\AppData\Local\Programs\Git\cmd\git.exe';env=dict(os.environ,GIT_OPTIONAL_LOCKS='0');calls=[]
+def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()
+def raw(p,cap=CAP):
+ p=pathlib.Path(p);assert p.is_file() and not p.is_symlink() and p.stat().st_size<=cap
+ with p.open('rb') as f:b=f.read(cap+1)
+ assert len(b)<=cap;return b
+def fact(p):
+ p=pathlib.Path(p);b=raw(p);return {'path':str(p),'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+def pinned(f,path=None,cap=CAP):
+ p=pathlib.Path(path or f['path']);assert p.stat().st_size==f['bytes'];b=raw(p,cap);assert hashlib.sha256(b).hexdigest()==f['sha256'],str(p);return b
+def save(name,x):
+ b=(json.dumps(dict(schema_version=1,created_utc=now(),author='/root',**x),sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(b)<=CAP;p=O/name
+ with p.open('xb') as f:f.write(b);f.flush();os.fsync(f.fileno())
+ return fact(p)
+def git(args,allowed=(0,)):
+ argv=[GIT,'-c','core.autocrlf=false','-c','core.safecrlf=false',*args];st=now()
+ p=subprocess.Popen(argv,cwd=G,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,creationflags=subprocess.CREATE_NO_WINDOW)
+ try:out,err=p.communicate(timeout=60)
+ except subprocess.TimeoutExpired as timeout:
+  cleanup_started=time.monotonic_ns();kill_error=None;drained=False;out=timeout.output or b'';err=timeout.stderr or b''
+  if p.poll() is None:
+   try:p.kill()
+   except BaseException as error:kill_error=type(error).__name__+': '+str(error)
+  remaining=max(0,5-(time.monotonic_ns()-cleanup_started)/1000000000)
+  try:out,err=p.communicate(timeout=remaining);drained=True
+  except subprocess.TimeoutExpired as cleanup_error:out=cleanup_error.output or out;err=cleanup_error.stderr or err
+  code=p.poll();reaped=code is not None
+  def captured(data):
+   assert type(data) is bytes
+   prefix=data[:CAP]
+   return dict(observed_bytes=len(data),saved_prefix_bytes=len(prefix),saved_prefix_sha256=hashlib.sha256(prefix).hexdigest(),overcap=len(data)>CAP)
+  row=dict(argv=argv,cwd=str(G),owned_process_PID=p.pid,started_utc=st,completed_utc=now(),timed_out=True,owned_exact_child_kill_error=kill_error,owned_exact_child_reaped=reaped,owned_exit_code=code,streams_drained=drained,stdout=captured(out),stderr=captured(err),descendant_or_whole_Job_cleanup_verified=False,remote_or_index_effect_after_timeout_unknown=True,automatic_retry_authorized=False)
+  calls.append(row)
+  save('ROOT_I9_OWNED_GIT_TIMEOUT_REFUSAL_'+step.upper()+'_001.json',dict(record_type='Root_I9_owned_Git_timeout_refusal',step=step,scope=scopepin,actual_Git_calls=calls,timeout_seconds=60,cleanup_seconds=5,requires_read_only_effect_reconciliation_before_any_further_mutation=True,original_project_target_execution=False,operational_authority=False,scientific_authority=False))
+  raise RuntimeError('Owned Git timeout; exact child cleanup recorded, effects require reconciliation') from timeout
+ assert len(out)<=CAP and len(err)<=CAP
+ calls.append({'argv':argv,'cwd':str(G),'owned_process_PID':p.pid,'started_utc':st,'completed_utc':now(),'exit_code':p.returncode,'stdout':out.decode('utf-8') if args[0]!='show' and len(out)<16384 else None,'stdout_bytes':len(out),'stdout_sha256':hashlib.sha256(out).hexdigest(),'stderr':err.decode('utf-8'),'Native_creation_Job_or_wholehost_proof':False})
+ assert p.returncode in allowed,calls[-1]
+ return out
+def validate_counts(a):
+ for key in ('actual_memory_case_count','actual_memory_cases_passed','known_I9_memory_test_runs','unknown_I9_memory_test_runs','spent_memory_scope_count','failed_memory_test_runs','accepted_complete_memory_test_runs','accepted_attempt_ordinal'):
+  assert type(a[key]) is int and a[key]>=0, key
+ assert a['I9_memory_test_runs'] is None and a['unknown_I9_memory_test_runs']==2
+ assert 1<=a['actual_memory_case_count']<=256 and a['actual_memory_cases_passed']==a['actual_memory_case_count']
+ runs=a['known_I9_memory_test_runs'];failed=a['failed_memory_test_runs']
+ assert runs==5 and failed==4 and a['accepted_complete_memory_test_runs']==1 and runs==failed+1
+ attempts=a['all_saved_memory_attempts'];assert type(attempts) is list and len(attempts)==a['spent_memory_scope_count']==a['accepted_attempt_ordinal']==7
+ for ordinal,row in enumerate(attempts,1):
+  assert type(row) is dict and type(row['attempt_ordinal']) is int and row['attempt_ordinal']==ordinal
+  assert type(row['accepted_complete_run']) is bool and row['accepted_complete_run'] is (ordinal==len(attempts))
+  if ordinal in (5,6):
+   assert row['I9_memory_test_runs'] is None and row['tests_executed'] is None and row['result'] is None
+   assert row['all_cases_passed'] is None and row['actual_test_case_count'] is None and row['unknown_suite_status'] is True
+  else:
+   assert type(row['I9_memory_test_runs']) is int and row['I9_memory_test_runs']==1
+   assert row['tests_executed'] is True and type(row['all_cases_passed']) is bool
+   assert row['all_cases_passed'] is (ordinal==7)
+ assert sum(row['I9_memory_test_runs'] for row in attempts if type(row['I9_memory_test_runs']) is int)==runs
+ return runs,failed
+
+assert len(sys.argv)==4 and len(sys.argv[3])==64 and all(c in '0123456789abcdef' for c in sys.argv[3])
+scopefile=O/'managed_preparation_001/candidates_001/EXACT_MANAGED_I9_RECORDED_M3_SEMANTICS_PUBLICATION_SCOPE_001.json';scopepin=fact(scopefile);assert scopepin['sha256']==sys.argv[2];s=json.loads(raw(scopefile));rows=s['files'];names=sorted(i['managed_path'] for i in rows);assert len(names)==len(set(names))==s['managed_file_count'] and s['base_HEAD']==BASE
+for i in rows:assert i['managed_path'] in ['CONTINUE.md','AGENTS.md','README.md'] or i['managed_path'].startswith('docs/development/native-m3-prewrite/20261017-i9/');assert not i['managed_path'].endswith(('.py','.ps1'))
+managed_adoption_pin=fact(O/'ROOT_I9_FINITE_MANAGED_DOCS_SOURCE_REVIEW_ADOPTION_001.json');assert managed_adoption_pin['sha256']==sys.argv[3]
+implementation=json.loads(pinned(s['Root_implementation_adoption']));assert implementation['verdict']=='ACCEPT_I9_RECORDED_M3_SEMANTICS_AND_SAVED_MEMORY_RESULTS_ONLY' and implementation['I9_memory_test_runs'] is None and implementation['known_I9_memory_test_runs']==5 and implementation['unknown_I9_memory_test_runs']==2 and type(implementation['failed_memory_test_runs']) is int and implementation['known_I9_memory_test_runs']==implementation['failed_memory_test_runs']+1 and implementation['accepted_complete_memory_test_runs']==1 and implementation['tests_executed'] is True and implementation['original_project_native_Parser_runtime_scientific_execution'] is False
+
+validate_counts(implementation)
+managed_adoption=json.loads(pinned(managed_adoption_pin))
+assert managed_adoption['verdict']=='ACCEPT_I9_FINITE_MANAGED_DOCS_SOURCE_PUBLICATION_ONLY'
+assert managed_adoption['author']=='/root' and managed_adoption['target_execution'] is False and managed_adoption['tests_executed'] is False
+assert managed_adoption['managed_publication_scope']==scopepin and managed_adoption['Root_implementation_adoption']==s['Root_implementation_adoption']
+assert managed_adoption['source_scope']==s['source_scope'] and managed_adoption['all_actual_review_inputs_rehashed'] is True
+assert type(managed_adoption['actual_file_count']) is int and managed_adoption['actual_file_count']==len(rows)
+
+assert s['preexisting608_byte_baseline']['sha256']=='315cce6ac373b917213cd13e4f4059200b94de7cadb1f0b7bd9b501f9b745c44'
+base=json.loads(pinned(s['preexisting608_byte_baseline']));baserows=base['all_preexisting_file_bytes'];assert len(baserows)==608
+
+def authority():
+ assert fact(O/'ROOT_CURRENT_I9_M3_SEMANTIC_PREFLIGHT_SOURCE_SCOPE_001.json')['sha256']=='0c0815540d0be020040f1114f18975300ddeb279a24ba201ba4204680ea9773d'
+ x=json.loads(raw(O/'ROOT_CURRENT_I9_M3_SEMANTIC_PREFLIGHT_SOURCE_SCOPE_001.json'));assert datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=60)<datetime.datetime.fromisoformat(x['interval_end']);assert x['new_target_Source_authoring_requires_reviewed_exact_protocol'] is True and x['old_publisher_I0_I1_I2_I3_I4_I5_I6_I7_I8_changes_or_invocations_authorized'] is False
+
+def resources():
+ class M(ctypes.Structure):_fields_=[('length',ctypes.c_ulong),('load',ctypes.c_ulong),('total',ctypes.c_ulonglong),('available',ctypes.c_ulonglong),('page_total',ctypes.c_ulonglong),('page_available',ctypes.c_ulonglong),('virtual_total',ctypes.c_ulonglong),('virtual_available',ctypes.c_ulonglong),('extended',ctypes.c_ulonglong)]
+ m=M();m.length=ctypes.sizeof(m);assert ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m));d=shutil.disk_usage(G).free;assert m.available>=1073741824 and d>=10737418240
+ return {'observed_utc':now(),'available_RAM_bytes':m.available,'disk_free_bytes':d,'original_resource_age_seconds':60,'RAM_floor_bytes':1073741824,'disk_floor_bytes':10737418240}
+def preserve():
+ for i in baserows:
+  if i['bytes']>CAP:assert i['bytes']==3483233 and i['sha256']=='e646afc11642d8df66cf7ef0aff26474ce45eaec23d08ecd16f17eaedae2b0e9' and i['path']=='docs/development/closeout-evidence/root-docs-independent-major036/INDEPENDENT_MAJOR036_CREATION_REVIEW_001.json'
+  pinned(i,path=G/i['path'],cap=i['bytes'])
+ for q in s['all_prior_I6_I7_I8_non_navigation_file_pins']:pinned(q)
+ assert len(s['all_prior_I6_I7_I8_non_navigation_file_pins'])==342
+ for i in s['all_frozen_STEP080_sentinels']:pinned(i['actual_current_pin'])
+ b=json.loads(pinned(s['current36_Source_baseline']));assert b['actual_present']==36
+ for i in b['current_45_identity_rows']:
+  if i['canonical'] is not None:pinned(i['canonical'])
+  else:assert not pathlib.Path(i['canonical_path']).exists()
+ return {'all608_wholebytes_exact':True,'all342_prior_I6_I7_I8_non_navigation_files_exact':True,'baseline_total_bytes':sum(i['bytes'] for i in baserows),'all8_STEP080_sentinels_exact':True,'all36_original_Source_bytes_exact':True,'all9_pending_canonical_paths_absent':True,'checked_utc':now()}
+def copies():
+ for i in rows:
+  b=pinned(i['source'],path=G/i['managed_path'])
+  if i['mode']=='prepend':assert b[i['prefix_bytes']:]==pinned(i['saved_predecessor'])
+ return {'all_saved_managed_bytes_exact':True,'file_count':len(rows),'all3_complete_prior_navigation_suffixes_exact':True}
+def exact_index():
+ assert sorted(git(['diff','--cached','--name-only','-z']).decode().strip('\0').split('\0'))==names
+ z=git(['diff','--cached','--name-status','-z']).decode().strip('\0').split('\0');assert len(z)==2*len(rows);assert {z[j+1]:z[j] for j in range(0,len(z),2)}=={i['managed_path']:('A' if i['mode']=='create' else 'M') for i in rows}
+ git(['-c','core.whitespace=cr-at-eol','diff','--cached','--check'])
+ for i in rows:
+  b=git(['show',':'+i['managed_path']]);assert len(b)==i['source']['bytes'] and hashlib.sha256(b).hexdigest()==i['source']['sha256']
+ return {'exact_names_statuses_and_all_indexed_blob_bytes':True,'whitespace_check_passed':True,'file_count':len(rows)}
+authority();step=sys.argv[1];assert step in ('copy','stage','commit','push')
+for refused_step in ('COPY','STAGE','COMMIT','PUSH'):
+ assert not (O/('ROOT_I9_OWNED_GIT_TIMEOUT_REFUSAL_'+refused_step+'_001.json')).exists(),'Saved owned Git timeout blocks this publisher; perform read-only reconciliation and adopt a separately reviewed successor before mutation'
+if step=='copy':
+ assert git(['rev-parse','HEAD']).decode().strip()==BASE;assert git(['diff','--cached','--name-only'])==b'';assert git(['symbolic-ref','HEAD']).decode().strip()=='refs/heads/main';assert git(['remote','get-url','--push','origin']).decode().strip().rstrip('/').removesuffix('.git')=='https://github.com/RAMZI0TO99/beyond-uncertainty';assert git(['ls-remote','origin','refs/heads/main']).decode().split()[0]==BASE
+ assert not git(['config','--get','core.hooksPath'],allowed=(0,1)).decode().strip();assert not any(p.is_file() and not p.name.endswith('.sample') for p in (G/'.git/hooks').iterdir())
+ for i in rows:
+  b=pinned(i['source']);p=G/i['managed_path'];assert p.resolve().is_relative_to(G.resolve())
+  if i['mode']=='create':assert not p.exists()
+  else:assert i['mode']=='prepend';assert b[i['prefix_bytes']:]==pinned(i['predecessor'])==pinned(i['saved_predecessor'])
+ adoption=json.loads(pinned(managed_adoption_pin));assert adoption['managed_publication_scope']==scopepin and adoption['author']=='/root' and adoption['target_execution'] is False and adoption['verdict'].startswith('ACCEPT_')
+ p=preserve();rr=resources();authority()
+ for i in rows:
+  b=pinned(i['source']);p=G/i['managed_path'];p.parent.mkdir(parents=True,exist_ok=True)
+  if i['mode']=='create':
+   with p.open('xb') as f:f.write(b);f.flush();os.fsync(f.fileno())
+  else:
+   pinned(i['predecessor']);q=p.with_name(p.name+'.i9-memory-stage001');assert not q.exists()
+   with q.open('xb') as f:f.write(b);f.flush();os.fsync(f.fileno())
+   pinned(i['predecessor']);os.replace(q,p)
+ print(json.dumps(save('ROOT_I9_ACTUAL_MANAGED_COPY_READBACK_RECEIPT_001.json',{'record_type':'Root_actual_I9_managed_copy','scope':scopepin,'independent_managed_review_adoption':managed_adoption_pin,'resource_check':rr,'readback':copies(),'preservation':preserve(),'actual_Git_calls':calls,'commit_or_push_already_completed':False,'original_project_target_execution':False,'I9_synthetic_memory_tests_executed':True,'tests_executed':True,'original_tests_executed':False})))
+elif step=='stage':
+ assert git(['rev-parse','HEAD']).decode().strip()==BASE and git(['diff','--cached','--name-only'])==b'';copies();preserve();resources();git(['add','--',*names]);iv=exact_index()
+ print(json.dumps(save('ROOT_I9_ACTUAL_GIT_STAGING_RECEIPT_001.json',{'record_type':'Root_actual_I9_exact_Git_staging','scope':scopepin,'index_verification':iv,'preservation':preserve(),'actual_Git_calls':calls,'original_project_target_execution':False,'I9_synthetic_memory_tests_executed':True,'tests_executed':True,'original_tests_executed':False})))
+elif step=='commit':
+ assert git(['rev-parse','HEAD']).decode().strip()==BASE;exact_index();copies();preserve();resources();git(['commit','-m','Add pure recorded M3 semantic validation']);head=git(['rev-parse','HEAD']).decode().strip();assert git(['rev-parse','HEAD^']).decode().strip()==BASE;assert sorted(git(['diff-tree','--no-commit-id','--name-only','-r','-z','HEAD']).decode().strip('\0').split('\0'))==names;assert git(['diff','--cached','--name-only'])==b''
+ print(json.dumps(save('ROOT_I9_ACTUAL_GIT_COMMIT_RECEIPT_001.json',{'record_type':'Root_actual_I9_exact_Git_commit','scope':scopepin,'HEAD':head,'parent':BASE,'exact_changed_paths':names,'readback':copies(),'preservation':preserve(),'actual_Git_calls':calls,'remote_push_already_completed':False,'original_project_target_execution':False,'I9_synthetic_memory_tests_executed':True,'tests_executed':True,'original_tests_executed':False})))
+elif step=='push':
+ cr=json.loads(raw(O/'ROOT_I9_ACTUAL_GIT_COMMIT_RECEIPT_001.json'));head=cr['HEAD'];assert git(['rev-parse','HEAD']).decode().strip()==head;assert git(['diff','--cached','--name-only'])==b'';copies();preserve();resources();assert git(['ls-remote','origin','refs/heads/main']).decode().split()[0]==BASE
+ git(['push','origin','HEAD:main']);assert git(['ls-remote','origin','refs/heads/main']).decode().split()[0]==head;assert git(['rev-parse','refs/remotes/origin/main']).decode().strip()==head;assert git(['rev-parse','HEAD']).decode().strip()==head
+ for i in rows:
+  b=git(['show','HEAD:'+i['managed_path']]);assert len(b)==i['source']['bytes'] and hashlib.sha256(b).hexdigest()==i['source']['sha256']
+ print(json.dumps(save('ROOT_I9_RECORDED_M3_SEMANTICS_AND_MANAGED_PUBLICATION_FINAL_OUTCOME_001.json',{'record_type':'Root_actual_I9_Source_implementation_qualification_and_managed_publication_final_outcome','scope':scopepin,'HEAD':head,'parent':BASE,'remote_main':head,'normal_fast_forward_push_completed':True,'local_remote_parity':True,'actual_published_path_count':len(rows),'new_file_count':sum(i['mode']=='create' for i in rows),'prior_navigation_full_suffixes':3,'Root_implementation_adoption':s['Root_implementation_adoption'],'Root_managed_review_adoption':managed_adoption_pin,'all_committed_blob_bytes_rechecked':True,'readback':copies(),'preservation':preserve(),'actual_Git_calls':calls,'I9_implementation_and_docs_stage_complete':True,'new_I9_pure_recorded_M3_semantics_implemented':True,'actual_memory_case_count':implementation['actual_memory_case_count'],'actual_real_family_publication_admission_implemented':False,'I9_memory_test_runs':implementation['I9_memory_test_runs'],'known_I9_memory_test_runs':implementation['known_I9_memory_test_runs'],'unknown_I9_memory_test_runs':implementation['unknown_I9_memory_test_runs'],'spent_memory_scope_count':implementation['spent_memory_scope_count'],'accepted_complete_memory_test_runs':1,'failed_memory_test_runs':implementation['failed_memory_test_runs'],'accepted_attempt_ordinal':implementation['accepted_attempt_ordinal'],'all_saved_memory_attempts':implementation['all_saved_memory_attempts'],'original_native_Parser_project_entry_executed':False,'new_lease_family_native_metadata_Parser_purpose_results':None,'current_dated_Source_paths_present':36,'current_dated_pending':9,'frozen_STEP080_present':35,'frozen_STEP080_pending':10,'next':'Qualify the actual I1/I2 producer successors, receipt carriers and caller/IO composition binding I8 plus I9, then postbirth Native8 support, Parser saved-result adaptation and qualifying I3/I4/I5 successors. Synthetic memory validation grants no actual publication, lease, Native8, Parser, runtime or scientific entry.','operational_authority':False,'scientific_authority':False,'original_project_target_execution':False,'I9_synthetic_memory_tests_executed':True,'tests_executed':True,'original_tests_executed':False})))
+else:raise AssertionError(step)

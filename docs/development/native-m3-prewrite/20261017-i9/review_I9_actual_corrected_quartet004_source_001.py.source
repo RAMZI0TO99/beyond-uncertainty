@@ -1,0 +1,305 @@
+"""Independent Source-only correction review; no target import/call/replay.
+
+Reads immutable prior Source proofs, actual saved refusal, and quartet004.
+The sole previous execution failed. Current fixture004 remains unexecuted.
+"""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+OWN=P/'independent_review_001'
+I=P/'i9'
+REVIEWER='/root/owner_source_review'
+AUTHOR='/root/phase_frontier'
+VERDICT='PASS_I9_CORRECTED_QUARTET004_RECORDED_SELECTION_ROUTE_SOURCE_ONLY'
+checks=[]
+inputs={}
+raws={}
+docs={}
+
+def check(name,passed,evidence=None):
+    assert type(name) is str and name and name not in {q['name'] for q in checks}
+    assert type(passed) is bool
+    q=dict(name=name,passed=passed)
+    if evidence is not None:q['evidence']=evidence
+    checks.append(q)
+
+def fact(path):
+    path=str(Path(path));b=Path(path).read_bytes()
+    assert 0<len(b)<=2097152
+    pin=dict(path=path,bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+    raws[path]=b;inputs[path]=pin
+    return pin
+
+def pin(q,label):
+    check(label+': strict positive fact3',type(q) is dict and set(q)=={'path','bytes','sha256'} and
+          type(q['path']) is str and type(q['bytes']) is int and 0<q['bytes']<=2097152 and
+          type(q['sha256']) is str and len(q['sha256'])==64)
+    check(label+': whole bytes and SHA256',fact(q['path'])==q)
+    return q
+
+def pairs(values):
+    out={}
+    for k,v in values:
+        assert k not in out;out[k]=v
+    return out
+
+def bad(value):raise ValueError(value)
+
+def obj(path):
+    path=str(Path(path))
+    if path not in docs:
+        if path not in raws:fact(path)
+        docs[path]=json.loads(raws[path].decode('utf8'),object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+    return docs[path]
+
+def refs(value):
+    if type(value) is dict:
+        if set(value)=={'path','bytes','sha256'}:yield value
+        else:
+            for v in value.values():yield from refs(v)
+    elif type(value) is list:
+        for v in value:yield from refs(v)
+
+def utc(value):
+    q=datetime.datetime.fromisoformat(value.replace('Z','+00:00'))
+    assert q.utcoffset()==datetime.timedelta(0)
+    return q
+
+module=fact(I/'validate_recorded_M3_semantics_003.py')
+fixture=fact(I/'test_recorded_M3_semantics_memory_only_004.py')
+api_pin=fact(I/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_INERT_API_004.json')
+receipt_pin=fact(I/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_SOURCE_AUTHOR_RECEIPT_004.json')
+subjects=[module,fixture,api_pin,receipt_pin]
+oldfixture=fact(I/'test_recorded_M3_semantics_memory_only_003.py')
+oldapi_pin=fact(I/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_INERT_API_003.json')
+oldreceipt_pin=fact(I/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_SOURCE_AUTHOR_RECEIPT_003.json')
+api=obj(api_pin['path']);receipt=obj(receipt_pin['path']);oldapi=obj(oldapi_pin['path'])
+inverse_pin=fact(I/'I9_FIXTURE003_TO004_COMPLETE_SELECTION_ROUTE_SOURCE_INVERSE_001.json')
+inverse=obj(inverse_pin['path'])
+inspection_pin=fact(I/'I9_FIXTURE004_ACTUAL_SELECTION_ROUTE_SOURCE_CORRECTION_INSPECTION_001.json')
+inspection=obj(inspection_pin['path'])
+failure_adop_pin=fact(P/'ROOT_I9_ATTEMPT001_ACTUAL_SAVED_REFUSAL_AND_FIXTURE_ROUTE_CORRECTION_ADOPTION_001.json')
+failure_adop=obj(failure_adop_pin['path'])
+initial_adop=obj(P/'ROOT_I9_FINAL_RECORDED_M3_SEMANTIC_AND_FIXTURE_SOURCE_REVIEW_ADOPTION_001.json')
+window=obj(P/'ROOT_CURRENT_I9_M3_SEMANTIC_PREFLIGHT_SOURCE_SCOPE_001.json')
+
+expected=[(module,119606,'a4cddf6da7f4383901875cf54e9a0af2c949ca111444cea374dcb0623c667ab1'),
+ (fixture,2042075,'cf29cbc3f14b6c377328f9ea42533674173cdfcef7e8dee979b037d00a908c01'),
+ (api_pin,36930,'5401f6eeebde4921a330c495e223ee048ed3668d590a2e976ab6f23fa5f3f4f0'),
+ (receipt_pin,20245,'ddaf19dcff0f3fcb609686a0d32cc5e54123195d90873521500ec76e1e9ac5ae')]
+for q,n,h in expected:check('frozen subject '+Path(q['path']).name,q['bytes']==n and q['sha256']==h)
+check('Root actual saved refusal adoption exact pin',failure_adop_pin['bytes']==4985 and
+      failure_adop_pin['sha256']=='b8c5e65fe9f3f72ce6fda9299ce6d97a749ccccb8f98da308775efe3354a90ff')
+
+# Rehash the finite prior accepted Source and saved-refusal input rosters.
+for label,adopt,capfield in [('initial Source',initial_adop,'different_Source_review'),
+                            ('saved refusal',failure_adop,'different_saved_refusal_review')]:
+    cap=obj(adopt[capfield]['path']);full=obj(adopt['full_proof']['path'])
+    check(label+': original actual reviewer and strict zero',cap['reviewer']==full['reviewer']==REVIEWER and
+          type(cap['checks_failed']) is int and cap['checks_failed']==0 and
+          type(full['checks_failed']) is int and full['checks_failed']==0)
+    check(label+': Source-only review flags',all(q['target_execution'] is False and q['tests_executed'] is False for q in (cap,full)))
+    check(label+': exact full proof pin and same subject set',cap['full_proof']==adopt['full_proof'] and cap['subjects']==full['subjects'])
+    check(label+': unique genuine passed named checks',type(full['checks']) is list and len(full['checks'])>0 and
+          len({q['name'] for q in full['checks']})==len(full['checks']) and
+          all(type(q['name']) is str and q['name'] and q['passed'] is True for q in full['checks']))
+    check(label+': prior proof adopted before this correction birth',
+          utc(full['created_utc'])<=utc(cap['created_utc'])<=utc(adopt['created_utc'])<=utc(receipt['created_utc']))
+    for n,q in enumerate(full['all_actual_inputs']):pin(q,label+' prior input '+str(n+1))
+    for n,q in enumerate(refs(adopt)):pin(q,label+' direct adoption reference '+str(n+1))
+
+for label,value in [('API004',api),('author receipt004',receipt),('inverse',inverse),('author inspection',inspection)]:
+    seen=set()
+    for q in refs(value):
+        if q['path'] not in seen:
+            pin(q,label+' reference '+str(len(seen)+1));seen.add(q['path'])
+
+old=raws[oldfixture['path']].decode('utf8');new=raws[fixture['path']].decode('utf8');m=raws[module['path']].decode('utf8')
+oa,na,ma=ast.parse(old),ast.parse(new),ast.parse(m)
+oldfunctions={q.name:q for q in oa.body if isinstance(q,(ast.FunctionDef,ast.ClassDef))}
+newfunctions={q.name:q for q in na.body if isinstance(q,(ast.FunctionDef,ast.ClassDef))}
+modulefunctions={q.name:q for q in ma.body if isinstance(q,(ast.FunctionDef,ast.ClassDef))}
+check('AST: same complete fixture definition roster',set(oldfunctions)==set(newfunctions))
+check('AST: unique top-level fixture function/class names',len(newfunctions)==sum(isinstance(q,(ast.FunctionDef,ast.ClassDef)) for q in na.body))
+for name in oldfunctions:
+    if name!='_fx_common':
+        check('fixture unchanged whole definition '+name,
+              ast.get_source_segment(old,oldfunctions[name])==ast.get_source_segment(new,newfunctions[name]))
+edit=inverse['exact_Source_edit'];before,after=edit['before'],edit['after']
+check('inverse: unique exact predecessor edit span',old.count(before)==1 and new.count(after)==1)
+check('inverse: full forward Source reconstruction',old.replace(before,after,1)==new)
+check('inverse: full reverse Source reconstruction',new.replace(after,before,1)==old)
+check('inverse: exact unchanged module identity',inverse['unchanged_already_Root_executed_module']==module)
+check('inverse: predecessor/successor whole pins',inverse['predecessor_fixture']==oldfixture and inverse['successor_fixture']==fixture)
+check('inverse: whole prior API retained',bytes.fromhex(inverse['whole_prior_API_hex'])==raws[oldapi_pin['path']])
+check('inverse: whole prior author receipt retained',bytes.fromhex(inverse['whole_prior_author_receipt_hex'])==raws[oldreceipt_pin['path']])
+check('inverse: actual refusal and prior inverse linked',inverse['actual_failure_Root_adoption']==failure_adop_pin and
+      inverse['earlier_inverse']==receipt['cached_record_Source_correction_inverse'])
+
+def literals(tree):
+    values={}
+    for q in tree.body:
+        if isinstance(q,ast.Assign) and len(q.targets)==1 and isinstance(q.targets[0],ast.Name):
+            try:values[q.targets[0].id]=ast.literal_eval(q.value)
+            except (ValueError,TypeError):pass
+    return values
+
+oc,nc,mc=literals(oa),literals(na),literals(ma)
+check('fixture: every top-level literal including fixed compressed basis unchanged',oc==nc)
+check('fixture: exact 96 unique case names in unchanged order',
+      type(nc['EXPECTED_CASE_COUNT']) is int and nc['EXPECTED_CASE_COUNT']==96 and
+      list(nc['PLANNED_CASE_NAMES'])==list(oc['PLANNED_CASE_NAMES']) and
+      len(nc['PLANNED_CASE_NAMES'])==len(set(nc['PLANNED_CASE_NAMES']))==96)
+check('fixture: same first positive now uses corrected common graph',
+      nc['PLANNED_CASE_NAMES'][0]=='positive_complete_templates5' and
+      ast.get_source_segment(old,oldfunctions['_fx_graph'])==ast.get_source_segment(new,newfunctions['_fx_graph']))
+check('fixture: independent recipe and all five stage buffers unchanged',
+      all(ast.get_source_segment(old,oldfunctions[k])==ast.get_source_segment(new,newfunctions[k]) for k in
+      ('_fx_recipe','_fx_stage','_fx_finish','_fx_graph','run_memory_suite')))
+check('fixture: 96th genuine later-stage cached proof regression unchanged',
+      nc['PLANNED_CASE_NAMES'][-1]=='cached_later_stage_full_missing_from_purpose_refused' and
+      'after_reached' not in after)
+
+common=newfunctions['_fx_common']
+selection_assign=[q for q in common.body if isinstance(q,ast.Assign) and
+                  any(isinstance(t,ast.Name) and t.id=='selection_path' for t in q.targets)]
+check('route: exact single literal new selection key construction',len(selection_assign)==1 and
+      isinstance(selection_assign[0].value,ast.BinOp) and isinstance(selection_assign[0].value.op,ast.Add) and
+      isinstance(selection_assign[0].value.left,ast.Name) and selection_assign[0].value.left.id=='_FX_SESSION' and
+      isinstance(selection_assign[0].value.right,ast.Constant) and type(selection_assign[0].value.right.value) is str)
+selection_path=nc['_FX_SESSION']+selection_assign[0].value.right.value
+check('route: new key exact required module Root-owned parent',selection_path.rsplit('\\',1)[0]==mc['I9_ROOT_OWNED'])
+check('route: fresh key distinct from historical selection',selection_path!=mc['I9_CURRENT_ROOT_SELECTION']['path'])
+check('route: current canonical/session fixed route constants unchanged',nc['_FX_BASE']==mc['I9_BASE'] and nc['_FX_SESSION']==mc['I9_SESSION'])
+check('route: explicit parent/freshness construction assertions retained',
+      "assert selection_path.rsplit('\\\\',1)[0]==r'D:\\Aenv\\pro2\\WORK\\resume-20261007-001\\generation\\observer010_lease009_root_001'" in after and
+      "assert selection_path!=c['CURRENT_ROOT_SELECTION']['path']" in after and
+      "assert graph['selection']!=c['CURRENT_ROOT_SELECTION']" in after)
+check('route: put returns freshly hashed synthetic bytes into memory map',
+      "graph['selection']=_fx_put(graph,selection_path,value,30)" in after and
+      "graph['store'][path]=body;graph['pins'][path]=pin" in ast.get_source_segment(new,newfunctions['_fx_put']))
+check('route: proof/support bindings consume corrected actual pin',
+      "_fx_proof(graph,'selection',[graph['selection'],graph['lease']],32)" in ast.get_source_segment(new,common) and
+      "dict(selection=graph['selection'],different_review=review,Root_adoption=adoption)" in ast.get_source_segment(new,common))
+check('route: original strict module predicate unchanged',
+      "_i9_parent(pin['path'])==I9_ROOT_OWNED and not _i9_same(pin,I9_CURRENT_ROOT_SELECTION)" in
+      ast.get_source_segment(m,modulefunctions['_i9_selection']) and
+      module in initial_adop['subjects'])
+check('route: no target function or actual filesystem creation added',
+      all(not(isinstance(q,ast.Call) and isinstance(q.func,ast.Name) and q.func.id in
+          {'open','eval','exec','compile','__import__'}) for q in ast.walk(common)) and
+      not any(isinstance(q,ast.Attribute) and q.attr in {'write_bytes','write_text','mkdir','open'} for q in ast.walk(common)))
+
+for key in ('stage_contract','reader_contract','result_contract','schemas','trusted_bindings_keys',
+            'public_interfaces','Source','original_I2','original_I2_API','separate_required_I8',
+            'whole_original_predecessor_inverse','original_algorithm_region_map'):
+    check('API unchanged semantic contract '+key,api[key]==oldapi[key])
+interface=api['fixture_interface']
+check('API: exact new Source and fixture pin joins',api['Source']==receipt['Source']==module and
+      api['fixture_Source']==receipt['fixture_Source']==fixture and receipt['API']==api_pin)
+check('API: fixture entry/name/count joins',interface['entry']=='run_memory_suite(module)' and
+      type(interface['expected_case_count']) is int and interface['expected_case_count']==96 and
+      interface['planned_case_names']==list(nc['PLANNED_CASE_NAMES']))
+check('API: scope/actual results not issued by Source author',interface['actual_future_one_use_Root_scope'] is None and
+      interface['actual_saved_results'] is None and receipt['actual_one_use_fixture_scope'] is None and
+      receipt['actual_saved_results'] is None and receipt['final_Root_Source_adoption'] is None)
+check('API: explicit current fixture unrun and prior actual run history',api['current_fixture004_executed'] is False and
+      api['current_module_already_Root_executed'] is True and type(api['actual_global_I9_memory_test_runs']) is int and
+      api['actual_global_I9_memory_test_runs']==1 and interface['current_selected_fixture_execution_count']==0)
+check('API: current fixture scope counters distinguish existing run',interface['tests_executed'] is False and
+      interface['actual_prior_global_I9_memory_test_runs']==1 and interface['source_only'] is True and interface['memory_only'] is True)
+check('API: metadata execution/authority flags stay false',api['target_execution'] is False and
+      api['operational_authority'] is False and api['scientific_authority'] is False and api['new_fixture_tests_executed'] is False)
+check('API: current real future authority cells remain null',api['all_actual_future_grants_lease_family_paths_purpose_Native8_Parser_results'] is None)
+check('receipt: actual physical author and both fixture contributors truthful',receipt['author']==AUTHOR and
+      receipt['actual_physical_Source_editor']==AUTHOR and receipt['fixture_content_contributor']=='/root/i9_fixture_author' and
+      set(receipt['fixture_content_contributors'])=={AUTHOR,'/root/i9_fixture_author'})
+check('receipt: author-only zero counters explicit',receipt['tests_and_execution']==dict(Native_or_Parser_invoked=False,
+      fixture_function_calls=0,fixture_imports=0,module_function_calls=0,module_imports=0,new_tests_executed=False,old_modules_imported_or_called=False) and
+      'Source-author actions only' in receipt['tests_and_execution_count_scope'])
+check('receipt: execution counters strict integers',all(type(receipt['tests_and_execution'][k]) is int for k in
+      ('fixture_function_calls','fixture_imports','module_function_calls','module_imports')))
+check('receipt: current fixture execution false while unchanged module history true',
+      receipt['current_fixture004_executed'] is False and receipt['current_module_already_Root_executed'] is True and
+      receipt['actual_global_I9_memory_test_runs']==1)
+check('receipt: inverse pins and preserved immediate predecessors exact',receipt['selection_route_Source_correction_inverse']==inverse_pin and
+      receipt['preserved_fixture003']==oldfixture and receipt['preserved_API003']==oldapi_pin and receipt['preserved_author_receipt003']==oldreceipt_pin)
+for label,value in [('API',api),('receipt',receipt)]:
+    hist=value['actual_saved_memory_attempts']
+    check(label+': one actual failure with zero completed cases retained',len(hist)==1 and hist[0]['attempt_number']==1 and
+          hist[0]['tests_executed'] is True and hist[0]['all_cases_passed'] is False and hist[0]['actual_completed_cases']==0 and
+          hist[0]['error_code']=='E_SELECTION_ROUTE' and hist[0]['failed_case']=='positive_complete_templates5')
+    check(label+': exact saved refusal Root adoption',value['actual_saved_refusal_Root_adoption']==failure_adop_pin)
+    h=hist[0]
+    check(label+': exact scope/result/super/capture history pins',h['saved_scope']==failure_adop['consumed_scope'] and
+          h['saved_child']==failure_adop['actual_saved_result'] and h['saved_supervisor']==failure_adop['actual_owned_supervisor_result'] and
+          h['saved_stream_capture']==failure_adop['actual_owned_streams'])
+check('inspection: Source-author evidence remains separate',inspection['author']==AUTHOR and
+      inspection['current_fixture004_executed'] is False and inspection['author_fixture_calls']==0 and inspection['author_target_calls']==0 and
+      inspection['module_unchanged']==module and inspection['fixture']==fixture)
+check('Root failure adoption: correction only, no next invocation',failure_adop['new_invocation_authorized_now'] is False and
+      failure_adop['module003_guard_and_Source_bytes_must_remain_unchanged'] is True and failure_adop['I9_memory_test_runs']==1 and
+      failure_adop['accepted_complete_memory_test_runs']==0)
+check('chronology: correction API/receipt after actual adopted failure',
+      utc(failure_adop['created_utc'])<utc(api['created_utc'])<=utc(receipt['created_utc']))
+
+# Inspect Root's metadata-only Source adoption utility, without invoking it.
+adopter_pin=fact(P/'ROOT_ADOPT_I9_FINAL_ACTUAL_QUARTET_SOURCE_REVIEW_002.py')
+adopter=raws[adopter_pin['path']].decode('utf8');aa=ast.parse(adopter)
+check('Root adopter Source: actual prior failure required exact hash',failure_adop_pin['sha256'] in adopter and
+      "'prior_actual_memory_refusal_adoption'" not in adopter and 'prior_actual_memory_refusal_adoption=' in adopter)
+check('Root adopter Source: actual four subjects and genuine Source proof required',
+      "len(subjects) == 4" in adopter and "record['source_author'] == '/root/phase_frontier'" in adopter and
+      "type(record['checks_failed']) is int" in adopter and "record['target_execution'] is False" in adopter)
+check('Root adopter Source: prior actual run retained and no execution authorized',
+      'I9_memory_test_runs=1' in adopter and 'new_module_or_fixture_invocation_authorized_now=False' in adopter)
+check('Root adopter Source: metadata imports do not import a project target',all(
+      not isinstance(q,ast.ImportFrom) and (not isinstance(q,ast.Import) or
+      all(x.name in {'ast','datetime','hashlib','json','os','re','sys'} for x in q.names))
+      for q in aa.body if isinstance(q,ast.Import)) and 'subprocess' not in adopter)
+
+source_pin=fact(__file__)
+created=datetime.datetime.now(datetime.timezone.utc).isoformat()
+check('review: genuine actor excludes Root and all actual Source contributors',REVIEWER not in {'/root',AUTHOR,'/root/i9_fixture_author'})
+check('review: still inside current Source-only window with reserve',utc(window['interval_start'])<=utc(created) and
+      utc(created)+datetime.timedelta(seconds=60)<utc(window['interval_end']))
+check('review: unchanged module and corrected fixture remain exact frozen pins',fact(module['path'])==module and fact(fixture['path'])==fixture)
+
+failed=sum(q['passed'] is not True for q in checks)
+full=dict(schema_version=1,record_type='Independent_I9_corrected_quartet004_Source_review',
+    reviewer=REVIEWER,source_author=AUTHOR,created_utc=created,verdict=VERDICT if failed==0 else 'REFUSE_I9_QUARTET004_SOURCE_CHECKS_FAILED',
+    subjects=subjects,reviewer_Source=source_pin,checks=checks,checks_failed=failed,checks_passed=len(checks)-failed,
+    all_actual_inputs=[inputs[k] for k in sorted(inputs)],target_execution=False,tests_executed=False,
+    operational_authority=False,scientific_authority=False,I9_fixture_reruns=0,I9_target_imports_by_reviewer=0,I9_target_calls_by_reviewer=0,
+    actual_existing_I9_memory_test_runs=1,actual_existing_accepted_complete_suites=0,current_fixture004_execution_count=0,
+    current_module003_previously_executed=True,prior_attempt001_consumed_forever=True,
+    correction_scope=dict(module_unchanged=module,fixture_predecessor=oldfixture,fixture_successor=fixture,
+      exact_reverse_edit=inverse_pin,new_memory_selection_path=selection_path,
+      Source_correction='Only _fx_common memory selection key and explicit parent/freshness assertions changed; no target/runtime or reader/renderer changes.',
+      assertion_boundary='Static literal arithmetic proves recorded route compatibility; this review does not execute or certify a passing positive fixture graph.'),
+    actual_saved_refusal_Root_adoption=failure_adop_pin,prior_Source_review_revalidated=True,
+    independent_static_scope='Exact whole module pin preserves prior full Source analysis; every untouched fixture definition and compressed basis literal is byte-equal. All new API/receipt/history/inverse fields reviewed. Earlier positive-route miss and actual failed suite retained.',
+    actual_future_grants_lease_family_Native8_Parser_results=None,next_invocation_authorized=False,
+    required_next_boundary='Root Source adoption, newly bound tooling and independent Source review, then separately fresh one-use scope002; consumed scope001 cannot be reused.')
+
+def save(name,value):
+    data=(json.dumps(value,sort_keys=True,indent=2,ensure_ascii=False,allow_nan=False)+'\n').encode('utf8')
+    assert len(data)<=2097152
+    with (OWN/name).open('xb') as handle:handle.write(data)
+    return dict(path=str(OWN/name),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+
+fp=save('INDEPENDENT_I9_INITIAL_IMPLEMENTATION_FULL_SOURCE_PROOF_004.json',full)
+capsule=dict(schema_version=1,record_type='Independent_I9_corrected_quartet004_Source_capsule',reviewer=REVIEWER,
+    source_author=AUTHOR,created_utc=created,verdict=full['verdict'],subjects=subjects,reviewer_Source=source_pin,full_proof=fp,
+    checks_failed=failed,checks_passed=len(checks)-failed,target_execution=False,tests_executed=False,
+    operational_authority=False,scientific_authority=False,I9_fixture_reruns=0,
+    actual_existing_I9_memory_test_runs=1,current_fixture004_execution_count=0,actual_accepted_complete_suites=0,
+    module003_guard_unchanged=True,fixture004_recorded_selection_route_corrected=True,next_invocation_authorized=False)
+cp=save('INDEPENDENT_I9_INITIAL_IMPLEMENTATION_SOURCE_CAPSULE_004.json',capsule)
+print(json.dumps(dict(capsule=cp,full_proof=fp,reviewer_Source=source_pin,checks=len(checks),checks_failed=failed,
+    inputs=len(inputs),failed_checks=[q for q in checks if not q['passed']]),sort_keys=True))
+assert failed==0

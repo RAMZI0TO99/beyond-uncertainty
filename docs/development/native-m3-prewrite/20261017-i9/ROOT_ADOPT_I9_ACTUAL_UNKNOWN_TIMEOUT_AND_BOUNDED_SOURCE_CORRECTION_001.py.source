@@ -1,0 +1,130 @@
+"""Root adopts actual independently reviewed timeout, preserving unknown suite state."""
+import datetime, hashlib, json, os, re, sys
+from pathlib import Path
+P = Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+CAP = 2097152
+
+def raw(path):
+    path = Path(path)
+    assert path.is_file() and not path.is_symlink() and path.stat().st_size <= CAP
+    data = path.read_bytes()
+    assert len(data) <= CAP
+    return data
+
+def fact(path):
+    data = raw(path)
+    return dict(path=str(path), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+def pin(q):
+    assert type(q) is dict and set(q) == {'path','bytes','sha256'}
+    assert type(q['path']) is str and type(q['bytes']) is int and 0 <= q['bytes'] <= CAP
+    assert type(q['sha256']) is str and re.fullmatch('[0-9a-f]{64}',q['sha256'])
+    if q['bytes'] == 0:
+        assert Path(q['path']).parent == P and re.fullmatch(r'ROOT_I9_ACTUAL_MEMORY_CHILD_(?:STDOUT|STDERR)_[0-9]{3}\.txt',Path(q['path']).name)
+    data = raw(q['path'])
+    assert len(data) == q['bytes'] and hashlib.sha256(data).hexdigest() == q['sha256']
+    return data
+
+def pairs(items):
+    result = {}
+    for key,value in items:
+        assert key not in result
+        result[key] = value
+    return result
+
+def bad(value):
+    raise AssertionError(value)
+
+def obj(data):
+    return json.loads(data,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+
+assert sys.flags.isolated and sys.flags.no_site and sys.flags.dont_write_bytecode
+assert len(sys.argv) == 3 and re.fullmatch('[0-9a-f]{64}',sys.argv[2])
+cp = fact(Path(sys.argv[1]))
+assert Path(cp['path']).parent == P/'saved_refusal_review_005' and cp['sha256'] == sys.argv[2]
+c = obj(pin(cp)); f = obj(pin(c['full_proof']))
+for record in (c,f):
+    assert record['reviewer'] == '/root/owner_source_review' and record['source_author'] == '/root'
+    assert record['target_execution'] is False and record['tests_executed'] is False
+    assert type(record['I9_fixture_reruns']) is int and record['I9_fixture_reruns'] == 0
+    assert type(record['checks_failed']) is int and record['checks_failed'] == 0
+    assert record['verdict'].startswith('PASS_') and 'TIMEOUT' in record['verdict']
+assert c['verdict'] == f['verdict']
+checks = f['checks']
+assert checks and len({q['name'] for q in checks}) == len(checks)
+assert all(type(q['passed']) is bool and q['passed'] for q in checks)
+assert c['checks_passed'] == f['checks_passed'] == len(checks)
+inputs = f['all_actual_inputs']
+assert inputs and len({q['path'].casefold() for q in inputs}) == len(inputs)
+assert c['reviewer_Source'] in inputs
+for q in inputs:
+    pin(q)
+attempts = []
+for number in range(1,6):
+    suffix = f'{number:03d}'
+    sp = fact(P/f'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_{suffix}.json')
+    vp = fact(P/f'ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_{suffix}.json')
+    ep = fact(P/f'ROOT_I9_ACTUAL_OWNED_MEMORY_STREAMS_CAPTURE_{suffix}.json')
+    assert all(q in inputs for q in (sp,vp,ep))
+    v,e = obj(pin(vp)),obj(pin(ep))
+    assert v['scope'] == e['scope'] == sp and v['passed'] is False
+    assert v['owned_child_invocations'] == 1 and v['owned_child_wait_reaped'] is True
+    assert v['stream_reader_threads_joined'] is True and e['all_streams_complete'] is True
+    for q in v['streams']:
+        assert q['actual_capture'] in inputs
+        pin(q['actual_capture'])
+        assert q['overcap'] is False and q['reader_error'] is None
+    for marker in ('ROOT_I9_MEMORY_SCOPE_CONSUMED','ROOT_I9_MEMORY_SUPERVISOR_CONSUMED'):
+        mp = fact(P/f'{marker}_{suffix}.json')
+        assert mp in inputs
+    result_path = P/f'ROOT_I9_ACTUAL_ONCE_MEMORY_SUITE_RESULT_{suffix}.json'
+    if number < 5:
+        rp = fact(result_path); assert rp in inputs
+        r = obj(pin(rp))
+        assert v['child_saved_result'] == rp and r['scope'] == sp
+        assert r['tests_executed'] is True and type(r['I9_memory_test_runs']) is int and r['I9_memory_test_runs'] == 1
+        assert r['all_cases_passed'] is False and r['blocked_forbidden_event_names'] == []
+        attempts.append(dict(attempt_ordinal=number,scope=sp,supervisor=vp,streams_capture=ep,result=rp,
+            tests_executed=True,I9_memory_test_runs=1,accepted_complete_run=False,
+            actual_test_case_count=r['actual_test_case_count'],error=r['error']))
+    else:
+        assert not result_path.exists() and v['child_saved_result'] is None
+        assert v['tests_executed'] is None and v['I9_memory_test_runs'] is None
+        assert v['refusal'] == 'owned I9 child exceeded60second wall cap'
+        assert v['wall_cap_seconds'] == 60 and v['cleanup_reap_seconds'] == 5
+        assert 60000000000 <= v['owned_child_wall_integer_nanoseconds'] < 65000000000
+        assert all(q['actual_capture']['bytes'] == 0 for q in v['streams'])
+        attempts.append(dict(attempt_ordinal=number,scope=sp,supervisor=vp,streams_capture=ep,result=None,
+            tests_executed=None,I9_memory_test_runs=None,accepted_complete_run=False,
+            actual_test_case_count=None,error=None,unknown_suite_status=True))
+assert c['subjects'] == f['subjects'] == [attempts[-1][k] for k in ('scope','supervisor','streams_capture')]
+assert type(f['Source_cause']) is dict and f['Source_cause']
+window = obj(raw(P/'ROOT_CURRENT_I9_M3_SEMANTIC_PREFLIGHT_SOURCE_SCOPE_001.json'))
+assert datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=60) < datetime.datetime.fromisoformat(window['interval_end'])
+record = dict(schema_version=1,record_type='Root_I9_actual_unknown_timeout_and_exact_equivalent_Source_correction_adoption',
+    author='/root',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    verdict='ACCEPT_I9_ACTUAL_UNKNOWN_TIMEOUT_AND_EXACT_EQUIVALENT_SOURCE_CORRECTION_ONLY',
+    different_saved_refusal_review=cp,full_proof=c['full_proof'],reviewer_Source=c['reviewer_Source'],
+    actual_named_checks=len(checks),actual_rehashed_review_inputs=len(inputs),all_actual_inputs_rehashed=True,
+    I9_memory_test_runs=None,known_I9_memory_test_runs=4,unknown_I9_memory_test_runs=1,
+    spent_memory_scope_count=5,owned_memory_child_launch_count=5,failed_memory_test_runs=4,
+    accepted_complete_memory_test_runs=0,unaccepted_supervisor_attempts=5,actual_suite_passed=False,
+    actual_completed_case_count=None,actual_failed_case=None,actual_error=None,
+    all_saved_memory_attempts=attempts,Source_cause=f['Source_cause'],
+    timeout_does_not_establish_suite_entry_progress_or_path_bottleneck=True,
+    bounded_Source_correction_from_actual_review_authorized=True,
+    original23_ports_and_generic_current_proof_guards_must_remain_byte_exact=True,
+    no_path_normalization_or_cache_or_time_cap_relaxation_authorized=True,
+    all_prior_Sources_scopes_and_results_preserved_no_replay=True,
+    new_Source_requires_actual_different_review_and_Root_adoption=True,
+    next_invocation_requires_new_bound_controls_and_fresh_reviewed_scope=True,
+    automatic_retry_authorized=False,new_invocation_authorized_now=False,
+    target_execution=False,tests_executed=False,old_I0_I8_invocations_authorized=False,
+    all_actual_new_grants_lease_family_Native8_Parser_results=None,
+    operational_authority=False,scientific_authority=False)
+data = (json.dumps(record,sort_keys=True,indent=2,allow_nan=False)+'\n').encode()
+assert len(data) <= CAP
+path = P/'ROOT_I9_ATTEMPT005_ACTUAL_SAVED_REFUSAL_AND_BOUNDED_SOURCE_CORRECTION_ADOPTION_001.json'
+with path.open('xb') as handle:
+    handle.write(data); handle.flush(); os.fsync(handle.fileno())
+print(json.dumps(fact(path)))

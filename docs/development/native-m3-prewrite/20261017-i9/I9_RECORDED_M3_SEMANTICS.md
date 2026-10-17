@@ -1,0 +1,13 @@
+# Recorded M3 semantic validation
+
+The new pure semantic validator passed 98/98 synthetic memory cases. There were seven separately scoped owned launches: four known failed suite entries, two 60-second timeouts with unknown suite entry and progress, and one accepted complete run. Five suite entries are known; aggregate suite-entry count remains unknown. Independent saved-result review passed 11662 checks without rerunning the fixtures. The [Root adoption](ROOT_I9_RECORDED_M3_SEMANTICS_AND_SAVED_MEMORY_RESULTS_ADOPTION_001.json) and [evidence index](evidence-index.json) retain exact Source, protocol, review, test and result pins.
+
+The component validates recorded M3 facts, receipts, purpose and dependency joins and reconstructs complete draft bytes, predecessor inverses and exact diffs for all five stages: templates, manifest, capture, each of four phase BOUND roles, and phase binding. It keeps the historical inventory of17, the selection lineage of45 and the actual request catalogue of45 separate. The recorded manifest header time is data. Codec and observation checks establish saved-record consistency; physical read stability and original check execution remain unqualified.
+
+A stage-only API verifies one complete recorded stage. The prewrite API additionally joins the finite requested phase subset, protecting future output paths before reading any input. All groups within one prewrite call share one bounded reader, immutable cache and aggregate limits. Owner-support bootstrap records and fixed source anchors are declared and hashed. Python and PowerShell source bodies are data; Python AST parsing executes no parsed code.
+
+The detached frozen result grants no admission, owner/lease, producer, caller, human, physical, native Parser, operational or scientific authority. The actual publisher entry refuses before any callback even if a qualification flag is toggled. I8 remains the required separate owner/lease/publication-purpose layer. Actual producer successors, receipt carriers and caller/IO composition require later qualification. No old I0-I8 helper, native collector, Parser, runtime or scientific program was invoked.
+
+The dated Source family remains36/45 with nine pending; frozen STEP080 remains35/45 with ten pending. All75 spent identities and existing caps, clocks and reserves remain preserved. The608 historical file bytes,342 prior I6-I8 non-navigation files, eight frozen sentinels,36 current Sources and three complete navigation suffixes remain exact. No real grant, new lease, selected family, Native8 or Parser result was issued.
+
+Programs are published with inert `.source` suffixes. Absolute paths are dated provenance. Root publication receipts and normal Git history record the later finite commit and push.

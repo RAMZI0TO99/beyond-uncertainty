@@ -1,0 +1,122 @@
+"""Create blocked TEMPLATE005 with exact known/unknown evidence accounting."""
+import ast
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+O=P/'managed_review_001'
+CAP=2097152
+
+def pin(path):
+    data=path.read_bytes()
+    assert len(data)<=CAP
+    return dict(path=str(path),bytes=len(data),sha256=hashlib.sha256(data).hexdigest())
+
+def change(text,before,after):
+    assert text.count(before)==1,before
+    return text.replace(before,after)
+
+def main():
+    prior=O/'review_I9_managed_publication_TEMPLATE_004.py'
+    assert pin(prior)['sha256']=='bd0a405874928b94bbb12d767222afa2536b99c201d5111c46ac14d404714d3b'
+    fragment=O/'I9_EXACT_UNKNOWN_TIMEOUT005_REVIEW_SOURCE_FRAGMENT_001.py'
+    text=prior.read_text(encoding='utf-8')
+    helper=fragment.read_text(encoding='utf-8')
+    text=change(text,'def inspect_actual_I9_Source_and_saved_results(adoption, bindings):',
+        helper+'\n\ndef inspect_actual_I9_Source_and_saved_results(adoption, bindings):')
+    text=change(text,'"actual_memory_cases_failed", "I9_memory_test_runs", "accepted_complete_memory_test_runs",',
+        '"actual_memory_cases_failed", "known_I9_memory_test_runs", "unknown_I9_memory_test_runs", "spent_memory_scope_count", "accepted_complete_memory_test_runs",')
+    text=change(text,'    total_runs = failed_runs = 0\n',
+        '    known_runs = failed_runs = unknown_runs = owned_launches = 0\n')
+    before='''        check("known ordinal/run/acceptance: " + suffix,'''
+    after='''        if ordinal == 5:
+            check("unknown timeout cannot be accepted last attempt", accepted is False)
+            unknown_runs += inspect_exact_unknown_timeout005(row, saved_inputs, source_refusal_lineage)
+            owned_launches += 1
+            continue
+        check("known ordinal/run/acceptance: " + suffix,'''
+    text=change(text,before,after)
+    text=change(text,'        total_runs += row["I9_memory_test_runs"]',
+        '        check("known attempt actual owned launch count", type(v["owned_child_invocations"]) is int and v["owned_child_invocations"] == 1)\n        owned_launches += v["owned_child_invocations"]\n        known_runs += row["I9_memory_test_runs"]')
+    before='''    check("actual cumulative invocation accounting", adoption["accepted_complete_memory_test_runs"] == 1 and adoption["I9_memory_test_runs"] == total_runs == failed_runs + 1 and adoption["failed_memory_test_runs"] == failed_runs)
+'''
+    after='''    check("actual cumulative known/unknown accounting", adoption["I9_memory_test_runs"] is None and adoption["known_I9_memory_test_runs"] == known_runs == failed_runs + 1 and adoption["unknown_I9_memory_test_runs"] == unknown_runs == 1 and adoption["spent_memory_scope_count"] == len(attempts) == owned_launches and adoption["accepted_complete_memory_test_runs"] == 1 and adoption["failed_memory_test_runs"] == failed_runs)
+    check("truthful current exact six-scope accounting", len(attempts) == adoption["accepted_attempt_ordinal"] == 6 and known_runs == 5 and failed_runs == 4)
+    check("unknown history has no aggregate clean audit claim", adoption["no_observed_forbidden_audit_events"] is None and adoption["timeout005_audit_status_unknown"] is True and adoption["accepted_run_no_observed_forbidden_audit_events"] is True)
+    check("Source adoption preserves prior unknown timeout count", source["I9_memory_test_runs"] is None and type(source["known_I9_memory_test_runs"]) is int and source["known_I9_memory_test_runs"] == 4 and type(source["unknown_I9_memory_test_runs"]) is int and source["unknown_I9_memory_test_runs"] == 1 and type(source["spent_memory_scope_count"]) is int and source["spent_memory_scope_count"] == 5)
+'''
+    text=change(text,before,after)
+    text=change(text,'"case_count": count, "total_runs": total_runs, "accepted_runs": 1,',
+        '"case_count": count, "total_runs": None, "known_runs": known_runs, "unknown_runs": unknown_runs, "spent_scopes": len(attempts), "owned_launches": owned_launches, "accepted_runs": 1,')
+    text=change(text,'f"{total_runs} separately scoped fixture invocation", f"{failed_runs} saved failed attempt",',
+        '"six separately scoped owned launches", "four known failed suite entries", "one 60-second timeout with unknown suite entry and progress", "one accepted complete run", "Five suite entries are known; aggregate suite-entry count remains unknown",')
+    text=change(text,'all(type(actual[key]) is int and actual[key] >= 0 for key in ("case_count", "total_runs", "accepted_runs", "failed_runs", "saved_review_checks", "saved_review_inputs")) and actual["case_count"] > 0 and actual["accepted_runs"] >= 1 and actual["total_runs"] == actual["accepted_runs"] + actual["failed_runs"]',
+        'actual["total_runs"] is None and all(type(actual[key]) is int and actual[key] >= 0 for key in ("case_count", "known_runs", "unknown_runs", "spent_scopes", "owned_launches", "accepted_runs", "failed_runs", "saved_review_checks", "saved_review_inputs")) and actual["case_count"] > 0 and actual["accepted_runs"] == 1 and actual["known_runs"] == actual["accepted_runs"] + actual["failed_runs"] and actual["unknown_runs"] == 1 and actual["spent_scopes"] == actual["owned_launches"] == actual["known_runs"] + actual["unknown_runs"]')
+    text=change(text,'"I9_memory_runs_saved_and_adopted": actual["total_runs"],',
+        '"I9_memory_runs_saved_and_adopted": actual["total_runs"], "I9_memory_test_runs": None, "known_I9_memory_test_runs": actual["known_runs"], "unknown_I9_memory_test_runs": actual["unknown_runs"], "spent_memory_scope_count": actual["spent_scopes"], "owned_memory_child_launch_count": actual["owned_launches"], "no_observed_forbidden_audit_events": None, "timeout005_audit_status_unknown": True, "accepted_run_no_observed_forbidden_audit_events": True,')
+    output=O/'review_I9_managed_publication_TEMPLATE_005.py'
+    encoded=text.encode('utf-8')
+    tree=ast.parse(encoded,filename=str(output))
+    compile(tree,str(output),'exec')
+    assignments=[n.value for n in tree.body if isinstance(n,ast.Assign) and
+        any(isinstance(t,ast.Name) and t.id=='EXACT_ROOT_BINDINGS' for t in n.targets)]
+    assert len(assignments)==1 and isinstance(assignments[0],ast.Constant) and assignments[0].value is None
+    assert 'UNBOUND_I9_PUBLICATION_TEMPLATE' in text and 'total_runs = failed_runs' not in text
+    receipt_path=P/'ROOT_I9_TRUTHFUL_TIMEOUT_ACCOUNTING_SOURCE_AUTHOR_RECEIPT_001.json'
+    root_receipt=json.loads(receipt_path.read_bytes())
+    assert pin(receipt_path)['sha256']=='21199194b6eb977139984a6bb2b046388cfeb453e4ba625be9b638c32e46b8b8'
+    inputs=[pin(prior),pin(fragment),pin(Path(__file__)),pin(receipt_path)]
+    for row in root_receipt['subjects']:
+        q=row['new_Source']
+        assert pin(Path(q['path']))==q
+        compile(ast.parse(Path(q['path']).read_bytes()),q['path'],'exec')
+        inputs.append(q)
+    for name,size,sha in (
+        ('ROOT_I9_ACTUAL_ONCE_MEMORY_SUPERVISOR_RESULT_005.json',3563,'8b2f9bc4324cf6acc0b220348bd9db8a8ee20a9bf45468ce827896eaea781de3'),
+        ('ROOT_I9_ACTUAL_OWNED_MEMORY_STREAMS_CAPTURE_005.json',2148,'0131b744aea3a426339a34105723ccc1910c529d492ece6e01e58de51d5cf990'),
+        ('ROOT_I9_ATTEMPT005_ACTUAL_SAVED_REFUSAL_AND_BOUNDED_SOURCE_CORRECTION_ADOPTION_001.json',12434,'34ae6b4ac6cd3f8e6313f4612c231c4d77f1080ef85e702033a443f4cb3190bf')):
+        q=pin(P/name)
+        assert (q['bytes'],q['sha256'])==(size,sha)
+        inputs.append(q)
+    actual_supervisor=json.loads(Path(inputs[-3]['path']).read_bytes())
+    assert actual_supervisor['child_saved_result'] is None and actual_supervisor['tests_executed'] is None and actual_supervisor['I9_memory_test_runs'] is None
+    assert not (P/'ROOT_I9_ACTUAL_ONCE_MEMORY_SUITE_RESULT_005.json').exists()
+    for row in actual_supervisor['streams']:
+        q=row['actual_capture']
+        assert type(q['bytes']) is int and q['bytes']==0 and pin(Path(q['path']))==q
+        inputs.append(q)
+    with output.open('xb') as handle:
+        handle.write(encoded)
+    assert output.read_bytes()==encoded
+    result=dict(schema_version=1,record_type='I9_TEMPLATE005_unknown_timeout_provenance_preparation_only',
+        author='/root/owner_publication_review',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        actual_inputs=inputs,reviewer_template=pin(output),Source_AST_compile_only=True,
+        literal_EXACT_ROOT_BINDINGS=None,template_executed=False,target_execution=False,
+        tests_executed=False,Root_tool_execution=False,Git_commands_or_mutation=False,
+        prior_TEMPLATE004_preserved=True,
+        actual_current_total_fixture_invocations=None,actual_current_known_fixture_invocations=4,
+        actual_current_unknown_fixture_status_attempts=1,actual_current_spent_scopes=5,
+        actual_current_accepted_complete_runs=0,actual_current_known_failed_runs=4,
+        future_sixth_attempt_acceptance_asserted=False,final_candidate_verdict_issued=False,
+        future_hypothetical_accepted_accounting='Only after actual6 success/different review/Root adoption: aggregate null, known5, unknown1, spent6, accepted1, known failed4. This template asserts no future outcome.',
+        compatibility=['Actual results adopter002 produces nullable aggregate and exact ordinal005 unknown branch.',
+            'Actual preparer004 report separates six launches/four known failures/one unknown/one accepted conditional on actual future results.',
+            'Only005 may lack result; every other row retains exact result/case/profile/stream/source joins.',
+            'Sourceadop006 preserves prior null/known4/unknown1/spent5; all explicit Source refusal lineage remains.',
+            'Aggregate clean-audit flag remains null; accepted-run audit claim is separate.',
+            'Old finite managed adopter001 still needs nullable known/unknown/spent successor; reported to Root.'],
+        operational_authority=False,scientific_authority=False)
+    dest=O/'I9_PUBLICATION_REVIEW_TEMPLATE005_PREPARATORY_ACTUAL_RECEIPT_001.json'
+    data=(json.dumps(result,indent=2,sort_keys=True,allow_nan=False)+'\n').encode()
+    assert len(data)<=CAP
+    with dest.open('xb') as handle:
+        handle.write(data)
+    assert dest.read_bytes()==data
+    for q in inputs:
+        assert pin(Path(q['path']))==q
+    print(json.dumps(dict(template=pin(output),receipt=pin(dest),author_Source=pin(Path(__file__))),indent=2))
+
+if __name__=='__main__':
+    main()

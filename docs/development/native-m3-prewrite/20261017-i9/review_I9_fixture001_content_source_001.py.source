@@ -1,0 +1,152 @@
+"""Read/hash/AST and bounded decoding of fixed data only; no fixture/target calls."""
+import ast
+import base64
+import builtins
+import datetime
+import hashlib
+import json
+import symtable
+import zlib
+from pathlib import Path
+
+P=Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+OWN=P/'fixture_review_001';F=P/'fixture_author_001';I=P/'i9';CAP=2097152
+inputs={};checks=[];regions=[]
+def fact(path):
+    path=Path(path);raw=path.read_bytes();assert 0<len(raw)<=CAP
+    q=dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+    if str(path) in inputs:assert inputs[str(path)]==q
+    inputs[str(path)]=q;return q,raw
+def pairs(rows):
+    value={}
+    for k,v in rows:assert k not in value;value[k]=v
+    return value
+def bad(x):raise ValueError(x)
+def decode(raw):return json.loads(raw,object_pairs_hook=pairs,parse_float=bad,parse_constant=bad)
+def obj(path):
+    q,b=fact(path);return q,decode(b)
+def check(name,value,evidence):
+    assert type(value) is bool and name not in {x['name'] for x in checks}
+    checks.append(dict(name=name,passed=value,evidence=evidence))
+
+q,raw=fact(I/'test_recorded_M3_semantics_memory_only_001.py');subjects=[q]
+draft_q,draft=fact(F/'test_recorded_M3_semantics_memory_only_INDEPENDENT_DRAFT_001.py')
+check('physical_copy_exact2035229_pin_and_independent_draft',q['bytes']==draft_q['bytes']==2035229 and raw==draft and q['sha256']==draft_q['sha256']=='2959fae47777c7cba19eb83dec543085be5b83b9f70af175b3671b23991b4eac',[q,draft_q])
+check('complete_fixture_below_2MiB',0<len(raw)<CAP,[q])
+text=raw.decode('utf8');tree=ast.parse(raw);defs={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)}
+literal={}
+for n in tree.body:
+    if isinstance(n,ast.Assign) and len(n.targets)==1 and isinstance(n.targets[0],ast.Name):
+        try:literal[n.targets[0].id]=ast.literal_eval(n.value)
+        except (ValueError,TypeError,SyntaxError):pass
+for name,n in defs.items():
+    segment=ast.get_source_segment(text,n).encode()
+    regions.append(dict(name=name,first_line=n.lineno,last_line=n.end_lineno,bytes=len(segment),sha256=hashlib.sha256(segment).hexdigest()))
+def src(name):return ast.get_source_segment(text,defs[name])
+receipt_q,receipt=obj(F/'I9_INDEPENDENT_FIXTURE_ACTUAL_SOURCE_CONTRIBUTOR_RECEIPT_001.json')
+analysis_q,analysis=obj(F/'I9_INDEPENDENT_FIXTURE_SOURCE_ONLY_ANALYSIS_001.json')
+check('actual_contributor_receipt5471_pin',receipt_q['bytes']==5471 and receipt_q['sha256']=='f7363b3ffc91a734167ee7dcb442ac567fc363264660e994e2d2804b37a19037',[receipt_q])
+check('actual_contributor_analysis11106_pin',analysis_q['bytes']==11106 and analysis_q['sha256']=='cdc37c66c49102d6de6386093cbd5730638b4cd14b67b1fca58b0d58146fc3f4',[analysis_q])
+check('content_contributor_and_copy_editor_truth',receipt['author']=='/root/i9_fixture_author' and receipt['source']==draft_q and receipt['final_quartet_physical_editor_expected']=='/root/phase_frontier',[receipt_q,draft_q])
+for field in ('fixture_executed','source_executed','target_executed','operational_authority','scientific_authority'):
+    check('receipt_false_'+field,receipt[field] is False,[receipt_q])
+for x in receipt['actual_inputs']:
+    aq,_=fact(x['path']);check('actual_contributor_input_'+Path(x['path']).name,aq==x,[receipt_q,aq])
+literal_receipt_q,literal_receipt=obj(F/'I9_FIXED_BYTE_LITERAL_AUTHOR_RECEIPT_001.json')
+for file in ('assemble_independent_I9_fixture_Source_draft_001.py','author_fixed_fixture_literals_001.py'):
+    aq,b=fact(F/file);ast.parse(b)
+final_receipt_q,final_receipt=obj(I/'CURRENT_OWNER_M3_RECORDED_SEMANTICS_SOURCE_AUTHOR_RECEIPT_001.json')
+check('quartet_receipt_actual_physical_editor_and_content_contributor',final_receipt['author']==final_receipt['actual_physical_Source_editor']=='/root/phase_frontier' and final_receipt['fixture_content_contributor']=='/root/i9_fixture_author' and final_receipt['fixture_Source']==q and final_receipt['fixture_content_proposal']==draft_q and final_receipt['fixture_copy']['whole_bytes_exact'] is True,[final_receipt_q,q,draft_q])
+api_q,api=obj(final_receipt['API']['path'])
+check('current_quartet_API_receipt_pin_join',api_q==final_receipt['API'],[api_q,final_receipt_q])
+module_q,module_raw=fact(final_receipt['Source']['path']);module_tree=ast.parse(module_raw);module_defs={n.name:n for n in module_tree.body if isinstance(n,ast.FunctionDef)}
+check('module002_supporting_pin_not_final_review',module_q==final_receipt['Source'] and module_q['bytes']==119495 and module_q['sha256']=='ecfdbf2da16eddb1aa89eac1735255ebebf928ec0df6818fd9058a047a8b1da1',[module_q,final_receipt_q])
+for x in final_receipt['Source_basis']:
+    aq,_=fact(x['path']);check('actual_quartet_Source_basis_'+Path(x['path']).name,aq==x,[final_receipt_q,aq])
+root_refusal_q,root_refusal=obj(P/'ROOT_I9_MODULE001_ACTUAL_SOURCE_REFUSAL_AND_THREE_CORRECTION_ADOPTION_001.json')
+check('module001_refusal_adoption7369_exact',root_refusal_q['bytes']==7369 and root_refusal_q['sha256']=='89a9f3f39cc4214b7d16bb25b49f05c9ad6a9ff186603eb54bb0897468982e34',[root_refusal_q])
+
+names=literal['PLANNED_CASE_NAMES'];count=literal['EXPECTED_CASE_COUNT']
+check('literal95_count_names_unique_join_analysis_receipt',type(count) is int and count==95 and type(names) is list and len(names)==len(set(names))==count and names==analysis['planned_case_names'] and count==analysis['planned_case_count']==receipt['planned_case_count'],[q,receipt_q,analysis_q])
+check('literal_names_all_nonempty_strings',all(type(x) is str and bool(x) for x in names),[q])
+check('all35_functions_Source_inventory',len(defs)==35 and len(defs)==analysis['top_level_functions'],[q,analysis_q])
+imports=[n.names[0].name for n in tree.body if isinstance(n,ast.Import)]
+check('only9_literal_stdlib_imports',imports==['ast','base64','copy','datetime','difflib','hashlib','json','re','zlib'] and not any(isinstance(n,ast.ImportFrom) for n in ast.walk(tree)),[q])
+check('no_dynamic_target_loader_or_filesystem_process_call',not any(isinstance(n,ast.Call) and ((isinstance(n.func,ast.Name) and n.func.id in ('compile','eval','exec','__import__','open')) or (isinstance(n.func,ast.Attribute) and n.func.attr in ('open','Popen','system','import_module','read_bytes','write_bytes','stat','lstat'))) for n in ast.walk(tree)),[q])
+attrs={n.attr for n in ast.walk(tree) if isinstance(n,ast.Attribute) and isinstance(n.value,ast.Name) and n.value.id=='module'}
+check('target_public_APIs_only_no_target_recipe_or_private_builder',attrs=={'I9MetadataError','I9_ACTUAL_PUBLICATION_DEPENDENCIES_QUALIFIED','require_actual_M3_prewrite_publication_admission','validate_recorded_M3_prewrite_semantics','validate_recorded_M3_stage_semantics'},[q])
+check('fixture_top_level_no_suite_or_decoder_invocation',not any(isinstance(n,ast.Expr) and isinstance(n.value,ast.Call) for n in tree.body) and not any(isinstance(n,ast.If) for n in tree.body),[q])
+check('fictional_current_2030_context_and_no_clock_probe',literal['_FX_NOW']=='2030-01-01T06:00:00.000000+00:00' and literal['_FX_THREAD']=='00000000-0000-0000-0000-000000000009' and 'datetime.datetime.now' not in text and 'physical_births_observed' in literal_receipt,[q,literal_receipt_q])
+check('four_current_actors_canonical_different',len({literal['_FX_EDITOR'],literal['_FX_CONSUMER'],literal['_FX_CONTENT'],literal['_FX_REVIEWER']})==4 and all(literal[k].startswith('/root/synthetic_') for k in ('_FX_EDITOR','_FX_CONSUMER','_FX_CONTENT','_FX_REVIEWER')),[q])
+check('literal_decoder_bounded_only_known_hashed_data',all(x in src('_fx_fixed') for x in ('FIXTURE_FIXED_DATA_DECODED_BYTES+1','decoder.eof','not decoder.unused_data','not decoder.unconsumed_tail','FIXTURE_FIXED_DATA_DECODED_SHA256')),[q])
+encoded=literal['FIXTURE_FIXED_DATA_ZLIB_BASE64'];decoded_size=literal['FIXTURE_FIXED_DATA_DECODED_BYTES']
+compressed=base64.b64decode(encoded,validate=True);decoder=zlib.decompressobj();bundle=decoder.decompress(compressed,decoded_size+1)
+check('actual_fixed_literal_decompression_exact_6950684',decoded_size==6950684 and len(bundle)==decoded_size and decoder.eof and not decoder.unconsumed_tail and not decoder.unused_data and hashlib.sha256(bundle).hexdigest()==literal['FIXTURE_FIXED_DATA_DECODED_SHA256'],[q])
+fixed=decode(bundle);fixed_raw={path:base64.b64decode(v,validate=True) for path,v in fixed['records'].items()}
+check('exact99_fixed_bodies_positive_each_below2MiB',len(fixed_raw)==len(fixed['pins'])==99 and all(type(b) is bytes and 0<len(b)<=CAP for b in fixed_raw.values()),[q,literal_receipt_q])
+for path,b in fixed_raw.items():
+    fq=fixed['pins'][path];aq,actual=fact(path)
+    check('actual_fixed99_'+str(len(checks)),fq==aq and actual==b and len(b)==fq['bytes'] and hashlib.sha256(b).hexdigest()==fq['sha256'],[q,aq])
+c=fixed['constants'];inventory=decode(fixed_raw[c['INVENTORY_PIN']['path']])
+for row in inventory['roles']:
+    rq=row['available_basis'];check('17fixed_Source_role_cap_'+row['role'],rq==fixed['pins'][rq['path']] and len(fixed_raw[rq['path']])<=c['ROLE_SOURCE_CAPS'][row['role']],[q])
+check('fixed_literal_births_explicitly_not_observed',literal_receipt['all_future_context_and_births_synthetic'] is True and literal_receipt['physical_births_observed'] is False and literal_receipt['target_or_fixture_executed'] is False,[literal_receipt_q])
+check('independent_descending_splices_and_reverse_old_whole_bytes',all(s in src('_fx_splice') for s in ('for e in reversed(ordered)','assert rebuilt==old','selected_start_byte')), [q])
+check('independent_six_assignment_and_two_assignment_recipes',all(s in text for s in ('def _fx_assign_spans','def _fx_bind_six','def _fx_old_six_inverse','def _fx_bind_two','assert recovered==oldt')),[q])
+check('closed_JSON_wire_diff_and_inverse_expected_recipes',all(s in text for s in ('sort_keys=True,indent=2,allow_nan=False','def _fx_json_inverse','fromfile=basis[\'path\'],tofile=row[\'canonical_path\']','current_paired_payload_observations')),[q])
+positive=[n for n in names if n.startswith('positive_')]
+check('all5_stages_four_bound_and_2prewrite_controls',len(positive)==10 and all(n in positive for n in ('positive_complete_templates5','positive_complete_manifest12','positive_complete_capture3','positive_phase_binding_four_reconstructions','positive_partial_template_prewrite','positive_four_bound_prewrite_shared_reader')) and sum(n.endswith('_bound') for n in positive)==4,[q])
+check('positive_complete_stage_cardinality_oracles',all(s in text for s in ("len(groups)==(4 if case=='positive_four_bound_prewrite_shared_reader' else 1)","len(groups[0]['artifacts'])==5","len(groups[0]['artifacts'])==3")),[q])
+check('positive_read_hash_counts_unique_and_budgets_oracle',all(s in src('_fx_good') for s in ("data['actual_reader_calls']==len(calls)==len({p['path'] for p in calls})","data['actual_reader_bytes']==sum(p['bytes'] for p in calls)",'len(calls)<=256')),[q])
+check('positive_ten_authority_flags_false_and_detached_view',all(s in src('_fx_good') for s in ('owner_lease_qualified','producer_qualified','caller_qualified','physical_origin_authenticated','human_origin_authenticated','native_Parser_authority','new_grants_issued')) and 'copydata[\'validated_stage_groups\'].clear()' in text,[q])
+check('per_stage_observation_prefix_uses_immutable_first_copies',all(s in src('_fx_stage') for s in ('ordered_observations=','copy.deepcopy(ordered_observations)','ordered_observations.extend','ordered_observations.append')),[q])
+check('fresh_manifest_header699_before_draft700',"rendered['created_utc']=_fx_time(699)" in src('_fx_stage') and 'seconds=700+index*10' in src('_fx_stage'),[q])
+check('resource_after_diff_before_receipt_typed_floors',all(s in src('_fx_stage') for s in ('seconds+1','seconds+4','seconds+5','available_RAM_bytes=1073741824,free_disk_bytes=10737418240')),[q])
+check('graph_declared_256_32MiB_and_future_outputs_no_alias',all(s in src('_fx_finish') for s in ('len(roster)<=256','<=33554432','p.casefold() for p in outputs','recorded_births_ns')),[q])
+check('purpose_dynamic_fullproof_closure_independent_recursive_graph',all(s in src('_fx_closure') for s in ("stack.extend(graph['refs'][path])",'sorted(found)')) and 'graph[\'refs\'][path]=[] if raw else _fx_pin_refs(value)' in src('_fx_put'),[q])
+check('known_data_defensive_limits_honest_Source_only',all('unreachable' in s for s in literal['FIXTURE_SOURCE_ONLY_BUDGET_BOUNDARY_NOTES'][:2]),[q])
+check('refusal_cases_change_wholepins_not_stale_hash_only',all(s in src('_fx_repin') for s in ('assert old!=new',"graph['store'][path]=newraw",'replacements','replace_final')),[q])
+check('before_reader_negative_constructor_paths_have_zero_assertion',"if before_read:assert count==0" in src('_fx_bad') and sum('before_read' in n for n in names)>=10,[q])
+
+table=symtable.symtable(text,q['path'],'exec');known=set(table.get_identifiers());unknown=[]
+def symbols(block):
+    for v in block.get_symbols():
+        if v.is_global() and v.is_referenced() and v.get_name() not in known and v.get_name() not in vars(builtins):unknown.append([block.get_name(),v.get_name()])
+    for b in block.get_children():symbols(b)
+symbols(table);check('no_unresolved_fixture_global_symbols',not unknown,[q])
+
+findings=[
+ dict(id='I9_FIXTURE001_F1_CODE_SOURCE_VERDICT',severity='blocking_positive_base',
+      functions=['_fx_common','_fx_proof'],
+      issue='Producer code proof uses default PASS_SYNTHETIC_RECORDED_METADATA_ONLY, lacking SOURCE, so every positive base fails the required _i9_code_support SOURCE verdict predicate.',
+      correction='Supply a dedicated genuine synthetic SOURCE verdict for producer-code proof generation; keep ordinary stage/content verdict policy distinct.'),
+ dict(id='I9_FIXTURE001_F2_POP_RETURN_REPLACES_WHOLE_RECORD',severity='blocking_named_refusal_cases',
+      functions=['_fx_edit_record','run_memory_suite'],cases=['purpose_output_list_tamper_refused','receipt_steps_missing_refused'],
+      issue='The edit helper treats a non-None return as replacement whole record. The two pop lambdas return a path string or inverse dict, so they fail JSON-root/receipt-shape checks instead of E_PURPOSE6/E_STEPS4.',
+      correction='Use explicit in-place edits returning None and preferably assert the helper receives None. The reconciliation pop currently returns None because its field value is None, so do not falsely classify it as an observed failing case.'),
+ dict(id='I9_FIXTURE001_F3_BRANCH_CALLBACK_AND_NESTED_SNAPSHOT_ORACLES',severity='existing_case_coverage',
+      functions=['run_memory_suite','_fx_bad','_fx_invoke'],
+      issue='Held/toggled entry cases share both refusal codes, JSON and observation cases share broad alternative code tuples, callback failures lack the intended one-callback assertion, and caller mutation only clears the outer dict. The callback allowed table also retains caller pin object aliases, which would taint an otherwise valid nested snapshot test.',
+      correction='Require exact intended codes for fixed mutations, distinguish E_ACTUAL_ENTRY_HELD from E_ACTUAL_ENTRY_UNWIRED, assert first-reader failures have one callback, copy the callback allowed-pin table, and mutate a genuine nested caller value after snapshot. Keep names/count unchanged if desired.')]
+check('positive_base_code_review_has_required_SOURCE_verdict',False,[q,module_q])
+check('named_pop_mutations_preserve_whole_record_root',False,[q])
+check('branch_callback_and_deep_snapshot_oracles_meaningful',False,[q])
+
+selfq,_=fact(Path(__file__));held=sorted(inputs.values(),key=lambda p:p['path'])
+check('all_actual_inputs_sorted_unique_casefold',len({p['path'].casefold() for p in held})==len(held),[selfq])
+for i,p in enumerate(held):
+    b=Path(p['path']).read_bytes();check('final_actual_input_rehash_'+str(i),len(b)==p['bytes'] and hashlib.sha256(b).hexdigest()==p['sha256'],[p])
+failed=[c['name'] for c in checks if not c['passed']]
+common=dict(schema_version=1,reviewer='/root/owner_source_review',source_author='/root/phase_frontier',actual_fixture_content_contributor='/root/i9_fixture_author',created_utc=datetime.datetime.now(datetime.timezone.utc).isoformat(),verdict='REFUSE_I9_FIXTURE001_CONTENT_SOURCE_TWO_BLOCKERS_AND_EXISTING_ORACLE_COVERAGE',subjects=subjects,reviewer_Source=selfq,checks_failed=len(failed),checks_passed=len(checks)-len(failed),tests_executed=False,target_execution=False,operational_authority=False,scientific_authority=False,fixture_content_only=True,final_quartet_acceptance=False)
+full=dict(**common,record_type='Independent_I9_fixture001_content_full_Source_refusal_proof',all_actual_inputs=held,checks=checks,failures=failed,findings=findings,Source_function_regions=regions,planned_case_names=names,planned_case_count=count,
+ fixed_literal_data_audit=dict(records=len(fixed_raw),raw_body_bytes=sum(map(len,fixed_raw.values())),decoded_bundle_bytes=len(bundle),maximum_raw_body_bytes=max(map(len,fixed_raw.values())),decompression_is_known_literal_data_only=True),
+ review_scope='Actual complete fixture content read, 35-function Source inventory, independent descending byte-splice/JSON/diff/inverse recipes and fictional graph/95 case Source controls; bounded known literal decoded only as data and all99 immutable original bodies rehashed. No fixture builder, oracle, renderer or target was called.',
+ limitations=['No actual graph constructor/target/fixture execution; code-ready graph feasibility is static only.','Module002 is a pinned supporting input for shared Source-verdict requirements, not accepted by this fixture-only review.','Runtime 1024 callback and64MiB defensive guards are not claimed covered when unreachable under valid declared roster/cache.','Final corrected fixture/API/receipt and module correction need independent final four-subject Source review then fresh pin-specific one-use scope.'],
+ reviewer_fixture_imports=0,reviewer_fixture_calls=0,reviewer_target_imports=0,reviewer_target_calls=0,reviewer_target_Source_compilations=0,renderer_calls=0,native_Parser_calls=0,Git_mutations=0,Pro3_messages=0,actual_new_grants_lease_family_Native8_Parser_results=None)
+def save(name,value):
+    path=OWN/name;b=(json.dumps(value,sort_keys=True,indent=2,allow_nan=False)+'\n').encode();assert len(b)<=CAP
+    with path.open('xb') as h:h.write(b)
+    return dict(path=str(path),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+fp=save('INDEPENDENT_I9_FIXTURE001_CONTENT_SOURCE_FULL_REFUSAL_PROOF_001.json',full)
+cp=save('INDEPENDENT_I9_FIXTURE001_CONTENT_SOURCE_REFUSAL_CAPSULE_001.json',dict(**common,record_type='Independent_I9_fixture001_content_Source_refusal_capsule',full_proof=fp,actual_input_count=len(held),consolidated_finding_count=len(findings)))
+print(json.dumps(dict(capsule=cp,full_proof=fp,reviewer_Source=selfq,checks=len(checks),checks_failed=len(failed),failures=failed,actual_inputs=len(held)),indent=2))

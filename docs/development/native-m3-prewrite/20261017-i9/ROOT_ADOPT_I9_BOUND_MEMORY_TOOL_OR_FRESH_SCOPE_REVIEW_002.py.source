@@ -1,0 +1,149 @@
+"""Root accepts different saved tool/scope Source review before any memory run."""
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import sys
+
+P = Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\m3_prewrite_validation_012')
+CAP = 2097152
+
+def raw(path):
+    path = Path(path)
+    assert path.is_file() and not path.is_symlink() and path.stat().st_size <= CAP
+    with path.open('rb') as handle:
+        data = handle.read(CAP + 1)
+    assert len(data) <= CAP
+    return data
+
+def fact(path):
+    data = raw(path)
+    return dict(path=str(path), bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+def pin(q):
+    assert type(q) is dict and set(q) == {'path', 'bytes', 'sha256'}
+    assert type(q['path']) is str and type(q['bytes']) is int and 0 < q['bytes'] <= CAP
+    assert type(q['sha256']) is str and re.fullmatch('[0-9a-f]{64}', q['sha256'])
+    data = raw(q['path'])
+    assert len(data) == q['bytes'] and hashlib.sha256(data).hexdigest() == q['sha256']
+    return data
+
+def pairs(items):
+    result = {}
+    for key, value in items:
+        assert key not in result
+        result[key] = value
+    return result
+
+def bad(value):
+    raise AssertionError(value)
+
+def obj(data):
+    return json.loads(data, object_pairs_hook=pairs, parse_float=bad, parse_constant=bad)
+
+def main():
+    assert sys.flags.isolated and sys.flags.no_site and sys.flags.dont_write_bytecode
+    assert len(sys.argv) == 4 and sys.argv[1] in ('tools', 'scope')
+    mode, capsule_path, digest = sys.argv[1:]
+    assert re.fullmatch('[0-9a-f]{64}', digest)
+    capsule_path = Path(capsule_path)
+    assert capsule_path.parent.parent == P and 'CAPSULE' in capsule_path.name
+    capsule_pin = fact(capsule_path)
+    assert capsule_pin['sha256'] == digest
+    c = obj(pin(capsule_pin))
+    f = obj(pin(c['full_proof']))
+    reviewer = c['reviewer_Source']
+    pin(reviewer)
+    for record in (c, f):
+        assert record['reviewer'] == '/root/phase_frontier' and record['source_author'] == '/root'
+        assert record['target_execution'] is False and record['tests_executed'] is False
+        assert type(record['checks_failed']) is int and record['checks_failed'] == 0
+        assert record['verdict'].startswith(('PASS_', 'ACCEPT_'))
+    assert c['verdict'] == f['verdict']
+    checks = f['checks']
+    assert type(checks) is list and checks and len({q['name'] for q in checks}) == len(checks)
+    assert all(type(q['passed']) is bool and q['passed'] is True for q in checks)
+    assert type(c['checks_passed']) is int and c['checks_passed'] == len(checks)
+    assert type(f['checks_passed']) is int and f['checks_passed'] == len(checks)
+    inputs = f['all_actual_inputs']
+    assert type(inputs) is list and inputs and len({q['path'].casefold() for q in inputs}) == len(inputs)
+    for q in inputs:
+        pin(q)
+    assert reviewer in inputs
+    config_pin = fact(P / 'ROOT_I9_EXACT_MEMORY_TOOL_BINDINGS_002.json')
+    config = obj(pin(config_pin))
+    receipt_pin = fact(P / 'ROOT_I9_EXACT_MEMORY_TOOL_ACTUAL_BINDING_SOURCE_RECEIPT_002.json')
+    receipt = obj(pin(receipt_pin))
+    assert receipt['author'] == '/root' and receipt['new_bound_tools_invoked'] is False
+    assert receipt['target_execution'] is False and receipt['tests_executed'] is False
+    assert receipt['actual_bindings'] == config_pin
+    assert receipt['actual_Source_adoption'] == config['Source_adoption']
+    source_adoption = obj(pin(config['Source_adoption']))
+    assert source_adoption['verdict'] == 'ACCEPT_I9_RECORDED_M3_SEMANTIC_AND_FIXTURE_SOURCE_ONLY'
+    assert source_adoption['target_execution'] is False and source_adoption['tests_executed'] is False
+    tools = [fact(path) for path in config['tool_Source_paths'].values()]
+    for q in [config_pin, receipt_pin, config['Source_adoption'], config['source_window']] + tools:
+        assert q in inputs
+        pin(q)
+    assert set(config['tool_Source_paths']) == {'runner', 'supervisor', 'scope_preparer', 'capture'}
+    source_window = obj(pin(config['source_window']))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    assert now + datetime.timedelta(seconds=60) < datetime.datetime.fromisoformat(source_window['interval_end'])
+    subjects = c['subjects']
+    assert type(subjects) is list and subjects == f['subjects']
+    tool_adoption = None
+    fresh_scope = None
+    if mode == 'tools':
+        expected = tools + [config_pin, receipt_pin]
+        filename = 'ROOT_I9_EXACT_BOUND_MEMORY_TOOL_DIFFERENT_SOURCE_REVIEW_ADOPTION_002.json'
+        verdict = 'ACCEPT_I9_EXACT_BOUND_MEMORY_TOOL_SOURCE_ONLY'
+    else:
+        tool_adoption = fact(P / 'ROOT_I9_EXACT_BOUND_MEMORY_TOOL_DIFFERENT_SOURCE_REVIEW_ADOPTION_002.json')
+        assert tool_adoption in inputs
+        prior = obj(pin(tool_adoption))
+        assert prior['verdict'] == 'ACCEPT_I9_EXACT_BOUND_MEMORY_TOOL_SOURCE_ONLY'
+        assert prior['actual_bindings'] == config_pin and prior['subjects'] == tools + [config_pin, receipt_pin]
+        fresh_scope = fact(P / 'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_002.json')
+        s = obj(pin(fresh_scope))
+        assert s['author'] == '/root' and s['attempt_number'] == 2 and type(s['attempt_number']) is int
+        assert s['maximum_invocations'] == 1 and type(s['maximum_invocations']) is int
+        assert s['new_I9_pure_memory_fixture_invocation_authorized'] is True
+        assert s['original_I0_I1_I2_I3_I4_I5_I6_I7_I8_native_Parser_project_invocations_authorized'] is False
+        assert s['Source_adoption'] == config['Source_adoption']
+        assert s['tool_Source_pins'] == {role: fact(path) for role, path in config['tool_Source_paths'].items()}
+        assert s['tests_executed'] is False and s['target_execution'] is False
+        assert s['fresh_scope_different_review_and_Root_adoption_required_before_invocation'] is True
+        assert now + datetime.timedelta(seconds=65) < datetime.datetime.fromisoformat(s['interval_end'])
+        assert datetime.datetime.fromisoformat(s['interval_start']) <= now
+        for role in ('supervisor_marker', 'child_marker', 'child_result', 'supervisor_result', 'stdout', 'stderr', 'capture'):
+            assert not (P / s['names'][role]).exists()
+        expected = [fresh_scope]
+        filename = 'ROOT_I9_FRESH_ONE_USE_MEMORY_FIXTURE_SCOPE_DIFFERENT_REVIEW_ADOPTION_002.json'
+        verdict = 'ACCEPT_I9_FRESH_ONE_USE_SYNTHETIC_MEMORY_SCOPE_ONLY'
+    assert len(subjects) == len(expected) and all(q in subjects and q in inputs for q in expected)
+    result = dict(schema_version=1, record_type='Root_actual_I9_' + mode + '_different_Source_review_adoption',
+        author='/root', created_utc=now.isoformat(), verdict=verdict, subjects=expected,
+        actual_bindings=config_pin, actual_binding_receipt=receipt_pin,
+        actual_tool_Source_pins=tools, Source_adoption=config['Source_adoption'],
+        source_window=config['source_window'], previous_tool_Source_review_adoption=tool_adoption,
+        fresh_one_use_scope=fresh_scope, different_Source_review=capsule_pin,
+        full_proof=c['full_proof'], reviewer_Source=reviewer,
+        actual_named_checks=len(checks), actual_rehashed_input_count=len(inputs),
+        all_actual_review_inputs_rehashed=True, target_execution=False, tests_executed=False,
+        I9_memory_test_runs=1, new_I9_memory_invocation_authorized_now=mode == 'scope',
+        maximum_new_I9_invocations=1 if mode == 'scope' else 0,
+        actual_family_Source_publication_authorized=False, operational_authority=False,
+        scientific_authority=False, all_new_grants_lease_family_Native8_Parser_results=None)
+    data = (json.dumps(result, sort_keys=True, indent=2, allow_nan=False) + '\n').encode()
+    assert len(data) <= CAP
+    path = P / filename
+    with path.open('xb') as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    print(json.dumps(fact(path)))
+
+if __name__ == '__main__':
+    main()
