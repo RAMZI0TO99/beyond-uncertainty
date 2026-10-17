@@ -1,0 +1,348 @@
+"""Independent Source/AST/bytes review only. Never compile/exec/import target or fixture."""
+import ast
+import base64
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path, PureWindowsPath
+import re
+
+HERE = Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\producer_caller_qualification_013\source_review_001')
+P = HERE.parent
+EDITOR = '/root/i10_caller_frontier'
+REVIEWER = '/root/i10_producer_frontier'
+CAP = 2097152
+INPUTS, CHECKS = {}, []
+
+def check(name, passed):
+    assert type(name) is str and name and all(row['name'] != name for row in CHECKS)
+    assert type(passed) is bool
+    CHECKS.append(dict(name=name,passed=passed))
+
+def fact(path,raw):
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+
+def read(path,expected=None):
+    path = Path(path)
+    assert path.is_file() and not path.is_symlink() and path.stat().st_size <= CAP
+    with path.open('rb') as h:
+        raw = h.read(CAP+1)
+    assert len(raw) <= CAP
+    f = fact(path,raw)
+    if expected is not None:
+        assert f == expected, (f,expected)
+    assert str(path) not in INPUTS or INPUTS[str(path)] == f
+    INPUTS[str(path)] = f
+    return raw
+
+def pairs(rows):
+    out = {}
+    for name,value in rows:
+        assert name not in out
+        out[name] = value
+    return out
+
+def load(raw):
+    return json.loads(raw.decode('utf-8'),object_pairs_hook=pairs,
+        parse_float=lambda _: (_ for _ in ()).throw(ValueError('float')),
+        parse_constant=lambda _: (_ for _ in ()).throw(ValueError('constant')))
+
+def closed_pins(value):
+    if type(value) is dict:
+        if set(value) == {'path','bytes','sha256'}:
+            yield value
+        else:
+            for item in value.values():
+                yield from closed_pins(item)
+    elif type(value) is list:
+        for item in value:
+            yield from closed_pins(item)
+
+def read_record(path,expected=None):
+    value = load(read(path,expected))
+    for pin in closed_pins(value):
+        read(pin['path'],pin)
+    return value
+
+def functions(tree):
+    return {node.name:node for node in tree.body if isinstance(node,ast.FunctionDef)}
+
+def assignments(tree,literal=False):
+    out = {}
+    for node in tree.body:
+        if isinstance(node,ast.Assign):
+            for target in node.targets:
+                if isinstance(target,ast.Name):
+                    if literal:
+                        try:
+                            out[target.id] = ast.literal_eval(node.value)
+                        except (ValueError,TypeError):
+                            pass
+                    else:
+                        out[target.id] = node
+    return out
+
+def function_bytes(raw,node):
+    lines = raw.splitlines(keepends=True)
+    return b''.join(lines[node.lineno-1:node.end_lineno])
+
+def save(name,obj):
+    raw = (json.dumps(obj,indent=2,sort_keys=True,allow_nan=False)+'\n').encode()
+    assert len(raw) <= CAP
+    path = HERE/name
+    with path.open('xb') as h:
+        h.write(raw)
+        h.flush()
+        os.fsync(h.fileno())
+    assert path.read_bytes() == raw
+    return fact(path,raw)
+
+def required_fact(relative,size,digest):
+    path = P/relative
+    pin = dict(path=str(path),bytes=size,sha256=digest)
+    return pin,read(path,pin)
+
+protocol = read_record(P/'ROOT_I10_EXACT_I2_PHASE_BASENAME_SUCCESSOR_PROTOCOL_002.json')
+clarifier = read_record(P/'ROOT_I10_PROTOCOL002_ACTUAL_SOURCE_EDITOR_BINDING_CLARIFICATION_001.json')
+scope = read_record(P/'ROOT_CURRENT_I10_PRODUCER_CALLER_SOURCE_SCOPE_001.json')
+protocol_adoption = read_record(P/'ROOT_I10_PROTOCOL_DIFFERENT_REVIEW_ADOPTION_001.json')
+refusal = read_record(P/'ROOT_I10_PROTOCOL001_REFUSAL_AND_FACTUAL_CORRECTION_ADOPTION_001.json')
+control_history = read_record(P/'ROOT_I10_UNRUN_CONTROL_SOURCE_CORRECTION_HISTORY_001.json')
+receipt = read_record(P/'i2/CURRENT_OWNER_M3_PHASE_BASENAME_SOURCE_AUTHOR_RECEIPT_003.json')
+api = read_record(P/'i2/CURRENT_OWNER_M3_DEFERRED_METADATA_INERT_API_003.json')
+inverse = read_record(P/'i2/I10_COMPLETE_PREDECESSOR_SOURCE_API_INVERSE_AND_EXACT_FUNCTION_INVENTORY_001.json')
+source_pin,source_raw = required_fact('i2/build_M3_metadata_current_owner_deferred_003.py',128160,'831d4ff98b04faeecd53361ecb5cd8a75dd2ac455907b7c426a093c68ea30f7e')
+fixture_pin,fixture_raw = required_fact('i2/test_phase_successor_basename_memory_only_001.py',33139,'bc9867c4235f2530db0383c07f39e67669dae7abd0506bf0191926c474fb3c46')
+runner_pin,runner_raw = required_fact('ROOT_I10_ONCE_PURE_KERNEL_SUPERVISOR_003.py',10297,'5b09fe00d6ad6f8893f54d51a974f88fd78249f47cad5d4f17861e0d182ac587')
+adopter_pin,adopter_raw = required_fact('ROOT_ADOPT_I10_DIFFERENT_REVIEW_003.py',4632,'dcfb728d4650f65a1dc0a8531834d82cb4ca1fedd0f49dbb0ff25ca09b1213f4')
+issuer_path = P/'ROOT_ISSUE_I10_ONCE_KERNEL_SCOPE_001.py'
+issuer_raw = read(issuer_path)
+read(P/'i2/author_I10_exact_phase_successor_and_fixture_001.py')
+old_raw = read(protocol['prior_Source']['path'],protocol['prior_Source'])
+old_api_raw = read(protocol['prior_API']['path'],protocol['prior_API'])
+old_api = load(old_api_raw)
+old_tree,new_tree,fixture_tree = ast.parse(old_raw),ast.parse(source_raw),ast.parse(fixture_raw)
+old_funcs,new_funcs = functions(old_tree),functions(new_tree)
+old_assign,new_assign = assignments(old_tree),assignments(new_tree)
+old_literals,new_literals = assignments(old_tree,True),assignments(new_tree,True)
+protocol_pin = INPUTS[str(P/'ROOT_I10_EXACT_I2_PHASE_BASENAME_SUCCESSOR_PROTOCOL_002.json')]
+clarifier_pin = INPUTS[str(P/'ROOT_I10_PROTOCOL002_ACTUAL_SOURCE_EDITOR_BINDING_CLARIFICATION_001.json')]
+check('actual_physical_Source_editor_differs_from_reviewer',receipt['author'] == receipt['physical_Source_editor'] == EDITOR and REVIEWER != EDITOR)
+for label,obj in [('protocol',protocol),('clarifier',clarifier),('scope',scope),('receipt',receipt),('API',api),('inverse',inverse)]:
+    for key in ('target_execution','tests_executed','operational_authority','scientific_authority'):
+        check(label+'_'+key+'_false',obj[key] is False)
+check('Root_protocol_adoption_is_actual_same_subjects_readback',protocol_adoption['phase'] == 'PROTOCOL' and protocol_adoption['all_actual_review_inputs_rehashed'] is True and protocol_pin in protocol_adoption['subjects'] and clarifier_pin in protocol_adoption['subjects'])
+protocol_capsule = read_record(protocol_adoption['capsule']['path'],protocol_adoption['capsule'])
+protocol_full = read_record(protocol_adoption['full_proof']['path'],protocol_adoption['full_proof'])
+check('protocol_genuine_different_review_all110_unique_passes',protocol_capsule['reviewer'] == protocol_full['reviewer'] == REVIEWER and protocol_capsule['full_proof'] == protocol_adoption['full_proof'] and protocol_full['checks_failed'] == 0 and len(protocol_full['checks']) == 110 and len({row['name'] for row in protocol_full['checks']}) == 110 and all(row['passed'] is True for row in protocol_full['checks']))
+check('prior_disproved_I1_hypothesis_refusal_retained_no_change',refusal['verdict'] == 'ACCEPT_INDEPENDENT_REFUSAL_NO_I1_CHANGE' and 'No I1 defect or refusal was established' in refusal['correction'])
+check('current_Source_interval_reserve_and_no_real_execution_grant',dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=65) < dt.datetime.fromisoformat(scope['interval_end']) and scope['old_I0_through_I9_changes_or_invocations_authorized'] is False and scope['actual_selected_family_Source_publication_authorized'] is False)
+check('Source_author_receipt_names_exact_actual_outputs',receipt['Source'] == source_pin and receipt['fixture'] == fixture_pin and receipt['API'] == INPUTS[str(P/'i2/CURRENT_OWNER_M3_DEFERRED_METADATA_INERT_API_003.json')] and receipt['complete_predecessor_inverse'] == INPUTS[str(P/'i2/I10_COMPLETE_PREDECESSOR_SOURCE_API_INVERSE_AND_EXACT_FUNCTION_INVENTORY_001.json')])
+check('Source_author_receipt_actual_unrun_counts_and_caps',receipt['new_pure_kernel_test_runs'] == receipt['new_whole_I2_imports_or_calls'] == receipt['original_imports_calls_or_fixtures'] == 0 and receipt['actual_I1_I2_producer_or_caller_qualified'] is False and receipt['all_actual_new_lease_family_native_Parser_grants'] is None)
+check('complete_inverse_prior_Source_base64_is_exact_whole_bytes',base64.b64decode(inverse['complete_prior_Source_base64'],validate=True) == old_raw)
+check('complete_inverse_prior_API_base64_is_exact_whole_bytes',base64.b64decode(inverse['complete_prior_API_base64'],validate=True) == old_api_raw)
+check('complete_inverse_exact_prior_and_successor_pins',inverse['prior_Source'] == protocol['prior_Source'] and inverse['prior_API'] == protocol['prior_API'] and inverse['successor_Source'] == source_pin and inverse['fixture'] == fixture_pin)
+edits = inverse['exact_ordered_Source_edits']
+expected_labels = ['module_docstring_actual_editor','current_owned_directory','current_Source_leaf','current_API_leaf','current_editor','current_binding_editor','add_pure_exact_phase_basename_predicate','replace_only_validate_selection_eight_phase_branch']
+check('full_file_exact_allowed_eight_edit_labels',len(edits) == 8 and [row['label'] for row in edits] == expected_labels)
+reconstructed = old_raw
+for row in edits:
+    before,after = row['before'].encode(),row['after'].encode()
+    check('ordered_delta_'+row['label']+'_unique_before',reconstructed.count(before) == 1)
+    reconstructed = reconstructed.replace(before,after,1)
+check('forward_eight_literal_edits_reproduce_entire_mixed_newline_Source',reconstructed == source_raw)
+recovered = source_raw
+for row in reversed(edits):
+    after,before = row['after'].encode(),row['before'].encode()
+    check('reverse_delta_'+row['label']+'_unique_after',recovered.count(after) == 1)
+    recovered = recovered.replace(after,before,1)
+check('inverse_eight_literal_edits_recover_entire_prior_Source',recovered == old_raw)
+check('old69_functions_retained_plus_only_one_new_function',len(old_funcs) == 69 and set(new_funcs) == set(old_funcs)|{'require_phase_successor_basename'} and len(new_funcs) == 70)
+inventory = {row['name']:row for row in inverse['old_function_inventory']}
+check('inverse_has_exact69_unique_old_function_rows',len(inverse['old_function_inventory']) == len(inventory) == 69 and set(inventory) == set(old_funcs))
+for name,node in old_funcs.items():
+    before,after = function_bytes(old_raw,node),function_bytes(source_raw,new_funcs[name])
+    row = inventory[name]
+    check('function_inventory_'+name+'_whole_byte_sizes_SHA_truthful',row['old_bytes'] == len(before) and row['old_sha256'] == hashlib.sha256(before).hexdigest() and row['successor_bytes'] == len(after) and row['successor_sha256'] == hashlib.sha256(after).hexdigest() and row['byte_exact'] is (before == after))
+    if name != 'validate_selection':
+        check('protected_whole_function_'+name+'_exact',before == after)
+check('inverse_count68_byte_exact_one_changed_selection',inverse['old_function_count'] == 69 and inverse['byte_exact_old_function_count'] == 68 and inverse['sole_changed_old_function'] == 'validate_selection')
+old_branch = """        if row['role'] in set(TEMPLATE_ROLES[1:])|set(PHASE_BOUND_ROLES):
+            suffix = re.fullmatch(r'.*_(\\d{3})\\.ps1',canonical.name)
+            need(row['selected_ordinal'] > 18 and suffix is not None
+                and int(suffix[1]) == row['selected_ordinal'],
+                'eight true new phase TEMPLATE/BOUND Source ordinals beyond018; no wrong-family oldphase promotion')"""
+new_branch = """        if row['role'] in set(TEMPLATE_ROLES[1:])|set(PHASE_BOUND_ROLES):
+            require_phase_successor_basename(row['role'],canonical.name,
+                Path(old_rows[row['role']]['canonical_path']).name,
+                old_rows[row['role']]['selected_ordinal'],row['selected_ordinal'])"""
+selection_before = function_bytes(old_raw,old_funcs['validate_selection'])
+selection_after = function_bytes(source_raw,new_funcs['validate_selection'])
+check('selection_function_only_exact_allowed_phase_branch_changed',selection_before.count(old_branch.encode()) == 1 and selection_before.replace(old_branch.encode(),new_branch.encode(),1) == selection_after)
+allowed_assignments = {'HERE','SELF','API_PATH','EDITOR','BINDING_SOURCE_EDITOR'}
+check('all_top_level_assignment_names_unchanged',set(old_assign) == set(new_assign))
+for name in old_assign:
+    if name not in allowed_assignments:
+        check('protected_global_'+name+'_AST_exact',ast.dump(old_assign[name],include_attributes=False) == ast.dump(new_assign[name],include_attributes=False))
+check('both_current_editor_constants_name_genuine_author',new_literals['EDITOR'] == new_literals['BINDING_SOURCE_EDITOR'] == EDITOR)
+check('external_ABI_literal_false_and_fixed19_anchors_unchanged',new_literals['EXTERNAL_CANONICAL_RECEIPT_ABI_QUALIFIED'] is False and new_literals['FIXED_CONTEXT_ANCHORS'] == old_literals['FIXED_CONTEXT_ANCHORS'] and len(new_literals['FIXED_CONTEXT_ANCHORS']) == 19)
+expected_helper = """def require_phase_successor_basename(role, canonical_leaf, previous_leaf, previous_ordinal, selected_ordinal):
+    need(type(role) is str and role in TEMPLATE_ROLES[1:]+PHASE_BOUND_ROLES,
+         'exact one of eight phase TEMPLATE/BOUND roles')
+    need(type(canonical_leaf) is str and type(previous_leaf) is str,
+         'exact phase canonical and current-selection predecessor leaf strings')
+    need(type(previous_ordinal) is int and type(selected_ordinal) is int
+         and 0 < previous_ordinal < selected_ordinal < 1000 and selected_ordinal > 18,
+         'strict later three-digit phase Source ordinal beyond018')
+    matches = [m for m in re.finditer(r'[0-9]{3}(?![0-9])',previous_leaf)
+               if int(m.group()) == previous_ordinal]
+    need(len(matches) == 1, 'one exact current-selection previous ordinal occurrence')
+    match = matches[0]
+    expected_leaf = previous_leaf[:match.start()]+str(selected_ordinal).zfill(3)+previous_leaf[match.end():]
+    phase_suffix = '.TEMPLATE.ps1' if role in TEMPLATE_ROLES[1:] else '.BOUND.ps1'
+    need(canonical_leaf == expected_leaf and expected_leaf.endswith(phase_suffix),
+         'exact inherited phase basename, role suffix and ordinal-only successor')
+"""
+check('new_helper_AST_is_exact_protocol_strict_types_roles_bounds_I8_reconstruction',ast.dump(new_funcs['require_phase_successor_basename'],include_attributes=False) == ast.dump(ast.parse(expected_helper).body[0],include_attributes=False))
+check('helper_inverse_text_exact_inert_function_bytes',inverse['helper_kernel_Source_utf8'].encode() == function_bytes(source_raw,new_funcs['require_phase_successor_basename']))
+old_nonfunctions = [n for n in old_tree.body if not isinstance(n,(ast.FunctionDef,ast.Assign)) and not (isinstance(n,ast.Expr) and isinstance(n.value,ast.Constant) and type(n.value.value) is str)]
+new_nonfunctions = [n for n in new_tree.body if not isinstance(n,(ast.FunctionDef,ast.Assign)) and not (isinstance(n,ast.Expr) and isinstance(n.value,ast.Constant) and type(n.value.value) is str)]
+check('all_other_imports_main_guard_and_top_level_structure_AST_exact',[ast.dump(n,include_attributes=False) for n in old_nonfunctions] == [ast.dump(n,include_attributes=False) for n in new_nonfunctions])
+allowed_api_changes = {'Source','accepted_protocol','actual_binding_Source_editor','author','created_utc','historical_predecessor_Source_and_API','implementation_scope','protocol_Root_adoption'}
+check('API_all_old_keys_retained_only_one_narrow_extension',set(api) == set(old_api)|{'I10_narrow_phase_basename_successor'})
+for name in old_api:
+    if name not in allowed_api_changes:
+        check('API_protected_'+name+'_unchanged',api[name] == old_api[name])
+check('API_current_editor_Source_scope_protocol_truthful',api['Source'] == source_pin and api['author'] == api['actual_binding_Source_editor'] == EDITOR and api['accepted_protocol'] == protocol_pin and api['implementation_scope'] == INPUTS[str(P/'ROOT_CURRENT_I10_PRODUCER_CALLER_SOURCE_SCOPE_001.json')])
+extension = api['I10_narrow_phase_basename_successor']
+for key in ('actual_caller_qualified','actual_producer_qualified','external_canonical_receipt_ABI_qualified','full_I2_import_or_entry','new_lease_or_selected_family_issued','physical_origin_authenticated','tests_executed_at_Source_creation'):
+    check('API_narrow_extension_'+key+'_false',extension[key] is False)
+check('API_preserves_version2_facts21_receipt22_selection13_and_stagepurpose6',api['schema_version'] == 2 and api['future_Record21']['closed_field_count'] == 21 and api['future_receipt22']['closed_field_count'] == 22 and api['future_selection13']['closed_field_count'] == 13 and len(api['future_exact_stage_purpose']['closed6_keys']) == 6)
+fixture_values = assignments(fixture_tree,True)
+fixture_functions = functions(fixture_tree)
+check('fixture_only_docstring_two_literal_assignments_and_one_function',set(fixture_values) == {'CASE_NAMES','CASES'} and set(fixture_functions) == {'run_cases'} and all(isinstance(n,(ast.Assign,ast.FunctionDef)) or isinstance(n,ast.Expr) and isinstance(n.value,ast.Constant) and type(n.value.value) is str for n in fixture_tree.body))
+check('fixture_no_imports_compile_exec_eval_or_IO_names',not any(isinstance(n,(ast.Import,ast.ImportFrom)) for n in ast.walk(fixture_tree)) and not any(isinstance(n,ast.Name) and n.id in {'open','exec','eval','compile','__import__','os','sys','subprocess','pathlib','ctypes','socket'} for n in ast.walk(fixture_tree)))
+case_names,cases = fixture_values['CASE_NAMES'],fixture_values['CASES']
+check('fixture_exact134_unique_literal_case_names_and_cases',type(case_names) is tuple and type(cases) is tuple and len(case_names) == len(cases) == len(set(case_names)) == 134 and tuple(row[0] for row in cases) == case_names)
+check('fixture_kernel_gets_only_named_predicate_and_truthful_ValueError_oracle',ast.get_source_segment(fixture_raw.decode(),fixture_functions['run_cases']) == """def run_cases(kernel):
+    predicate = kernel['require_phase_successor_basename']
+    results = []
+    for name, arguments, expected in CASES:
+        try:
+            returned = predicate(*arguments)
+        except ValueError:
+            accepted = False
+        else:
+            accepted = returned is None
+        results.append({'name':name, 'passed':accepted is expected})
+    return results""")
+phase_roles = new_literals['TEMPLATE_ROLES'][1:]+new_literals['PHASE_BOUND_ROLES']
+selected = read_record(protocol['current_selection']['path'],protocol['current_selection'])
+selection_rows = {row['role']:row for row in selected['rows']}
+
+def independent_contract_oracle(arguments):
+    role,canonical,previous,old,new = arguments
+    if type(role) is not str or role not in phase_roles or type(canonical) is not str or type(previous) is not str:
+        return False
+    if type(old) is not int or type(new) is not int or not 0 < old < new < 1000 or new <= 18:
+        return False
+    # Independent ASCII maximal-digit-run scan. I8's regex selects each run's final3
+    # digits, including longer runs; this reproduces that declared grammar as data.
+    positions = []
+    start = 0
+    while start < len(previous):
+        if not '0' <= previous[start] <= '9':
+            start += 1
+            continue
+        end = start
+        while end < len(previous) and '0' <= previous[end] <= '9':
+            end += 1
+        if end-start >= 3 and int(previous[end-3:end]) == old:
+            positions.append((end-3,end))
+        start = end
+    if len(positions) != 1:
+        return False
+    a,b = positions[0]
+    expected = previous[:a]+format(new,'03d')+previous[b:]
+    suffix = '.TEMPLATE.ps1' if role in new_literals['TEMPLATE_ROLES'][1:] else '.BOUND.ps1'
+    return canonical == expected and canonical[-len(suffix):] == suffix
+
+positive_count = 0
+for name,args,expected in cases:
+    check('fixture_literal_'+name+'_strict_record_shape',type(name) is str and type(args) is tuple and len(args) == 5 and type(expected) is bool)
+    observed = independent_contract_oracle(args)
+    check('independent_contract_oracle_'+name+'_expected_truthful',observed is expected)
+    positive_count += expected
+for index,role in enumerate(phase_roles,1):
+    actual = selection_rows[role]
+    leaf = PureWindowsPath(actual['canonical_path']).name
+    for ordinal in (19,999):
+        row = next(row for row in cases if row[0] == 'phase%d_ordinal%03d'%(index,ordinal))
+        check('actual_predecessor_'+role+'_'+str(ordinal)+'_matches_fixture',row[1][0] == role and row[1][2] == leaf and row[1][3] == actual['selected_ordinal'] == 18 and row[1][4] == ordinal and row[2] is True)
+check('fixture_has18_positive116_negative_cases',positive_count == 18 and len(cases)-positive_count == 116)
+check('fixture_maximum_successful_need_records_below4096',len(cases)*5 < 4096)
+check('Source_fixture_API_inverse_receipt_literal_counts134',receipt['literal_case_count'] == inverse['literal_case_count'] == extension['literal_case_count'] == 134)
+runner,adopter,issuer = runner_raw.decode(),adopter_raw.decode(),issuer_raw.decode()
+for name,raw in [('runner',runner_raw),('adopter',adopter_raw),('issuer',issuer_raw)]:
+    ast.parse(raw)
+    check('Root_'+name+'_valid_Source_AST_no_invocation',True)
+check('runner_exact_isolated_host_and_no_site_no_bytecode_flags',"sys.flags.isolated==1 and sys.flags.no_site==1 and sys.dont_write_bytecode and sys.executable==PY" in runner and "[PY,'-I','-S','-B',__file__,'child',scope_path,scope_hash]" in runner)
+check('runner_pinned_Source_fixture_self_and_Source_adoption_before_launch',"assert s['supervisor']==fact(pathlib.Path(__file__))" in runner and "s['Source'] in ad['subjects'] and s['fixture'] in ad['subjects'] and s['supervisor'] in ad['subjects']" in runner and "for f in (s['Source'],s['fixture'],s['Source_review_adoption']):pin(f)" in runner)
+check('runner_exclusive_once_claim_precedes_Popen',runner.index('save(claim,') < runner.index('p=subprocess.Popen(') and "scope_consumed=True,automatic_retry_authorized=False" in runner)
+check('runner_actual_RAM_disk_and_strict_resource_age_at_launch',"m.available>=1073741824 and disk>=10737418240" in runner and "datetime.timedelta(0)<=age<=datetime.timedelta(seconds=60)" in runner and runner.index('age=datetime.datetime.now') < runner.index('p=subprocess.Popen('))
+check('runner_65second_scope_margin_and60plus5_owned_timeout',"datetime.timedelta(seconds=65)" in runner and 'p.communicate(timeout=60)' in runner and 'p.kill()' in runner and 'timeout=max(0,5-(time.monotonic()-t))' in runner)
+check('runner_launch_decode_validation_failure_saved_before_refusal',"except BaseException as e:\n  failure=type(e).__name__+': '+str(e)" in runner and "if p is not None and p.poll() is None and not timedout:" in runner and runner.index("save('ROOT_I10_ACTUAL_PURE_KERNEL_SUPERVISOR_RESULT_001.json',receipt)") < runner.index('assert valid, failure'))
+check('runner_captured_streams_capped2MiB_and_raw_lengths_observed',"CAP=2097152" in runner and "out[:CAP]" in runner and 'stdout_observed_bytes=len(out),stderr_observed_bytes=len(err)' in runner and 'streams_overcap=len(out)>CAP or len(err)>CAP' in runner)
+check('runner_unknown_entry_is_not_invented_on_no_child_JSON',"tests_executed=result.get('tests_executed') if type(result) is dict else None" in runner and 'scope_spent=True,automatic_retry_authorized=False' in runner)
+check('runner_AST_only_two_defs_plus_two_literal_tuples',"defs=['need','require_phase_successor_basename'];constants=['TEMPLATE_ROLES','PHASE_BOUND_ROLES']" in runner and "module=ast.Module(body=[nodes[n] for n in defs],type_ignores=[])" in runner and "kc=compile(ast.fix_missing_locations(module),'<I10-reviewed-kernel>','exec')" in runner and "exec(kc,kg);exec(fc,fg)" in runner)
+check('runner_never_executes_full_Source_or_calls_project_entry',not any(term in runner for term in ('exec(source','compile(source','importlib','runpy','execute_stage(','validate_selection(','render_templates(')))
+safe_names = {'type','str','int','len','set','list','dict','tuple','bool','float','bytes','range','enumerate','all','any','zip','min','max','sorted','ValueError','AssertionError','Exception'}
+for builtin in ('type','str','int','len','ValueError'):
+    check('kernel_builtin_'+builtin+'_available',repr(builtin) in runner and builtin in safe_names)
+check('runner_re_CHECKS_and_literal_tuples_are_only_kernel_extras',"kg=dict(__builtins__=safe,re=re,CHECKS=[],**values);fg=dict(__builtins__=safe)" in runner)
+check('runner_recursive_exact_code_identity_strong_refs_and_caps',"code_ids[id(c)]=c" in runner and "if type(x) is types.CodeType:walk(x)" in runner and 'code_ids.get(id(frame.f_code)) is frame.f_code' in runner and "total[0]>1000000 or len(kg['CHECKS'])>4096" in runner)
+check('runner_audit_before_exec_and_profile_cleanup_in_finally',runner.index('sys.addaudithook(audit);sys.setprofile(profile)') < runner.index('exec(kc,kg);exec(fc,fg)') and 'finally:sys.setprofile(None)' in runner)
+check('runner_audit_deny_open_import_process_network_native_registry_OS',"event=='open' or event=='import' or event.startswith(('subprocess.','socket.','ctypes.','winreg.','os.'))" in runner)
+check('runner_true_suite_entry_recorded_only_before_run_cases',"fixture_started=True\n  cases=fg['run_cases']" in runner and 'tests_executed=fixture_started' in runner)
+check('runner_exact134_order_and_unique_names_and_kernel_coverage',"tuple(x['name'] for x in cases)==case_names and blocked==[] and all(x>0 for x in counts.values())" in runner and "type(case_names) is tuple and 1<=len(case_names)<=256 and len(set(case_names))==len(case_names)" in runner)
+check('runner_no_real_I2_or_native_operational_authority',"original_I2_import_call_or_entry=False" in runner and 'operational_authority=False,scientific_authority=False' in runner)
+check('adopter_fixed_genuine_reviewer_and_nonempty_unique_allpassed_fullchecks',"c['reviewer']==full['reviewer']=='/root/i10_producer_frontier'" in adopter and "len({k['name'] for k in checks})==len(checks)" in adopter and "k['passed'] is True" in adopter)
+check('adopter_all_actual_inputs_and_reviewer_Source_rehashed',"pinned(f);assert f['path'] not in seen or seen[f['path']]==f" in adopter and "seen.get(c['reviewer_Source']['path'])==c['reviewer_Source']" in adopter)
+check('adopter_exact_phase_specific_record_types_and_review_phase',"c['review_phase']==full['review_phase']==phase" in adopter and "c['record_type']=='Independent_I10_'+phase+'_Source_only_capsule'" in adopter and "full['record_type']=='Independent_I10_'+phase+'_Source_only_full_proof'" in adopter)
+check('adopter_SOURCE_required_Source_fixture_runner003_subjects',"'SOURCE':['i2/build_M3_metadata_current_owner_deferred_003.py','i2/test_phase_successor_basename_memory_only_001.py','ROOT_I10_ONCE_PURE_KERNEL_SUPERVISOR_003.py']" in adopter and 'for name in required:assert fact(O/name) in subjects' in adopter)
+check('adopter_RESULTS_requires_actual_scope_child_supervisor_streams_and_Source_adoption',all(term in adopter for term in ('ROOT_I10_ONCE_PURE_KERNEL_SCOPE_001.json','ROOT_I10_ACTUAL_PURE_KERNEL_CHILD_RESULT_001.json','ROOT_I10_ACTUAL_PURE_KERNEL_SUPERVISOR_RESULT_001.json','ROOT_I10_ACTUAL_PURE_KERNEL_STDOUT_001.txt','ROOT_I10_ACTUAL_PURE_KERNEL_STDERR_001.txt','ROOT_I10_SOURCE_DIFFERENT_REVIEW_ADOPTION_001.json')))
+check('adopter_RESULTS_demands_zero_exit_reaped_drained_and_no_cleanup_error',all(term in adopter for term in ("supervisor['owned_child_exit_code']==0","supervisor['owned_child_reaped'] is True","supervisor['streams_drained'] is True","supervisor['cleanup_error'] is None")))
+check('issuer_pins_exact_Source_fixture_runner003_and_requires_Source_adoption',all(pin['sha256'] in issuer for pin in (source_pin,fixture_pin,runner_pin)) and "a['phase']=='SOURCE'" in issuer and "assert all(f in a['subjects'] for f in (source,fixture,supervisor))" in issuer)
+check('issuer_fresh5minute_once_scope_and_global60reserve',"end=now+datetime.timedelta(minutes=5)" in issuer and "end+datetime.timedelta(seconds=60)<datetime.datetime.fromisoformat(current['interval_end'])" in issuer and "assert not any(O.glob('ROOT_I10_ONCE_KERNEL_CLAIM_*.json'))" in issuer and "p.open('xb')" in issuer)
+check('issuer_exact134_case_count_caps_and_no_full_I2_grants',all(term in issuer for term in ('exact_case_count=134','timeout_seconds=60,cleanup_seconds=5,event_cap=1000000,kernel_CHECKS_cap=4096,output_cap=2097152','original_I2_full_import_validate_selection_main_IO_or_entry_authorized=False','automatic_retry_authorized=False')))
+for name in ('ROOT_I10_ONCE_PURE_KERNEL_SCOPE_001.json','ROOT_I10_ONCE_KERNEL_CLAIM_001.json','ROOT_I10_ONCE_KERNEL_CHILD_ENTRY_001.json','ROOT_I10_ACTUAL_PURE_KERNEL_CHILD_RESULT_001.json','ROOT_I10_ACTUAL_PURE_KERNEL_SUPERVISOR_RESULT_001.json','ROOT_I10_ACTUAL_PURE_KERNEL_STDOUT_001.txt','ROOT_I10_ACTUAL_PURE_KERNEL_STDERR_001.txt'):
+    check('preinvocation_owned_future_'+name+'_absent',not (P/name).exists())
+read(Path(__file__))
+self_pin = INPUTS[str(Path(__file__))]
+for path,pin in list(INPUTS.items()):
+    assert fact(Path(path),Path(path).read_bytes()) == pin
+check('every_actual_input_final_whole_byte_rehash_unchanged',True)
+failures = [row['name'] for row in CHECKS if not row['passed']]
+assert not failures,failures
+subjects = [protocol_pin,clarifier_pin,source_pin,fixture_pin,runner_pin,
+    INPUTS[str(P/'i2/CURRENT_OWNER_M3_DEFERRED_METADATA_INERT_API_003.json')],
+    INPUTS[str(P/'i2/I10_COMPLETE_PREDECESSOR_SOURCE_API_INVERSE_AND_EXACT_FUNCTION_INVENTORY_001.json')],
+    INPUTS[str(P/'i2/CURRENT_OWNER_M3_PHASE_BASENAME_SOURCE_AUTHOR_RECEIPT_003.json')],
+    adopter_pin,INPUTS[str(issuer_path)]]
+common = dict(schema_version=1,reviewer=REVIEWER,author=REVIEWER,source_editor=EDITOR,
+    created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),review_phase='SOURCE',
+    verdict='PASS_I10_EXACT_I2_SOURCE003_PHASE_KERNEL_FIXTURE134_AND_ROOT_CONTROLS',
+    subjects=subjects,reviewer_Source=self_pin,checks_passed=len(CHECKS),checks_failed=0,
+    target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False)
+full = save('INDEPENDENT_I10_FINAL_SOURCE_FULL_PROOF_001.json',dict(common,
+    record_type='Independent_I10_SOURCE_Source_only_full_proof',checks=CHECKS,
+    inputs=sorted(INPUTS.values(),key=lambda pin:pin['path']),
+    fixture_case_count=134,fixture_positive_count=positive_count,fixture_negative_count=len(cases)-positive_count,
+    old_function_count=69,whole_byte_exact_old_function_count=68,
+    independent_oracle='Own ASCII maximal-digit-run metadata arithmetic independently checks all134 literal expectations; no project helper or fixture is executed.',
+    boundary='Source/JSON/AST/hash/inverse review only. The complete I2 remains unrun and unqualified. Root alone may later admit exactly the two-function AST kernel and134 memory cases under fresh one-use scope. This proof is no physical/process fault injection or full producer/caller/native qualification.'))
+capsule = save('INDEPENDENT_I10_FINAL_SOURCE_CAPSULE_001.json',dict(common,
+    record_type='Independent_I10_SOURCE_Source_only_capsule',full_proof=full,input_count=len(INPUTS)))
+print(json.dumps(dict(capsule=capsule,full_proof=full,reviewer_Source=self_pin,
+    checks_passed=len(CHECKS),checks_failed=0,input_count=len(INPUTS),verdict=common['verdict']),sort_keys=True))

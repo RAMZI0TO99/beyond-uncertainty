@@ -1,0 +1,214 @@
+"""Independent Source-only protocol review. No project Source is imported or called."""
+import ast
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path, PureWindowsPath
+import re
+import sys
+
+HERE = Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\producer_caller_qualification_013\protocol_review_002')
+P = HERE.parent
+REVIEWER = '/root/i10_producer_frontier'
+CAP = 2097152
+INPUTS, CHECKS = {}, []
+
+def check(name, passed):
+    assert type(name) is str and name and all(row['name'] != name for row in CHECKS)
+    assert type(passed) is bool
+    CHECKS.append(dict(name=name, passed=passed))
+
+def fact(path, raw):
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+def read(path, expected=None):
+    path = Path(path)
+    assert path.is_file() and not path.is_symlink() and path.stat().st_size <= CAP
+    with path.open('rb') as h:
+        raw = h.read(CAP+1)
+    assert len(raw) <= CAP
+    f = fact(path, raw)
+    if expected is not None:
+        assert f == expected
+    assert str(path) not in INPUTS or INPUTS[str(path)] == f
+    INPUTS[str(path)] = f
+    return raw
+
+def pairs(rows):
+    out = {}
+    for k, value in rows:
+        assert k not in out
+        out[k] = value
+    return out
+
+def load(raw):
+    return json.loads(raw.decode('utf-8'), object_pairs_hook=pairs,
+        parse_float=lambda _: (_ for _ in ()).throw(ValueError('float')),
+        parse_constant=lambda _: (_ for _ in ()).throw(ValueError('constant')))
+
+def pinload(pin):
+    assert type(pin) is dict and set(pin) == {'path','bytes','sha256'}
+    return load(read(pin['path'], pin))
+
+def closed_pins(value):
+    if type(value) is dict:
+        if set(value) == {'path','bytes','sha256'}:
+            yield value
+        else:
+            for item in value.values():
+                yield from closed_pins(item)
+    elif type(value) is list:
+        for item in value:
+            yield from closed_pins(item)
+
+def functions(tree):
+    return {node.name:node for node in tree.body if isinstance(node,ast.FunctionDef)}
+
+def literal_assignments(tree):
+    out = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0],ast.Name):
+            try:
+                out[node.targets[0].id] = ast.literal_eval(node.value)
+            except (ValueError,TypeError):
+                pass
+    return out
+
+def save(name, obj):
+    raw = (json.dumps(obj,indent=2,sort_keys=True,allow_nan=False)+'\n').encode()
+    assert len(raw) <= CAP
+    path = HERE/name
+    with path.open('xb') as h:
+        h.write(raw)
+        h.flush()
+        os.fsync(h.fileno())
+    assert path.read_bytes() == raw
+    return fact(path,raw)
+
+assert len(sys.argv) == 3
+clarifier_path = Path(sys.argv[1])
+assert re.fullmatch('[a-f0-9]{64}',sys.argv[2])
+clarifier_raw = read(clarifier_path)
+assert hashlib.sha256(clarifier_raw).hexdigest() == sys.argv[2]
+clarifier = load(clarifier_raw)
+protocol_path = P/'ROOT_I10_EXACT_I2_PHASE_BASENAME_SUCCESSOR_PROTOCOL_002.json'
+protocol = load(read(protocol_path,dict(path=str(protocol_path),bytes=9740,
+    sha256='6fd15c9a5bf4f0bbcf5b99af33ee0eb245846dae3a1200e830cb697e877be355')))
+protocol_pin = INPUTS[str(protocol_path)]
+clarifier_pin = INPUTS[str(clarifier_path)]
+for record in (protocol,clarifier):
+    for pin in closed_pins(record):
+        read(pin['path'],pin)
+scope = pinload(protocol['source_scope'])
+for pin in closed_pins(scope):
+    read(pin['path'],pin)
+prior_refusal = pinload(protocol['refused_prior_hypothesis_adoption'])
+for pin in closed_pins(prior_refusal):
+    read(pin['path'],pin)
+check('protocol_Root_author_and_different_actual_Source_editor', protocol['author'] == '/root' and protocol['source_author'] == '/root/i10_caller_frontier' and REVIEWER not in (protocol['author'],protocol['source_author']))
+for record_name, record in [('protocol',protocol),('scope',scope),('clarifier',clarifier),('Root_refusal_adoption',prior_refusal)]:
+    for key in ('target_execution','tests_executed','operational_authority','scientific_authority'):
+        check(record_name+'_'+key+'_false',record[key] is False)
+check('clarifier_Root_authored_and_covers_exact_protocol002', clarifier['author'] == '/root' and any(pin == protocol_pin for pin in closed_pins(clarifier)))
+clarifier_text = json.dumps(clarifier,sort_keys=True)
+check('clarifier_explicitly_permits_both_actual_editor_assignment_names', 'BINDING_SOURCE_EDITOR' in clarifier_text and 'EDITOR' in clarifier_text and '/root/i10_caller_frontier' in clarifier_text)
+check('clarifier_preserves_historical_editor_nominals', 'HISTORICAL_' in clarifier_text and ('unchanged' in clarifier_text.lower() or 'preserv' in clarifier_text.lower()))
+check('scope_current_Source_only_max3_shared5_reserve60', scope['window_is_Source_scheduling_only_not_owner_or_execution_lease'] is True and (scope['maximum_local_agents_including_Root'],scope['maximum_shared_including_both_roots_and_overlap'],scope['publication_reserve_seconds']) == (3,5,60))
+check('scope_user_override_does_not_require_Pro3',scope['Pro3_coordination_required'] is False)
+now = dt.datetime.now(dt.timezone.utc)
+check('protocol_and_review_inside_actual_current_Source_window', dt.datetime.fromisoformat(scope['interval_start']) <= dt.datetime.fromisoformat(protocol['created_utc']) <= now and now+dt.timedelta(seconds=60) < dt.datetime.fromisoformat(scope['interval_end']))
+check('scope_existing_I0_to_I9_targets_and_actual_family_publication_held', scope['old_I0_through_I9_changes_or_invocations_authorized'] is False and scope['actual_selected_family_Source_publication_authorized'] is False)
+check('protocol001_refusal_retained_and_no_I1_successor_claim', prior_refusal['verdict'] == 'ACCEPT_INDEPENDENT_REFUSAL_NO_I1_CHANGE' and 'No I1 defect or refusal was established' in prior_refusal['correction'])
+old_refusal_capsule = pinload(prior_refusal['capsule'])
+old_refusal_full = pinload(prior_refusal['full_proof'])
+check('genuine_prior_refusal_full_proof_and_capsule_match', old_refusal_capsule['reviewer'] == REVIEWER and old_refusal_full['reviewer'] == REVIEWER and old_refusal_capsule['full_proof'] == prior_refusal['full_proof'] and old_refusal_full['checks_failed'] == 1 and old_refusal_capsule['verdict'].startswith('REFUSE_'))
+raw = read(protocol['prior_Source']['path'],protocol['prior_Source'])
+tree = ast.parse(raw)
+funcs = functions(tree)
+constants = literal_assignments(tree)
+api = pinload(protocol['prior_API'])
+check('old_Source_API_closed_reference_and_current_editor',api['Source'] == protocol['prior_Source'] and api['author'] == constants['EDITOR'] and api['actual_binding_Source_editor'] == constants['BINDING_SOURCE_EDITOR'])
+check('old_Source_has_literal_false_external_ABI_hold',constants['EXTERNAL_CANONICAL_RECEIPT_ABI_QUALIFIED'] is False and api['external_canonical_receipt_ABI_qualified'] is False)
+selection = pinload(protocol['current_selection'])
+old_rows = {row['role']:row for row in selection['rows']}
+phase_roles = list(constants['TEMPLATE_ROLES'][1:])+list(constants['PHASE_BOUND_ROLES'])
+check('exact_eight_phase_roles_no_duplicate',len(phase_roles) == 8 and len(set(phase_roles)) == 8)
+check('actual_old_selection_has45_unique_roles_and_exact_composer',len(selection['rows']) == len(old_rows) == 45 and old_rows['composer']['must_change_Source_bytes'] is False)
+expected_rows = [dict(role=role,previous_canonical_path=old_rows[role]['canonical_path'],previous_ordinal=old_rows[role]['selected_ordinal']) for role in phase_roles]
+check('protocol_eight_predecessor_rows_exact_actual_selection_order_and_values',protocol['actual_eight_phase_predecessor_rows'] == expected_rows)
+check('old_selection_constant_exact_protocol_pin',constants['CURRENT_ROOT_SELECTION'] == protocol['current_selection'])
+source = raw.decode()
+selection_source = ast.get_source_segment(source,funcs['validate_selection'])
+old_branch = """        if row['role'] in set(TEMPLATE_ROLES[1:])|set(PHASE_BOUND_ROLES):
+            suffix = re.fullmatch(r'.*_(\\d{3})\\.ps1',canonical.name)
+            need(row['selected_ordinal'] > 18 and suffix is not None
+                and int(suffix[1]) == row['selected_ordinal'],
+                'eight true new phase TEMPLATE/BOUND Source ordinals beyond018; no wrong-family oldphase promotion')"""
+check('old_I2_phase_branch_exact_incompatible_generic_terminal_regex',source.count(old_branch) == 1)
+i8_raw = read(protocol['accepted_I8_Source']['path'],protocol['accepted_I8_Source'])
+i8_text = i8_raw.decode()
+check('accepted_I8_uses_exact_three_digit_not_followed_by_digit_pattern',"re.finditer(r'[0-9]{3}(?![0-9])',old_leaf)" in i8_text)
+check('accepted_I8_requires_unique_previous_ordinal_and_padded3_exact_substitution',"int(m.group()) == previous" in i8_text and "_i8_need(len(matches) == 1,'E_SELECTION_BASENAME')" in i8_text and "expected_leaf = old_leaf[:match.start()]+str(ordinal).zfill(3)+old_leaf[match.end():]" in i8_text)
+check('accepted_I8_phase_role_suffix_and_exact_leaf_equality',"phase_suffix = '.TEMPLATE.ps1' if role.endswith('_template') else '.BOUND.ps1'" in i8_text and 'expected_leaf.endswith(phase_suffix)' in i8_text)
+substitution_evidence = []
+for row in expected_rows:
+    role = row['role']
+    leaf = PureWindowsPath(row['previous_canonical_path']).name
+    matches = [m for m in re.finditer(r'[0-9]{3}(?![0-9])',leaf) if int(m.group()) == row['previous_ordinal']]
+    check(role+'_actual_previous_ordinal18_strict_int',type(row['previous_ordinal']) is int and row['previous_ordinal'] == 18)
+    check(role+'_actual_old_ordinal_token_unique',len(matches) == 1)
+    suffix = '.TEMPLATE.ps1' if role.endswith('_template') else '.BOUND.ps1'
+    check(role+'_actual_old_leaf_has_expected_case_sensitive_suffix',leaf.endswith(suffix))
+    derived = []
+    for ordinal in (19,999):
+        m = matches[0]
+        expected = leaf[:m.start()]+str(ordinal).zfill(3)+leaf[m.end():]
+        check(role+'_derived_%03d_exact_inherited_leaf_rejected_by_old_I2_regex'%ordinal,re.fullmatch(r'.*_(\d{3})\.ps1',expected) is None)
+        check(role+'_derived_%03d_preserves_whole_complement_and_suffix'%ordinal,expected.endswith(suffix) and expected[:m.start()] == leaf[:m.start()] and expected[m.start()+3:] == leaf[m.end():])
+        derived.append(dict(ordinal=ordinal,leaf=expected))
+    substitution_evidence.append(dict(row,previous_leaf=leaf,derived=derived))
+correction = pinload(protocol['accepted_I8_phase_correction'])
+check('accepted_I8_correction_keeps_old_I2_unchanged_and_unrun', 'Unchanged and unrun' in correction['old_I2_and_all_other_existing_helpers'] and correction['target_execution'] is False)
+edits = protocol['finite_allowed_Source_edits']
+check('protocol_only_finite_source_route_new_predicate_and_phase_branch_edits',len(edits) == 7 and any('replace only the existing eight-phase suffix-regex branch body' in row for row in edits) and any('All other existing functions whole Source byte exact' in row for row in edits))
+check('protocol_preserves_fixed_anchors_and_external_ABI_false_guard',any('retain every fixed I0/I1/design/Source/provenance pin' in row for row in edits) and any('canonical_dependency literal false ABI flag and all seven-link predicates' in row for row in edits) and any('external_canonical_receipt_ABI_qualified remains false' in row for row in edits))
+check('protocol_new_pure_predicate_exact_role_leaf_types_and_strict_ordinal_bounds',any('require_phase_successor_basename(role, canonical_leaf, previous_leaf, previous_ordinal, selected_ordinal)' in row and 'strict type int excludes bool' in row and 'previous < selected <1000 and selected>18' in row for row in edits))
+check('protocol_requires_single_exact_reconstruction_no_normalization',any('exactly one matching previous ordinal' in row and 'canonical_leaf exact equality' in row and 'normalize strings' in row for row in edits))
+check('protocol_invokes_new_predicate_with_actual_authenticated_old_row_values',any('Path(old_rows[role].canonical_path).name' in row and 'old_rows[role].selected_ordinal' in row for row in edits))
+check('protocol_retains_full_original_Source_API_inverse_and_no_existing_mutation',any('complete original Source/API bytes in full inverse' in row and 'No existing files edited' in row for row in edits))
+check('protocol_caps_preserve_original_values',protocol['preserved_caps'] == dict(RAM_floor=1073741824,ages=90,context_runtime=600,disk_floor=10737418240,lease_admission=1200,lease_retained=3600,metadata_Source=2097152,model_export=131072,phase_Source=65536,publication_reserve_seconds=60,resource_age=60))
+test = protocol['test_contract']
+check('test_kernel_exact_two_defs_and_two_literal_tuples',test['AST_kernel_definitions'] == ['need','require_phase_successor_basename'] and test['AST_kernel_constants'] == ['TEMPLATE_ROLES','PHASE_BOUND_ROLES'])
+check('test_fixture_exact_run_cases_unique_named_boolean_rows',test['fixture_function'] == 'run_cases' and 'names unique and match literal CASE_NAMES tuple' in test['return_shape'])
+check('test_plan_exact_real_eight19_999_positive_and_mutation_negative',any('All8 authentic inherited predecessor names' in row and 'ordinal019 and999' in row for row in test['tests']) and any('wrong phase prefix' in row and 'duplicate/missing old ordinal token' in row for row in test['tests']))
+check('test_plan_strict_bounds_roles_types',any('18/19/999/1000' in row and 'bool/float/string/null' in row and 'wrong-role suffix' in row for row in test['tests']))
+execution = test['execution']
+check('test_execution_excludes_full_I2_and_every_old_target',all(term in execution for term in ('No full I2 import','validate_selection','renderer','I0/I1 or old fixtures','two named exact successor AST defs')))
+check('test_execution_requires_fresh_consumed_scope_and_prelaunch_review',all(term in execution for term in ('fresh consumed Root scope','final Source/runner/fixture review and adoption','Owned child60s, cleanup5s','output2MiB')))
+check('test_execution_deny_IO_bounded_code_counter_and_saved_only_review',all(term in execution for term in ('bounded exact-code callback counter','deny all file/network/process/native activity after pinned reads','independently review saved result, no rerun')))
+check('qualification_does_not_advertise_whole_producer_caller_native_readiness',all(term in protocol['qualification'] for term in ('narrow phase basename predicate','Whole I2 producer execution','external canonical receipt ABI','I1 lease entry','caller composition','remain held')) and protocol['actual_new_lease_family_source_native_parser_grants'] is None)
+check('publication_retains_all_prior_evidence_and75_spent',all(term in protocol['publication'] for term in ('all533 I9 files','608 historical bytes','342 I6-I8','8 sentinels','36 Sources/9 pending','75 spent')))
+read(HERE/'review_I10_exact_I2_phase_protocol_002.py')
+read(Path(__file__))
+self_pin = INPUTS[str(Path(__file__))]
+for name,pin in list(INPUTS.items()):
+    assert fact(Path(name),Path(name).read_bytes()) == pin
+check('all_actual_read_input_files_final_rehash_match',True)
+failures = [row for row in CHECKS if not row['passed']]
+assert not failures, failures
+common = dict(schema_version=1,reviewer=REVIEWER,source_editor=protocol['source_author'],
+    author=REVIEWER,created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+    verdict='PASS_I10_EXACT_I2_PHASE_BASENAME_PROTOCOL002_AND_ACTUAL_EDITOR_CLARIFICATION',
+    subjects=[protocol_pin,clarifier_pin],checks_passed=len(CHECKS),checks_failed=0,
+    reviewer_Source=self_pin,target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False)
+full = save('INDEPENDENT_I10_EXACT_I2_PHASE_PROTOCOL_FULL_PROOF_002.json',dict(common,
+    record_type='Independent_I10_exact_I2_phase_protocol_Source_only_full_proof',checks=CHECKS,
+    inputs=sorted(INPUTS.values(),key=lambda pin:pin['path']),actual_eight_row_reconstruction_evidence=substitution_evidence,
+    protected_existing_function_names=sorted(funcs),old_phase_branch_Source=old_branch,
+    reviewer_preparation_note='Prior own reviewer Source002 performed metadata-only review then stopped on a case-sensitive lowercase preserv substring oracle despite actual clarifier saying Preserve. No proof output or target execution occurred. Source003 corrects only that own text-oracle case handling and includes preserved Source002 input pin.',
+    boundary='Own stdlib Source/JSON/AST/hash observations only. Reconstructed future leaf strings are synthetic metadata, not selected paths or generated project Source. No old/new target import/function/test/main/Git/native invocation. Actual implementation is not yet authored/reviewed by this proof.'))
+capsule = save('INDEPENDENT_I10_EXACT_I2_PHASE_PROTOCOL_SOURCE_CAPSULE_002.json',dict(common,
+    record_type='Independent_I10_exact_I2_phase_protocol_Source_only_capsule',full_proof=full,input_count=len(INPUTS)))
+print(json.dumps(dict(capsule=capsule,full_proof=full,reviewer_Source=self_pin,
+    verdict=common['verdict'],checks_passed=len(CHECKS),checks_failed=0,input_count=len(INPUTS)),sort_keys=True))
