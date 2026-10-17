@@ -1,3 +1,7 @@
+**Documentation and handoff refresh completed - October 17, 2026.** The refresh was committed and pushed as `1785a06a3b1d136bcb66bb895d350ffab699b540`, with local/remote parity and exact committed-file verification. Preparatory wording below is retained dated history and is closed by this completed publication. I10 implementation remains `75acc51`; I9 remains `471105e`. Continue with I2 external canonical receipt ABI qualification and producer/caller integration; actual family publication, Native8, Parser, runtime and science remain held. Git history records subsequent documentation changes. All complete prior document bytes remain below.
+
+---
+
 # Current handoff - October 17, 2026
 
 Resume from this handoff and the current guidance at the top of [CONTINUE.md](CONTINUE.md) and [AGENTS.md](AGENTS.md). The older instructions below their dated separators remain complete historical evidence. STEP080 is the last completed frozen checkpoint; no STEP081 is declared. Later Source work has 36/45 paths with nine pending, while frozen STEP080 retains 35/45 with ten pending.
