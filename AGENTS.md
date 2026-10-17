@@ -1,3 +1,7 @@
+**October17 I10 inherited M3 phase naming qualified.** The [phase basename checkpoint](docs/development/native-producer-qualification/20261017-i10/I10_PHASE_BASENAME_QUALIFICATION.md) records134 passing pure AST kernel cases and the reviewed I2 Source successor. Whole producer/caller integration and the external canonical receipt ABI remain held; Native8, Parser, runtime and science remain unqualified. The I1 expiry hypothesis was refused; I1 is unchanged. Source remains36/45 and frozen STEP08035/45. All prior guidance is preserved below.
+
+---
+
 **October17 I9 recorded M3 semantics tested.** The [M3 semantic checkpoint](docs/development/native-m3-prewrite/20261017-i9/I9_RECORDED_M3_SEMANTICS.md) records pure receipt/facts, whole render, inverse and diff validation for all five stages with synthetic memory evidence. I8 remains the separate required owner/lease/purpose layer; actual producer/caller/IO qualification and real publication remain held. Source remains36/45 and frozen STEP08035/45. All prior guidance is preserved below.
 
 ---

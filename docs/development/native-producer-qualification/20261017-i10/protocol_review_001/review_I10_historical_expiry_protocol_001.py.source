@@ -1,0 +1,184 @@
+"""Independent Source-only protocol review; project Sources remain inert data."""
+import ast
+import datetime as dt
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+
+HERE = Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\producer_caller_qualification_013\protocol_review_001')
+P = HERE.parent
+REVIEWER = '/root/i10_producer_frontier'
+CAP = 2097152
+INPUTS = {}
+CHECKS = []
+
+def check(name, value):
+    assert type(name) is str and name and all(c['name'] != name for c in CHECKS)
+    assert type(value) is bool
+    CHECKS.append(dict(name=name, passed=value))
+
+def fact(path, raw):
+    return dict(path=str(path), bytes=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+
+def read(path, expected=None):
+    path = Path(path)
+    assert path.is_file() and not path.is_symlink() and path.stat().st_size <= CAP
+    with path.open('rb') as h:
+        raw = h.read(CAP+1)
+    assert len(raw) <= CAP
+    f = fact(path, raw)
+    if expected is not None:
+        assert f == expected
+    assert str(path) not in INPUTS or INPUTS[str(path)] == f
+    INPUTS[str(path)] = f
+    return raw
+
+def pairs(rows):
+    out = {}
+    for k, v in rows:
+        assert k not in out
+        out[k] = v
+    return out
+
+def load(raw):
+    return json.loads(raw.decode('utf-8'), object_pairs_hook=pairs,
+        parse_float=lambda _: (_ for _ in ()).throw(ValueError('float')),
+        parse_constant=lambda _: (_ for _ in ()).throw(ValueError('constant')))
+
+def pinload(pin):
+    assert type(pin) is dict and set(pin) == {'path', 'bytes', 'sha256'}
+    return load(read(pin['path'], pin))
+
+def closed_pins(value):
+    if type(value) is dict:
+        if set(value) == {'path', 'bytes', 'sha256'}:
+            yield value
+        else:
+            for item in value.values():
+                yield from closed_pins(item)
+    elif type(value) is list:
+        for item in value:
+            yield from closed_pins(item)
+
+def functions(tree):
+    return {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+
+def literals(tree):
+    out = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            try:
+                out[node.targets[0].id] = ast.literal_eval(node.value)
+            except (ValueError, TypeError):
+                pass
+    return out
+
+def save(name, obj):
+    raw = (json.dumps(obj, indent=2, sort_keys=True, allow_nan=False)+'\n').encode()
+    assert len(raw) <= CAP
+    path = HERE/name
+    with path.open('xb') as h:
+        h.write(raw)
+        h.flush()
+        os.fsync(h.fileno())
+    assert path.read_bytes() == raw
+    return fact(path, raw)
+
+protocol_path = P/'ROOT_I10_EXACT_I1_HISTORICAL_EXPIRY_SUCCESSOR_PROTOCOL_001.json'
+protocol = load(read(protocol_path, dict(path=str(protocol_path), bytes=8024,
+    sha256='6537231d2fa1f56a9732bd956a0233ef4179adb036a094e8367077429be9c4a1')))
+protocol_pin = INPUTS[str(protocol_path)]
+for pin in closed_pins(protocol):
+    read(pin['path'], pin)
+scope = pinload(protocol['source_scope'])
+start = pinload(protocol['actual_start_preservation'])
+for record in (scope, start):
+    for pin in closed_pins(record):
+        read(pin['path'], pin)
+check('protocol_author_is_Root_and_actual_editor_is_distinct_from_reviewer', protocol['author'] == '/root' and protocol['source_author'] == '/root/i10_caller_frontier' and REVIEWER not in (protocol['author'], protocol['source_author']))
+for record_name, record in [('protocol',protocol),('scope',scope),('start_preservation',start)]:
+    for key in ('target_execution','tests_executed','operational_authority','scientific_authority'):
+        check(record_name+'_'+key+'_false', record[key] is False)
+check('scope_user_override_pro3_not_required', scope['Pro3_coordination_required'] is False and 'no need to keep workin with pro3' in scope['standing_resource_policy'])
+check('scope_agent_limits_local3_shared5_and_reserve60', (scope['maximum_local_agents_including_Root'],scope['maximum_shared_including_both_roots_and_overlap'],scope['publication_reserve_seconds']) == (3,5,60))
+check('scope_old_targets_and_actual_family_publication_held', scope['old_I0_through_I9_changes_or_invocations_authorized'] is False and scope['actual_selected_family_Source_publication_authorized'] is False)
+check('scope_new_target_requires_exact_protocol_review', scope['new_target_Source_authoring_requires_reviewed_exact_protocol'] is True and scope['new_target_import_call_test_before_Source_adoption_and_fresh_scope_authorized'] is False)
+check('scope_is_not_execution_or_owner_lease', scope['window_is_Source_scheduling_only_not_owner_or_execution_lease'] is True)
+check('scope_inventory36_pending9_frozen35_pending10', (scope['current_dated_Source_present'],scope['current_dated_pending'],scope['frozen_STEP080_present'],scope['frozen_STEP080_pending']) == (36,9,35,10))
+now = dt.datetime.now(dt.timezone.utc)
+check('actual_protocol_creation_inside_current_Source_interval_with_reserve', dt.datetime.fromisoformat(scope['interval_start']) <= dt.datetime.fromisoformat(protocol['created_utc']) <= now and now+dt.timedelta(seconds=60) < dt.datetime.fromisoformat(scope['interval_end']))
+for key in ('all533_I9_managed_files_exact','all3_complete_navigation_suffixes_exact','all608_historical_file_bytes_exact','all342_prior_non_navigation_exact','all8_frozen_STEP080_sentinels_exact','all36_original_Source_bytes_exact','all9_pending_paths_absent'):
+    check('saved_start_records_'+key, start[key] is True)
+check('saved_start_Git_metadata_base_and_empty_index', start['git_metadata'] == dict(HEAD=scope['managed_base_HEAD'],branch='refs/heads/main',index='',origin_main=scope['managed_base_HEAD']))
+final = pinload(scope['accepted_I9_final_outcome'])
+check('saved_I9_final_matches_start_and_SCOPE_base', final['HEAD'] == scope['managed_base_HEAD'] and final['normal_fast_forward_push_completed'] is True and final['local_remote_parity'] is True and start['accepted_I9_final_outcome'] == scope['accepted_I9_final_outcome'])
+old_raw = read(protocol['prior_I1_Source']['path'], protocol['prior_I1_Source'])
+anchor_raw = read(protocol['anchor_Source']['path'], protocol['anchor_Source'])
+old_tree = ast.parse(old_raw)
+anchor_tree = ast.parse(anchor_raw)
+old_functions, anchor_functions = functions(old_tree), functions(anchor_tree)
+constants = literals(old_tree)
+check('I1_OLD_LEASES_whole_literal_equals_protocol_four_pins', constants['OLD_LEASES'] == protocol['immutable_historical_leases'] and len(constants['OLD_LEASES']) == 4)
+moment = old_functions['moment']
+moment_regexes = [n.args[0].value for n in ast.walk(moment) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == 'fullmatch' and n.args and isinstance(n.args[0], ast.Constant)]
+assert len(moment_regexes) == 1
+moment_pattern = moment_regexes[0]
+check('I1_moment_is_exact_strict_UTC_plus00_regex', moment_pattern == r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{6,7}))?\+00:00')
+decision_text = ast.get_source_segment(old_raw.decode(), old_functions['decision_and_support'])
+old_predicate = "all(moment(value['lease_end_utc']) < current_ticks() for value in old)"
+check('I1_historical_expiry_has_one_exact_strict_predicate', decision_text.count(old_predicate) == 1)
+lease_shapes = []
+for ordinal, pin in enumerate(protocol['immutable_historical_leases'], 7):
+    lease = pinload(pin)
+    text = lease['lease_end_utc']
+    matches = re.fullmatch(moment_pattern, text) is not None
+    check('actual_immutable_lease_%03d_expiry_matches_existing_I1_moment_shape'%ordinal, matches)
+    check('actual_immutable_lease_%03d_new_or_operational_grant_false'%ordinal, lease['operational_authority'] is False and lease['lease_is_owner_deadline'] is False)
+    lease_shapes.append(dict(ordinal=ordinal,pin=pin,expiry=text,existing_moment_regex_accepts=matches))
+check('required_actual_expiry_offset_defect_exists_in_declared_immutable_inputs', any(not row['existing_moment_regex_accepts'] for row in lease_shapes))
+anchor_text = ast.get_source_segment(anchor_raw.decode(), anchor_functions['_anchor_ticks'])
+anchor_calls = sorted(set(n.func.id for n in ast.walk(anchor_functions['_anchor_ticks']) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)))
+check('complete_I2_anchor_is_available_as_one_pure_AST_definition', anchor_calls == ['int','need','type'] and '10000000' in anchor_text and "hours <= 23 and minutes <= 59" in anchor_text and 'offset' in anchor_text)
+check('protocol_verbatim_anchor_and_single_callsite_only', 'complete exact I2 _anchor_ticks' in protocol['correction'] and 'replace ONLY' in protocol['correction'] and 'Do not change moment()' in protocol['correction'] and 'All other historical review/adoption timestamp callsites remain unchanged and unqualified' in protocol['correction'])
+check('protocol_preserves_all_other_existing_Python_functions', 'Every pre-existing Python function whole Source exact except decision_and_support' in protocol['preserved_functions'])
+check('protocol_native_two_literal_path_only_delta', 'All native entry bytes exact except two path literals' in protocol['preserved_functions'] and any('only replace ExpectedEntry and Tool literal paths' in row for row in protocol['finite_allowed_source_edits']))
+native = read(protocol['prior_native_entry']['path'], protocol['prior_native_entry']).decode()
+check('original_native_preflight_precedes_time_and_author_call', native.index('--mode preflight') < native.index('[DateTimeOffset]::UtcNow') < native.index('--mode author'))
+check('original_native_UTC_roundtrip_pair_and_duration_retained', "$Format = 'o'" in native and '$NativeEnd = $NativeCreated.AddTicks($Duration * [long]10000000)' in native and '$Duration -gt 43200' in native)
+check('protocol_caps_all_original_values', protocol['actual_cap_boundaries'] == dict(admission_reserve_seconds=1200,lease_body=65536,maximum_lease_seconds=43200,metadata_Source=2097152,model_export=131072,phase_Source=65536,publication_reserve_seconds=60))
+synthetic = protocol['synthetic_qualification']
+check('synthetic_only_three_pure_AST_definitions', synthetic['allowed_kernel_AST_definitions'] == ['need','moment','_anchor_ticks'] and synthetic['full_new_I1_module_import_or_main_author_publish_preflight'] is False)
+check('synthetic_separate_Source_review_and_Root_scope_required', synthetic['new_fixture_Source_only_until_separate_review_and_Root_adoption'] is True and any('fresh one-use' in row and 'consumed before owned launch' in row for row in synthetic['fixture_runner_requirements']))
+check('synthetic_deny_IO_audit_bounded_owned_launch_no_retry', any('audit denies filesystem/network/process/native' in row for row in synthetic['fixture_runner_requirements']) and any('at most60 seconds' in row and 'cleanup5 seconds' in row and 'no retry' in row for row in synthetic['fixture_runner_requirements']))
+check('synthetic_independent_saved_result_review_no_rerun', any('Independently review actual saved result; no rerun' in row for row in synthetic['fixture_runner_requirements']))
+check('synthetic_plan_offset_boundary_bad_inputs_strict_current_moment', len(synthetic['cases']) == 6 and any('one tick after' in row for row in synthetic['cases']) and any('offset hour24/minute60' in row for row in synthetic['cases']) and any('moment remains strict +00:00 only' in row for row in synthetic['cases']))
+check('limited_qualification_excludes_clock_lease_I2_IO_native_parser_runtime_science', len(protocol['outside_this_slice']) == 4 and protocol['all_actual_lease_family_native_parser_grants'] is None)
+interpretation = pinload(protocol['accepted_historical_interpretation'])
+check('I8_accepted_interpretation_is_static_finding_not_actual_I1_run', 'Static planning found' in interpretation['qualification_findings'] and 'unchanged and unrun' in interpretation['qualification_findings'] and interpretation['target_execution'] is False)
+self_raw = read(Path(__file__))
+self_pin = INPUTS[str(Path(__file__))]
+for key, pin in list(INPUTS.items()):
+    assert fact(Path(key), Path(key).read_bytes()) == pin
+check('final_all_actual_read_inputs_rehashed_unchanged', True)
+failures = [row['name'] for row in CHECKS if not row['passed']]
+assert failures == ['required_actual_expiry_offset_defect_exists_in_declared_immutable_inputs']
+verdict = 'REFUSE_I10_PROTOCOL001_NO_ACTUAL_HISTORICAL_EXPIRY_OFFSET_DEFECT_IN_DECLARED_INPUTS'
+common = dict(schema_version=1, reviewer=REVIEWER, source_editor=protocol['source_author'],
+    author='/root', created_utc=dt.datetime.now(dt.timezone.utc).isoformat(), verdict=verdict,
+    subjects=[protocol_pin], checks_passed=sum(row['passed'] for row in CHECKS), checks_failed=len(failures),
+    target_execution=False, tests_executed=False, operational_authority=False,scientific_authority=False,
+    reviewer_Source=self_pin)
+finding = 'All four exact immutable lease expiry strings already match the unchanged I1 moment +00:00/6-or-7-fraction predicate. The proposed expiry callsite does not reproduce the historical +03 offset incompatibility. A different actual timestamp consumer must be identified and reviewed, or this must be explicitly respecified as optional future format broadening without claiming an actual expiry repair. No implementation authority is supplied by this refusal.'
+full = save('INDEPENDENT_I10_HISTORICAL_EXPIRY_PROTOCOL_FULL_PROOF_001.json', dict(common,
+    record_type='Independent_I10_Source_only_historical_expiry_protocol_full_proof', checks=CHECKS,
+    inputs=sorted(INPUTS.values(),key=lambda f:f['path']), actual_immutable_expiry_shapes=lease_shapes,
+    actual_I1_moment_AST=ast.dump(moment,include_attributes=False), actual_I2_anchor_complete_Source=anchor_text,
+    actual_I1_expiry_predicate=old_predicate, findings=[finding],
+    preservation_boundary='Saved Root start receipt and its script/input pins reviewed as data. Reviewer did not rerun Git or replay the Root preservation tool; no new global filesystem/custody/runtime qualification is inferred.'))
+capsule = save('INDEPENDENT_I10_HISTORICAL_EXPIRY_PROTOCOL_SOURCE_CAPSULE_001.json', dict(common,
+    record_type='Independent_I10_Source_only_historical_expiry_protocol_capsule', full_proof=full,
+    input_count=len(INPUTS), failed_checks=failures, finding=finding))
+print(json.dumps(dict(capsule=capsule,full_proof=full,reviewer_Source=self_pin,verdict=verdict,
+    checks_passed=common['checks_passed'],checks_failed=common['checks_failed'],input_count=len(INPUTS)),sort_keys=True))

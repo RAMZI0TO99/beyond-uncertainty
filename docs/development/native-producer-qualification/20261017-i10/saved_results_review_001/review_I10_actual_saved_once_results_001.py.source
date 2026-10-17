@@ -1,0 +1,243 @@
+"""Independent review of saved once-only outcomes; no suite/target/tool replay."""
+import ast
+import datetime as dt
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+
+HERE = Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\producer_caller_qualification_013\saved_results_review_001')
+P = HERE.parent
+REVIEWER = '/root/i10_producer_frontier'
+CAP = 2097152
+INPUTS, CHECKS = {}, []
+
+def check(name,passed):
+    assert type(name) is str and name and all(row['name'] != name for row in CHECKS)
+    assert type(passed) is bool
+    CHECKS.append(dict(name=name,passed=passed))
+
+def fact(path,raw):
+    return dict(path=str(path),bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+
+def read(path,expected=None):
+    path = Path(path)
+    assert path.is_file() and not path.is_symlink() and path.stat().st_size <= CAP
+    with path.open('rb') as h:
+        raw = h.read(CAP+1)
+    assert len(raw) <= CAP
+    f = fact(path,raw)
+    if expected is not None:
+        assert f == expected,(f,expected)
+    assert str(path) not in INPUTS or INPUTS[str(path)] == f
+    INPUTS[str(path)] = f
+    return raw
+
+def pairs(rows):
+    out = {}
+    for name,value in rows:
+        assert name not in out
+        out[name] = value
+    return out
+
+def load(raw):
+    return json.loads(raw.decode('utf-8'),object_pairs_hook=pairs,
+        parse_constant=lambda _: (_ for _ in ()).throw(ValueError('nonfinite')))
+
+def closed_pins(value):
+    if type(value) is dict:
+        if set(value) == {'path','bytes','sha256'}:
+            yield value
+        else:
+            for item in value.values():
+                yield from closed_pins(item)
+    elif type(value) is list:
+        for item in value:
+            yield from closed_pins(item)
+
+def read_record(path,expected=None):
+    obj = load(read(path,expected))
+    for pin in closed_pins(obj):
+        read(pin['path'],pin)
+    return obj
+
+def pinned_record(name,size,digest):
+    path = P/name
+    f = dict(path=str(path),bytes=size,sha256=digest)
+    return f,read_record(path,f)
+
+def stamp(value):
+    assert type(value) is str
+    t = dt.datetime.fromisoformat(value)
+    assert t.tzinfo == dt.timezone.utc
+    return t
+
+def assignments(tree):
+    out = {}
+    for node in tree.body:
+        if isinstance(node,ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0],ast.Name):
+            try:
+                out[node.targets[0].id] = ast.literal_eval(node.value)
+            except (ValueError,TypeError):
+                pass
+    return out
+
+def save(name,obj):
+    raw = (json.dumps(obj,indent=2,sort_keys=True,allow_nan=False)+'\n').encode()
+    assert len(raw) <= CAP
+    path = HERE/name
+    with path.open('xb') as h:
+        h.write(raw)
+        h.flush()
+        os.fsync(h.fileno())
+    assert path.read_bytes() == raw
+    return fact(path,raw)
+
+scope_pin,scope = pinned_record('ROOT_I10_ONCE_PURE_KERNEL_SCOPE_001.json',2257,'4fbbb4a3f2f9d0bc768b212d8d6152518c4aecf555fda551c9b7ba543ad9504a')
+adoption_pin,adoption = pinned_record('ROOT_I10_SOURCE_DIFFERENT_REVIEW_ADOPTION_001.json',4452,'19ba9613f061fa68178c45d52d3b6ae793123201fa3babd73e5d42d6308e3dec')
+super_pin,supervisor = pinned_record('ROOT_I10_ACTUAL_PURE_KERNEL_SUPERVISOR_RESULT_001.json',2584,'d37b6db952230ca2ae1535d50657fbf2be3cec55c0530a0eb0cdb0571707fba3')
+child_pin,child = pinned_record('ROOT_I10_ACTUAL_PURE_KERNEL_CHILD_RESULT_001.json',11358,'33e11eaf8da79f5258179904143a44d16ef22864d7027bdc60693608d1d0cc53')
+claim = read_record(P/'ROOT_I10_ONCE_KERNEL_CLAIM_001.json')
+entry = read_record(P/'ROOT_I10_ONCE_KERNEL_CHILD_ENTRY_001.json')
+current_scope = read_record(scope['source_scope']['path'],scope['source_scope'])
+protocol = read_record(P/'ROOT_I10_EXACT_I2_PHASE_BASENAME_SUCCESSOR_PROTOCOL_002.json')
+clarifier = read_record(P/'ROOT_I10_PROTOCOL002_ACTUAL_SOURCE_EDITOR_BINDING_CLARIFICATION_001.json')
+refusal = read_record(P/'ROOT_I10_PROTOCOL001_REFUSAL_AND_FACTUAL_CORRECTION_ADOPTION_001.json')
+control_history = read_record(P/'ROOT_I10_UNRUN_CONTROL_SOURCE_CORRECTION_HISTORY_001.json')
+source_capsule = read_record(adoption['capsule']['path'],adoption['capsule'])
+source_full = read_record(adoption['full_proof']['path'],adoption['full_proof'])
+api = read_record(P/'i2/CURRENT_OWNER_M3_DEFERRED_METADATA_INERT_API_003.json')
+author_receipt = read_record(P/'i2/CURRENT_OWNER_M3_PHASE_BASENAME_SOURCE_AUTHOR_RECEIPT_003.json')
+prior_refusal_capsule = read_record(refusal['capsule']['path'],refusal['capsule'])
+prior_refusal_full = read_record(refusal['full_proof']['path'],refusal['full_proof'])
+runner = read(scope['supervisor']['path'],scope['supervisor']).decode()
+fixture_raw = read(scope['fixture']['path'],scope['fixture'])
+source_raw = read(scope['Source']['path'],scope['Source'])
+fixture_values = assignments(ast.parse(fixture_raw))
+source_values = assignments(ast.parse(source_raw))
+stdout = read(supervisor['stdout']['path'],supervisor['stdout'])
+stderr = read(supervisor['stderr']['path'],supervisor['stderr'])
+check('actual_supervisor_and_child_pin_join',supervisor['child_result'] == child_pin)
+check('all_scope_pins_identical_across_child_supervisor_claim_entry',all(obj['scope'] == scope_pin for obj in (supervisor,child,claim,entry)))
+check('oneuse_scope_pins_actual_source_fixture_runner_and_reviewed_subjects',scope['Source_review_adoption'] == adoption_pin and all(scope[key] in adoption['subjects'] for key in ('Source','fixture','supervisor')) and child['Source'] == scope['Source'] and child['fixture'] == scope['fixture'])
+check('genuine_Source_review_sourcephase_record_types',source_capsule['record_type'] == 'Independent_I10_SOURCE_Source_only_capsule' and source_full['record_type'] == 'Independent_I10_SOURCE_Source_only_full_proof' and source_capsule['review_phase'] == source_full['review_phase'] == 'SOURCE')
+check('genuine_Source_review657_unique_passes106_inputs',source_capsule['reviewer'] == source_full['reviewer'] == REVIEWER and source_capsule['full_proof'] == adoption['full_proof'] and source_full['checks_failed'] == 0 and len(source_full['checks']) == len({row['name'] for row in source_full['checks']}) == 657 and all(row['passed'] is True for row in source_full['checks']) and len(source_full['inputs']) == 106)
+check('Root_Source_adoption_exact_657checks106inputs_and_false_actual_qualifications',adoption['phase'] == 'SOURCE' and adoption['actual_unique_checks_passed'] == 657 and adoption['actual_input_count'] == 106 and adoption['all_actual_review_inputs_rehashed'] is True and adoption['actual_I2_producer_or_I0_I1_entry_qualified'] is False and adoption['external_canonical_receipt_ABI_qualified'] is False)
+check('Source_review_and_Root_adoption_precede_scope_and_claim',stamp(source_capsule['created_utc']) == stamp(source_full['created_utc']) <= stamp(adoption['created_utc']) <= stamp(scope['created_utc']) <= stamp(claim['claimed_utc']))
+check('fresh_oneuse_scope_exact5minute_interval',stamp(scope['interval_start']) == stamp(scope['created_utc']) and stamp(scope['interval_end'])-stamp(scope['interval_start']) == dt.timedelta(minutes=5) and scope['ordinal'] == 1 and scope['exact_case_count'] == 134)
+check('fresh_scope_ends_before_global_Source_window60reserve',stamp(scope['interval_end'])+dt.timedelta(seconds=60) < stamp(current_scope['interval_end']))
+check('claim_precedes_parent_start_child_entry_result_supervisor',stamp(claim['claimed_utc']) <= stamp(supervisor['started_utc']) <= stamp(entry['entered_utc']) <= stamp(child['created_utc']) <= stamp(supervisor['created_utc']))
+check('claim_launch_child_entry_and_results_all_inside_oneuse_scope',all(stamp(scope['interval_start']) <= stamp(value) < stamp(scope['interval_end']) for value in (claim['claimed_utc'],supervisor['started_utc'],entry['entered_utc'],child['created_utc'],supervisor['created_utc'])))
+check('launch_and_child_entry_leave_actual65second_budget',stamp(supervisor['started_utc'])+dt.timedelta(seconds=65) < stamp(scope['interval_end']) and stamp(entry['entered_utc'])+dt.timedelta(seconds=65) < stamp(scope['interval_end']))
+check('claim_and_entry_are_consumed_and_automatic_retry_false',claim['scope_consumed'] is True and entry['scope_consumed'] is True and claim['automatic_retry_authorized'] is False and supervisor['scope_spent'] is True and supervisor['automatic_retry_authorized'] is False and scope['automatic_retry_authorized'] is False)
+for key,obj in [('claim_parent',claim['parent_PID']),('entry_parent',entry['parent_PID']),('entry_child',entry['child_PID']),('supervisor_child',supervisor['owned_child_PID'])]:
+    check('owned_'+key+'_positive_builtin_PID',type(obj) is int and obj > 0)
+check('saved_owned_parent_child_PID_join',claim['parent_PID'] == entry['parent_PID'] and entry['child_PID'] == supervisor['owned_child_PID'] and entry['parent_PID'] != entry['child_PID'])
+check('actual_exact_isolated_child_argv',supervisor['argv'] == [r'C:\Users\aladdin-alyanai\AppData\Local\Programs\Python\Python313\python.exe','-I','-S','-B',scope['supervisor']['path'],'child',scope_pin['path'],scope_pin['sha256']])
+resource = supervisor['resource_observation']
+check('resource_exact_claim_supervisor_join',resource == claim['resource_observation'])
+check('resource_RAM1GiB_disk10GiB_floors_met',resource['RAM_floor_bytes'] == 1073741824 and resource['available_RAM_bytes'] >= 1073741824 and resource['disk_floor_bytes'] == 10737418240 and resource['disk_free_bytes'] >= 10737418240)
+check('resource_age_at_actual_launch_within60seconds',resource['maximum_age_seconds'] == 60 and dt.timedelta(0) <= stamp(supervisor['started_utc'])-stamp(resource['observed_utc']) <= dt.timedelta(seconds=60))
+check('owned_process_exit0_reaped_drained_no_timeout_or_cleanup_error',supervisor['owned_child_exit_code'] == 0 and supervisor['owned_child_reaped'] is True and supervisor['streams_drained'] is True and supervisor['timed_out'] is False and supervisor['cleanup_error'] is None and supervisor['failure'] is None)
+check('owned60plus5_limits_preserved_in_scope_and_result',scope['timeout_seconds'] == supervisor['timeout_seconds'] == 60 and scope['cleanup_seconds'] == supervisor['cleanup_seconds'] == 5)
+check('child_and_supervisor_wall_times_finite_positive_under60',all(type(value) is float and math.isfinite(value) and 0 < value < 60 for value in (child['wall_seconds'],supervisor['wall_seconds'])) and child['wall_seconds'] <= supervisor['wall_seconds'])
+check('streams_complete_bounded_no_stderr_or_truncation',stderr == b'' and supervisor['stderr_observed_bytes'] == 0 and supervisor['stdout_observed_bytes'] == len(stdout) and len(stdout) <= scope['output_cap'] == CAP and supervisor['streams_overcap'] is False)
+check('stdout_contains_whole_exact_child_result_semantics',load(stdout) == child and stdout.endswith(b'\n'))
+check('actual_suite_entry_known_true_and_one_accepted_complete_run',child['tests_executed'] is True and supervisor['tests_executed'] is True and child['all_cases_passed'] is True and supervisor['all_cases_passed'] is True and child['error'] is None)
+case_names,cases = fixture_values['CASE_NAMES'],fixture_values['CASES']
+check('exact_reviewed_literal134_names_and_case_rows',len(case_names) == len(cases) == len(set(case_names)) == 134 and tuple(row[0] for row in cases) == case_names)
+check('actual_saved_case134_exact_order_and_nonempty',type(child['cases']) is list and len(child['cases']) == child['actual_case_count'] == scope['exact_case_count'] == 134 and tuple(row['name'] for row in child['cases']) == case_names)
+for index,row in enumerate(child['cases'],1):
+    check('actual_case_%03d_%s_exact_named_builtin_true'%(index,row['name']),type(row) is dict and set(row) == {'name','passed'} and type(row['name']) is str and row['passed'] is True)
+phase_roles = source_values['TEMPLATE_ROLES'][1:]+source_values['PHASE_BOUND_ROLES']
+
+def contract_stage_metadata(arguments):
+    role,canonical,previous,old,new = arguments
+    predicates = [type(role) is str and role in phase_roles]
+    if not predicates[-1]:
+        return False,1,0
+    predicates.append(type(canonical) is str and type(previous) is str)
+    if not predicates[-1]:
+        return False,2,1
+    predicates.append(type(old) is int and type(new) is int and 0 < old < new < 1000 and new > 18)
+    if not predicates[-1]:
+        return False,3,2
+    positions = []
+    cursor = 0
+    while cursor < len(previous):
+        if not '0' <= previous[cursor] <= '9':
+            cursor += 1
+            continue
+        end = cursor
+        while end < len(previous) and '0' <= previous[end] <= '9':
+            end += 1
+        if end-cursor >= 3 and int(previous[end-3:end]) == old:
+            positions.append((end-3,end))
+        cursor = end
+    if len(positions) != 1:
+        return False,4,3
+    a,b = positions[0]
+    expected = previous[:a]+format(new,'03d')+previous[b:]
+    suffix = '.TEMPLATE.ps1' if role in source_values['TEMPLATE_ROLES'][1:] else '.BOUND.ps1'
+    if not (canonical == expected and canonical[-len(suffix):] == suffix):
+        return False,5,4
+    return True,5,5
+
+expected_need_calls = expected_CHECKS = expected_positive = 0
+for name,arguments,expected in cases:
+    accepted,need_count,successful_predicates = contract_stage_metadata(arguments)
+    check('saved_expected_oracle_'+name+'_literal_contract_agreement',accepted is expected)
+    expected_need_calls += need_count
+    expected_CHECKS += successful_predicates
+    expected_positive += expected
+check('independent_stage_metadata_expected555need439CHECKS18positives',expected_need_calls == 555 and expected_CHECKS == 439 and expected_positive == 18)
+check('saved_function_coverage_exact134predicate555need',child['kernel_function_calls'] == dict(need=expected_need_calls,require_phase_successor_basename=134))
+check('saved_exact692_code_entries_equals_functions_plus2modules_and_fixture',child['exact_compiled_code_calls'] == expected_need_calls+134+2+1 == 692)
+check('saved_CHECKS439_matches_independently_derived_successful_predicates',child['kernel_CHECKS_count'] == expected_CHECKS == 439)
+check('exact_code_and_CHECKS_counts_below_preserved_limits',child['exact_compiled_code_calls'] < scope['event_cap'] == 1000000 and child['kernel_CHECKS_count'] < scope['kernel_CHECKS_cap'] == 4096)
+check('actual_audit_no_observed_forbidden_events',child['audit_blocked_events'] == [])
+check('actual_only_two_reviewed_AST_kernel_functions_not_full_I2',child['only_two_new_successor_AST_kernel_functions_executed'] is True and child['original_I2_import_call_or_entry'] is False and supervisor['original_I2_import_call_or_entry'] is False and scope['original_I2_full_import_validate_selection_main_IO_or_entry_authorized'] is False)
+check('actual_scope_excludes_all_other_old_invocations',scope['old_I0_I1_I3_through_I9_invocations_authorized'] is False and scope['all75_spent_and_original_guards_preserved'] is True)
+for label,obj in [('scope',scope),('child',child),('supervisor',supervisor)]:
+    for key in ('operational_authority','scientific_authority'):
+        check(label+'_'+key+'_false',obj[key] is False)
+check('immutable_API_and_author_receipt_preserve_dated_unrun_creation_snapshot',api['tests_executed'] is False and author_receipt['tests_executed'] is False and author_receipt['new_pure_kernel_test_runs'] == 0 and stamp(author_receipt['created_utc']) < stamp(scope['created_utc']))
+check('original_I1_expiry_hypothesis_refusal_preserved_and_not_target_test',prior_refusal_capsule['verdict'] == prior_refusal_full['verdict'] and prior_refusal_capsule['verdict'].startswith('REFUSE_') and prior_refusal_full['tests_executed'] is False and refusal['verdict'] == 'ACCEPT_INDEPENDENT_REFUSAL_NO_I1_CHANGE')
+check('unrun_Root_control_Source_corrections_are_not_target_runs',control_history['target_execution'] is False and control_history['tests_executed'] is False and 'unrun' in ' '.join(control_history['findings']).lower())
+check('own_Source_review_preparation_stops_disclosed_without_target_runs','Own reviewer001 stopped before proof birth' in source_full['reviewer_preparation_note'] and source_full['tests_executed'] is False and source_full['target_execution'] is False)
+check('only_one_born_I10_claim_entry_scope_and_actual_suite_result_namespace',len(list(P.glob('ROOT_I10_ONCE_KERNEL_CLAIM_*.json'))) == len(list(P.glob('ROOT_I10_ONCE_KERNEL_CHILD_ENTRY_*.json'))) == len(list(P.glob('ROOT_I10_ONCE_PURE_KERNEL_SCOPE_*.json'))) == len(list(P.glob('ROOT_I10_ACTUAL_PURE_KERNEL_CHILD_RESULT_*.json'))) == len(list(P.glob('ROOT_I10_ACTUAL_PURE_KERNEL_SUPERVISOR_RESULT_*.json'))) == 1)
+check('metadata_qualification_still_false_after_kernel_test',api['external_canonical_receipt_ABI_qualified'] is False and api['I10_narrow_phase_basename_successor']['actual_producer_qualified'] is False and api['I10_narrow_phase_basename_successor']['actual_caller_qualified'] is False and author_receipt['all_actual_new_lease_family_native_Parser_grants'] is None)
+check('current_Source_review_window_still_has60reserve',dt.datetime.now(dt.timezone.utc)+dt.timedelta(seconds=60) < stamp(current_scope['interval_end']))
+read(Path(__file__))
+self_pin = INPUTS[str(Path(__file__))]
+for path,pin in list(INPUTS.items()):
+    assert fact(Path(path),Path(path).read_bytes()) == pin
+check('all_actual_deduplicated_input_files_final_readback_unchanged',True)
+failures = [row['name'] for row in CHECKS if not row['passed']]
+assert not failures,failures
+subjects = [INPUTS[str(P/'ROOT_I10_EXACT_I2_PHASE_BASENAME_SUCCESSOR_PROTOCOL_002.json')],
+    INPUTS[str(P/'ROOT_I10_PROTOCOL002_ACTUAL_SOURCE_EDITOR_BINDING_CLARIFICATION_001.json')],
+    scope_pin,child_pin,super_pin,supervisor['stdout'],supervisor['stderr'],adoption_pin,
+    INPUTS[str(P/'ROOT_I10_ONCE_KERNEL_CLAIM_001.json')],INPUTS[str(P/'ROOT_I10_ONCE_KERNEL_CHILD_ENTRY_001.json')],
+    scope['Source'],scope['fixture'],scope['supervisor']]
+common = dict(schema_version=1,reviewer=REVIEWER,author=REVIEWER,source_editor='/root/i10_caller_frontier',
+    created_utc=dt.datetime.now(dt.timezone.utc).isoformat(),review_phase='RESULTS',
+    verdict='PASS_I10_SAVED_ONCE_PURE_KERNEL134_RESULTS_AND_OWNED_CLEANUP',
+    subjects=subjects,reviewer_Source=self_pin,checks_passed=len(CHECKS),checks_failed=0,
+    target_execution=False,tests_executed=False,operational_authority=False,scientific_authority=False)
+accounting = dict(actual_I10_owned_launches=1,known_I10_kernel_suite_entries=1,
+    failed_I10_kernel_suite_runs=0,unknown_I10_kernel_suite_entries=0,accepted_complete_I10_kernel_suite_runs=1,
+    accepted_case_count=134,scope001_spent=True,automatic_retry_authorized=False,
+    prior_protocol001_hypothesis_refused_without_target_execution=True,
+    Source_authoring_control_and_review_preparation_stops_are_not_kernel_runs=True)
+full = save('INDEPENDENT_I10_ACTUAL_SAVED_RESULTS_FULL_PROOF_001.json',dict(common,
+    record_type='Independent_I10_RESULTS_Source_only_full_proof',checks=CHECKS,
+    inputs=sorted(INPUTS.values(),key=lambda pin:pin['path']),actual_run_accounting=accounting,
+    observed_kernel_calls=child['kernel_function_calls'],observed_exact_code_calls=child['exact_compiled_code_calls'],
+    observed_CHECKS=child['kernel_CHECKS_count'],
+    boundary='Saved records, whole byte pins and Source metadata only; no rerun, import, compile or call of target/fixture/Root tools. Owned PID/time/cleanup evidence is the saved supervised invocation, not whole-host quiet or native process custody. Narrow phase basename kernel qualified; full I2 producer, I1 lease entry, external ABI, caller composition, family publication, Native8, Parser, runtime/science remain held.'))
+capsule = save('INDEPENDENT_I10_ACTUAL_SAVED_RESULTS_SOURCE_CAPSULE_001.json',dict(common,
+    record_type='Independent_I10_RESULTS_Source_only_capsule',full_proof=full,input_count=len(INPUTS),actual_run_accounting=accounting))
+print(json.dumps(dict(capsule=capsule,full_proof=full,reviewer_Source=self_pin,
+    checks_passed=len(CHECKS),checks_failed=0,input_count=len(INPUTS),verdict=common['verdict']),sort_keys=True))

@@ -1,0 +1,133 @@
+"""Reviewed once-only isolated AST-kernel suite supervisor; never imports I2."""
+import ast,builtins,datetime,hashlib,json,os,pathlib,re,subprocess,sys,time,types,ctypes,shutil
+O=pathlib.Path(r'D:\Aenv\pro2\WORK\resume-20261017-001\producer_caller_qualification_013')
+PY=r'C:\Users\aladdin-alyanai\AppData\Local\Programs\Python\Python313\python.exe'
+CAP=2097152
+def read(p):
+ p=pathlib.Path(p);assert p.is_file() and not p.is_symlink() and p.stat().st_size<=CAP
+ with p.open('rb') as h:b=h.read(CAP+1)
+ assert len(b)<=CAP;return b
+def fact(p):
+ b=read(p);return dict(path=str(p),bytes=len(b),sha256=hashlib.sha256(b).hexdigest())
+def pin(f):
+ assert type(f) is dict and set(f)=={'path','bytes','sha256'} and fact(f['path'])==f
+ return read(f['path'])
+def save(name,x):
+ b=(json.dumps(x,indent=2,sort_keys=True,allow_nan=False)+'\n').encode();assert len(b)<=CAP
+ with (O/name).open('xb') as h:h.write(b);h.flush();os.fsync(h.fileno())
+ return fact(O/name)
+def now():return datetime.datetime.now(datetime.timezone.utc).isoformat()
+assert len(sys.argv)==4 and sys.argv[1] in ('parent','child')
+mode,scope_path,scope_hash=sys.argv[1:]
+sf=fact(scope_path);assert sf['sha256']==scope_hash
+s=json.loads(pin(sf));assert s['record_type']=='Root_I10_one_use_pure_AST_kernel_scope' and s['ordinal']==1
+assert s['supervisor']==fact(pathlib.Path(__file__))
+assert sys.flags.isolated==1 and sys.flags.no_site==1 and sys.dont_write_bytecode and sys.executable==PY
+assert datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=65)<datetime.datetime.fromisoformat(s['interval_end'])
+ad=json.loads(pin(s['Source_review_adoption']));assert ad['phase']=='SOURCE' and ad['all_actual_review_inputs_rehashed'] is True
+assert s['Source'] in ad['subjects'] and s['fixture'] in ad['subjects'] and s['supervisor'] in ad['subjects']
+claim='ROOT_I10_ONCE_KERNEL_CLAIM_001.json';entry='ROOT_I10_ONCE_KERNEL_CHILD_ENTRY_001.json'
+if mode=='parent':
+ assert not any((O/n).exists() for n in (claim,entry,'ROOT_I10_ACTUAL_PURE_KERNEL_CHILD_RESULT_001.json','ROOT_I10_ACTUAL_PURE_KERNEL_SUPERVISOR_RESULT_001.json'))
+ for f in (s['Source'],s['fixture'],s['Source_review_adoption']):pin(f)
+ class Memory(ctypes.Structure):
+  _fields_=[('length',ctypes.c_ulong),('load',ctypes.c_ulong),*[(n,ctypes.c_ulonglong) for n in ('total','available','page_total','page_available','virtual_total','virtual_available','extended')]]
+ m=Memory();m.length=ctypes.sizeof(m);assert ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+ disk=shutil.disk_usage(O).free;assert m.available>=1073741824 and disk>=10737418240
+ resource=dict(observed_utc=now(),available_RAM_bytes=m.available,disk_free_bytes=disk,RAM_floor_bytes=1073741824,disk_floor_bytes=10737418240,maximum_age_seconds=60)
+ save(claim,dict(scope=sf,parent_PID=os.getpid(),claimed_utc=now(),scope_consumed=True,automatic_retry_authorized=False,resource_observation=resource))
+ start=time.monotonic();stamp=now();p=None;out=b'';err=b'';timedout=False;cleanup_error=None;drained=False;failure=None;result=None;valid=False
+ argv=[PY,'-I','-S','-B',__file__,'child',scope_path,scope_hash]
+ try:
+  assert datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=65)<datetime.datetime.fromisoformat(s['interval_end'])
+  p=subprocess.Popen(argv,stdout=subprocess.PIPE,stderr=subprocess.PIPE,creationflags=subprocess.CREATE_NO_WINDOW)
+  try:out,err=p.communicate(timeout=60);drained=True
+  except subprocess.TimeoutExpired as e:
+   timedout=True;t=time.monotonic();out=e.output or b'';err=e.stderr or b''
+   try:p.kill()
+   except BaseException as k:cleanup_error=type(k).__name__+': '+str(k)
+   try:out,err=p.communicate(timeout=max(0,5-(time.monotonic()-t)));drained=True
+   except subprocess.TimeoutExpired as k:out=k.output or out;err=k.stderr or err
+  assert not timedout and len(out)<=CAP and len(err)<=CAP
+  result=json.loads(out)
+  assert type(result) is dict and result['scope']==sf and result['Source']==s['Source'] and result['fixture']==s['fixture']
+  assert type(result['all_cases_passed']) is bool
+  assert result['original_I2_import_call_or_entry'] is False
+  save('ROOT_I10_ACTUAL_PURE_KERNEL_CHILD_RESULT_001.json',result)
+  assert p.returncode==0 and not err and result['all_cases_passed'] is True and result['audit_blocked_events']==[]
+  valid=True
+ except BaseException as e:failure=type(e).__name__+': '+str(e)
+ code=p.poll() if p is not None else None
+ for name,body in [('ROOT_I10_ACTUAL_PURE_KERNEL_STDOUT_001.txt',out[:CAP]),('ROOT_I10_ACTUAL_PURE_KERNEL_STDERR_001.txt',err[:CAP])]:
+  with (O/name).open('xb') as h:h.write(body);h.flush();os.fsync(h.fileno())
+ receipt=dict(schema_version=1,record_type='Root_I10_actual_once_pure_kernel_supervisor_result',author='/root',created_utc=now(),scope=sf,
+  argv=argv,owned_child_PID=p.pid if p is not None else None,started_utc=stamp,wall_seconds=time.monotonic()-start,
+  timed_out=timedout,timeout_seconds=60,cleanup_seconds=5,owned_child_exit_code=code,owned_child_reaped=p is not None and code is not None,streams_drained=drained,cleanup_error=cleanup_error,streams_overcap=len(out)>CAP or len(err)>CAP,
+  stdout_observed_bytes=len(out),stderr_observed_bytes=len(err),failure=failure,resource_observation=resource,all_cases_passed=valid,
+  stdout=fact(O/'ROOT_I10_ACTUAL_PURE_KERNEL_STDOUT_001.txt'),stderr=fact(O/'ROOT_I10_ACTUAL_PURE_KERNEL_STDERR_001.txt'),
+  child_result=fact(O/'ROOT_I10_ACTUAL_PURE_KERNEL_CHILD_RESULT_001.json') if (O/'ROOT_I10_ACTUAL_PURE_KERNEL_CHILD_RESULT_001.json').exists() else None,
+  scope_spent=True,automatic_retry_authorized=False,tests_executed=result.get('tests_executed') if type(result) is dict else None,
+  original_I2_import_call_or_entry=False,operational_authority=False,scientific_authority=False)
+ print(json.dumps(save('ROOT_I10_ACTUAL_PURE_KERNEL_SUPERVISOR_RESULT_001.json',receipt)))
+ assert valid, failure
+
+else:
+ claim_record=json.loads(read(O/claim));assert claim_record['scope']==sf and claim_record['parent_PID']==os.getppid()
+ save(entry,dict(scope=sf,parent_PID=os.getppid(),child_PID=os.getpid(),entered_utc=now(),scope_consumed=True))
+ source=pin(s['Source']);fixture=pin(s['fixture'])
+ tree=ast.parse(source);ftree=ast.parse(fixture)
+ defs=['need','require_phase_successor_basename'];constants=['TEMPLATE_ROLES','PHASE_BOUND_ROLES']
+ nodes={n.name:n for n in tree.body if isinstance(n,ast.FunctionDef)}
+ assert all(n in nodes for n in defs)
+ values={}
+ for n in tree.body:
+  if isinstance(n,ast.Assign):
+   for k in n.targets:
+    if isinstance(k,ast.Name) and k.id in constants:values[k.id]=ast.literal_eval(n.value)
+ assert set(values)==set(constants) and all(type(v) is tuple for v in values.values())
+ case_names=None
+ for n in ftree.body:
+  assert isinstance(n,(ast.Assign,ast.FunctionDef)) or isinstance(n,ast.Expr) and isinstance(n.value,ast.Constant) and type(n.value.value) is str
+  if isinstance(n,ast.Assign):
+   ast.literal_eval(n.value)
+   if any(isinstance(k,ast.Name) and k.id=='CASE_NAMES' for k in n.targets):case_names=ast.literal_eval(n.value)
+ assert type(case_names) is tuple and 1<=len(case_names)<=256 and len(set(case_names))==len(case_names)
+ assert not any(isinstance(n,(ast.Import,ast.ImportFrom)) for n in ast.walk(ftree))
+ module=ast.Module(body=[nodes[n] for n in defs],type_ignores=[])
+ kc=compile(ast.fix_missing_locations(module),'<I10-reviewed-kernel>','exec');fc=compile(ftree,'<I10-reviewed-fixture>','exec')
+ safe={n:getattr(builtins,n) for n in ('type','str','int','len','set','list','dict','tuple','bool','float','bytes','range','enumerate','all','any','zip','min','max','sorted','ValueError','AssertionError','Exception')}
+ kg=dict(__builtins__=safe,re=re,CHECKS=[],**values);fg=dict(__builtins__=safe)
+ blocked=[];counts={n:0 for n in defs};code_ids={};total=[0]
+ def walk(c):
+  code_ids[id(c)]=c
+  for x in c.co_consts:
+   if type(x) is types.CodeType:walk(x)
+ walk(kc);walk(fc)
+ def audit(event,args):
+  if event=='open' or event=='import' or event.startswith(('subprocess.','socket.','ctypes.','winreg.','os.')):
+   if len(blocked)<64:blocked.append(event)
+   raise RuntimeError('I10 memory-only audit denied '+event)
+ def profile(frame,event,arg):
+  if event=='call' and code_ids.get(id(frame.f_code)) is frame.f_code:
+   total[0]+=1
+   if frame.f_code.co_name in counts:counts[frame.f_code.co_name]+=1
+   if total[0]>1000000 or len(kg['CHECKS'])>4096:raise RuntimeError('I10 exact compiled-code event budget')
+ sys.addaudithook(audit);sys.setprofile(profile)
+ started=time.monotonic()
+ cases=None;error=None;fixture_started=False;accepted=False
+ try:
+  exec(kc,kg);exec(fc,fg)
+  fixture_started=True
+  cases=fg['run_cases']({n:kg[n] for n in defs})
+  assert type(cases) is list and len(cases)==len(case_names)
+  assert all(type(x) is dict and set(x)=={'name','passed'} and type(x['name']) is str and x['passed'] is True for x in cases)
+  assert tuple(x['name'] for x in cases)==case_names and blocked==[] and all(x>0 for x in counts.values())
+  accepted=True
+ except BaseException as e:error=type(e).__name__+': '+str(e)
+ finally:sys.setprofile(None)
+ print(json.dumps(dict(schema_version=1,record_type='Root_I10_actual_pure_AST_kernel_child_result',author='/root',created_utc=now(),scope=sf,
+  Source=s['Source'],fixture=s['fixture'],all_cases_passed=accepted,actual_case_count=len(cases) if type(cases) is list else None,cases=cases,error=error,
+  kernel_function_calls=counts,exact_compiled_code_calls=total[0],kernel_CHECKS_count=len(kg['CHECKS']),wall_seconds=time.monotonic()-started,
+  audit_blocked_events=blocked,original_I2_import_call_or_entry=False,only_two_new_successor_AST_kernel_functions_executed=True,
+  tests_executed=fixture_started,operational_authority=False,scientific_authority=False),allow_nan=False))
+ if not accepted:raise SystemExit(1)
