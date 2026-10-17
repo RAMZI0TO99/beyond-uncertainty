@@ -1,3 +1,7 @@
+**Current handoff - October 17, 2026.** Read [HANDOFF.md](HANDOFF.md) first. I10's narrow phase basename predicate passed 134/134 pure AST cases and was pushed as `75acc5101bedf18734add168523cd87384611147`; I9 retains its accepted 98/98 synthetic cases and full failed/unknown attempt history. Next are I2's external canonical receipt ABI and producer/caller/IO composition binding I8 with I9. Actual family publication, Native8, Parser, runtime and science remain held. Later Source remains 36/45; frozen STEP080 remains 35/45 and is the last completed frozen checkpoint. This documentation closeout is in preparation; normal Git history and later Root receipts record its eventual commit and push. All complete prior guidance is preserved below.
+
+---
+
 **October17 I10 inherited M3 phase naming qualified.** The [phase basename checkpoint](docs/development/native-producer-qualification/20261017-i10/I10_PHASE_BASENAME_QUALIFICATION.md) records134 passing pure AST kernel cases and the reviewed I2 Source successor. Whole producer/caller integration and the external canonical receipt ABI remain held; Native8, Parser, runtime and science remain unqualified. The I1 expiry hypothesis was refused; I1 is unchanged. Source remains36/45 and frozen STEP08035/45. All prior guidance is preserved below.
 
 ---
