@@ -1,3 +1,7 @@
+**Documentation and handoff refresh completed - October 17, 2026.** The refresh was committed and pushed as `1785a06a3b1d136bcb66bb895d350ffab699b540`, with local/remote parity and exact committed-file verification. Preparatory wording below is retained dated history and is closed by this completed publication. I10 implementation remains `75acc51`; I9 remains `471105e`. Continue with I2 external canonical receipt ABI qualification and producer/caller integration; actual family publication, Native8, Parser, runtime and science remain held. Git history records subsequent documentation changes. All complete prior document bytes remain below.
+
+---
+
 **Current handoff - October 17, 2026.** Read [HANDOFF.md](HANDOFF.md) first. I10's narrow phase basename predicate passed 134/134 pure AST cases and was pushed as `75acc5101bedf18734add168523cd87384611147`; I9 retains its accepted 98/98 synthetic cases and full failed/unknown attempt history. Next are I2's external canonical receipt ABI and producer/caller/IO composition binding I8 with I9. Actual family publication, Native8, Parser, runtime and science remain held. Later Source remains 36/45; frozen STEP080 remains 35/45 and is the last completed frozen checkpoint. This documentation closeout is in preparation; normal Git history and later Root receipts record its eventual commit and push. All complete prior guidance is preserved below.
 
 ---
